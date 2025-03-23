@@ -38,7 +38,7 @@
 #' @import performance
 #' @export
 
-analyze_tumor_growth <- function(df, time_column = "Day", volume_column = "Volume", group_column = "Group", id_column = "ID") {
+tumor_growth_statistics <- function(df, time_column = "Day", volume_column = "Volume", group_column = "Group", id_column = "ID") {
   # Ensure required columns exist
   if (!all(c(time_column, volume_column, group_column, id_column) %in% base::colnames(df))) {
     stop("One or more specified columns are not found in the dataframe.")
