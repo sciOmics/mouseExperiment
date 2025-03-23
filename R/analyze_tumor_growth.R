@@ -40,72 +40,61 @@
 #' @export
 
 analyze_tumor_growth <- function(df, time_column = "Day", volume_column = "Volume", group_column = "Group", id_column = "ID") {
-  # Function implementation...
-}
-
-library(lme4)
-library(lmerTest)
-library(emmeans)
-library(ggplot2)
-library(ggpubr)
-library(performance)
-
-analyze_tumor_growth <- function(df, time_column = "Day", volume_column = "Volume", group_column = "Group", id_column = "ID") {
   # Ensure required columns exist
-  if (!all(c(time_column, volume_column, group_column, id_column) %in% colnames(df))) {
+  if (!all(c(time_column, volume_column, group_column, id_column) %in% base::colnames(df))) {
     stop("One or more specified columns are not found in the dataframe.")
   }
 
   # Create a unique identifier for each mouse
-  df$Mouse_ID <- factor(paste(df[[group_column]], df[[id_column]], sep = "_"))
+  df$Mouse_ID <- base::factor(paste(df[[group_column]], df[[id_column]], sep = "_"))
 
   # Fit a Linear Mixed Effects Model
-  lme_model <- lmer(as.formula(paste(volume_column, "~", time_column, "*", group_column, "+ (1 | Mouse_ID)")), data = df)
+  lme_model <- lme4::lmer(as.formula(base::paste(volume_column, "~", time_column, "*", group_column, "+ (1 | Mouse_ID)")), data = df)
 
   # Model summary
   print(summary(lme_model))
 
   # Type III ANOVA to assess significance of fixed effects
-  anova_results <- anova(lme_model, type = 3)
+  anova_results <- car::Anova(lme_model, type = 3)
   print(anova_results)
 
   # Post-hoc comparisons (estimated marginal means)
-  emmeans_results <- emmeans(lme_model, pairwise ~ group_column | time_column, adjust = "bonferroni")
+  emmeans_results <- emmeans::emmeans(lme_model, pairwise ~ df[[group_column]] | df[[time_column]], adjust = "bonferroni")
   print(emmeans_results)
 
   # ----- Visualization -----
 
   # 1. Tumor Growth Over Time
-  p1 <- ggplot(df, aes_string(x = time_column, y = volume_column, color = group_column)) +
-    geom_line(aes(group = Mouse_ID), alpha = 0.3) +  # Individual mice
-    stat_summary(fun = mean, geom = "line", size = 1.2) +  # Group mean
-    stat_summary(fun.data = mean_se, geom = "errorbar", width = 2) +  # Error bars
-    labs(title = "Tumor Growth Over Time", x = "Days Since Injection", y = "Tumor Volume") +
-    theme_minimal()
+  p1 <- ggplot2::ggplot(df, ggplot2::aes_string(x = time_column, y = volume_column, color = group_column)) +
+    ggplot2::geom_line(ggplot2::aes(group = Mouse_ID), alpha = 0.3) +  # Individual mice
+    ggplot2::stat_summary(fun = base::mean, geom = "line", size = 1.2) +  # Group mean
+    ggplot2::stat_summary(fun.data = ggplot2::mean_se, geom = "errorbar", width = 2) +  # Error bars
+    ggplot2::labs(title = "Tumor Growth Over Time", x = "Days Since Injection", y = "Tumor Volume") +
+    ggplot2::theme_minimal()
 
   # 2. Residual Diagnostics for Model Fit
-  residuals_df <- data.frame(Fitted = fitted(lme_model), Residuals = residuals(lme_model))
-  p2 <- ggplot(residuals_df, aes(x = Fitted, y = Residuals)) +
-    geom_point(alpha = 0.5) +
-    geom_smooth(method = "loess", color = "blue") +
-    labs(title = "Residuals vs. Fitted", x = "Fitted Values", y = "Residuals") +
-    theme_minimal()
+  residuals_df <- base::data.frame(Fitted = stats::fitted(lme_model), Residuals = stats::residuals(lme_model))
+  p2 <- ggplot2::ggplot(residuals_df, ggplot2::aes(x = Fitted, y = Residuals)) +
+    ggplot2::geom_point(alpha = 0.5) +
+    ggplot2::geom_smooth(method = "loess", color = "blue") +
+    ggplot2::labs(title = "Residuals vs. Fitted", x = "Fitted Values", y = "Residuals") +
+    ggplot2::theme_minimal()
 
   # 3. Q-Q Plot for Normality of Residuals
-  p3 <- ggplot(residuals_df, aes(sample = Residuals)) +
-    stat_qq() +
-    stat_qq_line() +
-    labs(title = "Q-Q Plot of Residuals") +
-    theme_minimal()
+  p3 <- ggplot2::ggplot(residuals_df, ggplot2::aes(sample = Residuals)) +
+    ggplot2::stat_qq() +
+    ggplot2::stat_qq_line() +
+    ggplot2::labs(title = "Q-Q Plot of Residuals") +
+    ggplot2::theme_minimal()
 
   # Arrange plots in a grid
-  plot_grid <- ggarrange(p1, p2, p3, ncol = 2, nrow = 2, labels = c("A", "B", "C"))
+  plot_grid <- cowplot::ggarrange(p1, p2, p3, ncol = 2, nrow = 2, labels = c("A", "B", "C"))
 
   # Print plots
   print(plot_grid)
 
   # Check model assumptions
-  print(check_model(lme_model))
+  print(performance::check_model(lme_model))
 
   return(list(model = lme_model, anova = anova_results, posthoc = emmeans_results, plots = plot_grid))
 }

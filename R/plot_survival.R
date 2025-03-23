@@ -20,29 +20,28 @@
 #'
 #' plot_survival(df)
 
-plot_survival = function(df, time_column = "Day", censor_column = "Survival_Censor", group_column = "Group"){
+plot_survival = function(df, time_column = "Day", censor_column = "Survival_Censor", group_column = "Group") {
 
   # Check required columns exist
-  if (!all(c(time_column, censor_column, group_column) %in% colnames(df))) {
+  if (!all(c(time_column, censor_column, group_column) %in% base::colnames(df))) {
     stop("One or more specified columns are not found in the dataframe.")
   }
 
   # Create a survival object
-  surv_obj = Surv(time = df[[time_column]], event = df[[censor_column]])
+  surv_obj = survival::Surv(time = df[[time_column]], event = df[[censor_column]])
 
   # Fit the Kaplan-Meier survival curve
-  surv_fit = survfit(surv_obj ~ df[[group_column]], data = df)
+  surv_fit = survival::survfit(surv_obj ~ df[[group_column]], data = df)
 
   # Plot the survival curve using ggsurvplot
-  ggsurvplot(surv_fit,
-             data = df,
-             pval = TRUE,
-             conf.int = TRUE,
-             risk.table = TRUE,
-             ggtheme = theme_classic(),
-             legend.title = group_column,
-             xlab = "Time",
-             ylab = "Survival Probability")
-
+  ggplot2::ggsurvplot(surv_fit,
+                      data = df,
+                      pval = TRUE,
+                      conf.int = TRUE,
+                      risk.table = TRUE,
+                      ggtheme = ggplot2::theme_classic(),
+                      legend.title = group_column,
+                      xlab = "Time",
+                      ylab = "Survival Probability")
 
 }
