@@ -32,7 +32,6 @@
 #' # analyze_tumor_growth(df)
 #'
 #' @import lme4
-#' @import lmerTest
 #' @import emmeans
 #' @import ggplot2
 #' @import ggpubr
