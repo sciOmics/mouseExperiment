@@ -14,8 +14,24 @@ plot_tumor_growth(
 )
 }
 \arguments{
-\item{group_summary_line}{}
+\item{df}{A data frame containing tumor measurements}
+
+\item{volume_column}{The name of the column storing tumor volumne measurements}
+
+\item{day_column}{The name of the column with number of days since the beginning of the experiment for each observation}
+
+\item{group_column}{The name of the column with the group indicator}
+
+\item{ID_column}{The name of the column with the individual mouse indentifier. For example, ear-tage indicator.}
+
+\item{group_summary_line}{Boolean. Should a line for the group average be plotted?}
+}
+\value{
+A ggplot of tumor growth curves color by group
 }
 \description{
 Title
+}
+\examples{
+plot_tumor_growth(synthetic_data)
 }

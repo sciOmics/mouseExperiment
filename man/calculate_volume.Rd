@@ -19,3 +19,6 @@ Returns the original data frame with a tumor volume column appended
 \description{
 Calculate tumor volume using length and width measurements
 }
+\examples{
+calculate_volume(synthetic_data)
+}

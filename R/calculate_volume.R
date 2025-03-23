@@ -7,7 +7,7 @@
 #' @return Returns the original data frame with a tumor volume column appended
 #' @export
 #'
-#' @examples
+#' @examples calculate_volume(synthetic_data)
 
 calculate_volume = function(df, length_column = "Length", width_column = "Width") {
   length_tmp = ifelse(df[,length_column] > df[,width_column], df[,length_column], df[,width_column])

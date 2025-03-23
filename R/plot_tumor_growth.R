@@ -1,16 +1,17 @@
 #' Title
 #'
-#' @param df
-#' @param volume_column
-#' @param day_column
-#' @param group_column
-#' @param ID_column
-#' @param group_summary_line
+#' @param df A data frame containing tumor measurements
+#' @param volume_column The name of the column storing tumor volumne measurements
+#' @param day_column The name of the column with number of days since the beginning of the experiment for each observation
+#' @param group_column The name of the column with the group indicator
+#' @param ID_column The name of the column with the individual mouse indentifier. For example, ear-tage indicator.
+#' @param group_summary_line Boolean. Should a line for the group average be plotted?
 #'
-#' @return
+#' @return A ggplot of tumor growth curves color by group
 #' @export
 #'
-#' @examples
+#' @examples plot_tumor_growth(synthetic_data)
+
 plot_tumor_growth = function(df, volume_column = "Volume", day_column = "Day", group_column = "Group", ID_column = "ID", group_summary_line = TRUE) {
 
   #create an interaction term as a string

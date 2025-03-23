@@ -7,7 +7,7 @@
 #' @return Returns the original data frame with an appended column containing the number of days from the beginning of an experiment for each row/measurement
 #' @export
 #'
-#' @examples
+#' @examples calculate_dates(synthetic_data, start_date = "2022-02-24")
 
 calculate_dates = function(df, start_date, date_column = "Date") {
   start_date = anytime::anytime(start_date)

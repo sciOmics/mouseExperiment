@@ -19,3 +19,6 @@ Returns the original data frame with an appended column containing the number of
 \description{
 Calculate the number of days for measurements
 }
+\examples{
+calculate_dates(synthetic_data, start_date = "2022-02-24")
+}
