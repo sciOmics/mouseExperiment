@@ -27,17 +27,26 @@ plot_survival = function(df, time_column = "Day", censor_column = "Survival_Cens
     stop("One or more specified columns are not found in the dataframe.")
   }
 
-  # Create a survival object
-  surv_obj = survival::Surv(time = df[[time_column]], event = df[[censor_column]])
-
-  # Fit the Kaplan-Meier survival curve
-  surv_fit = survival::survfit(surv_obj ~ df[[group_column]], data = df)
+  # Create the survival object from the specified columns
+  survival_time <- df[[time_column]]
+  event_status <- df[[censor_column]]
+  grouping <- df[[group_column]]
+  
+  # Create a new data frame with standardized column names
+  analysis_df <- data.frame(
+    time = survival_time,
+    status = event_status,
+    group = grouping
+  )
+  
+  # Fit the Kaplan-Meier survival curve with a fixed formula
+  surv_fit <- survival::survfit(survival::Surv(time, status) ~ group, data = analysis_df)
 
   # Plot the survival curve using ggsurvplot
   survminer::ggsurvplot(surv_fit,
-                      data = df,
+                      data = analysis_df,
                       pval = TRUE,
-                      conf.int = TRUE,
+                      conf.int = FALSE,
                       risk.table = TRUE,
                       ggtheme = ggplot2::theme_classic(),
                       legend.title = group_column,

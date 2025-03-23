@@ -1,19 +1,39 @@
 Package: mouseExperiment
-Title: What the Package Does (One Line, Title Case)
+Title: Analysis of Mouse Tumor Growth Experiments
 Version: 0.0.0.9000
 Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"),
-           comment = c(ORCID = "YOUR-ORCID-ID"))
-Description: What the package does (one paragraph).
-License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
-    license
+    person("Mouse", "Researcher", , "mouse.researcher@example.com", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0000-0000-0000"))
+Author: Mouse Researcher [aut, cre]
+Maintainer: Mouse Researcher <mouse.researcher@example.com>
+Description: Provides tools for analyzing and visualizing mouse tumor growth experiments
+    including calculating tumor volume, survival statistics, and tumor growth kinetics.
+    Includes both frequentist and Bayesian statistical approaches for experimental data analysis.
+License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
+Suggests:
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
 Imports: 
     anytime,
+    bridgesampling,
+    brms,
+    car,
+    cowplot,
     dplyr,
-    ggplot2
+    emmeans,
+    future,
+    future.apply,
+    ggplot2,
+    ggpubr,
+    lme4,
+    lmerTest,
+    performance,
+    survival,
+    survminer
 Depends: 
     R (>= 2.10)
 LazyData: true
