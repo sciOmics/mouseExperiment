@@ -34,7 +34,7 @@ plot_survival = function(df, time_column = "Day", censor_column = "Survival_Cens
   surv_fit = survival::survfit(surv_obj ~ df[[group_column]], data = df)
 
   # Plot the survival curve using ggsurvplot
-  ggplot2::ggsurvplot(surv_fit,
+  survminer::ggsurvplot(surv_fit,
                       data = df,
                       pval = TRUE,
                       conf.int = TRUE,
