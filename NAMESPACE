@@ -2,4 +2,7 @@
 
 export(calculate_dates)
 export(calculate_volume)
+export(plot_survival)
 export(plot_tumor_growth)
+import(survival)
+import(survminer)
