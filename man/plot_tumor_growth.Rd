@@ -8,11 +8,14 @@ plot_tumor_growth(
   df,
   volume_column = "Volume",
   day_column = "Day",
-  group_column = "Group",
+  treatment_column = "Treatment",
+  cage_column = "Cage",
   ID_column = "ID",
+  dose_column = NULL,
   survival_column = "Survival_Censor",
   extrapolate_volumes = FALSE,
-  group_summary_line = TRUE
+  group_summary_line = TRUE,
+  treatment_days = NULL
 )
 }
 \arguments{
@@ -22,18 +25,25 @@ plot_tumor_growth(
 
 \item{day_column}{The name of the column with number of days since the beginning of the experiment for each observation}
 
-\item{group_column}{The name of the column with the group indicator}
+\item{treatment_column}{The name of the column with the treatment indicator}
 
-\item{ID_column}{The name of the column with the individual mouse identifier. For example, ear-tag indicator.}
+\item{cage_column}{The name of the column with the cage identifier}
+
+\item{ID_column}{The name of the column with the individual mouse identifier}
+
+\item{dose_column}{Optional. The name of the column with dose information (if present in the data)}
 
 \item{survival_column}{The name of the column indicating survival status (1 for death, 0 for alive)}
 
 \item{extrapolate_volumes}{Boolean. Should missing volumes for mice that have died be extrapolated? Default is FALSE.}
 
-\item{group_summary_line}{Boolean. Should a line for the group average be plotted? Default is TRUE.}
+\item{group_summary_line}{Boolean. Should a line for the treatment group average be plotted? Default is TRUE.}
+
+\item{treatment_days}{Optional numeric vector. Days on which treatment was administered.
+If provided, arrows will be added below the x-axis to indicate treatment days.}
 }
 \value{
-A ggplot of tumor growth curves colored by group
+A ggplot of tumor growth curves colored by treatment group
 }
 \description{
 Plot Tumor Growth Curves by Treatment Group
@@ -44,10 +54,26 @@ data(synthetic_data)
 df <- calculate_volume(synthetic_data)
 df <- calculate_dates(df, start_date = "2022-02-24")
 
-# Standard plot
-plot_tumor_growth(df)
+# Standard plot using Treatment column
+plot_tumor_growth(df, treatment_column = "Treatment")
 
 # Plot with extrapolated volumes for deceased mice
-plot_tumor_growth(df, extrapolate_volumes = TRUE)
+plot_tumor_growth(df, treatment_column = "Treatment", extrapolate_volumes = TRUE)
+
+# With treatment day indicators
+treatment_schedule <- c(0, 3, 7, 10, 14)  # Treatment on days 0, 3, 7, 10, and 14
+plot_tumor_growth(df, treatment_column = "Treatment", treatment_days = treatment_schedule)
+
+# For data with dose information
+dose_data <- calculate_volume(dose_data)
+dose_data <- calculate_dates(dose_data, start_date = "24-Mar", date_format = "\%d-\%b", year = 2023)
+plot_tumor_growth(dose_data, treatment_column = "Treatment", dose_column = "Dose")
+
+# Combining multiple options: dose information, extrapolation, and treatment days
+plot_tumor_growth(dose_data, 
+                treatment_column = "Treatment", 
+                dose_column = "Dose",
+                extrapolate_volumes = TRUE,
+                treatment_days = c(0, 2, 4, 6))
 }
 }

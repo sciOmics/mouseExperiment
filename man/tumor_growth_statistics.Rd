@@ -2,59 +2,151 @@
 % Please edit documentation in R/tumor_growth_statistics.R
 \name{tumor_growth_statistics}
 \alias{tumor_growth_statistics}
-\title{Analyze Tumor Growth Using Linear Mixed Effects Model with Log Transformation}
+\title{Analyze Tumor Growth Using Various Statistical Methods}
 \usage{
 tumor_growth_statistics(
   df,
   time_column = "Day",
   volume_column = "Volume",
-  group_column = "Group",
-  id_column = "ID"
+  treatment_column = "Treatment",
+  cage_column = "Cage",
+  id_column = "ID",
+  dose_column = NULL,
+  method = "lme",
+  regression_penalty = TRUE
 )
 }
 \arguments{
-\item{df}{A data frame containing tumor growth data.}
+\item{df}{A data frame containing tumor growth data. Must include columns for time, volume,
+treatment group, cage identifier, and individual subject ID. Additional columns can be included.}
 
-\item{time_column}{A character string specifying the column name for time points (e.g., "Day"). Default is "Day".}
+\item{time_column}{A character string specifying the column name for time points (e.g., "Day").
+This column should contain numeric values representing time since treatment started. Default is "Day".}
 
-\item{volume_column}{A character string specifying the column name for tumor volume measurements (e.g., "Volume"). Default is "Volume".}
+\item{volume_column}{A character string specifying the column name for tumor volume measurements (e.g., "Volume").
+This column should contain numeric tumor volume measurements. Default is "Volume".}
 
-\item{group_column}{A character string specifying the column name for treatment groups (e.g., "Group"). Default is "Group".}
+\item{treatment_column}{A character string specifying the column name for treatment groups (e.g., "Treatment").
+This column should contain categorical treatment identifiers. Default is "Treatment".}
 
-\item{id_column}{A character string specifying the column name for individual subject identifiers (e.g., "ID"). Default is "ID".}
+\item{cage_column}{A character string specifying the column name for the cage identifier (e.g., "Cage").
+This column should contain cage identifiers. The function automatically tests for collinearity with treatment.
+Default is "Cage".}
+
+\item{id_column}{A character string specifying the column name for individual subject identifiers (e.g., "ID").
+This column should contain unique identifiers for each animal/subject. Default is "ID".}
+
+\item{dose_column}{Optional. A character string specifying the column name for dose levels, if available.
+This allows for dose-response analysis within treatment groups. Default is NULL.}
+
+\item{method}{A character string specifying which statistical model to use. Options are:
+"lme" (linear mixed-effects with log transformation),
+"gamm" (generalized additive mixed model), or
+"auc" (area under the curve analysis). Default is "lme".}
+
+\item{regression_penalty}{Logical indicating whether to apply penalties for model complexity in the GAMM model.
+If TRUE (default), applies a gamma value of 1.4 to prevent overfitting. If FALSE, uses the default gamma of 1.0.
+Only used when method="gamm".}
 }
 \value{
 A list containing:
-\item{model}{The fitted linear mixed-effects model (using log-transformed volume).}
-\item{anova}{Type III ANOVA table for fixed effects.}
-\item{posthoc}{Pairwise comparisons of estimated marginal means (adjusted for multiple comparisons).}
-\item{plots}{A set of diagnostic and tumor growth visualization plots.}
+\item{model}{The fitted statistical model (lmer object for "lme", gam object for "gamm", NULL for "auc" method).}
+\item{method}{The analysis method used (string indicating which method was used).}
+\item{anova}{Statistical test results comparing groups (Anova object for "lme", anova.gam results for "gamm",
+aov results for "auc").}
+\item{posthoc}{Pairwise comparisons between treatment groups (emmeans object for "lme", data frame of comparisons
+for "gamm", pairwise.t.test results for "auc").}
+\item{auc_analysis}{Area Under the Curve analysis for each treatment. Contains two elements:
+\code{individual} (data frame with AUC values for each subject) and
+\code{summary} (data frame with mean, SD, and N for each treatment group).}
+\item{plots}{A list of plots visualizing the results, containing the following ggplot objects:
+\code{raw_data} (tumor growth curves),
+method-specific plots like \code{transformed_data}, \code{model_prediction}, \code{auc_barplot}, etc., and
+\code{combined} (a composite plot with the main visualizations).}
 }
 \description{
-This function fits a linear mixed-effects model (LME) to assess statistical significance
-in tumor growth data over time, accounting for repeated measures within subjects.
-It applies a log transformation to tumor volume data to handle the exponential nature
-of tumor growth. The function also generates diagnostic plots and post-hoc comparisons.
+This function provides a comprehensive statistical analysis for tumor growth data using
+different statistical approaches. It supports multiple methods including linear mixed-effects
+models, generalized additive mixed models, and area under the curve analysis.
 }
 \details{
+This function supports different analytical approaches depending on the nature of your tumor growth data:
+\enumerate{
+\item Linear Mixed-Effects Model ("lme"):
 \itemize{
-\item The function applies a log transformation (log(x+1)) to tumor volume data to account for exponential growth patterns.
-\item The function creates a unique identifier by combining \code{Group} and \code{ID} to account for repeated measures.
-\item A linear mixed-effects model (\code{lmer}) is used, with \code{Mouse_ID} as a random effect.
-\item The function performs a Type III ANOVA to assess the significance of time, treatment group, and their interaction.
-\item Post-hoc pairwise comparisons are performed using \code{emmeans}, adjusted with the Bonferroni correction.
-\item The function generates diagnostic plots to check model assumptions, including:
+\item Applies a log transformation to tumor volume to accommodate exponential growth
+\item Uses Mouse_ID as a random effect to account for repeated measures
+\item Intelligently handles cage effects based on collinearity testing
+\item Performs Type III ANOVA and Bonferroni-adjusted pairwise comparisons
+\item Best for data following expected exponential growth patterns
+}
+\item Generalized Additive Mixed Model ("gamm"):
 \itemize{
-\item Tumor growth over time with individual trajectories and group means (on original scale).
-\item Log-transformed tumor growth over time (to visualize the transformed data).
-\item Residuals vs. fitted values for checking homoscedasticity.
-\item Q-Q plot for assessing normality of residuals.
-\item Model assumption checks.
+\item Uses flexible non-linear smoothing terms for each treatment group
+\item Provides better fit for non-exponential growth patterns, including regression
+\item Still accounts for random effects of Mouse_ID and Cage
+\item Calculates pairwise comparisons at each time point
+\item Best for data showing complex growth patterns or tumor regression
+}
+\item Area Under the Curve Analysis ("auc"):
+\itemize{
+\item Calculates the AUC for each individual subject using the trapezoidal method
+\item Calculates AUC using only available data points (does not extrapolate missing values)
+\item For mice that die/are censored during the study, AUC is calculated up to their last measurement
+\item Compares AUCs between treatment groups
+\item Treats the AUC as a summary metric of tumor burden over time
+\item Performs statistical comparisons using ANOVA and t-tests
+\item Provides both summary statistics and individual mouse data visualization
+\item Best for simplifying analysis to a single metric of overall tumor burden
 }
 }
+
+The function automatically handles collinearity between cage and treatment variables
+and provides comprehensive visualization of the results. It creates a unique identifier for each
+mouse by combining cage, treatment, and ID information, and uses this to track individual animals
+across time points.
+
+For cage effects, the function checks if there is perfect collinearity between cage and treatment
+(e.g., if each cage only contains animals from one treatment group). If collinearity exists,
+only treatment is included in the model. If no collinearity exists, cage effects are included
+either as nested random effects (if multiple cages per treatment) or as additive random effects.
+
+All methods produce publication-quality plots that visualize both the raw data and model-specific
+results. The plots can be accessed from the returned list and further customized as needed.
 }
 \examples{
-# Example usage:
-# analyze_tumor_growth(df)
+# Load example data
+data(synthetic_data)
 
+# Using linear mixed-effects model (default)
+results_lme <- tumor_growth_statistics(synthetic_data)
+
+# View summary of LME results
+summary(results_lme$model)
+
+# Access the ANOVA results
+results_lme$anova
+
+# Using generalized additive mixed model for complex growth patterns
+results_gamm <- tumor_growth_statistics(synthetic_data, method = "gamm")
+
+# Using area under the curve analysis 
+results_auc <- tumor_growth_statistics(synthetic_data, method = "auc")
+
+# Compare AUC values between treatment groups
+results_auc$anova
+results_auc$posthoc
+
+# Custom column names
+results <- tumor_growth_statistics(df, 
+                                time_column = "TimePoint", 
+                                volume_column = "TumorSize",
+                                treatment_column = "Group",
+                                method = "lme")
+
+}
+\seealso{
+\code{\link[lme4]{lmer}} for details on linear mixed-effects models,
+\code{\link[mgcv]{gam}} for details on generalized additive models,
+\code{\link{plot_tumor_growth}} for visualizing tumor growth curves
 }

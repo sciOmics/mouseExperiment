@@ -61,9 +61,12 @@
 #'
 #' 3. Area Under the Curve Analysis ("auc"):
 #'    - Calculates the AUC for each individual subject using the trapezoidal method
-#'    - Compares AUCs between treatment groups
+#'    - Calculates AUC using only available data points (does not extrapolate missing values)
+#'    - For mice that die/are censored during the study, AUC is calculated up to their last measurement
+#'    - Compares AUCs between treatment groups 
 #'    - Treats the AUC as a summary metric of tumor burden over time
 #'    - Performs statistical comparisons using ANOVA and t-tests
+#'    - Provides both summary statistics and individual mouse data visualization
 #'    - Best for simplifying analysis to a single metric of overall tumor burden
 #'
 #' The function automatically handles collinearity between cage and treatment variables
@@ -232,23 +235,65 @@ tumor_growth_statistics <- function(df,
     times <- subject_data[[time_column]]
     volumes <- subject_data[[volume_column]]
     
+    # Check if this mouse has a censoring/death event
+    has_event <- any(subject_data$Survival_Censor == 1)
+    event_day <- if(has_event) max(subject_data$Day[subject_data$Survival_Censor == 1]) else NA
+    
+    # Calculate AUC using trapezoidal rule for available data points
     auc <- 0
     for (i in 2:length(times)) {
       dt <- times[i] - times[i-1]
       auc <- auc + dt * (volumes[i] + volumes[i-1]) / 2
     }
     
+    # Add metadata about the calculation
+    attr(auc, "has_event") <- has_event
+    attr(auc, "event_day") <- event_day
+    attr(auc, "last_day") <- max(times)
+    attr(auc, "first_day") <- min(times)
+    
     return(auc)
   }
   
-  # Calculate AUC for each subject
+  # Calculate AUC for each subject and collect metadata
   subjects <- unique(df$Mouse_ID)
-  auc_data <- data.frame(
-    Mouse_ID = subjects,
-    Group = df$Group[match(subjects, df$Mouse_ID)],
-    AUC = sapply(subjects, function(s) calculate_auc(df[df$Mouse_ID == s, ])),
-    stringsAsFactors = FALSE
-  )
+  
+  # Create a list to collect additional info
+  auc_list <- list()
+  
+  # Calculate AUC for each subject with metadata
+  for (i in seq_along(subjects)) {
+    s <- subjects[i]
+    subject_data <- df[df$Mouse_ID == s, ]
+    
+    # Get the AUC value with attributes
+    auc_result <- calculate_auc(subject_data)
+    
+    # Extract the Cage and ID for clearer labels
+    cage <- unique(subject_data[[cage_column]])
+    id <- unique(subject_data[[id_column]])
+    treatment <- unique(subject_data[[treatment_column]])
+    dose <- if(!is.null(dose_column)) unique(subject_data[[dose_column]]) else NA
+    
+    # Store AUC and metadata in list
+    auc_list[[i]] <- data.frame(
+      Mouse_ID = s,
+      Cage = cage,
+      ID = id,
+      Treatment = treatment, 
+      Dose = dose,
+      Group = unique(subject_data$Group),
+      AUC = as.numeric(auc_result),
+      Has_Event = attr(auc_result, "has_event"),
+      Event_Day = attr(auc_result, "event_day"),
+      Last_Day = attr(auc_result, "last_day"),
+      First_Day = attr(auc_result, "first_day"),
+      stringsAsFactors = FALSE
+    )
+  }
+  
+  # Combine into one data frame
+  auc_data <- do.call(rbind, auc_list)
   
   # Calculate summary statistics by group
   auc_summary <- aggregate(AUC ~ Group, data = auc_data, 
@@ -605,18 +650,8 @@ tumor_growth_statistics <- function(df,
                   y = "Tumor Volume") +
       ggplot2::theme_minimal()
     
-    # AUC barplot
-    p_auc <- ggplot2::ggplot(auc_data, ggplot2::aes(x = Group, y = AUC, fill = Group)) +
-      ggplot2::geom_bar(stat = "summary", fun = "mean") +
-      ggplot2::geom_errorbar(stat = "summary", fun.data = "mean_se", width = 0.2) +
-      ggplot2::labs(title = "Area Under the Curve by Treatment Group",
-                  x = "Treatment Group",
-                  y = "AUC (Tumor Burden)") +
-      ggplot2::theme_minimal() +
-      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
-    
-    # Individual AUC values
-    p_indiv <- ggplot2::ggplot(auc_data, ggplot2::aes(x = Group, y = AUC, color = Group)) +
+    # Individual AUC boxplot with jittered points
+    p_indiv_boxplot <- ggplot2::ggplot(auc_data, ggplot2::aes(x = Group, y = AUC, color = Group)) +
       ggplot2::geom_boxplot(alpha = 0.3) +
       ggplot2::geom_jitter(width = 0.2, height = 0, alpha = 0.7) +
       ggplot2::labs(title = "Individual AUC Values by Treatment Group",
@@ -624,25 +659,44 @@ tumor_growth_statistics <- function(df,
                   y = "AUC (Tumor Burden)") +
       ggplot2::theme_minimal()
     
-    # AUC summary plot
+    # AUC summary bar plot
     p_summary <- ggplot2::ggplot(auc_summary, ggplot2::aes(x = Group, y = AUC.Mean, fill = Group)) +
       ggplot2::geom_col() +
       ggplot2::geom_errorbar(ggplot2::aes(ymin = AUC.Mean - AUC.SD/sqrt(AUC.N), 
                                        ymax = AUC.Mean + AUC.SD/sqrt(AUC.N)), 
                           width = 0.2) +
-      ggplot2::labs(title = "Summary of AUC by Treatment Group",
+      ggplot2::labs(title = "Mean AUC by Treatment Group",
                   x = "Treatment Group",
                   y = "Mean AUC (± SEM)") +
       ggplot2::theme_minimal() +
       ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
     
-    # Store plots
+    # Create a new individual mouse bar plot (NEW)
+    # Create a display-friendly ID for each mouse
+    auc_data$Display_ID <- paste(auc_data$Cage, auc_data$ID, sep = "-")
+    
+    # Sort by Group and AUC value to make the plot more interpretable
+    auc_data <- auc_data[order(auc_data$Group, auc_data$AUC), ]
+    auc_data$Display_ID <- factor(auc_data$Display_ID, levels = auc_data$Display_ID)
+    
+    # Create individual bar plot
+    p_indiv_bars <- ggplot2::ggplot(auc_data, ggplot2::aes(x = Display_ID, y = AUC, fill = Group)) +
+      ggplot2::geom_bar(stat = "identity") +
+      ggplot2::labs(title = "Individual Mouse AUC Values",
+                  x = "Mouse ID (Cage-ID)",
+                  y = "AUC (Tumor Burden)") +
+      ggplot2::theme_minimal() +
+      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, size = 7),
+                   legend.position = "top") +
+      ggplot2::scale_x_discrete(guide = ggplot2::guide_axis(n.dodge = 2))  # Stagger x-axis labels for better readability
+    
+    # Store plots - note we've removed the duplicate auc_barplot
     results$plots <- list(
       raw_data = p_raw,
-      auc_barplot = p_auc,
-      individual_auc = p_indiv,
-      auc_summary = p_summary,
-      combined = ggpubr::ggarrange(p_raw, p_auc, p_indiv, p_summary, 
+      individual_boxplot = p_indiv_boxplot,
+      individual_bars = p_indiv_bars,  # NEW plot
+      summary_bars = p_summary,  # Renamed for clarity
+      combined = ggpubr::ggarrange(p_raw, p_summary, p_indiv_boxplot, p_indiv_bars, 
                                  ncol = 2, nrow = 2, 
                                  labels = c("A", "B", "C", "D"))
     )

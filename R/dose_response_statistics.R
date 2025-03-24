@@ -55,7 +55,7 @@
 #' @import ggplot2
 #' @import dplyr
 #' @import stats
-#' @importFrom rlang sym
+#' @importFrom rlang sym !!
 #' @importFrom clinfun jonckheere.test
 #' @export
 dose_response_statistics <- function(df, 
@@ -88,9 +88,10 @@ dose_response_statistics <- function(df,
     }
   } else {
     # For each mouse, get the last measurement (highest day value)
+    # Using a standard approach without relying on !! operator with sym
     analysis_data <- analysis_data %>%
-      dplyr::group_by(!!sym(treatment_column), !!sym(dose_column), !!sym(id_column)) %>%
-      dplyr::filter(!!sym(day_column) == max(!!sym(day_column))) %>%
+      dplyr::group_by_at(vars(treatment_column, dose_column, id_column)) %>%
+      dplyr::filter(get(day_column) == max(get(day_column))) %>%
       dplyr::ungroup()
   }
   
@@ -99,11 +100,11 @@ dose_response_statistics <- function(df,
   
   # Create summary statistics for each dose level
   summary_stats <- analysis_data %>%
-    dplyr::group_by(!!sym(dose_column)) %>%
+    dplyr::group_by_at(vars(dose_column)) %>%
     dplyr::summarize(
-      mean_volume = mean(!!sym(volume_column), na.rm = TRUE),
-      median_volume = median(!!sym(volume_column), na.rm = TRUE),
-      sd_volume = sd(!!sym(volume_column), na.rm = TRUE),
+      mean_volume = mean(get(volume_column), na.rm = TRUE),
+      median_volume = median(get(volume_column), na.rm = TRUE),
+      sd_volume = sd(get(volume_column), na.rm = TRUE),
       n = n(),
       sem_volume = sd_volume / sqrt(n),
       ci95_lower = mean_volume - qt(0.975, n-1) * sem_volume,
@@ -292,15 +293,15 @@ dose_response_statistics <- function(df,
   # 5. Additional analysis: Growth rate vs dose 
   # If we have multiple time points, calculate the growth rate for each mouse
   if (length(unique(df[[day_column]])) > 1) {
-    # For each mouse, calculate the growth rate
+    # For each mouse, calculate the growth rate - using standard dplyr approach without !! operator
     growth_rates <- df %>%
-      dplyr::group_by(!!sym(treatment_column), !!sym(dose_column), !!sym(id_column)) %>%
-      dplyr::mutate(log_volume = log1p(!!sym(volume_column))) %>%
-      dplyr::arrange(!!sym(day_column)) %>%
+      dplyr::group_by_at(vars(treatment_column, dose_column, id_column)) %>%
+      dplyr::mutate(log_volume = log1p(get(volume_column))) %>%
+      dplyr::arrange_at(vars(day_column)) %>%
       dplyr::summarize(
         growth_rate = if(n() >= 3) {
           # Using linear regression on log-transformed volume to estimate growth rate
-          model <- stats::lm(log_volume ~ !!sym(day_column))
+          model <- stats::lm(log_volume ~ get(day_column))
           coef(model)[2] # Slope coefficient = growth rate
         } else {
           NA
@@ -311,7 +312,7 @@ dose_response_statistics <- function(df,
     
     if (nrow(growth_rates) > 0) {
       # Check if there's a relationship between dose and growth rate
-      growth_model <- stats::lm(growth_rate ~ !!sym(dose_column), data = growth_rates)
+      growth_model <- stats::lm(paste("growth_rate ~", dose_column), data = growth_rates)
       growth_summary <- summary(growth_model)
       
       print("Growth rate vs dose model:")
@@ -356,7 +357,9 @@ dose_response_statistics <- function(df,
   
   # 2. Polynomial contrasts to test for linear, quadratic and other trends
   # This helps identify the shape of the dose-response relationship
-  trend_results <- tryCatch({
+  # The result of this is stored in trend_results, but we only use it to populate statistics
+  # NOT returning trend_results itself
+  tryCatch({
     # Check if we have enough dose levels for meaningful polynomial contrasts
     if (length(unique(analysis_data[[dose_column]])) >= 3) {
       # Create a categorical factor for dose
@@ -391,14 +394,13 @@ dose_response_statistics <- function(df,
       # Store overall trend significance
       statistics$overall_trend_pvalue <- poly_anova[1, "Pr(>F)"]
       
-      return(TRUE)
+      # Store the polynomial model for later use
+      statistics$poly_model <- poly_model
     } else {
       message("Not enough dose levels for polynomial trend analysis (need at least 3).")
-      return(FALSE)
     }
   }, error = function(e) {
     message("Polynomial trend analysis failed: ", e$message)
-    return(FALSE)
   })
   
   # Create a comprehensive summary for the user

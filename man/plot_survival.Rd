@@ -8,7 +8,20 @@ plot_survival(
   df,
   time_column = "Day",
   censor_column = "Survival_Censor",
-  group_column = "Group"
+  treatment_column = "Treatment",
+  cage_column = "Cage",
+  id_column = "ID",
+  dose_column = NULL,
+  colors = NULL,
+  palette = NULL,
+  palette_indices = NULL,
+  ggtheme = ggplot2::theme_classic(),
+  show_risk_table = TRUE,
+  show_pvalue = FALSE,
+  show_legend = FALSE,
+  legend_title = NULL,
+  risk_table_title = NULL,
+  fix_risk_table_labels = TRUE
 )
 }
 \arguments{
@@ -18,20 +31,74 @@ plot_survival(
 
 \item{censor_column}{A string specifying the name of the column indicating censoring (1 = event occurred, 0 = censored). Default is "Survival_Censor".}
 
-\item{group_column}{A string specifying the name of the column representing different groups for comparison. Default is "Group".}
+\item{treatment_column}{A string specifying the name of the column representing treatment groups. Default is "Treatment".}
+
+\item{cage_column}{A string specifying the name of the column with the cage identifier. Default is "Cage".}
+
+\item{id_column}{A string specifying the name of the column with the individual mouse identifier. Default is "ID".}
+
+\item{dose_column}{Optional. A string specifying the name of the column with dose information. Default is NULL.}
+
+\item{colors}{Optional. A named vector of colors for each group, or a vector of colors to be assigned to groups in the order they appear. If NULL, default ggplot2 colors are used.}
+
+\item{palette}{Optional. A color palette function or vector that can be used with scale_color_manual. If provided, overrides the colors parameter.}
+
+\item{palette_indices}{Optional. If providing a palette, these indices specify which palette colors to use for which groups. If NULL, uses colors in order of groups.}
+
+\item{ggtheme}{Optional. A ggplot2 theme to use for the plot. Default is theme_classic().}
+
+\item{show_risk_table}{Logical. Whether to display the risk table below the plot. Default is TRUE.}
+
+\item{show_pvalue}{Logical. Whether to display the p-value on the plot. Default is FALSE.}
+
+\item{show_legend}{Logical. Whether to display the legend on the plot. Default is FALSE.}
+
+\item{legend_title}{Character. Title for the legend. Default is NULL (no title).}
+
+\item{risk_table_title}{Character. Title for the risk table. Default is NULL (no title).}
 }
 \value{
 A Kaplan-Meier survival plot.
 }
 \description{
-This function generates Kaplan-Meier survival curves for different groups in the dataset.
+This function generates Kaplan-Meier survival curves for different treatment groups in the dataset.
 }
 \examples{
 df <- data.frame(
   Day = c(10, 20, 30, 40, 50, 60, 70, 80),
   Survival_Censor = c(1, 0, 1, 1, 0, 1, 0, 1),
-  Group = c("A", "A", "B", "B", "A", "B", "A", "B")
+  Treatment = c("Control", "Control", "Drug", "Drug", "Control", "Drug", "Control", "Drug"),
+  Cage = c(1, 1, 2, 2, 1, 2, 1, 2),
+  ID = c("A", "B", "C", "D", "E", "F", "G", "H")
 )
 
+# Basic usage
 plot_survival(df)
+
+# With custom colors
+plot_survival(df, colors = c("Control" = "blue", "Drug" = "red"))
+
+# With palette and specific indices
+palette <- c("#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF")
+plot_survival(df, palette = palette, palette_indices = c(2, 4))
+
+# Show legend
+plot_survival(df, show_legend = TRUE, legend_title = "Treatment Group")
+
+# With dose information
+df_with_dose <- data.frame(
+  Day = c(10, 20, 30, 40, 50, 60, 70, 80),
+  Survival_Censor = c(1, 0, 1, 1, 0, 1, 0, 1),
+  Treatment = c("Control", "Control", "Drug", "Drug", "Control", "Drug", "Control", "Drug"),
+  Cage = c(1, 1, 2, 2, 1, 2, 1, 2),
+  ID = c("A", "B", "C", "D", "E", "F", "G", "H"),
+  Dose = c(0, 0, 10, 50, 0, 100, 0, 10)
+)
+
+# Plot with dose information and custom colors
+plot_survival(df_with_dose, dose_column = "Dose", 
+              colors = c("Control - Dose: 0" = "blue", 
+                         "Drug - Dose: 10" = "red", 
+                         "Drug - Dose: 50" = "green", 
+                         "Drug - Dose: 100" = "purple"))
 }

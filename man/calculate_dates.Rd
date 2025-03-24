@@ -20,7 +20,7 @@ calculate_dates(
 
 \item{date_column}{The name of the column with dates of measurements}
 
-\item{date_format}{Optional format string for parsing dates (e.g., "\%d-\%b" for "24-Mar" format)}
+\item{date_format}{Optional format string for parsing dates (e.g., "\%d-\%b" for "24-Mar" format, "\%m/\%d/\%Y" for "03/24/2025" format)}
 
 \item{year}{Optional year to use when date format doesn't include year}
 
@@ -44,5 +44,9 @@ synthetic_data <- calculate_dates(synthetic_data, start_date = "2022-02-24", in_
 # With "DD-Mon" format dates
 dose_data <- calculate_dates(dose_data, start_date = "24-Mar", 
                              date_format = "\%d-\%b", year = 2023)
+                             
+# With "MM/DD/YYYY" format dates
+combo_data <- calculate_dates(combo_data, start_date = "03/24/2025", 
+                             date_format = "\%m/\%d/\%Y")
 }
 }

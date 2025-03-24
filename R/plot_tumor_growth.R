@@ -10,6 +10,8 @@
 #' @param survival_column The name of the column indicating survival status (1 for death, 0 for alive)
 #' @param extrapolate_volumes Boolean. Should missing volumes for mice that have died be extrapolated? Default is FALSE.
 #' @param group_summary_line Boolean. Should a line for the treatment group average be plotted? Default is TRUE.
+#' @param treatment_days Optional numeric vector. Days on which treatment was administered. 
+#'   If provided, arrows will be added below the x-axis to indicate treatment days.
 #'
 #' @return A ggplot of tumor growth curves colored by treatment group
 #' @export
@@ -26,17 +28,29 @@
 #' # Plot with extrapolated volumes for deceased mice
 #' plot_tumor_growth(df, treatment_column = "Treatment", extrapolate_volumes = TRUE)
 #' 
+#' # With treatment day indicators
+#' treatment_schedule <- c(0, 3, 7, 10, 14)  # Treatment on days 0, 3, 7, 10, and 14
+#' plot_tumor_growth(df, treatment_column = "Treatment", treatment_days = treatment_schedule)
+#' 
 #' # For data with dose information
 #' dose_data <- calculate_volume(dose_data)
 #' dose_data <- calculate_dates(dose_data, start_date = "24-Mar", date_format = "%d-%b", year = 2023)
 #' plot_tumor_growth(dose_data, treatment_column = "Treatment", dose_column = "Dose")
+#' 
+#' # Combining multiple options: dose information, extrapolation, and treatment days
+#' plot_tumor_growth(dose_data, 
+#'                 treatment_column = "Treatment", 
+#'                 dose_column = "Dose",
+#'                 extrapolate_volumes = TRUE,
+#'                 treatment_days = c(0, 2, 4, 6))
 #' }
 plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day", 
                              treatment_column = "Treatment", cage_column = "Cage", ID_column = "ID", 
                              dose_column = NULL,
                              survival_column = "Survival_Censor", 
                              extrapolate_volumes = FALSE,
-                             group_summary_line = TRUE) {
+                             group_summary_line = TRUE,
+                             treatment_days = NULL) {
   
   # Input validation
   req_cols <- c(volume_column, day_column, treatment_column, cage_column, ID_column)
@@ -207,20 +221,89 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
     title <- "Tumor Growth by Treatment Group"
   }
   
+  # Get data range for proper scaling
+  y_range <- range(plot_df[[volume_column]], na.rm = TRUE)
+  
+  # Determine if we need extra space for treatment arrows
+  need_extra_space <- !is.null(treatment_days) && length(treatment_days) > 0
+  
+  # Set y-axis parameters based on whether we need space for treatment arrows
+  if (need_extra_space) {
+    y_expand <- ggplot2::expansion(mult = c(0.1, 0.05))  # Extra space at bottom for arrows
+    y_limits <- c(y_range[1] * 0.9, y_range[2] * 1.05)
+  } else {
+    y_expand <- c(0, 0)  # Default - no expansion
+    y_limits <- NULL
+  }
+  
   # Add styling and labels
   plot <- plot +
     ggplot2::ylab(bquote("Tumor Volume"(mm^3))) +
     ggplot2::xlab("Day") +
     ggplot2::ggtitle(title) +
     ggplot2::scale_x_continuous(expand = c(0, 0)) +
-    ggplot2::scale_y_continuous(expand = c(0, 0)) +
+    ggplot2::scale_y_continuous(limits = y_limits, expand = y_expand) +
     ggplot2::theme_classic()
   
-  # Add a caption if extrapolation was used
+  # Create captions based on what features are used
+  captions <- c()
+  
+  # Add treatment day arrows if provided
+  if (!is.null(treatment_days) && length(treatment_days) > 0) {
+    # Validate treatment days - they should be numeric and within the range of data
+    if (!is.numeric(treatment_days)) {
+      warning("treatment_days should be a numeric vector. Ignoring non-numeric values.")
+      treatment_days <- as.numeric(treatment_days[!is.na(as.numeric(treatment_days))])
+    }
+    
+    # Filter to only include days within the range of the data
+    data_days_range <- range(plot_df[[day_column]])
+    valid_treatment_days <- treatment_days[treatment_days >= data_days_range[1] & 
+                                         treatment_days <= data_days_range[2]]
+    
+    if (length(valid_treatment_days) > 0) {
+      # Get the current y-axis range from the plot
+      expanded_y_range <- ggplot2::layer_scales(plot)$y$range$range
+      if (is.null(expanded_y_range)) {
+        # If not available, use our calculated range
+        expanded_y_range <- c(y_range[1] * 0.9, y_range[2] * 1.05)
+      }
+      
+      # Calculate arrow position at the bottom of the plot
+      arrow_y_pos <- expanded_y_range[1] + (expanded_y_range[2] - expanded_y_range[1]) * 0.05
+      
+      # Create a data frame for the arrows
+      arrow_data <- data.frame(
+        x = valid_treatment_days,
+        y = arrow_y_pos,
+        xend = valid_treatment_days,
+        yend = arrow_y_pos + diff(expanded_y_range) * 0.03  # End point for arrows (pointing up)
+      )
+      
+      # Add arrows to the plot
+      plot <- plot + 
+        ggplot2::geom_segment(
+          data = arrow_data,
+          ggplot2::aes(x = x, y = y, xend = xend, yend = yend),
+          arrow = ggplot2::arrow(type = "closed", length = ggplot2::unit(0.2, "cm")),
+          color = "black",
+          inherit.aes = FALSE
+        )
+      
+      # Add to captions - use plain text instead of arrow symbol
+      captions <- c(captions, "Arrows indicate treatment days")
+    }
+  }
+  
+  # Add caption for extrapolation if used
   if (extrapolate_volumes) {
-    plot <- plot + ggplot2::labs(
-      caption = "Note: Dashed lines represent extrapolated tumor volumes after mouse death"
-    )
+    captions <- c(captions, "Dashed lines represent extrapolated tumor volumes after mouse death")
+  }
+  
+  # Apply all captions if any exist
+  if (length(captions) > 0) {
+    caption_text <- paste(captions, collapse = "\n")
+    plot <- plot + ggplot2::labs(caption = caption_text)
   }
   
   return(plot)
