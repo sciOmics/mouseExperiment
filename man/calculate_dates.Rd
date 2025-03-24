@@ -4,7 +4,14 @@
 \alias{calculate_dates}
 \title{Calculate the number of days for measurements}
 \usage{
-calculate_dates(df, start_date, date_column = "Date")
+calculate_dates(
+  df,
+  start_date,
+  date_column = "Date",
+  date_format = NULL,
+  year = NULL,
+  in_place = FALSE
+)
 }
 \arguments{
 \item{df}{A data frame containing longitudinal tumor measurements}
@@ -12,13 +19,30 @@ calculate_dates(df, start_date, date_column = "Date")
 \item{start_date}{Date the tumors were injected}
 
 \item{date_column}{The name of the column with dates of measurements}
+
+\item{date_format}{Optional format string for parsing dates (e.g., "\%d-\%b" for "24-Mar" format)}
+
+\item{year}{Optional year to use when date format doesn't include year}
+
+\item{in_place}{Logical, whether to modify the input data frame (TRUE) or return a new data frame (FALSE, default)}
 }
 \value{
-Returns the original data frame with an appended column containing the number of days from the beginning of an experiment for each row/measurement
+Returns a data frame with a Day column appended. If in_place=FALSE (default),
+returns a new data frame; if in_place=TRUE, modifies the input data frame and returns it.
 }
 \description{
 Calculate the number of days for measurements
 }
 \examples{
-calculate_dates(synthetic_data, start_date = "2022-02-24")
+\dontrun{
+# Return a new data frame with days
+df_with_days <- calculate_dates(synthetic_data, start_date = "2022-02-24")
+
+# Modify the original data frame in place
+synthetic_data <- calculate_dates(synthetic_data, start_date = "2022-02-24", in_place = TRUE)
+
+# With "DD-Mon" format dates
+dose_data <- calculate_dates(dose_data, start_date = "24-Mar", 
+                             date_format = "\%d-\%b", year = 2023)
+}
 }

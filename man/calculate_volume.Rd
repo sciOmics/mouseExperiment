@@ -4,7 +4,14 @@
 \alias{calculate_volume}
 \title{Calculate tumor volume using length and width measurements}
 \usage{
-calculate_volume(df, length_column = "Length", width_column = "Width")
+calculate_volume(
+  df,
+  length_column = "Length",
+  width_column = "Width",
+  height_column = NULL,
+  formula = "ellipsoid",
+  in_place = FALSE
+)
 }
 \arguments{
 \item{df}{A data frame containing tumor measurements}
@@ -12,13 +19,68 @@ calculate_volume(df, length_column = "Length", width_column = "Width")
 \item{length_column}{The name of the column storing tumor length measurements}
 
 \item{width_column}{The name of the column storing tumor width measurements}
+
+\item{height_column}{The name of the column storing tumor height measurements (optional, for 3D formulas)}
+
+\item{formula}{The formula to use for volume calculation. Options:
+\itemize{
+\item "ellipsoid" (default): V = (length × width² × π) / 6 (assuming height not provided)
+\item "modified_ellipsoid": V = (length × width²) / 2
+\item "ellipsoid_3axis": V = (length × width × height × π) / 6 (requires height_column)
+\item "cylinder": V = (π × width² × length) / 4
+\item "sphere": V = (π × width³) / 6 (uses only the width/diameter)
+\item "box": V = length × width × height (requires height_column)
+}}
+
+\item{in_place}{Logical, whether to modify the input data frame (TRUE) or return a new data frame (FALSE, default)}
 }
 \value{
-Returns the original data frame with a tumor volume column appended
+Returns a data frame with a "Volume" column appended, calculated using the specified formula.
+If in_place=FALSE (default), returns a new data frame; if in_place=TRUE, modifies the input data frame and returns it.
 }
 \description{
 Calculate tumor volume using length and width measurements
 }
+\details{
+This function calculates tumor volume using different formulas common in preclinical oncology research.
+For two-dimensional measurements (length and width), the function ensures the longer dimension
+is used as length and the shorter as width, regardless of how they are labeled in the input data.
+
+When 3D formulas are used and the height_column is not provided, the height is estimated as equal to
+the width (a common approximation in models like ellipsoid_3axis).
+
+Common volume estimation formulas in the literature include:
+\itemize{
+\item Ellipsoid (default): V = (length × width² × π) / 6
+- Most accurate for ovoid tumors when true height isn't measured
+- Widely used in xenograft studies
+\item Modified ellipsoid: V = (length × width²) / 2
+- Simplified formula omitting π/3
+- Used in many older studies
+\item Ellipsoid with 3 axes: V = (length × width × height × π) / 6
+- Most accurate when all three dimensions can be measured
+\item Cylinder: V = (π × width² × length) / 4
+- Used for more cylindrical tumors
+\item Sphere: V = (π × width³) / 6
+- For spherical tumors where only diameter is measured
+\item Box: V = length × width × height
+- Simple approximation when tumors have more rectangular shape
+}
+}
 \examples{
-calculate_volume(synthetic_data)
+\dontrun{
+# Return a new data frame with volume using default ellipsoid formula
+df_with_volume <- calculate_volume(synthetic_data)
+
+# Use a different formula (modified ellipsoid)
+df_with_volume <- calculate_volume(synthetic_data, formula = "modified_ellipsoid")
+
+# Modify the original data frame in place
+synthetic_data <- calculate_volume(synthetic_data, in_place = TRUE)
+
+# Use a 3D formula with height measurements
+df_with_volume <- calculate_volume(synthetic_data, 
+                                  height_column = "Height",
+                                  formula = "ellipsoid_3axis")
+}
 }

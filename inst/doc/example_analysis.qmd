@@ -1,0 +1,85 @@
+---
+title: "Mouse Experiment Analysis Example"
+format: html
+editor: visual
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(mouseExperiment)
+library(dplyr)
+library(ggplot2)
+```
+
+## Introduction
+
+This document demonstrates the functionality of the mouseExperiment R package for analyzing and visualizing mouse tumor growth data.
+
+## Data Preparation
+
+First, we'll load the synthetic dataset included with the package:
+
+```{r load-data}
+data(synthetic_data)
+head(synthetic_data)
+```
+
+Now we'll calculate tumor volumes and experiment days:
+
+```{r calculate}
+# Calculate tumor volume
+df <- calculate_volume(synthetic_data)
+
+# Calculate experiment days from start date
+df <- calculate_dates(df, start_date = "2022-01-01")
+
+# Display the resulting data
+head(df)
+```
+
+## Tumor Growth Visualization
+
+Let's visualize the tumor growth over time by treatment group:
+
+```{r plot-growth}
+plot_tumor_growth(df)
+```
+
+## Tumor Growth Statistics
+
+We can perform statistical analysis on the tumor growth data:
+
+```{r growth-stats, message=FALSE, warning=FALSE}
+# Standard tumor growth statistics
+growth_stats <- tumor_growth_statistics(df)
+print(growth_stats)
+```
+
+## Survival Analysis
+
+Now let's analyze and visualize survival data:
+
+```{r survival-plot}
+# Plot survival curves by group
+plot_survival(df)
+```
+
+```{r survival-stats}
+# Perform survival statistics
+surv_stats <- survival_statistics(df)
+print(surv_stats$results)
+```
+
+## Bayesian Analysis
+
+The package also supports Bayesian analysis of tumor growth data:
+
+```{r bayes-analysis, eval=FALSE}
+# Bayesian tumor growth statistics 
+# Note: This is computationally intensive, so we're not running it in this example
+# bayesian_stats <- tumor_growth_statistics_bayes(df, cores = 2)
+# print(bayesian_stats)
+```
+
+## Conclusion
+
+This vignette demonstrates the key functionality of the mouseExperiment package for analyzing mouse tumor growth experiment data.

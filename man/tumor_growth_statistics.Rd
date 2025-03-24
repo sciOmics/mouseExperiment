@@ -2,7 +2,7 @@
 % Please edit documentation in R/tumor_growth_statistics.R
 \name{tumor_growth_statistics}
 \alias{tumor_growth_statistics}
-\title{Analyze Tumor Growth Using Linear Mixed Effects Model}
+\title{Analyze Tumor Growth Using Linear Mixed Effects Model with Log Transformation}
 \usage{
 tumor_growth_statistics(
   df,
@@ -25,7 +25,7 @@ tumor_growth_statistics(
 }
 \value{
 A list containing:
-\item{model}{The fitted linear mixed-effects model.}
+\item{model}{The fitted linear mixed-effects model (using log-transformed volume).}
 \item{anova}{Type III ANOVA table for fixed effects.}
 \item{posthoc}{Pairwise comparisons of estimated marginal means (adjusted for multiple comparisons).}
 \item{plots}{A set of diagnostic and tumor growth visualization plots.}
@@ -33,20 +33,23 @@ A list containing:
 \description{
 This function fits a linear mixed-effects model (LME) to assess statistical significance
 in tumor growth data over time, accounting for repeated measures within subjects.
-It also generates diagnostic plots and post-hoc comparisons.
+It applies a log transformation to tumor volume data to handle the exponential nature
+of tumor growth. The function also generates diagnostic plots and post-hoc comparisons.
 }
 \details{
 \itemize{
+\item The function applies a log transformation (log(x+1)) to tumor volume data to account for exponential growth patterns.
 \item The function creates a unique identifier by combining \code{Group} and \code{ID} to account for repeated measures.
 \item A linear mixed-effects model (\code{lmer}) is used, with \code{Mouse_ID} as a random effect.
 \item The function performs a Type III ANOVA to assess the significance of time, treatment group, and their interaction.
 \item Post-hoc pairwise comparisons are performed using \code{emmeans}, adjusted with the Bonferroni correction.
 \item The function generates diagnostic plots to check model assumptions, including:
 \itemize{
-\item Tumor growth over time with individual trajectories and group means.
+\item Tumor growth over time with individual trajectories and group means (on original scale).
+\item Log-transformed tumor growth over time (to visualize the transformed data).
 \item Residuals vs. fitted values for checking homoscedasticity.
 \item Q-Q plot for assessing normality of residuals.
-\item Model assumption checks using \code{check_model()}.
+\item Model assumption checks.
 }
 }
 }

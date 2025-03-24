@@ -2,7 +2,7 @@
 % Please edit documentation in R/plot_tumor_growth.R
 \name{plot_tumor_growth}
 \alias{plot_tumor_growth}
-\title{Title}
+\title{Plot Tumor Growth Curves by Treatment Group}
 \usage{
 plot_tumor_growth(
   df,
@@ -10,28 +10,44 @@ plot_tumor_growth(
   day_column = "Day",
   group_column = "Group",
   ID_column = "ID",
+  survival_column = "Survival_Censor",
+  extrapolate_volumes = FALSE,
   group_summary_line = TRUE
 )
 }
 \arguments{
 \item{df}{A data frame containing tumor measurements}
 
-\item{volume_column}{The name of the column storing tumor volumne measurements}
+\item{volume_column}{The name of the column storing tumor volume measurements}
 
 \item{day_column}{The name of the column with number of days since the beginning of the experiment for each observation}
 
 \item{group_column}{The name of the column with the group indicator}
 
-\item{ID_column}{The name of the column with the individual mouse indentifier. For example, ear-tage indicator.}
+\item{ID_column}{The name of the column with the individual mouse identifier. For example, ear-tag indicator.}
 
-\item{group_summary_line}{Boolean. Should a line for the group average be plotted?}
+\item{survival_column}{The name of the column indicating survival status (1 for death, 0 for alive)}
+
+\item{extrapolate_volumes}{Boolean. Should missing volumes for mice that have died be extrapolated? Default is FALSE.}
+
+\item{group_summary_line}{Boolean. Should a line for the group average be plotted? Default is TRUE.}
 }
 \value{
-A ggplot of tumor growth curves color by group
+A ggplot of tumor growth curves colored by group
 }
 \description{
-Title
+Plot Tumor Growth Curves by Treatment Group
 }
 \examples{
-plot_tumor_growth(synthetic_data)
+\dontrun{
+data(synthetic_data)
+df <- calculate_volume(synthetic_data)
+df <- calculate_dates(df, start_date = "2022-02-24")
+
+# Standard plot
+plot_tumor_growth(df)
+
+# Plot with extrapolated volumes for deceased mice
+plot_tumor_growth(df, extrapolate_volumes = TRUE)
+}
 }

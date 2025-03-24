@@ -30,11 +30,86 @@ tumor_growth_statistics_bayes(
 A list containing:
 \item{model}{The fitted Bayesian model object.}
 \item{posterior_samples}{A data frame containing posterior samples of the model parameters.}
-\item{bayes_factor}{The computed Bayes factor for model comparison.}
+\item{pp_check}{Posterior predictive check object (if available).}
+\item{bayes_factor}{The computed Bayes factor comparing the full model to a time-only null model.}
+\item{log_bayes_factor}{The natural logarithm of the Bayes factor (useful for very large values).}
+\item{bayes_factor_comparison}{Detailed results from bridge sampling and model comparison.}
+\item{null_model}{The fitted null model (time-only) used for Bayes factor calculation.}
+\item{priors}{A list containing information about the priors used in the full model.}
+\item{null_model_priors}{A list containing information about the priors used in the null model.}
+\item{bayes_factor_interpretation}{Text interpretation of the Bayes factor strength of evidence.}
+\item{plot_pp_check}{A function that safely plots the posterior predictive check when called.}
 }
 \description{
 This function performs a Bayesian analysis of tumor growth using the \code{brms} package,
 incorporating multi-core processing for faster model fitting. The function fits a
 Bayesian model to the tumor growth data, allowing for random and fixed effects,
 and computes the Bayes factor for model comparison.
+}
+\details{
+This function uses weakly informative priors that allow the data to drive parameter estimation:
+\itemize{
+\item Fixed effects: Normal(0, 5) prior for all fixed effects (intercept, time, group, interactions)
+\item Random effects: Half-Cauchy(0, 2) prior for the standard deviation of random effects
+}
+
+The Bayes factor calculation compares the full model (with treatment group effects) to a
+simpler time-only model to directly test whether group differences have explanatory power
+beyond the general effect of time on tumor growth.
+}
+\examples{
+\dontrun{
+# Load and prepare data
+data(synthetic_data)
+df <- calculate_volume(synthetic_data)
+df <- calculate_dates(df, start_date = "2022-02-24")
+
+# Run Bayesian analysis
+results <- tumor_growth_statistics_bayes(df)
+
+# Access key components
+summary(results$model)
+
+# View posterior samples
+head(results$posterior_samples)
+
+# Check Bayes factor if available
+if (!is.null(results$bayes_factor)) {
+  # For very large Bayes factors, use log scale
+  if (results$bayes_factor > 1e10) {
+    cat("Log Bayes Factor:", results$log_bayes_factor, "\n")
+    cat("Bayes Factor: approximately 10^", 
+        round(results$log_bayes_factor/log(10), 1), "\n", sep="")
+  } else {
+    cat("Bayes Factor:", formatC(results$bayes_factor, format="f", digits=2), "\n")
+  }
+  
+  cat("Interpretation:", results$bayes_factor_interpretation, "\n")
+  
+  # Compare the null and full models
+  cat("\nFull model formula:", as.character(results$model$formula)[1], "\n")
+  cat("Null model formula:", as.character(results$null_model$formula)[1], "\n")
+  
+  # View prior information
+  cat("\nPriors used in full model:\n")
+  cat("- Fixed effects:", results$priors$fixed_effects, "\n")
+  cat("- Random effects:", results$priors$random_effects, "\n")
+}
+
+# Plot posterior predictive check
+pp_plot <- results$plot_pp_check()
+if (!is.null(pp_plot)) print(pp_plot)
+
+# To see all prior specifications directly from the model object
+print(results$model$prior)
+
+# Create caterpillar plot of parameter estimates
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  if (exists("plot_caterpillar_bayes")) {
+    cat_plot <- plot_caterpillar_bayes(results$model)
+    print(cat_plot)
+  }
+}
+}
+
 }

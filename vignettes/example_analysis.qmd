@@ -5,6 +5,7 @@ editor: source
 ---
 
 ```{r setup, message=FALSE, warning=FALSE}
+
 library(mouseExperiment)
 library(dplyr)
 library(ggplot2)
@@ -20,8 +21,11 @@ This document demonstrates the functionality of the mouseExperiment R package fo
 First, we'll load the synthetic dataset included with the package:
 
 ```{r load-data}
-data(synthetic_data)
-head(synthetic_data)
+# data(synthetic_data)
+# head(synthetic_data)
+
+synthetic_data = read.csv("../data/combo_treatment_synthetic_data.csv")
+
 ```
 
 Now we'll calculate tumor volumes and experiment days:
@@ -34,7 +38,7 @@ source("../R/calculate_volume.R")
 df <- calculate_volume(synthetic_data)
 
 # Calculate experiment days from start date
-df <- calculate_dates(df, start_date = "2022-02-23")
+df <- calculate_dates(df, start_date = "17-Mar")
 
 # Display the resulting data
 head(df)
@@ -46,7 +50,14 @@ Let's visualize the tumor growth over time by treatment group:
 
 ```{r plot-growth}
 source("../R/plot_tumor_growth.R")
-plot_tumor_growth(df)
+
+plot_tumor_growth(df,
+                  extrapolate_volumes = FALSE)
+
+
+plot_tumor_growth(df,
+                  extrapolate_volumes = TRUE,
+                  survival_column = "Survival_Censor")
 ```
 
 ## Tumor Growth Statistics
@@ -55,10 +66,38 @@ We can perform statistical analysis on the tumor growth data:
 
 ```{r growth-stats, message=FALSE, warning=FALSE}
 source("../R/tumor_growth_statistics.R")
+source("../R/tumor_growth_statistics_flexible.R")
+source("../R/dose_response_statistics.R")
+
 # Standard tumor growth statistics
 growth_stats <- tumor_growth_statistics(df)
 
+growth_stats$anova
+growth_stats$model
+growth_stats$posthoc
+
+#NEED TO ADJUST FOR CAGE EFFECT
+
+#growth_stats <- tumor_growth_statistics_flexible(df)
+
+# results <- dose_response_statistics(df,
+#                                     dose_column = "Dose",
+#                                     treatment_column = "Treatment",
+#                                     volume_column = "Volume")
+
 ```
+
+```{r}
+
+source("../R/analyze_drug_synergy_over_time.R")
+source("../R/analyze_drug_synergy.R")
+analyze_drug_synergy_over_time(df,
+                               drug_a_name = "HDACi",
+                               drug_b_name = "aPD1",
+                               combo_name = "HDACi + PD1")
+
+```
+
 
 ## Survival Analysis
 
@@ -73,7 +112,8 @@ plot_survival(df)
 ```{r survival-stats}
 source("../R/survival_statistics.R")
 
-surv_stats = survival_statistics(df)
+surv_stats = survival_statistics(df,
+                                 reference_group = "Control")
 
 surv_stats$model
 surv_stats$results

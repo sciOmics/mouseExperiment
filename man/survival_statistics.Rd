@@ -9,7 +9,8 @@ survival_statistics(
   time_column = "Day",
   censor_column = "Survival_Censor",
   group_column = "Group",
-  id_column = "ID"
+  id_column = "ID",
+  reference_group = NULL
 )
 }
 \arguments{
@@ -22,6 +23,8 @@ survival_statistics(
 \item{group_column}{A character string specifying the name of the column representing the treatment or group variable (default: "Group").}
 
 \item{id_column}{A character string specifying the name of the column representing the individual identifier for each mouse (default: "ID").}
+
+\item{reference_group}{A character string specifying the level to use as the reference/comparison group (default: NULL, which uses the first level alphabetically).}
 }
 \value{
 A list containing:
@@ -34,6 +37,8 @@ A list containing:
 \item{CI_Upper}{The upper bound of the 95\% confidence interval for the hazard ratio.}
 \item{P_Value}{The p-value associated with the group effect in the Cox model.}
 }}
+\item{forest_plot}{A ggplot2 object visualizing the hazard ratios with confidence intervals as a forest plot.
+The plot displays each group's hazard ratio on a logarithmic scale, with confidence intervals and exact values.}
 }
 \description{
 This function performs survival analysis using the Cox Proportional Hazards Model.
@@ -48,8 +53,14 @@ The function assumes that the time-to-event data and censoring indicators are ap
 in the input data frame, and the model accounts for individual mice as random effects.
 }
 \examples{
-# Example usage
-results <- survival_statistics(df = tumor_data, time_column = "Day", censor_column = "Survival_Censor", group_column = "Group", id_column = "ID")
+# Example usage with default reference group (first alphabetically)
+results <- survival_statistics(df = tumor_data, time_column = "Day", censor_column = "Survival_Censor", 
+                              group_column = "Group", id_column = "ID")
 print(results$results)
+
+# Example usage with specified reference group
+results_b_ref <- survival_statistics(df = tumor_data, time_column = "Day", censor_column = "Survival_Censor", 
+                                    group_column = "Group", id_column = "ID", reference_group = "B")
+print(results_b_ref$results)
 
 }

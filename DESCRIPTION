@@ -22,8 +22,10 @@ Imports:
     bridgesampling,
     brms,
     car,
+    clinfun,
     cowplot,
     dplyr,
+    drc,
     emmeans,
     future,
     future.apply,
@@ -32,6 +34,8 @@ Imports:
     lme4,
     lmerTest,
     performance,
+    rlang,
+    stats,
     survival,
     survminer
 Depends: 
