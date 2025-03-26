@@ -1,4 +1,6 @@
 #' Plot Tumor Growth Curves by Treatment Group
+#' 
+#' @importFrom utils tail
 #'
 #' @param df A data frame containing tumor measurements
 #' @param volume_column The name of the column storing tumor volume measurements
@@ -8,10 +10,9 @@
 #' @param ID_column The name of the column with the individual mouse identifier
 #' @param dose_column Optional. The name of the column with dose information (if present in the data)
 #' @param survival_column The name of the column indicating survival status (1 for death, 0 for alive)
-#' @param extrapolate_volumes Boolean. Should missing volumes for mice that have died be extrapolated? Default is FALSE.
+#' @param extrapolate_volumes Boolean. Should missing volumes for mice that have died be extrapolated? Extrapolated values are shown with dashed lines. Default is FALSE.
+#' @param extrapolation_points Character or numeric. Number of data points to use for extrapolation: "all" uses all available data points, a numeric value uses that many recent points, with fallback options if needed. Default is "all".
 #' @param group_summary_line Boolean. Should a line for the treatment group average be plotted? Default is TRUE.
-#' @param treatment_days Optional numeric vector. Days on which treatment was administered. 
-#'   If provided, arrows will be added below the x-axis to indicate treatment days.
 #'
 #' @return A ggplot of tumor growth curves colored by treatment group
 #' @export
@@ -28,29 +29,24 @@
 #' # Plot with extrapolated volumes for deceased mice
 #' plot_tumor_growth(df, treatment_column = "Treatment", extrapolate_volumes = TRUE)
 #' 
-#' # With treatment day indicators
-#' treatment_schedule <- c(0, 3, 7, 10, 14)  # Treatment on days 0, 3, 7, 10, and 14
-#' plot_tumor_growth(df, treatment_column = "Treatment", treatment_days = treatment_schedule)
-#' 
 #' # For data with dose information
 #' dose_data <- calculate_volume(dose_data)
 #' dose_data <- calculate_dates(dose_data, start_date = "24-Mar", date_format = "%d-%b", year = 2023)
 #' plot_tumor_growth(dose_data, treatment_column = "Treatment", dose_column = "Dose")
 #' 
-#' # Combining multiple options: dose information, extrapolation, and treatment days
+#' # Combining multiple options: dose information and extrapolation
 #' plot_tumor_growth(dose_data, 
 #'                 treatment_column = "Treatment", 
 #'                 dose_column = "Dose",
-#'                 extrapolate_volumes = TRUE,
-#'                 treatment_days = c(0, 2, 4, 6))
+#'                 extrapolate_volumes = TRUE)
 #' }
 plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day", 
                              treatment_column = "Treatment", cage_column = "Cage", ID_column = "ID", 
                              dose_column = NULL,
                              survival_column = "Survival_Censor", 
                              extrapolate_volumes = FALSE,
-                             group_summary_line = TRUE,
-                             treatment_days = NULL) {
+                             extrapolation_points = "all",
+                             group_summary_line = TRUE) {
   
   # Input validation
   req_cols <- c(volume_column, day_column, treatment_column, cage_column, ID_column)
@@ -110,6 +106,23 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
     # Get unique mouse identifiers
     unique_mice <- unique(plot_df$Mouse_ID)
     
+    # Handle extrapolation_points parameter
+    using_all_points <- identical(extrapolation_points, "all")
+    if (!using_all_points && !is.numeric(extrapolation_points)) {
+      warning("extrapolation_points must be 'all' or a positive number. Defaulting to 'all'.")
+      using_all_points <- TRUE
+      extrapolation_method <- "all available data points"
+    } else if (!using_all_points) {
+      extrapolation_points <- as.integer(extrapolation_points)
+      if (extrapolation_points < 1) {
+        warning("extrapolation_points must be at least 1. Defaulting to 3.")
+        extrapolation_points <- 3
+      }
+      extrapolation_method <- paste(extrapolation_points, "most recent data points")
+    } else {
+      extrapolation_method <- "all available data points"
+    }
+    
     # Loop through each mouse
     for (mouse_id in unique_mice) {
       # Get this mouse's data
@@ -123,27 +136,89 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
         death_row <- mouse_data[mouse_data[[day_column]] == death_day, ]
         last_volume <- death_row[[volume_column]][1]
         
-        # Calculate growth rate based on previous measurements
+        # Calculate growth rate using log-linear regression
         growth_rate <- 0.1  # Default fallback growth rate
         
         # Sort mouse data by day
         mouse_data <- mouse_data[order(mouse_data[[day_column]]), ]
         
-        # If there are at least 3 measurements, calculate growth rate
-        if (nrow(mouse_data) >= 3) {
-          death_index <- which(mouse_data[[day_column]] == death_day)
-          if (death_index >= 3) {
-            # Use the last 3 measurements 
-            days <- mouse_data[[day_column]][(death_index-2):death_index]
-            volumes <- mouse_data[[volume_column]][(death_index-2):death_index]
-            
-            # Only calculate if all volumes are positive
-            if (all(volumes > 0)) {
-              # Calculate exponential growth rate
-              day_diffs <- diff(days)
-              volume_ratios <- diff(log(volumes))
+        # Extract time and volume data
+        days <- mouse_data[[day_column]]
+        volumes <- mouse_data[[volume_column]]
+        
+        # Use all available time points with positive volumes for growth rate calculation
+        positive_indices <- which(volumes > 0)
+        
+        # Check if we have enough data for the requested extrapolation method
+        if (length(positive_indices) >= 2) {
+          # Determine which data points to use based on extrapolation_points parameter
+          if (using_all_points) {
+            # Use all data points with positive volumes
+            selected_indices <- positive_indices
+          } else {
+            # Use the most recent n points where n = extrapolation_points
+            if (length(positive_indices) >= extrapolation_points) {
+              selected_indices <- tail(positive_indices, extrapolation_points)
+            } else {
+              # Not enough points, use what we have
+              selected_indices <- positive_indices
+            }
+          }
+          
+          growth_times <- days[selected_indices]
+          growth_volumes <- volumes[selected_indices]
+          
+          # If we have at least 2 points, proceed with calculation
+          if (length(growth_times) >= 2) {
+            if (using_all_points && length(growth_times) > 2) {
+              # Use linear regression on log-transformed data for all points
+              log_volumes <- log(growth_volumes)
+              
+              # Fit log-linear model
+              growth_model <- tryCatch({
+                lm(log_volumes ~ growth_times)
+              }, error = function(e) {
+                # If model fitting fails, fall back to simpler calculation
+                NULL
+              })
+              
+              if (!is.null(growth_model) && !is.na(coef(growth_model)[2])) {
+                # Extract growth rate from model (slope of the log-linear model)
+                growth_rate <- as.numeric(coef(growth_model)[2])
+                
+                # Check if growth rate is reasonable (between 0.01 and 0.5 per day)
+                if (growth_rate < 0.01 || growth_rate > 0.5) {
+                  # If growth rate is extreme, fall back to recent points method
+                  if (length(positive_indices) >= 3) {
+                    last_indices <- tail(positive_indices, 3)
+                    day_diffs <- diff(days[last_indices])
+                    volume_ratios <- diff(log(volumes[last_indices]))
+                    growth_rates <- volume_ratios / day_diffs
+                    growth_rate <- mean(growth_rates, na.rm = TRUE)
+                  }
+                }
+              } else {
+                # Fallback if regression model fails
+                fallback_indices <- tail(positive_indices, min(3, length(positive_indices)))
+                if (length(fallback_indices) >= 2) {
+                  # Use simple growth rate between points
+                  day_diffs <- diff(days[fallback_indices])
+                  volume_ratios <- diff(log(volumes[fallback_indices]))
+                  growth_rates <- volume_ratios / day_diffs
+                  growth_rate <- mean(growth_rates, na.rm = TRUE)
+                }
+              }
+            } else {
+              # For specific number of points or fallback: use simpler calculation
+              day_diffs <- diff(growth_times)
+              volume_ratios <- diff(log(growth_volumes))
               growth_rates <- volume_ratios / day_diffs
               growth_rate <- mean(growth_rates, na.rm = TRUE)
+            }
+            
+            # Final reasonableness check
+            if (is.na(growth_rate) || growth_rate < 0.01 || growth_rate > 0.5) {
+              growth_rate <- 0.1  # Use default if calculated rate is unreasonable
             }
           }
         }
@@ -180,9 +255,9 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
   }
   
   # Base plot with individual growth curves using the composite identifiers
-  plot <- ggplot2::ggplot(plot_df, ggplot2::aes_string(x = day_column, y = volume_column, group = "Mouse_ID")) +
-    ggplot2::geom_line(ggplot2::aes_string(color = "Group"), alpha = 0.5, size = 0.5) +
-    ggplot2::geom_point(ggplot2::aes_string(color = "Group"), alpha = 0.5, shape = "square")
+  plot <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data[[day_column]], y = .data[[volume_column]], group = Mouse_ID)) +
+    ggplot2::geom_line(ggplot2::aes(color = Group), alpha = 0.5, size = 0.5) +
+    ggplot2::geom_point(ggplot2::aes(color = Group), alpha = 0.5, shape = "square")
   
   # If extrapolation was done, mark extrapolated points differently
   if (extrapolate_volumes) {
@@ -191,14 +266,14 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
       plot <- plot + 
         ggplot2::geom_point(
           data = extrapolated_points,
-          ggplot2::aes_string(x = day_column, y = volume_column, color = "Group"),
+          ggplot2::aes(x = .data[[day_column]], y = .data[[volume_column]], color = Group),
           shape = 1,  # hollow circle
           alpha = 0.7,
           size = 1
         ) +
         ggplot2::geom_line(
           data = extrapolated_points,
-          ggplot2::aes_string(x = day_column, y = volume_column, color = "Group", group = "Mouse_ID"),
+          ggplot2::aes(x = .data[[day_column]], y = .data[[volume_column]], color = Group, group = Mouse_ID),
           linetype = "dashed",
           alpha = 0.5,
           size = 0.5
@@ -209,7 +284,7 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
   # Add group summary line if requested
   if (group_summary_line) {
     plot <- plot + ggplot2::stat_summary(
-      ggplot2::aes_string(group = "Group", color = "Group"),
+      ggplot2::aes(group = Group, color = Group),
       fun = mean, geom = "line", size = 1.4
     )
   }
@@ -221,79 +296,24 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
     title <- "Tumor Growth by Treatment Group"
   }
   
-  # Get data range for proper scaling
-  y_range <- range(plot_df[[volume_column]], na.rm = TRUE)
-  
-  # Determine if we need extra space for treatment arrows
-  need_extra_space <- !is.null(treatment_days) && length(treatment_days) > 0
-  
-  # Set y-axis parameters based on whether we need space for treatment arrows
-  if (need_extra_space) {
-    y_expand <- ggplot2::expansion(mult = c(0.1, 0.05))  # Extra space at bottom for arrows
-    y_limits <- c(y_range[1] * 0.9, y_range[2] * 1.05)
-  } else {
-    y_expand <- c(0, 0)  # Default - no expansion
-    y_limits <- NULL
-  }
-  
   # Add styling and labels
   plot <- plot +
     ggplot2::ylab(bquote("Tumor Volume"(mm^3))) +
     ggplot2::xlab("Day") +
     ggplot2::ggtitle(title) +
-    ggplot2::scale_x_continuous(expand = c(0, 0)) +
-    ggplot2::scale_y_continuous(limits = y_limits, expand = y_expand) +
-    ggplot2::theme_classic()
+    ggplot2::scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) + # Always start x-axis at 0
+    ggplot2::scale_y_continuous(expand = c(0, 0.05), limits = c(0, NA)) + # Set y-axis to start at 0
+    ggplot2::theme_classic() +
+    # Move legend to top-left with proper spacing from title
+    ggplot2::theme(
+      legend.position = c(0.1, 0.85),  # Nudged down from 0.9 to avoid overlap with title
+      legend.background = ggplot2::element_rect(fill = "white", color = NA),
+      legend.title = ggplot2::element_blank(),  # Remove the legend title
+      legend.margin = ggplot2::margin(t = 10)  # Add top margin to increase space from title
+    )
   
   # Create captions based on what features are used
   captions <- c()
-  
-  # Add treatment day arrows if provided
-  if (!is.null(treatment_days) && length(treatment_days) > 0) {
-    # Validate treatment days - they should be numeric and within the range of data
-    if (!is.numeric(treatment_days)) {
-      warning("treatment_days should be a numeric vector. Ignoring non-numeric values.")
-      treatment_days <- as.numeric(treatment_days[!is.na(as.numeric(treatment_days))])
-    }
-    
-    # Filter to only include days within the range of the data
-    data_days_range <- range(plot_df[[day_column]])
-    valid_treatment_days <- treatment_days[treatment_days >= data_days_range[1] & 
-                                         treatment_days <= data_days_range[2]]
-    
-    if (length(valid_treatment_days) > 0) {
-      # Get the current y-axis range from the plot
-      expanded_y_range <- ggplot2::layer_scales(plot)$y$range$range
-      if (is.null(expanded_y_range)) {
-        # If not available, use our calculated range
-        expanded_y_range <- c(y_range[1] * 0.9, y_range[2] * 1.05)
-      }
-      
-      # Calculate arrow position at the bottom of the plot
-      arrow_y_pos <- expanded_y_range[1] + (expanded_y_range[2] - expanded_y_range[1]) * 0.05
-      
-      # Create a data frame for the arrows
-      arrow_data <- data.frame(
-        x = valid_treatment_days,
-        y = arrow_y_pos,
-        xend = valid_treatment_days,
-        yend = arrow_y_pos + diff(expanded_y_range) * 0.03  # End point for arrows (pointing up)
-      )
-      
-      # Add arrows to the plot
-      plot <- plot + 
-        ggplot2::geom_segment(
-          data = arrow_data,
-          ggplot2::aes(x = x, y = y, xend = xend, yend = yend),
-          arrow = ggplot2::arrow(type = "closed", length = ggplot2::unit(0.2, "cm")),
-          color = "black",
-          inherit.aes = FALSE
-        )
-      
-      # Add to captions - use plain text instead of arrow symbol
-      captions <- c(captions, "Arrows indicate treatment days")
-    }
-  }
   
   # Add caption for extrapolation if used
   if (extrapolate_volumes) {

@@ -8,7 +8,7 @@ post_power_analysis(
   data,
   alpha = 0.05,
   effect_sizes = NULL,
-  method = "parametric",
+  method = c("parametric", "simulation", "auc"),
   n_simulations = 1000,
   time_column = "Day",
   volume_column = "Volume",
@@ -46,11 +46,12 @@ A list containing:
 \item{observed_effects}{Estimated effect sizes from the data}
 \item{sample_sizes}{Sample sizes per group used in the analysis}
 \item{plots}{List of ggplot objects visualizing the power analysis results}
+\item{group_power_analyses}{Power analyses for individual treatment groups (when available)}
+\item{group_plots}{Power and sample size plots for individual groups}
+\item{sample_size_recommendations}{Recommended sample sizes to achieve 80\%, 90\%, and 95\% power for each group based on observed effect sizes}
 }
 \description{
-This function performs a post-hoc power analysis on tumor growth data to determine
-if the experiment had sufficient statistical power to detect meaningful treatment effects.
-It can use simulation-based or analytical approaches depending on the statistical method.
+Post-hoc Power Analysis for Tumor Growth Experiments
 }
 \details{
 Post-hoc power analysis estimates the probability of detecting a treatment effect of a given
@@ -68,40 +69,31 @@ by generating datasets based on the observed data structure and variance compone
 calculates the proportion of simulations that detect a significant effect. This approach
 is more flexible but computationally intensive.
 \item AUC-based power analysis (method="auc") - Performs power analysis for comparing area under
-the tumor growth curves between groups using t-tests or ANOVA, which is appropriate when
-the AUC method was used for the primary analysis.
+the curve metrics between treatment groups, which is often used in tumor growth studies.
 }
-
-The function returns both numerical estimates of power and visualization plots to help
-interpret the results.
-}
-\note{
-Post-hoc power analysis should be interpreted with caution, as it is conditional on the
-observed data and can sometimes lead to misleading conclusions if the effect size is
-estimated from the same data used for the original hypothesis test.
 }
 \examples{
-# Load example data
-data(synthetic_data)
+# Load demo data for a tumor growth experiment
+data(combo_treatment_synthetic_data)
 
-# Add volume calculation
-df <- calculate_volume(synthetic_data)
+# Process the data
+processed_data <- calculate_volume(combo_treatment_synthetic_data)
+processed_data <- calculate_dates(processed_data, start_date = "03/24/2025")
 
-# Run post-hoc power analysis on raw data
-power_results <- post_power_analysis(df)
+# Perform post-hoc power analysis for key effect sizes
+power_results <- post_power_analysis(
+  data = processed_data,
+  effect_sizes = c(0.5, 0.8, 1.0, 1.2), 
+  method = "parametric"
+)
 
 # View power estimates
-power_results$power_analysis
+print(power_results$power_analysis)
 
-# Visualize power curves
-power_results$plots$power_curve
+# Plot power curves
+print(power_results$plots$power_curve)
 
-# Alternatively, run analysis on a fitted model
-model_results <- tumor_growth_statistics(df)
-power_from_model <- post_power_analysis(model_results)
+# Get sample size recommendations
+print(power_results$sample_size_recommendations)
 
-}
-\seealso{
-\code{\link{tumor_growth_statistics}} for analyzing tumor growth data,
-\code{\link[pwr]{pwr.t.test}} for basic power calculations
 }

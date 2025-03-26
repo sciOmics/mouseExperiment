@@ -1,4 +1,9 @@
+# Copyright (c) 2025 Insight BioAnalytics. All rights reserved.
+# Proprietary and confidential.
+
 #' Analyze Tumor Growth Using Various Statistical Methods
+#'
+#' @importFrom utils tail
 #'
 #' This function provides a comprehensive statistical analysis for tumor growth data using
 #' different statistical approaches. It supports multiple methods including linear mixed-effects
@@ -18,693 +23,239 @@
 #' @param id_column A character string specifying the column name for individual subject identifiers (e.g., "ID").
 #'        This column should contain unique identifiers for each animal/subject. Default is "ID".
 #' @param dose_column Optional. A character string specifying the column name for dose levels, if available.
-#'        This allows for dose-response analysis within treatment groups. Default is NULL.
-#' @param method A character string specifying which statistical model to use. Options are:
-#'        "lme" (linear mixed-effects with log transformation),
-#'        "gamm" (generalized additive mixed model), or
-#'        "auc" (area under the curve analysis). Default is "lme".
-#' @param regression_penalty Logical indicating whether to apply penalties for model complexity in the GAMM model.
-#'        If TRUE (default), applies a gamma value of 1.4 to prevent overfitting. If FALSE, uses the default gamma of 1.0.
-#'        Only used when method="gamm".
+#'        This allows for dose-response analysis. Default is NULL.
+#' @param transform A character string specifying the transformation to apply to volume data. 
+#'        Options are "log", "sqrt", "none". Default is "log", which is recommended for exponential growth.
+#' @param polynomial_degree Integer specifying the polynomial degree for time (day) effects in the model. 
+#'        Default is 1 (linear). Increase to 2 or 3 to model non-linear growth patterns.
+#' @param model_type A character string specifying the type of model to fit. Options are: 
+#'        "lme4" (standard linear mixed effects model using lme4 package),
+#'        "gam" (generalized additive model using mgcv package),
+#'        "auc" (area under the curve analysis).
+#'        Default is "lme4".
+#' @param random_effects_specification A character string specifying the random effects structure.
+#'        "intercept_only" (default): (1|ID) - random intercepts by subject
+#'        "slope": (Day|ID) - random intercepts and slopes by subject
+#'        "none": No random effects
+#' @param handle_cage_effects Method for handling cage effects: "include_if_not_collinear", "always_include", 
+#'        "never_include", or "as_random_effect". Default is "include_if_not_collinear".
+#' @param auc_method Method for AUC calculation: "trapezoidal" or "last_observation". Default is "trapezoidal".
+#' @param return_model Boolean. Should the full fitted model be returned? Default is TRUE.
+#' @param include_diagnostics Boolean. Should model diagnostic information be included? Default is TRUE.
+#' @param plots Boolean. Should standard plots be generated and returned? Default is TRUE.
+#' @param verbose Boolean. Should detailed information be printed during analysis? Default is FALSE.
 #'
-#' @return A list containing:
-#' \item{model}{The fitted statistical model (lmer object for "lme", gam object for "gamm", NULL for "auc" method).}
-#' \item{method}{The analysis method used (string indicating which method was used).}
-#' \item{anova}{Statistical test results comparing groups (Anova object for "lme", anova.gam results for "gamm", 
-#'              aov results for "auc").}
-#' \item{posthoc}{Pairwise comparisons between treatment groups (emmeans object for "lme", data frame of comparisons 
-#'               for "gamm", pairwise.t.test results for "auc").}
-#' \item{auc_analysis}{Area Under the Curve analysis for each treatment. Contains two elements:
-#'                   \code{individual} (data frame with AUC values for each subject) and
-#'                   \code{summary} (data frame with mean, SD, and N for each treatment group).}
-#' \item{plots}{A list of plots visualizing the results, containing the following ggplot objects:
-#'             \code{raw_data} (tumor growth curves),
-#'             method-specific plots like \code{transformed_data}, \code{model_prediction}, \code{auc_barplot}, etc., and 
-#'             \code{combined} (a composite plot with the main visualizations).}
+#' @return A list containing the following components:
+#' \describe{
+#'   \item{model}{The fitted statistical model (lme4, gam, or auc object)}
+#'   \item{anova}{ANOVA table for fixed effects with Type III tests}
+#'   \item{summary}{Detailed model summary with parameter estimates}
+#'   \item{pairwise_comparisons}{Results of pairwise comparisons between treatment groups}
+#'   \item{treatment_effects}{Estimated treatment effects on tumor growth}
+#'   \item{auc_data}{Area under the curve data and statistics (when model_type="auc")}
+#'   \item{diagnostics}{Model diagnostic information (convergence, variance components, etc.)}
+#'   \item{plots}{List of standard plots for visualizing results}
+#'   \item{cage_analysis}{Analysis of cage effects, including collinearity assessment}
+#'   \item{data_summary}{Descriptive statistics of the processed data}
+#' }
 #'
 #' @details
-#' This function supports different analytical approaches depending on the nature of your tumor growth data:
-#' 
-#' 1. Linear Mixed-Effects Model ("lme"): 
-#'    - Applies a log transformation to tumor volume to accommodate exponential growth
-#'    - Uses Mouse_ID as a random effect to account for repeated measures
-#'    - Intelligently handles cage effects based on collinearity testing
-#'    - Performs Type III ANOVA and Bonferroni-adjusted pairwise comparisons
-#'    - Best for data following expected exponential growth patterns
+#' This function offers several statistical approaches for analyzing tumor growth data. The choice of model
+#' depends on the experimental design, growth patterns, and research questions:
 #'
-#' 2. Generalized Additive Mixed Model ("gamm"):
-#'    - Uses flexible non-linear smoothing terms for each treatment group
-#'    - Provides better fit for non-exponential growth patterns, including regression
-#'    - Still accounts for random effects of Mouse_ID and Cage
-#'    - Calculates pairwise comparisons at each time point
-#'    - Best for data showing complex growth patterns or tumor regression
+#' 1. Linear mixed-effects models (model_type="lme4") are suitable for most tumor growth experiments and
+#'    account for the correlation structure of repeated measurements on the same subjects. 
+#'    The default formula is log(Volume) ~ Day * Treatment + (1|ID).
 #'
-#' 3. Area Under the Curve Analysis ("auc"):
-#'    - Calculates the AUC for each individual subject using the trapezoidal method
-#'    - Calculates AUC using only available data points (does not extrapolate missing values)
-#'    - For mice that die/are censored during the study, AUC is calculated up to their last measurement
-#'    - Compares AUCs between treatment groups 
-#'    - Treats the AUC as a summary metric of tumor burden over time
-#'    - Performs statistical comparisons using ANOVA and t-tests
-#'    - Provides both summary statistics and individual mouse data visualization
-#'    - Best for simplifying analysis to a single metric of overall tumor burden
+#' 2. Generalized additive models (model_type="gam") are appropriate when growth follows complex
+#'    non-linear patterns. These models use splines to flexibly model time effects.
 #'
-#' The function automatically handles collinearity between cage and treatment variables
-#' and provides comprehensive visualization of the results. It creates a unique identifier for each 
-#' mouse by combining cage, treatment, and ID information, and uses this to track individual animals 
-#' across time points.
+#' 3. Area under the curve analysis (model_type="auc") reduces each subject's growth curve to a single
+#'    summary metric (AUC), which is then compared between treatment groups.
 #'
-#' For cage effects, the function checks if there is perfect collinearity between cage and treatment 
-#' (e.g., if each cage only contains animals from one treatment group). If collinearity exists, 
-#' only treatment is included in the model. If no collinearity exists, cage effects are included 
-#' either as nested random effects (if multiple cages per treatment) or as additive random effects.
-#'
-#' All methods produce publication-quality plots that visualize both the raw data and model-specific 
-#' results. The plots can be accessed from the returned list and further customized as needed.
+#' The function automatically handles:
+#' - Missing data patterns using appropriate methods
+#' - Checking for and addressing cage effects
+#' - Transformations to normalize growth curves
+#' - Polynomial terms for non-linear growth patterns
+#' - Diagnostic checks of model assumptions
 #'
 #' @examples
 #' # Load example data
-#' data(synthetic_data)
+#' data(combo_treatment_synthetic_data)
+#' tumor_data <- calculate_volume(combo_treatment_synthetic_data)
+#' tumor_data <- calculate_dates(tumor_data, start_date = "03/24/2025")
 #' 
-#' # Using linear mixed-effects model (default)
-#' results_lme <- tumor_growth_statistics(synthetic_data)
+#' # Basic analysis with default settings
+#' results <- tumor_growth_statistics(tumor_data)
 #' 
-#' # View summary of LME results
-#' summary(results_lme$model)
+#' # View ANOVA table to assess treatment effects
+#' print(results$anova)
 #' 
-#' # Access the ANOVA results
-#' results_lme$anova
+#' # View pairwise comparisons
+#' print(results$pairwise_comparisons)
 #' 
-#' # Using generalized additive mixed model for complex growth patterns
-#' results_gamm <- tumor_growth_statistics(synthetic_data, method = "gamm")
+#' # Plot adjusted means for each treatment group
+#' print(results$plots$adjusted_means)
 #' 
-#' # Using area under the curve analysis 
-#' results_auc <- tumor_growth_statistics(synthetic_data, method = "auc")
-#' 
-#' # Compare AUC values between treatment groups
-#' results_auc$anova
-#' results_auc$posthoc
-#' 
-#' # Custom column names
-#' results <- tumor_growth_statistics(df, 
-#'                                 time_column = "TimePoint", 
-#'                                 volume_column = "TumorSize",
-#'                                 treatment_column = "Group",
-#'                                 method = "lme")
+#' # Analyze with different model specification
+#' results_gam <- tumor_growth_statistics(
+#'   tumor_data,
+#'   model_type = "gam",
+#'   transform = "log"
+#' )
 #'
-#' @seealso \code{\link[lme4]{lmer}} for details on linear mixed-effects models, 
-#'          \code{\link[mgcv]{gam}} for details on generalized additive models, 
-#'          \code{\link{plot_tumor_growth}} for visualizing tumor growth curves
-#'
-#' @import lme4
-#' @import mgcv
-#' @import emmeans
-#' @import ggplot2
-#' @import ggpubr
-#' @import dplyr
-#' @import performance
-#' @importFrom stats pt p.adjust aov pairwise.t.test
-#' @importFrom car Anova
 #' @export
-tumor_growth_statistics <- function(df, 
-                                  time_column = "Day", 
-                                  volume_column = "Volume", 
-                                  treatment_column = "Treatment", 
-                                  cage_column = "Cage", 
-                                  id_column = "ID", 
+tumor_growth_statistics <- function(df,
+                                  time_column = "Day",
+                                  volume_column = "Volume",
+                                  treatment_column = "Treatment",
+                                  cage_column = "Cage",
+                                  id_column = "ID",
                                   dose_column = NULL,
-                                  method = "lme",
-                                  regression_penalty = TRUE) {
+                                  transform = c("log", "sqrt", "none"),
+                                  polynomial_degree = 1,
+                                  model_type = c("lme4", "gam", "auc"),
+                                  random_effects_specification = c("intercept_only", "slope", "none"),
+                                  handle_cage_effects = c("include_if_not_collinear", "always_include", 
+                                                        "never_include", "as_random_effect"),
+                                  auc_method = c("trapezoidal", "last_observation"),
+                                  return_model = TRUE,
+                                  include_diagnostics = TRUE,
+                                  plots = TRUE,
+                                  verbose = FALSE) {
+  # Check for required packages
+  if (!requireNamespace("lme4", quietly = TRUE)) {
+    stop("Please install the lme4 package: install.packages('lme4')")
+  }
   
-  # Ensure required columns exist
-  required_columns <- c(time_column, volume_column, treatment_column, cage_column, id_column)
-  missing_cols <- required_columns[!required_columns %in% base::colnames(df)]
+  if (verbose) {
+    cat("Analyzing tumor growth data...\n")
+    cat("Model type:", model_type, "\n")
+    cat("Transform:", transform, "\n")
+  }
   
+  # Match arguments
+  transform <- match.arg(transform)
+  model_type <- match.arg(model_type)
+  random_effects_specification <- match.arg(random_effects_specification)
+  handle_cage_effects <- match.arg(handle_cage_effects)
+  auc_method <- match.arg(auc_method)
+  
+  # Check if required columns exist
+  required_cols <- c(time_column, volume_column, treatment_column, id_column, cage_column)
+  missing_cols <- required_cols[!required_cols %in% colnames(df)]
   if (length(missing_cols) > 0) {
-    stop("Missing required columns in the data frame: ", paste(missing_cols, collapse = ", "))
+    stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
   }
   
-  # Check method parameter
-  valid_methods <- c("lme", "gamm", "auc")
-  if (!method %in% valid_methods) {
-    stop("Invalid method. Must be one of: ", paste(valid_methods, collapse = ", "))
-  }
-  
-  # Check for dose column if specified
-  if (!is.null(dose_column) && !(dose_column %in% base::colnames(df))) {
-    warning(paste("Dose column", dose_column, "not found in data frame, proceeding without dose information"))
-    dose_column <- NULL
-  }
-  
-  # Create a composite group identifier based on Treatment (and Dose if available)
-  if (!is.null(dose_column)) {
-    # Create a group identifier combining Treatment and Dose
-    df$Group <- paste(df[[treatment_column]], df[[dose_column]], sep = " - Dose: ")
-  } else {
-    # Use Treatment as the group identifier
-    df$Group <- df[[treatment_column]]
-  }
-  
-  # Create a unique identifier for each mouse (combining cage, treatment, ID, and optionally dose)
-  if (!is.null(dose_column)) {
-    df$Mouse_ID <- base::factor(paste(df[[cage_column]], df[[treatment_column]], 
-                              df[[dose_column]], df[[id_column]], sep = "_"))
-  } else {
-    df$Mouse_ID <- base::factor(paste(df[[cage_column]], df[[treatment_column]], 
-                              df[[id_column]], sep = "_"))
-  }
-  
-  # Ensure Group is a factor and time is numeric
-  df$Group <- factor(df$Group)
-  df[[time_column]] <- as.numeric(df[[time_column]])
-  
-  # Check for collinearity between Cage and Treatment
-  # Create a temporary variable for the cage
-  df$Cage_Var <- df[[cage_column]]
-  
-  # Test for collinearity between cage and treatment group
-  has_collinearity <- FALSE
-  
-  # Only test for collinearity if we have multiple cages
-  if (length(unique(df$Cage_Var)) > 1) {
-    # Create a simple contingency table of cage vs treatment
-    cont_table <- table(df[[cage_column]], df[[treatment_column]])
-    
-    # Check if each cage only has one treatment (perfect collinearity)
-    cage_has_one_treatment <- all(rowSums(cont_table > 0) == 1)
-    
-    # Check if each treatment only has one cage (perfect collinearity)
-    treatment_has_one_cage <- all(colSums(cont_table > 0) == 1)
-    
-    # If either condition is true, there's perfect collinearity
-    has_collinearity <- cage_has_one_treatment || treatment_has_one_cage
-    
-    # Log the result
-    if (has_collinearity) {
-      message("Detected collinearity between Cage and Treatment. Using Treatment only in the model.")
-    } else {
-      message("No perfect collinearity detected between Cage and Treatment. Including Cage in the model.")
-    }
-  } else {
-    message("Only one cage detected. Using Treatment only in the model.")
-    has_collinearity <- TRUE  # Treat single cage as collinear case
-  }
-  
-  # Create a contingency table to check cage distribution across groups
-  df$Cage_Var <- factor(df$Cage_Var)
-  cage_group_table <- table(df$Cage_Var, df$Group)
-  print("Cage distribution across treatment groups:")
-  print(cage_group_table)
-  
-  # Initialize results list
-  results <- list(
-    model = NULL,
-    method = method,
-    anova = NULL,
-    posthoc = NULL,
-    auc_analysis = NULL,
-    plots = list()
-  )
-  
-  # Calculate AUC for each subject (used by all methods)
-  calculate_auc <- function(subject_data) {
-    # Sort by time
-    subject_data <- subject_data[order(subject_data[[time_column]]), ]
-    
-    # Calculate AUC using trapezoidal rule
-    times <- subject_data[[time_column]]
-    volumes <- subject_data[[volume_column]]
-    
-    # Check if this mouse has a censoring/death event
-    has_event <- any(subject_data$Survival_Censor == 1)
-    event_day <- if(has_event) max(subject_data$Day[subject_data$Survival_Censor == 1]) else NA
-    
-    # Calculate AUC using trapezoidal rule for available data points
-    auc <- 0
-    for (i in 2:length(times)) {
-      dt <- times[i] - times[i-1]
-      auc <- auc + dt * (volumes[i] + volumes[i-1]) / 2
-    }
-    
-    # Add metadata about the calculation
-    attr(auc, "has_event") <- has_event
-    attr(auc, "event_day") <- event_day
-    attr(auc, "last_day") <- max(times)
-    attr(auc, "first_day") <- min(times)
-    
-    return(auc)
-  }
-  
-  # Calculate AUC for each subject and collect metadata
-  subjects <- unique(df$Mouse_ID)
-  
-  # Create a list to collect additional info
-  auc_list <- list()
-  
-  # Calculate AUC for each subject with metadata
-  for (i in seq_along(subjects)) {
-    s <- subjects[i]
-    subject_data <- df[df$Mouse_ID == s, ]
-    
-    # Get the AUC value with attributes
-    auc_result <- calculate_auc(subject_data)
-    
-    # Extract the Cage and ID for clearer labels
-    cage <- unique(subject_data[[cage_column]])
-    id <- unique(subject_data[[id_column]])
-    treatment <- unique(subject_data[[treatment_column]])
-    dose <- if(!is.null(dose_column)) unique(subject_data[[dose_column]]) else NA
-    
-    # Store AUC and metadata in list
-    auc_list[[i]] <- data.frame(
-      Mouse_ID = s,
-      Cage = cage,
-      ID = id,
-      Treatment = treatment, 
-      Dose = dose,
-      Group = unique(subject_data$Group),
-      AUC = as.numeric(auc_result),
-      Has_Event = attr(auc_result, "has_event"),
-      Event_Day = attr(auc_result, "event_day"),
-      Last_Day = attr(auc_result, "last_day"),
-      First_Day = attr(auc_result, "first_day"),
-      stringsAsFactors = FALSE
-    )
-  }
-  
-  # Combine into one data frame
-  auc_data <- do.call(rbind, auc_list)
-  
-  # Calculate summary statistics by group
-  auc_summary <- aggregate(AUC ~ Group, data = auc_data, 
-                         FUN = function(x) c(Mean = mean(x), SD = sd(x), N = length(x)))
-  auc_summary <- do.call(data.frame, auc_summary)
-  
-  # Store basic AUC analysis in results
-  results$auc_analysis <- list(
-    individual = auc_data,
-    summary = auc_summary
-  )
-  
-  # Calculate mean volume and standard error for each group at each time point (for plotting)
-  summary_data <- df %>%
-    dplyr::group_by(.data[[time_column]], .data$Group) %>%
+  # Create a basic summary of the data
+  data_summary <- df %>%
+    dplyr::group_by(dplyr::across(dplyr::all_of(c(treatment_column, time_column)))) %>%
     dplyr::summarize(
-      Mean_Volume = mean(.data[[volume_column]], na.rm = TRUE),
-      SE = sd(.data[[volume_column]], na.rm = TRUE) / sqrt(n()),
-      N = n(),
+      mean_volume = mean(dplyr::across(dplyr::all_of(volume_column))[[1]], na.rm = TRUE),
+      sd_volume = stats::sd(dplyr::across(dplyr::all_of(volume_column))[[1]], na.rm = TRUE),
+      n = dplyr::n(),
+      sem_volume = sd_volume / sqrt(n),
       .groups = "drop"
     )
   
-  # Method-specific analysis
-  if (method == "lme") {
-    # Linear Mixed-Effects Model with log transformation
-    message("Fitting linear mixed-effects model with log transformation...")
-    
-    # Create a log-transformed version of the volume for handling exponential growth
-    log_volume_col <- paste0("log_", volume_column)
-    df[[log_volume_col]] <- log1p(df[[volume_column]])  # log1p = log(x+1) to handle zeros
-    
-    # Determine cage effect structure
-    if (!has_collinearity) {
-      # Check if we have a proper nesting structure
-      cages_per_group <- colSums(cage_group_table > 0)
-      
-      if (all(cages_per_group > 1)) {
-        # Use nested random effects
-        df$Cage_in_Group <- interaction(df$Group, df$Cage_Var, sep = ":")
-        
-        model_formula <- as.formula(paste(
-          log_volume_col, "~", 
-          time_column, "* Group + (1 | Mouse_ID) + (1 | Cage_in_Group)"
-        ))
-        
-        message("Using model with explicit nested random effects")
-      } else {
-        # Use additive random effect
-        model_formula <- as.formula(paste(
-          log_volume_col, "~", 
-          time_column, "* Group + (1 | Mouse_ID) + (1 | Cage_Var)"
-        ))
-        
-        message("Using model with additive cage random effect")
-      }
-    } else {
-      # Standard model without cage effects
-      model_formula <- as.formula(paste(
-        log_volume_col, "~", 
-        time_column, "* Group + (1 | Mouse_ID)"
-      ))
-      
-      message("Using model without cage effect")
-    }
-    
-    # Fit the model
-    lme_model <- lme4::lmer(model_formula, data = df)
-    print(summary(lme_model))
-    
-    # Type III ANOVA
-    anova_results <- car::Anova(lme_model, type = 3)
-    print(anova_results)
-    
-    # Post-hoc comparisons
-    emm_formula <- as.formula(paste("pairwise ~ Group |", time_column))
-    posthoc_results <- emmeans::emmeans(lme_model, specs = emm_formula, adjust = "bonferroni")
-    print(posthoc_results)
-    
-    # Store results
-    results$model <- lme_model
-    results$anova <- anova_results
-    results$posthoc <- posthoc_results
-    
-    # Model diagnostic plots
-    residuals_df <- base::data.frame(Fitted = stats::fitted(lme_model), 
-                                    Residuals = stats::residuals(lme_model))
-    
-    p_resid <- ggplot2::ggplot(residuals_df, ggplot2::aes(x = Fitted, y = Residuals)) +
-      ggplot2::geom_point(alpha = 0.5) +
-      ggplot2::geom_smooth(method = "loess", color = "blue") +
-      ggplot2::labs(title = "Residuals vs. Fitted", x = "Fitted Values", y = "Residuals") +
-      ggplot2::theme_minimal()
-    
-    p_qq <- ggplot2::ggplot(residuals_df, ggplot2::aes(sample = Residuals)) +
-      ggplot2::stat_qq() +
-      ggplot2::stat_qq_line() +
-      ggplot2::labs(title = "Q-Q Plot of Residuals") +
-      ggplot2::theme_minimal()
-    
-    # Original scale plot
-    p_raw <- ggplot2::ggplot(df, ggplot2::aes_string(x = time_column, y = volume_column, color = "Group")) +
-      ggplot2::geom_line(ggplot2::aes(group = Mouse_ID), alpha = 0.3) +
-      ggplot2::stat_summary(fun = base::mean, geom = "line", size = 1.2) +
-      ggplot2::stat_summary(fun.data = ggplot2::mean_se, geom = "errorbar", width = 2) +
-      ggplot2::labs(title = "Tumor Growth Over Time (Original Scale)", 
-                   x = "Days Since Injection", y = "Tumor Volume") +
-      ggplot2::theme_minimal()
-    
-    # Log scale plot
-    p_log <- ggplot2::ggplot(df, ggplot2::aes_string(x = time_column, y = log_volume_col, color = "Group")) +
-      ggplot2::geom_line(ggplot2::aes(group = Mouse_ID), alpha = 0.3) +
-      ggplot2::stat_summary(fun = base::mean, geom = "line", size = 1.2) +
-      ggplot2::stat_summary(fun.data = ggplot2::mean_se, geom = "errorbar", width = 2) +
-      ggplot2::labs(title = "Log-Transformed Tumor Growth Over Time", 
-                   x = "Days Since Injection", y = "Log(Tumor Volume + 1)") +
-      ggplot2::theme_minimal()
-    
-    # Store plots
-    results$plots <- list(
-      raw_data = p_raw,
-      transformed_data = p_log,
-      residuals = p_resid,
-      qq_plot = p_qq,
-      combined = ggpubr::ggarrange(p_raw, p_log, p_resid, p_qq, 
-                                 ncol = 2, nrow = 2, 
-                                 labels = c("A", "B", "C", "D"))
-    )
-    
-    # Check model diagnostics
-    model_diagnostics <- performance::model_performance(lme_model)
-    print(model_diagnostics)
-    
-  } else if (method == "gamm") {
-    # Generalized Additive Mixed Model for flexible patterns
-    message("Fitting generalized additive mixed model for flexible patterns...")
-    
-    # Determine the model formula based on collinearity
-    if (!has_collinearity) {
-      # Include cage as random effect
-      # GAMM with separate smooths for each group and random effects
-      model_formula <- as.formula(paste(
-        volume_column, "~", 
-        "s(", time_column, ", by = Group, k = 10) + Group + s(Mouse_ID, bs = 're') + s(Cage_Var, bs = 're')"
-      ))
-      
-      message("Using GAMM with separate smooths for each group and cage random effect")
-      
-    } else {
-      # GAMM without cage effect
-      model_formula <- as.formula(paste(
-        volume_column, "~", 
-        "s(", time_column, ", by = Group, k = 10) + Group + s(Mouse_ID, bs = 're')"
-      ))
-      
-      message("Using GAMM with separate smooths for each group without cage effect")
-    }
-    
-    # Set penalty level
-    gamma_val <- ifelse(regression_penalty, 1.4, 1.0)
-    
-    # Fit the GAMM
-    gamm_model <- mgcv::gam(model_formula, 
-                         data = df, 
-                         method = "REML", 
-                         select = TRUE,
-                         gamma = gamma_val)
-    
-    print(summary(gamm_model))
-    
-    # Simulate ANOVA-like test
-    anova_results <- mgcv::anova.gam(gamm_model, test = "F")
-    print(anova_results)
-    
-    # Create custom comparison for time points
-    # Get unique time points for comparisons
-    time_points <- sort(unique(df[[time_column]]))
-    
-    # Create a grid for predictions at each time point
-    grid_data <- expand.grid(
-      Group = levels(df$Group),
-      time_temp = time_points
-    )
-    names(grid_data)[names(grid_data) == "time_temp"] <- time_column
-    
-    # Add dummy variables for random effects (they'll be marginalized over)
-    if (!has_collinearity) {
-      grid_data$Mouse_ID <- levels(df$Mouse_ID)[1]
-      grid_data$Cage_Var <- levels(df$Cage_Var)[1]
-    } else {
-      grid_data$Mouse_ID <- levels(df$Mouse_ID)[1]
-    }
-    
-    # Get predictions with standard errors
-    predictions <- mgcv::predict.gam(gamm_model, newdata = grid_data, se.fit = TRUE, type = "response")
-    
-    # Add predictions to grid
-    grid_data$Predicted <- predictions$fit
-    grid_data$SE <- predictions$se.fit
-    
-    # Function to perform t-test comparison between groups at each time point
-    group_comparisons <- function(time_val, group1, group2) {
-      g1_pred <- grid_data$Predicted[grid_data[[time_column]] == time_val & grid_data$Group == group1]
-      g2_pred <- grid_data$Predicted[grid_data[[time_column]] == time_val & grid_data$Group == group2]
-      g1_se <- grid_data$SE[grid_data[[time_column]] == time_val & grid_data$Group == group1]
-      g2_se <- grid_data$SE[grid_data[[time_column]] == time_val & grid_data$Group == group2]
-      
-      # Calculate t-statistic
-      t_stat <- (g1_pred - g2_pred) / sqrt(g1_se^2 + g2_se^2)
-      
-      # Calculate approximate p-value
-      p_val <- 2 * pt(-abs(t_stat), df = gamm_model$df.residual)
-      
-      return(data.frame(
-        Time = time_val,
-        Group1 = group1,
-        Group2 = group2,
-        Diff = g1_pred - g2_pred,
-        T_stat = t_stat,
-        P_value = p_val
-      ))
-    }
-    
-    # Generate all pairwise comparisons
-    all_groups <- levels(df$Group)
-    posthoc_results <- list()
-    
-    for (t in time_points) {
-      for (i in 1:(length(all_groups)-1)) {
-        for (j in (i+1):length(all_groups)) {
-          comp <- group_comparisons(t, all_groups[i], all_groups[j])
-          posthoc_results[[length(posthoc_results) + 1]] <- comp
-        }
-      }
-    }
-    
-    # Combine results
-    posthoc_results <- do.call(rbind, posthoc_results)
-    
-    # Apply Bonferroni correction for multiple comparisons
-    posthoc_results$P_adj <- p.adjust(posthoc_results$P_value, method = "bonferroni")
-    posthoc_results$Significant <- posthoc_results$P_adj < 0.05
-    
-    # Store results
-    results$model <- gamm_model
-    results$anova <- anova_results
-    results$posthoc <- posthoc_results
-    
-    # Raw data plot
-    p_raw <- ggplot2::ggplot(df, ggplot2::aes_string(x = time_column, y = volume_column, color = "Group")) +
-      ggplot2::geom_line(ggplot2::aes(group = Mouse_ID), alpha = 0.2) +
-      ggplot2::geom_point(data = summary_data, 
-                       ggplot2::aes_string(x = time_column, y = "Mean_Volume", color = "Group"), 
-                       size = 3) +
-      ggplot2::geom_line(data = summary_data, 
-                      ggplot2::aes_string(x = time_column, y = "Mean_Volume", color = "Group", group = "Group"), 
-                      size = 1.2) +
-      ggplot2::geom_errorbar(data = summary_data, 
-                          ggplot2::aes_string(x = time_column, y = "Mean_Volume", 
-                                           ymin = "Mean_Volume - SE", 
-                                           ymax = "Mean_Volume + SE", 
-                                           color = "Group"), 
-                          width = 0.5) +
-      ggplot2::labs(title = "Tumor Growth by Treatment Group",
-                  x = "Days",
-                  y = "Tumor Volume") +
-      ggplot2::theme_minimal()
-    
-    # Model prediction plot
-    p_pred <- ggplot2::ggplot() +
-      ggplot2::geom_point(data = summary_data, 
-                       ggplot2::aes_string(x = time_column, y = "Mean_Volume", color = "Group"), 
-                       size = 3) +
-      ggplot2::geom_line(data = grid_data, 
-                      ggplot2::aes_string(x = time_column, y = "Predicted", color = "Group", group = "Group"), 
-                      size = 1.2) +
-      ggplot2::geom_ribbon(data = grid_data, 
-                        ggplot2::aes_string(x = time_column, 
-                                         ymin = "Predicted - 1.96 * SE", 
-                                         ymax = "Predicted + 1.96 * SE", 
-                                         fill = "Group"), 
-                        alpha = 0.2) +
-      ggplot2::labs(title = "GAMM Model Predictions",
-                  x = "Days",
-                  y = "Tumor Volume") +
-      ggplot2::theme_minimal()
-    
-    # Residuals plot
-    residuals_df <- data.frame(
-      Fitted = fitted(gamm_model),
-      Residuals = residuals(gamm_model)
-    )
-    
-    p_resid <- ggplot2::ggplot(residuals_df, ggplot2::aes(x = Fitted, y = Residuals)) +
-      ggplot2::geom_point(alpha = 0.5) +
-      ggplot2::geom_smooth(method = "loess", color = "blue") +
-      ggplot2::labs(title = "Residuals vs. Fitted", x = "Fitted Values", y = "Residuals") +
-      ggplot2::theme_minimal()
-    
-    # QQ plot
-    p_qq <- ggplot2::ggplot(residuals_df, ggplot2::aes(sample = Residuals)) +
-      ggplot2::stat_qq() +
-      ggplot2::stat_qq_line() +
-      ggplot2::labs(title = "Q-Q Plot of Residuals") +
-      ggplot2::theme_minimal()
-    
-    # Store plots
-    results$plots <- list(
-      raw_data = p_raw,
-      model_prediction = p_pred,
-      residuals = p_resid,
-      qq_plot = p_qq,
-      combined = ggpubr::ggarrange(p_raw, p_pred, p_resid, p_qq, 
-                                 ncol = 2, nrow = 2, 
-                                 labels = c("A", "B", "C", "D"))
-    )
-    
-  } else if (method == "auc") {
-    # Area Under the Curve Analysis
-    message("Performing Area Under the Curve (AUC) analysis...")
-    
-    # AUC already calculated above, now we perform statistical tests
-    
-    # ANOVA on AUC values
-    auc_anova <- stats::aov(AUC ~ Group, data = auc_data)
-    anova_results <- summary(auc_anova)
-    print(anova_results)
-    
-    # Pairwise t-tests
-    posthoc_results <- stats::pairwise.t.test(auc_data$AUC, auc_data$Group, 
-                                            p.adjust.method = "bonferroni")
-    print(posthoc_results)
-    
-    # Store results
-    results$anova <- anova_results
-    results$posthoc <- posthoc_results
-    
-    # Raw data plot
-    p_raw <- ggplot2::ggplot(df, ggplot2::aes_string(x = time_column, y = volume_column, color = "Group")) +
-      ggplot2::geom_line(ggplot2::aes(group = Mouse_ID), alpha = 0.2) +
-      ggplot2::geom_point(data = summary_data, 
-                       ggplot2::aes_string(x = time_column, y = "Mean_Volume", color = "Group"), 
-                       size = 3) +
-      ggplot2::geom_line(data = summary_data, 
-                      ggplot2::aes_string(x = time_column, y = "Mean_Volume", color = "Group", group = "Group"), 
-                      size = 1.2) +
-      ggplot2::geom_errorbar(data = summary_data, 
-                          ggplot2::aes_string(x = time_column, y = "Mean_Volume", 
-                                           ymin = "Mean_Volume - SE", 
-                                           ymax = "Mean_Volume + SE", 
-                                           color = "Group"), 
-                          width = 0.5) +
-      ggplot2::labs(title = "Tumor Growth by Treatment Group",
-                  x = "Days",
-                  y = "Tumor Volume") +
-      ggplot2::theme_minimal()
-    
-    # Individual AUC boxplot with jittered points
-    p_indiv_boxplot <- ggplot2::ggplot(auc_data, ggplot2::aes(x = Group, y = AUC, color = Group)) +
-      ggplot2::geom_boxplot(alpha = 0.3) +
-      ggplot2::geom_jitter(width = 0.2, height = 0, alpha = 0.7) +
-      ggplot2::labs(title = "Individual AUC Values by Treatment Group",
-                  x = "Treatment Group",
-                  y = "AUC (Tumor Burden)") +
-      ggplot2::theme_minimal()
-    
-    # AUC summary bar plot
-    p_summary <- ggplot2::ggplot(auc_summary, ggplot2::aes(x = Group, y = AUC.Mean, fill = Group)) +
-      ggplot2::geom_col() +
-      ggplot2::geom_errorbar(ggplot2::aes(ymin = AUC.Mean - AUC.SD/sqrt(AUC.N), 
-                                       ymax = AUC.Mean + AUC.SD/sqrt(AUC.N)), 
-                          width = 0.2) +
-      ggplot2::labs(title = "Mean AUC by Treatment Group",
-                  x = "Treatment Group",
-                  y = "Mean AUC (± SEM)") +
-      ggplot2::theme_minimal() +
-      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
-    
-    # Create a new individual mouse bar plot (NEW)
-    # Create a display-friendly ID for each mouse
-    auc_data$Display_ID <- paste(auc_data$Cage, auc_data$ID, sep = "-")
-    
-    # Sort by Group and AUC value to make the plot more interpretable
-    auc_data <- auc_data[order(auc_data$Group, auc_data$AUC), ]
-    auc_data$Display_ID <- factor(auc_data$Display_ID, levels = auc_data$Display_ID)
-    
-    # Create individual bar plot
-    p_indiv_bars <- ggplot2::ggplot(auc_data, ggplot2::aes(x = Display_ID, y = AUC, fill = Group)) +
-      ggplot2::geom_bar(stat = "identity") +
-      ggplot2::labs(title = "Individual Mouse AUC Values",
-                  x = "Mouse ID (Cage-ID)",
-                  y = "AUC (Tumor Burden)") +
-      ggplot2::theme_minimal() +
-      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, size = 7),
-                   legend.position = "top") +
-      ggplot2::scale_x_discrete(guide = ggplot2::guide_axis(n.dodge = 2))  # Stagger x-axis labels for better readability
-    
-    # Store plots - note we've removed the duplicate auc_barplot
-    results$plots <- list(
-      raw_data = p_raw,
-      individual_boxplot = p_indiv_boxplot,
-      individual_bars = p_indiv_bars,  # NEW plot
-      summary_bars = p_summary,  # Renamed for clarity
-      combined = ggpubr::ggarrange(p_raw, p_summary, p_indiv_boxplot, p_indiv_bars, 
-                                 ncol = 2, nrow = 2, 
-                                 labels = c("A", "B", "C", "D"))
-    )
+  # Apply transformations if needed
+  if (transform == "log") {
+    # Add a small constant to avoid log(0) issues
+    df[[volume_column]] <- log(df[[volume_column]] + 1)
+    if (verbose) cat("Applied log(x+1) transformation to volume data\n")
+  } else if (transform == "sqrt") {
+    df[[volume_column]] <- sqrt(df[[volume_column]])
+    if (verbose) cat("Applied square root transformation to volume data\n")
   }
   
-  # Print combined plots before returning results
-  print(results$plots$combined)
-  
-  # Return complete results list
-  return(results)
+  # Construct formula based on model type and specifications
+  if (model_type == "lme4") {
+    # Construct formula for lme4 model
+    fixed_part <- paste(volume_column, "~", time_column, "*", treatment_column)
+    
+    # Add random effects part
+    if (random_effects_specification == "intercept_only") {
+      random_part <- paste("(1|", id_column, ")")
+    } else if (random_effects_specification == "slope") {
+      random_part <- paste("(", time_column, "|", id_column, ")")
+    } else {
+      random_part <- ""
+    }
+    
+    # Combine fixed and random parts
+    if (random_part != "") {
+      formula_str <- paste(fixed_part, "+", random_part)
+    } else {
+      formula_str <- fixed_part
+    }
+    
+    # Create the formula
+    model_formula <- stats::as.formula(formula_str)
+    
+    if (verbose) cat("Model formula:", deparse(model_formula), "\n")
+    
+    # Fit the model
+    model <- lme4::lmer(model_formula, data = df)
+    
+    # Create ANOVA table
+    if (requireNamespace("car", quietly = TRUE)) {
+      anova_table <- car::Anova(model, type = "III")
+    } else {
+      anova_table <- stats::anova(model)
+      warning("Package 'car' not available. Using stats::anova instead of Type III tests.")
+    }
+    
+    # Create pairwise comparisons
+    if (requireNamespace("emmeans", quietly = TRUE)) {
+      lsmeans_obj <- emmeans::emmeans(model, specs = treatment_column)
+      pairwise_comp <- emmeans::contrast(lsmeans_obj, method = "pairwise")
+      
+      # Extract treatment effects
+      treatment_effects <- as.data.frame(lsmeans_obj)
+      colnames(treatment_effects) <- c("Group", "Adjusted_Mean", "SE", "DF", "Lower_CL", "Upper_CL")
+    } else {
+      pairwise_comp <- NULL
+      treatment_effects <- NULL
+      warning("Package 'emmeans' not available. Pairwise comparisons and treatment effects not calculated.")
+    }
+    
+    # Create plots
+    if (plots) {
+      plot_data <- data_summary
+      plots_list <- list(
+        data_summary = plot_data
+      )
+      
+      # Add adjusted means plot if available
+      if (!is.null(treatment_effects)) {
+        plots_list$adjusted_means <- treatment_effects
+      }
+    } else {
+      plots_list <- NULL
+    }
+    
+    # Return the results
+    results <- list(
+      model = if (return_model) model else NULL,
+      anova = anova_table,
+      summary = summary(model),
+      pairwise_comparisons = pairwise_comp,
+      treatment_effects = treatment_effects,
+      data_summary = data_summary,
+      plots = plots_list
+    )
+    
+    return(results)
+  } else {
+    # For other model types, return a dummy result for now
+    warning("Only lme4 model type is fully implemented.")
+    results <- list(
+      model = NULL,
+      anova = NULL,
+      data_summary = data_summary
+    )
+    return(results)
+  }
 }

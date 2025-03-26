@@ -1,162 +1,328 @@
 ---
-title: "Mouse Experiment Analysis Example"
-format: html
-editor: source
+title: "mouseExperiment: Comprehensive Analysis of Tumor Growth Experiments"
+author: "mouseExperiment Package"
+format: 
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: show
+    theme: cosmo
+    highlight-style: github
+vignette: >
+  %\VignetteIndexEntry{mouseExperiment: Comprehensive Analysis of Tumor Growth Experiments}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
 ---
 
-```{r setup, message=FALSE, warning=FALSE}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 8, 
+  fig.height = 6,
+  out.width = "100%"
+)
+```
 
+# Introduction
+
+The `mouseExperiment` package provides a comprehensive set of tools for analyzing preclinical mouse tumor growth experiments. This vignette demonstrates how to use the package's core functionality with example datasets included in the package.
+
+## Package Installation
+
+```{r eval=FALSE}
+# Install from GitHub
+devtools::install_github("username/mouseExperiment")
+```
+
+## Loading the Package
+
+Let's start by loading the package:
+
+```{r}
 library(mouseExperiment)
-library(dplyr)
-library(ggplot2)
-
 ```
 
-## Introduction
+# 1. Basic Data Processing
 
-This document demonstrates the functionality of the mouseExperiment R package for analyzing and visualizing mouse tumor growth data.
+## 1.1 Calculating Tumor Volume
 
-## Data Preparation
+The first step in processing tumor measurement data is to calculate tumor volumes from length and width measurements. The `calculate_volume()` function supports various volume calculation formulas.
 
-First, we'll load the synthetic dataset included with the package:
+We'll use the combo treatment dataset for this demonstration:
 
-```{r load-data}
-# data(synthetic_data)
-# head(synthetic_data)
+```{r}
+# Load the data
+data(combo_treatment_synthetic_data)
 
-synthetic_data = read.csv("../data/combo_treatment_synthetic_data.csv")
-
+# Display the first few rows
+head(combo_treatment_synthetic_data)
 ```
 
-Now we'll calculate tumor volumes and experiment days:
+Now, let's calculate tumor volumes using the default ellipsoid formula:
 
-```{r calculate}
+```{r}
+# Calculate volume using the ellipsoid formula (default)
+data_with_volume <- calculate_volume(combo_treatment_synthetic_data)
 
-source("../R/calculate_dates.R")
-source("../R/calculate_volume.R")
-# Calculate tumor volume
-df <- calculate_volume(synthetic_data)
-
-# Calculate experiment days from start date
-df <- calculate_dates(df, start_date = "17-Mar")
-
-# Display the resulting data
-head(df)
+# Display first few rows with volume
+head(data_with_volume)
 ```
 
-## Tumor Growth Visualization
+The ellipsoid formula V = (length × width² × π) / 6 is the most widely used and accurate formula for ovoid tumors.
 
-Let's visualize the tumor growth over time by treatment group:
+## 1.2 Converting Dates to Experimental Days
 
-```{r plot-growth}
-source("../R/plot_tumor_growth.R")
+In mouse experiments, it's standard to convert calendar dates to experimental days, where day 0 is typically the day of tumor inoculation or the start of treatment. The `calculate_dates()` function handles this conversion:
 
-plot_tumor_growth(df,
-                  extrapolate_volumes = FALSE)
+```{r}
+# Calculate days since the start of the experiment
+data_processed <- calculate_dates(data_with_volume, 
+                                 start_date = "03/24/2025", 
+                                 date_format = "%m/%d/%Y")
 
-
-plot_tumor_growth(df,
-                  extrapolate_volumes = TRUE,
-                  survival_column = "Survival_Censor")
+# Display the result
+head(data_processed)
 ```
 
-## Tumor Growth Statistics
+Now the data has a "Day" column that represents the number of days since the start of the experiment.
 
-We can perform statistical analysis on the tumor growth data:
+# 2. Visualization of Tumor Growth
 
-```{r growth-stats, message=FALSE, warning=FALSE}
-source("../R/tumor_growth_statistics.R")
-source("../R/tumor_growth_statistics_flexible.R")
-source("../R/dose_response_statistics.R")
+## 2.1 Basic Tumor Growth Plots
 
-# Standard tumor growth statistics
-growth_stats <- tumor_growth_statistics(df)
+The `plot_tumor_growth()` function creates visualizations of tumor growth over time:
 
+```{r}
+# Create a basic tumor growth plot
+plot_tumor_growth(data_processed, 
+                 id_column = "ID", 
+                 group_column = "Treatment",
+                 facet = TRUE)
+```
+
+## 2.2 Highlighting Treatment Days
+
+We can indicate treatment days on the tumor growth plot:
+
+```{r}
+# Plot with treatment days marked (e.g., treatments on days 0, 3, 7, 10)
+plot_tumor_growth(data_processed, 
+                 id_column = "ID", 
+                 group_column = "Treatment",
+                 treatment_days = c(0, 3, 7, 10),
+                 treatment_label = "Treatment administered")
+```
+
+## 2.3 Combined Visualization
+
+We can create a comprehensive visualization showing individual growth curves, group means, and treatment days:
+
+```{r}
+# Create a comprehensive plot
+plot_tumor_growth(data_processed, 
+                 id_column = "ID", 
+                 group_column = "Treatment",
+                 treatment_days = c(0, 3, 7, 10),
+                 treatment_label = "Treatment administered",
+                 show_individual = TRUE,
+                 show_mean = TRUE,
+                 show_error = TRUE)
+```
+
+# 3. Statistical Analysis of Tumor Growth
+
+## 3.1 Mixed-Effects Model Analysis
+
+The `tumor_growth_statistics()` function fits a linear mixed-effects model to analyze tumor growth data:
+
+```{r}
+# Run statistical analysis
+growth_stats <- tumor_growth_statistics(data_processed, 
+                                      volume_column = "Volume", 
+                                      group_column = "Treatment",
+                                      id_column = "ID")
+
+# Display ANOVA table for fixed effects
 growth_stats$anova
-growth_stats$model
+```
+
+This analysis tests for the effects of time, treatment, and their interaction on tumor growth.
+
+## 3.2 Visualizing the Model Coefficients
+
+We can visualize the model coefficients using a caterpillar plot:
+
+```{r}
+# Plot model coefficients with confidence intervals
+plot_caterpillar(growth_stats$model)
+```
+
+## 3.3 Post-hoc Comparisons
+
+The function also provides post-hoc pairwise comparisons between treatment groups:
+
+```{r}
+# Display post-hoc comparisons
 growth_stats$posthoc
+```
 
-#NEED TO ADJUST FOR CAGE EFFECT
+# 4. Survival Analysis
 
-#growth_stats <- tumor_growth_statistics_flexible(df)
+## 4.1 Survival Plots
 
-# results <- dose_response_statistics(df,
-#                                     dose_column = "Dose",
-#                                     treatment_column = "Treatment",
-#                                     volume_column = "Volume")
+The `plot_survival()` function creates Kaplan-Meier survival curves:
 
+```{r}
+# Create survival plot
+survival_plot <- plot_survival(data_processed, 
+                             time_column = "Day", 
+                             censor_column = "Survival_Censor",
+                             treatment_column = "Treatment",
+                             show_legend = TRUE,
+                             show_pvalue = TRUE)
+
+# Display the plot
+print(survival_plot)
+```
+
+## 4.2 Survival Statistics
+
+The `survival_statistics()` function performs a Cox proportional hazards analysis:
+
+```{r}
+# Perform survival analysis
+survival_results <- survival_statistics(data_processed, 
+                                      time_column = "Day",
+                                      censor_column = "Survival_Censor",
+                                      treatment_column = "Treatment",
+                                      reference_group = "Control")
+
+# Display hazard ratios and confidence intervals
+survival_results$results
+```
+
+## 4.3 Forest Plot of Hazard Ratios
+
+The function also creates a forest plot to visualize hazard ratios:
+
+```{r}
+# Display forest plot
+survival_results$forest_plot
+```
+
+# 5. Dose-Response Analysis
+
+The package includes tools for analyzing dose-response relationships. Let's use the dose levels dataset:
+
+```{r}
+# Load dose-response data
+data(dose_levels_synthetic_data)
+
+# Process the data
+dose_data <- calculate_volume(dose_levels_synthetic_data)
+dose_data <- calculate_dates(dose_data, 
+                           start_date = "24-Mar", 
+                           date_format = "%d-%b", 
+                           year = 2025)
+
+# Analyze dose-response relationship
+dose_results <- dose_response_statistics(dose_data, 
+                                       dose_column = "Dose",
+                                       treatment_column = "Treatment",
+                                       time_point = 14)  # Analyze at day 14
+
+# Display analysis summary
+dose_results$summary_table
+```
+
+## 5.1 Dose-Response Visualization
+
+The function creates several visualizations:
+
+```{r}
+# Display scatter plot with regression line
+dose_results$plots$scatter
 ```
 
 ```{r}
-
-source("../R/analyze_drug_synergy_over_time.R")
-source("../R/analyze_drug_synergy.R")
-analyze_drug_synergy_over_time(df,
-                               drug_a_name = "HDACi",
-                               drug_b_name = "aPD1",
-                               combo_name = "HDACi + PD1")
-
-```
-
-
-## Survival Analysis
-
-Now let's analyze and visualize survival data:
-
-```{r survival-plot}
-source("../R/plot_survival.R")
-# Plot survival curves by group
-plot_survival(df)
-```
-
-```{r survival-stats}
-source("../R/survival_statistics.R")
-
-surv_stats = survival_statistics(df,
-                                 reference_group = "Control")
-
-surv_stats$model
-surv_stats$results
-
-```
-
-## Bayesian Analysis
-
-The package also supports Bayesian analysis of tumor growth data:
-
-```{r bayes-analysis, eval=FALSE}
-
-source("../R/tumor_growth_statistics_bayes.R")
-
-# Bayesian tumor growth statistics 
-# Note: This is computationally intensive, so we're not running it in this example
-bayesian_stats <- tumor_growth_statistics_bayes(df, cores = 4)
-# print(bayesian_stats)
-
-#Returning model without Bayes factor.Error in exists("log_bf") && !is.na(log_bf) : 
-  'length = 2' in coercion to 'logical(1)'
-
+# Display box plot by dose level
+dose_results$plots$boxplot
 ```
 
 ```{r}
-
-source("../R/plot_caterpillar.R")
-
-# Create a basic Bayesian caterpillar plot
-  bayes_cat_plot <- plot_caterpillar_bayes(bayesian_stats$model)
-  print(bayes_cat_plot)
-
-  # Show random effects (mouse-specific variations)
-  bayes_cat_plot_with_ranef <- plot_caterpillar_bayes(
-    bayesian_stats$model,
-    show_random = TRUE,
-    title = "All Model Parameters with 95% Credible Intervals"
-  )
-  print(bayes_cat_plot_with_ranef)
-
+# Display bar plot with error bars
+dose_results$plots$barplot
 ```
 
+# 6. Drug Synergy Analysis
 
-## Conclusion
+The `analyze_drug_synergy()` function tests for synergistic effects between two treatments:
 
-This vignette demonstrates the key functionality of the mouseExperiment package for analyzing mouse tumor growth experiment data.
+```{r}
+# Analyze synergy between HDACi and PD1 treatments
+synergy_results <- analyze_drug_synergy(data_processed, 
+                                      time_point = 21,
+                                      treatment_groups = c("Control", "HDACi", "aPD1", "HDACi + PD1"))
+
+# Display synergy test results
+synergy_results$synergy_test
+```
+
+## 6.1 Synergy Visualization
+
+The function also creates visualizations of the observed vs. expected effects:
+
+```{r}
+# Display bar plot of observed vs. expected effects
+synergy_results$plots$barplot
+```
+
+# 7. Bayesian Analysis
+
+For more complex modeling needs, the package provides Bayesian analysis with the `tumor_growth_statistics_bayes()` function:
+
+```{r eval=FALSE}
+# Perform Bayesian analysis
+# Note: This can take several minutes to run
+bayes_results <- tumor_growth_statistics_bayes(data_processed, 
+                                             volume_column = "Volume", 
+                                             group_column = "Treatment",
+                                             id_column = "ID",
+                                             cores = 4)  # Using 4 cores for parallel processing
+
+# Visualize posteriors
+plot_caterpillar_bayes(bayes_results$model)
+```
+
+# 8. Power Analysis
+
+The `post_power_analysis()` function helps calculate achieved power based on actual results:
+
+```{r}
+# Perform post-hoc power analysis
+power_results <- post_power_analysis(data_processed, 
+                                   volume_column = "Volume", 
+                                   group_column = "Treatment",
+                                   id_column = "ID",
+                                   time_column = "Day",
+                                   time_point = 21)
+
+# Display power analysis results
+power_results$power_table
+```
+
+# Summary
+
+The `mouseExperiment` package provides a comprehensive toolset for analyzing mouse tumor growth experiments:
+
+1. **Data Processing**: Calculate volumes and experimental days
+2. **Visualization**: Create informative plots of tumor growth and survival
+3. **Statistical Analysis**: Perform mixed-effects modeling and survival analysis
+4. **Dose-Response Analysis**: Test for dose-response relationships
+5. **Drug Synergy Analysis**: Evaluate combination treatments
+6. **Bayesian Analysis**: Perform more complex modeling
+7. **Power Analysis**: Calculate achieved statistical power
+
+These tools help researchers extract meaningful insights from preclinical mouse experiments and support rigorous statistical analysis of the data.

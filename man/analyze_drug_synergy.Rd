@@ -38,13 +38,13 @@ If NULL (default), the function will use the last time point in the data.}
 }
 \value{
 A list containing the following components:
-\itemize{
+\describe{
 \item{summary}{A data frame summarizing the tumor growth inhibition (TGI) for each treatment and synergy metrics.}
 \item{bliss_independence}{Results of the Bliss independence model, including expected vs. observed effects.}
 \item{loewe_additivity}{Results of the Loewe additivity model.}
 \item{combination_index}{The combination index (CI), where CI < 1 indicates synergy, CI = 1 indicates additivity, and CI > 1 indicates antagonism.}
 \item{statistical_test}{Results of statistical tests comparing observed vs. expected effects.}
-\item{synergy_plot}{A ggplot2 object visualizing the synergy analysis.}
+\item{plot_data}{Data prepared for plotting, to be used with plot_drug_synergy function.}
 }
 }
 \description{
@@ -59,7 +59,7 @@ The function calculates tumor growth inhibition (TGI) for each treatment group r
 It then applies several models to test for synergy:
 \enumerate{
 \item Bliss Independence Model: Assumes drugs act independently through different mechanisms.
-Expected effect = EA + EB - (EA × EB), where EA and EB are the effects of drug A and B alone.
+Expected effect = EA + EB - (EA * EB), where EA and EB are the effects of drug A and B alone.
 \item Loewe Additivity Model: Assumes drugs work through similar mechanisms.
 Expected effect is calculated based on dose-response relationships.
 \item Combination Index: A widely used metric where CI < 1 indicates synergy.
@@ -69,19 +69,24 @@ The function performs statistical tests to determine if the observed combination
 significantly differs from the expected effect under these models.
 }
 \examples{
-# Example with specific treatment groups
+# Example with synthetic dataset
+data(combo_treatment_synthetic_data)
+data_processed <- calculate_volume(combo_treatment_synthetic_data)
+data_processed <- calculate_dates(data_processed, start_date = "03/24/2025")
+
 synergy_results <- analyze_drug_synergy(
-  df = tumor_data,
+  df = data_processed,
   drug_a_name = "Drug A",
   drug_b_name = "Drug B", 
-  combo_name = "Drug A + Drug B",
-  control_name = "Vehicle"
+  combo_name = "Combo",
+  control_name = "Control"
 )
 
 # Print the summary
 print(synergy_results$summary)
 
-# Display the synergy visualization
-print(synergy_results$synergy_plot)
+# Create and display the synergy visualization
+synergy_plot <- plot_drug_synergy(synergy_results)
+print(synergy_plot)
 
 }

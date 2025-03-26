@@ -2,103 +2,101 @@
 % Please edit documentation in R/plot_survival.R
 \name{plot_survival}
 \alias{plot_survival}
-\title{Plot Kaplan-Meier Survival Curves}
+\title{Create Kaplan-Meier Survival Plot}
 \usage{
 plot_survival(
-  df,
+  data,
   time_column = "Day",
   censor_column = "Survival_Censor",
   treatment_column = "Treatment",
-  cage_column = "Cage",
   id_column = "ID",
+  cage_column = NULL,
   dose_column = NULL,
   colors = NULL,
-  palette = NULL,
-  palette_indices = NULL,
-  ggtheme = ggplot2::theme_classic(),
-  show_risk_table = TRUE,
-  show_pvalue = FALSE,
-  show_legend = FALSE,
-  legend_title = NULL,
-  risk_table_title = NULL,
-  fix_risk_table_labels = TRUE
+  show_risk_table = FALSE,
+  show_censoring = TRUE,
+  title = NULL,
+  subtitle = NULL,
+  xlab = "Time (Days)",
+  ylab = "Survival Probability",
+  font_size = 12,
+  font_family = "sans",
+  xlim = NULL,
+  ylim = NULL,
+  xbreaks = NULL,
+  ybreaks = NULL
 )
 }
 \arguments{
-\item{df}{A data frame containing survival data.}
+\item{data}{Data frame containing survival data with measurements over time}
 
-\item{time_column}{A string specifying the name of the column representing time to event. Default is "Day".}
+\item{time_column}{Name of column containing time information (default: "Day")}
 
-\item{censor_column}{A string specifying the name of the column indicating censoring (1 = event occurred, 0 = censored). Default is "Survival_Censor".}
+\item{censor_column}{Name of column containing censoring information (1=event/death, 0=censored) (default: "Survival_Censor")}
 
-\item{treatment_column}{A string specifying the name of the column representing treatment groups. Default is "Treatment".}
+\item{treatment_column}{Name of column containing treatment group information (default: "Treatment")}
 
-\item{cage_column}{A string specifying the name of the column with the cage identifier. Default is "Cage".}
+\item{id_column}{Name of column containing individual subject identifiers (default: "ID")}
 
-\item{id_column}{A string specifying the name of the column with the individual mouse identifier. Default is "ID".}
+\item{cage_column}{Optional name of column containing cage identifiers (default: NULL)}
 
-\item{dose_column}{Optional. A string specifying the name of the column with dose information. Default is NULL.}
+\item{dose_column}{Optional name of column containing dose information (default: NULL)}
 
-\item{colors}{Optional. A named vector of colors for each group, or a vector of colors to be assigned to groups in the order they appear. If NULL, default ggplot2 colors are used.}
+\item{colors}{Optional named vector of colors for groups (default: NULL)}
 
-\item{palette}{Optional. A color palette function or vector that can be used with scale_color_manual. If provided, overrides the colors parameter.}
+\item{show_risk_table}{Logical indicating whether to display risk table (default: FALSE)}
 
-\item{palette_indices}{Optional. If providing a palette, these indices specify which palette colors to use for which groups. If NULL, uses colors in order of groups.}
+\item{show_censoring}{Logical indicating whether to show censoring marks (default: TRUE)}
 
-\item{ggtheme}{Optional. A ggplot2 theme to use for the plot. Default is theme_classic().}
+\item{title}{Plot title (default: NULL)}
 
-\item{show_risk_table}{Logical. Whether to display the risk table below the plot. Default is TRUE.}
+\item{subtitle}{Plot subtitle (default: NULL)}
 
-\item{show_pvalue}{Logical. Whether to display the p-value on the plot. Default is FALSE.}
+\item{xlab}{X-axis label (default: "Time (Days)")}
 
-\item{show_legend}{Logical. Whether to display the legend on the plot. Default is FALSE.}
+\item{ylab}{Y-axis label (default: "Survival Probability")}
 
-\item{legend_title}{Character. Title for the legend. Default is NULL (no title).}
+\item{font_size}{Base font size for plot text (default: 12)}
 
-\item{risk_table_title}{Character. Title for the risk table. Default is NULL (no title).}
+\item{font_family}{Font family for plot text (default: "sans")}
+
+\item{xlim}{Optional vector of x-axis limits (default: NULL)}
+
+\item{ylim}{Optional vector of y-axis limits (default: NULL)}
+
+\item{xbreaks}{Optional vector of x-axis breaks (default: NULL)}
+
+\item{ybreaks}{Optional vector of y-axis breaks (default: NULL)}
 }
 \value{
-A Kaplan-Meier survival plot.
+A survminer::ggsurvplot object containing the survival plot and risk table
 }
 \description{
-This function generates Kaplan-Meier survival curves for different treatment groups in the dataset.
+Creates a Kaplan-Meier survival plot from longitudinal tumor growth data.
+The function handles complex data with treatment groups, dose levels, and cage information.
 }
 \examples{
-df <- data.frame(
-  Day = c(10, 20, 30, 40, 50, 60, 70, 80),
-  Survival_Censor = c(1, 0, 1, 1, 0, 1, 0, 1),
-  Treatment = c("Control", "Control", "Drug", "Drug", "Control", "Drug", "Control", "Drug"),
-  Cage = c(1, 1, 2, 2, 1, 2, 1, 2),
-  ID = c("A", "B", "C", "D", "E", "F", "G", "H")
-)
+\dontrun{
+# Basic usage with default parameters
+plot_survival(survival_data)
 
-# Basic usage
-plot_survival(df)
+# Specify custom column names and colors
+plot_survival(survival_data, 
+             time_column = "Time", 
+             censor_column = "Death",
+             treatment_column = "Group",
+             colors = c("Control" = "blue", "Treatment" = "red"))
 
-# With custom colors
-plot_survival(df, colors = c("Control" = "blue", "Drug" = "red"))
-
-# With palette and specific indices
-palette <- c("#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF")
-plot_survival(df, palette = palette, palette_indices = c(2, 4))
-
-# Show legend
-plot_survival(df, show_legend = TRUE, legend_title = "Treatment Group")
-
-# With dose information
-df_with_dose <- data.frame(
-  Day = c(10, 20, 30, 40, 50, 60, 70, 80),
-  Survival_Censor = c(1, 0, 1, 1, 0, 1, 0, 1),
-  Treatment = c("Control", "Control", "Drug", "Drug", "Control", "Drug", "Control", "Drug"),
-  Cage = c(1, 1, 2, 2, 1, 2, 1, 2),
-  ID = c("A", "B", "C", "D", "E", "F", "G", "H"),
-  Dose = c(0, 0, 10, 50, 0, 100, 0, 10)
-)
-
-# Plot with dose information and custom colors
-plot_survival(df_with_dose, dose_column = "Dose", 
-              colors = c("Control - Dose: 0" = "blue", 
-                         "Drug - Dose: 10" = "red", 
-                         "Drug - Dose: 50" = "green", 
-                         "Drug - Dose: 100" = "purple"))
+# Include dose information and risk table with custom axis limits
+plot_survival(dose_data,
+             dose_column = "Dose",
+             show_risk_table = TRUE,
+             title = "Survival by Treatment and Dose",
+             subtitle = "Kaplan-Meier Analysis",
+             xlim = c(0, 100),
+             ylim = c(0, 1),
+             xbreaks = seq(0, 100, by = 20),
+             ybreaks = seq(0, 1, by = 0.2),
+             show_censoring = TRUE)
+}
 }

@@ -40,11 +40,12 @@ analyze_drug_synergy_over_time(
 }
 \value{
 A list containing the following components:
-\itemize{
+\describe{
 \item{timepoint_results}{A list of results at each time point, each containing the outputs from analyze_drug_synergy}
-\item{synergy_trend}{A data frame summarizing synergy metrics across all time points}
-\item{trend_plot}{A ggplot2 object visualizing how synergy changes over time}
-\item{peak_synergy}{Information about when synergy was strongest}
+\item{synergy_summary}{A data frame summarizing synergy metrics across all time points}
+\item{peak_ci_synergy}{Information about when combination index synergy was strongest}
+\item{peak_bliss_synergy}{Information about when Bliss synergy was strongest}
+\item{drug_a_name, drug_b_name, combo_name}{Names of treatment groups for plotting}
 }
 }
 \description{
@@ -63,23 +64,29 @@ including:
 \item Statistical significance of combination advantage over monotherapies
 }
 
-The function generates visualization of synergy trends and identifies when synergy is
-strongest during the course of treatment.
+To visualize the results, use the plot_synergy_trend, plot_combination_index,
+or plot_synergy_combined functions with the output from this function.
 }
 \examples{
 # Analyze synergy over all available time points
+data(combo_treatment_synthetic_data)
+data_processed <- calculate_volume(combo_treatment_synthetic_data)
+data_processed <- calculate_dates(data_processed, start_date = "03/24/2025")
+
 synergy_results <- analyze_drug_synergy_over_time(
-  df = tumor_data,
+  df = data_processed,
   drug_a_name = "Drug A",
   drug_b_name = "Drug B", 
-  combo_name = "Drug A + Drug B",
-  control_name = "Vehicle"
+  combo_name = "Combo",
+  control_name = "Control"
 )
 
-# Print the trend plot
-print(synergy_results$trend_plot)
+# Access synergy metrics at each time point
+print(head(synergy_results$synergy_summary))
+trend_plot <- plot_synergy_trend(synergy_results)
+print(trend_plot)
 
 # Check when synergy was strongest
-print(synergy_results$peak_synergy)
+print(synergy_results$peak_bliss_synergy)
 
 }

@@ -14,8 +14,8 @@ plot_tumor_growth(
   dose_column = NULL,
   survival_column = "Survival_Censor",
   extrapolate_volumes = FALSE,
-  group_summary_line = TRUE,
-  treatment_days = NULL
+  extrapolation_points = "all",
+  group_summary_line = TRUE
 )
 }
 \arguments{
@@ -35,12 +35,11 @@ plot_tumor_growth(
 
 \item{survival_column}{The name of the column indicating survival status (1 for death, 0 for alive)}
 
-\item{extrapolate_volumes}{Boolean. Should missing volumes for mice that have died be extrapolated? Default is FALSE.}
+\item{extrapolate_volumes}{Boolean. Should missing volumes for mice that have died be extrapolated? Extrapolated values are shown with dashed lines. Default is FALSE.}
+
+\item{extrapolation_points}{Character or numeric. Number of data points to use for extrapolation: "all" uses all available data points, a numeric value uses that many recent points, with fallback options if needed. Default is "all".}
 
 \item{group_summary_line}{Boolean. Should a line for the treatment group average be plotted? Default is TRUE.}
-
-\item{treatment_days}{Optional numeric vector. Days on which treatment was administered.
-If provided, arrows will be added below the x-axis to indicate treatment days.}
 }
 \value{
 A ggplot of tumor growth curves colored by treatment group
@@ -60,20 +59,15 @@ plot_tumor_growth(df, treatment_column = "Treatment")
 # Plot with extrapolated volumes for deceased mice
 plot_tumor_growth(df, treatment_column = "Treatment", extrapolate_volumes = TRUE)
 
-# With treatment day indicators
-treatment_schedule <- c(0, 3, 7, 10, 14)  # Treatment on days 0, 3, 7, 10, and 14
-plot_tumor_growth(df, treatment_column = "Treatment", treatment_days = treatment_schedule)
-
 # For data with dose information
 dose_data <- calculate_volume(dose_data)
 dose_data <- calculate_dates(dose_data, start_date = "24-Mar", date_format = "\%d-\%b", year = 2023)
 plot_tumor_growth(dose_data, treatment_column = "Treatment", dose_column = "Dose")
 
-# Combining multiple options: dose information, extrapolation, and treatment days
+# Combining multiple options: dose information and extrapolation
 plot_tumor_growth(dose_data, 
                 treatment_column = "Treatment", 
                 dose_column = "Dose",
-                extrapolate_volumes = TRUE,
-                treatment_days = c(0, 2, 4, 6))
+                extrapolate_volumes = TRUE)
 }
 }

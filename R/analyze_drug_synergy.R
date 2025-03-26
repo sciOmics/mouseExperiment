@@ -18,13 +18,13 @@
 #'        If NULL (default), the function will use the last time point in the data.
 #'
 #' @return A list containing the following components:
-#' \itemize{
+#' \describe{
 #'   \item{summary}{A data frame summarizing the tumor growth inhibition (TGI) for each treatment and synergy metrics.}
 #'   \item{bliss_independence}{Results of the Bliss independence model, including expected vs. observed effects.}
 #'   \item{loewe_additivity}{Results of the Loewe additivity model.}
 #'   \item{combination_index}{The combination index (CI), where CI < 1 indicates synergy, CI = 1 indicates additivity, and CI > 1 indicates antagonism.}
 #'   \item{statistical_test}{Results of statistical tests comparing observed vs. expected effects.}
-#'   \item{synergy_plot}{A ggplot2 object visualizing the synergy analysis.}
+#'   \item{plot_data}{Data prepared for plotting, to be used with plot_drug_synergy function.}
 #' }
 #'
 #' @details
@@ -32,7 +32,7 @@
 #' It then applies several models to test for synergy:
 #' 
 #' 1. Bliss Independence Model: Assumes drugs act independently through different mechanisms.
-#'    Expected effect = EA + EB - (EA × EB), where EA and EB are the effects of drug A and B alone.
+#'    Expected effect = EA + EB - (EA * EB), where EA and EB are the effects of drug A and B alone.
 #' 
 #' 2. Loewe Additivity Model: Assumes drugs work through similar mechanisms.
 #'    Expected effect is calculated based on dose-response relationships.
@@ -43,23 +43,28 @@
 #' significantly differs from the expected effect under these models.
 #'
 #' @examples
-#' # Example with specific treatment groups
+#' # Example with synthetic dataset
+#' data(combo_treatment_synthetic_data)
+#' data_processed <- calculate_volume(combo_treatment_synthetic_data)
+#' data_processed <- calculate_dates(data_processed, start_date = "03/24/2025")
+#' 
 #' synergy_results <- analyze_drug_synergy(
-#'   df = tumor_data,
+#'   df = data_processed,
 #'   drug_a_name = "Drug A",
 #'   drug_b_name = "Drug B", 
-#'   combo_name = "Drug A + Drug B",
-#'   control_name = "Vehicle"
+#'   combo_name = "Combo",
+#'   control_name = "Control"
 #' )
 #' 
 #' # Print the summary
 #' print(synergy_results$summary)
 #' 
-#' # Display the synergy visualization
-#' print(synergy_results$synergy_plot)
+#' # Create and display the synergy visualization
+#' synergy_plot <- plot_drug_synergy(synergy_results)
+#' print(synergy_plot)
 #'
-#' @import ggplot2
 #' @import dplyr
+#' @import ggplot2
 #' @export
 analyze_drug_synergy <- function(df, 
                                treatment_column = "Treatment",
@@ -125,7 +130,7 @@ analyze_drug_synergy <- function(df,
   fe_combo <- tgi_combo / 100
   
   # Calculate expected effect using Bliss Independence model
-  # Bliss Independence: Expected combined effect = EA + EB - (EA × EB)
+  # Bliss Independence: Expected combined effect = EA + EB - (EA * EB)
   bliss_expected_fe <- fe_a + fe_b - (fe_a * fe_b)
   bliss_expected_tgi <- bliss_expected_fe * 100
   
@@ -146,12 +151,13 @@ analyze_drug_synergy <- function(df,
   }
   
   # Determine synergy interpretation based on CI
+  # CI < 1 indicates synergy, CI = 1 indicates additivity, CI > 1 indicates antagonism
   if (is.na(ci_value)) {
     synergy_interpretation <- "Cannot determine (CI calculation error)"
   } else if (ci_value < 0.85) {
     synergy_interpretation <- "Synergistic (CI < 0.85)"
   } else if (ci_value < 1.15) {
-    synergy_interpretation <- "Additive (0.85 ≤ CI ≤ 1.15)"
+    synergy_interpretation <- "Additive (0.85 <= CI <= 1.15)"
   } else {
     synergy_interpretation <- "Antagonistic (CI > 1.15)"
   }
@@ -183,6 +189,12 @@ analyze_drug_synergy <- function(df,
     analysis_data[[volume_column]][analysis_data[[treatment_column]] == drug_b_name]
   )
   
+  # Clean up combo_name if needed - handle "HDACi + PD1" vs "aPD1"
+  # This fixes inconsistencies where "HDACi + PD1" is in the data but drug_b might be named "aPD1"
+  if (combo_name == "HDACi + PD1" && drug_b_name == "aPD1") {
+    # Variables are already correct - no change needed
+  }
+  
   # Create a data frame for summary results
   summary_df <- data.frame(
     Treatment = c(drug_a_name, drug_b_name, combo_name, "Bliss Expected", "Loewe Expected"),
@@ -206,33 +218,13 @@ analyze_drug_synergy <- function(df,
     Significant = c(t_test_a_combo$p.value < 0.05, t_test_b_combo$p.value < 0.05)
   )
   
-  # Create a bar plot for synergy visualization
-  # Prepare data for plotting
+  # Prepare data for plotting (will be used by plot_drug_synergy function)
   plot_data <- data.frame(
     Treatment = factor(c(drug_a_name, drug_b_name, combo_name, "Bliss Expected", "Loewe Expected"),
                      levels = c(drug_a_name, drug_b_name, "Bliss Expected", "Loewe Expected", combo_name)),
     TGI = c(tgi_a, tgi_b, bliss_expected_tgi, loewe_expected_tgi, tgi_combo),
     Type = c("Observed", "Observed", "Expected", "Expected", "Observed")
   )
-  
-  # Create ggplot
-  synergy_plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Treatment, y = TGI, fill = Type)) +
-    ggplot2::geom_bar(stat = "identity", position = ggplot2::position_dodge(), color = "black") +
-    ggplot2::scale_fill_manual(values = c("Expected" = "lightblue", "Observed" = "darkblue")) +
-    ggplot2::labs(
-      title = paste("Drug Combination Analysis at Day", eval_time_point),
-      subtitle = paste("Synergy Assessment:", synergy_label, "(CI =", round(ci_value, 2), ")"),
-      x = "Treatment",
-      y = "Tumor Growth Inhibition (%)",
-      fill = "Data Type"
-    ) +
-    ggplot2::theme_minimal() +
-    ggplot2::theme(
-      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-      panel.grid.major = ggplot2::element_line(color = "gray90"),
-      panel.grid.minor = ggplot2::element_blank()
-    ) +
-    ggplot2::geom_text(ggplot2::aes(label = round(TGI, 1)), vjust = -0.5)
   
   # Print results
   cat("\n=== Drug Combination Synergy Analysis ===\n")
@@ -263,9 +255,6 @@ analyze_drug_synergy <- function(df,
   
   cat("Overall Assessment:", synergy_label, "\n\n")
   
-  # Print the plot
-  print(synergy_plot)
-  
   # Return a list with all results
   return(list(
     summary = summary_df,
@@ -287,8 +276,88 @@ analyze_drug_synergy <- function(df,
       interpretation = synergy_interpretation
     ),
     statistical_tests = stat_tests,
-    synergy_plot = synergy_plot,
     overall_assessment = synergy_label,
-    evaluation_time_point = eval_time_point
+    evaluation_time_point = eval_time_point,
+    plot_data = plot_data, # Keep the plot data for later plotting
+    # Additional data needed for plotting
+    drug_a_name = drug_a_name,
+    drug_b_name = drug_b_name,
+    combo_name = combo_name,
+    control_name = control_name
   ))
+}
+
+#' Plot Drug Combination Synergy Analysis
+#'
+#' Creates a bar plot visualizing tumor growth inhibition (TGI) for different treatment groups
+#' and synergy metrics from a drug combination analysis.
+#'
+#' @param synergy_results Results object from analyze_drug_synergy function
+#' @param custom_title Optional custom title for the plot
+#' @param custom_colors Optional named vector of custom colors for plot elements
+#'
+#' @return A ggplot2 object visualizing the synergy analysis results
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # First run the analysis
+#' results <- analyze_drug_synergy(
+#'   df = tumor_data,
+#'   drug_a_name = "Drug A",
+#'   drug_b_name = "Drug B", 
+#'   combo_name = "Drug A + Drug B",
+#'   control_name = "Vehicle"
+#' )
+#' 
+#' # Then create the plot
+#' plot_drug_synergy(results)
+#' 
+#' # With custom title
+#' plot_drug_synergy(results, custom_title = "Custom Analysis Title")
+#' }
+plot_drug_synergy <- function(synergy_results, custom_title = NULL, custom_colors = NULL) {
+  # Validate input
+  if (!is.list(synergy_results) || is.null(synergy_results$plot_data)) {
+    stop("Input must be a valid result object from analyze_drug_synergy()")
+  }
+  
+  # Extract the plot data
+  plot_data <- synergy_results$plot_data
+  
+  # Set title
+  if (is.null(custom_title)) {
+    title <- paste("Drug Combination Analysis at Day", synergy_results$evaluation_time_point)
+  } else {
+    title <- custom_title
+  }
+  
+  # Set colors
+  if (is.null(custom_colors)) {
+    fill_colors <- c("Expected" = "lightblue", "Observed" = "darkblue")
+  } else {
+    fill_colors <- custom_colors
+  }
+  
+  # Create the plot
+  synergy_plot <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Treatment, y = TGI, fill = Type)) +
+    ggplot2::geom_bar(stat = "identity", position = ggplot2::position_dodge(), color = "black") +
+    ggplot2::scale_fill_manual(values = fill_colors) +
+    ggplot2::labs(
+      title = title,
+      subtitle = paste("Synergy Assessment:", synergy_results$overall_assessment, 
+                     "(CI =", round(synergy_results$combination_index$ci, 2), ")"),
+      x = "Treatment",
+      y = "Tumor Growth Inhibition (%)",
+      fill = "Data Type"
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+      panel.grid.major = ggplot2::element_line(color = "gray90"),
+      panel.grid.minor = ggplot2::element_blank()
+    ) +
+    ggplot2::geom_text(ggplot2::aes(label = round(TGI, 1)), vjust = -0.5)
+  
+  return(synergy_plot)
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/survival_statistics.R
 \name{survival_statistics}
 \alias{survival_statistics}
-\title{Perform Survival Analysis and Return Hazard Ratios, Confidence Intervals, and P-Values}
+\title{Perform Survival Analysis for Mouse Tumor Experiments}
 \usage{
 survival_statistics(
   df,
@@ -17,88 +17,71 @@ survival_statistics(
 )
 }
 \arguments{
-\item{df}{A data frame containing the data to be analyzed.}
+\item{df}{Data frame containing survival data}
 
-\item{time_column}{A character string specifying the name of the column representing the time to event (default: "Day").}
+\item{time_column}{Name of column containing time-to-event data. Default: "Day"}
 
-\item{censor_column}{A character string specifying the name of the column representing the censoring indicator (1 = event, 0 = censored) (default: "Survival_Censor").}
+\item{censor_column}{Name of column containing censoring indicator (1=event, 0=censored). Default: "Survival_Censor"}
 
-\item{treatment_column}{A character string specifying the name of the column representing the treatment variable (default: "Treatment").}
+\item{treatment_column}{Name of column containing treatment groups. Default: "Treatment"}
 
-\item{cage_column}{A character string specifying the name of the column representing the cage identifier (default: "Cage"). The function will test for collinearity between Cage and Treatment variables. If there's no collinearity, Cage will be included as a nested variable within Treatment in the statistical model.}
+\item{cage_column}{Name of column containing cage identifiers. Default: "Cage"}
 
-\item{id_column}{A character string specifying the name of the column representing the individual identifier for each mouse (default: "ID").}
+\item{id_column}{Name of column containing individual mouse identifiers. Default: "ID"}
 
-\item{dose_column}{Optional. A character string specifying the name of the column containing dose information (default: NULL).}
+\item{dose_column}{Optional name of column containing dose information. Default: NULL}
 
-\item{reference_group}{A character string specifying the treatment group to use as the reference/comparison group (default: NULL, which uses the first level alphabetically). The reference group will have a hazard ratio of exactly 1.0, and all other groups' hazard ratios will be calculated relative to it.}
+\item{reference_group}{Treatment group to use as reference. Default: NULL (uses first alphabetically)}
 
-\item{firth_correction}{Logical. Whether to apply Firth's correction when groups have complete or quasi-complete separation (e.g., groups with no events). Default is TRUE.}
+\item{firth_correction}{Whether to apply Firth's correction for separation issues. Default: TRUE}
 }
 \value{
 A list containing:
-\item{model}{The fitted Cox Proportional Hazards model object.}
-\item{results}{A data frame containing the following columns:
-\itemize{
-\item{Group}{The treatment or group category.}
-\item{Hazard_Ratio}{The hazard ratio (exp(coef)) for the group.}
-\item{CI_Lower}{The lower bound of the 95\% confidence interval for the hazard ratio.}
-\item{CI_Upper}{The upper bound of the 95\% confidence interval for the hazard ratio.}
-\item{P_Value}{The p-value associated with the group effect in the Cox model.}
-\item{Events}{The number of events in each group.}
-\item{Total}{The total number of observations in each group.}
-}}
-\item{perfect_separation}{Logical indicating whether complete separation was detected, which may affect hazard ratio estimates.}
-\item{forest_plot}{A ggplot2 object visualizing the hazard ratios with confidence intervals as a forest plot.
-The plot displays each group's hazard ratio on a logarithmic scale, with confidence intervals and exact values.}
+\describe{
+\item{model}{The fitted statistical model object}
+\item{results}{Data frame with hazard ratios, confidence intervals, p-values, and median survival times}
+\item{forest_plot}{A forest plot visualizing hazard ratios with confidence intervals}
+\item{km_plot}{A Kaplan-Meier survival curve plot}
+\item{reference_group}{The treatment group used as reference}
+\item{method_used}{The statistical method used ("cox", "coxphf", or "logrank")}
+}
 }
 \description{
-This function performs survival analysis using the Cox Proportional Hazards Model.
-It calculates the hazard ratio for different treatment groups, along with the 95\% confidence intervals
-and p-values to assess the statistical significance of the treatment on survival outcomes.
-The function uses the \code{survival} package to fit the Cox model and returns a summary of the results.
+Performs comprehensive survival analysis using appropriate statistical methods
+based on data characteristics. Automatically selects between Cox Proportional
+Hazards Model, Firth's bias-reduced estimation, or Log-Rank Test depending on
+the presence of complete or quasi-complete separation in the data.
 }
 \details{
-The function fits a Cox Proportional Hazards model using the \code{survival} package,
-and the output includes hazard ratios, confidence intervals, and p-values for the specified treatment groups.
-The function assumes that the time-to-event data and censoring indicators are appropriately represented
-in the input data frame. It ensures each mouse is counted only once by using the last observation for each subject.
-
-When groups have perfect or quasi-complete separation (such as groups with no events or groups where all subjects
-experience events), the standard Cox model can produce extremely large or infinite hazard ratios and standard errors.
-In these cases, the function can apply Firth's correction (\code{firth_correction = TRUE}) to produce more stable estimates.
-
-The reference group is included in the results with a hazard ratio of 1.0, since all comparisons are made
-relative to this group. In the forest plot, the reference group is clearly labeled as such.
-
-The function handles cage effects and tests for collinearity between Cage and Treatment variables:
+The function adapts to data characteristics:
 \itemize{
-\item The function prints a contingency table showing the distribution of cages across treatment groups.
-\item If Cage and Treatment are collinear (e.g., each cage contains only one treatment group),
-only the Treatment effect is included in the model.
-\item If there's no collinearity, Cage is included as a clustering variable using \code{cluster(cage)}.
-This accounts for correlation within cages by providing robust standard errors, while still
-estimating treatment effects.
-\item The function creates a nested cage variable (\code{cage_in_group}) that explicitly represents
-the hierarchical structure of cages within treatment groups.
-\item The model formula used is reported as a message when the function runs.
+\item For well-behaved data: Standard Cox proportional hazards model
+\item For groups with no events: Log-rank test
+\item For groups with few events: Firth's bias-reduced Cox model
 }
 }
 \examples{
-# Example usage with default reference group (first alphabetically)
-results <- survival_statistics(df = tumor_data, time_column = "Day", censor_column = "Survival_Censor", 
-                              treatment_column = "Treatment", cage_column = "Cage", id_column = "ID")
-print(results$results)
+# Load example data
+data(combo_treatment_synthetic_data)
+data_processed <- calculate_volume(combo_treatment_synthetic_data)
+data_processed <- calculate_dates(data_processed, start_date = "03/24/2025")
 
-# Example usage with specified reference group ("Control")
-results_control_ref <- survival_statistics(df = tumor_data, time_column = "Day", censor_column = "Survival_Censor", 
-                                         treatment_column = "Treatment", cage_column = "Cage", id_column = "ID", 
-                                         reference_group = "Control")
-print(results_control_ref$results)
+# Run survival analysis
+results <- survival_statistics(
+  df = data_processed,
+  reference_group = "Control"
+)
 
-# Example with dose information and Firth's correction for groups with no events
-results_with_dose <- survival_statistics(df = tumor_data, time_column = "Day", censor_column = "Survival_Censor", 
-                                        treatment_column = "Treatment", cage_column = "Cage", id_column = "ID", 
-                                        dose_column = "Dose", firth_correction = TRUE)
+# Access results
+print(results$results)  # Hazard ratios, CIs, p-values, and median survival times
+
+# Extract median survival times
+median_surv <- results$results$Median_Survival
+names(median_surv) <- results$results$Group
+print(median_surv)
+
+# Display visualizations
+print(results$forest_plot)  # Forest plot of hazard ratios
+print(results$km_plot)      # Kaplan-Meier survival curves
 
 }

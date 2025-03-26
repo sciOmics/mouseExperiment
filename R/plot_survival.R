@@ -1,244 +1,253 @@
-#' Plot Kaplan-Meier Survival Curves
+#' Create Kaplan-Meier Survival Plot
 #'
-#' This function generates Kaplan-Meier survival curves for different treatment groups in the dataset.
+#' @description Creates a Kaplan-Meier survival plot from longitudinal tumor growth data.
+#' The function handles complex data with treatment groups, dose levels, and cage information.
 #'
-#' @param df A data frame containing survival data.
-#' @param time_column A string specifying the name of the column representing time to event. Default is "Day".
-#' @param censor_column A string specifying the name of the column indicating censoring (1 = event occurred, 0 = censored). Default is "Survival_Censor".
-#' @param treatment_column A string specifying the name of the column representing treatment groups. Default is "Treatment".
-#' @param cage_column A string specifying the name of the column with the cage identifier. Default is "Cage".
-#' @param id_column A string specifying the name of the column with the individual mouse identifier. Default is "ID".
-#' @param dose_column Optional. A string specifying the name of the column with dose information. Default is NULL.
-#' @param colors Optional. A named vector of colors for each group, or a vector of colors to be assigned to groups in the order they appear. If NULL, default ggplot2 colors are used.
-#' @param palette Optional. A color palette function or vector that can be used with scale_color_manual. If provided, overrides the colors parameter.
-#' @param palette_indices Optional. If providing a palette, these indices specify which palette colors to use for which groups. If NULL, uses colors in order of groups.
-#' @param ggtheme Optional. A ggplot2 theme to use for the plot. Default is theme_classic().
-#' @param show_risk_table Logical. Whether to display the risk table below the plot. Default is TRUE.
-#' @param show_pvalue Logical. Whether to display the p-value on the plot. Default is FALSE.
-#' @param show_legend Logical. Whether to display the legend on the plot. Default is FALSE.
-#' @param legend_title Character. Title for the legend. Default is NULL (no title).
-#' @param risk_table_title Character. Title for the risk table. Default is NULL (no title).
+#' @param data Data frame containing survival data with measurements over time
+#' @param time_column Name of column containing time information (default: "Day")
+#' @param censor_column Name of column containing censoring information (1=event/death, 0=censored) (default: "Survival_Censor")
+#' @param treatment_column Name of column containing treatment group information (default: "Treatment")
+#' @param id_column Name of column containing individual subject identifiers (default: "ID")
+#' @param cage_column Optional name of column containing cage identifiers (default: NULL)
+#' @param dose_column Optional name of column containing dose information (default: NULL)
+#' @param colors Optional named vector of colors for groups (default: NULL)
+#' @param show_risk_table Logical indicating whether to display risk table (default: FALSE)
+#' @param show_censoring Logical indicating whether to show censoring marks (default: TRUE)
+#' @param title Plot title (default: NULL)
+#' @param subtitle Plot subtitle (default: NULL)
+#' @param xlab X-axis label (default: "Time (Days)")
+#' @param ylab Y-axis label (default: "Survival Probability")
+#' @param font_size Base font size for plot text (default: 12)
+#' @param font_family Font family for plot text (default: "sans")
+#' @param xlim Optional vector of x-axis limits (default: NULL)
+#' @param ylim Optional vector of y-axis limits (default: NULL)
+#' @param xbreaks Optional vector of x-axis breaks (default: NULL)
+#' @param ybreaks Optional vector of y-axis breaks (default: NULL)
 #'
-#' @return A Kaplan-Meier survival plot.
-#' @import survival survminer
+#' @return A survminer::ggsurvplot object containing the survival plot and risk table
+#'
+#' @import survival
+#' @import survminer
+#' @import ggplot2
+#'
 #' @export
 #'
 #' @examples
-#' df <- data.frame(
-#'   Day = c(10, 20, 30, 40, 50, 60, 70, 80),
-#'   Survival_Censor = c(1, 0, 1, 1, 0, 1, 0, 1),
-#'   Treatment = c("Control", "Control", "Drug", "Drug", "Control", "Drug", "Control", "Drug"),
-#'   Cage = c(1, 1, 2, 2, 1, 2, 1, 2),
-#'   ID = c("A", "B", "C", "D", "E", "F", "G", "H")
-#' )
+#' \dontrun{
+#' # Basic usage with default parameters
+#' plot_survival(survival_data)
 #'
-#' # Basic usage
-#' plot_survival(df)
-#' 
-#' # With custom colors
-#' plot_survival(df, colors = c("Control" = "blue", "Drug" = "red"))
-#' 
-#' # With palette and specific indices
-#' palette <- c("#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF")
-#' plot_survival(df, palette = palette, palette_indices = c(2, 4))
-#' 
-#' # Show legend
-#' plot_survival(df, show_legend = TRUE, legend_title = "Treatment Group")
-#' 
-#' # With dose information
-#' df_with_dose <- data.frame(
-#'   Day = c(10, 20, 30, 40, 50, 60, 70, 80),
-#'   Survival_Censor = c(1, 0, 1, 1, 0, 1, 0, 1),
-#'   Treatment = c("Control", "Control", "Drug", "Drug", "Control", "Drug", "Control", "Drug"),
-#'   Cage = c(1, 1, 2, 2, 1, 2, 1, 2),
-#'   ID = c("A", "B", "C", "D", "E", "F", "G", "H"),
-#'   Dose = c(0, 0, 10, 50, 0, 100, 0, 10)
-#' )
-#' 
-#' # Plot with dose information and custom colors
-#' plot_survival(df_with_dose, dose_column = "Dose", 
-#'               colors = c("Control - Dose: 0" = "blue", 
-#'                          "Drug - Dose: 10" = "red", 
-#'                          "Drug - Dose: 50" = "green", 
-#'                          "Drug - Dose: 100" = "purple"))
-
-plot_survival = function(df, time_column = "Day", censor_column = "Survival_Censor", 
-                      treatment_column = "Treatment", cage_column = "Cage", id_column = "ID",
-                      dose_column = NULL, colors = NULL, palette = NULL, palette_indices = NULL,
-                      ggtheme = ggplot2::theme_classic(), show_risk_table = TRUE, 
-                      show_pvalue = FALSE, show_legend = FALSE, legend_title = NULL,
-                      risk_table_title = NULL, fix_risk_table_labels = TRUE) {
-
+#' # Specify custom column names and colors
+#' plot_survival(survival_data, 
+#'              time_column = "Time", 
+#'              censor_column = "Death",
+#'              treatment_column = "Group",
+#'              colors = c("Control" = "blue", "Treatment" = "red"))
+#'
+#' # Include dose information and risk table with custom axis limits
+#' plot_survival(dose_data,
+#'              dose_column = "Dose",
+#'              show_risk_table = TRUE,
+#'              title = "Survival by Treatment and Dose",
+#'              subtitle = "Kaplan-Meier Analysis",
+#'              xlim = c(0, 100),
+#'              ylim = c(0, 1),
+#'              xbreaks = seq(0, 100, by = 20),
+#'              ybreaks = seq(0, 1, by = 0.2),
+#'              show_censoring = TRUE)
+#' }
+plot_survival <- function(data,
+                        time_column = "Day",
+                        censor_column = "Survival_Censor",
+                        treatment_column = "Treatment",
+                        id_column = "ID",
+                        cage_column = NULL,
+                        dose_column = NULL,
+                        colors = NULL,
+                        show_risk_table = FALSE,
+                        show_censoring = TRUE,
+                        title = NULL,
+                        subtitle = NULL,
+                        xlab = "Time (Days)",
+                        ylab = "Survival Probability",
+                        font_size = 12,
+                        font_family = "sans",
+                        xlim = NULL,
+                        ylim = NULL,
+                        xbreaks = NULL,
+                        ybreaks = NULL) {
+  
   # Input validation
-  required_columns <- c(time_column, censor_column, treatment_column, cage_column, id_column)
-  missing_cols <- required_columns[!required_columns %in% base::colnames(df)]
+  required_cols <- c(time_column, censor_column, treatment_column, id_column)
+  missing_cols <- setdiff(required_cols, colnames(data))
   
   if (length(missing_cols) > 0) {
-    stop("Missing required columns in the data frame: ", paste(missing_cols, collapse = ", "))
+    stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
   }
   
-  # Check for dose column if specified
-  if (!is.null(dose_column) && !(dose_column %in% base::colnames(df))) {
-    warning(paste("Dose column", dose_column, "not found in data frame, proceeding without dose information"))
+  # Check optional columns
+  if (!is.null(cage_column) && !(cage_column %in% colnames(data))) {
+    warning("Cage column '", cage_column, "' not found, proceeding without cage information")
+    cage_column <- NULL
+  }
+  
+  if (!is.null(dose_column) && !(dose_column %in% colnames(data))) {
+    warning("Dose column '", dose_column, "' not found, proceeding without dose information")
     dose_column <- NULL
   }
   
-  # Create a subject identifier to ensure each mouse is only counted once
-  df$subject_id <- paste(df[[cage_column]], df[[id_column]], sep = "_")
-  
-  # Create a composite group identifier based on Treatment (and Dose if available)
-  if (!is.null(dose_column)) {
-    # Create a group identifier combining Treatment and Dose
-    df$group <- paste(df[[treatment_column]], df[[dose_column]], sep = " - Dose: ")
+  # Create unique subject identifier
+  if (!is.null(cage_column)) {
+    data$subject <- paste(data[[cage_column]], data[[id_column]], sep = ":")
   } else {
-    # Use Treatment as the group identifier
-    df$group <- df[[treatment_column]]
+    data$subject <- data[[id_column]]
   }
   
-  # Aggregate data to subject level - keep only the last time point per subject
-  # First sort by subject_id and time to ensure we get the latest record per subject
-  df <- df[order(df$subject_id, df[[time_column]]), ]
-  
-  # Get the last entry for each subject
-  subjects <- unique(df$subject_id)
-  last_records <- list()
-  
-  for (subject in subjects) {
-    subject_data <- df[df$subject_id == subject, ]
-    last_records[[length(last_records) + 1]] <- subject_data[nrow(subject_data), ]
+  # Create group variable
+  if (!is.null(dose_column)) {
+    data$group <- paste(data[[treatment_column]], " - Dose:", data[[dose_column]])
+  } else {
+    data$group <- data[[treatment_column]]
   }
+  data$group <- factor(data$group)
   
-  # Combine into a single dataframe with one row per subject
-  df_aggregated <- do.call(rbind, last_records)
+  # Get last observation for each subject
+  data <- data[order(data$subject, data[[time_column]]), ]
+  last_obs <- lapply(unique(data$subject), function(s) {
+    subject_data <- data[data$subject == s, ]
+    subject_data[nrow(subject_data), ]
+  })
+  survival_data <- do.call(rbind, last_obs)
   
-  # Create the survival object from the specified columns using the aggregated data
-  survival_time <- df_aggregated[[time_column]]
-  event_status <- df_aggregated[[censor_column]]
-  grouping <- df_aggregated$group
+  # Prepare survival data
+  survival_data$time <- survival_data[[time_column]]
+  survival_data$status <- survival_data[[censor_column]]
   
-  # Create a new data frame with standardized column names
-  analysis_df <- data.frame(
-    time = survival_time,
-    status = event_status,
-    group = grouping
-  )
+  # Fit survival model
+  fit <- survival::survfit(Surv(time, status) ~ group, data = survival_data)
   
-  # Fit the Kaplan-Meier survival curve with a fixed formula
-  surv_fit <- survival::survfit(survival::Surv(time, status) ~ group, data = analysis_df)
-
-  # Set default legend title if not provided
-  if (is.null(legend_title)) {
-    legend_title <- ifelse(!is.null(dose_column), "Treatment and Dose", "Treatment")
-  }
-  
-  # Build the list of plot arguments
+  # Prepare plot arguments
   plot_args <- list(
-    surv_fit,
-    data = analysis_df,
-    pval = show_pvalue,
+    fit,
+    data = survival_data,
+    pval = FALSE,  # Never show p-values
     conf.int = FALSE,
     risk.table = show_risk_table,
-    ggtheme = ggtheme,
-    legend = if(show_legend) "top" else "none",
-    legend.title = legend_title,
-    risk.table.title = risk_table_title,
-    xlab = "Time",
-    ylab = "Survival Probability",
-    tables.height = 0.3,  # Set a reasonable height for the tables
-    risk.table.col = "strata", # Use strata colors
-    # The following options help with risk table label display
-    risk.table.y.text = TRUE,  # Show the y-axis text
-    # Customize the tables theme to properly format y-axis labels
-    tables.theme = ggplot2::theme(
-      # The axis.text.y formatter function doesn't work directly, but we'll fix it later
-      axis.text.y = ggplot2::element_text(hjust = 1, size = 10)
-    )
+    tables.height = 0.25,
+    legend.title = "Group",
+    legend = "left",
+    xlab = xlab,
+    ylab = ylab,
+    risk.table.title = "Number at risk",
+    risk.table.col = "black",
+    risk.table.y.text = TRUE,
+    risk.table.height = 0.25,
+    fontsize = font_size,
+    font.family = font_family,
+    censor = show_censoring,  # Control censoring marks
+    # Risk table theme
+    tables.theme = ggplot2::theme_classic() +
+      ggplot2::theme(
+        axis.text = ggplot2::element_text(size = font_size * 0.7),
+        plot.title = ggplot2::element_text(size = font_size * 0.8),
+        plot.margin = ggplot2::unit(c(0.1, 0.5, 0.1, 0.5), "cm"),
+        axis.title = ggplot2::element_blank(),
+        axis.line = ggplot2::element_line(colour = "black"),
+        panel.grid.major = ggplot2::element_blank(),
+        panel.grid.minor = ggplot2::element_blank(),
+        panel.border = ggplot2::element_blank(),
+        axis.text.x = ggplot2::element_text(size = font_size * 0.7)
+      ),
+    # Main plot theme
+    ggtheme = ggplot2::theme_classic() + 
+      ggplot2::theme(
+        legend.position = "inside",
+        legend.position.inside = c(0.2, 0.2),
+        legend.justification = c(0, 0),
+        legend.background = ggplot2::element_rect(fill = "white", color = NA),
+        legend.key.size = ggplot2::unit(1, "lines"),
+        plot.margin = ggplot2::unit(c(0.5, 0.5, 0.1, 0.5), "cm"),
+        plot.title = ggplot2::element_text(size = font_size * 1.2),
+        plot.subtitle = ggplot2::element_text(size = font_size * 0.9)
+      )
   )
   
-  # Handle coloring based on the provided parameters
-  unique_groups <- unique(analysis_df$group)
+  # Add title and subtitle if provided
+  if (!is.null(title)) {
+    plot_args$title <- title
+  }
+  if (!is.null(subtitle)) {
+    plot_args$subtitle <- subtitle
+  }
   
-  if (!is.null(palette) && !is.null(palette_indices)) {
-    # If palette and indices are provided, use them for specific colors
-    if (length(palette_indices) < length(unique_groups)) {
-      warning("Not enough palette indices provided. Using available indices and reverting to default colors for remaining groups.")
-      # Pad with NULL to let ggsurvplot use default colors for remaining groups
-      color_values <- palette[palette_indices[1:min(length(palette_indices), length(unique_groups))]]
-    } else {
-      # Use the specified indices from the palette
-      color_values <- palette[palette_indices[1:length(unique_groups)]]
-    }
-    # Add color parameter to plot args
-    plot_args$palette <- color_values
+  # Handle custom colors
+  if (!is.null(colors)) {
+    # Get group levels
+    group_levels <- levels(survival_data$group)
     
-    # Print the colors being used for transparency
-    message("Using the following palette colors:")
-    for (i in 1:length(unique_groups)) {
-      if (i <= length(color_values)) {
-        message(paste("  -", unique_groups[i], ":", color_values[i]))
-      } else {
-        message(paste("  -", unique_groups[i], ": default color"))
-      }
+    # If unnamed colors are provided
+    if (is.null(names(colors))) {
+      # Only use as many colors as there are groups
+      colors <- colors[1:min(length(colors), length(group_levels))]
+      # Assign names to the colors
+      names(colors) <- group_levels[1:length(colors)]
     }
     
-  } else if (!is.null(palette)) {
-    # If only palette is provided with no indices, use colors in order
-    if (length(palette) < length(unique_groups)) {
-      warning("Palette has fewer colors than groups. Using available colors and reverting to default colors for remaining groups.")
-    }
-    plot_args$palette <- palette
-    
-  } else if (!is.null(colors)) {
-    # If custom colors are provided
-    if (is.null(names(colors)) && length(colors) >= length(unique_groups)) {
-      # If unnamed vector with enough colors, assign them in order
-      names(colors) <- unique_groups[1:length(colors)]
-    } else if (is.null(names(colors))) {
-      # If unnamed vector with not enough colors, use default
-      warning("Not enough unnamed colors provided. Reverting to default colors.")
-      colors <- NULL
-    } else {
-      # If named vector, check if all groups are covered
-      missing_groups <- setdiff(unique_groups, names(colors))
-      if (length(missing_groups) > 0) {
-        warning("Some groups don't have assigned colors: ", 
-                paste(missing_groups, collapse = ", "), ". Default colors will be used for these groups.")
-      }
+    # Check if any groups are missing colors
+    missing_groups <- setdiff(group_levels, names(colors))
+    if (length(missing_groups) > 0) {
+      warning("Colors not specified for groups: ", 
+              paste(missing_groups, collapse = ", "), 
+              ". Default colors will be used for these.")
     }
     
-    if (!is.null(colors)) {
-      plot_args$palette <- colors
+    # Add the palette to the plot arguments
+    plot_args$palette <- colors
+  }
+  
+  # Create the plot
+  surv_plot <- do.call(survminer::ggsurvplot, plot_args)
+  
+  # Fix risk table labels if shown
+  if (show_risk_table && !is.null(surv_plot$table)) {
+    surv_plot$table <- surv_plot$table + 
+      ggplot2::scale_y_discrete(labels = function(x) gsub("^group=", "", x)) +
+      ggplot2::theme(
+        axis.title.y = ggplot2::element_blank(),
+        axis.title.x = ggplot2::element_blank()
+      )
+  }
+  
+  # Fix legend labels
+  surv_plot$plot <- surv_plot$plot + 
+    ggplot2::scale_color_discrete(labels = function(x) gsub("^group=", "", x)) +
+    ggplot2::scale_fill_discrete(labels = function(x) gsub("^group=", "", x))
+  
+  # Apply axis limits and breaks if provided
+  if (!is.null(xlim)) {
+    surv_plot$plot <- surv_plot$plot + ggplot2::coord_cartesian(xlim = xlim)
+  }
+  if (!is.null(ylim)) {
+    surv_plot$plot <- surv_plot$plot + ggplot2::coord_cartesian(ylim = ylim)
+  }
+  if (!is.null(xbreaks)) {
+    surv_plot$plot <- surv_plot$plot + ggplot2::scale_x_continuous(breaks = xbreaks)
+  }
+  if (!is.null(ybreaks)) {
+    surv_plot$plot <- surv_plot$plot + ggplot2::scale_y_continuous(breaks = ybreaks)
+  }
+  
+  # Ensure risk table colors match plot colors
+  if (show_risk_table && !is.null(surv_plot$table)) {
+    # Don't try to extract colors from the plot as it may cause errors
+    # Instead, use the same palette for both
+    if (!is.null(colors) && length(names(colors)) > 0) {
+      # If we have a named color palette, use it
+      surv_plot$table <- surv_plot$table + 
+        ggplot2::scale_color_manual(values = colors) +
+        ggplot2::scale_fill_manual(values = colors)
     }
   }
   
-  # Add custom formatting function for risk table
-  if (show_risk_table && fix_risk_table_labels) {
-    # Create a clean labels formatter that removes "group=" prefix
-    format_labels <- function(x) gsub("^group=", "", x)
-    
-    # Add this formatter to the survminer arguments
-    plot_args$risk.table.y.text.col = FALSE  # Don't color the text by group
-    plot_args$ylab.tables = list(risk.table = "")  # No title on y-axis in risk table
-    
-    # Create a function to process the ggsurvplot output to fix group labels
-    clean_labels <- function(p) {
-      if (!is.null(p$table) && inherits(p$table, "ggplot")) {
-        p$table <- p$table + 
-          ggplot2::scale_y_discrete(labels = format_labels)
-      }
-      return(p)
-    }
-  } else {
-    # If not fixing labels, just return the plot as is
-    clean_labels <- function(p) p
-  }
-  
-  # Create the plot with the constructed arguments
-  survplot <- do.call(survminer::ggsurvplot, plot_args)
-  
-  # Apply the label cleaning function
-  survplot <- clean_labels(survplot)
-  
-  # Return the survplot object
-  return(survplot)
+  return(surv_plot)
 }
