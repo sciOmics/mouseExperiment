@@ -3,9 +3,10 @@
 
 #' Post-hoc Power Analysis for Tumor Growth Experiments
 #'
-#' @importFrom reshape2 melt
-#' @importFrom reshape2 dcast
+#' @importFrom stats power
+#' @importFrom stats power.t.test
 #'
+#' @description
 #' This function performs a post-hoc power analysis on tumor growth data to determine
 #' if the experiment had sufficient statistical power to detect meaningful treatment effects.
 #' It can use simulation-based or analytical approaches depending on the statistical method.

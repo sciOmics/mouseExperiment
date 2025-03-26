@@ -94,7 +94,9 @@ A list containing the following components:
 }
 }
 \description{
-Analyze Tumor Growth Using Various Statistical Methods
+This function provides a comprehensive statistical analysis for tumor growth data using
+different statistical approaches. It supports multiple methods including linear mixed-effects
+models, generalized additive mixed models, and area under the curve analysis.
 }
 \details{
 This function offers several statistical approaches for analyzing tumor growth data. The choice of model
