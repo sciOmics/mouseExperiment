@@ -90,7 +90,8 @@ survival_statistics <- function(df,
   
   # Check for separation issues
   surv_obj <- survival::Surv(df[[time_column]], df[[censor_column]])
-  cox_formula <- as.formula(paste("surv_obj ~", treatment_column))
+  surv_formula_str <- paste("surv_obj ~", treatment_column)
+  cox_formula <- stats::as.formula(surv_formula_str)
   separation_info <- check_separation(df, treatment_column, censor_column)
   
   # Choose and fit appropriate model
@@ -114,8 +115,9 @@ survival_statistics <- function(df,
   
   # Create a separate survival fit for median survival calculation
   message("\nCalculating median survival times...")
-  surv_formula <- as.formula(paste("Surv(", time_column, ",", censor_column, ") ~ ", 
-                                  treatment_column))
+  surv_formula_str <- paste("Surv(", time_column, ",", censor_column, ") ~ ", 
+                            treatment_column)
+  surv_formula <- stats::as.formula(surv_formula_str)
   km_fit <- survival::survfit(surv_formula, data = df)
   
   # Display median survival information
@@ -147,7 +149,13 @@ survival_statistics <- function(df,
       # Display the median survival times
       message("\nMedian Survival Times:")
       for (i in seq_along(median_survival)) {
-        message(sprintf("%s: %.1f days", names(median_survival)[i], median_survival[i]))
+        group_name <- names(median_survival)[i]
+        med_surv_val <- median_survival[i]
+        if (!is.na(med_surv_val)) {
+          message(sprintf("%s: %.1f days", group_name, med_surv_val))
+        } else {
+          message(sprintf("%s: NA days", group_name))
+        }
       }
     }
   }, error = function(e) {
@@ -166,19 +174,48 @@ survival_statistics <- function(df,
   # Print formatted results
   print_results(results)
   
-  # Create visualization plots
-  km_plot <- create_km_plot(df, surv_obj, cox_formula, treatment_column)
-  forest_plot <- create_forest_plot(results, title = "Hazard Ratios with 95% CIs")
+  # Skip visualization plots for now to avoid formula issues
+  # We'll just return the results data frame
+  tryCatch({
+    # Only create forest plot if the ggplot2 package is available
+    forest_plot <- NULL
+    if (requireNamespace("ggplot2", quietly = TRUE)) {
+      forest_plot <- create_forest_plot(results, title = "Hazard Ratios with 95% CIs")
+    }
+    
+    # Only create KM plot if the survminer package is available
+    km_plot <- NULL
+    if (requireNamespace("survminer", quietly = TRUE)) {
+      km_plot <- tryCatch({
+        create_km_plot(df, time_column, censor_column, treatment_column)
+      }, error = function(e) {
+        message("Error creating Kaplan-Meier plot: ", e$message)
+        NULL
+      })
+    }
+    
+    # Return all results - clean up data structure to avoid formula issues
+    result_list <- list(
+      results = results,
+      reference_group = reference_group,
+      method_used = method_used
+    )
+    
+    # Only add plots if they were successfully created
+    if (!is.null(forest_plot)) result_list$forest_plot <- forest_plot
+    if (!is.null(km_plot)) result_list$km_plot <- km_plot
+    
+  }, error = function(e) {
+    # If any error occurs during visualization, just return the results
+    message("Error in visualization: ", e$message)
+    result_list <- list(
+      results = results,
+      reference_group = reference_group,
+      method_used = method_used
+    )
+  })
   
-  # Return all results
-  return(list(
-    model = model,
-    results = results,
-    forest_plot = forest_plot,
-    km_plot = km_plot,
-    reference_group = reference_group,
-    method_used = method_used
-  ))
+  return(result_list)
 }
 
 #' Validate Required Inputs
@@ -267,8 +304,48 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     message("Using Firth's bias-reduced Cox model: Surv(time, status) ~ group")
     
     results <- tryCatch({
-      fit_firth_model(df, treatment_column, time_column, censor_column, 
-                     treatment_groups, reference_group)
+      # Create analysis data frame with safer group naming
+      # To avoid PD1/aPD1 naming issues
+      analysis_df <- data.frame(
+        time = df[[time_column]],
+        status = df[[censor_column]],
+        group = factor(df[[treatment_column]])
+      )
+      
+      # Fit model using the simplified data frame
+      if (requireNamespace("coxphf", quietly = TRUE)) {
+        model <- coxphf::coxphf(
+          survival::Surv(time, status) ~ group, 
+          data = analysis_df
+        )
+        
+        # Extract results
+        coefs <- model$coefficients
+        hazard_ratios <- exp(coefs)
+        confidence_intervals <- exp(confint(model))
+        p_values <- model$prob
+        
+        # Create results data frame
+        results <- data.frame(
+          Group = treatment_groups,
+          HR = ifelse(treatment_groups == reference_group, 1, hazard_ratios),
+          CI_Lower = ifelse(treatment_groups == reference_group, 1, confidence_intervals[, 1]),
+          CI_Upper = ifelse(treatment_groups == reference_group, 1, confidence_intervals[, 2]),
+          P_Value = ifelse(treatment_groups == reference_group, NA, p_values),
+          stringsAsFactors = FALSE
+        )
+        
+        # Ensure proper ordering
+        results <- results[match(treatment_groups, results$Group), ]
+        rownames(results) <- NULL
+        
+        return(list(
+          model = model,
+          results = results
+        ))
+      } else {
+        stop("Package 'coxphf' is required but not available")
+      }
     }, error = function(e) {
       message("Firth model failed: ", e$message)
       NULL
@@ -325,59 +402,6 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
   ))
 }
 
-#' Fit Firth's Bias-Reduced Cox Model
-#' @noRd
-fit_firth_model <- function(df, treatment_column, time_column, censor_column, 
-                           treatment_groups, reference_group) {
-  if (!requireNamespace("coxphf", quietly = TRUE)) {
-    stop("Package 'coxphf' is required for Firth correction. Please install it.")
-  }
-  
-  # Create a model matrix
-  mm <- stats::model.matrix(~ df[[treatment_column]] - 1)
-  colnames(mm) <- gsub("df\\[\\[treatment_column\\]\\]", "", colnames(mm))
-  
-  # Prepare data and formula
-  df_coxphf <- cbind(df[, c(time_column, censor_column)], mm)
-  var_names <- colnames(mm)
-  formula_str <- paste("survival::Surv(", time_column, ", ", censor_column, ") ~ ", 
-                      paste(var_names, collapse = " + "))
-  coxphf_formula <- as.formula(formula_str)
-  
-  # Fit the model
-  model <- coxphf::coxphf(coxphf_formula, data = df_coxphf)
-  print(model)
-  
-  # Extract results
-  coefs <- model$coefficients
-  hazard_ratios <- exp(coefs)
-  confidence_intervals <- exp(confint(model))
-  p_values <- model$prob
-  
-  # Fix any naming inconsistencies
-  groups <- var_names
-  groups <- gsub("\\bPD1\\b", "aPD1", groups)
-  
-  # Create results data frame
-  results <- data.frame(
-    Group = treatment_groups,
-    HR = ifelse(treatment_groups == reference_group, 1, hazard_ratios),
-    CI_Lower = ifelse(treatment_groups == reference_group, 1, confidence_intervals[, 1]),
-    CI_Upper = ifelse(treatment_groups == reference_group, 1, confidence_intervals[, 2]),
-    P_Value = ifelse(treatment_groups == reference_group, NA, p_values),
-    stringsAsFactors = FALSE
-  )
-  
-  # Ensure proper ordering
-  results <- results[match(treatment_groups, results$Group), ]
-  rownames(results) <- NULL
-  
-  return(list(
-    model = model,
-    results = results
-  ))
-}
-
 #' Extract Results from Standard Cox Model
 #' @noRd
 extract_cox_results <- function(model_summary, treatment_groups, reference_group) {
@@ -387,37 +411,57 @@ extract_cox_results <- function(model_summary, treatment_groups, reference_group
   ci_upper <- exp(model_summary$coefficients[, "coef"] + 1.96 * model_summary$coefficients[, "se(coef)"])
   p_values <- model_summary$coefficients[, "Pr(>|z|)"]
   
-  # Handle group names
-  groups <- names(hazard_ratios)
-  groups <- gsub("\\bPD1\\b", "aPD1", groups)
+  # Get coefficient names without any transformations
+  coef_names <- rownames(model_summary$coefficients)
+  
+  # Create a mapping between coefficient names and treatment groups
+  # Extract the treatment part from coefficient names (remove the column name prefix)
+  treatment_column_prefix <- paste0(names(model_summary$call$formula)[3], "=")
+  extracted_groups <- gsub(treatment_column_prefix, "", coef_names)
   
   # Create results data frame
   results <- data.frame(
     Group = treatment_groups,
-    HR = ifelse(treatment_groups == reference_group, 1, hazard_ratios),
-    CI_Lower = ifelse(treatment_groups == reference_group, 1, ci_lower),
-    CI_Upper = ifelse(treatment_groups == reference_group, 1, ci_upper),
-    P_Value = ifelse(treatment_groups == reference_group, NA, p_values),
+    HR = NA,
+    CI_Lower = NA,
+    CI_Upper = NA,
+    P_Value = NA,
     stringsAsFactors = FALSE
   )
   
-  # Ensure proper ordering
-  results <- results[match(treatment_groups, results$Group), ]
-  rownames(results) <- NULL
+  # Set reference group values
+  ref_idx <- which(results$Group == reference_group)
+  results$HR[ref_idx] <- 1
+  results$CI_Lower[ref_idx] <- 1
+  results$CI_Upper[ref_idx] <- 1
+  
+  # Fill in values for non-reference groups
+  for (i in seq_along(extracted_groups)) {
+    idx <- which(results$Group == extracted_groups[i])
+    if (length(idx) > 0) {
+      results$HR[idx] <- hazard_ratios[i]
+      results$CI_Lower[idx] <- ci_lower[i]
+      results$CI_Upper[idx] <- ci_upper[i]
+      results$P_Value[idx] <- p_values[i]
+    }
+  }
   
   return(results)
 }
 
 #' Create Kaplan-Meier Plot
 #' @noRd
-create_km_plot <- function(df, surv_obj, cox_formula, treatment_column) {
+create_km_plot <- function(df, time_column, censor_column, treatment_column) {
   if (!requireNamespace("survminer", quietly = TRUE)) {
     message("Package 'survminer' not available. Kaplan-Meier plot not created.")
     return(NULL)
   }
   
-  # Create a fit object for the K-M curve
-  km_fit <- survival::survfit(cox_formula, data = df)
+  # Create a fit object for the K-M curve with explicit formula
+  surv_formula_str <- paste("Surv(", time_column, ",", censor_column, ") ~ ", 
+                           treatment_column)
+  surv_formula <- stats::as.formula(surv_formula_str)
+  km_fit <- survival::survfit(surv_formula, data = df)
   
   # Create the K-M plot
   survminer::ggsurvplot(
@@ -450,11 +494,18 @@ print_results <- function(results) {
   for(i in 1:nrow(results)) {
     message(sprintf("\nGroup: %s", results$Group[i]))
     
-    hr_text <- if(is.na(results$HR[i]) || results$HR[i] == 0) {
+    # Safely handle HR values
+    hr_na <- is.na(results$HR[i])
+    ci_lower_na <- is.na(results$CI_Lower[i]) 
+    ci_upper_na <- is.na(results$CI_Upper[i])
+    
+    hr_text <- if(hr_na || (!hr_na && results$HR[i] == 0)) {
       "Hazard Ratio: Not estimable"
     } else {
       sprintf("Hazard Ratio: %.3f (%.3f-%.3f)", 
-             results$HR[i], results$CI_Lower[i], results$CI_Upper[i])
+              results$HR[i], 
+              results$CI_Lower[i], 
+              results$CI_Upper[i])
     }
     message(hr_text)
     
@@ -472,7 +523,7 @@ print_results <- function(results) {
     
     message(sprintf("Events: %d/%d", results$Events[i], results$Total[i]))
     
-    if(results$Note[i] != "") {
+    if(!is.na(results$Note[i]) && results$Note[i] != "") {
       message(sprintf("Note: %s", results$Note[i]))
     }
   }
@@ -483,11 +534,13 @@ print_results <- function(results) {
   formatted_table <- data.frame(
     Group = results$Group,
     "HR (95% CI)" = sapply(1:nrow(results), function(i) {
-      if(is.na(results$HR[i]) || results$HR[i] == 0) {
+      if(is.na(results$HR[i]) || (!is.na(results$HR[i]) && results$HR[i] == 0)) {
         "Not estimable"
       } else {
         sprintf("%.2f (%.2f-%.2f)", 
-               results$HR[i], results$CI_Lower[i], results$CI_Upper[i])
+                results$HR[i], 
+                results$CI_Lower[i], 
+                results$CI_Upper[i])
       }
     }),
     "P-value" = sapply(1:nrow(results), function(i) {
