@@ -51,7 +51,9 @@ A list containing:
 \item{sample_size_recommendations}{Recommended sample sizes to achieve 80\%, 90\%, and 95\% power for each group based on observed effect sizes}
 }
 \description{
-Post-hoc Power Analysis for Tumor Growth Experiments
+This function performs a post-hoc power analysis on tumor growth data to determine
+if the experiment had sufficient statistical power to detect meaningful treatment effects.
+It can use simulation-based or analytical approaches depending on the statistical method.
 }
 \details{
 Post-hoc power analysis estimates the probability of detecting a treatment effect of a given

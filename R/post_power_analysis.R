@@ -3,7 +3,6 @@
 
 #' Post-hoc Power Analysis for Tumor Growth Experiments
 #'
-#' @importFrom stats power
 #' @importFrom stats power.t.test
 #'
 #' @description
