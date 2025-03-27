@@ -16,3 +16,5 @@ All notable changes to the mouseExperiment package will be documented in this fi
 - Fixed model type argument matching to properly handle "lme4" and "auc" types
 - Fixed dataset exports by adding proper documentation and using LazyData: true
 - Added examples for all datasets 
+- Fixed issue with `tumor_growth_statistics` function returning NULL for model object, ANOVA results, and post-hoc tests
+- Fixed posthoc comparison error in `tumor_growth_statistics` function by changing dynamic variable reference to direct variable name 
