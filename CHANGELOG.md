@@ -31,4 +31,9 @@ All notable changes to the mouseExperiment package will be documented in this fi
 - Added support in `plot_auc` for differentiating between extrapolated and non-extrapolated data points (open vs. filled circles)
 - Added configurable error bars to `plot_auc` (none, SEM, SD, or 95% CI)
 - Added option to show/hide mean lines in `plot_auc`
-- Removed dependency on ggpubr for `plot_auc` function 
+- Removed dependency on ggpubr for `plot_auc` function
+- Improved integration between `tumor_growth_statistics` and `plot_auc`:
+  - Updated `calculate_auc` function to directly accept time and volume vectors
+  - Modified AUC result structure for seamless integration with the new plot_auc function
+- Enhanced `tumor_growth_statistics` function:
+  - Improved summary output to provide detailed description of statistical tests and methods used instead of duplicating ANOVA results 
