@@ -631,7 +631,7 @@ tumor_growth_statistics <- function(df,
         
         # Create "posthoc" for backward compatibility
         posthoc <- tryCatch({
-          pairwise <- emmeans::emmeans(model, pairwise ~ get(treatment_column), adjust = "bonferroni")
+          pairwise <- emmeans::emmeans(model, pairwise ~ Treatment, adjust = "bonferroni")
           pairwise
         }, error = function(e) {
           warning("Error creating posthoc comparisons: ", e$message)
@@ -666,7 +666,7 @@ tumor_growth_statistics <- function(df,
       anova = anova_table,
       summary = if (!is.null(model)) summary(model) else NULL,
       pairwise_comparisons = pairwise_comp,
-      posthoc = posthoc,  # Added for backward compatibility
+      posthoc = posthoc,
       treatment_effects = treatment_effects,
       growth_rates = growth_rates,
       cage_analysis = cage_analysis,
