@@ -23,6 +23,8 @@
 #'        If NULL, tries to find 'ID', 'Mouse_ID', or creates a row number. Default is NULL.
 #' @param cage_column Character string specifying the column name for cage identifiers.
 #'        If NULL, tries to find 'Cage', or omits cage information. Default is NULL.
+#' @param group_order Optional vector specifying the order of groups to display in plots.
+#'        If NULL, groups are ordered alphabetically. Default is NULL.
 #'
 #' @return If plot_type is "all", returns a list of ggplot objects. Otherwise, returns a single ggplot object.
 #'
@@ -50,6 +52,9 @@
 #' colors <- c("Control" = "gray", "Treatment A" = "blue", 
 #'            "Treatment B" = "green", "Treatment C" = "red")
 #' plot_auc(auc_data, colors = colors)
+#'
+#' # Specify a custom order for the groups
+#' plot_auc(auc_data, group_order = c("Control", "Treatment B", "Treatment A", "Treatment C"))
 #' }
 #'
 #' @export
@@ -60,7 +65,8 @@ plot_auc <- function(auc_data,
                      comparison_lines = FALSE,
                      comparison_data = NULL,
                      id_column = NULL,
-                     cage_column = NULL) {
+                     cage_column = NULL,
+                     group_order = NULL) {
   
   # Check if required packages are available
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
@@ -133,8 +139,29 @@ plot_auc <- function(auc_data,
                                                   SEM = stats::sd(x)/sqrt(length(x))))
   auc_summary <- do.call(data.frame, auc_summary)
   
-  # Sort by group name for consistency
-  auc_summary <- auc_summary[order(auc_summary$Group), ]
+  # Order groups if specified, otherwise sort by group name for consistency
+  if (is.null(group_order)) {
+    auc_summary <- auc_summary[order(auc_summary$Group), ]
+    group_levels <- unique(auc_data$Group)
+  } else {
+    # Validate group_order
+    if (!all(group_order %in% auc_data$Group)) {
+      missing_groups <- setdiff(group_order, auc_data$Group)
+      warning("Some groups in group_order not found in data: ", 
+              paste(missing_groups, collapse = ", "))
+      group_order <- intersect(group_order, auc_data$Group)
+    }
+    if (length(group_order) < length(unique(auc_data$Group))) {
+      missing_groups <- setdiff(unique(auc_data$Group), group_order)
+      warning("Not all groups specified in group_order. Adding missing groups at the end: ", 
+              paste(missing_groups, collapse = ", "))
+      group_order <- c(group_order, missing_groups)
+    }
+    # Reorder summary based on specified order
+    auc_summary$Group <- factor(auc_summary$Group, levels = group_order)
+    auc_summary <- auc_summary[order(auc_summary$Group), ]
+    group_levels <- group_order
+  }
   
   # Set up colors if provided
   if (!is.null(colors)) {
@@ -160,8 +187,8 @@ plot_auc <- function(auc_data,
   auc_data <- auc_data[order(auc_data$Group, auc_data$AUC), ]
   
   # Set factor levels for consistent ordering
-  auc_data$Group <- factor(auc_data$Group, levels = unique(auc_data$Group))
-  auc_data$Display_ID <- factor(auc_data$Display_ID, levels = unique(auc_data$Display_ID))
+  auc_data$Group <- factor(auc_data$Group, levels = group_levels)
+  auc_data$Display_ID <- factor(auc_data$Display_ID, levels = unique(auc_data$Display_ID[order(auc_data$Group)]))
   
   # Create the plots
   plots <- list()

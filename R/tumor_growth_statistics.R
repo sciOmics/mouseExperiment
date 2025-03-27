@@ -56,7 +56,6 @@
 #'   \item{anova}{ANOVA table for fixed effects with Type III tests}
 #'   \item{summary}{Detailed model summary with parameter estimates}
 #'   \item{pairwise_comparisons}{Results of pairwise comparisons between treatment groups, showing treatment differences, p-values, and confidence intervals}
-#'   \item{posthoc}{Posthoc comparisons results}
 #'   \item{treatment_effects}{Estimated treatment effects on tumor growth, showing adjusted means for each treatment group}
 #'   \item{growth_rates}{Data frame containing growth rates for each subject, calculated as the slope of log-volume over time. Higher values indicate faster tumor growth.}
 #'   \item{cage_analysis}{Analysis of cage effects, including:
@@ -73,14 +72,9 @@
 #'     }
 #'   }
 #'   \item{diagnostics}{Model diagnostic information including residuals, random effects, and variance components}
-#'   \item{auc_analysis}{Area under the curve analysis, including:
-#'     \itemize{
-#'       \item{individual}{Data frame of AUC values for each subject}
-#'       \item{summary}{Summary statistics of AUC values by treatment group}
-#'     }
-#'   }
-#'   \item{data_summary}{Descriptive statistics of the processed data by treatment and time point, including mean, SD, and SEM of volumes}
+#'   \item{auc_data}{Area under the curve data and statistics (when model_type="auc")}
 #'   \item{plots}{List of standard plots for visualizing results}
+#'   \item{data_summary}{Descriptive statistics of the processed data by treatment and time point, including mean, SD, and SEM of volumes}
 #' }
 #'
 #' @details
@@ -246,74 +240,6 @@ tumor_growth_statistics <- function(df,
     if (verbose) cat("Applied square root transformation to volume data\n")
   }
 
-  # Calculate AUC for each subject
-  if (verbose) cat("Calculating AUC for each subject\n")
-  
-  # Calculate AUC for each subject function
-  calculate_auc <- function(subject_data) {
-    # Sort by time
-    subject_data <- subject_data[order(subject_data[[time_column]]), ]
-    
-    if (nrow(subject_data) < 2) {
-      return(NA) # Need at least 2 points for AUC
-    }
-    
-    # Calculate AUC using trapezoidal rule
-    if (auc_method == "trapezoidal") {
-      times <- subject_data[[time_column]]
-      volumes <- subject_data[[volume_column]]
-      
-      # Calculate AUC using trapezoidal rule
-      auc <- 0
-      for (i in 2:length(times)) {
-        dt <- times[i] - times[i-1]
-        auc <- auc + dt * (volumes[i] + volumes[i-1]) / 2
-      }
-      return(auc)
-    } else if (auc_method == "last_observation") {
-      # Last observation carried forward
-      # Simply take the latest time point and its volume
-      latest <- subject_data[which.max(subject_data[[time_column]]), ]
-      return(latest[[volume_column]])
-    }
-  }
-  
-  # Calculate AUC for each subject and collect metadata
-  auc_list <- list()
-  subjects <- unique(auc_df[[id_column]])
-  
-  # Calculate AUC for each subject with metadata
-  for (i in seq_along(subjects)) {
-    s <- subjects[i]
-    subject_data <- auc_df[auc_df[[id_column]] == s, ]
-    
-    # Get the AUC value
-    auc_result <- calculate_auc(subject_data)
-    
-    if (!is.na(auc_result)) {
-      # Store AUC and metadata in list
-      auc_list[[i]] <- data.frame(
-        ID = s,
-        Treatment = unique(subject_data[[treatment_column]]),
-        AUC = as.numeric(auc_result),
-        Last_Day = max(subject_data[[time_column]]),
-        First_Day = min(subject_data[[time_column]]),
-        stringsAsFactors = FALSE
-      )
-    }
-  }
-  
-  # Combine into one data frame
-  auc_data <- do.call(rbind, auc_list)
-  
-  # Calculate summary statistics by treatment group
-  auc_summary <- stats::aggregate(AUC ~ Treatment, data = auc_data, 
-                         FUN = function(x) c(Mean = mean(x, na.rm = TRUE), 
-                                           SD = stats::sd(x, na.rm = TRUE), 
-                                           N = length(x),
-                                           SEM = stats::sd(x, na.rm = TRUE)/sqrt(length(x))))
-  auc_summary <- do.call(data.frame, auc_summary)
-
   # Growth rate analysis
   growth_rates <- tryCatch({
     # Split data by treatment and ID
@@ -416,15 +342,6 @@ tumor_growth_statistics <- function(df,
     if (grepl("boundary", w$message)) {
       warning("Boundary (singular) fit detected in intercept-only model")
     }
-    models$intercept_only <- lme4::lmer(
-      stats::as.formula(paste(volume_column, "~", time_column, "*", treatment_column, "+ (1|", id_column, ")")),
-      data = analysis_df,
-      control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
-                                check.nobs.vs.nRE = "ignore")
-    )
-    return(models$intercept_only)
-  }, error = function(e) {
-    warning("Error in intercept-only model: ", e$message)
     return(NULL)
   })
   
@@ -440,15 +357,6 @@ tumor_growth_statistics <- function(df,
     if (grepl("boundary", w$message)) {
       warning("Boundary (singular) fit detected in random slope model")
     }
-    models$random_slope <- lme4::lmer(
-      stats::as.formula(paste(volume_column, "~", time_column, "*", treatment_column, "+ (", time_column, "|", id_column, ")")),
-      data = analysis_df,
-      control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
-                                check.nobs.vs.nRE = "ignore")
-    )
-    return(models$random_slope)
-  }, error = function(e) {
-    warning("Error in random slope model: ", e$message)
     return(NULL)
   })
   
@@ -463,7 +371,6 @@ tumor_growth_statistics <- function(df,
     # Select best model based on BIC (more conservative)
     best_model <- names(which.min(model_selection$bic))
     model <- models[[best_model]]
-    model_selection$selected_model <- best_model
     
     if (verbose) {
       cat("Model selection results:\n")
@@ -473,29 +380,21 @@ tumor_growth_statistics <- function(df,
     }
   } else {
     warning("No valid models could be fitted. Using intercept-only model as fallback.")
-    model <- tryCatch({
-      lme4::lmer(
-        stats::as.formula(paste(volume_column, "~", time_column, "*", treatment_column, "+ (1|", id_column, ")")),
-        data = analysis_df,
-        control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
-                                   check.nobs.vs.nRE = "ignore")
-      )
-    }, error = function(e) {
-      warning("Error in fallback model: ", e$message)
-      NULL
-    })
-    
-    if (!is.null(model)) {
-      model_selection$aic <- stats::AIC(model)
-      model_selection$bic <- stats::BIC(model)
-      model_selection$selected_model <- "intercept_only"
-    }
+    model <- lme4::lmer(
+      stats::as.formula(paste(volume_column, "~", time_column, "*", treatment_column, "+ (1|", id_column, ")")),
+      data = analysis_df,
+      control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
+                                check.nobs.vs.nRE = "ignore")
+    )
+    model_selection$aic <- stats::AIC(model)
+    model_selection$bic <- stats::BIC(model)
+    model_selection$selected_model <- "intercept_only"
   }
 
   # Diagnostic plots
   diagnostics <- list()
   
-  if (include_diagnostics && !is.null(model)) {
+  if (include_diagnostics) {
     # Residual plots
     diagnostics$residuals <- list(
       fitted = stats::fitted(model),
@@ -505,13 +404,11 @@ tumor_growth_statistics <- function(df,
     
     # Random effects plots
     diagnostics$random_effects <- list(
-      intercepts = lme4::ranef(model)[[id_column]]
+      intercepts = lme4::ranef(model)[[id_column]],
+      slopes = if (best_model == "random_slope") {
+        lme4::ranef(model)[[id_column]][, 2]
+      } else NULL
     )
-    
-    # Add slopes if we have a random slope model
-    if (exists("best_model") && best_model == "random_slope") {
-      diagnostics$random_effects$slopes <- lme4::ranef(model)[[id_column]][, 2]
-    }
     
     # Variance components
     diagnostics$variance_components <- lme4::VarCorr(model)
@@ -554,94 +451,218 @@ tumor_growth_statistics <- function(df,
     NULL
   })
 
-  # Construct formula based on model type and specifications
-  if (model_type == "lme4" && !is.null(model)) {
-    # Create ANOVA table
-    anova_table <- tryCatch({
-      if (requireNamespace("car", quietly = TRUE)) {
-        car::Anova(model, type = "III")
-      } else {
-        stats::anova(model)
-        warning("Package 'car' not available. Using stats::anova instead of Type III tests.")
-      }
-    }, error = function(e) {
-      warning("Error creating ANOVA table: ", e$message)
-      NULL
-    })
-
-    # Create pairwise comparisons
-    pairwise_comp <- NULL
-    treatment_effects <- NULL
+  # Only for auc model type or when additional AUC analysis is requested
+  if (model_type == "auc" || (model_type == "lme4" && include_diagnostics)) {
+    # Calculate AUC for each subject
+    if (verbose) cat("Calculating AUC for each subject\n")
     
+    # Calculate AUC for each subject function
+    calculate_auc <- function(subject_data) {
+      # Sort by time
+      subject_data <- subject_data[order(subject_data[[time_column]]), ]
+      
+      if (nrow(subject_data) < 2) {
+        return(NA) # Need at least 2 points for AUC
+      }
+      
+      # Calculate AUC using trapezoidal rule
+      if (auc_method == "trapezoidal") {
+        times <- subject_data[[time_column]]
+        volumes <- subject_data[[volume_column]]
+        
+        # Calculate AUC using trapezoidal rule
+        auc <- 0
+        for (i in 2:length(times)) {
+          dt <- times[i] - times[i-1]
+          auc <- auc + dt * (volumes[i] + volumes[i-1]) / 2
+        }
+        return(auc)
+      } else if (auc_method == "last_observation") {
+        # Last observation carried forward
+        # Simply take the latest time point and its volume
+        latest <- subject_data[which.max(subject_data[[time_column]]), ]
+        return(latest[[volume_column]])
+      }
+    }
+    
+    # Calculate AUC for each subject and collect metadata
+    auc_list <- list()
+    subjects <- unique(auc_df[[id_column]])
+    
+    # Calculate AUC for each subject with metadata
+    for (i in seq_along(subjects)) {
+      s <- subjects[i]
+      subject_data <- auc_df[auc_df[[id_column]] == s, ]
+      
+      # Get the AUC value
+      auc_result <- calculate_auc(subject_data)
+      
+      if (!is.na(auc_result)) {
+        # Store AUC and metadata in list
+        auc_list[[i]] <- data.frame(
+          ID = s,
+          Treatment = unique(subject_data[[treatment_column]]),
+          Group = unique(subject_data[[treatment_column]]), # Add Group column for plot_auc compatibility
+          AUC = as.numeric(auc_result),
+          Last_Day = max(subject_data[[time_column]]),
+          First_Day = min(subject_data[[time_column]]),
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+    
+    # Combine into a single data frame
+    individual_auc <- do.call(rbind, auc_list)
+    
+    # Calculate summary statistics
+    auc_summary <- stats::aggregate(AUC ~ Treatment, data = individual_auc, 
+                                  FUN = function(x) c(Mean = mean(x), 
+                                                    SD = stats::sd(x), 
+                                                    N = length(x),
+                                                    SEM = stats::sd(x)/sqrt(length(x))))
+    auc_summary <- do.call(data.frame, auc_summary)
+    
+    # Create the AUC analysis list
+    auc_analysis <- list(
+      individual = individual_auc,
+      summary = auc_summary
+    )
+  }
+
+  # For the AUC model type
+  if (model_type == "auc") {
+    # Create ANOVA model for AUC
+    auc_model <- stats::aov(AUC ~ Treatment, data = auc_analysis$individual)
+    anova_table <- stats::anova(auc_model)
+    
+    # Create pairwise comparisons for AUC
     if (requireNamespace("emmeans", quietly = TRUE)) {
-      # Set up emmeans with reference group, averaging over time points
-      lsmeans_obj <- tryCatch({
-        emmeans::emmeans(model, specs = treatment_column, at = list(Day = mean(analysis_df$Day)))
+      # Create "posthoc" for backward compatibility
+      posthoc <- tryCatch({
+        pairwise <- emmeans::emmeans(auc_model, pairwise ~ Treatment, adjust = "bonferroni")
+        pairwise
       }, error = function(e) {
-        warning("Error creating emmeans object: ", e$message)
+        warning("Error creating posthoc comparisons: ", e$message)
         NULL
       })
-
-      if (!is.null(lsmeans_obj)) {
-        # Extract treatment effects
-        emm_summary <- summary(lsmeans_obj)
-        treatment_effects <- data.frame(
-          Group = emm_summary[[treatment_column]],
-          Adjusted_Mean = emm_summary$emmean,
-          SE = emm_summary$SE,
-          DF = emm_summary$df,
-          Lower_CL = emm_summary$lower.CL,
-          Upper_CL = emm_summary$upper.CL
+      
+      # Extract treatment effects from AUC
+      treatment_effects <- data.frame(
+        Group = auc_summary$Treatment,
+        Adjusted_Mean = auc_summary$AUC.Mean,
+        SE = auc_summary$AUC.SEM,
+        Lower_CL = auc_summary$AUC.Mean - 1.96 * auc_summary$AUC.SEM,
+        Upper_CL = auc_summary$AUC.Mean + 1.96 * auc_summary$AUC.SEM,
+        stringsAsFactors = FALSE
+      )
+      
+      # Add reference group note
+      treatment_effects$Note <- ifelse(treatment_effects$Group == reference_group, "Reference group", "")
+      
+      # Reorder to put reference group first
+      ref_idx <- which(treatment_effects$Group == reference_group)
+      if (ref_idx > 1) {
+        treatment_effects <- rbind(
+          treatment_effects[ref_idx, ],
+          treatment_effects[-ref_idx, ]
         )
-
-        # Add reference group note
-        treatment_effects$Note <- ifelse(treatment_effects$Group == reference_group, "Reference group", "")
-
-        # Reorder treatment effects to put reference group first
-        ref_idx <- which(treatment_effects$Group == reference_group)
-        if (ref_idx > 1) {
-          treatment_effects <- rbind(
-            treatment_effects[ref_idx, ],
-            treatment_effects[-ref_idx, ]
-          )
-        }
-
-        # Format numeric columns
-        treatment_effects$Adjusted_Mean <- round(treatment_effects$Adjusted_Mean, 3)
-        treatment_effects$SE <- round(treatment_effects$SE, 3)
-        treatment_effects$Lower_CL <- round(treatment_effects$Lower_CL, 3)
-        treatment_effects$Upper_CL <- round(treatment_effects$Upper_CL, 3)
-
-        # Create contrasts with reference group
-        contrasts <- list()
-        other_groups <- setdiff(treatment_groups, reference_group)
-        for (group in other_groups) {
-          contrast_coef <- numeric(length(treatment_groups))
-          ref_idx <- which(treatment_groups == reference_group)
-          group_idx <- which(treatment_groups == group)
-          contrast_coef[ref_idx] <- -1
-          contrast_coef[group_idx] <- 1
-          contrasts[[paste(group, "-", reference_group)]] <- contrast_coef
-        }
-
-        # Calculate pairwise comparisons
-        pairwise_comp <- tryCatch({
-          emmeans::contrast(lsmeans_obj, method = contrasts)
-        }, error = function(e) {
-          warning("Error creating contrast object: ", e$message)
-          NULL
-        })
-        
-        # Create "posthoc" for backward compatibility
-        posthoc <- tryCatch({
-          pairwise <- emmeans::emmeans(model, pairwise ~ Treatment, adjust = "bonferroni")
-          pairwise
-        }, error = function(e) {
-          warning("Error creating posthoc comparisons: ", e$message)
-          NULL
-        })
       }
     } else {
+      posthoc <- NULL
+      treatment_effects <- NULL
+      warning("Package 'emmeans' not available. Pairwise comparisons not calculated.")
+    }
+    
+    # Create diagnostic plots
+    if (include_diagnostics) {
+      # Residual plots for AUC model
+      diagnostics <- list(
+        residuals = list(
+          fitted = stats::fitted(auc_model),
+          residuals = stats::residuals(auc_model),
+          qq_plot = stats::qqnorm(stats::residuals(auc_model))
+        )
+      )
+    } else {
+      diagnostics <- NULL
+    }
+    
+    # Return results for AUC model
+    results <- list(
+      model = if (return_model) auc_model else NULL,
+      anova = anova_table,
+      summary = summary(auc_model),
+      posthoc = posthoc,
+      treatment_effects = treatment_effects,
+      growth_rates = growth_rates,
+      cage_analysis = cage_analysis,
+      auc_analysis = auc_analysis,
+      data_summary = data_summary,
+      diagnostics = diagnostics
+    )
+    
+    return(results)
+  } else {
+    # Create ANOVA table
+    if (requireNamespace("car", quietly = TRUE)) {
+      anova_table <- car::Anova(model, type = "III")
+    } else {
+      anova_table <- stats::anova(model)
+      warning("Package 'car' not available. Using stats::anova instead of Type III tests.")
+    }
+
+    # Create pairwise comparisons
+    if (requireNamespace("emmeans", quietly = TRUE)) {
+      # Set up emmeans with reference group, averaging over time points
+      lsmeans_obj <- emmeans::emmeans(model, specs = treatment_column, at = list(Day = mean(analysis_df$Day)))
+
+      # Extract treatment effects
+      emm_summary <- summary(lsmeans_obj)
+      treatment_effects <- data.frame(
+        Group = emm_summary[[treatment_column]],
+        Adjusted_Mean = emm_summary$emmean,
+        SE = emm_summary$SE,
+        DF = emm_summary$df,
+        Lower_CL = emm_summary$lower.CL,
+        Upper_CL = emm_summary$upper.CL
+      )
+
+      # Add reference group note
+      treatment_effects$Note <- ifelse(treatment_effects$Group == reference_group, "Reference group", "")
+
+      # Reorder treatment effects to put reference group first
+      ref_idx <- which(treatment_effects$Group == reference_group)
+      if (ref_idx > 1) {
+        treatment_effects <- rbind(
+          treatment_effects[ref_idx, ],
+          treatment_effects[-ref_idx, ]
+        )
+      }
+
+      # Format numeric columns
+      treatment_effects$Adjusted_Mean <- round(treatment_effects$Adjusted_Mean, 3)
+      treatment_effects$SE <- round(treatment_effects$SE, 3)
+      treatment_effects$Lower_CL <- round(treatment_effects$Lower_CL, 3)
+      treatment_effects$Upper_CL <- round(treatment_effects$Upper_CL, 3)
+
+      # Create contrasts with reference group
+      contrasts <- list()
+      other_groups <- setdiff(treatment_groups, reference_group)
+      for (group in other_groups) {
+        contrast_coef <- numeric(length(treatment_groups))
+        ref_idx <- which(treatment_groups == reference_group)
+        group_idx <- which(treatment_groups == group)
+        contrast_coef[ref_idx] <- -1
+        contrast_coef[group_idx] <- 1
+        contrasts[[paste(group, "-", reference_group)]] <- contrast_coef
+      }
+
+      # Calculate pairwise comparisons
+      pairwise_comp <- emmeans::contrast(lsmeans_obj, method = contrasts)
+
+    } else {
+      pairwise_comp <- NULL
+      treatment_effects <- NULL
       warning("Package 'emmeans' not available. Pairwise comparisons and treatment effects not calculated.")
     }
 
@@ -667,79 +688,17 @@ tumor_growth_statistics <- function(df,
     results <- list(
       model = if (return_model) model else NULL,
       anova = anova_table,
-      summary = if (!is.null(model)) summary(model) else NULL,
+      summary = summary(model),
       pairwise_comparisons = pairwise_comp,
-      posthoc = posthoc,
       treatment_effects = treatment_effects,
       growth_rates = growth_rates,
       cage_analysis = cage_analysis,
       model_selection = model_selection,
       diagnostics = if (include_diagnostics) diagnostics else NULL,
-      auc_analysis = list(  # Add AUC analysis from previous implementation
-        individual = auc_data,
-        summary = auc_summary
-      ),
       data_summary = data_summary,
       plots = plots_list
     )
 
-    return(results)
-  } else if (model_type == "auc") {
-    # Perform AUC-specific analysis
-    
-    # One-way ANOVA on AUC values
-    anova_model <- tryCatch({
-      stats::aov(AUC ~ Treatment, data = auc_data)
-    }, error = function(e) {
-      warning("Error in AUC ANOVA: ", e$message)
-      NULL
-    })
-    
-    # Extract ANOVA table
-    anova_table <- if (!is.null(anova_model)) {
-      stats::anova(anova_model)
-    } else {
-      NULL
-    }
-    
-    # Pairwise t-tests with Bonferroni correction
-    posthoc <- tryCatch({
-      stats::pairwise.t.test(auc_data$AUC, auc_data$Treatment, p.adjust.method = "bonferroni")
-    }, error = function(e) {
-      warning("Error in pairwise t-tests: ", e$message)
-      NULL
-    })
-    
-    # Return the results
-    results <- list(
-      model = if (return_model) anova_model else NULL,
-      anova = anova_table,
-      summary = if (!is.null(anova_model)) summary(anova_model) else NULL,
-      posthoc = posthoc,
-      growth_rates = growth_rates,
-      cage_analysis = cage_analysis,
-      auc_analysis = list(
-        individual = auc_data,
-        summary = auc_summary
-      ),
-      data_summary = data_summary
-    )
-    
-    return(results)
-  } else {
-    # Fallback with basic information
-    warning("Could not create statistical model. Returning basic analysis only.")
-    results <- list(
-      model = NULL,
-      anova = NULL,
-      growth_rates = growth_rates,
-      cage_analysis = cage_analysis,
-      auc_analysis = list(
-        individual = auc_data,
-        summary = auc_summary
-      ),
-      data_summary = data_summary
-    )
     return(results)
   }
 }
