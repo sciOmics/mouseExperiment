@@ -232,7 +232,10 @@ tumor_growth_statistics <- function(df,
   
   # Create a copy of the data for analysis
   analysis_df <- df
-
+  
+  # Create a copy for AUC calculation before transformation
+  auc_df <- df
+  
   # Apply transformations if needed
   if (transform == "log") {
     # Add a small constant to avoid log(0) issues
@@ -277,12 +280,12 @@ tumor_growth_statistics <- function(df,
   
   # Calculate AUC for each subject and collect metadata
   auc_list <- list()
-  subjects <- unique(analysis_df[[id_column]])
+  subjects <- unique(auc_df[[id_column]])
   
   # Calculate AUC for each subject with metadata
   for (i in seq_along(subjects)) {
     s <- subjects[i]
-    subject_data <- analysis_df[analysis_df[[id_column]] == s, ]
+    subject_data <- auc_df[auc_df[[id_column]] == s, ]
     
     # Get the AUC value
     auc_result <- calculate_auc(subject_data)
