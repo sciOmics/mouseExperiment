@@ -18,4 +18,8 @@ All notable changes to the mouseExperiment package will be documented in this fi
 - Added examples for all datasets 
 - Fixed issue with `tumor_growth_statistics` function returning NULL for model object, ANOVA results, and post-hoc tests
 - Fixed posthoc comparison error in `tumor_growth_statistics` function by changing dynamic variable reference to direct variable name 
-- Fixed AUC calculation in `tumor_growth_statistics` to use original untransformed volume data instead of log-transformed data 
+- Fixed AUC calculation in `tumor_growth_statistics` to use original untransformed volume data instead of log-transformed data
+- Enhanced integration between `tumor_growth_statistics` and `plot_auc` functions:
+  - Added Group column to AUC data for compatibility with plot_auc
+  - Added group_order parameter to plot_auc to control the order of treatment groups in plots 
+  - Improved implementation of "auc" model_type 
