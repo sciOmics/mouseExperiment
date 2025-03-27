@@ -25,6 +25,7 @@ All notable changes to the mouseExperiment package will be documented in this fi
   - Improved implementation of "auc" model_type
 - Fixed AUC calculation to use composite IDs that combine subject ID and treatment group, ensuring correct AUC values for each unique subject-treatment combination 
 - Fixed `plot_auc` function error where `is.named()` function was called but not defined
+- Fixed event counting bug in `survival_statistics` function where event totals were incorrectly calculated when generating the formatted summary table
 
 ### Changed
 - Simplified `plot_auc` function to focus on a single scatterplot showing individual data points by treatment group

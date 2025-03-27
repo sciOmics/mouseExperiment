@@ -546,7 +546,9 @@ print_results <- function(results) {
     "P-value" = sapply(1:nrow(results), function(i) {
       ifelse(is.na(results$P_Value[i]), "Ref", sprintf("%.4f", results$P_Value[i]))
     }),
-    "Events/Total" = sprintf("%d/%d", results$Events, results$Total),
+    "Events/Total" = sapply(1:nrow(results), function(i) {
+      sprintf("%d/%d", results$Events[i], results$Total[i])
+    }),
     stringsAsFactors = FALSE
   )
   
