@@ -521,7 +521,7 @@ tumor_growth_statistics <- function(df,
     )
   }
 
-  # For the AUC model type
+  # Return the results for AUC model
   if (model_type == "auc") {
     # Create ANOVA model for AUC
     auc_model <- stats::aov(AUC ~ Treatment, data = auc_analysis$individual)
@@ -579,11 +579,33 @@ tumor_growth_statistics <- function(df,
       diagnostics <- NULL
     }
     
+    # Create a descriptive summary
+    analysis_summary <- list(
+      analysis_type = "Area Under the Curve (AUC) Analysis",
+      data_description = list(
+        subjects = length(unique(auc_df[[id_column]])),
+        treatment_groups = length(unique(auc_df[[treatment_column]])),
+        time_points = length(unique(auc_df[[time_column]])),
+        reference_group = reference_group
+      ),
+      methods = list(
+        volume_transformation = transform,
+        auc_calculation_method = auc_method,
+        statistical_test = "One-way ANOVA on AUC values",
+        posthoc_method = if(!is.null(posthoc)) "Pairwise comparisons with Bonferroni adjustment" else NA,
+        individual_calculation = paste("AUC calculated using", auc_method, "method for each subject")
+      ),
+      notes = c(
+        if(transform != "none") paste("Volume data was", transform, "transformed prior to analysis") else "No transformation applied to volume data",
+        "Composite IDs were created by combining subject ID and treatment group to ensure correct AUC values"
+      )
+    )
+    
     # Return results for AUC model
     results <- list(
       model = if (return_model) auc_model else NULL,
       anova = anova_table,
-      summary = summary(auc_model),
+      summary = analysis_summary,
       posthoc = posthoc,
       treatment_effects = treatment_effects,
       growth_rates = growth_rates,
@@ -598,8 +620,10 @@ tumor_growth_statistics <- function(df,
     # Create ANOVA table
     if (requireNamespace("car", quietly = TRUE)) {
       anova_table <- car::Anova(model, type = "III")
+      anova_type <- "Type III ANOVA (car package)"
     } else {
       anova_table <- stats::anova(model)
+      anova_type <- "ANOVA (stats package)"
       warning("Package 'car' not available. Using stats::anova instead of Type III tests.")
     }
 
@@ -651,10 +675,13 @@ tumor_growth_statistics <- function(df,
 
       # Calculate pairwise comparisons
       pairwise_comp <- emmeans::contrast(lsmeans_obj, method = contrasts)
+      
+      posthoc_method <- "Estimated marginal means with pairwise contrasts"
 
     } else {
       pairwise_comp <- NULL
       treatment_effects <- NULL
+      posthoc_method <- NA
       warning("Package 'emmeans' not available. Pairwise comparisons and treatment effects not calculated.")
     }
 
@@ -675,12 +702,49 @@ tumor_growth_statistics <- function(df,
     } else {
       plots_list <- NULL
     }
+    
+    # Create a descriptive summary
+    analysis_summary <- list(
+      analysis_type = "Linear Mixed Effects Model Analysis",
+      data_description = list(
+        subjects = length(unique(analysis_df[[id_column]])),
+        treatment_groups = length(unique(analysis_df[[treatment_column]])),
+        time_points = length(unique(analysis_df[[time_column]])),
+        reference_group = reference_group
+      ),
+      model_specification = list(
+        fixed_effects = paste(volume_column, "~", time_column, "*", treatment_column),
+        random_effects = switch(random_effects_specification,
+                               "intercept_only" = paste("(1|", id_column, ")"),
+                               "slope" = paste("(", time_column, "|", id_column, ")"),
+                               "none" = "None"),
+        polynomial_degree = polynomial_degree,
+        cage_effects = handle_cage_effects
+      ),
+      model_selection = list(
+        criteria = "Model selected based on minimum BIC",
+        selected_model = if(!is.null(model_selection$selected_model)) model_selection$selected_model else "Default model",
+        models_compared = if(!is.null(model_selection$bic)) names(model_selection$bic) else "None"
+      ),
+      methods = list(
+        volume_transformation = transform,
+        anova_method = anova_type,
+        posthoc_method = posthoc_method,
+        growth_rate_calculation = "Calculated as the slope of log-volume over time for each subject"
+      ),
+      notes = c(
+        if(transform != "none") paste("Volume data was", transform, "transformed prior to analysis") else "No transformation applied to volume data",
+        if(!is.null(cage_analysis$collinearity_test)) {
+          paste("Cage-treatment collinearity test p-value:", format(cage_analysis$collinearity_test$p.value, digits=4))
+        } else "No cage collinearity test performed"
+      )
+    )
 
     # Return the results
     results <- list(
       model = if (return_model) model else NULL,
       anova = anova_table,
-      summary = summary(model),
+      summary = analysis_summary,
       pairwise_comparisons = pairwise_comp,
       treatment_effects = treatment_effects,
       growth_rates = growth_rates,
