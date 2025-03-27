@@ -18,3 +18,4 @@ All notable changes to the mouseExperiment package will be documented in this fi
 - Added examples for all datasets 
 - Fixed issue with `tumor_growth_statistics` function returning NULL for model object, ANOVA results, and post-hoc tests
 - Fixed posthoc comparison error in `tumor_growth_statistics` function by changing dynamic variable reference to direct variable name 
+- Fixed AUC calculation in `tumor_growth_statistics` to use original untransformed volume data instead of log-transformed data 
