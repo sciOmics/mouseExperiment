@@ -1,102 +1,110 @@
-# Copyright (c) 2025 Insight BioAnalytics. All rights reserved.
-# Proprietary and confidential.
 
-#' Test dataset
-#'
-#' A simple dataset for testing the package
-#'
-#' @format A data frame with 10 rows and 2 columns:
+#' Synthetic tumor growth data
+#' 
+#' A dataset containing synthetic tumor volume measurements over time
+#' for different treatment groups.
+#' 
+#' @format A data frame with 120 rows and 7 variables:
 #' \describe{
-#'   \item{ID}{Row identifier}
-#'   \item{Value}{Test value}
+#'   \item{Mouse_ID}{Mouse identifier, with format M followed by a number}
+#'   \item{Day}{Day of measurement, starting from day 0}
+#'   \item{Treatment}{Treatment group (Control, Treatment A, Treatment B)}
+#'   \item{Volume}{Tumor volume measurement}
+#'   \item{Group}{Same as Treatment, an alternative name for the treatment group}
+#'   \item{ID}{Numeric identifier for the mouse, without the "M" prefix}
+#'   \item{Cage}{Cage number where the mouse is housed}
 #' }
-#' @source Simulated data
-#' @export
-"my_data"
-
-#' Synthetic data for tumor growth analysis
-#'
-#' A dataset containing simulated measurements from a mouse tumor growth experiment
-#'
-#' @format A data frame with 120 observations of 6 variables:
-#'   \describe{
-#'     \item{Date}{Date of measurement}
-#'     \item{Group}{Treatment group identifier}
-#'     \item{ID}{Mouse ID number}
-#'     \item{Length}{Tumor length measurement in mm}
-#'     \item{Width}{Tumor width measurement in mm}
-#'     \item{Survival_Censor}{Binary indicator for survival analysis (1=event occurred, 0=censored)}
-#'   }
-#'
-#' @source {Simulated data for illustration purposes}
-#' @export
+#' @source Synthetic data generated using random number generation
+#' @examples
+#' data(synthetic_data)
+#' head(synthetic_data)
 "synthetic_data"
 
-#' Treatment schedule for combination treatment experiments
-#'
-#' A dataset containing the dosing schedule for the combination treatment experiment.
-#'
-#' @format A data frame with columns:
+#' Example data
+#' 
+#' A simple example dataset with x and y coordinates.
+#' 
+#' @format A data frame with 10 rows and 2 variables:
 #' \describe{
-#'   \item{Treatment}{Treatment group name}
-#'   \item{Day}{Study day when treatment was administered}
-#'   \item{Dose}{Dose level administered}
-#'   \item{Route}{Route of administration}
+#'   \item{x}{x-coordinate, sequence from 1 to 10}
+#'   \item{y}{y-coordinate, x plus random noise}
 #' }
-#' @source Simulated data
-#' @export
-"combo_treatment_schedule"
+#' @source Synthetic data generated using random number generation
+#' @examples
+#' data(my_data)
+#' plot(my_data$x, my_data$y)
+"my_data"
 
-#' Treatment schedule for dose-response experiments
-#'
-#' A dataset containing the dosing schedule for the dose-response experiment.
-#'
-#' @format A data frame with columns:
+#' Combination treatment synthetic data
+#' 
+#' A dataset containing synthetic tumor volume measurements over time
+#' for different combination treatment groups.
+#' 
+#' @format A data frame with rows for each mouse at each timepoint and 6 variables:
 #' \describe{
-#'   \item{Treatment}{Treatment group name}
-#'   \item{Day}{Study day when treatment was administered}
-#'   \item{Dose}{Dose level administered in mg/kg}
-#'   \item{Route}{Route of administration}
+#'   \item{Mouse_ID}{Mouse identifier, with format M followed by a number}
+#'   \item{Day}{Day of measurement, starting from day 0}
+#'   \item{Treatment}{Treatment group (Control, aPD1, HDACi, HDACi + PD1)}
+#'   \item{Volume}{Tumor volume measurement}
+#'   \item{ID}{Numeric identifier for the mouse, without the "M" prefix}
+#'   \item{Cage}{Cage number where the mouse is housed}
 #' }
-#' @source Simulated data
-#' @export
-"dose_levels_treatment_schedule"
-
-#' Synthetic data for tumor growth experiments with combination treatment
-#'
-#' A dataset containing synthetic measurements of tumor growth in mice treated
-#' with different combinations of treatments (Control, Drug A, Drug B, and combination).
-#'
-#' @format A data frame with rows and variables:
-#' \describe{
-#'   \item{Date}{Date of measurement in MM/DD/YYYY format}
-#'   \item{Cage}{Cage number (1-8)}
-#'   \item{ID}{Mouse identifier within cage}
-#'   \item{Treatment}{Treatment group (Control, Drug A, Drug B, Combo)}
-#'   \item{Length}{Tumor length measurement in mm}
-#'   \item{Width}{Tumor width measurement in mm}
-#'   \item{Survival_Censor}{Censoring indicator (1 = event/death, 0 = censored/alive)}
-#' }
-#' @source Synthetic data created for demonstration purposes
-#' @export
+#' @source Synthetic data generated using random number generation with treatment-specific effects
+#' @examples
+#' data(combo_treatment_synthetic_data)
+#' head(combo_treatment_synthetic_data)
 "combo_treatment_synthetic_data"
 
-#' Synthetic data for dose-response experiments
-#'
-#' A dataset containing synthetic measurements of tumor growth in mice treated
-#' with different dose levels of a hypothetical compound.
-#'
-#' @format A data frame with rows and variables:
+#' Combination treatment schedule
+#' 
+#' A dataset specifying the dosing schedule for combination treatments.
+#' 
+#' @format A data frame with 20 rows and 3 variables:
 #' \describe{
-#'   \item{Date}{Date of measurement in DD-MMM format}
-#'   \item{Cage}{Cage number}
-#'   \item{ID}{Mouse identifier within cage}
-#'   \item{Treatment}{Treatment group}
-#'   \item{Dose}{Dose level in arbitrary units (0, 10, 50, 100)}
-#'   \item{Length}{Tumor length measurement in mm}
-#'   \item{Width}{Tumor width measurement in mm}
-#'   \item{Survival_Censor}{Censoring indicator (1 = event/death, 0 = censored/alive)}
+#'   \item{Treatment}{Treatment group (Control, aPD1, HDACi, HDACi + PD1)}
+#'   \item{Day}{Day of dose administration}
+#'   \item{Dose}{Dose amount}
 #' }
-#' @source Synthetic data created for demonstration purposes
-#' @export
+#' @source Synthetic treatment schedule
+#' @examples
+#' data(combo_treatment_schedule)
+#' head(combo_treatment_schedule)
+"combo_treatment_schedule"
+
+#' Dose levels synthetic data
+#' 
+#' A dataset containing synthetic tumor volume measurements over time
+#' for different dose levels of a single drug.
+#' 
+#' @format A data frame with rows for each mouse at each timepoint and 7 variables:
+#' \describe{
+#'   \item{Mouse_ID}{Mouse identifier, with format M followed by a number}
+#'   \item{Day}{Day of measurement, starting from day 0}
+#'   \item{Treatment}{Treatment name (always "Drug X")}
+#'   \item{Dose}{Dose level (0, 10, 25, 50, 100)}
+#'   \item{Volume}{Tumor volume measurement}
+#'   \item{ID}{Numeric identifier for the mouse, without the "M" prefix}
+#'   \item{Cage}{Cage number where the mouse is housed}
+#' }
+#' @source Synthetic data generated using random number generation with dose-dependent effects
+#' @examples
+#' data(dose_levels_synthetic_data)
+#' head(dose_levels_synthetic_data)
 "dose_levels_synthetic_data"
+
+#' Dose levels treatment schedule
+#' 
+#' A dataset specifying the dosing schedule for different dose levels.
+#' 
+#' @format A data frame with 20 rows and 4 variables:
+#' \describe{
+#'   \item{Treatment}{Treatment name (always "Drug X")}
+#'   \item{Dose}{Dose group level (0, 10, 25, 50, 100)}
+#'   \item{Day}{Day of dose administration}
+#'   \item{Administered_Dose}{Actual dose administered}
+#' }
+#' @source Synthetic treatment schedule
+#' @examples
+#' data(dose_levels_treatment_schedule)
+#' head(dose_levels_treatment_schedule)
+"dose_levels_treatment_schedule"
