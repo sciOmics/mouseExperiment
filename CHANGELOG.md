@@ -24,4 +24,11 @@ All notable changes to the mouseExperiment package will be documented in this fi
   - Added group_order parameter to plot_auc to control the order of treatment groups in plots 
   - Improved implementation of "auc" model_type
 - Fixed AUC calculation to use composite IDs that combine subject ID and treatment group, ensuring correct AUC values for each unique subject-treatment combination 
-- Fixed `plot_auc` function error where `is.named()` function was called but not defined 
+- Fixed `plot_auc` function error where `is.named()` function was called but not defined
+
+### Changed
+- Simplified `plot_auc` function to focus on a single scatterplot showing individual data points by treatment group
+- Added support in `plot_auc` for differentiating between extrapolated and non-extrapolated data points (open vs. filled circles)
+- Added configurable error bars to `plot_auc` (none, SEM, SD, or 95% CI)
+- Added option to show/hide mean lines in `plot_auc`
+- Removed dependency on ggpubr for `plot_auc` function 

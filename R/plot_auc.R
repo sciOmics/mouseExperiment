@@ -1,37 +1,33 @@
 #' Plot AUC (Area Under the Curve) Data
 #'
-#' This function creates visualizations for Area Under the Curve (AUC) data from tumor growth experiments.
-#' It produces multiple plots showing AUC values by treatment group, including bar plots, box plots, 
-#' and individual subject plots.
+#' This function creates a visualization for Area Under the Curve (AUC) data from tumor growth experiments.
+#' It produces a single plot showing AUC values by treatment group as individual points with optional
+#' mean lines and error bars.
 #'
 #' @param auc_data A data frame containing AUC values for individual subjects.
 #'        Must include columns: 'Group' (treatment group) and 'AUC' (AUC values).
-#'        May also include 'ID', 'Cage', or 'Mouse_ID' columns for more detailed plots.
-#' @param plot_type Character string specifying which type of plot to return. Options are:
-#'        "all" (returns a list of all plots),
-#'        "summary" (group summary bar plot),
-#'        "boxplot" (boxplot with jittered points),
-#'        "individual" (individual subject bars),
-#'        "combined" (a composite of all plots). Default is "combined".
+#'        May also include 'ID', 'Cage', or 'Mouse_ID' columns for more detailed visualization.
 #' @param colors An optional vector of colors for treatment groups. If NULL, default ggplot colors are used.
-#' @param title An optional main title for the combined plot. If NULL, a default title is used.
-#' @param comparison_lines Logical indicating whether to add lines showing significant comparisons.
-#'        Default is FALSE.
-#' @param comparison_data A data frame containing pairwise comparison results, required if 
-#'        comparison_lines=TRUE. Should have columns: 'group1', 'group2', 'p.value', 'significance'.
-#' @param id_column Character string specifying the column name for subject identifiers. 
-#'        If NULL, tries to find 'ID', 'Mouse_ID', or creates a row number. Default is NULL.
-#' @param cage_column Character string specifying the column name for cage identifiers.
-#'        If NULL, tries to find 'Cage', or omits cage information. Default is NULL.
-#' @param group_order Optional vector specifying the order of groups to display in plots.
+#' @param title An optional title for the plot. If NULL, a default title is used.
+#' @param show_mean Logical indicating whether to display a mean line for each group. Default is TRUE.
+#' @param error_bar_type Character string specifying the type of error bars to display. Options are:
+#'        "none" (no error bars),
+#'        "SEM" (standard error of the mean),
+#'        "SD" (standard deviation),
+#'        "CI" (95% confidence interval). Default is "SEM".
+#' @param extrapolated_column Character string specifying the column name that indicates whether a data point 
+#'        was extrapolated. Values should be TRUE/FALSE or 1/0. If NULL, all points are treated as non-extrapolated. 
+#'        Default is NULL.
+#' @param group_order Optional vector specifying the order of groups to display. 
 #'        If NULL, groups are ordered alphabetically. Default is NULL.
+#' @param point_size Numeric value specifying the size of the individual data points. Default is 3.
+#' @param jitter_width Numeric value specifying the width of the jitter for individual points. Default is 0.2.
 #'
-#' @return If plot_type is "all", returns a list of ggplot objects. Otherwise, returns a single ggplot object.
+#' @return A ggplot object representing the AUC plot.
 #'
-#' @importFrom ggplot2 ggplot aes geom_bar geom_errorbar geom_boxplot geom_jitter theme_minimal theme
-#' @importFrom ggplot2 element_text labs scale_fill_manual scale_color_manual ggtitle
-#' @importFrom ggpubr ggarrange
-#' @importFrom stats aggregate
+#' @importFrom ggplot2 ggplot aes geom_jitter stat_summary geom_errorbar theme_minimal
+#' @importFrom ggplot2 labs scale_fill_manual scale_color_manual ggtitle
+#' @importFrom stats aggregate qt
 #'
 #' @examples
 #' \dontrun{
@@ -45,8 +41,12 @@
 #' # Basic usage
 #' plot_auc(auc_data)
 #' 
-#' # Display just the summary bar plot
-#' plot_auc(auc_data, plot_type = "summary")
+#' # With custom error bars and no mean line
+#' plot_auc(auc_data, show_mean = FALSE, error_bar_type = "SD")
+#' 
+#' # With extrapolated data points marked differently
+#' auc_data$Extrapolated <- rep(c(TRUE, FALSE), 10)
+#' plot_auc(auc_data, extrapolated_column = "Extrapolated")
 #' 
 #' # Create a custom color palette for treatment groups
 #' colors <- c("Control" = "gray", "Treatment A" = "blue", 
@@ -59,22 +59,22 @@
 #'
 #' @export
 plot_auc <- function(auc_data, 
-                     plot_type = "combined",
                      colors = NULL,
-                     title = NULL,
-                     comparison_lines = FALSE,
-                     comparison_data = NULL,
-                     id_column = NULL,
-                     cage_column = NULL,
-                     group_order = NULL) {
+                     title = "AUC Values by Treatment Group",
+                     show_mean = TRUE,
+                     error_bar_type = c("SEM", "SD", "CI", "none"),
+                     extrapolated_column = NULL,
+                     group_order = NULL,
+                     point_size = 3,
+                     jitter_width = 0.2) {
   
   # Check if required packages are available
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("Package 'ggplot2' is needed for this function. Please install it.")
   }
-  if (!requireNamespace("ggpubr", quietly = TRUE)) {
-    stop("Package 'ggpubr' is needed for this function. Please install it.")
-  }
+  
+  # Match arguments
+  error_bar_type <- match.arg(error_bar_type)
   
   # Validate inputs
   if (!is.data.frame(auc_data)) {
@@ -87,61 +87,16 @@ plot_auc <- function(auc_data,
     stop("auc_data must contain columns: ", paste(required_cols, collapse = ", "))
   }
   
-  # Determine ID column if not provided
-  if (is.null(id_column)) {
-    possible_id_cols <- c("ID", "Mouse_ID", "Subject")
-    existing_id_cols <- intersect(possible_id_cols, colnames(auc_data))
-    
-    if (length(existing_id_cols) > 0) {
-      id_column <- existing_id_cols[1]
-    } else {
-      # If no ID column exists, create a row number
-      auc_data$ID <- 1:nrow(auc_data)
-      id_column <- "ID"
+  # Check extrapolated column if provided
+  if (!is.null(extrapolated_column)) {
+    if (!extrapolated_column %in% colnames(auc_data)) {
+      warning("Specified extrapolated_column '", extrapolated_column, "' not found in data. All points will be treated as non-extrapolated.")
+      extrapolated_column <- NULL
     }
-  } else if (!id_column %in% colnames(auc_data)) {
-    warning("Specified id_column '", id_column, "' not found in data. Using row numbers instead.")
-    auc_data$ID <- 1:nrow(auc_data)
-    id_column <- "ID"
   }
-  
-  # Determine cage column if not provided
-  if (is.null(cage_column)) {
-    possible_cage_cols <- c("Cage", "Cage_ID", "CageID")
-    existing_cage_cols <- intersect(possible_cage_cols, colnames(auc_data))
-    
-    if (length(existing_cage_cols) > 0) {
-      cage_column <- existing_cage_cols[1]
-    } else {
-      # If cage information is explicitly needed but not available, warn the user
-      if (plot_type == "individual") {
-        warning("No cage column found. Individual plot will only show IDs without cage information.")
-      }
-      cage_column <- NULL
-    }
-  } else if (!cage_column %in% colnames(auc_data)) {
-    warning("Specified cage_column '", cage_column, "' not found in data.")
-    cage_column <- NULL
-  }
-  
-  # Create display ID combining cage and ID if both are available
-  if (!is.null(cage_column)) {
-    auc_data$Display_ID <- paste(auc_data[[cage_column]], auc_data[[id_column]], sep = "-")
-  } else {
-    auc_data$Display_ID <- auc_data[[id_column]]
-  }
-  
-  # Calculate summary statistics
-  auc_summary <- stats::aggregate(AUC ~ Group, data = auc_data, 
-                               FUN = function(x) c(Mean = mean(x), 
-                                                  SD = stats::sd(x), 
-                                                  N = length(x),
-                                                  SEM = stats::sd(x)/sqrt(length(x))))
-  auc_summary <- do.call(data.frame, auc_summary)
   
   # Order groups if specified, otherwise sort by group name for consistency
   if (is.null(group_order)) {
-    auc_summary <- auc_summary[order(auc_summary$Group), ]
     group_levels <- unique(auc_data$Group)
   } else {
     # Validate group_order
@@ -157,9 +112,6 @@ plot_auc <- function(auc_data,
               paste(missing_groups, collapse = ", "))
       group_order <- c(group_order, missing_groups)
     }
-    # Reorder summary based on specified order
-    auc_summary$Group <- factor(auc_summary$Group, levels = group_order)
-    auc_summary <- auc_summary[order(auc_summary$Group), ]
     group_levels <- group_order
   }
   
@@ -184,131 +136,115 @@ plot_auc <- function(auc_data,
     }
   }
   
-  # Sort data for individual bar plot
-  auc_data <- auc_data[order(auc_data$Group, auc_data$AUC), ]
-  
   # Set factor levels for consistent ordering
   auc_data$Group <- factor(auc_data$Group, levels = group_levels)
-  auc_data$Display_ID <- factor(auc_data$Display_ID, levels = unique(auc_data$Display_ID[order(auc_data$Group)]))
   
-  # Create the plots
-  plots <- list()
+  # Calculate summary statistics for error bars
+  summary_stats <- stats::aggregate(AUC ~ Group, data = auc_data, 
+                               FUN = function(x) {
+                                 n <- length(x)
+                                 mean_x <- mean(x)
+                                 sd_x <- stats::sd(x)
+                                 sem_x <- sd_x / sqrt(n)
+                                 ci_x <- sem_x * stats::qt(0.975, df = n-1)
+                                 
+                                 c(
+                                   Mean = mean_x,
+                                   SD = sd_x,
+                                   SEM = sem_x,
+                                   CI_lower = mean_x - ci_x,
+                                   CI_upper = mean_x + ci_x,
+                                   N = n
+                                 )
+                               })
+  summary_stats <- do.call(data.frame, summary_stats)
   
-  # Raw data scatterplot with means
-  plots$raw_data <- ggplot2::ggplot(auc_data, ggplot2::aes(x = Group, y = AUC, color = Group)) +
-    ggplot2::geom_jitter(width = 0.2, height = 0, alpha = 0.7) +
-    ggplot2::stat_summary(fun = mean, geom = "point", shape = 18, size = 4, color = "black") +
-    ggplot2::stat_summary(fun = mean, geom = "line", aes(group = 1), color = "black", linetype = "dashed") +
-    ggplot2::labs(title = "AUC Values by Treatment Group",
-                x = "Treatment Group",
-                y = "AUC (Tumor Burden)") +
-    ggplot2::theme_minimal()
+  # Create the base plot
+  p <- ggplot2::ggplot(auc_data, ggplot2::aes(x = Group, y = AUC, color = Group))
   
-  # Summary bar plot
-  plots$summary <- ggplot2::ggplot(auc_summary, ggplot2::aes(x = Group, y = AUC.Mean, fill = Group)) +
-    ggplot2::geom_col() +
-    ggplot2::geom_errorbar(ggplot2::aes(ymin = AUC.Mean - AUC.SEM, 
-                                     ymax = AUC.Mean + AUC.SEM), 
-                        width = 0.2) +
-    ggplot2::labs(title = "Mean AUC by Treatment Group",
-                x = "Treatment Group",
-                y = "Mean AUC (± SEM)") +
-    ggplot2::theme_minimal() +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
-  
-  # Boxplot with jittered points
-  plots$boxplot <- ggplot2::ggplot(auc_data, ggplot2::aes(x = Group, y = AUC, color = Group)) +
-    ggplot2::geom_boxplot(alpha = 0.3) +
-    ggplot2::geom_jitter(width = 0.2, height = 0, alpha = 0.7) +
-    ggplot2::labs(title = "AUC Distribution by Treatment Group",
-                x = "Treatment Group",
-                y = "AUC (Tumor Burden)") +
-    ggplot2::theme_minimal()
-  
-  # Individual subject bar plot
-  plots$individual <- ggplot2::ggplot(auc_data, ggplot2::aes(x = Display_ID, y = AUC, fill = Group)) +
-    ggplot2::geom_bar(stat = "identity") +
-    ggplot2::labs(title = "Individual Subject AUC Values",
-                x = if (!is.null(cage_column)) "Subject ID (Cage-ID)" else "Subject ID",
-                y = "AUC (Tumor Burden)") +
-    ggplot2::theme_minimal() +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, size = 7),
-                 legend.position = "top") +
-    ggplot2::scale_x_discrete(guide = ggplot2::guide_axis(n.dodge = 2))
-  
-  # Apply custom colors if provided
-  if (!is.null(colors)) {
-    plots$raw_data <- plots$raw_data + ggplot2::scale_color_manual(values = colors)
-    plots$summary <- plots$summary + ggplot2::scale_fill_manual(values = colors)
-    plots$boxplot <- plots$boxplot + ggplot2::scale_color_manual(values = colors)
-    plots$individual <- plots$individual + ggplot2::scale_fill_manual(values = colors)
+  # Add extrapolated/non-extrapolated points if column is provided
+  if (!is.null(extrapolated_column)) {
+    # Convert to logical if needed
+    if (is.numeric(auc_data[[extrapolated_column]])) {
+      auc_data[[extrapolated_column]] <- as.logical(auc_data[[extrapolated_column]])
+    }
+    
+    # Split data for different point styles
+    auc_data_extrapolated <- auc_data[auc_data[[extrapolated_column]], ]
+    auc_data_nonextrapolated <- auc_data[!auc_data[[extrapolated_column]], ]
+    
+    # Add non-extrapolated points (filled circles)
+    if (nrow(auc_data_nonextrapolated) > 0) {
+      p <- p + ggplot2::geom_jitter(data = auc_data_nonextrapolated,
+                                   width = jitter_width, height = 0, 
+                                   size = point_size, alpha = 0.7,
+                                   shape = 16) # filled circle
+    }
+    
+    # Add extrapolated points (empty circles)
+    if (nrow(auc_data_extrapolated) > 0) {
+      p <- p + ggplot2::geom_jitter(data = auc_data_extrapolated,
+                                   width = jitter_width, height = 0, 
+                                   size = point_size, alpha = 0.7,
+                                   shape = 1) # empty circle
+    }
+  } else {
+    # All points treated as non-extrapolated (filled circles)
+    p <- p + ggplot2::geom_jitter(width = jitter_width, height = 0, 
+                                 size = point_size, alpha = 0.7,
+                                 shape = 16) # filled circle
   }
   
-  # Add comparison lines if requested
-  if (comparison_lines && !is.null(comparison_data)) {
-    if (!all(c("group1", "group2", "p.value") %in% colnames(comparison_data))) {
-      warning("comparison_data must contain columns: group1, group2, p.value")
-    } else {
-      # Add significance stars or p-values to the summary plot
-      # This implementation varies based on the exact format of your comparison data
-      # A simple example for adding text labels:
-      for (i in 1:nrow(comparison_data)) {
-        sig_text <- if ("significance" %in% colnames(comparison_data)) {
-          comparison_data$significance[i]
-        } else {
-          if (comparison_data$p.value[i] < 0.001) "***"
-          else if (comparison_data$p.value[i] < 0.01) "**"
-          else if (comparison_data$p.value[i] < 0.05) "*"
-          else "ns"
-        }
-        
-        # Add text to summary plot 
-        # Note: This is a simplified approach and might need adjustment
-        plots$summary <- plots$summary + 
-          ggplot2::annotate("text", 
-                          x = (which(levels(auc_data$Group) == comparison_data$group1[i]) + 
-                              which(levels(auc_data$Group) == comparison_data$group2[i])) / 2, 
-                          y = max(auc_summary$AUC.Mean) * 1.1,
-                          label = sig_text)
-      }
+  # Add mean line if requested
+  if (show_mean) {
+    p <- p + ggplot2::stat_summary(fun = mean, geom = "crossbar", 
+                                 width = 0.5, size = 0.5, color = "black")
+  }
+  
+  # Add error bars if requested
+  if (error_bar_type != "none") {
+    if (error_bar_type == "SEM") {
+      p <- p + ggplot2::geom_errorbar(
+        data = summary_stats,
+        ggplot2::aes(x = Group, y = AUC.Mean, 
+                   ymin = AUC.Mean - AUC.SEM, 
+                   ymax = AUC.Mean + AUC.SEM),
+        width = 0.3, color = "black", inherit.aes = FALSE
+      )
+    } else if (error_bar_type == "SD") {
+      p <- p + ggplot2::geom_errorbar(
+        data = summary_stats,
+        ggplot2::aes(x = Group, y = AUC.Mean, 
+                   ymin = AUC.Mean - AUC.SD, 
+                   ymax = AUC.Mean + AUC.SD),
+        width = 0.3, color = "black", inherit.aes = FALSE
+      )
+    } else if (error_bar_type == "CI") {
+      p <- p + ggplot2::geom_errorbar(
+        data = summary_stats,
+        ggplot2::aes(x = Group, y = AUC.Mean, 
+                   ymin = AUC.CI_lower, 
+                   ymax = AUC.CI_upper),
+        width = 0.3, color = "black", inherit.aes = FALSE
+      )
     }
   }
   
-  # Create combined plot
-  if (is.null(title)) {
-    title <- "AUC Analysis of Tumor Growth"
+  # Add labels and theme
+  p <- p + ggplot2::labs(
+    title = title,
+    x = "Treatment Group",
+    y = "AUC (Tumor Burden)"
+  ) + ggplot2::theme_minimal() +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+      legend.position = "none"
+    )
+  
+  # Apply custom colors if provided
+  if (!is.null(colors)) {
+    p <- p + ggplot2::scale_color_manual(values = colors)
   }
   
-  # Create a single plot with all subplots arranged in a grid
-  plots$combined <- ggpubr::ggarrange(
-    plots$raw_data, plots$summary, 
-    plots$boxplot, plots$individual,
-    ncol = 2, nrow = 2,
-    common.legend = TRUE,
-    legend = "top",
-    labels = c("A", "B", "C", "D")
-  )
-  
-  # Add a main title for the combined plot
-  main_title_plot <- ggplot2::ggplot() + 
-    ggplot2::annotate(geom = "text", x = 0, y = 0, label = title, size = 6, fontface = "bold") + 
-    ggplot2::theme_void()
-  
-  # Combine the title and plots
-  plots$combined <- ggpubr::ggarrange(
-    main_title_plot, 
-    plots$combined, 
-    ncol = 1, 
-    heights = c(0.1, 0.9)
-  )
-  
-  # Return the appropriate plot(s)
-  if (plot_type == "all") {
-    return(plots)
-  } else if (plot_type %in% names(plots)) {
-    return(plots[[plot_type]])
-  } else {
-    warning("Invalid plot_type '", plot_type, "'. Returning combined plot.")
-    return(plots$combined)
-  }
+  return(p)
 } 
