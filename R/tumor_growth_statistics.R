@@ -457,74 +457,57 @@ tumor_growth_statistics <- function(df,
     if (verbose) cat("Calculating AUC for each subject\n")
     
     # Calculate AUC for each subject function
-    calculate_auc <- function(subject_data) {
-      # Sort by time
+    calculate_auc <- function(time_values, volume_values) {
+      # Sort data by time, just to be safe
+      order_idx <- order(time_values)
+      time_values <- time_values[order_idx]
+      volume_values <- volume_values[order_idx]
+      
+      # Need at least 2 points to calculate AUC
+      if (length(time_values) < 2) {
+        return(NA)
+      }
+      
+      # Calculate AUC using the trapezoidal rule
+      auc <- 0
+      for (i in 2:length(time_values)) {
+        time_diff <- time_values[i] - time_values[i-1]
+        avg_height <- (volume_values[i] + volume_values[i-1]) / 2
+        auc <- auc + (time_diff * avg_height)
+      }
+      
+      return(auc)
+    }
+    
+    # Calculate AUC for each individual (Composite ID ensures unique subject-treatment combinations)
+    composite_id <- paste(auc_df[[id_column]], auc_df[[treatment_column]], sep = "_")
+    auc_data <- data.frame()
+    
+    for (unique_id in unique(composite_id)) {
+      # Extract data for this unique ID
+      id_parts <- strsplit(unique_id, "_")[[1]]
+      actual_id <- id_parts[1]
+      treatment <- paste(id_parts[-1], collapse = "_") # Handle treatments with spaces or underscore
+      
+      subject_data <- auc_df[composite_id == unique_id, ]
       subject_data <- subject_data[order(subject_data[[time_column]]), ]
       
-      if (nrow(subject_data) < 2) {
-        return(NA) # Need at least 2 points for AUC
-      }
+      # Calculate AUC using trapezoidal method
+      auc_value <- calculate_auc(subject_data[[time_column]], subject_data[[volume_column]])
       
-      # Calculate AUC using trapezoidal rule
-      if (auc_method == "trapezoidal") {
-        times <- subject_data[[time_column]]
-        volumes <- subject_data[[volume_column]]
-        
-        # Calculate AUC using trapezoidal rule
-        auc <- 0
-        for (i in 2:length(times)) {
-          dt <- times[i] - times[i-1]
-          auc <- auc + dt * (volumes[i] + volumes[i-1]) / 2
-        }
-        return(auc)
-      } else if (auc_method == "last_observation") {
-        # Last observation carried forward
-        # Simply take the latest time point and its volume
-        latest <- subject_data[which.max(subject_data[[time_column]]), ]
-        return(latest[[volume_column]])
-      }
+      # Add to results
+      auc_data <- rbind(auc_data, data.frame(
+        ID = actual_id,
+        Treatment = treatment,
+        Group = treatment, # Added Group column for compatibility with plot_auc
+        AUC = auc_value,
+        Last_Day = max(subject_data[[time_column]]),
+        First_Day = min(subject_data[[time_column]])
+      ))
     }
-    
-    # Create a composite ID combining ID and treatment to ensure unique subject-treatment combinations
-    auc_df$composite_id <- paste(auc_df[[id_column]], auc_df[[treatment_column]], sep = "_")
-    
-    # Calculate AUC for each subject and collect metadata
-    auc_list <- list()
-    unique_combinations <- unique(auc_df$composite_id)
-    
-    # Calculate AUC for each unique subject-treatment combination
-    for (i in seq_along(unique_combinations)) {
-      combo <- unique_combinations[i]
-      subject_data <- auc_df[auc_df$composite_id == combo, ]
-      
-      # Skip if we don't have sufficient data points
-      if (nrow(subject_data) < 2) {
-        if (verbose) cat("Skipping", combo, "- insufficient data points\n")
-        next
-      }
-      
-      # Get the AUC value
-      auc_result <- calculate_auc(subject_data)
-      
-      if (!is.na(auc_result)) {
-        # Store AUC and metadata in list
-        auc_list[[i]] <- data.frame(
-          ID = unique(subject_data[[id_column]]),
-          Treatment = unique(subject_data[[treatment_column]]),
-          Group = unique(subject_data[[treatment_column]]), # Add Group column for plot_auc compatibility
-          AUC = as.numeric(auc_result),
-          Last_Day = max(subject_data[[time_column]]),
-          First_Day = min(subject_data[[time_column]]),
-          stringsAsFactors = FALSE
-        )
-      }
-    }
-    
-    # Combine into a single data frame
-    individual_auc <- do.call(rbind, auc_list)
     
     # Calculate summary statistics
-    auc_summary <- stats::aggregate(AUC ~ Treatment, data = individual_auc, 
+    auc_summary <- stats::aggregate(AUC ~ Treatment, data = auc_data, 
                                   FUN = function(x) c(Mean = mean(x), 
                                                     SD = stats::sd(x), 
                                                     N = length(x),
@@ -533,7 +516,7 @@ tumor_growth_statistics <- function(df,
     
     # Create the AUC analysis list
     auc_analysis <- list(
-      individual = individual_auc,
+      individual = auc_data,
       summary = auc_summary
     )
   }
