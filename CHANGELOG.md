@@ -22,4 +22,5 @@ All notable changes to the mouseExperiment package will be documented in this fi
 - Enhanced integration between `tumor_growth_statistics` and `plot_auc` functions:
   - Added Group column to AUC data for compatibility with plot_auc
   - Added group_order parameter to plot_auc to control the order of treatment groups in plots 
-  - Improved implementation of "auc" model_type 
+  - Improved implementation of "auc" model_type
+- Fixed AUC calculation to use composite IDs that combine subject ID and treatment group, ensuring correct AUC values for each unique subject-treatment combination 
