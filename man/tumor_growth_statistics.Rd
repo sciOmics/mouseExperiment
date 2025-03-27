@@ -14,15 +14,17 @@ tumor_growth_statistics(
   dose_column = NULL,
   transform = c("log", "sqrt", "none"),
   polynomial_degree = 1,
-  model_type = c("lme4", "gam", "auc"),
+  model_type = c("lme4", "auc"),
   random_effects_specification = c("intercept_only", "slope", "none"),
   handle_cage_effects = c("include_if_not_collinear", "always_include", "never_include",
     "as_random_effect"),
   auc_method = c("trapezoidal", "last_observation"),
+  reference_group = NULL,
   return_model = TRUE,
   include_diagnostics = TRUE,
   plots = TRUE,
-  verbose = FALSE
+  verbose = FALSE,
+  extrapolation_points = 0
 )
 }
 \arguments{
@@ -56,7 +58,6 @@ Default is 1 (linear). Increase to 2 or 3 to model non-linear growth patterns.}
 
 \item{model_type}{A character string specifying the type of model to fit. Options are:
 "lme4" (standard linear mixed effects model using lme4 package),
-"gam" (generalized additive model using mgcv package),
 "auc" (area under the curve analysis).
 Default is "lme4".}
 
@@ -70,6 +71,9 @@ Default is "lme4".}
 
 \item{auc_method}{Method for AUC calculation: "trapezoidal" or "last_observation". Default is "trapezoidal".}
 
+\item{reference_group}{Optional. A character string specifying which treatment group should be used as the reference
+for statistical comparisons. If NULL, the first treatment group alphabetically will be used.}
+
 \item{return_model}{Boolean. Should the full fitted model be returned? Default is TRUE.}
 
 \item{include_diagnostics}{Boolean. Should model diagnostic information be included? Default is TRUE.}
@@ -77,20 +81,35 @@ Default is "lme4".}
 \item{plots}{Boolean. Should standard plots be generated and returned? Default is TRUE.}
 
 \item{verbose}{Boolean. Should detailed information be printed during analysis? Default is FALSE.}
+
+\item{extrapolation_points}{Number of points to extrapolate for each subject (default: 0)}
 }
 \value{
 A list containing the following components:
 \describe{
-\item{model}{The fitted statistical model (lme4, gam, or auc object)}
+\item{model}{The fitted statistical model (lme4 or auc object)}
 \item{anova}{ANOVA table for fixed effects with Type III tests}
 \item{summary}{Detailed model summary with parameter estimates}
-\item{pairwise_comparisons}{Results of pairwise comparisons between treatment groups}
-\item{treatment_effects}{Estimated treatment effects on tumor growth}
+\item{pairwise_comparisons}{Results of pairwise comparisons between treatment groups, showing treatment differences, p-values, and confidence intervals}
+\item{treatment_effects}{Estimated treatment effects on tumor growth, showing adjusted means for each treatment group}
+\item{growth_rates}{Data frame containing growth rates for each subject, calculated as the slope of log-volume over time. Higher values indicate faster tumor growth.}
+\item{cage_analysis}{Analysis of cage effects, including:
+\itemize{
+\item{collinearity_test}{Chi-squared test result for collinearity between cage and treatment}
+\item{effects}{Data frame of cage-level statistics (mean and SD of volume by cage and treatment)}
+}
+}
+\item{model_selection}{Results of model selection process, including:
+\itemize{
+\item{aic}{AIC values for each model specification}
+\item{bic}{BIC values for each model specification}
+\item{selected_model}{Name of the model with lowest BIC (most parsimonious)}
+}
+}
+\item{diagnostics}{Model diagnostic information including residuals, random effects, and variance components}
 \item{auc_data}{Area under the curve data and statistics (when model_type="auc")}
-\item{diagnostics}{Model diagnostic information (convergence, variance components, etc.)}
 \item{plots}{List of standard plots for visualizing results}
-\item{cage_analysis}{Analysis of cage effects, including collinearity assessment}
-\item{data_summary}{Descriptive statistics of the processed data}
+\item{data_summary}{Descriptive statistics of the processed data by treatment and time point, including mean, SD, and SEM of volumes}
 }
 }
 \description{
@@ -105,8 +124,6 @@ depends on the experimental design, growth patterns, and research questions:
 \item Linear mixed-effects models (model_type="lme4") are suitable for most tumor growth experiments and
 account for the correlation structure of repeated measurements on the same subjects.
 The default formula is log(Volume) ~ Day * Treatment + (1|ID).
-\item Generalized additive models (model_type="gam") are appropriate when growth follows complex
-non-linear patterns. These models use splines to flexibly model time effects.
 \item Area under the curve analysis (model_type="auc") reduces each subject's growth curve to a single
 summary metric (AUC), which is then compared between treatment groups.
 }
@@ -118,6 +135,10 @@ The function automatically handles:
 \item Transformations to normalize growth curves
 \item Polynomial terms for non-linear growth patterns
 \item Diagnostic checks of model assumptions
+\item Growth rate analysis for each treatment group
+\item Cage effect analysis and collinearity testing
+\item Model selection based on AIC/BIC criteria
+\item Treatment effect estimation with proper reference group handling
 }
 }
 \examples{

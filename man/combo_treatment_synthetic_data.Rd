@@ -3,27 +3,30 @@
 \docType{data}
 \name{combo_treatment_synthetic_data}
 \alias{combo_treatment_synthetic_data}
-\title{Synthetic data for tumor growth experiments with combination treatment}
+\title{Combination treatment synthetic data}
 \format{
-A data frame with rows and variables:
+A data frame with rows for each mouse at each timepoint and 6 variables:
 \describe{
-\item{Date}{Date of measurement in MM/DD/YYYY format}
-\item{Cage}{Cage number (1-8)}
-\item{ID}{Mouse identifier within cage}
-\item{Treatment}{Treatment group (Control, Drug A, Drug B, Combo)}
-\item{Length}{Tumor length measurement in mm}
-\item{Width}{Tumor width measurement in mm}
-\item{Survival_Censor}{Censoring indicator (1 = event/death, 0 = censored/alive)}
+\item{Mouse_ID}{Mouse identifier, with format M followed by a number}
+\item{Day}{Day of measurement, starting from day 0}
+\item{Treatment}{Treatment group (Control, aPD1, HDACi, HDACi + PD1)}
+\item{Volume}{Tumor volume measurement}
+\item{ID}{Numeric identifier for the mouse, without the "M" prefix}
+\item{Cage}{Cage number where the mouse is housed}
 }
 }
 \source{
-Synthetic data created for demonstration purposes
+Synthetic data generated using random number generation with treatment-specific effects
 }
 \usage{
 combo_treatment_synthetic_data
 }
 \description{
-A dataset containing synthetic measurements of tumor growth in mice treated
-with different combinations of treatments (Control, Drug A, Drug B, and combination).
+A dataset containing synthetic tumor volume measurements over time
+for different combination treatment groups.
+}
+\examples{
+data(combo_treatment_synthetic_data)
+head(combo_treatment_synthetic_data)
 }
 \keyword{datasets}

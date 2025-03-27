@@ -3,28 +3,31 @@
 \docType{data}
 \name{dose_levels_synthetic_data}
 \alias{dose_levels_synthetic_data}
-\title{Synthetic data for dose-response experiments}
+\title{Dose levels synthetic data}
 \format{
-A data frame with rows and variables:
+A data frame with rows for each mouse at each timepoint and 7 variables:
 \describe{
-\item{Date}{Date of measurement in DD-MMM format}
-\item{Cage}{Cage number}
-\item{ID}{Mouse identifier within cage}
-\item{Treatment}{Treatment group}
-\item{Dose}{Dose level in arbitrary units (0, 10, 50, 100)}
-\item{Length}{Tumor length measurement in mm}
-\item{Width}{Tumor width measurement in mm}
-\item{Survival_Censor}{Censoring indicator (1 = event/death, 0 = censored/alive)}
+\item{Mouse_ID}{Mouse identifier, with format M followed by a number}
+\item{Day}{Day of measurement, starting from day 0}
+\item{Treatment}{Treatment name (always "Drug X")}
+\item{Dose}{Dose level (0, 10, 25, 50, 100)}
+\item{Volume}{Tumor volume measurement}
+\item{ID}{Numeric identifier for the mouse, without the "M" prefix}
+\item{Cage}{Cage number where the mouse is housed}
 }
 }
 \source{
-Synthetic data created for demonstration purposes
+Synthetic data generated using random number generation with dose-dependent effects
 }
 \usage{
 dose_levels_synthetic_data
 }
 \description{
-A dataset containing synthetic measurements of tumor growth in mice treated
-with different dose levels of a hypothetical compound.
+A dataset containing synthetic tumor volume measurements over time
+for different dose levels of a single drug.
+}
+\examples{
+data(dose_levels_synthetic_data)
+head(dose_levels_synthetic_data)
 }
 \keyword{datasets}

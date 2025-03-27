@@ -3,23 +3,27 @@
 \docType{data}
 \name{dose_levels_treatment_schedule}
 \alias{dose_levels_treatment_schedule}
-\title{Treatment schedule for dose-response experiments}
+\title{Dose levels treatment schedule}
 \format{
-A data frame with columns:
+A data frame with 20 rows and 4 variables:
 \describe{
-\item{Treatment}{Treatment group name}
-\item{Day}{Study day when treatment was administered}
-\item{Dose}{Dose level administered in mg/kg}
-\item{Route}{Route of administration}
+\item{Treatment}{Treatment name (always "Drug X")}
+\item{Dose}{Dose group level (0, 10, 25, 50, 100)}
+\item{Day}{Day of dose administration}
+\item{Administered_Dose}{Actual dose administered}
 }
 }
 \source{
-Simulated data
+Synthetic treatment schedule
 }
 \usage{
 dose_levels_treatment_schedule
 }
 \description{
-A dataset containing the dosing schedule for the dose-response experiment.
+A dataset specifying the dosing schedule for different dose levels.
+}
+\examples{
+data(dose_levels_treatment_schedule)
+head(dose_levels_treatment_schedule)
 }
 \keyword{datasets}

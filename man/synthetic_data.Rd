@@ -3,25 +3,31 @@
 \docType{data}
 \name{synthetic_data}
 \alias{synthetic_data}
-\title{Synthetic data for tumor growth analysis}
+\title{Synthetic tumor growth data}
 \format{
-A data frame with 120 observations of 6 variables:
+A data frame with 120 rows and 7 variables:
 \describe{
-\item{Date}{Date of measurement}
-\item{Group}{Treatment group identifier}
-\item{ID}{Mouse ID number}
-\item{Length}{Tumor length measurement in mm}
-\item{Width}{Tumor width measurement in mm}
-\item{Survival_Censor}{Binary indicator for survival analysis (1=event occurred, 0=censored)}
+\item{Mouse_ID}{Mouse identifier, with format M followed by a number}
+\item{Day}{Day of measurement, starting from day 0}
+\item{Treatment}{Treatment group (Control, Treatment A, Treatment B)}
+\item{Volume}{Tumor volume measurement}
+\item{Group}{Same as Treatment, an alternative name for the treatment group}
+\item{ID}{Numeric identifier for the mouse, without the "M" prefix}
+\item{Cage}{Cage number where the mouse is housed}
 }
 }
 \source{
-{Simulated data for illustration purposes}
+Synthetic data generated using random number generation
 }
 \usage{
 synthetic_data
 }
 \description{
-A dataset containing simulated measurements from a mouse tumor growth experiment
+A dataset containing synthetic tumor volume measurements over time
+for different treatment groups.
+}
+\examples{
+data(synthetic_data)
+head(synthetic_data)
 }
 \keyword{datasets}

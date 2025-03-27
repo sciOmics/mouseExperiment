@@ -3,21 +3,25 @@
 \docType{data}
 \name{my_data}
 \alias{my_data}
-\title{Test dataset}
+\title{Example data}
 \format{
-A data frame with 10 rows and 2 columns:
+A data frame with 10 rows and 2 variables:
 \describe{
-\item{ID}{Row identifier}
-\item{Value}{Test value}
+\item{x}{x-coordinate, sequence from 1 to 10}
+\item{y}{y-coordinate, x plus random noise}
 }
 }
 \source{
-Simulated data
+Synthetic data generated using random number generation
 }
 \usage{
 my_data
 }
 \description{
-A simple dataset for testing the package
+A simple example dataset with x and y coordinates.
+}
+\examples{
+data(my_data)
+plot(my_data$x, my_data$y)
 }
 \keyword{datasets}

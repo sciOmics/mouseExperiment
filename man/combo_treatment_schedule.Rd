@@ -3,23 +3,26 @@
 \docType{data}
 \name{combo_treatment_schedule}
 \alias{combo_treatment_schedule}
-\title{Treatment schedule for combination treatment experiments}
+\title{Combination treatment schedule}
 \format{
-A data frame with columns:
+A data frame with 20 rows and 3 variables:
 \describe{
-\item{Treatment}{Treatment group name}
-\item{Day}{Study day when treatment was administered}
-\item{Dose}{Dose level administered}
-\item{Route}{Route of administration}
+\item{Treatment}{Treatment group (Control, aPD1, HDACi, HDACi + PD1)}
+\item{Day}{Day of dose administration}
+\item{Dose}{Dose amount}
 }
 }
 \source{
-Simulated data
+Synthetic treatment schedule
 }
 \usage{
 combo_treatment_schedule
 }
 \description{
-A dataset containing the dosing schedule for the combination treatment experiment.
+A dataset specifying the dosing schedule for combination treatments.
+}
+\examples{
+data(combo_treatment_schedule)
+head(combo_treatment_schedule)
 }
 \keyword{datasets}
