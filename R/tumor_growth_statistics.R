@@ -4,6 +4,8 @@
 #' Analyze Tumor Growth Using Various Statistical Methods
 #'
 #' @importFrom utils head tail
+#' @importFrom rlang sym !!
+#' @importFrom dplyr group_by summarize mutate arrange filter
 #'
 #' @description
 #' This function provides a comprehensive statistical analysis for tumor growth data using
@@ -31,7 +33,6 @@
 #'        Default is 1 (linear). Increase to 2 or 3 to model non-linear growth patterns.
 #' @param model_type A character string specifying the type of model to fit. Options are: 
 #'        "lme4" (standard linear mixed effects model using lme4 package),
-#'        "gam" (generalized additive model using mgcv package),
 #'        "auc" (area under the curve analysis).
 #'        Default is "lme4".
 #' @param random_effects_specification A character string specifying the random effects structure.
@@ -41,23 +42,39 @@
 #' @param handle_cage_effects Method for handling cage effects: "include_if_not_collinear", "always_include", 
 #'        "never_include", or "as_random_effect". Default is "include_if_not_collinear".
 #' @param auc_method Method for AUC calculation: "trapezoidal" or "last_observation". Default is "trapezoidal".
+#' @param reference_group Optional. A character string specifying which treatment group should be used as the reference
+#'        for statistical comparisons. If NULL, the first treatment group alphabetically will be used.
 #' @param return_model Boolean. Should the full fitted model be returned? Default is TRUE.
 #' @param include_diagnostics Boolean. Should model diagnostic information be included? Default is TRUE.
 #' @param plots Boolean. Should standard plots be generated and returned? Default is TRUE.
 #' @param verbose Boolean. Should detailed information be printed during analysis? Default is FALSE.
+#' @param extrapolation_points Number of points to extrapolate for each subject (default: 0)
 #'
 #' @return A list containing the following components:
 #' \describe{
-#'   \item{model}{The fitted statistical model (lme4, gam, or auc object)}
+#'   \item{model}{The fitted statistical model (lme4 or auc object)}
 #'   \item{anova}{ANOVA table for fixed effects with Type III tests}
 #'   \item{summary}{Detailed model summary with parameter estimates}
-#'   \item{pairwise_comparisons}{Results of pairwise comparisons between treatment groups}
-#'   \item{treatment_effects}{Estimated treatment effects on tumor growth}
+#'   \item{pairwise_comparisons}{Results of pairwise comparisons between treatment groups, showing treatment differences, p-values, and confidence intervals}
+#'   \item{treatment_effects}{Estimated treatment effects on tumor growth, showing adjusted means for each treatment group}
+#'   \item{growth_rates}{Data frame containing growth rates for each subject, calculated as the slope of log-volume over time. Higher values indicate faster tumor growth.}
+#'   \item{cage_analysis}{Analysis of cage effects, including:
+#'     \itemize{
+#'       \item{collinearity_test}{Chi-squared test result for collinearity between cage and treatment}
+#'       \item{effects}{Data frame of cage-level statistics (mean and SD of volume by cage and treatment)}
+#'     }
+#'   }
+#'   \item{model_selection}{Results of model selection process, including:
+#'     \itemize{
+#'       \item{aic}{AIC values for each model specification}
+#'       \item{bic}{BIC values for each model specification}
+#'       \item{selected_model}{Name of the model with lowest BIC (most parsimonious)}
+#'     }
+#'   }
+#'   \item{diagnostics}{Model diagnostic information including residuals, random effects, and variance components}
 #'   \item{auc_data}{Area under the curve data and statistics (when model_type="auc")}
-#'   \item{diagnostics}{Model diagnostic information (convergence, variance components, etc.)}
 #'   \item{plots}{List of standard plots for visualizing results}
-#'   \item{cage_analysis}{Analysis of cage effects, including collinearity assessment}
-#'   \item{data_summary}{Descriptive statistics of the processed data}
+#'   \item{data_summary}{Descriptive statistics of the processed data by treatment and time point, including mean, SD, and SEM of volumes}
 #' }
 #'
 #' @details
@@ -68,10 +85,7 @@
 #'    account for the correlation structure of repeated measurements on the same subjects. 
 #'    The default formula is log(Volume) ~ Day * Treatment + (1|ID).
 #'
-#' 2. Generalized additive models (model_type="gam") are appropriate when growth follows complex
-#'    non-linear patterns. These models use splines to flexibly model time effects.
-#'
-#' 3. Area under the curve analysis (model_type="auc") reduces each subject's growth curve to a single
+#' 2. Area under the curve analysis (model_type="auc") reduces each subject's growth curve to a single
 #'    summary metric (AUC), which is then compared between treatment groups.
 #'
 #' The function automatically handles:
@@ -80,6 +94,10 @@
 #' - Transformations to normalize growth curves
 #' - Polynomial terms for non-linear growth patterns
 #' - Diagnostic checks of model assumptions
+#' - Growth rate analysis for each treatment group
+#' - Cage effect analysis and collinearity testing
+#' - Model selection based on AIC/BIC criteria
+#' - Treatment effect estimation with proper reference group handling
 #'
 #' @examples
 #' # Load example data
@@ -116,32 +134,34 @@ tumor_growth_statistics <- function(df,
                                   dose_column = NULL,
                                   transform = c("log", "sqrt", "none"),
                                   polynomial_degree = 1,
-                                  model_type = c("lme4", "gam", "auc"),
+                                  model_type = c("lme4", "auc"),
                                   random_effects_specification = c("intercept_only", "slope", "none"),
                                   handle_cage_effects = c("include_if_not_collinear", "always_include", 
                                                         "never_include", "as_random_effect"),
                                   auc_method = c("trapezoidal", "last_observation"),
+                                  reference_group = NULL,
                                   return_model = TRUE,
                                   include_diagnostics = TRUE,
                                   plots = TRUE,
-                                  verbose = FALSE) {
+                                  verbose = FALSE,
+                                  extrapolation_points = 0) {
   # Check for required packages
   if (!requireNamespace("lme4", quietly = TRUE)) {
     stop("Please install the lme4 package: install.packages('lme4')")
   }
   
+  # Match arguments
+  transform <- match.arg(transform)
+  model_type <- match.arg(model_type, c("lme4", "auc"))
+  random_effects_specification <- match.arg(random_effects_specification)
+  handle_cage_effects <- match.arg(handle_cage_effects)
+  auc_method <- match.arg(auc_method)
+
   if (verbose) {
     cat("Analyzing tumor growth data...\n")
     cat("Model type:", model_type, "\n")
     cat("Transform:", transform, "\n")
   }
-  
-  # Match arguments
-  transform <- match.arg(transform)
-  model_type <- match.arg(model_type)
-  random_effects_specification <- match.arg(random_effects_specification)
-  handle_cage_effects <- match.arg(handle_cage_effects)
-  auc_method <- match.arg(auc_method)
   
   # Check if required columns exist
   required_cols <- c(time_column, volume_column, treatment_column, id_column, cage_column)
@@ -150,56 +170,286 @@ tumor_growth_statistics <- function(df,
     stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
   }
   
-  # Create a basic summary of the data
-  data_summary <- df %>%
-    dplyr::group_by(dplyr::across(dplyr::all_of(c(treatment_column, time_column)))) %>%
-    dplyr::summarize(
-      mean_volume = mean(dplyr::across(dplyr::all_of(volume_column))[[1]], na.rm = TRUE),
-      sd_volume = stats::sd(dplyr::across(dplyr::all_of(volume_column))[[1]], na.rm = TRUE),
-      n = dplyr::n(),
-      sem_volume = sd_volume / sqrt(n),
-      .groups = "drop"
-    )
+  # Set reference group if not specified
+  treatment_groups <- unique(df[[treatment_column]])
+  if (is.null(reference_group)) {
+    reference_group <- sort(treatment_groups)[1]
+  } else if (!reference_group %in% treatment_groups) {
+    stop("Reference group '", reference_group, "' is not present in the data.")
+  }
+  if (verbose) {
+    cat("Using", reference_group, "as reference group for statistical comparisons\n")
+  }
   
+  # Extrapolate data points if requested
+  if (extrapolation_points > 0) {
+    if (verbose) cat("Extrapolating", extrapolation_points, "points for each subject\n")
+    
+    # Split data by subject
+    df_split <- split(df, list(df[[id_column]], df[[treatment_column]]))
+    
+    # Function to extrapolate for one subject
+    extrapolate_subject <- function(subject_data) {
+      if (nrow(subject_data) < 2) return(subject_data)  # Need at least 2 points for extrapolation
+      
+      # Fit linear model to last 3 points (or all points if less than 3)
+      n_points <- min(3, nrow(subject_data))
+      last_points <- tail(subject_data, n_points)
+      lm_fit <- stats::lm(paste(volume_column, "~", time_column), data = last_points)
+      
+      # Create new time points for extrapolation
+      last_time <- max(subject_data[[time_column]])
+      new_times <- seq(from = last_time + diff(range(subject_data[[time_column]])) / nrow(subject_data),
+                      length.out = extrapolation_points,
+                      by = diff(range(subject_data[[time_column]])) / nrow(subject_data))
+      
+      # Create data frame for prediction
+      new_data <- data.frame(time = new_times)
+      names(new_data) <- time_column
+      
+      # Predict new volumes and ensure they're non-negative
+      new_volumes <- pmax(0, stats::predict(lm_fit, newdata = new_data))
+      
+      # Create new rows
+      new_rows <- subject_data[1:extrapolation_points, ]
+      new_rows[[time_column]] <- new_times
+      new_rows[[volume_column]] <- new_volumes
+      
+      # Combine original and extrapolated data
+      rbind(subject_data, new_rows)
+    }
+    
+    # Apply extrapolation to each subject
+    df_extrapolated <- do.call(rbind, lapply(df_split, extrapolate_subject))
+    df <- df_extrapolated[order(df_extrapolated[[time_column]]), ]
+  }
+  
+  # Create a copy of the data for analysis
+  analysis_df <- df
+
   # Apply transformations if needed
   if (transform == "log") {
     # Add a small constant to avoid log(0) issues
-    df[[volume_column]] <- log(df[[volume_column]] + 1)
+    analysis_df[[volume_column]] <- log(analysis_df[[volume_column]] + 1)
     if (verbose) cat("Applied log(x+1) transformation to volume data\n")
   } else if (transform == "sqrt") {
-    df[[volume_column]] <- sqrt(df[[volume_column]])
+    analysis_df[[volume_column]] <- sqrt(analysis_df[[volume_column]])
     if (verbose) cat("Applied square root transformation to volume data\n")
   }
+
+  # Growth rate analysis
+  growth_rates <- tryCatch({
+    # Split data by treatment and ID
+    split_data <- split(analysis_df, list(analysis_df[[treatment_column]], analysis_df[[id_column]]))
+    
+    # Calculate growth rates for each subject
+    growth_rates_list <- lapply(split_data, function(subject_data) {
+      if (nrow(subject_data) >= 3) {
+        # Sort by time
+        subject_data <- subject_data[order(subject_data[[time_column]]), ]
+        
+        # Calculate log volume
+        log_volume <- log1p(subject_data[[volume_column]])
+        
+        # Fit linear model
+        model <- stats::lm(log_volume ~ subject_data[[time_column]])
+        growth_rate <- stats::coef(model)[2]
+        
+        # Return data frame with results
+        data.frame(
+          Treatment = unique(subject_data[[treatment_column]]),
+          ID = unique(subject_data[[id_column]]),
+          growth_rate = growth_rate
+        )
+      } else {
+        NULL
+      }
+    })
+    
+    # Combine results
+    do.call(rbind, growth_rates_list)
+  }, error = function(e) {
+    warning("Error calculating growth rates: ", e$message)
+    NULL
+  })
+
+  # Cage effect analysis
+  cage_analysis <- list()
   
+  # Test for collinearity between cage and treatment
+  cage_treatment_table <- table(analysis_df[[cage_column]], analysis_df[[treatment_column]])
+  cage_analysis$collinearity_test <- tryCatch({
+    stats::chisq.test(cage_treatment_table)
+  }, error = function(e) {
+    warning("Error in chi-square test: ", e$message)
+    NULL
+  })
+  
+  # Calculate cage-level effects
+  cage_effects <- tryCatch({
+    # Split data by cage and treatment
+    split_data <- split(analysis_df, list(analysis_df[[cage_column]], analysis_df[[treatment_column]]))
+    
+    # Calculate statistics for each group
+    cage_effects_list <- lapply(split_data, function(group_data) {
+      if (nrow(group_data) > 0) {
+        # Only create entries for non-empty groups
+        data.frame(
+          Cage = unique(group_data[[cage_column]]),
+          Treatment = unique(group_data[[treatment_column]]),
+          mean_volume = mean(group_data[[volume_column]], na.rm = TRUE),
+          sd_volume = stats::sd(group_data[[volume_column]], na.rm = TRUE),
+          n = nrow(group_data)
+        )
+      } else {
+        # Skip empty groups
+        NULL
+      }
+    })
+    
+    # Filter out NULL results and combine
+    cage_effects_list <- cage_effects_list[!sapply(cage_effects_list, is.null)]
+    if (length(cage_effects_list) > 0) {
+      do.call(rbind, cage_effects_list)
+    } else {
+      NULL
+    }
+  }, error = function(e) {
+    warning("Error calculating cage effects: ", e$message)
+    NULL
+  })
+  
+  cage_analysis$effects <- cage_effects
+
+  # Model selection
+  model_selection <- list()
+  
+  # Fit different random effects specifications
+  models <- list()
+  
+  # Base model (intercept only)
+  models$intercept_only <- tryCatch({
+    lme4::lmer(
+      stats::as.formula(paste(volume_column, "~", time_column, "*", treatment_column, "+ (1|", id_column, ")")),
+      data = analysis_df,
+      control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
+                                check.nobs.vs.nRE = "ignore")
+    )
+  }, warning = function(w) {
+    if (grepl("boundary", w$message)) {
+      warning("Boundary (singular) fit detected in intercept-only model")
+    }
+    return(NULL)
+  })
+  
+  # Random slope model
+  models$random_slope <- tryCatch({
+    lme4::lmer(
+      stats::as.formula(paste(volume_column, "~", time_column, "*", treatment_column, "+ (", time_column, "|", id_column, ")")),
+      data = analysis_df,
+      control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
+                                check.nobs.vs.nRE = "ignore")
+    )
+  }, warning = function(w) {
+    if (grepl("boundary", w$message)) {
+      warning("Boundary (singular) fit detected in random slope model")
+    }
+    return(NULL)
+  })
+  
+  # Remove any NULL models
+  models <- models[!sapply(models, is.null)]
+  
+  if (length(models) > 0) {
+    # Compare models using AIC and BIC
+    model_selection$aic <- sapply(models, stats::AIC)
+    model_selection$bic <- sapply(models, stats::BIC)
+    
+    # Select best model based on BIC (more conservative)
+    best_model <- names(which.min(model_selection$bic))
+    model <- models[[best_model]]
+    
+    if (verbose) {
+      cat("Model selection results:\n")
+      cat("AIC:", paste(names(model_selection$aic), "=", round(model_selection$aic, 2), collapse = ", "), "\n")
+      cat("BIC:", paste(names(model_selection$bic), "=", round(model_selection$bic, 2), collapse = ", "), "\n")
+      cat("Selected model:", best_model, "\n")
+    }
+  } else {
+    warning("No valid models could be fitted. Using intercept-only model as fallback.")
+    model <- lme4::lmer(
+      stats::as.formula(paste(volume_column, "~", time_column, "*", treatment_column, "+ (1|", id_column, ")")),
+      data = analysis_df,
+      control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
+                                check.nobs.vs.nRE = "ignore")
+    )
+    model_selection$aic <- stats::AIC(model)
+    model_selection$bic <- stats::BIC(model)
+    model_selection$selected_model <- "intercept_only"
+  }
+
+  # Diagnostic plots
+  diagnostics <- list()
+  
+  if (include_diagnostics) {
+    # Residual plots
+    diagnostics$residuals <- list(
+      fitted = stats::fitted(model),
+      residuals = stats::residuals(model),
+      qq_plot = stats::qqnorm(stats::residuals(model))
+    )
+    
+    # Random effects plots
+    diagnostics$random_effects <- list(
+      intercepts = lme4::ranef(model)[[id_column]],
+      slopes = if (best_model == "random_slope") {
+        lme4::ranef(model)[[id_column]][, 2]
+      } else NULL
+    )
+    
+    # Variance components
+    diagnostics$variance_components <- lme4::VarCorr(model)
+  }
+
+  # Create a basic summary of the data
+  data_summary <- tryCatch({
+    # Split data by treatment and time
+    split_data <- split(analysis_df, list(analysis_df[[treatment_column]], analysis_df[[time_column]]))
+    
+    # Calculate summary statistics for each group
+    summary_list <- lapply(split_data, function(group_data) {
+      if (nrow(group_data) > 0) {
+        # Only create entries for non-empty groups
+        data.frame(
+          Treatment = unique(group_data[[treatment_column]]),
+          Day = unique(group_data[[time_column]]),
+          mean_volume = mean(group_data[[volume_column]], na.rm = TRUE),
+          sd_volume = stats::sd(group_data[[volume_column]], na.rm = TRUE),
+          n = nrow(group_data)
+        )
+      } else {
+        # Skip empty groups
+        NULL
+      }
+    })
+    
+    # Filter out NULL results and combine
+    summary_list <- summary_list[!sapply(summary_list, is.null)]
+    if (length(summary_list) > 0) {
+      # Combine results and calculate standard error
+      summary_df <- do.call(rbind, summary_list)
+      summary_df$sem_volume <- summary_df$sd_volume / sqrt(summary_df$n)
+      summary_df
+    } else {
+      NULL
+    }
+  }, error = function(e) {
+    warning("Error calculating data summary: ", e$message)
+    NULL
+  })
+
   # Construct formula based on model type and specifications
   if (model_type == "lme4") {
-    # Construct formula for lme4 model
-    fixed_part <- paste(volume_column, "~", time_column, "*", treatment_column)
-    
-    # Add random effects part
-    if (random_effects_specification == "intercept_only") {
-      random_part <- paste("(1|", id_column, ")")
-    } else if (random_effects_specification == "slope") {
-      random_part <- paste("(", time_column, "|", id_column, ")")
-    } else {
-      random_part <- ""
-    }
-    
-    # Combine fixed and random parts
-    if (random_part != "") {
-      formula_str <- paste(fixed_part, "+", random_part)
-    } else {
-      formula_str <- fixed_part
-    }
-    
-    # Create the formula
-    model_formula <- stats::as.formula(formula_str)
-    
-    if (verbose) cat("Model formula:", deparse(model_formula), "\n")
-    
-    # Fit the model
-    model <- lme4::lmer(model_formula, data = df)
-    
     # Create ANOVA table
     if (requireNamespace("car", quietly = TRUE)) {
       anova_table <- car::Anova(model, type = "III")
@@ -207,28 +457,72 @@ tumor_growth_statistics <- function(df,
       anova_table <- stats::anova(model)
       warning("Package 'car' not available. Using stats::anova instead of Type III tests.")
     }
-    
+
     # Create pairwise comparisons
     if (requireNamespace("emmeans", quietly = TRUE)) {
-      lsmeans_obj <- emmeans::emmeans(model, specs = treatment_column)
-      pairwise_comp <- emmeans::contrast(lsmeans_obj, method = "pairwise")
-      
+      # Set up emmeans with reference group, averaging over time points
+      lsmeans_obj <- emmeans::emmeans(model, specs = treatment_column, at = list(Day = mean(analysis_df$Day)))
+
       # Extract treatment effects
-      treatment_effects <- as.data.frame(lsmeans_obj)
-      colnames(treatment_effects) <- c("Group", "Adjusted_Mean", "SE", "DF", "Lower_CL", "Upper_CL")
+      emm_summary <- summary(lsmeans_obj)
+      treatment_effects <- data.frame(
+        Group = emm_summary[[treatment_column]],
+        Adjusted_Mean = emm_summary$emmean,
+        SE = emm_summary$SE,
+        DF = emm_summary$df,
+        Lower_CL = emm_summary$lower.CL,
+        Upper_CL = emm_summary$upper.CL
+      )
+
+      # Add reference group note
+      treatment_effects$Note <- ifelse(treatment_effects$Group == reference_group, "Reference group", "")
+
+      # Reorder treatment effects to put reference group first
+      ref_idx <- which(treatment_effects$Group == reference_group)
+      if (ref_idx > 1) {
+        treatment_effects <- rbind(
+          treatment_effects[ref_idx, ],
+          treatment_effects[-ref_idx, ]
+        )
+      }
+
+      # Format numeric columns
+      treatment_effects$Adjusted_Mean <- round(treatment_effects$Adjusted_Mean, 3)
+      treatment_effects$SE <- round(treatment_effects$SE, 3)
+      treatment_effects$Lower_CL <- round(treatment_effects$Lower_CL, 3)
+      treatment_effects$Upper_CL <- round(treatment_effects$Upper_CL, 3)
+
+      # Create contrasts with reference group
+      contrasts <- list()
+      other_groups <- setdiff(treatment_groups, reference_group)
+      for (group in other_groups) {
+        contrast_coef <- numeric(length(treatment_groups))
+        ref_idx <- which(treatment_groups == reference_group)
+        group_idx <- which(treatment_groups == group)
+        contrast_coef[ref_idx] <- -1
+        contrast_coef[group_idx] <- 1
+        contrasts[[paste(group, "-", reference_group)]] <- contrast_coef
+      }
+
+      # Calculate pairwise comparisons
+      pairwise_comp <- emmeans::contrast(lsmeans_obj, method = contrasts)
+
     } else {
       pairwise_comp <- NULL
       treatment_effects <- NULL
       warning("Package 'emmeans' not available. Pairwise comparisons and treatment effects not calculated.")
     }
-    
+
     # Create plots
     if (plots) {
       plot_data <- data_summary
       plots_list <- list(
-        data_summary = plot_data
+        data_summary = plot_data,
+        growth_rates = growth_rates,
+        cage_effects = cage_effects,
+        diagnostics = diagnostics
       )
-      
+
       # Add adjusted means plot if available
       if (!is.null(treatment_effects)) {
         plots_list$adjusted_means <- treatment_effects
@@ -236,7 +530,7 @@ tumor_growth_statistics <- function(df,
     } else {
       plots_list <- NULL
     }
-    
+
     # Return the results
     results <- list(
       model = if (return_model) model else NULL,
@@ -244,10 +538,14 @@ tumor_growth_statistics <- function(df,
       summary = summary(model),
       pairwise_comparisons = pairwise_comp,
       treatment_effects = treatment_effects,
+      growth_rates = growth_rates,
+      cage_analysis = cage_analysis,
+      model_selection = model_selection,
+      diagnostics = if (include_diagnostics) diagnostics else NULL,
       data_summary = data_summary,
       plots = plots_list
     )
-    
+
     return(results)
   } else {
     # For other model types, return a dummy result for now
@@ -255,7 +553,9 @@ tumor_growth_statistics <- function(df,
     results <- list(
       model = NULL,
       anova = NULL,
-      data_summary = data_summary
+      data_summary = data_summary,
+      growth_rates = growth_rates,
+      cage_analysis = cage_analysis
     )
     return(results)
   }
