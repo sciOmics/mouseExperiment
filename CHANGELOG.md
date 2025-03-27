@@ -24,3 +24,4 @@ All notable changes to the mouseExperiment package will be documented in this fi
   - Added group_order parameter to plot_auc to control the order of treatment groups in plots 
   - Improved implementation of "auc" model_type
 - Fixed AUC calculation to use composite IDs that combine subject ID and treatment group, ensuring correct AUC values for each unique subject-treatment combination 
+- Fixed `plot_auc` function error where `is.named()` function was called but not defined 

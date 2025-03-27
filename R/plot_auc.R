@@ -165,8 +165,9 @@ plot_auc <- function(auc_data,
   
   # Set up colors if provided
   if (!is.null(colors)) {
-    if (is.vector(colors) && !is.named(colors)) {
-      # If just a vector of colors, match to groups
+    has_names <- !is.null(names(colors)) && any(names(colors) != "")
+    if (is.vector(colors) && !has_names) {
+      # If just a vector of colors without names, match to groups
       groups <- unique(auc_data$Group)
       if (length(colors) < length(groups)) {
         warning("Not enough colors provided. Recycling colors.")
