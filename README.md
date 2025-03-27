@@ -14,6 +14,7 @@ This package provides tools to:
 - Investigate drug synergy effects
 - Conduct statistical analyses
 - Perform post-hoc power analysis
+- Generate Area Under the Curve (AUC) analysis and visualization
 
 ## Installation
 
@@ -32,12 +33,14 @@ devtools::install_local("path/to/mouseExperiment")
 ### Data Processing
 - `calculate_volume()` - Calculate tumor volume from caliper measurements
 - `calculate_dates()` - Convert dates to experimental days
+- `tumor_auc_analysis()` - Calculate and analyze Area Under the Curve for tumor growth data
 
 ### Visualization
 - `plot_tumor_growth()` - Create tumor growth curves with optional treatment day indicators
 - `plot_survival()` - Generate Kaplan-Meier survival curves
 - `plot_caterpillar()` - Create coefficient plots for mixed-effects models
 - `plot_treatments()` - Visualize treatment administration schedules
+- `plot_auc()` - Create comprehensive visualizations of Area Under the Curve (AUC) data
 
 ### Statistical Analysis
 - `tumor_growth_statistics()` - Analyze tumor growth with mixed-effects models
@@ -102,6 +105,19 @@ power_results <- post_power_analysis(data,
                                   effect_size = 0.8,
                                   power_target = 0.8)
 print(power_results$achieved_power)
+
+# Calculate AUC and analyze results
+auc_results <- tumor_auc_analysis(data)
+print(auc_results$auc_summary)
+print(auc_results$auc_comparisons)
+
+# Create custom AUC visualizations
+example_auc_data <- data.frame(
+  ID = paste0("Mouse", 1:20),
+  Group = rep(c("Control", "Treatment A", "Treatment B", "Treatment C"), each=5),
+  AUC = c(runif(5, 10, 15), runif(5, 8, 12), runif(5, 5, 10), runif(5, 3, 8))
+)
+auc_plot <- plot_auc(example_auc_data)
 ```
 
 ## Statistical Methodology
@@ -155,6 +171,18 @@ The `dose_response_statistics()` function uses several modeling approaches:
 
 4. **Non-linear modeling**: Fits 4-parameter logistic models when appropriate
 
+### AUC Analysis
+
+The `tumor_auc_analysis()` function calculates and analyzes Area Under the Curve:
+
+1. **AUC calculation**: Uses trapezoidal method to calculate area under tumor growth curve
+
+2. **Statistical analysis**: Compares AUC values between treatment groups using ANOVA
+
+3. **Interpretation**:
+   - Lower AUC indicates more effective tumor control
+   - Provides a single value summary of treatment effect over entire experiment
+
 ### Drug Synergy Analysis
 
 The `analyze_drug_synergy()` function evaluates combination treatments:
@@ -177,6 +205,7 @@ This package requires several R packages:
 - `drc` for dose-response modeling
 - `dplyr` for data manipulation
 - `anytime` for date parsing
+- `rlang` for tidy evaluation
 
 ## Documentation
 
@@ -188,13 +217,13 @@ browseVignettes("mouseExperiment")
 
 ## Recent Improvements
 
-- **New Features**: Added treatment schedule visualization with `plot_treatments()`
-- **Code organization**: Removed deprecated Bayesian analysis functions
-- **Documentation**: Updated example scripts with current best practices
-- **Reliability**: Fixed hazard ratio calculations for groups with complete separation
-- **Visualization**: Enhanced treatment day indicators in growth curves
-- **Datasets**: Added synthetic datasets for combination treatment and dose-response experiments
-- **Tutorial**: Created comprehensive walkthrough of all package functionality in vignettes
+- **New Features**: Added AUC analysis with `tumor_auc_analysis()` and `plot_auc()` functions
+- **Code organization**: Improved error handling for `tumor_growth_statistics()`
+- **Documentation**: Enhanced package documentation with roxygen2 and properly documented all datasets
+- **Reliability**: Fixed model type argument handling in statistical functions
+- **Visualization**: Implemented improved plotting for AUC data with multiple visualization options
+- **Datasets**: Added comprehensive examples to all dataset documentation
+- **Package Structure**: Added LazyData support for easier access to included datasets
 
 ## License
 
