@@ -485,14 +485,23 @@ tumor_growth_statistics <- function(df,
       }
     }
     
+    # Create a composite ID combining ID and treatment to ensure unique subject-treatment combinations
+    auc_df$composite_id <- paste(auc_df[[id_column]], auc_df[[treatment_column]], sep = "_")
+    
     # Calculate AUC for each subject and collect metadata
     auc_list <- list()
-    subjects <- unique(auc_df[[id_column]])
+    unique_combinations <- unique(auc_df$composite_id)
     
-    # Calculate AUC for each subject with metadata
-    for (i in seq_along(subjects)) {
-      s <- subjects[i]
-      subject_data <- auc_df[auc_df[[id_column]] == s, ]
+    # Calculate AUC for each unique subject-treatment combination
+    for (i in seq_along(unique_combinations)) {
+      combo <- unique_combinations[i]
+      subject_data <- auc_df[auc_df$composite_id == combo, ]
+      
+      # Skip if we don't have sufficient data points
+      if (nrow(subject_data) < 2) {
+        if (verbose) cat("Skipping", combo, "- insufficient data points\n")
+        next
+      }
       
       # Get the AUC value
       auc_result <- calculate_auc(subject_data)
@@ -500,7 +509,7 @@ tumor_growth_statistics <- function(df,
       if (!is.na(auc_result)) {
         # Store AUC and metadata in list
         auc_list[[i]] <- data.frame(
-          ID = s,
+          ID = unique(subject_data[[id_column]]),
           Treatment = unique(subject_data[[treatment_column]]),
           Group = unique(subject_data[[treatment_column]]), # Add Group column for plot_auc compatibility
           AUC = as.numeric(auc_result),
