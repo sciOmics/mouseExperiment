@@ -162,9 +162,19 @@ survival_statistics <- function(df,
     warning("Error calculating median survival: ", e$message)
   })
   
-  # Add Events and Total columns
-  event_counts <- tapply(df[[censor_column]], df[[treatment_column]], sum)
-  total_counts <- table(df[[treatment_column]])
+  # Get the unique mice but ensure we have the last observation for each
+  unique_mice_data <- lapply(unique(df[[id_column]]), function(id) {
+    # Get all data for this mouse
+    mouse_data <- df[df[[id_column]] == id, ]
+    # Return the last observation (which should have the correct Survival_Censor value)
+    mouse_data[which.max(mouse_data[[time_column]]), ]
+  })
+  unique_mice <- do.call(rbind, unique_mice_data)
+  
+  # Now count events and totals based on unique mice
+  event_counts <- tapply(unique_mice[[censor_column]], unique_mice[[treatment_column]], sum)
+  total_counts <- tapply(unique_mice[[treatment_column]], unique_mice[[treatment_column]], length)
+  
   results$Events <- event_counts[match(results$Group, names(event_counts))]
   results$Total <- total_counts[match(results$Group, names(total_counts))]
   
@@ -521,7 +531,7 @@ print_results <- function(results) {
       }
     }
     
-    message(sprintf("Events: %d/%d", results$Events[i], results$Total[i]))
+    message(sprintf("Events: %d/%d", as.integer(results$Events[i]), as.integer(results$Total[i])))
     
     if(!is.na(results$Note[i]) && results$Note[i] != "") {
       message(sprintf("Note: %s", results$Note[i]))
@@ -547,7 +557,10 @@ print_results <- function(results) {
       ifelse(is.na(results$P_Value[i]), "Ref", sprintf("%.4f", results$P_Value[i]))
     }),
     "Events/Total" = sapply(1:nrow(results), function(i) {
-      sprintf("%d/%d", results$Events[i], results$Total[i])
+      # Ensure we're using the correct counts
+      sprintf("%d/%d", 
+              as.integer(results$Events[i]), 
+              as.integer(results$Total[i]))
     }),
     stringsAsFactors = FALSE
   )
