@@ -141,12 +141,6 @@ plot_survival <- function(data,
     font.family = font_family,
     censor = show_censoring,  # Control censoring marks
     
-    # Critical parameters to fix risk table text coloring
-    risk.table.col = "black",  # Use black for risk table lines
-    risk.table.y.text = FALSE, # Don't color y-axis text in risk table
-    risk.table.fontsize = font_size * 0.6, # Smaller font for risk table
-    tables.col = "black", # Use black for all text in tables
-    
     # Main plot theme
     ggtheme = ggplot2::theme_classic() + 
       ggplot2::theme(
