@@ -163,10 +163,6 @@ survival_statistics <- function(df,
   })
   
   # Add Events and Total columns
-  # Current approach doesn't properly account for unique subjects
-  # event_counts <- tapply(df[[censor_column]], df[[treatment_column]], sum)
-  # total_counts <- table(df[[treatment_column]])
-  
   # Improved approach to count unique subjects and their events per treatment group
   # First, find the unique subjects (usually ID) in each treatment group
   subject_treatment <- unique(df[, c(id_column, treatment_column)])
@@ -196,17 +192,34 @@ survival_statistics <- function(df,
   # Print formatted results
   print_results(results)
   
-  # Skip visualization plots for now to avoid formula issues
-  # We'll just return the results data frame
+  # Build our result list
+  result_list <- list(
+    results = results,
+    reference_group = reference_group,
+    method_used = method_used,
+    survival_data = data.frame(
+      Time = df[[time_column]],
+      Event = df[[censor_column]],
+      Treatment = df[[treatment_column]]
+    )
+  )
+  
+  # Add model if it exists
+  if (!is.null(model)) {
+    result_list$model <- model
+  }
+  
+  # Create visualizations
   tryCatch({
     # Only create forest plot if the ggplot2 package is available
-    forest_plot <- NULL
     if (requireNamespace("ggplot2", quietly = TRUE)) {
       forest_plot <- create_forest_plot(results, title = "Hazard Ratios with 95% CIs")
+      if (!is.null(forest_plot)) {
+        result_list$forest_plot <- forest_plot
+      }
     }
     
     # Only create KM plot if the survminer package is available
-    km_plot <- NULL
     if (requireNamespace("survminer", quietly = TRUE)) {
       km_plot <- tryCatch({
         create_km_plot(df, time_column, censor_column, treatment_column)
@@ -214,27 +227,13 @@ survival_statistics <- function(df,
         message("Error creating Kaplan-Meier plot: ", e$message)
         NULL
       })
+      
+      if (!is.null(km_plot)) {
+        result_list$km_plot <- km_plot
+      }
     }
-    
-    # Return all results - clean up data structure to avoid formula issues
-    result_list <- list(
-      results = results,
-      reference_group = reference_group,
-      method_used = method_used
-    )
-    
-    # Only add plots if they were successfully created
-    if (!is.null(forest_plot)) result_list$forest_plot <- forest_plot
-    if (!is.null(km_plot)) result_list$km_plot <- km_plot
-    
   }, error = function(e) {
-    # If any error occurs during visualization, just return the results
     message("Error in visualization: ", e$message)
-    result_list <- list(
-      results = results,
-      reference_group = reference_group,
-      method_used = method_used
-    )
   })
   
   return(result_list)
@@ -311,7 +310,14 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
   
   # Try standard Cox model first
   cox_model <- tryCatch({
-    survival::coxph(cox_formula, data = df)
+    # Create a factor version of the treatment column with the reference level set explicitly
+    df$treatment_factor <- factor(df[[treatment_column]], levels = c(reference_group, setdiff(treatment_groups, reference_group)))
+    
+    # Create a new formula using the factor
+    new_formula <- stats::as.formula(paste("surv_obj ~ treatment_factor"))
+    
+    # Fit model with explicit reference level
+    survival::coxph(new_formula, data = df)
   }, error = function(e) {
     message("Standard Cox model failed: ", e$message)
     NULL
@@ -327,11 +333,10 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     
     results <- tryCatch({
       # Create analysis data frame with safer group naming
-      # To avoid PD1/aPD1 naming issues
       analysis_df <- data.frame(
         time = df[[time_column]],
         status = df[[censor_column]],
-        group = factor(df[[treatment_column]])
+        group = factor(df[[treatment_column]], levels = c(reference_group, setdiff(treatment_groups, reference_group)))
       )
       
       # Fit model using the simplified data frame
@@ -347,19 +352,33 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
         confidence_intervals <- exp(confint(model))
         p_values <- model$prob
         
-        # Create results data frame
+        # Create results data frame with all treatment groups
         results <- data.frame(
           Group = treatment_groups,
-          HR = ifelse(treatment_groups == reference_group, 1, hazard_ratios),
-          CI_Lower = ifelse(treatment_groups == reference_group, 1, confidence_intervals[, 1]),
-          CI_Upper = ifelse(treatment_groups == reference_group, 1, confidence_intervals[, 2]),
-          P_Value = ifelse(treatment_groups == reference_group, NA, p_values),
+          HR = NA,
+          CI_Lower = NA,
+          CI_Upper = NA,
+          P_Value = NA,
           stringsAsFactors = FALSE
         )
         
-        # Ensure proper ordering
-        results <- results[match(treatment_groups, results$Group), ]
-        rownames(results) <- NULL
+        # Set reference group values
+        ref_idx <- which(results$Group == reference_group)
+        results$HR[ref_idx] <- 1
+        results$CI_Lower[ref_idx] <- 1
+        results$CI_Upper[ref_idx] <- 1
+        
+        # Fill in values for non-reference groups
+        for (i in seq_along(coefs)) {
+          group_name <- levels(analysis_df$group)[i + 1]  # +1 because first level is reference
+          if(group_name %in% results$Group) {
+            idx <- which(results$Group == group_name)
+            results$HR[idx] <- hazard_ratios[i]
+            results$CI_Lower[idx] <- confidence_intervals[i, 1]
+            results$CI_Upper[idx] <- confidence_intervals[i, 2]
+            results$P_Value[idx] <- p_values[i]
+          }
+        }
         
         return(list(
           model = model,
@@ -398,12 +417,21 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     # Create basic results without HRs (not estimable in this case)
     results <- data.frame(
       Group = treatment_groups,
-      HR = ifelse(treatment_groups == reference_group, 1, NA),
-      CI_Lower = ifelse(treatment_groups == reference_group, 1, NA),
-      CI_Upper = ifelse(treatment_groups == reference_group, 1, NA),
-      P_Value = ifelse(treatment_groups == reference_group, NA, p_value),
+      HR = NA,
+      CI_Lower = NA,
+      CI_Upper = NA,
+      P_Value = NA,
       stringsAsFactors = FALSE
     )
+    
+    # Set reference group values
+    ref_idx <- which(results$Group == reference_group)
+    results$HR[ref_idx] <- 1
+    results$CI_Lower[ref_idx] <- 1
+    results$CI_Upper[ref_idx] <- 1
+    
+    # Set p-value for non-reference groups
+    results$P_Value[-ref_idx] <- p_value
     
     model <- surv_diff
     
@@ -414,7 +442,48 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     
     # Extract the hazard ratios, CIs, and p-values
     model_summary <- summary(model)
-    results <- extract_cox_results(model_summary, treatment_groups, reference_group)
+    
+    # Create results data frame with all treatment groups
+    results <- data.frame(
+      Group = treatment_groups,
+      HR = NA,
+      CI_Lower = NA,
+      CI_Upper = NA,
+      P_Value = NA,
+      stringsAsFactors = FALSE
+    )
+    
+    # Set reference group values
+    ref_idx <- which(results$Group == reference_group)
+    results$HR[ref_idx] <- 1
+    results$CI_Lower[ref_idx] <- 1
+    results$CI_Upper[ref_idx] <- 1
+    
+    # Extract coefficient names which should match "treatment_factorTreatmentName"
+    coef_names <- rownames(model_summary$coefficients)
+    
+    # For non-reference groups, extract HR, CI, and p-value
+    for (i in seq_along(coef_names)) {
+      # Extract treatment group name from coefficient name
+      group_name <- gsub("treatment_factor", "", coef_names[i])
+      
+      # Find corresponding row in results
+      idx <- which(results$Group == group_name)
+      
+      if (length(idx) > 0) {
+        # Extract values
+        hr <- exp(model_summary$coefficients[i, "coef"])
+        ci_lower <- exp(model_summary$coefficients[i, "coef"] - 1.96 * model_summary$coefficients[i, "se(coef)"])
+        ci_upper <- exp(model_summary$coefficients[i, "coef"] + 1.96 * model_summary$coefficients[i, "se(coef)"])
+        p_value <- model_summary$coefficients[i, "Pr(>|z|)"]
+        
+        # Assign values
+        results$HR[idx] <- hr
+        results$CI_Lower[idx] <- ci_lower
+        results$CI_Upper[idx] <- ci_upper
+        results$P_Value[idx] <- p_value
+      }
+    }
   }
   
   return(list(
@@ -422,53 +491,6 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     results = results,
     method_used = method_used
   ))
-}
-
-#' Extract Results from Standard Cox Model
-#' @noRd
-extract_cox_results <- function(model_summary, treatment_groups, reference_group) {
-  # Extract statistics
-  hazard_ratios <- exp(model_summary$coefficients[, "coef"])
-  ci_lower <- exp(model_summary$coefficients[, "coef"] - 1.96 * model_summary$coefficients[, "se(coef)"])
-  ci_upper <- exp(model_summary$coefficients[, "coef"] + 1.96 * model_summary$coefficients[, "se(coef)"])
-  p_values <- model_summary$coefficients[, "Pr(>|z|)"]
-  
-  # Get coefficient names without any transformations
-  coef_names <- rownames(model_summary$coefficients)
-  
-  # Create a mapping between coefficient names and treatment groups
-  # Extract the treatment part from coefficient names (remove the column name prefix)
-  treatment_column_prefix <- paste0(names(model_summary$call$formula)[3], "=")
-  extracted_groups <- gsub(treatment_column_prefix, "", coef_names)
-  
-  # Create results data frame
-  results <- data.frame(
-    Group = treatment_groups,
-    HR = NA,
-    CI_Lower = NA,
-    CI_Upper = NA,
-    P_Value = NA,
-    stringsAsFactors = FALSE
-  )
-  
-  # Set reference group values
-  ref_idx <- which(results$Group == reference_group)
-  results$HR[ref_idx] <- 1
-  results$CI_Lower[ref_idx] <- 1
-  results$CI_Upper[ref_idx] <- 1
-  
-  # Fill in values for non-reference groups
-  for (i in seq_along(extracted_groups)) {
-    idx <- which(results$Group == extracted_groups[i])
-    if (length(idx) > 0) {
-      results$HR[idx] <- hazard_ratios[i]
-      results$CI_Lower[idx] <- ci_lower[i]
-      results$CI_Upper[idx] <- ci_upper[i]
-      results$P_Value[idx] <- p_values[i]
-    }
-  }
-  
-  return(results)
 }
 
 #' Create Kaplan-Meier Plot
@@ -505,13 +527,7 @@ print_results <- function(results) {
   message("\nSurvival Analysis Results:")
   message("=======================")
   
-  # Debug median survival data
-  if ("Median_Survival" %in% colnames(results)) {
-    message("Median survival data found in results")
-    message(paste("Median survival values:", paste(results$Median_Survival, collapse=", ")))
-  } else {
-    message("No median survival column in results")
-  }
+  # Debug output removed for cleaner presentation
   
   for(i in 1:nrow(results)) {
     message(sprintf("\nGroup: %s", results$Group[i]))
@@ -543,7 +559,10 @@ print_results <- function(results) {
       }
     }
     
-    message(sprintf("Events: %d/%d", results$Events[i], results$Total[i]))
+    # Ensure event counts are properly displayed 
+    if (!is.na(results$Events[i]) && !is.na(results$Total[i])) {
+      message(sprintf("Events: %d/%d", results$Events[i], results$Total[i]))
+    }
     
     if(!is.na(results$Note[i]) && results$Note[i] != "") {
       message(sprintf("Note: %s", results$Note[i]))
@@ -569,7 +588,11 @@ print_results <- function(results) {
       ifelse(is.na(results$P_Value[i]), "Ref", sprintf("%.4f", results$P_Value[i]))
     }),
     "Events/Total" = sapply(1:nrow(results), function(i) {
-      sprintf("%d/%d", results$Events[i], results$Total[i])
+      if (!is.na(results$Events[i]) && !is.na(results$Total[i])) {
+        sprintf("%d/%d", results$Events[i], results$Total[i])
+      } else {
+        "NA/NA"
+      }
     }),
     stringsAsFactors = FALSE
   )
@@ -584,27 +607,55 @@ print_results <- function(results) {
   }
   
   print(formatted_table)
+  
+  # Return the formatted table invisibly for further use if needed
+  invisible(formatted_table)
 }
 
 #' Create Forest Plot for Hazard Ratios
 #' @noRd
 create_forest_plot <- function(results, title = "Forest Plot") {
   # Check if we have valid results for a forest plot
-  if (is.null(results) || !all(c("Group", "HR", "CI_Lower", "CI_Upper") %in% colnames(results))) {
+  if (is.null(results) || nrow(results) == 0) {
+    warning("Cannot create forest plot: No results data available")
     return(NULL)
   }
   
+  # Check for required columns
+  required_cols <- c("Group", "HR", "CI_Lower", "CI_Upper")
+  # Also handle alternative column names
+  alternative_cols <- c("Group", "Hazard_Ratio", "CI_Lower", "CI_Upper")
+  
+  # Check if we have the standard columns
+  has_standard_cols <- all(required_cols %in% colnames(results))
+  # Check if we have the alternative columns
+  has_alternative_cols <- all(alternative_cols %in% colnames(results))
+  
+  if (!has_standard_cols && !has_alternative_cols) {
+    warning("Cannot create forest plot: No hazard ratio data available")
+    return(NULL)
+  }
+  
+  # Create a copy for plotting to avoid modifying the original
+  plot_data <- results
+  
+  # If we have alternative column names, rename them
+  if (!has_standard_cols && has_alternative_cols) {
+    names(plot_data)[names(plot_data) == "Hazard_Ratio"] <- "HR"
+  }
+  
   # Remove any rows with NA values for plotting
-  plot_data <- results[!is.na(results$HR), ]
+  plot_data <- plot_data[!is.na(plot_data$HR), ]
   
   # If no valid rows remain, return NULL
   if (nrow(plot_data) == 0) {
+    warning("Cannot create forest plot: No valid hazard ratio data available")
     return(NULL)
   }
   
   # Format hazard ratios and CIs
   plot_data$HR_CI <- sprintf("%.2f (%.2f-%.2f)", 
-                            plot_data$HR, plot_data$CI_Lower, plot_data$CI_Upper)
+                           plot_data$HR, plot_data$CI_Lower, plot_data$CI_Upper)
   
   # Create the forest plot
   ggplot2::ggplot(plot_data, ggplot2::aes(x = HR, y = Group)) +
