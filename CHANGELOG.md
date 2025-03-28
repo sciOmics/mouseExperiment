@@ -16,7 +16,7 @@ All notable changes to the mouseExperiment package will be documented in this fi
 - Enhanced summary output in `tumor_growth_statistics()` to provide detailed description of statistical tests and methods used
 - Improved growth rate calculation description in result summaries to clarify the log-transformation and interpretation
 
-## [0.1.0] - 2023-06-15
+## [0.1.0] - 2025-01-15
 
 ### Added
 - Initial release of the mouseExperiment package
