@@ -1,70 +1,58 @@
-# Plan to Fix Mouse Identification in tumor_growth_statistics
+# Plan to Fix Mouse Identification in Additional Functions
 
 ## Problem Description
 
-The `tumor_growth_statistics` function is not properly accounting for all mice in each treatment group when mice have the same ID but are in different cages. The issue specifically appears when using the `model_type="auc"` option.
+After fixing the `tumor_growth_statistics` function to properly account for mice with the same ID in different cages, we've identified two additional functions that have the same issue:
 
-The current function creates a composite ID using only the ID and Treatment columns:
-```R
-composite_id <- paste(auc_df[[id_column]], auc_df[[treatment_column]], sep = "_")
-```
+1. `tumor_auc_analysis` in R/tumor_auc_analysis.R
+2. `calculate_auc_values` in R/post_power_analysis.R
 
-This approach cannot distinguish between mice that have the same ID but are in different cages within the same treatment group. While our test with the synthetic dataset showed all mice were properly identified, the user's real-world data likely has mice with duplicate IDs across different cages.
+Both functions process subjects based solely on their ID value without considering cage information. This means that if there are mice with the same ID in different cages (but in the same treatment group), they would be incorrectly treated as a single mouse. This could lead to inaccurate AUC calculations and statistical analyses.
 
 ## Proposed Solution
 
-We will modify the `composite_id` creation in the `tumor_growth_statistics` function to include the cage column, ensuring that mice with the same ID in different cages are uniquely identified:
+We need to modify both functions to create unique subject identifiers that include cage information, similar to the fix applied to `tumor_growth_statistics`. 
 
-```R
-composite_id <- paste(auc_df[[id_column]], auc_df[[treatment_column]], auc_df[[cage_column]], sep = "_")
-```
+### For `tumor_auc_analysis` function:
 
-This change will maintain backward compatibility while resolving the issue of identifying all unique mice correctly.
+1. Modify the function to create a composite subject identifier using ID, Treatment, and Cage values.
+2. Use this composite identifier throughout the function instead of just the ID value.
+
+### For `calculate_auc_values` function:
+
+1. Add a `cage_column` parameter with a default value of "Cage".
+2. Modify the function to create a composite subject identifier using ID, Treatment, and Cage values.
+3. Use this composite identifier for AUC calculations.
 
 ## Implementation Steps
 
-1. Edit the `R/tumor_growth_statistics.R` file at approximately line 491.
+### For `tumor_auc_analysis`:
 
-2. Locate the following code in the AUC calculation section:
-   ```R
-   # Calculate AUC for each individual (Composite ID ensures unique subject-treatment combinations)
-   composite_id <- paste(auc_df[[id_column]], auc_df[[treatment_column]], sep = "_")
-   auc_data <- data.frame()
-   ```
+1. Add a `cage_column` parameter with a default value of "Cage".
+2. Check for the existence of the cage column at the start of the function.
+3. Create a composite subject identifier combining ID, Treatment, and Cage.
+4. Use this composite identifier for subject-level operations.
+5. Preserve the original ID in the output for reference.
 
-3. Replace it with:
-   ```R
-   # Calculate AUC for each individual using ID + Treatment + Cage for unique identification
-   composite_id <- paste(auc_df[[id_column]], auc_df[[treatment_column]], auc_df[[cage_column]], sep = "_")
-   auc_data <- data.frame()
-   ```
+### For `calculate_auc_values`:
 
-4. Update the comment above the code to clearly document the change and reasoning.
-
-5. Create a test script that specifically validates this fix using a dataset that contains mice with the same ID but in different cages.
-
-6. Update the CHANGELOG.md to document this fix.
+1. Add a `cage_column` parameter with a default value of "Cage".
+2. Check if the cage column exists in the data.
+3. Create a composite subject identifier including cage information when available.
+4. Use this composite identifier for AUC calculations.
+5. Return the original ID in the output for reference.
 
 ## Testing Plan
 
-1. Create a synthetic dataset that explicitly reproduces the issue:
-   - Multiple mice with the same ID in different cages within the same treatment group
-
-2. Test the function before and after the fix to verify:
-   - The original function fails to identify all unique mice
-   - The fixed function correctly identifies all unique mice
-
-3. Verify the fix doesn't break existing functionality for datasets that don't have this specific issue.
-
-4. Ensure the modified function produces correct AUC values for all mice.
+1. Create a test script that explicitly demonstrates the issue with duplicate IDs across cages.
+2. Verify that the original functions fail to correctly identify all unique mice.
+3. Test the modified functions to confirm they correctly identify all unique mice.
+4. Ensure the modifications do not break existing functionality for datasets without duplicate IDs.
 
 ## Documentation Updates
 
-1. Update the function documentation to clarify how unique mice are identified.
-
-2. Add a note to the CHANGELOG.md about this fix, explaining the issue and solution.
-
-3. Consider updating examples to illustrate the proper structure for datasets with multiple cages.
+1. Update function documentation to explain the use of the composite ID for unique subject identification.
+2. Add a note to the CHANGELOG.md about these fixes.
 
 ## Expected Results
 

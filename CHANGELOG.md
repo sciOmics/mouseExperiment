@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed reporting of median survival times for groups with >50% events, now properly calculating and displaying median survival times rather than showing "Not calculated" message
 - Fixed error in `survival_statistics()` when calling `print_results()` by correctly passing necessary parameters
 - Fixed `tumor_growth_statistics()` to properly account for all mice in each treatment group when mice have the same ID but are in different cages, by including the cage identifier in the composite ID creation for AUC calculations
+- Fixed `tumor_auc_analysis()` function to use a composite ID that includes cage information, ensuring proper identification of mice with the same ID in different cages
+- Fixed `calculate_auc_values()` function in `post_power_analysis.R` to account for mice with the same ID in different cages by using a composite identifier that includes cage information
 
 ### Changed
 - Renamed `forest_plot()` function to `plot_forest()` for more consistent function naming throughout the package
