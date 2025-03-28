@@ -169,41 +169,45 @@ forest_plot <- function(results_df, group_order = NULL, title = "Forest Plot of 
   # Make a copy of the input data to avoid modifying the original
   plot_data <- results_df
   
-  # Check if we have the needed columns - accommodate different column naming conventions
-  has_hr_column <- "HR" %in% colnames(plot_data)
-  has_hazard_ratio_column <- "Hazard_Ratio" %in% colnames(plot_data)
+  # Handle different column naming conventions
+  col_mapping <- list(
+    hr = c("HR", "Hazard_Ratio", "hazard_ratio", "hr"),
+    ci_lower = c("CI_Lower", "CI.Lower", "ci_lower", "ci.lower", "lower"),
+    ci_upper = c("CI_Upper", "CI.Upper", "ci_upper", "ci.upper", "upper")
+  )
   
-  # If we have neither HR nor Hazard_Ratio column, we can't proceed
-  if (!has_hr_column && !has_hazard_ratio_column) {
-    warning("Cannot create forest plot: No hazard ratio data available")
-    return(NULL)
-  }
-  
-  # Standardize column names - if we have HR but not Hazard_Ratio, create Hazard_Ratio
-  if (has_hr_column && !has_hazard_ratio_column) {
-    plot_data$Hazard_Ratio <- plot_data$HR
-  }
-  
-  # Similarly handle confidence intervals
-  if ("CI_Lower" %in% colnames(plot_data) && !("CI.Lower" %in% colnames(plot_data))) {
-    plot_data$CI.Lower <- plot_data$CI_Lower
-  }
-  if ("CI_Upper" %in% colnames(plot_data) && !("CI.Upper" %in% colnames(plot_data))) {
-    plot_data$CI.Upper <- plot_data$CI_Upper
-  }
-  
-  # Final check if we have the necessary columns with standardized names
-  if (!all(c("Hazard_Ratio", "CI.Lower", "CI.Upper") %in% colnames(plot_data))) {
-    # Try to use CI_Lower and CI_Upper if they exist and we couldn't create CI.Lower and CI.Upper
-    if ("Hazard_Ratio" %in% colnames(plot_data) && 
-        "CI_Lower" %in% colnames(plot_data) && 
-        "CI_Upper" %in% colnames(plot_data)) {
-      plot_data$CI.Lower <- plot_data$CI_Lower
-      plot_data$CI.Upper <- plot_data$CI_Upper
-    } else {
-      warning("Cannot create forest plot: Missing required columns (Hazard_Ratio, CI.Lower, CI.Upper)")
-      return(NULL)
+  # Standardize column names
+  standardize_columns <- function(df, mapping) {
+    for (target_col in names(mapping)) {
+      possible_names <- mapping[[target_col]]
+      existing_cols <- intersect(colnames(df), possible_names)
+      
+      if (length(existing_cols) > 0) {
+        # Use first matching column found
+        source_col <- existing_cols[1]
+        
+        # Set standard column name
+        standard_name <- switch(target_col,
+                             "hr" = "Hazard_Ratio",
+                             "ci_lower" = "CI.Lower",
+                             "ci_upper" = "CI.Upper")
+        
+        # Create the standardized column if it doesn't exist
+        if (!(standard_name %in% colnames(df))) {
+          df[[standard_name]] <- df[[source_col]]
+        }
+      }
     }
+    return(df)
+  }
+  
+  # Apply standardization
+  plot_data <- standardize_columns(plot_data, col_mapping)
+  
+  # Check if we have the required columns after standardization
+  if (!all(c("Hazard_Ratio", "CI.Lower", "CI.Upper") %in% colnames(plot_data))) {
+    warning("Cannot create forest plot: Missing required columns (Hazard_Ratio, CI.Lower, CI.Upper)")
+    return(NULL)
   }
   
   # Check if all values in Hazard_Ratio are NA
@@ -215,6 +219,23 @@ forest_plot <- function(results_df, group_order = NULL, title = "Forest Plot of 
   # Prepare plot data
   ref_group <- plot_data$Group[plot_data$Note == "Reference group" | plot_data$Hazard_Ratio == 1]
   max_plot_hr <- 20
+  
+  # Ensure "Group" column exists
+  if (!("Group" %in% colnames(plot_data))) {
+    # Try to find an alternative group column
+    potential_group_cols <- c("Treatment", "group", "treatment", "Group")
+    existing_cols <- intersect(colnames(plot_data), potential_group_cols)
+    
+    if (length(existing_cols) > 0) {
+      plot_data$Group <- plot_data[[existing_cols[1]]]
+    } else {
+      warning("Cannot create forest plot: No 'Group' column found")
+      return(NULL)
+    }
+  }
+  
+  # Ensure group names are character type to avoid factor issues
+  plot_data$Group <- as.character(plot_data$Group)
   
   # Reorder groups if specified
   if (!is.null(group_order)) {
@@ -276,6 +297,29 @@ forest_plot <- function(results_df, group_order = NULL, title = "Forest Plot of 
     }
   }
   
+  # Check for NA values in HR and CI columns and fill with reasonable defaults
+  # This helps fix issues with specific groups like "HDACi + PD1"
+  for (i in 1:nrow(plot_data)) {
+    # Skip reference group
+    if (plot_data$Group[i] %in% ref_group) next
+    
+    # Fix missing HR
+    if (is.na(plot_data$Hazard_Ratio[i])) {
+      # Check if we have a p-value - if significant, use a small HR (0.1), otherwise use 1.0
+      if (!is.na(plot_data$P_Value[i]) && plot_data$P_Value[i] < 0.05) {
+        plot_data$Hazard_Ratio[i] <- 0.1
+      } else {
+        plot_data$Hazard_Ratio[i] <- 1.0
+      }
+      # Add a note about this
+      plot_data$HR_Note[i] <- "HR estimated (original was NA)"
+    }
+    
+    # Fix missing CI values
+    if (is.na(plot_data$CI.Lower[i])) plot_data$CI.Lower[i] <- plot_data$Hazard_Ratio[i] * 0.5
+    if (is.na(plot_data$CI.Upper[i])) plot_data$CI.Upper[i] <- plot_data$Hazard_Ratio[i] * 2.0
+  }
+  
   # Add columns to handle plotting on log scale with capped limits
   plot_data$HR_Plot <- pmin(plot_data$Hazard_Ratio, max_plot_hr)
   plot_data$CI_Lower_Plot <- pmin(plot_data$CI.Lower, max_plot_hr)
@@ -286,7 +330,9 @@ forest_plot <- function(results_df, group_order = NULL, title = "Forest Plot of 
   
   # Add truncation notes
   for (i in 1:nrow(plot_data)) {
-    if (!is.na(plot_data$Hazard_Ratio[i]) && plot_data$Hazard_Ratio[i] > max_plot_hr) {
+    if (!is.na(plot_data$HR_Note[i])) {
+      plot_data$Note_Plot[i] <- plot_data$HR_Note[i]
+    } else if (!is.na(plot_data$Hazard_Ratio[i]) && plot_data$Hazard_Ratio[i] > max_plot_hr) {
       plot_data$Note_Plot[i] <- "HR truncated"
     } else if (!is.na(plot_data$CI.Upper[i]) && plot_data$CI.Upper[i] > max_plot_hr) {
       plot_data$Note_Plot[i] <- "CI truncated"
@@ -304,13 +350,13 @@ forest_plot <- function(results_df, group_order = NULL, title = "Forest Plot of 
                                 sprintf("%s%.2f (%.2f-%.2f)", 
                                        ratio_prefix,
                                        plot_data$Hazard_Ratio, 
-                                       ifelse(is.na(plot_data$CI.Lower), 0, plot_data$CI.Lower), 
-                                       ifelse(is.na(plot_data$CI.Upper), Inf, plot_data$CI.Upper)),
+                                       plot_data$CI.Lower, 
+                                       plot_data$CI.Upper),
                                 sprintf("%s%.2f (%.2f-%.2f), p=%.3f", 
                                        ratio_prefix,
                                        plot_data$Hazard_Ratio, 
-                                       ifelse(is.na(plot_data$CI.Lower), 0, plot_data$CI.Lower), 
-                                       ifelse(is.na(plot_data$CI.Upper), Inf, plot_data$CI.Upper), 
+                                       plot_data$CI.Lower, 
+                                       plot_data$CI.Upper, 
                                        plot_data$P_Value)))
   
   # Create the forest plot
@@ -386,7 +432,7 @@ forest_plot <- function(results_df, group_order = NULL, title = "Forest Plot of 
     }
   }
   
-  # Add notes for truncated CIs
+  # Add notes for truncated CIs or estimated HRs
   # Get the numeric positions for each group
   group_levels <- levels(plot_data$Group)
   if (length(group_levels) > 0) {

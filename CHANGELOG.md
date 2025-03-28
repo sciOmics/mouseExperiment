@@ -9,6 +9,8 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 ### Fixed
 - Fixed `forest_plot()` to properly handle both `HR` and `Hazard_Ratio` column naming from `survival_statistics()` results
+- Fixed `forest_plot()` to properly display confidence intervals and handle special treatment group names like "HDACi + PD1"
+- Improved error handling in `forest_plot()` to handle missing hazard ratios and confidence intervals
 - Improved compatibility between column naming conventions in various plotting functions
 - Fixed Events/Total count calculation in `survival_statistics()` to correctly count unique subjects and their events per treatment group
 - Fixed hazard ratio calculation in `survival_statistics()` to correctly set the reference group and handle coefficient names

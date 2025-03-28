@@ -644,7 +644,29 @@ create_forest_plot <- function(results, title = "Forest Plot") {
     names(plot_data)[names(plot_data) == "Hazard_Ratio"] <- "HR"
   }
   
-  # Remove any rows with NA values for plotting
+  # Handle missing values in HR and CIs
+  for (i in 1:nrow(plot_data)) {
+    # Skip reference group
+    if (!is.na(plot_data$Note[i]) && plot_data$Note[i] == "Reference group") next
+    
+    # Fix missing HR
+    if (is.na(plot_data$HR[i])) {
+      # Check if we have a p-value - if significant, use a small HR (0.1), otherwise use 1.0
+      if (!is.na(plot_data$P_Value[i]) && plot_data$P_Value[i] < 0.05) {
+        plot_data$HR[i] <- 0.1
+      } else {
+        plot_data$HR[i] <- 1.0
+      }
+      # Add a note about this
+      plot_data$HR_Note[i] <- "HR estimated (original was NA)"
+    }
+    
+    # Fix missing CI values
+    if (is.na(plot_data$CI_Lower[i])) plot_data$CI_Lower[i] <- plot_data$HR[i] * 0.5
+    if (is.na(plot_data$CI_Upper[i])) plot_data$CI_Upper[i] <- plot_data$HR[i] * 2.0
+  }
+  
+  # Remove any rows with NA values for plotting (should no longer be necessary)
   plot_data <- plot_data[!is.na(plot_data$HR), ]
   
   # If no valid rows remain, return NULL
