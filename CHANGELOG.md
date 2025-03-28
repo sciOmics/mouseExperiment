@@ -56,6 +56,7 @@ All notable changes to the mouseExperiment package will be documented in this fi
 - Improved integration between tumor_growth_statistics and plot_auc functions.
 - Enhanced summary output in tumor_growth_statistics to provide detailed description of statistical tests and methods used.
 - Removed debugging output from the survival_statistics function for cleaner code.
+- Modified plot_survival to use default risk table styling from survminer for better readability.
 
 ### Fixed
 - Fixed bug in print_results function that was incorrectly indexing the summary table.
