@@ -156,7 +156,7 @@ tumor_growth_statistics <- function(df,
   random_effects_specification <- match.arg(random_effects_specification)
   handle_cage_effects <- match.arg(handle_cage_effects)
   auc_method <- match.arg(auc_method)
-
+  
   if (verbose) {
     cat("Analyzing tumor growth data...\n")
     cat("Model type:", model_type, "\n")
@@ -239,7 +239,7 @@ tumor_growth_statistics <- function(df,
     analysis_df[[volume_column]] <- sqrt(analysis_df[[volume_column]])
     if (verbose) cat("Applied square root transformation to volume data\n")
   }
-
+  
   # Growth rate analysis
   growth_rates <- tryCatch({
     # Split data by treatment and ID
@@ -751,12 +751,12 @@ tumor_growth_statistics <- function(df,
       anova_type <- "ANOVA (stats package)"
       warning("Package 'car' not available. Using stats::anova instead of Type III tests.")
     }
-
+    
     # Create pairwise comparisons
     if (requireNamespace("emmeans", quietly = TRUE)) {
       # Set up emmeans with reference group, averaging over time points
       lsmeans_obj <- emmeans::emmeans(model, specs = treatment_column, at = list(Day = mean(analysis_df$Day)))
-
+      
       # Extract treatment effects
       emm_summary <- summary(lsmeans_obj)
       treatment_effects <- data.frame(
@@ -809,7 +809,7 @@ tumor_growth_statistics <- function(df,
       posthoc_method <- NA
       warning("Package 'emmeans' not available. Pairwise comparisons and treatment effects not calculated.")
     }
-
+    
     # Create plots
     if (plots) {
       plot_data <- data_summary
@@ -819,7 +819,7 @@ tumor_growth_statistics <- function(df,
         cage_effects = cage_effects,
         diagnostics = diagnostics
       )
-
+      
       # Add adjusted means plot if available
       if (!is.null(treatment_effects)) {
         plots_list$adjusted_means <- treatment_effects
@@ -869,7 +869,7 @@ tumor_growth_statistics <- function(df,
         } else "No cage collinearity test performed"
       )
     )
-
+    
     # Return the results
     results <- list(
       model = if (return_model) model else NULL,
@@ -884,7 +884,7 @@ tumor_growth_statistics <- function(df,
       data_summary = data_summary,
       plots = plots_list
     )
-
+    
     return(results)
   }
 }
