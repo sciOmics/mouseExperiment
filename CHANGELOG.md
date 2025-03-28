@@ -42,3 +42,4 @@ All notable changes to the mouseExperiment package will be documented in this fi
   - Improved summary output to provide detailed description of statistical tests and methods used instead of duplicating ANOVA results
   - Added detailed explanation of growth rate calculation in summary output, including mathematical interpretation
 - Enhanced visualization in `plot_growth_rate` and `plot_auc` functions by adding x and y-axis lines for improved readability
+- Improved plot aesthetics in `plot_growth_rate` and `plot_auc` functions by replacing theme_minimal with theme_classic to remove the grid background
