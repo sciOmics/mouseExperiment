@@ -10,6 +10,7 @@
 #' @param auc_column Name of the column containing AUC values. Default is "AUC".
 #' @param group_column Name of the column containing group/treatment information. Default is "Group".
 #' @param title Plot title. Default is "Area Under the Curve (AUC) by Treatment Group".
+#' @param colors Optional named vector of colors for each group. If NULL, default colors are used.
 #' @param show_mean Logical indicating whether to show lines for group means. Default is FALSE.
 #' @param error_bar_type Type of error bars to display. Options are "none", "SEM" (standard error of mean),
 #'        "SD" (standard deviation), or "CI" (95% confidence interval). Default is "none".
@@ -19,6 +20,8 @@
 #' @param group_order Optional vector specifying the order of groups to display. 
 #'        If NULL, groups are ordered alphabetically. Default is NULL.
 #' @param caption Optional caption text for the plot. Default is NULL.
+#' @param point_size Size of the points in the plot. Default is 2.5.
+#' @param jitter_width Width of the jitter for the points. Default is 0.2.
 #'
 #' @return A ggplot object that can be further customized or displayed.
 #'
@@ -47,6 +50,30 @@
 #'   error_bar_type = "SEM",
 #'   extrapolated_column = "Extrapolated"
 #' )
+#'
+#' # With custom colors, point size, and jitter width
+#' plot_auc(
+#'   auc_data,
+#'   colors = c("Control" = "blue", "Treatment" = "red"),
+#'   point_size = 3.5,
+#'   jitter_width = 0.3,
+#'   show_mean = TRUE,
+#'   error_bar_type = "SD"
+#' )
+#'
+#' # Specifying multiple plotting options
+#' group_colors <- c("Control" = "#1f77b4", "Treatment" = "#ff7f0e")
+#' plot_auc(
+#'   auc_data,
+#'   group_column = "Group",
+#'   colors = group_colors,
+#'   show_mean = TRUE,
+#'   error_bar_type = "CI",
+#'   extrapolated_column = "Extrapolated",
+#'   point_size = 3,
+#'   jitter_width = 0.15,
+#'   caption = "Custom visualization with color-coding and extrapolation markers"
+#' )
 #' }
 #'
 #' @export
@@ -54,11 +81,14 @@ plot_auc <- function(auc_data,
                     auc_column = "AUC",
                     group_column = "Group",
                     title = "Area Under the Curve (AUC) by Treatment Group",
+                    colors = NULL,
                     show_mean = FALSE,
                     error_bar_type = c("none", "SEM", "SD", "CI"),
                     extrapolated_column = NULL,
                     group_order = NULL,
-                    caption = NULL) {
+                    caption = NULL,
+                    point_size = 2.5,
+                    jitter_width = 0.2) {
   
   # Check inputs
   if (!is.data.frame(auc_data)) {
@@ -116,18 +146,41 @@ plot_auc <- function(auc_data,
   if (has_extrapolation) {
     p <- p + ggplot2::geom_jitter(
       ggplot2::aes(shape = .data[[extrapolated_column]]),
-      position = ggplot2::position_jitter(width = 0.2),
-      size = 2.5,
+      position = ggplot2::position_jitter(width = jitter_width),
+      size = point_size,
       alpha = 0.8
     ) +
       ggplot2::scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 1),
                                 name = "Extrapolated")
   } else {
     p <- p + ggplot2::geom_jitter(
-      position = ggplot2::position_jitter(width = 0.2),
-      size = 2.5,
+      position = ggplot2::position_jitter(width = jitter_width),
+      size = point_size,
       alpha = 0.8
     )
+  }
+  
+  # Apply custom colors if provided
+  if (!is.null(colors)) {
+    # Check if colors is a named vector
+    if (!is.null(names(colors))) {
+      # Make sure all groups have colors
+      missing_groups <- setdiff(levels(auc_data[[group_column]]), names(colors))
+      if (length(missing_groups) > 0) {
+        warning("Missing colors for groups: ", paste(missing_groups, collapse = ", "), 
+                ". Using default colors for these groups.")
+      }
+      p <- p + ggplot2::scale_color_manual(values = colors)
+    } else {
+      # If just a vector of colors, assign them to groups in order
+      groups <- levels(auc_data[[group_column]])
+      if (length(colors) < length(groups)) {
+        warning("Not enough colors provided. Recycling colors.")
+        colors <- rep(colors, length.out = length(groups))
+      }
+      names(colors) <- groups
+      p <- p + ggplot2::scale_color_manual(values = colors)
+    }
   }
   
   # Add error bars if requested

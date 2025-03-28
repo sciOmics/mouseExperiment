@@ -17,6 +17,9 @@
 #'        for subjects with incomplete data. The function will use the last N points to fit the extrapolation curve.
 #'        Default is 3. This value must be at least 2 to perform extrapolation.
 #' @param reference_group Reference group for statistical comparisons (default: first alphabetically)
+#' @param colors Optional named vector of colors for treatment groups in the plot (default: NULL)
+#' @param point_size Size of the points in the plot (default: 2.5)
+#' @param jitter_width Width of the jitter for the points in the plot (default: 0.2)
 #'
 #' @return A list containing:
 #' \describe{
@@ -45,8 +48,15 @@
 #' auc_results$auc_comparisons
 #' print(auc_results$auc_plot)
 #'
-#' # With extrapolation settings
-#' auc_results <- tumor_auc_analysis(tumor_data, extrapolation_points = 4)
+#' # With extrapolation settings and custom colors
+#' treatment_colors <- c("Vehicle" = "#1f77b4", "Drug A" = "#ff7f0e", 
+#'                       "Drug B" = "#2ca02c", "Combination" = "#d62728")
+#' auc_results <- tumor_auc_analysis(
+#'   tumor_data, 
+#'   extrapolation_points = 4, 
+#'   colors = treatment_colors,
+#'   point_size = 3
+#' )
 #' }
 #'
 #' @export
@@ -57,7 +67,10 @@ tumor_auc_analysis <- function(df,
                               id_column = "ID",
                               auc_method = c("trapezoidal", "last_observation"),
                               extrapolation_points = 3,
-                              reference_group = NULL) {
+                              reference_group = NULL,
+                              colors = NULL,
+                              point_size = 2.5,
+                              jitter_width = 0.2) {
   
   # Match arguments
   auc_method <- match.arg(auc_method)
@@ -293,7 +306,10 @@ tumor_auc_analysis <- function(df,
           title = paste("Area Under the Curve (AUC) by Treatment Group\nMethod:", auc_method),
           show_mean = TRUE,
           error_bar_type = "SEM",
-          extrapolated_column = "Extrapolated"
+          extrapolated_column = "Extrapolated",
+          colors = colors,
+          point_size = point_size,
+          jitter_width = jitter_width
         )
       }, error = function(e) {
         message("Error using plot_auc function: ", e$message)
@@ -301,9 +317,12 @@ tumor_auc_analysis <- function(df,
         auc_plot <- ggplot2::ggplot(auc_df, ggplot2::aes(x = Treatment, y = AUC, color = Treatment)) +
           ggplot2::geom_boxplot(alpha = 0.7) +
           ggplot2::geom_jitter(ggplot2::aes(shape = Extrapolated), 
-                             position = ggplot2::position_jitter(width = 0.2), 
+                             position = ggplot2::position_jitter(width = jitter_width), 
+                             size = point_size,
                              alpha = 0.5) +
           ggplot2::scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 1)) +
+          # Add custom colors if provided
+          (if (!is.null(colors)) ggplot2::scale_color_manual(values = colors) else NULL) +
           ggplot2::theme_classic() +
           ggplot2::labs(
             title = "Area Under the Curve (AUC) by Treatment Group",
@@ -318,9 +337,12 @@ tumor_auc_analysis <- function(df,
       auc_plot <- ggplot2::ggplot(auc_df, ggplot2::aes(x = Treatment, y = AUC, color = Treatment)) +
         ggplot2::geom_boxplot(alpha = 0.7) +
         ggplot2::geom_jitter(ggplot2::aes(shape = Extrapolated), 
-                           position = ggplot2::position_jitter(width = 0.2), 
+                           position = ggplot2::position_jitter(width = jitter_width), 
+                           size = point_size,
                            alpha = 0.5) +
         ggplot2::scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 1)) +
+        # Add custom colors if provided
+        (if (!is.null(colors)) ggplot2::scale_color_manual(values = colors) else NULL) +
         ggplot2::theme_classic() +
         ggplot2::labs(
           title = "Area Under the Curve (AUC) by Treatment Group",
