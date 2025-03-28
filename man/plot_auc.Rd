@@ -6,50 +6,51 @@
 \usage{
 plot_auc(
   auc_data,
-  plot_type = "combined",
   colors = NULL,
-  title = NULL,
-  comparison_lines = FALSE,
-  comparison_data = NULL,
-  id_column = NULL,
-  cage_column = NULL
+  title = "AUC Values by Treatment Group",
+  show_mean = TRUE,
+  error_bar_type = c("SEM", "SD", "CI", "none"),
+  extrapolated_column = NULL,
+  group_order = NULL,
+  point_size = 3,
+  jitter_width = 0.2
 )
 }
 \arguments{
 \item{auc_data}{A data frame containing AUC values for individual subjects.
 Must include columns: 'Group' (treatment group) and 'AUC' (AUC values).
-May also include 'ID', 'Cage', or 'Mouse_ID' columns for more detailed plots.}
-
-\item{plot_type}{Character string specifying which type of plot to return. Options are:
-"all" (returns a list of all plots),
-"summary" (group summary bar plot),
-"boxplot" (boxplot with jittered points),
-"individual" (individual subject bars),
-"combined" (a composite of all plots). Default is "combined".}
+May also include 'ID', 'Cage', or 'Mouse_ID' columns for more detailed visualization.}
 
 \item{colors}{An optional vector of colors for treatment groups. If NULL, default ggplot colors are used.}
 
-\item{title}{An optional main title for the combined plot. If NULL, a default title is used.}
+\item{title}{An optional title for the plot. If NULL, a default title is used.}
 
-\item{comparison_lines}{Logical indicating whether to add lines showing significant comparisons.
-Default is FALSE.}
+\item{show_mean}{Logical indicating whether to display a mean line for each group. Default is TRUE.}
 
-\item{comparison_data}{A data frame containing pairwise comparison results, required if
-comparison_lines=TRUE. Should have columns: 'group1', 'group2', 'p.value', 'significance'.}
+\item{error_bar_type}{Character string specifying the type of error bars to display. Options are:
+"none" (no error bars),
+"SEM" (standard error of the mean),
+"SD" (standard deviation),
+"CI" (95\% confidence interval). Default is "SEM".}
 
-\item{id_column}{Character string specifying the column name for subject identifiers.
-If NULL, tries to find 'ID', 'Mouse_ID', or creates a row number. Default is NULL.}
+\item{extrapolated_column}{Character string specifying the column name that indicates whether a data point
+was extrapolated. Values should be TRUE/FALSE or 1/0. If NULL, all points are treated as non-extrapolated.
+Default is NULL.}
 
-\item{cage_column}{Character string specifying the column name for cage identifiers.
-If NULL, tries to find 'Cage', or omits cage information. Default is NULL.}
+\item{group_order}{Optional vector specifying the order of groups to display.
+If NULL, groups are ordered alphabetically. Default is NULL.}
+
+\item{point_size}{Numeric value specifying the size of the individual data points. Default is 3.}
+
+\item{jitter_width}{Numeric value specifying the width of the jitter for individual points. Default is 0.2.}
 }
 \value{
-If plot_type is "all", returns a list of ggplot objects. Otherwise, returns a single ggplot object.
+A ggplot object representing the AUC plot.
 }
 \description{
-This function creates visualizations for Area Under the Curve (AUC) data from tumor growth experiments.
-It produces multiple plots showing AUC values by treatment group, including bar plots, box plots,
-and individual subject plots.
+This function creates a visualization for Area Under the Curve (AUC) data from tumor growth experiments.
+It produces a single plot showing AUC values by treatment group as individual points with optional
+mean lines and error bars.
 }
 \examples{
 \dontrun{
@@ -63,13 +64,20 @@ auc_data <- data.frame(
 # Basic usage
 plot_auc(auc_data)
 
-# Display just the summary bar plot
-plot_auc(auc_data, plot_type = "summary")
+# With custom error bars and no mean line
+plot_auc(auc_data, show_mean = FALSE, error_bar_type = "SD")
+
+# With extrapolated data points marked differently
+auc_data$Extrapolated <- rep(c(TRUE, FALSE), 10)
+plot_auc(auc_data, extrapolated_column = "Extrapolated")
 
 # Create a custom color palette for treatment groups
 colors <- c("Control" = "gray", "Treatment A" = "blue", 
            "Treatment B" = "green", "Treatment C" = "red")
 plot_auc(auc_data, colors = colors)
+
+# Specify a custom order for the groups
+plot_auc(auc_data, group_order = c("Control", "Treatment B", "Treatment A", "Treatment C"))
 }
 
 }

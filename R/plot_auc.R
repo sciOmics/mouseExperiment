@@ -235,7 +235,7 @@ plot_auc <- function(auc_data,
     title = title,
     x = "Treatment Group",
     y = "AUC (Tumor Burden)"
-  ) + ggplot2::theme_classic() +
+  ) + ggplot2::theme_minimal() +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
       legend.position = "none"
