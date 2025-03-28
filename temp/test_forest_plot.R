@@ -17,11 +17,15 @@ test_data <- data.frame(
   Total = c(8, 8, 8, 8)
 )
 
+# Print test data
+cat("Test data:\n")
+print(test_data)
+
 # Test the plot_forest function directly
-cat("Testing plot_forest function from plot_forest.R with problematic data:\n")
+cat("\nTesting plot_forest function from plot_forest.R with problematic data:\n")
 pdf("temp/fixed_forest_plot.pdf", width = 10, height = 6)
 plot <- plot_forest(test_data)
 print(plot)
 dev.off()
 
-cat("Test completed successfully.\n") 
+cat("\nTest completed. Forest plot created at temp/fixed_forest_plot.pdf\n") 
