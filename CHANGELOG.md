@@ -45,7 +45,7 @@ All notable changes to the mouseExperiment package will be documented in this fi
 - Enhanced visualization in `plot_growth_rate` and `plot_auc` functions by adding x and y-axis lines for improved readability
 - Improved plot aesthetics in `plot_growth_rate` and `plot_auc` functions by replacing theme_minimal with theme_classic to remove the grid background
 
-## [0.2.3] - 2024-06-04
+## [0.2.3] - 2024-03-27
 
 ### Added
 - Enhanced growth rate calculation description in the tumor_growth_statistics function summary.
