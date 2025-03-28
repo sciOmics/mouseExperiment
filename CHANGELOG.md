@@ -27,6 +27,7 @@ All notable changes to the mouseExperiment package will be documented in this fi
 - Fixed AUC calculation to use composite IDs that combine subject ID and treatment group, ensuring correct AUC values for each unique subject-treatment combination 
 - Fixed `plot_auc` function error where `is.named()` function was called but not defined
 - Fixed event counting bug in `survival_statistics` function where event totals were incorrectly calculated when generating the formatted summary table
+- Fixed hazard ratio calculation in `survival_statistics` function to properly count unique mice rather than summing across all timepoints, ensuring correct Events/Total counts
 - Fixed display issues in `plot_survival` function's risk table by removing colored text from group names while preserving colors in the main plot and legend
 
 ### Changed
@@ -43,3 +44,18 @@ All notable changes to the mouseExperiment package will be documented in this fi
   - Added detailed explanation of growth rate calculation in summary output, including mathematical interpretation
 - Enhanced visualization in `plot_growth_rate` and `plot_auc` functions by adding x and y-axis lines for improved readability
 - Improved plot aesthetics in `plot_growth_rate` and `plot_auc` functions by replacing theme_minimal with theme_classic to remove the grid background
+
+## [0.2.3] - 2024-06-04
+
+### Added
+- Enhanced growth rate calculation description in the tumor_growth_statistics function summary.
+
+### Changed
+- Fixed event and total counts calculation in survival_statistics.
+- Improved implementation of print_results to properly handle survival statistics summary table.
+- Improved integration between tumor_growth_statistics and plot_auc functions.
+- Enhanced summary output in tumor_growth_statistics to provide detailed description of statistical tests and methods used.
+- Removed debugging output from the survival_statistics function for cleaner code.
+
+### Fixed
+- Fixed bug in print_results function that was incorrectly indexing the summary table.
