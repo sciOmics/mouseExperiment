@@ -8,18 +8,19 @@ All notable changes to the mouseExperiment package will be documented in this fi
 - New function `plot_combination_index()` to visualize Combination Index over time with synergy indicators
 
 ### Fixed
-- Fixed `forest_plot()` to properly handle both `HR` and `Hazard_Ratio` column naming from `survival_statistics()` results
-- Fixed `forest_plot()` to properly display confidence intervals and handle special treatment group names like "HDACi + PD1"
-- Improved error handling in `forest_plot()` to handle missing hazard ratios and confidence intervals
+- Fixed `plot_forest()` to properly handle both `HR` and `Hazard_Ratio` column naming from `survival_statistics()` results
+- Fixed `plot_forest()` to properly display confidence intervals and handle special treatment group names like "HDACi + PD1"
+- Improved error handling in `plot_forest()` to handle missing hazard ratios and confidence intervals
 - Improved compatibility between column naming conventions in various plotting functions
 - Fixed Events/Total count calculation in `survival_statistics()` to correctly count unique subjects and their events per treatment group
 - Fixed hazard ratio calculation in `survival_statistics()` to correctly set the reference group and handle coefficient names
-- Fixed `survival_statistics()` to properly return the `method_used` object in the results, especially when using Firth's correction
+- Fixed `survival_statistics()` to properly return the `method_used` object in the results
 - Fixed `print_results()` function to properly handle survival statistics summary table
 
 ### Changed
-- Removed `forest_plot` object from `survival_statistics()` output as this functionality is now handled by the separate `forest_plot()` function
-- Moved `forest_plot()` function from `plot_caterpillar.R` to its own file `plot_forest.R` for better code organization
+- Renamed `forest_plot()` function to `plot_forest()` for more consistent function naming throughout the package
+- Removed `forest_plot` object from `survival_statistics()` output as this functionality is now handled by the separate `plot_forest()` function
+- Moved `plot_forest()` function (previously `forest_plot()`) from `plot_caterpillar.R` to its own file `plot_forest.R` for better code organization
 - Enhanced summary output in `tumor_growth_statistics()` to provide detailed description of statistical tests and methods used
 - Improved growth rate calculation description in result summaries to clarify the log-transformation and interpretation
 - Modified posthoc tests in `tumor_growth_statistics()` for AUC analysis (model_type = "auc") to use Welch's t-tests instead of standard t-tests, which better handles unequal variances between treatment groups

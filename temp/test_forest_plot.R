@@ -17,10 +17,10 @@ test_data <- data.frame(
   Total = c(8, 8, 8, 8)
 )
 
-# Test the forest_plot function directly
-cat("Testing forest_plot function from plot_forest.R with problematic data:\n")
+# Test the plot_forest function directly
+cat("Testing plot_forest function from plot_forest.R with problematic data:\n")
 pdf("temp/fixed_forest_plot.pdf", width = 10, height = 6)
-plot <- forest_plot(test_data)
+plot <- plot_forest(test_data)
 print(plot)
 dev.off()
 

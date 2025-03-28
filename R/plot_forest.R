@@ -21,12 +21,12 @@
 #' results <- survival_statistics(df = tumor_data)
 #' 
 #' # Then create forest plot with default ordering
-#' forest_plot(results$results)
+#' plot_forest(results$results)
 #' 
 #' # Custom group ordering
-#' forest_plot(results$results, 
+#' plot_forest(results$results, 
 #'            group_order = c("Control", "Drug A", "Drug B"))
-forest_plot <- function(results_df, group_order = NULL, title = "Forest Plot of Hazard Ratios", show_text = TRUE) {
+plot_forest <- function(results_df, group_order = NULL, title = "Forest Plot of Hazard Ratios", show_text = TRUE) {
   # Check if input data frame is empty
   if (is.null(results_df) || nrow(results_df) == 0) {
     warning("Cannot create forest plot: Empty results data frame")

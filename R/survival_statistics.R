@@ -61,7 +61,7 @@
 #' print(results$km_plot)      # Kaplan-Meier survival curves
 #' 
 #' # Create a forest plot from the results
-#' forest_plot(results$results) # Forest plot of hazard ratios
+#' plot_forest(results$results) # Forest plot of hazard ratios
 #'
 #' @export
 survival_statistics <- function(df,

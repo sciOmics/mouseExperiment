@@ -41,7 +41,7 @@ if ("forest_plot" %in% names(results)) {
 
 # Test creating forest plot manually
 cat("\nCreating forest plot manually:\n")
-forest_plot_obj <- forest_plot(results$results)
+forest_plot_obj <- plot_forest(results$results)
 cat("Forest plot created successfully\n")
 
 # Save the forest plot to a file
