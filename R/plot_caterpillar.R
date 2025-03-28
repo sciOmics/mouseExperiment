@@ -160,14 +160,60 @@ plot_caterpillar <- function(model, title = "Fixed Effects with 95% Confidence I
 #' forest_plot(results$results, 
 #'            group_order = c("Control", "Drug A", "Drug B"))
 forest_plot <- function(results_df, group_order = NULL, title = "Forest Plot of Hazard Ratios", show_text = TRUE) {
-  if (nrow(results_df) == 0 || all(is.na(results_df$Hazard_Ratio))) {
+  # Check if input data frame is empty
+  if (is.null(results_df) || nrow(results_df) == 0) {
+    warning("Cannot create forest plot: Empty results data frame")
+    return(NULL)
+  }
+  
+  # Make a copy of the input data to avoid modifying the original
+  plot_data <- results_df
+  
+  # Check if we have the needed columns - accommodate different column naming conventions
+  has_hr_column <- "HR" %in% colnames(plot_data)
+  has_hazard_ratio_column <- "Hazard_Ratio" %in% colnames(plot_data)
+  
+  # If we have neither HR nor Hazard_Ratio column, we can't proceed
+  if (!has_hr_column && !has_hazard_ratio_column) {
+    warning("Cannot create forest plot: No hazard ratio data available")
+    return(NULL)
+  }
+  
+  # Standardize column names - if we have HR but not Hazard_Ratio, create Hazard_Ratio
+  if (has_hr_column && !has_hazard_ratio_column) {
+    plot_data$Hazard_Ratio <- plot_data$HR
+  }
+  
+  # Similarly handle confidence intervals
+  if ("CI_Lower" %in% colnames(plot_data) && !("CI.Lower" %in% colnames(plot_data))) {
+    plot_data$CI.Lower <- plot_data$CI_Lower
+  }
+  if ("CI_Upper" %in% colnames(plot_data) && !("CI.Upper" %in% colnames(plot_data))) {
+    plot_data$CI.Upper <- plot_data$CI_Upper
+  }
+  
+  # Final check if we have the necessary columns with standardized names
+  if (!all(c("Hazard_Ratio", "CI.Lower", "CI.Upper") %in% colnames(plot_data))) {
+    # Try to use CI_Lower and CI_Upper if they exist and we couldn't create CI.Lower and CI.Upper
+    if ("Hazard_Ratio" %in% colnames(plot_data) && 
+        "CI_Lower" %in% colnames(plot_data) && 
+        "CI_Upper" %in% colnames(plot_data)) {
+      plot_data$CI.Lower <- plot_data$CI_Lower
+      plot_data$CI.Upper <- plot_data$CI_Upper
+    } else {
+      warning("Cannot create forest plot: Missing required columns (Hazard_Ratio, CI.Lower, CI.Upper)")
+      return(NULL)
+    }
+  }
+  
+  # Check if all values in Hazard_Ratio are NA
+  if (all(is.na(plot_data$Hazard_Ratio))) {
     warning("Cannot create forest plot: No hazard ratio data available")
     return(NULL)
   }
   
   # Prepare plot data
-  plot_data <- results_df
-  ref_group <- results_df$Group[results_df$Note == "Reference group"]
+  ref_group <- plot_data$Group[plot_data$Note == "Reference group" | plot_data$Hazard_Ratio == 1]
   max_plot_hr <- 20
   
   # Reorder groups if specified
@@ -208,87 +254,63 @@ forest_plot <- function(results_df, group_order = NULL, title = "Forest Plot of 
       
       # Use the expanded order
       group_order <- expanded_order
-    } else {
-      # For data without dose info, use original approach
-      # Check if all specified groups exist in the data
-      missing_groups <- setdiff(group_order, data_groups)
-      if (length(missing_groups) > 0) {
-        warning("Some specified groups not found in data: ", 
-                paste(missing_groups, collapse = ", "))
-      }
-      
-      # Ensure all data groups are included in the ordering
-      missing_in_order <- setdiff(data_groups, group_order)
-      if (length(missing_in_order) > 0) {
-        group_order <- c(group_order, missing_in_order)
-      }
     }
     
-    # Convert Group to factor with specified levels for ordering
-    # We reverse the order for plotting (top to bottom)
+    # Ensure all groups in the data are in the order
+    missing_groups <- setdiff(unique(plot_data$Group), group_order)
+    if (length(missing_groups) > 0) {
+      group_order <- c(group_order, missing_groups)
+    }
+    
+    # Set factor levels for proper ordering in the plot (reverse for y-axis)
     plot_data$Group <- factor(plot_data$Group, levels = rev(group_order))
-    # Store the original order (without reversal) for text labels
-    original_group_order <- group_order
-  }
-  
-  # Add plotting columns
-  plot_data$CI_Upper_Plot <- NA
-  plot_data$CI_Lower_Plot <- NA
-  plot_data$HR_Plot <- NA
-  plot_data$Note_Plot <- ""
-  
-  # Process each row for plotting
-  for (i in 1:nrow(plot_data)) {
-    if (plot_data$Group[i] != ref_group) {
-      # Non-reference groups
-      if (is.na(plot_data$CI_Upper[i]) || plot_data$CI_Upper[i] > max_plot_hr) {
-        plot_data$CI_Upper_Plot[i] <- max_plot_hr
-        plot_data$Note_Plot[i] <- "(CI extends beyond chart)"
-      } else {
-        plot_data$CI_Upper_Plot[i] <- plot_data$CI_Upper[i]
-      }
-      
-      if (is.na(plot_data$CI_Lower[i]) || plot_data$CI_Lower[i] < 0.05) {
-        plot_data$CI_Lower_Plot[i] <- 0.05
-      } else {
-        plot_data$CI_Lower_Plot[i] <- plot_data$CI_Lower[i]
-      }
-      
-      if (is.na(plot_data$Hazard_Ratio[i]) || plot_data$Hazard_Ratio[i] > max_plot_hr) {
-        plot_data$HR_Plot[i] <- max_plot_hr
-      } else if (plot_data$Hazard_Ratio[i] < 0.05) {
-        plot_data$HR_Plot[i] <- 0.05
-      } else {
-        plot_data$HR_Plot[i] <- plot_data$Hazard_Ratio[i]
-      }
+  } else {
+    # Default ordering - alphabetical but reference group at the top
+    if (length(ref_group) > 0) {
+      other_groups <- setdiff(unique(plot_data$Group), ref_group)
+      group_order <- c(ref_group, sort(other_groups))
+      plot_data$Group <- factor(plot_data$Group, levels = rev(group_order))
     } else {
-      # Reference group
-      plot_data$CI_Lower_Plot[i] <- 1
-      plot_data$CI_Upper_Plot[i] <- 1
-      plot_data$HR_Plot[i] <- 1
+      # If no reference group, just order alphabetically
+      plot_data$Group <- factor(plot_data$Group, levels = rev(sort(unique(plot_data$Group))))
     }
   }
   
-  # Create labels without [Events/Total]
-  # Detect if this is an effect size plot (from tumor LME) or hazard ratio plot (from survival)
-  using_effect_size <- any(grepl("effect", tolower(title)))
+  # Add columns to handle plotting on log scale with capped limits
+  plot_data$HR_Plot <- pmin(plot_data$Hazard_Ratio, max_plot_hr)
+  plot_data$CI_Lower_Plot <- pmin(plot_data$CI.Lower, max_plot_hr)
+  plot_data$CI_Upper_Plot <- pmin(plot_data$CI.Upper, max_plot_hr)
   
-  # Adjust label prefix based on the type of plot
-  ratio_prefix <- ifelse(using_effect_size, "ES: ", "HR: ")
+  # Add indicator if any values were truncated
+  plot_data$Note_Plot <- ""
   
-  plot_data$label <- ifelse(plot_data$Group == ref_group,
+  # Add truncation notes
+  for (i in 1:nrow(plot_data)) {
+    if (!is.na(plot_data$Hazard_Ratio[i]) && plot_data$Hazard_Ratio[i] > max_plot_hr) {
+      plot_data$Note_Plot[i] <- "HR truncated"
+    } else if (!is.na(plot_data$CI.Upper[i]) && plot_data$CI.Upper[i] > max_plot_hr) {
+      plot_data$Note_Plot[i] <- "CI truncated"
+    }
+  }
+  
+  # Create text label for the plot
+  # Determine whether we're dealing with hazard ratios or effect sizes
+  ratio_prefix <- ifelse(grepl("effect", tolower(title)), "ES: ", "HR: ")
+  
+  # Format labels with ratio, CI, and p-value
+  plot_data$label <- ifelse(plot_data$Group %in% ref_group,
                           sprintf("%s1.00 (Reference)", ratio_prefix), 
                           ifelse(is.na(plot_data$P_Value),
                                 sprintf("%s%.2f (%.2f-%.2f)", 
                                        ratio_prefix,
                                        plot_data$Hazard_Ratio, 
-                                       ifelse(is.na(plot_data$CI_Lower), 0, plot_data$CI_Lower), 
-                                       ifelse(is.na(plot_data$CI_Upper), Inf, plot_data$CI_Upper)),
+                                       ifelse(is.na(plot_data$CI.Lower), 0, plot_data$CI.Lower), 
+                                       ifelse(is.na(plot_data$CI.Upper), Inf, plot_data$CI.Upper)),
                                 sprintf("%s%.2f (%.2f-%.2f), p=%.3f", 
                                        ratio_prefix,
                                        plot_data$Hazard_Ratio, 
-                                       ifelse(is.na(plot_data$CI_Lower), 0, plot_data$CI_Lower), 
-                                       ifelse(is.na(plot_data$CI_Upper), Inf, plot_data$CI_Upper), 
+                                       ifelse(is.na(plot_data$CI.Lower), 0, plot_data$CI.Lower), 
+                                       ifelse(is.na(plot_data$CI.Upper), Inf, plot_data$CI.Upper), 
                                        plot_data$P_Value)))
   
   # Create the forest plot
