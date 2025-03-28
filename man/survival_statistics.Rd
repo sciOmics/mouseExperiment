@@ -40,7 +40,6 @@ A list containing:
 \describe{
 \item{model}{The fitted statistical model object}
 \item{results}{Data frame with hazard ratios, confidence intervals, p-values, and median survival times}
-\item{forest_plot}{A forest plot visualizing hazard ratios with confidence intervals}
 \item{km_plot}{A Kaplan-Meier survival curve plot}
 \item{reference_group}{The treatment group used as reference}
 \item{method_used}{The statistical method used ("cox", "coxphf", or "logrank")}
@@ -81,7 +80,9 @@ names(median_surv) <- results$results$Group
 print(median_surv)
 
 # Display visualizations
-print(results$forest_plot)  # Forest plot of hazard ratios
 print(results$km_plot)      # Kaplan-Meier survival curves
+
+# Create a forest plot from the results
+plot_forest(results$results) # Forest plot of hazard ratios
 
 }
