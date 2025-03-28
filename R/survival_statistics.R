@@ -615,89 +615,11 @@ print_results <- function(results) {
 #' Create Forest Plot for Hazard Ratios
 #' @noRd
 create_forest_plot <- function(results, title = "Forest Plot") {
-  # Check if we have valid results for a forest plot
-  if (is.null(results) || nrow(results) == 0) {
-    warning("Cannot create forest plot: No results data available")
-    return(NULL)
+  # Instead of creating a forest plot directly, use the forest_plot function from plot_forest.R
+  if (requireNamespace("ggplot2", quietly = TRUE)) {
+    forest_plot(results, title = title)
+  } else {
+    warning("Package 'ggplot2' is required but not available for creating forest plots")
+    NULL
   }
-  
-  # Check for required columns
-  required_cols <- c("Group", "HR", "CI_Lower", "CI_Upper")
-  # Also handle alternative column names
-  alternative_cols <- c("Group", "Hazard_Ratio", "CI_Lower", "CI_Upper")
-  
-  # Check if we have the standard columns
-  has_standard_cols <- all(required_cols %in% colnames(results))
-  # Check if we have the alternative columns
-  has_alternative_cols <- all(alternative_cols %in% colnames(results))
-  
-  if (!has_standard_cols && !has_alternative_cols) {
-    warning("Cannot create forest plot: No hazard ratio data available")
-    return(NULL)
-  }
-  
-  # Create a copy for plotting to avoid modifying the original
-  plot_data <- results
-  
-  # If we have alternative column names, rename them
-  if (!has_standard_cols && has_alternative_cols) {
-    names(plot_data)[names(plot_data) == "Hazard_Ratio"] <- "HR"
-  }
-  
-  # Handle missing values in HR and CIs
-  for (i in 1:nrow(plot_data)) {
-    # Skip reference group
-    if (!is.na(plot_data$Note[i]) && plot_data$Note[i] == "Reference group") next
-    
-    # Fix missing HR
-    if (is.na(plot_data$HR[i])) {
-      # Check if we have a p-value - if significant, use a small HR (0.1), otherwise use 1.0
-      if (!is.na(plot_data$P_Value[i]) && plot_data$P_Value[i] < 0.05) {
-        plot_data$HR[i] <- 0.1
-      } else {
-        plot_data$HR[i] <- 1.0
-      }
-      # Add a note about this
-      plot_data$HR_Note[i] <- "HR estimated (original was NA)"
-    }
-    
-    # Fix missing CI values
-    if (is.na(plot_data$CI_Lower[i])) plot_data$CI_Lower[i] <- plot_data$HR[i] * 0.5
-    if (is.na(plot_data$CI_Upper[i])) plot_data$CI_Upper[i] <- plot_data$HR[i] * 2.0
-  }
-  
-  # Remove any rows with NA values for plotting (should no longer be necessary)
-  plot_data <- plot_data[!is.na(plot_data$HR), ]
-  
-  # If no valid rows remain, return NULL
-  if (nrow(plot_data) == 0) {
-    warning("Cannot create forest plot: No valid hazard ratio data available")
-    return(NULL)
-  }
-  
-  # Format hazard ratios and CIs
-  plot_data$HR_CI <- sprintf("%.2f (%.2f-%.2f)", 
-                           plot_data$HR, plot_data$CI_Lower, plot_data$CI_Upper)
-  
-  # Create the forest plot
-  ggplot2::ggplot(plot_data, ggplot2::aes(x = HR, y = Group)) +
-    ggplot2::geom_point(size = 3) +
-    ggplot2::geom_errorbarh(ggplot2::aes(xmin = CI_Lower, xmax = CI_Upper), height = 0.2) +
-    ggplot2::geom_vline(xintercept = 1, linetype = "dashed", color = "red") +
-    ggplot2::scale_x_continuous(trans = "log10", breaks = c(0.1, 0.2, 0.5, 1, 2, 5, 10)) +
-    ggplot2::labs(
-      title = title,
-      x = "Hazard Ratio (log scale)",
-      y = "Treatment Group"
-    ) +
-    ggplot2::theme_minimal() +
-    ggplot2::theme(
-      plot.title = ggplot2::element_text(hjust = 0.5),
-      axis.text = ggplot2::element_text(size = 10),
-      axis.title = ggplot2::element_text(size = 12)
-    ) +
-    ggplot2::geom_text(
-      ggplot2::aes(x = max(HR) * 1.5, label = HR_CI),
-      hjust = 0
-    )
 }

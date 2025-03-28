@@ -18,6 +18,7 @@ All notable changes to the mouseExperiment package will be documented in this fi
 - Fixed `print_results()` function to properly handle survival statistics summary table
 
 ### Changed
+- Moved `forest_plot()` function from `plot_caterpillar.R` to its own file `plot_forest.R` for better code organization
 - Enhanced summary output in `tumor_growth_statistics()` to provide detailed description of statistical tests and methods used
 - Improved growth rate calculation description in result summaries to clarify the log-transformation and interpretation
 - Modified posthoc tests in `tumor_growth_statistics()` for AUC analysis (model_type = "auc") to use Welch's t-tests instead of standard t-tests, which better handles unequal variances between treatment groups
