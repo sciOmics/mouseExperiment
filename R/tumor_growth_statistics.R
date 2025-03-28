@@ -483,6 +483,9 @@ tumor_growth_statistics <- function(df,
     composite_id <- paste(auc_df[[id_column]], auc_df[[treatment_column]], sep = "_")
     auc_data <- data.frame()
     
+    # Get max experiment time to determine if extrapolation is needed
+    max_experiment_time <- max(auc_df[[time_column]])
+    
     for (unique_id in unique(composite_id)) {
       # Extract data for this unique ID
       id_parts <- strsplit(unique_id, "_")[[1]]
@@ -495,14 +498,26 @@ tumor_growth_statistics <- function(df,
       # Calculate AUC using trapezoidal method
       auc_value <- calculate_auc(subject_data[[time_column]], subject_data[[volume_column]])
       
+      # Determine if extrapolation would be needed for this subject
+      # (based on whether their last observation is at the max experiment time)
+      last_observation_time <- max(subject_data[[time_column]])
+      is_extrapolated <- (last_observation_time < max_experiment_time)
+      
+      # If extrapolation_points > 0, check if this subject would use extrapolation
+      # based on available points and the max experiment time
+      n_points <- nrow(subject_data)
+      can_extrapolate <- (n_points >= 2) && is_extrapolated && (extrapolation_points > 0)
+      
       # Add to results
       auc_data <- rbind(auc_data, data.frame(
         ID = actual_id,
         Treatment = treatment,
         Group = treatment, # Added Group column for compatibility with plot_auc
         AUC = auc_value,
-        Last_Day = max(subject_data[[time_column]]),
-        First_Day = min(subject_data[[time_column]])
+        Last_Day = last_observation_time,
+        First_Day = min(subject_data[[time_column]]),
+        Extrapolated = can_extrapolate && (extrapolation_points > 0),
+        NumPoints = n_points
       ))
     }
     
@@ -541,73 +556,112 @@ tumor_growth_statistics <- function(df,
       group1_data <- auc_analysis$individual$AUC[auc_analysis$individual$Treatment == pair[1]]
       group2_data <- auc_analysis$individual$AUC[auc_analysis$individual$Treatment == pair[2]]
       
-      # Perform Welch's t-test
-      t_test_result <- stats::t.test(group1_data, group2_data, var.equal = FALSE)
-      
-      # Store results
-      pairwise_results[[paste(pair[1], "-", pair[2])]] <- list(
-        comparison = paste(pair[1], "-", pair[2]),
-        mean_diff = mean(group1_data) - mean(group2_data),
-        t_value = t_test_result$statistic,
-        df = t_test_result$parameter,
-        p_value = t_test_result$p.value,
-        ci_lower = t_test_result$conf.int[1],
-        ci_upper = t_test_result$conf.int[2]
-      )
-      
-      # Store data for the posthoc object
-      pairwise_data[[paste(pair[1], "-", pair[2])]] <- list(
-        group1 = pair[1],
-        group2 = pair[2],
-        data1 = group1_data,
-        data2 = group2_data,
-        result = t_test_result
-      )
+      # Check if we have enough data for a t-test
+      if(length(group1_data) < 2 || length(group2_data) < 2) {
+        # Not enough data, create a placeholder result
+        pairwise_results[[paste(pair[1], "-", pair[2])]] <- list(
+          comparison = paste(pair[1], "-", pair[2]),
+          mean_diff = ifelse(length(group1_data) > 0 && length(group2_data) > 0,
+                            mean(group1_data) - mean(group2_data), NA),
+          t_value = NA,
+          df = NA,
+          p_value = NA,
+          ci_lower = NA,
+          ci_upper = NA
+        )
+        
+        # Store placeholder data
+        pairwise_data[[paste(pair[1], "-", pair[2])]] <- list(
+          group1 = pair[1],
+          group2 = pair[2],
+          data1 = group1_data,
+          data2 = group2_data,
+          result = list(
+            statistic = NA,
+            parameter = NA,
+            p.value = NA,
+            conf.int = c(NA, NA),
+            estimate = NA
+          )
+        )
+      } else {
+        # We have enough data, perform Welch's t-test
+        t_test_result <- stats::t.test(group1_data, group2_data, var.equal = FALSE)
+        
+        # Store results
+        pairwise_results[[paste(pair[1], "-", pair[2])]] <- list(
+          comparison = paste(pair[1], "-", pair[2]),
+          mean_diff = mean(group1_data) - mean(group2_data),
+          t_value = t_test_result$statistic,
+          df = t_test_result$parameter,
+          p_value = t_test_result$p.value,
+          ci_lower = t_test_result$conf.int[1],
+          ci_upper = t_test_result$conf.int[2]
+        )
+        
+        # Store data for the posthoc object
+        pairwise_data[[paste(pair[1], "-", pair[2])]] <- list(
+          group1 = pair[1],
+          group2 = pair[2],
+          data1 = group1_data,
+          data2 = group2_data,
+          result = t_test_result
+        )
+      }
     }
     
-    # Create a data frame for the pairwise comparisons
-    pairwise_df <- do.call(rbind, lapply(pairwise_results, function(x) {
+    # Create data frame from pairwise results
+    pairwise_df <- do.call(rbind, lapply(names(pairwise_results), function(comp) {
+      res <- pairwise_results[[comp]]
       data.frame(
-        comparison = x$comparison,
-        estimate = x$mean_diff,
-        t_value = x$t_value,
-        df = x$df,
-        p_value = x$p_value,
-        ci_lower = x$ci_lower,
-        ci_upper = x$ci_upper
+        comparison = res$comparison,
+        estimate = res$mean_diff,
+        t_value = res$t_value,
+        df = res$df,
+        p_value = res$p_value,
+        ci_lower = res$ci_lower,
+        ci_upper = res$ci_upper,
+        stringsAsFactors = FALSE
       )
     }))
     
-    # Apply Bonferroni correction to p-values
-    pairwise_df$p_adjusted <- p.adjust(pairwise_df$p_value, method = "bonferroni")
+    # Apply Bonferroni correction for multiple comparisons
+    pairwise_df$p_adjusted <- stats::p.adjust(pairwise_df$p_value, method = "bonferroni")
     
-    # Create posthoc object for compatibility with existing code
-    posthoc <- list(
-      method = "Welch's t-tests with Bonferroni adjustment",
-      pairwise = pairwise_df,
-      data = pairwise_data
-    )
+    # Handle reference group - ensure it exists in treatments
+    if (!is.null(reference_group) && reference_group %in% treatments) {
+      # Move reference group comparisons to the top
+      ref_comparisons <- grep(paste0("^", reference_group, " -|^[^-]+ - ", reference_group, "$"), 
+                           pairwise_df$comparison)
+      if (length(ref_comparisons) > 0) {
+        # Reorder rows to put reference group comparisons first
+        pairwise_df <- rbind(
+          pairwise_df[ref_comparisons, ],
+          pairwise_df[-ref_comparisons, ]
+        )
+      }
+    }
     
     # Extract treatment effects from AUC
+    treatments <- unique(auc_analysis$individual$Treatment)
     treatment_effects <- data.frame(
-      Group = auc_summary$Treatment,
-      Adjusted_Mean = auc_summary$AUC.Mean,
-      SE = auc_summary$AUC.SEM,
-      Lower_CL = auc_summary$AUC.Mean - 1.96 * auc_summary$AUC.SEM,
-      Upper_CL = auc_summary$AUC.Mean + 1.96 * auc_summary$AUC.SEM,
+      Treatment = treatments,
+      Mean_AUC = sapply(treatments, function(t) {
+        mean(auc_analysis$individual$AUC[auc_analysis$individual$Treatment == t])
+      }),
+      SD = sapply(treatments, function(t) {
+        stats::sd(auc_analysis$individual$AUC[auc_analysis$individual$Treatment == t])
+      }),
+      N = sapply(treatments, function(t) {
+        sum(auc_analysis$individual$Treatment == t)
+      }),
       stringsAsFactors = FALSE
     )
     
-    # Add reference group note
-    treatment_effects$Note <- ifelse(treatment_effects$Group == reference_group, "Reference group", "")
-    
-    # Reorder to put reference group first
-    ref_idx <- which(treatment_effects$Group == reference_group)
-    if (ref_idx > 1) {
-      treatment_effects <- rbind(
-        treatment_effects[ref_idx, ],
-        treatment_effects[-ref_idx, ]
-      )
+    # Add reference indicator
+    treatment_effects$Reference <- rep(FALSE, nrow(treatment_effects))
+    if (!is.null(reference_group) && reference_group %in% treatments) {
+      treatment_effects$Reference[treatment_effects$Treatment == reference_group] <- TRUE
     }
     
     # Create diagnostic plots
@@ -651,6 +705,13 @@ tumor_growth_statistics <- function(df,
         "Composite IDs were created by combining subject ID and treatment group to ensure correct AUC values",
         "Welch's t-tests are used for pairwise comparisons to account for potentially unequal variances between treatment groups"
       )
+    )
+    
+    # Create posthoc object for compatibility with existing code
+    posthoc <- list(
+      method = "Welch's t-tests with Bonferroni adjustment",
+      pairwise = pairwise_df,
+      data = pairwise_data
     )
     
     # Return results for AUC model

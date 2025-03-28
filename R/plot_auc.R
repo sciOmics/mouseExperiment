@@ -1,270 +1,222 @@
-#' Plot AUC (Area Under the Curve) Data
+#' Plot Area Under the Curve (AUC) Values by Treatment Group
 #'
-#' This function creates a visualization for Area Under the Curve (AUC) data from tumor growth experiments.
-#' It produces a single plot showing AUC values by treatment group as individual points with optional
-#' mean lines and error bars.
+#' @description
+#' Creates a visualization of Area Under the Curve (AUC) values by treatment group,
+#' with options for displaying mean values, error bars, and differentiation between
+#' extrapolated and non-extrapolated data points.
 #'
-#' @param auc_data A data frame containing AUC values for individual subjects.
-#'        Must include columns: 'Group' (treatment group) and 'AUC' (AUC values).
-#'        May also include 'ID', 'Cage', or 'Mouse_ID' columns for more detailed visualization.
-#' @param colors An optional vector of colors for treatment groups. If NULL, default ggplot colors are used.
-#' @param title An optional title for the plot. If NULL, a default title is used.
-#' @param show_mean Logical indicating whether to display a mean line for each group. Default is TRUE.
-#' @param error_bar_type Character string specifying the type of error bars to display. Options are:
-#'        "none" (no error bars),
-#'        "SEM" (standard error of the mean),
-#'        "SD" (standard deviation),
-#'        "CI" (95% confidence interval). Default is "SEM".
-#' @param extrapolated_column Character string specifying the column name that indicates whether a data point 
+#' @param auc_data A data frame containing AUC values for each subject.
+#'        Must have columns for AUC values and group/treatment information.
+#' @param auc_column Name of the column containing AUC values. Default is "AUC".
+#' @param group_column Name of the column containing group/treatment information. Default is "Group".
+#' @param title Plot title. Default is "Area Under the Curve (AUC) by Treatment Group".
+#' @param show_mean Logical indicating whether to show lines for group means. Default is FALSE.
+#' @param error_bar_type Type of error bars to display. Options are "none", "SEM" (standard error of mean),
+#'        "SD" (standard deviation), or "CI" (95% confidence interval). Default is "none".
+#' @param extrapolated_column Name of column indicating whether a data point
 #'        was extrapolated. Values should be TRUE/FALSE or 1/0. If NULL, all points are treated as non-extrapolated. 
 #'        Default is NULL.
-#' @param extrapolation_points Numeric value specifying the number of most recent data points to use when 
-#'        calculating extrapolation for subjects with incomplete data. The function will use the last 
-#'        N points to fit the extrapolation curve. Default is 3.
 #' @param group_order Optional vector specifying the order of groups to display. 
 #'        If NULL, groups are ordered alphabetically. Default is NULL.
-#' @param point_size Numeric value specifying the size of the individual data points. Default is 3.
-#' @param jitter_width Numeric value specifying the width of the jitter for individual points. Default is 0.2.
+#' @param caption Optional caption text for the plot. Default is NULL.
 #'
-#' @return A ggplot object representing the AUC plot.
+#' @return A ggplot object that can be further customized or displayed.
 #'
-#' @importFrom ggplot2 ggplot aes geom_jitter stat_summary geom_errorbar theme_minimal
-#' @importFrom ggplot2 labs scale_fill_manual scale_color_manual ggtitle
-#' @importFrom stats aggregate qt
+#' @importFrom ggplot2 ggplot aes geom_point geom_boxplot geom_jitter
+#' @importFrom ggplot2 stat_summary theme_classic labs position_dodge
+#' @importFrom stats sd
 #'
 #' @examples
 #' \dontrun{
-#' # Generate example data
+#' # Generate some example data
 #' auc_data <- data.frame(
-#'   ID = paste0("Mouse", 1:20),
-#'   Group = rep(c("Control", "Treatment A", "Treatment B", "Treatment C"), each=5),
-#'   AUC = c(runif(5, 10, 15), runif(5, 8, 12), runif(5, 5, 10), runif(5, 3, 8))
+#'   Subject = paste0("S", 1:20),
+#'   Group = rep(c("Control", "Treatment"), each = 10),
+#'   AUC = c(rnorm(10, 100, 15), rnorm(10, 70, 10)),
+#'   Extrapolated = c(rep(FALSE, 15), rep(TRUE, 5))
 #' )
-#' 
-#' # Basic usage
+#'
+#' # Basic plot
 #' plot_auc(auc_data)
-#' 
-#' # With custom error bars and no mean line
-#' plot_auc(auc_data, show_mean = FALSE, error_bar_type = "SD")
-#' 
-#' # With extrapolated data points marked differently
-#' auc_data$Extrapolated <- rep(c(TRUE, FALSE), 10)
-#' plot_auc(auc_data, extrapolated_column = "Extrapolated")
-#' 
-#' # Create a custom color palette for treatment groups
-#' colors <- c("Control" = "gray", "Treatment A" = "blue", 
-#'            "Treatment B" = "green", "Treatment C" = "red")
-#' plot_auc(auc_data, colors = colors)
 #'
-#' # Specify a custom order for the groups
-#' plot_auc(auc_data, group_order = c("Control", "Treatment B", "Treatment A", "Treatment C"))
-#'
-#' # Control extrapolation with minimum number of data points
-#' plot_auc(auc_data, extrapolated_column = "Extrapolated", extrapolation_points = 4)
+#' # With mean, SEM error bars, and differentiation of extrapolated points
+#' plot_auc(
+#'   auc_data,
+#'   title = "Tumor Growth AUC by Group",
+#'   show_mean = TRUE,
+#'   error_bar_type = "SEM",
+#'   extrapolated_column = "Extrapolated"
+#' )
 #' }
 #'
 #' @export
-plot_auc <- function(auc_data, 
-                     colors = NULL,
-                     title = "AUC Values by Treatment Group",
-                     show_mean = TRUE,
-                     error_bar_type = c("SEM", "SD", "CI", "none"),
-                     extrapolated_column = NULL,
-                     extrapolation_points = 3,
-                     group_order = NULL,
-                     point_size = 3,
-                     jitter_width = 0.2) {
+plot_auc <- function(auc_data,
+                    auc_column = "AUC",
+                    group_column = "Group",
+                    title = "Area Under the Curve (AUC) by Treatment Group",
+                    show_mean = FALSE,
+                    error_bar_type = c("none", "SEM", "SD", "CI"),
+                    extrapolated_column = NULL,
+                    group_order = NULL,
+                    caption = NULL) {
   
-  # Check if required packages are available
-  if (!requireNamespace("ggplot2", quietly = TRUE)) {
-    stop("Package 'ggplot2' is needed for this function. Please install it.")
-  }
-  
-  # Match arguments
-  error_bar_type <- match.arg(error_bar_type)
-  
-  # Validate inputs
+  # Check inputs
   if (!is.data.frame(auc_data)) {
     stop("auc_data must be a data frame")
   }
   
-  # Check required columns
-  required_cols <- c("Group", "AUC")
-  if (!all(required_cols %in% colnames(auc_data))) {
-    stop("auc_data must contain columns: ", paste(required_cols, collapse = ", "))
+  if (!auc_column %in% colnames(auc_data)) {
+    stop(sprintf("Column '%s' not found in auc_data", auc_column))
   }
   
-  # Check extrapolated column if provided
-  if (!is.null(extrapolated_column)) {
-    if (!extrapolated_column %in% colnames(auc_data)) {
-      warning("Specified extrapolated_column '", extrapolated_column, "' not found in data. All points will be treated as non-extrapolated.")
-      extrapolated_column <- NULL
+  if (!group_column %in% colnames(auc_data)) {
+    stop(sprintf("Column '%s' not found in auc_data", group_column))
+  }
+  
+  # Match argument for error_bar_type
+  error_bar_type <- match.arg(error_bar_type)
+  
+  # Set group order if specified
+  if (!is.null(group_order)) {
+    if (!all(unique(auc_data[[group_column]]) %in% group_order)) {
+      warning("Not all groups from data are in group_order. Using alphabetical order.")
+      auc_data[[group_column]] <- factor(auc_data[[group_column]])
+    } else {
+      auc_data[[group_column]] <- factor(auc_data[[group_column]], levels = group_order)
     }
-  }
-  
-  # Validate extrapolation_points
-  if (!is.numeric(extrapolation_points) || extrapolation_points < 2) {
-    warning("extrapolation_points must be a number >= 2. Using default value of 3.")
-    extrapolation_points <- 3
-  }
-  
-  # Order groups if specified, otherwise sort by group name for consistency
-  if (is.null(group_order)) {
-    group_levels <- unique(auc_data$Group)
   } else {
-    # Validate group_order
-    if (!all(group_order %in% auc_data$Group)) {
-      missing_groups <- setdiff(group_order, auc_data$Group)
-      warning("Some groups in group_order not found in data: ", 
-              paste(missing_groups, collapse = ", "))
-      group_order <- intersect(group_order, auc_data$Group)
-    }
-    if (length(group_order) < length(unique(auc_data$Group))) {
-      missing_groups <- setdiff(unique(auc_data$Group), group_order)
-      warning("Not all groups specified in group_order. Adding missing groups at the end: ", 
-              paste(missing_groups, collapse = ", "))
-      group_order <- c(group_order, missing_groups)
-    }
-    group_levels <- group_order
+    # Default to alphabetical order
+    auc_data[[group_column]] <- factor(auc_data[[group_column]])
   }
   
-  # Set up colors if provided
-  if (!is.null(colors)) {
-    has_names <- !is.null(names(colors)) && any(names(colors) != "")
-    if (is.vector(colors) && !has_names) {
-      # If just a vector of colors without names, match to groups
-      groups <- unique(auc_data$Group)
-      if (length(colors) < length(groups)) {
-        warning("Not enough colors provided. Recycling colors.")
-        colors <- rep(colors, length.out = length(groups))
-      }
-      names(colors) <- groups
-    }
+  # Determine if we have extrapolation information
+  has_extrapolation <- FALSE
+  if (!is.null(extrapolated_column) && extrapolated_column %in% colnames(auc_data)) {
+    has_extrapolation <- TRUE
     
-    # Check if all groups have a color
-    missing_groups <- setdiff(unique(auc_data$Group), names(colors))
-    if (length(missing_groups) > 0) {
-      warning("Missing colors for groups: ", paste(missing_groups, collapse = ", "), 
-              ". Using default colors.")
-    }
-  }
-  
-  # Set factor levels for consistent ordering
-  auc_data$Group <- factor(auc_data$Group, levels = group_levels)
-  
-  # Calculate summary statistics for error bars
-  summary_stats <- stats::aggregate(AUC ~ Group, data = auc_data, 
-                               FUN = function(x) {
-                                 n <- length(x)
-                                 mean_x <- mean(x)
-                                 sd_x <- stats::sd(x)
-                                 sem_x <- sd_x / sqrt(n)
-                                 ci_x <- sem_x * stats::qt(0.975, df = n-1)
-                                 
-                                 c(
-                                   Mean = mean_x,
-                                   SD = sd_x,
-                                   SEM = sem_x,
-                                   CI_lower = mean_x - ci_x,
-                                   CI_upper = mean_x + ci_x,
-                                   N = n
-                                 )
-                               })
-  summary_stats <- do.call(data.frame, summary_stats)
-  
-  # Create the base plot
-  p <- ggplot2::ggplot(auc_data, ggplot2::aes(x = Group, y = AUC, color = Group))
-  
-  # Add extrapolated/non-extrapolated points if column is provided
-  if (!is.null(extrapolated_column)) {
-    # Convert to logical if needed
-    if (is.numeric(auc_data[[extrapolated_column]])) {
+    # Convert to logical if it's not already
+    if (!is.logical(auc_data[[extrapolated_column]])) {
       auc_data[[extrapolated_column]] <- as.logical(auc_data[[extrapolated_column]])
     }
     
-    # Split data for different point styles
-    auc_data_extrapolated <- auc_data[auc_data[[extrapolated_column]], ]
-    auc_data_nonextrapolated <- auc_data[!auc_data[[extrapolated_column]], ]
-    
-    # Add non-extrapolated points (filled circles)
-    if (nrow(auc_data_nonextrapolated) > 0) {
-      p <- p + ggplot2::geom_jitter(data = auc_data_nonextrapolated,
-                                   width = jitter_width, height = 0, 
-                                   size = point_size, alpha = 0.7,
-                                   shape = 16) # filled circle
+    # Add caption about extrapolated points if one was not provided
+    if (is.null(caption)) {
+      caption <- "Open circles represent extrapolated values"
     }
-    
-    # Add extrapolated points (empty circles)
-    if (nrow(auc_data_extrapolated) > 0) {
-      p <- p + ggplot2::geom_jitter(data = auc_data_extrapolated,
-                                   width = jitter_width, height = 0, 
-                                   size = point_size, alpha = 0.7,
-                                   shape = 1) # empty circle
-    }
-    
-    # Add legend for extrapolation status
-    p <- p + ggplot2::labs(
-      caption = paste0("Open circles represent extrapolated values (requiring at least ", 
-                      extrapolation_points, " data points)")
-    )
-    
-  } else {
-    # All points treated as non-extrapolated (filled circles)
-    p <- p + ggplot2::geom_jitter(width = jitter_width, height = 0, 
-                                 size = point_size, alpha = 0.7,
-                                 shape = 16) # filled circle
   }
   
-  # Add mean line if requested
-  if (show_mean) {
-    p <- p + ggplot2::stat_summary(fun = mean, geom = "crossbar", 
-                                 width = 0.5, size = 0.5, color = "black")
+  # Create the base plot
+  p <- ggplot2::ggplot(auc_data, 
+                      ggplot2::aes(x = .data[[group_column]], 
+                                  y = .data[[auc_column]], 
+                                  color = .data[[group_column]])) +
+    ggplot2::geom_boxplot(alpha = 0.7, outlier.shape = NA)
+  
+  # Add points with or without extrapolation indication
+  if (has_extrapolation) {
+    p <- p + ggplot2::geom_jitter(
+      ggplot2::aes(shape = .data[[extrapolated_column]]),
+      position = ggplot2::position_jitter(width = 0.2),
+      size = 2.5,
+      alpha = 0.8
+    ) +
+      ggplot2::scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 1),
+                                name = "Extrapolated")
+  } else {
+    p <- p + ggplot2::geom_jitter(
+      position = ggplot2::position_jitter(width = 0.2),
+      size = 2.5,
+      alpha = 0.8
+    )
   }
   
   # Add error bars if requested
   if (error_bar_type != "none") {
-    if (error_bar_type == "SEM") {
-      p <- p + ggplot2::geom_errorbar(
-        data = summary_stats,
-        ggplot2::aes(x = Group, y = AUC.Mean, 
-                   ymin = AUC.Mean - AUC.SEM, 
-                   ymax = AUC.Mean + AUC.SEM),
-        width = 0.3, color = "black", inherit.aes = FALSE
+    # Function to calculate error bar values
+    error_fun <- switch(error_bar_type,
+                        "SEM" = function(x) {
+                          m <- mean(x, na.rm = TRUE)
+                          sem <- stats::sd(x, na.rm = TRUE) / sqrt(sum(!is.na(x)))
+                          return(c(y = m, ymin = m - sem, ymax = m + sem))
+                        },
+                        "SD" = function(x) {
+                          m <- mean(x, na.rm = TRUE)
+                          s <- stats::sd(x, na.rm = TRUE)
+                          return(c(y = m, ymin = m - s, ymax = m + s))
+                        },
+                        "CI" = function(x) {
+                          m <- mean(x, na.rm = TRUE)
+                          sem <- stats::sd(x, na.rm = TRUE) / sqrt(sum(!is.na(x)))
+                          ci <- 1.96 * sem
+                          return(c(y = m, ymin = m - ci, ymax = m + ci))
+                        })
+    
+    # Add error bars
+    p <- p + ggplot2::stat_summary(
+      fun.data = error_fun,
+      geom = "errorbar",
+      width = 0.2,
+      size = 1,
+      color = "black"
+    )
+    
+    # Add mean points/lines if requested
+    if (show_mean) {
+      p <- p + ggplot2::stat_summary(
+        fun = mean,
+        geom = "point",
+        shape = 23,
+        size = 3,
+        fill = "white",
+        color = "black"
       )
-    } else if (error_bar_type == "SD") {
-      p <- p + ggplot2::geom_errorbar(
-        data = summary_stats,
-        ggplot2::aes(x = Group, y = AUC.Mean, 
-                   ymin = AUC.Mean - AUC.SD, 
-                   ymax = AUC.Mean + AUC.SD),
-        width = 0.3, color = "black", inherit.aes = FALSE
+      
+      # Add horizontal line at each mean
+      group_means <- stats::aggregate(
+        formula(paste(auc_column, "~", group_column)),
+        data = auc_data,
+        FUN = mean
       )
-    } else if (error_bar_type == "CI") {
-      p <- p + ggplot2::geom_errorbar(
-        data = summary_stats,
-        ggplot2::aes(x = Group, y = AUC.Mean, 
-                   ymin = AUC.CI_lower, 
-                   ymax = AUC.CI_upper),
-        width = 0.3, color = "black", inherit.aes = FALSE
+      
+      # Convert to long format for geom_segment
+      segments_data <- do.call(rbind, lapply(1:nrow(group_means), function(i) {
+        g <- as.character(group_means[[group_column]][i])
+        y <- group_means[[auc_column]][i]
+        data.frame(
+          group = g,
+          y = y,
+          x = as.integer(factor(g)) - 0.25,
+          xend = as.integer(factor(g)) + 0.25
+        )
+      }))
+      
+      p <- p + ggplot2::geom_segment(
+        data = segments_data,
+        ggplot2::aes(
+          x = x,
+          xend = xend,
+          y = y,
+          yend = y
+        ),
+        color = "black",
+        size = 1
       )
     }
   }
   
-  # Add labels and theme
-  p <- p + ggplot2::labs(
-    title = title,
-    x = "Treatment Group",
-    y = "AUC (Tumor Burden)"
-  ) + ggplot2::theme_classic() +
+  # Apply classic theme and labels
+  p <- p + ggplot2::theme_classic() +
+    ggplot2::labs(
+      title = title,
+      x = "Treatment Group",
+      y = "Area Under the Curve",
+      caption = caption
+    ) +
     ggplot2::theme(
-      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-      legend.position = "none"
+      legend.position = "top",
+      plot.title = ggplot2::element_text(hjust = 0.5),
+      plot.caption = ggplot2::element_text(hjust = 0, face = "italic")
     )
-  
-  # Apply custom colors if provided
-  if (!is.null(colors)) {
-    p <- p + ggplot2::scale_color_manual(values = colors)
-  }
   
   return(p)
 } 

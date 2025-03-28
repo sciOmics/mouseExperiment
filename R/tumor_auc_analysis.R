@@ -293,8 +293,7 @@ tumor_auc_analysis <- function(df,
           title = paste("Area Under the Curve (AUC) by Treatment Group\nMethod:", auc_method),
           show_mean = TRUE,
           error_bar_type = "SEM",
-          extrapolated_column = "Extrapolated",
-          extrapolation_points = extrapolation_points
+          extrapolated_column = "Extrapolated"
         )
       }, error = function(e) {
         message("Error using plot_auc function: ", e$message)
