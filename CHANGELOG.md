@@ -10,6 +10,7 @@ All notable changes to the mouseExperiment package will be documented in this fi
 ### Fixed
 - Fixed `forest_plot()` to properly handle both `HR` and `Hazard_Ratio` column naming from `survival_statistics()` results
 - Improved compatibility between column naming conventions in various plotting functions
+- Fixed Events/Total count calculation in `survival_statistics()` to correctly count unique subjects and their events per treatment group
 
 ### Changed
 - Enhanced summary output in `tumor_growth_statistics()` to provide detailed description of statistical tests and methods used

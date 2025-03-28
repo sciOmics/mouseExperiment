@@ -162,19 +162,31 @@ survival_statistics <- function(df,
     warning("Error calculating median survival: ", e$message)
   })
   
-  # Get the unique mice but ensure we have the last observation for each
-  unique_mice_data <- lapply(unique(df[[id_column]]), function(id) {
-    # Get all data for this mouse
-    mouse_data <- df[df[[id_column]] == id, ]
-    # Return the last observation (which should have the correct Survival_Censor value)
-    mouse_data[which.max(mouse_data[[time_column]]), ]
-  })
-  unique_mice <- do.call(rbind, unique_mice_data)
+  # Add Events and Total columns
+  # Current approach doesn't properly account for unique subjects
+  # event_counts <- tapply(df[[censor_column]], df[[treatment_column]], sum)
+  # total_counts <- table(df[[treatment_column]])
   
-  # Now count events and totals based on unique mice
-  event_counts <- tapply(unique_mice[[censor_column]], unique_mice[[treatment_column]], sum)
-  total_counts <- tapply(unique_mice[[treatment_column]], unique_mice[[treatment_column]], length)
+  # Improved approach to count unique subjects and their events per treatment group
+  # First, find the unique subjects (usually ID) in each treatment group
+  subject_treatment <- unique(df[, c(id_column, treatment_column)])
+  total_counts <- table(subject_treatment[[treatment_column]])
   
+  # Next, find subjects with events
+  # We need to handle possible duplicates in the data (multiple rows per subject)
+  # For each subject, if any row has an event, count it as an event
+  event_data <- df[, c(id_column, treatment_column, censor_column)]
+  # Aggregate to get maximum event per subject (1 if any event occurred, 0 otherwise)
+  event_by_subject <- stats::aggregate(
+    event_data[[censor_column]], 
+    by = list(ID = event_data[[id_column]], Treatment = event_data[[treatment_column]]), 
+    FUN = max
+  )
+  
+  # Count events per treatment group
+  event_counts <- tapply(event_by_subject$x, event_by_subject$Treatment, sum)
+  
+  # Assign to results data frame
   results$Events <- event_counts[match(results$Group, names(event_counts))]
   results$Total <- total_counts[match(results$Group, names(total_counts))]
   
@@ -531,7 +543,7 @@ print_results <- function(results) {
       }
     }
     
-    message(sprintf("Events: %d/%d", as.integer(results$Events[i]), as.integer(results$Total[i])))
+    message(sprintf("Events: %d/%d", results$Events[i], results$Total[i]))
     
     if(!is.na(results$Note[i]) && results$Note[i] != "") {
       message(sprintf("Note: %s", results$Note[i]))
@@ -557,10 +569,7 @@ print_results <- function(results) {
       ifelse(is.na(results$P_Value[i]), "Ref", sprintf("%.4f", results$P_Value[i]))
     }),
     "Events/Total" = sapply(1:nrow(results), function(i) {
-      # Ensure we're using the correct counts
-      sprintf("%d/%d", 
-              as.integer(results$Events[i]), 
-              as.integer(results$Total[i]))
+      sprintf("%d/%d", results$Events[i], results$Total[i])
     }),
     stringsAsFactors = FALSE
   )
