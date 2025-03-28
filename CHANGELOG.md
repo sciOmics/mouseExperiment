@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Fixed `post_power_analysis()` function to properly handle AUC analysis with better error checking and data validation
+- Fixed contrasts error in `post_power_analysis()` AUC method by ensuring treatment groups are properly converted to factors
 - Implemented simulation-based power analysis method in `post_power_analysis()` function
 - Fixed AUC calculation in `post_power_analysis()` to properly validate data and handle treatments with small sample sizes
 - Fixed contrasts issue in `post_power_analysis()` for AUC method by adding proper validation of treatment groups

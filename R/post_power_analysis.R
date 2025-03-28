@@ -161,15 +161,19 @@ post_power_analysis <- function(data,
        
        # Calculate AUC for each subject
        auc_results <- tumor_auc_analysis(
-         raw_data,
+         df = raw_data,
          time_column = time_column,
          volume_column = volume_column,
          treatment_column = treatment_column,
          id_column = id_column
        )
        
+       # Store in model_results using the correct structure
        model_results <- list(
-         auc_analysis = auc_results
+         auc_analysis = list(
+           individual = auc_results$auc_data,
+           summary = auc_results$auc_summary
+         )
        )
      }
    } else if (is.list(data) && any(c("model", "auc_analysis") %in% names(data))) {
@@ -185,14 +189,17 @@ post_power_analysis <- function(data,
          
          # Calculate AUC for each subject
          auc_results <- tumor_auc_analysis(
-           raw_data,
+           df = raw_data,
            time_column = time_column,
            volume_column = volume_column,
            treatment_column = treatment_column,
            id_column = id_column
          )
          
-         model_results$auc_analysis <- auc_results
+         model_results$auc_analysis <- list(
+           individual = auc_results$auc_data,
+           summary = auc_results$auc_summary
+         )
        } else {
          stop("Cannot perform AUC power analysis: no raw data available in model results")
        }
@@ -344,86 +351,26 @@ post_power_analysis <- function(data,
    } else if (method == "auc") {
      message("Performing AUC-based power analysis...")
      
-     # Calculate AUC for the raw data if it wasn't provided
-     if (!is.null(model_results) && !is.null(model_results$auc_analysis) && !is.null(model_results$auc_analysis$individual)) {
-       auc_data <- model_results$auc_analysis$individual
-     } else if (exists("raw_data")) {
-       # Calculate AUC from scratch
-       message("Calculating AUC values...")
-       
-       # Create a direct implementation for AUC calculation
-       auc_results <- tryCatch({
-         # Group the data by treatment and ID to calculate AUC for each subject
-         unique_ids <- unique(raw_data[[id_column]])
-         unique_treatments <- unique(raw_data[[treatment_column]])
-         
-         # Check if we have enough data for AUC analysis
-         if (length(unique_ids) < 4 || length(unique_treatments) < 2) {
-           stop("Insufficient data for AUC analysis (need at least 4 subjects and 2 treatment groups)")
+     # Extract AUC data from input
+     if (!is.null(model_results$auc_analysis)) {
+       # Use AUC data from model results if available
+       if (!is.null(model_results$auc_analysis$individual)) {
+         auc_data <- model_results$auc_analysis$individual
+       } else if (!is.null(model_results$auc_analysis$auc_data)) {
+         auc_data <- model_results$auc_analysis$auc_data
+       } else {
+         message("No individual AUC data found in model_results. Calculating...")
+         # Calculate AUC from raw data if available
+         if (exists("raw_data") && !is.null(raw_data)) {
+           auc_data <- calculate_auc_values(raw_data, time_column, volume_column, treatment_column, id_column)
+         } else {
+           stop("No data available for AUC power analysis")
          }
-         
-         # Initialize AUC individual data
-         auc_individual <- data.frame(
-           ID = character(),
-           Treatment = character(),
-           AUC = numeric(),
-           stringsAsFactors = FALSE
-         )
-         
-         # Manually calculate AUC for each subject
-         for (id in unique_ids) {
-           # Get data for this subject
-           id_data <- raw_data[raw_data[[id_column]] == id, ]
-           
-           # Get treatment for this subject (assuming one treatment per subject)
-           treatment <- unique(id_data[[treatment_column]])
-           if (length(treatment) > 1) {
-             warning("Subject ", id, " has multiple treatment assignments. Using the first one.")
-             treatment <- treatment[1]
-           }
-           
-           # Sort by time
-           id_data <- id_data[order(id_data[[time_column]]), ]
-           times <- id_data[[time_column]]
-           volumes <- id_data[[volume_column]]
-           
-           # Check for enough time points
-           if (length(times) < 3) {
-             warning("Subject ", id, " has too few time points for AUC calculation. Skipping.")
-             next
-           }
-           
-           # Calculate trapezoidal AUC
-           auc_value <- 0
-           for (i in 2:length(times)) {
-             # Area of trapezoid = (y1 + y2) * (x2 - x1) / 2
-             auc_value <- auc_value + (volumes[i-1] + volumes[i]) * (times[i] - times[i-1]) / 2
-           }
-           
-           # Add to AUC individual data
-           auc_individual <- rbind(auc_individual, data.frame(
-             ID = id,
-             Treatment = treatment,
-             AUC = auc_value,
-             stringsAsFactors = FALSE
-           ))
-         }
-         
-         # Set column names correctly
-         names(auc_individual)[names(auc_individual) == "Treatment"] <- treatment_column
-         
-         # Return the AUC individual data
-         auc_individual
-       }, error = function(e) {
-         message("Error calculating AUC: ", e$message)
-         return(NULL)
-       })
-       
-       if (is.null(auc_results) || nrow(auc_results) == 0) {
-         stop("Failed to calculate AUC values")
        }
-       
-       auc_data <- auc_results
+     } else if (exists("raw_data") && !is.null(raw_data)) {
+       # Calculate AUC from raw data
+       message("Calculating AUC values from raw data...")
+       auc_data <- calculate_auc_values(raw_data, time_column, volume_column, treatment_column, id_column)
      } else {
        stop("No data available for AUC power analysis")
      }
@@ -443,8 +390,17 @@ post_power_analysis <- function(data,
        stringsAsFactors = FALSE
      )
      
-     # Get unique treatment groups
+     # Get unique treatment groups and ensure they are properly ordered
      treatment_groups <- unique(auc_data[[treatment_column]])
+     
+     # Create a factor with explicit levels to avoid contrasts error
+     auc_data[[treatment_column]] <- factor(auc_data[[treatment_column]], 
+                                           levels = treatment_groups)
+     
+     # Check again that we have at least 2 distinct levels with data
+     if (length(levels(auc_data[[treatment_column]])) < 2) {
+       stop("After factorization, fewer than 2 treatment groups remain. Check your data.")
+     }
      
      for (group in treatment_groups) {
        group_data <- auc_data$AUC[auc_data[[treatment_column]] == group]
@@ -757,4 +713,77 @@ post_power_analysis <- function(data,
    
    # Return results
    return(result)
+}
+
+# Function to calculate AUC from raw data
+calculate_auc_values <- function(data, time_column, volume_column, treatment_column, id_column) {
+  # Try to calculate AUC values
+  tryCatch({
+    # Initialize data frame for individual AUC values
+    auc_individual <- data.frame(
+      ID = character(0),
+      Treatment = character(0),
+      AUC = numeric(0),
+      stringsAsFactors = FALSE
+    )
+    
+    # Get unique IDs
+    ids <- unique(data[[id_column]])
+    
+    # Calculate AUC for each individual
+    for (id in ids) {
+      # Get data for this individual
+      id_data <- data[data[[id_column]] == id, ]
+      
+      # Get treatment - should be the same for all rows of this ID
+      treatment <- unique(id_data[[treatment_column]])
+      if (length(treatment) > 1) {
+        warning("Multiple treatments found for ID ", id, ". Using the first one.")
+        treatment <- treatment[1]
+      }
+      
+      # Skip if no treatment assigned
+      if (length(treatment) == 0) {
+        warning("No treatment assigned for ID ", id, ". Skipping.")
+        next
+      }
+      
+      # Sort by time
+      id_data <- id_data[order(id_data[[time_column]]), ]
+      
+      # Need at least 2 time points for AUC
+      if (nrow(id_data) < 2) {
+        warning("ID ", id, " has fewer than 2 time points. Skipping.")
+        next
+      }
+      
+      # Extract time and volume vectors
+      times <- id_data[[time_column]]
+      volumes <- id_data[[volume_column]]
+      
+      # Calculate AUC using trapezoidal rule
+      auc_value <- 0
+      for (i in 2:length(times)) {
+        # Area of trapezoid = (v1 + v2) * (t2 - t1) / 2
+        auc_value <- auc_value + (volumes[i-1] + volumes[i]) * (times[i] - times[i-1]) / 2
+      }
+      
+      # Add to AUC individual data
+      auc_individual <- rbind(auc_individual, data.frame(
+        ID = id,
+        Treatment = treatment,
+        AUC = auc_value,
+        stringsAsFactors = FALSE
+      ))
+    }
+    
+    # Set column names correctly
+    names(auc_individual)[names(auc_individual) == "Treatment"] <- treatment_column
+    
+    # Return the AUC individual data
+    return(auc_individual)
+  }, error = function(e) {
+    message("Error calculating AUC: ", e$message)
+    return(NULL)
+  })
 }
