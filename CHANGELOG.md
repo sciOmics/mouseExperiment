@@ -9,6 +9,10 @@ All notable changes to the mouseExperiment package will be documented in this fi
 - Implemented `post_power_analysis()` function for calculating statistical power and sample size recommendations based on experimental data
 
 ### Fixed
+- Fixed `post_power_analysis()` function to properly handle AUC analysis with better error checking and data validation
+- Implemented simulation-based power analysis method in `post_power_analysis()` function
+- Fixed AUC calculation in `post_power_analysis()` to properly validate data and handle treatments with small sample sizes
+- Fixed contrasts issue in `post_power_analysis()` for AUC method by adding proper validation of treatment groups
 - Fixed `plot_forest()` to properly handle both `HR` and `Hazard_Ratio` column naming from `survival_statistics()` results
 - Fixed `plot_forest()` to properly display confidence intervals and handle special treatment group names like "HDACi + PD1"
 - Improved error handling in `plot_forest()` to handle missing hazard ratios and confidence intervals
