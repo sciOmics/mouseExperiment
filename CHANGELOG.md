@@ -49,6 +49,7 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 ### Added
 - Enhanced growth rate calculation description in the tumor_growth_statistics function summary.
+- Added plot_bliss function for visualizing tumor growth inhibition and Bliss synergy over time.
 
 ### Changed
 - Fixed event and total counts calculation in survival_statistics.
