@@ -11,7 +11,7 @@
 #' @param group_column Name of the column containing group/treatment information. Default is "Group".
 #' @param title Plot title. Default is "Area Under the Curve (AUC) by Treatment Group".
 #' @param colors Optional named vector of colors for each group. If NULL, default colors are used.
-#' @param show_mean Logical indicating whether to show lines for group means. Default is FALSE.
+#' @param show_mean Logical indicating whether to show lines for group means. Default is TRUE.
 #' @param error_bar_type Type of error bars to display. Options are "none", "SEM" (standard error of mean),
 #'        "SD" (standard deviation), or "CI" (95% confidence interval). Default is "none".
 #' @param extrapolated_column Name of column indicating whether a data point
@@ -82,7 +82,7 @@ plot_auc <- function(auc_data,
                     group_column = "Group",
                     title = "Area Under the Curve (AUC) by Treatment Group",
                     colors = NULL,
-                    show_mean = FALSE,
+                    show_mean = TRUE,
                     error_bar_type = c("none", "SEM", "SD", "CI"),
                     extrapolated_column = NULL,
                     group_order = NULL,
@@ -139,13 +139,14 @@ plot_auc <- function(auc_data,
   p <- ggplot2::ggplot(auc_data, 
                       ggplot2::aes(x = .data[[group_column]], 
                                   y = .data[[auc_column]], 
-                                  color = .data[[group_column]]))
+                                  color = .data[[group_column]],
+                                  group = .data[[group_column]]))
   
   # Add points with or without extrapolation indication
   if (has_extrapolation) {
     p <- p + ggplot2::geom_jitter(
       ggplot2::aes(shape = .data[[extrapolated_column]]),
-      position = ggplot2::position_jitter(width = jitter_width),
+      position = ggplot2::position_jitter(width = jitter_width, seed = 123),
       size = point_size,
       alpha = 0.8
     ) +
@@ -153,7 +154,7 @@ plot_auc <- function(auc_data,
                                 name = "Extrapolated")
   } else {
     p <- p + ggplot2::geom_jitter(
-      position = ggplot2::position_jitter(width = jitter_width),
+      position = ggplot2::position_jitter(width = jitter_width, seed = 123),
       size = point_size,
       alpha = 0.8
     )
@@ -211,49 +212,47 @@ plot_auc <- function(auc_data,
       size = 1,
       color = "black"
     )
+  }
+  
+  # Add mean lines if requested
+  if (show_mean) {
+    # Calculate mean for each group
+    group_means <- stats::aggregate(
+      formula(paste(auc_column, "~", group_column)),
+      data = auc_data,
+      FUN = mean,
+      na.rm = TRUE
+    )
     
-    # Add mean points/lines if requested
-    if (show_mean) {
-      p <- p + ggplot2::stat_summary(
-        fun = mean,
-        geom = "point",
-        shape = 23,
-        size = 3,
-        fill = "white",
-        color = "black"
-      )
+    # Create a data frame for the horizontal lines at means
+    segments_data <- data.frame()
+    for (i in 1:nrow(group_means)) {
+      group <- as.character(group_means[[group_column]][i])
+      y_value <- group_means[[auc_column]][i]
+      x_pos <- which(levels(auc_data[[group_column]]) == group)
       
-      # Add horizontal line at each mean
-      group_means <- stats::aggregate(
-        formula(paste(auc_column, "~", group_column)),
-        data = auc_data,
-        FUN = mean
-      )
-      
-      # Convert to long format for geom_segment
-      segments_data <- do.call(rbind, lapply(1:nrow(group_means), function(i) {
-        g <- as.character(group_means[[group_column]][i])
-        y <- group_means[[auc_column]][i]
-        data.frame(
-          group = g,
-          y = y,
-          x = as.integer(factor(g)) - 0.25,
-          xend = as.integer(factor(g)) + 0.25
-        )
-      }))
-      
-      p <- p + ggplot2::geom_segment(
-        data = segments_data,
-        ggplot2::aes(
-          x = x,
-          xend = xend,
-          y = y,
-          yend = y
-        ),
-        color = "black",
-        size = 1
-      )
+      segments_data <- rbind(segments_data, data.frame(
+        group = group,
+        y = y_value,
+        x = x_pos - 0.25,
+        xend = x_pos + 0.25
+      ))
     }
+    
+    # Add the horizontal lines at each mean
+    p <- p + ggplot2::geom_segment(
+      data = segments_data,
+      ggplot2::aes(
+        x = x,
+        xend = xend,
+        y = y,
+        yend = y,
+        group = group
+      ),
+      inherit.aes = FALSE,
+      color = "black",
+      size = 1
+    )
   }
   
   # Apply classic theme and labels

@@ -91,6 +91,19 @@ plot_growth_rate <- function(growth_data,
     }
   }
   
+  # If we have a composite ID (containing cage information), make sure we count each unique mouse
+  if (grepl("_", growth_data$ID[1]) && any(grepl("_", growth_data$ID))) {
+    # Use the composite ID for proper identification of unique mice
+    id_to_use <- "ID"
+  } else if ("Cage" %in% colnames(growth_data) && "ID" %in% colnames(growth_data)) {
+    # Create a composite ID
+    growth_data$composite_id <- paste(growth_data$ID, growth_data$Treatment, growth_data$Cage, sep="_")
+    id_to_use <- "composite_id"
+  } else {
+    # Just use the existing ID
+    id_to_use <- "ID"
+  }
+  
   # Order groups if specified, otherwise sort by group name for consistency
   if (is.null(group_order)) {
     group_levels <- unique(growth_data$Treatment)

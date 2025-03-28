@@ -694,7 +694,7 @@ tumor_growth_statistics <- function(df,
     analysis_summary <- list(
       analysis_type = "Area Under the Curve (AUC) Analysis",
       data_description = list(
-        subjects = length(unique(auc_df[[id_column]])),
+        subjects = length(unique(paste(auc_df[[id_column]], auc_df[[treatment_column]], auc_df[[cage_column]], sep="_"))),
         treatment_groups = length(unique(auc_df[[treatment_column]])),
         time_points = length(unique(auc_df[[time_column]])),
         reference_group = reference_group
@@ -832,7 +832,7 @@ tumor_growth_statistics <- function(df,
     analysis_summary <- list(
       analysis_type = "Linear Mixed Effects Model Analysis",
       data_description = list(
-        subjects = length(unique(analysis_df[[id_column]])),
+        subjects = length(unique(paste(analysis_df[[id_column]], analysis_df[[treatment_column]], analysis_df[[cage_column]], sep="_"))),
         treatment_groups = length(unique(analysis_df[[treatment_column]])),
         time_points = length(unique(analysis_df[[time_column]])),
         reference_group = reference_group

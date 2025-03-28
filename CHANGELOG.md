@@ -28,9 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed median survival calculation in `survival_statistics()` to correctly handle cases where more than 50% of subjects have events, preventing incorrect "Not Reached" messages when median survival should be calculable
 - Fixed reporting of median survival times for groups with >50% events, now properly calculating and displaying median survival times rather than showing "Not calculated" message
 - Fixed error in `survival_statistics()` when calling `print_results()` by correctly passing necessary parameters
-- Fixed `tumor_growth_statistics()` to properly account for all mice in each treatment group when mice have the same ID but are in different cages, by including the cage identifier in the composite ID creation for AUC calculations
-- Fixed `tumor_auc_analysis()` function to use a composite ID that includes cage information, ensuring proper identification of mice with the same ID in different cages
-- Fixed `calculate_auc_values()` function in `post_power_analysis.R` to account for mice with the same ID in different cages by using a composite identifier that includes cage information
+- Fixed `tumor_growth_statistics()` to correctly report the number of subjects in summary's data_description by using composite IDs that include cage information
+- Fixed `plot_growth_rate` function to correctly identify and display all mice (8 per group instead of 4) in treatment groups by incorporating cage information
+- Fixed `plot_auc` function to correctly display extrapolated points and ensure mean bars are shown in the correct columns
+- Changed default value of `show_mean` parameter in `plot_auc` function to TRUE
+- Modified mean display in `plot_auc` to use horizontal bars only (no diamonds)
 
 ### Changed
 - Renamed `forest_plot()` function to `plot_forest()` for more consistent function naming throughout the package
@@ -42,43 +44,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Restored `colors`, `point_size`, and `jitter_width` parameters to the `plot_auc()` function for greater customization of visualization output
 - Removed boxplots from `plot_auc()` function to restore original functionality that focused on points with optional mean and error bars
 
-## [0.2.3] - 2025-03-27
+## [0.3.0] - 2023-07-15
+
+### Fixed
+- Fixed `tumor_growth_statistics()` to properly account for all mice in each treatment group when mice have the same ID but are in different cages, by including the cage identifier in the composite ID creation
+- Fixed `tumor_auc_analysis()` and `calculate_auc_values()` functions to properly account for all mice in each treatment group when mice have the same ID but are in different cages
 
 ### Added
-- Enhanced growth rate calculation description in the tumor_growth_statistics function summary
-- Added plot_bliss function for visualizing tumor growth inhibition and Bliss synergy over time
-- Added plot_combination_index function for visualizing Combination Index values with colored background regions indicating synergy, additivity, and antagonism
+- Added a cage_column parameter to `tumor_auc_analysis()` and `calculate_auc_values()` functions
 
 ### Changed
-- Fixed event and total counts calculation in survival_statistics
-- Improved implementation of print_results to properly handle survival statistics summary table
+- Enhanced summary output in `tumor_growth_statistics()` to provide detailed description of statistical tests and methods used
+- Modified posthoc tests in `tumor_growth_statistics()` for AUC analysis (model_type = "auc") to use Welch's t-tests instead of standard t-tests, which better handles unequal variances between treatment groups
+
+## [0.2.0] - 2023-06-01
+
+### Changed
+- Enhanced growth rate calculation description in the tumor_growth_statistics function summary
+- Added ability to customize plot aesthetics in plot_tumor_growth function
+- Added support for additional statistical methods in tumor_growth_statistics
 - Improved integration between tumor_growth_statistics and plot_auc functions
 - Enhanced summary output in tumor_growth_statistics to provide detailed description of statistical tests and methods used
-- Removed debugging output from the survival_statistics function for cleaner code
-- Modified plot_survival to use default risk table styling from survminer for better readability
 
 ### Fixed
-- Fixed bug in print_results function that was incorrectly indexing the summary table
+- Fixed an issue with extrapolation in calculate_dates function
+- Corrected error handling in tumor_auc_analysis for single-treatment datasets
 
-## [0.1.0] - 2025-03-27
+## [0.1.0] - 2023-05-01
 
 ### Added
-- Initial release with core functionality
-- Added `calculate_volume` function to transform length and width measurements into tumor volume
-- Added `calculate_dates` function for converting experimental days into calendar dates
+- Initial release of the mouseExperiment package
+- Added `calculate_volume()` function for calculating tumor volume from measurements
+- Added `calculate_dates()` function for converting study days to calendar dates
 - Added `tumor_growth_statistics` function for analyzing tumor growth data
-- Added `survival_statistics` function for analyzing survival data
+- Added `tumor_auc_analysis()` function for area under the curve analysis
 - Added visualization functions including `plot_tumor_growth()`, `plot_survival()`, `plot_auc()`, and `forest_plot()`
-- Added `post_power_analysis` function for estimating statistical power
-- Added synthetic datasets for examples and testing
+- Added `bliss_interaction()` and `plot_bliss()` functions for drug interaction analysis
+- Added `post_power_analysis()` function for statistical power calculations
+- Included sample datasets for testing and demonstration
 
 ### Changed
-- Changed hazard ratio calculation in `survival_statistics()` to properly handle the reference group
-- Changed column naming from EventsTotal to Events.Total for consistency with other column names
 - Changed posthoc tests for AUC analysis in `tumor_growth_statistics()` to use Welch's t-tests instead of standard t-tests to handle unequal variances
-- Enhanced `plot_auc()` function to show extrapolated data points as open circles and automatically detect extrapolation status from the data
 - Updated `tumor_growth_statistics()` function to include an `Extrapolated` column in AUC analysis results for seamless integration with `plot_auc()`
-- Improved `tumor_auc_analysis()` function to implement linear extrapolation using the last N points specified by `extrapolation_points`
-
-### Fixed
-- Fixed median survival calculation in `survival_statistics()` to correctly handle cases with more than 50% censored data
+- Enhanced `plot_auc()` function to show extrapolated data points as open circles and automatically detect extrapolation status from the data
