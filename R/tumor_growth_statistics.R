@@ -527,42 +527,87 @@ tumor_growth_statistics <- function(df,
     auc_model <- stats::aov(AUC ~ Treatment, data = auc_analysis$individual)
     anova_table <- stats::anova(auc_model)
     
-    # Create pairwise comparisons for AUC
-    if (requireNamespace("emmeans", quietly = TRUE)) {
-      # Create "posthoc" for backward compatibility
-      posthoc <- tryCatch({
-        pairwise <- emmeans::emmeans(auc_model, pairwise ~ Treatment, adjust = "bonferroni")
-        pairwise
-      }, error = function(e) {
-        warning("Error creating posthoc comparisons: ", e$message)
-        NULL
-      })
+    # Create pairwise comparisons for AUC using Welch's t-tests
+    # This is more appropriate for AUC analysis where variances between groups may differ
+    treatments <- unique(auc_analysis$individual$Treatment)
+    pairwise_results <- list()
+    pairwise_data <- list()
+    
+    # Generate all pairwise combinations
+    pairs <- utils::combn(treatments, 2, simplify = FALSE)
+    
+    for(pair in pairs) {
+      # Extract data for each treatment in the pair
+      group1_data <- auc_analysis$individual$AUC[auc_analysis$individual$Treatment == pair[1]]
+      group2_data <- auc_analysis$individual$AUC[auc_analysis$individual$Treatment == pair[2]]
       
-      # Extract treatment effects from AUC
-      treatment_effects <- data.frame(
-        Group = auc_summary$Treatment,
-        Adjusted_Mean = auc_summary$AUC.Mean,
-        SE = auc_summary$AUC.SEM,
-        Lower_CL = auc_summary$AUC.Mean - 1.96 * auc_summary$AUC.SEM,
-        Upper_CL = auc_summary$AUC.Mean + 1.96 * auc_summary$AUC.SEM,
-        stringsAsFactors = FALSE
+      # Perform Welch's t-test
+      t_test_result <- stats::t.test(group1_data, group2_data, var.equal = FALSE)
+      
+      # Store results
+      pairwise_results[[paste(pair[1], "-", pair[2])]] <- list(
+        comparison = paste(pair[1], "-", pair[2]),
+        mean_diff = mean(group1_data) - mean(group2_data),
+        t_value = t_test_result$statistic,
+        df = t_test_result$parameter,
+        p_value = t_test_result$p.value,
+        ci_lower = t_test_result$conf.int[1],
+        ci_upper = t_test_result$conf.int[2]
       )
       
-      # Add reference group note
-      treatment_effects$Note <- ifelse(treatment_effects$Group == reference_group, "Reference group", "")
-      
-      # Reorder to put reference group first
-      ref_idx <- which(treatment_effects$Group == reference_group)
-      if (ref_idx > 1) {
-        treatment_effects <- rbind(
-          treatment_effects[ref_idx, ],
-          treatment_effects[-ref_idx, ]
-        )
-      }
-    } else {
-      posthoc <- NULL
-      treatment_effects <- NULL
-      warning("Package 'emmeans' not available. Pairwise comparisons not calculated.")
+      # Store data for the posthoc object
+      pairwise_data[[paste(pair[1], "-", pair[2])]] <- list(
+        group1 = pair[1],
+        group2 = pair[2],
+        data1 = group1_data,
+        data2 = group2_data,
+        result = t_test_result
+      )
+    }
+    
+    # Create a data frame for the pairwise comparisons
+    pairwise_df <- do.call(rbind, lapply(pairwise_results, function(x) {
+      data.frame(
+        comparison = x$comparison,
+        estimate = x$mean_diff,
+        t_value = x$t_value,
+        df = x$df,
+        p_value = x$p_value,
+        ci_lower = x$ci_lower,
+        ci_upper = x$ci_upper
+      )
+    }))
+    
+    # Apply Bonferroni correction to p-values
+    pairwise_df$p_adjusted <- p.adjust(pairwise_df$p_value, method = "bonferroni")
+    
+    # Create posthoc object for compatibility with existing code
+    posthoc <- list(
+      method = "Welch's t-tests with Bonferroni adjustment",
+      pairwise = pairwise_df,
+      data = pairwise_data
+    )
+    
+    # Extract treatment effects from AUC
+    treatment_effects <- data.frame(
+      Group = auc_summary$Treatment,
+      Adjusted_Mean = auc_summary$AUC.Mean,
+      SE = auc_summary$AUC.SEM,
+      Lower_CL = auc_summary$AUC.Mean - 1.96 * auc_summary$AUC.SEM,
+      Upper_CL = auc_summary$AUC.Mean + 1.96 * auc_summary$AUC.SEM,
+      stringsAsFactors = FALSE
+    )
+    
+    # Add reference group note
+    treatment_effects$Note <- ifelse(treatment_effects$Group == reference_group, "Reference group", "")
+    
+    # Reorder to put reference group first
+    ref_idx <- which(treatment_effects$Group == reference_group)
+    if (ref_idx > 1) {
+      treatment_effects <- rbind(
+        treatment_effects[ref_idx, ],
+        treatment_effects[-ref_idx, ]
+      )
     }
     
     # Create diagnostic plots
@@ -592,7 +637,7 @@ tumor_growth_statistics <- function(df,
         volume_transformation = transform,
         auc_calculation_method = auc_method,
         statistical_test = "One-way ANOVA on AUC values",
-        posthoc_method = if(!is.null(posthoc)) "Pairwise comparisons with Bonferroni adjustment" else NA,
+        posthoc_method = "Welch's t-tests with Bonferroni adjustment for multiple comparisons",
         individual_calculation = paste("AUC calculated using", auc_method, "method for each subject"),
         growth_rate_calculation = paste0(
           "Growth rates are calculated by fitting a linear regression model to log1p-transformed volume data over time for each subject. ",
@@ -603,7 +648,8 @@ tumor_growth_statistics <- function(df,
       ),
       notes = c(
         if(transform != "none") paste("Volume data was", transform, "transformed prior to analysis") else "No transformation applied to volume data",
-        "Composite IDs were created by combining subject ID and treatment group to ensure correct AUC values"
+        "Composite IDs were created by combining subject ID and treatment group to ensure correct AUC values",
+        "Welch's t-tests are used for pairwise comparisons to account for potentially unequal variances between treatment groups"
       )
     )
     

@@ -18,6 +18,7 @@ All notable changes to the mouseExperiment package will be documented in this fi
 ### Changed
 - Enhanced summary output in `tumor_growth_statistics()` to provide detailed description of statistical tests and methods used
 - Improved growth rate calculation description in result summaries to clarify the log-transformation and interpretation
+- Modified posthoc tests in `tumor_growth_statistics()` for AUC analysis (model_type = "auc") to use Welch's t-tests instead of standard t-tests, which better handles unequal variances between treatment groups
 
 ## [0.2.3] - 2025-03-27
 
