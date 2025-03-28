@@ -187,6 +187,36 @@ survival_statistics <- function(df,
   results$Events <- event_counts[match(results$Group, names(event_counts))]
   results$Total <- total_counts[match(results$Group, names(total_counts))]
   
+  # Calculate event rates for each group
+  results$Event_Rate <- results$Events / results$Total
+  
+  # Verify median survival - if event rate > 0.5 but median is NA, there's likely an issue
+  if ("Median_Survival" %in% colnames(results)) {
+    # For each group, check if we have > 50% events but NA median
+    for (i in 1:nrow(results)) {
+      if (is.na(results$Median_Survival[i]) && results$Event_Rate[i] > 0.5) {
+        warning(sprintf("Group %s has > 50%% events (%.1f%%) but no median survival. This may be an issue with the calculation.", 
+                results$Group[i], results$Event_Rate[i] * 100))
+        
+        # Try to recalculate the median for this group
+        group_data <- df[df[[treatment_column]] == results$Group[i], ]
+        if (nrow(group_data) > 0) {
+          # Create a separate survfit object for just this group
+          group_surv_formula <- stats::as.formula(paste("Surv(", time_column, ",", censor_column, ") ~ 1"))
+          group_km_fit <- survival::survfit(group_surv_formula, data = group_data)
+          
+          # Extract quantiles (including median at 0.5)
+          group_quantiles <- summary(group_km_fit)$quantile
+          if (!is.null(group_quantiles) && "50%" %in% colnames(group_quantiles)) {
+            results$Median_Survival[i] <- group_quantiles["50%"]
+            message(sprintf("Recalculated median survival for group %s: %.1f days", 
+                            results$Group[i], results$Median_Survival[i]))
+          }
+        }
+      }
+    }
+  }
+  
   # Add reference group note
   results$Note <- ifelse(results$Group == reference_group, "Reference group", "")
   
@@ -550,7 +580,19 @@ print_results <- function(results) {
       if (!is.na(results$Median_Survival[i])) {
         message(sprintf("Median Survival: %.1f days", results$Median_Survival[i]))
       } else {
-        message("Median Survival: Not reached")
+        # Check if we have event rate information
+        if ("Event_Rate" %in% colnames(results) && !is.na(results$Event_Rate[i])) {
+          # If more than 50% of subjects had events, this should be calculable
+          if (results$Event_Rate[i] > 0.5) {
+            message("Median Survival: Not calculated (>50% events)")
+          } else {
+            # Less than 50% had events, so "Not Reached" is accurate
+            message("Median Survival: Not reached")
+          }
+        } else {
+          # If we don't have event rate info, use original behavior
+          message("Median Survival: Not reached")
+        }
       }
     }
     
@@ -595,9 +637,23 @@ print_results <- function(results) {
   # Add median survival to table if available
   if ("Median_Survival" %in% colnames(results)) {
     formatted_table$"Median Survival" <- sapply(1:nrow(results), function(i) {
-      ifelse(is.na(results$Median_Survival[i]), 
-            "Not reached", 
-            sprintf("%.1f days", results$Median_Survival[i]))
+      if (is.na(results$Median_Survival[i])) {
+        # Check if we have event rate information
+        if ("Event_Rate" %in% colnames(results) && !is.na(results$Event_Rate[i])) {
+          # If more than 50% of subjects had events, this should be calculable
+          if (results$Event_Rate[i] > 0.5) {
+            "Median not calculated (>50% events)"
+          } else {
+            # Less than 50% had events, so "Not Reached" is accurate
+            "Not reached"
+          }
+        } else {
+          # If we don't have event rate info, use original behavior
+          "Not reached"
+        }
+      } else {
+        sprintf("%.1f days", results$Median_Survival[i])
+      }
     })
   }
   

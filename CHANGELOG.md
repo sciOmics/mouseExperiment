@@ -21,6 +21,7 @@ All notable changes to the mouseExperiment package will be documented in this fi
 - Fixed hazard ratio calculation in `survival_statistics()` to correctly set the reference group and handle coefficient names
 - Fixed `survival_statistics()` to properly return the `method_used` object in the results
 - Fixed `print_results()` function to properly handle survival statistics summary table
+- Fixed median survival calculation in `survival_statistics()` to correctly handle cases where more than 50% of subjects have events, preventing incorrect "Not Reached" messages when median survival should be calculable
 
 ### Changed
 - Renamed `forest_plot()` function to `plot_forest()` for more consistent function naming throughout the package
