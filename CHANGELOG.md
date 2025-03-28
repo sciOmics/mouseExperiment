@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved growth rate calculation description in result summaries to clarify the log-transformation and interpretation
 - Modified posthoc tests in `tumor_growth_statistics()` for AUC analysis (model_type = "auc") to use Welch's t-tests instead of standard t-tests, which better handles unequal variances between treatment groups
 - Restored `colors`, `point_size`, and `jitter_width` parameters to the `plot_auc()` function for greater customization of visualization output
+- Removed boxplots from `plot_auc()` function to restore original functionality that focused on points with optional mean and error bars
 
 ## [0.2.3] - 2025-03-27
 

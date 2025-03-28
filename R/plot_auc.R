@@ -139,8 +139,7 @@ plot_auc <- function(auc_data,
   p <- ggplot2::ggplot(auc_data, 
                       ggplot2::aes(x = .data[[group_column]], 
                                   y = .data[[auc_column]], 
-                                  color = .data[[group_column]])) +
-    ggplot2::geom_boxplot(alpha = 0.7, outlier.shape = NA)
+                                  color = .data[[group_column]]))
   
   # Add points with or without extrapolation indication
   if (has_extrapolation) {
