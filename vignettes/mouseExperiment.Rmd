@@ -1,0 +1,253 @@
+---
+title: "Analyzing Mouse Tumor Growth Experiments with mouseExperiment"
+author: "David Woods"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Analyzing Mouse Tumor Growth Experiments with mouseExperiment}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 8,
+  fig.height = 6
+)
+```
+
+# Introduction
+
+The `mouseExperiment` package provides a comprehensive suite of tools for analyzing mouse tumor growth experiments. This vignette demonstrates the main functionality of the package, including:
+
+- Tumor growth analysis using mixed-effects models
+- Survival analysis with Kaplan-Meier curves
+- Synergy analysis for combination treatments
+- Visualization tools for various analyses
+
+# Installation
+
+```{r install, eval=FALSE}
+# Install from CRAN
+install.packages("mouseExperiment")
+
+# Or install the development version from GitHub
+# devtools::install_github("yourusername/mouseExperiment")
+```
+
+# Loading the Package
+
+```{r load}
+library(mouseExperiment)
+```
+
+# Tumor Growth Analysis
+
+## Basic Usage
+
+The `tumor_growth_statistics()` function analyzes tumor growth data using either linear mixed-effects models (lme4) or area under the curve (AUC) analysis.
+
+```{r tumor_growth}
+# Load example data
+data(combo_treatment_synthetic_data)
+
+# Analyze tumor growth using mixed-effects model
+results <- tumor_growth_statistics(
+  data = combo_treatment_synthetic_data,
+  time_column = "Day",
+  volume_column = "Volume",
+  id_column = "Mouse_ID",
+  treatment_column = "Treatment",
+  cage_column = "Cage",
+  model_type = "lme4"
+)
+
+# Print summary of results
+print_results(results)
+```
+
+## Visualizing Growth Rates
+
+The `plot_growth_rate()` function creates visualizations of tumor growth rates:
+
+```{r plot_growth}
+# Create growth rate plot
+p <- plot_growth_rate(
+  results$growth_rates,
+  treatment_column = "Treatment",
+  growth_rate_column = "growth_rate",
+  title = "Tumor Growth Rates by Treatment",
+  ylab = "Growth Rate (mm³/day)"
+)
+print(p)
+```
+
+## Area Under the Curve Analysis
+
+You can also analyze tumor growth using AUC:
+
+```{r auc_analysis}
+# Perform AUC analysis
+auc_results <- tumor_growth_statistics(
+  data = combo_treatment_synthetic_data,
+  time_column = "Day",
+  volume_column = "Volume",
+  id_column = "Mouse_ID",
+  treatment_column = "Treatment",
+  cage_column = "Cage",
+  model_type = "auc"
+)
+
+# Visualize AUC results
+p_auc <- plot_auc(
+  auc_results$auc_data,
+  group_column = "Treatment",
+  auc_column = "AUC",
+  title = "Area Under the Curve by Treatment",
+  ylab = "AUC (mm³·days)"
+)
+print(p_auc)
+```
+
+# Survival Analysis
+
+## Basic Usage
+
+The `survival_statistics()` function performs survival analysis:
+
+```{r survival}
+# Load example survival data
+data(survival_synthetic_data)
+
+# Perform survival analysis
+surv_results <- survival_statistics(
+  data = survival_synthetic_data,
+  time_column = "Time",
+  event_column = "Event",
+  treatment_column = "Treatment",
+  id_column = "Mouse_ID"
+)
+
+# Print summary
+print_results(surv_results)
+```
+
+## Visualizing Survival Curves
+
+The `plot_survival()` function creates Kaplan-Meier survival curves:
+
+```{r plot_survival}
+# Create survival plot
+p_surv <- plot_survival(
+  surv_results$survival_data,
+  time_column = "Time",
+  event_column = "Event",
+  treatment_column = "Treatment",
+  title = "Survival Curves by Treatment",
+  risk_table = TRUE
+)
+print(p_surv)
+```
+
+## Forest Plot
+
+The `forest_plot()` function visualizes hazard ratios:
+
+```{r forest_plot}
+# Create forest plot
+p_forest <- forest_plot(
+  surv_results$summary,
+  title = "Hazard Ratios by Treatment"
+)
+print(p_forest)
+```
+
+# Synergy Analysis
+
+## Bliss Independence
+
+The `bliss_independence()` function calculates Bliss synergy:
+
+```{r bliss}
+# Calculate Bliss synergy
+bliss_results <- bliss_independence(
+  data = combo_treatment_synthetic_data,
+  time_column = "Day",
+  volume_column = "Volume",
+  id_column = "Mouse_ID",
+  treatment_column = "Treatment",
+  cage_column = "Cage"
+)
+
+# Visualize Bliss synergy
+p_bliss <- plot_bliss(
+  bliss_results,
+  title = "Bliss Synergy Over Time",
+  ylab = "Bliss Synergy Score"
+)
+print(p_bliss)
+```
+
+## Combination Index
+
+The `synergy_stats()` function calculates the Combination Index:
+
+```{r synergy}
+# Calculate Combination Index
+synergy_results <- synergy_stats(
+  data = combo_treatment_synthetic_data,
+  time_column = "Day",
+  volume_column = "Volume",
+  id_column = "Mouse_ID",
+  treatment_column = "Treatment",
+  cage_column = "Cage"
+)
+
+# Visualize Combination Index
+p_ci <- plot_combination_index(
+  synergy_results$synergy_summary,
+  title = "Combination Index Over Time",
+  ylab = "Combination Index"
+)
+print(p_ci)
+```
+
+# Additional Features
+
+## Customizing Plots
+
+All plotting functions support customization:
+
+```{r custom_plot}
+# Customize growth rate plot
+p_custom <- plot_growth_rate(
+  results$growth_rates,
+  treatment_column = "Treatment",
+  growth_rate_column = "growth_rate",
+  title = "Customized Growth Rate Plot",
+  ylab = "Growth Rate (mm³/day)",
+  line_color = "blue",
+  point_size = 3,
+  theme = theme_bw()
+)
+print(p_custom)
+```
+
+## Exporting Results
+
+You can export results to various formats:
+
+```{r export}
+# Export results to CSV
+write.csv(results$summary, "tumor_growth_summary.csv", row.names = FALSE)
+
+# Save plots
+ggsave("growth_rate_plot.pdf", p, width = 10, height = 6)
+ggsave("survival_plot.pdf", p_surv, width = 10, height = 6)
+```
+
+# Conclusion
+
+The `mouseExperiment` package provides a comprehensive set of tools for analyzing mouse tumor growth experiments. This vignette demonstrates the main functionality, but there are many more features available. For more information, see the package documentation and examples. 
