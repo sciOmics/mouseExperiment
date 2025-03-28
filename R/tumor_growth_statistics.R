@@ -456,12 +456,12 @@ tumor_growth_statistics <- function(df,
     # Calculate AUC for each subject
     if (verbose) cat("Calculating AUC for each subject\n")
     
-    # Calculate AUC for each subject function
+    # Calculate AUC using the trapezoidal rule
     calculate_auc <- function(time_values, volume_values) {
-      # Sort data by time, just to be safe
-      order_idx <- order(time_values)
-      time_values <- time_values[order_idx]
-      volume_values <- volume_values[order_idx]
+      # Sort by time
+      sorted_indices <- order(time_values)
+      time_values <- time_values[sorted_indices]
+      volume_values <- volume_values[sorted_indices]
       
       # Need at least 2 points to calculate AUC
       if (length(time_values) < 2) {
@@ -479,8 +479,16 @@ tumor_growth_statistics <- function(df,
       return(auc)
     }
     
-    # Calculate AUC for each individual (Composite ID ensures unique subject-treatment combinations)
-    composite_id <- paste(auc_df[[id_column]], auc_df[[treatment_column]], sep = "_")
+    # For each unique ID-Treatment-Cage combination, create a unique identifier
+    # This ensures proper distinction of mice even when they share the same ID but are in different cages
+    # First find all unique combinations
+    unique_combinations <- unique(auc_df[, c(id_column, treatment_column, cage_column)])
+    # Create a mapping of these combinations to sequential numbers
+    unique_combinations$unique_id <- 1:nrow(unique_combinations)
+    # Merge back with the original data to assign the correct unique ID to each row
+    auc_df_with_id <- merge(auc_df, unique_combinations, by=c(id_column, treatment_column, cage_column))
+    # Use this unique_id for processing
+    composite_id <- paste(auc_df_with_id[[id_column]], auc_df_with_id[[treatment_column]], auc_df_with_id[[cage_column]], sep = "_")
     auc_data <- data.frame()
     
     # Get max experiment time to determine if extrapolation is needed
@@ -490,9 +498,13 @@ tumor_growth_statistics <- function(df,
       # Extract data for this unique ID
       id_parts <- strsplit(unique_id, "_")[[1]]
       actual_id <- id_parts[1]
-      treatment <- paste(id_parts[-1], collapse = "_") # Handle treatments with spaces or underscore
+      treatment <- id_parts[2]
+      if (length(id_parts) > 2) {
+        # Handle the case where treatment has underscores (e.g., "Drug_A")
+        treatment <- paste(id_parts[2:(length(id_parts)-1)], collapse = "_")
+      }
       
-      subject_data <- auc_df[composite_id == unique_id, ]
+      subject_data <- auc_df_with_id[composite_id == unique_id, ]
       subject_data <- subject_data[order(subject_data[[time_column]]), ]
       
       # Calculate AUC using trapezoidal method
