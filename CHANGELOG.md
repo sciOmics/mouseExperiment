@@ -41,3 +41,4 @@ All notable changes to the mouseExperiment package will be documented in this fi
 - Enhanced `tumor_growth_statistics` function:
   - Improved summary output to provide detailed description of statistical tests and methods used instead of duplicating ANOVA results
   - Added detailed explanation of growth rate calculation in summary output, including mathematical interpretation
+- Enhanced visualization in `plot_growth_rate` and `plot_auc` functions by adding x and y-axis lines for improved readability

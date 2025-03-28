@@ -208,7 +208,10 @@ plot_growth_rate <- function(growth_data,
   ) + ggplot2::theme_minimal() +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-      legend.position = "none"
+      legend.position = "none",
+      axis.line = ggplot2::element_line(color = "black", size = 0.5),
+      axis.line.x = ggplot2::element_line(color = "black", size = 0.5),
+      axis.line.y = ggplot2::element_line(color = "black", size = 0.5)
     )
   
   # Apply custom colors if provided
