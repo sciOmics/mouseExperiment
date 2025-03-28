@@ -716,50 +716,80 @@ post_power_analysis <- function(data,
 }
 
 # Function to calculate AUC from raw data
-calculate_auc_values <- function(data, time_column, volume_column, treatment_column, id_column) {
+calculate_auc_values <- function(data, time_column, volume_column, treatment_column, id_column, cage_column = "Cage") {
   # Try to calculate AUC values
   tryCatch({
     # Initialize data frame for individual AUC values
     auc_individual <- data.frame(
       ID = character(0),
       Treatment = character(0),
+      Cage = character(0),
       AUC = numeric(0),
       stringsAsFactors = FALSE
     )
     
-    # Get unique IDs
-    ids <- unique(data[[id_column]])
+    # Check if cage_column exists in the data
+    use_cage_info <- FALSE
+    if (cage_column %in% colnames(data)) {
+      use_cage_info <- TRUE
+    } else {
+      warning("Cage column '", cage_column, "' not found. Proceeding without cage information for unique subject identification.")
+    }
     
-    # Calculate AUC for each individual
-    for (id in ids) {
-      # Get data for this individual
-      id_data <- data[data[[id_column]] == id, ]
-      
-      # Get treatment - should be the same for all rows of this ID
-      treatment <- unique(id_data[[treatment_column]])
-      if (length(treatment) > 1) {
-        warning("Multiple treatments found for ID ", id, ". Using the first one.")
-        treatment <- treatment[1]
+    # Create composite subject identifiers that include cage information if available
+    if (use_cage_info) {
+      composite_ids <- paste(data[[id_column]], data[[treatment_column]], data[[cage_column]], sep = "_")
+      data$composite_id <- composite_ids
+      # Get unique composite IDs
+      unique_ids <- unique(composite_ids)
+    } else {
+      # Fallback to just using ID if cage information is not available
+      unique_ids <- unique(data[[id_column]])
+    }
+    
+    # Calculate AUC for each unique subject identifier
+    for (unique_id in unique_ids) {
+      # Get data for this unique subject
+      if (use_cage_info) {
+        subject_data <- data[data$composite_id == unique_id, ]
+        # Extract original ID from composite ID for reporting
+        id_parts <- strsplit(unique_id, "_")[[1]]
+        original_id <- id_parts[1]
+        treatment <- id_parts[2]
+        cage <- id_parts[3]
+      } else {
+        subject_data <- data[data[[id_column]] == unique_id, ]
+        original_id <- unique_id
+        
+        # Get treatment - should be the same for all rows of this ID
+        treatment <- unique(subject_data[[treatment_column]])
+        if (length(treatment) > 1) {
+          warning("Multiple treatments found for ID ", unique_id, ". Using the first one.")
+          treatment <- treatment[1]
+        }
+        
+        # Set cage to NA if not using cage info
+        cage <- NA
       }
       
       # Skip if no treatment assigned
       if (length(treatment) == 0) {
-        warning("No treatment assigned for ID ", id, ". Skipping.")
+        warning("No treatment assigned for ID ", original_id, ". Skipping.")
         next
       }
       
       # Sort by time
-      id_data <- id_data[order(id_data[[time_column]]), ]
+      subject_data <- subject_data[order(subject_data[[time_column]]), ]
       
       # Need at least 2 time points for AUC
-      if (nrow(id_data) < 2) {
-        warning("ID ", id, " has fewer than 2 time points. Skipping.")
+      if (nrow(subject_data) < 2) {
+        warning("ID ", original_id, " has fewer than 2 time points. Skipping.")
         next
       }
       
       # Extract time and volume vectors
-      times <- id_data[[time_column]]
-      volumes <- id_data[[volume_column]]
+      times <- subject_data[[time_column]]
+      volumes <- subject_data[[volume_column]]
       
       # Calculate AUC using trapezoidal rule
       auc_value <- 0
@@ -770,8 +800,9 @@ calculate_auc_values <- function(data, time_column, volume_column, treatment_col
       
       # Add to AUC individual data
       auc_individual <- rbind(auc_individual, data.frame(
-        ID = id,
+        ID = original_id,
         Treatment = treatment,
+        Cage = cage,
         AUC = auc_value,
         stringsAsFactors = FALSE
       ))

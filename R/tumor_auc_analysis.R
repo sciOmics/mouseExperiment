@@ -12,6 +12,9 @@
 #' @param volume_column Name of column containing tumor volume information (default: "Volume")
 #' @param treatment_column Name of column containing treatment group information (default: "Treatment")
 #' @param id_column Name of column containing individual subject identifiers (default: "ID")
+#' @param cage_column Name of column containing cage information (default: "Cage"). This is used to create
+#'        unique subject identifiers by combining ID, Treatment, and Cage, ensuring mice with the same ID 
+#'        in different cages are treated as distinct subjects.
 #' @param auc_method Method for calculating AUC: "trapezoidal" (default) or "last_observation"
 #' @param extrapolation_points Number of most recent data points to use when calculating extrapolation
 #'        for subjects with incomplete data. The function will use the last N points to fit the extrapolation curve.
@@ -29,6 +32,11 @@
 #'   \item{auc_comparisons}{Pairwise comparisons between treatment groups}
 #'   \item{auc_plot}{Plot of AUC by treatment group}
 #' }
+#'
+#' @details
+#' The function creates a composite subject identifier using ID, Treatment, and Cage (if available)
+#' to ensure proper identification of mice, even when they share the same ID across different cages.
+#' This is particularly important for experiments where mice are housed in multiple cages per treatment group.
 #'
 #' @importFrom stats aov TukeyHSD t.test
 #' @importFrom ggplot2 ggplot aes geom_boxplot geom_point theme_classic labs
@@ -65,6 +73,7 @@ tumor_auc_analysis <- function(df,
                               volume_column = "Volume",
                               treatment_column = "Treatment",
                               id_column = "ID",
+                              cage_column = "Cage",
                               auc_method = c("trapezoidal", "last_observation"),
                               extrapolation_points = 3,
                               reference_group = NULL,
@@ -88,11 +97,27 @@ tumor_auc_analysis <- function(df,
     stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
   }
   
-  # Get unique subjects and treatment groups
-  subjects <- unique(df[[id_column]])
-  treatments <- unique(df[[treatment_column]])
+  # Check for cage column
+  use_cage_info <- FALSE
+  if (cage_column %in% colnames(df)) {
+    use_cage_info <- TRUE
+  } else {
+    warning("Cage column '", cage_column, "' not found. Proceeding without cage information for unique subject identification.")
+  }
+  
+  # Create composite subject identifiers that include cage information if available
+  if (use_cage_info) {
+    composite_ids <- paste(df[[id_column]], df[[treatment_column]], df[[cage_column]], sep = "_")
+    df$composite_id <- composite_ids
+    # Get unique composite IDs instead of just subject IDs
+    unique_ids <- unique(composite_ids)
+  } else {
+    # Fallback to just using ID if cage information is not available
+    unique_ids <- unique(df[[id_column]])
+  }
   
   # Set reference group if not specified
+  treatments <- unique(df[[treatment_column]])
   if (is.null(reference_group)) {
     reference_group <- sort(treatments)[1]
   } else if (!reference_group %in% treatments) {
@@ -197,31 +222,46 @@ tumor_auc_analysis <- function(df,
     }
   }
   
-  # Calculate AUC for each subject
+  # Calculate AUC for each unique subject identifier
   auc_results <- list()
   
-  for (subject in subjects) {
-    subject_data <- df[df[[id_column]] == subject, ]
+  for (unique_id in unique_ids) {
+    # Get data for this unique subject
+    if (use_cage_info) {
+      subject_data <- df[df$composite_id == unique_id, ]
+      # Extract original ID from composite ID for reporting
+      id_parts <- strsplit(unique_id, "_")[[1]]
+      original_id <- id_parts[1]
+      treatment <- id_parts[2]
+      cage <- id_parts[3]
+    } else {
+      subject_data <- df[df[[id_column]] == unique_id, ]
+      original_id <- unique_id
+      
+      # Get treatment group for this subject
+      treatment <- unique(subject_data[[treatment_column]])
+      if (length(treatment) > 1) {
+        warning("Subject ", unique_id, " has multiple treatment assignments. Using the first one.")
+        treatment <- treatment[1]
+      }
+      
+      # Set cage to NA if not using cage info
+      cage <- NA
+    }
     
     # Skip subjects with no data
     if (nrow(subject_data) == 0) {
       next
     }
     
-    # Get treatment group for this subject
-    treatment <- unique(subject_data[[treatment_column]])
-    if (length(treatment) > 1) {
-      warning("Subject ", subject, " has multiple treatment assignments. Using the first one.")
-      treatment <- treatment[1]
-    }
-    
     # Calculate AUC and determine if extrapolation was used
     result <- calculate_subject_auc(subject_data, auc_method)
     
-    # Store result
-    auc_results[[subject]] <- list(
-      subject = subject,
+    # Store result with additional information
+    auc_results[[unique_id]] <- list(
+      subject = original_id,
       treatment = treatment,
+      cage = cage,
       auc = result$auc,
       extrapolated = result$extrapolated,
       n_points = nrow(subject_data),
@@ -234,6 +274,7 @@ tumor_auc_analysis <- function(df,
     data.frame(
       Subject = x$subject,
       Treatment = x$treatment,
+      Cage = x$cage,
       AUC = x$auc,
       Extrapolated = x$extrapolated,
       NumPoints = x$n_points,
