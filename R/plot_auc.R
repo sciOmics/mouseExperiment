@@ -18,9 +18,9 @@
 #' @param extrapolated_column Character string specifying the column name that indicates whether a data point 
 #'        was extrapolated. Values should be TRUE/FALSE or 1/0. If NULL, all points are treated as non-extrapolated. 
 #'        Default is NULL.
-#' @param extrapolation_points Numeric value specifying the minimum number of data points required to calculate 
-#'        extrapolation for subjects with incomplete data. If subjects have fewer than this number, 
-#'        they will be excluded from extrapolation. Default is 3.
+#' @param extrapolation_points Numeric value specifying the number of most recent data points to use when 
+#'        calculating extrapolation for subjects with incomplete data. The function will use the last 
+#'        N points to fit the extrapolation curve. Default is 3.
 #' @param group_order Optional vector specifying the order of groups to display. 
 #'        If NULL, groups are ordered alphabetically. Default is NULL.
 #' @param point_size Numeric value specifying the size of the individual data points. Default is 3.

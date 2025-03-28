@@ -68,8 +68,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changed hazard ratio calculation in `survival_statistics()` to properly handle the reference group
 - Changed column naming from EventsTotal to Events.Total for consistency with other column names
 - Changed posthoc tests for AUC analysis in `tumor_growth_statistics()` to use Welch's t-tests instead of standard t-tests to handle unequal variances
-- Enhanced `plot_auc()` function to show extrapolated data points as open circles, with a new `extrapolation_points` parameter to control the minimum number of data points required for extrapolation
-- Updated `tumor_auc_analysis()` function to include extrapolation status in results and use the enhanced plotting capabilities
+- Enhanced `plot_auc()` function to show extrapolated data points as open circles, with a new `extrapolation_points` parameter to control the number of data points used for extrapolation
+- Updated `tumor_auc_analysis()` function to include extrapolation status in results and implement linear extrapolation using the last N points specified by `extrapolation_points`
 
 ### Fixed
 - Fixed median survival calculation in `survival_statistics()` to correctly handle cases with more than 50% censored data

@@ -13,7 +13,9 @@
 #' @param treatment_column Name of column containing treatment group information (default: "Treatment")
 #' @param id_column Name of column containing individual subject identifiers (default: "ID")
 #' @param auc_method Method for calculating AUC: "trapezoidal" (default) or "last_observation"
-#' @param extrapolation_points Minimum number of data points required for extrapolation (default: 3)
+#' @param extrapolation_points Number of most recent data points to use when calculating extrapolation
+#'        for subjects with incomplete data. The function will use the last N points to fit the extrapolation curve.
+#'        Default is 3. This value must be at least 2 to perform extrapolation.
 #' @param reference_group Reference group for statistical comparisons (default: first alphabetically)
 #'
 #' @return A list containing:
@@ -92,12 +94,21 @@ tumor_auc_analysis <- function(df,
     # Sort by time
     subject_data <- subject_data[order(subject_data[[time_column]]), ]
     
-    # Get the number of data points and max time for this subject
+    # Get the number of data points for this subject
     n_points <- nrow(subject_data)
     subject_max_time <- max(subject_data[[time_column]], na.rm = TRUE)
     
     # Determine if extrapolation is needed
-    is_extrapolated <- n_points < extrapolation_points || subject_max_time < max_experiment_time
+    # Extrapolation is needed if the subject's last measurement time is less than
+    # the maximum time in the experiment
+    needs_extrapolation <- subject_max_time < max_experiment_time
+    
+    # Only attempt extrapolation if we have enough data points
+    can_extrapolate <- n_points >= 2 && needs_extrapolation
+    
+    # By default, assume no extrapolation
+    extrapolated_value <- 0 
+    is_extrapolated <- FALSE
     
     if (method == "trapezoidal") {
       # Trapezoidal method
@@ -108,20 +119,68 @@ tumor_auc_analysis <- function(df,
         return(list(auc = NA, extrapolated = NA)) # Need at least 2 points for AUC
       }
       
-      # Calculate AUC using trapezoidal rule
+      # Calculate AUC using trapezoidal rule for the measured data
       auc <- 0
       for (i in 2:length(times)) {
         dt <- times[i] - times[i-1]
         auc <- auc + dt * (volumes[i] + volumes[i-1]) / 2
       }
       
-      return(list(auc = auc, extrapolated = is_extrapolated))
+      # If extrapolation is needed and possible
+      if (can_extrapolate) {
+        # Limit the number of points used for extrapolation based on the parameter
+        # and the available data points
+        n_for_extrapolation <- min(extrapolation_points, n_points)
+        
+        # Get the last n points for the extrapolation
+        extrap_data <- tail(subject_data, n_for_extrapolation)
+        
+        # Perform simple linear extrapolation using the last n points
+        if (n_for_extrapolation >= 2) {
+          # Fit a linear model to the last n points
+          lm_fit <- stats::lm(
+            formula = paste0(volume_column, " ~ ", time_column),
+            data = extrap_data
+          )
+          
+          # Get the coefficients for extrapolation
+          intercept <- stats::coef(lm_fit)[1]
+          slope <- stats::coef(lm_fit)[2]
+          
+          # Extrapolate from the last observed time to the max experiment time
+          last_time <- subject_max_time
+          last_volume <- extrap_data[[volume_column]][n_for_extrapolation]
+          
+          # Calculate the extrapolated AUC (trapezoidal rule for the extrapolated part)
+          # For the trapezoidal rule, we need to calculate additional volume at max_experiment_time
+          predicted_volume <- intercept + slope * max_experiment_time
+          dt_extrapolation <- max_experiment_time - last_time
+          extrapolated_value <- dt_extrapolation * (last_volume + predicted_volume) / 2
+          
+          # Mark that we used extrapolation
+          is_extrapolated <- TRUE
+        }
+      }
+      
+      # Total AUC is the measured AUC plus any extrapolated component
+      return(list(auc = auc + extrapolated_value, extrapolated = is_extrapolated))
       
     } else if (method == "last_observation") {
-      # Last observation carried forward
-      # Simply take the latest time point and its volume
+      # Last observation carried forward method
       latest <- subject_data[which.max(subject_data[[time_column]]), ]
-      return(list(auc = latest[[volume_column]], extrapolated = is_extrapolated))
+      last_volume <- latest[[volume_column]]
+      
+      # For last observation method, extrapolation means extending the last volume
+      # to the maximum experiment time
+      if (can_extrapolate) {
+        # Calculate the additional AUC from last observation to max experiment time
+        dt_extrapolation <- max_experiment_time - subject_max_time
+        extrapolated_value <- dt_extrapolation * last_volume
+        is_extrapolated <- TRUE
+      }
+      
+      # For LOCF method, AUC is the last volume (for the observed period) plus any extrapolation
+      return(list(auc = last_volume + extrapolated_value, extrapolated = is_extrapolated))
     }
   }
   
