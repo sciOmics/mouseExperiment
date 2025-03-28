@@ -195,6 +195,11 @@ forest_plot <- function(results_df, group_order = NULL, title = "Forest Plot of 
   # Add indicator if any values were truncated
   plot_data$Note_Plot <- ""
   
+  # Initialize HR_Note column if it doesn't exist
+  if (!("HR_Note" %in% colnames(plot_data))) {
+    plot_data$HR_Note <- NA
+  }
+  
   # Add truncation notes
   for (i in 1:nrow(plot_data)) {
     if (!is.na(plot_data$HR_Note[i])) {

@@ -14,10 +14,11 @@ All notable changes to the mouseExperiment package will be documented in this fi
 - Improved compatibility between column naming conventions in various plotting functions
 - Fixed Events/Total count calculation in `survival_statistics()` to correctly count unique subjects and their events per treatment group
 - Fixed hazard ratio calculation in `survival_statistics()` to correctly set the reference group and handle coefficient names
-- Fixed `survival_statistics()` to properly return the `method_used` object in the results
+- Fixed `survival_statistics()` to properly return the `method_used` object in the results, especially when using Firth's correction
 - Fixed `print_results()` function to properly handle survival statistics summary table
 
 ### Changed
+- Removed `forest_plot` object from `survival_statistics()` output as this functionality is now handled by the separate `forest_plot()` function
 - Moved `forest_plot()` function from `plot_caterpillar.R` to its own file `plot_forest.R` for better code organization
 - Enhanced summary output in `tumor_growth_statistics()` to provide detailed description of statistical tests and methods used
 - Improved growth rate calculation description in result summaries to clarify the log-transformation and interpretation

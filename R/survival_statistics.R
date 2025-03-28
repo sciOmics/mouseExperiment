@@ -23,7 +23,6 @@
 #' \describe{
 #'   \item{model}{The fitted statistical model object}
 #'   \item{results}{Data frame with hazard ratios, confidence intervals, p-values, and median survival times}
-#'   \item{forest_plot}{A forest plot visualizing hazard ratios with confidence intervals}
 #'   \item{km_plot}{A Kaplan-Meier survival curve plot}
 #'   \item{reference_group}{The treatment group used as reference}
 #'   \item{method_used}{The statistical method used ("cox", "coxphf", or "logrank")}
@@ -59,8 +58,10 @@
 #' print(median_surv)
 #'
 #' # Display visualizations
-#' print(results$forest_plot)  # Forest plot of hazard ratios
 #' print(results$km_plot)      # Kaplan-Meier survival curves
+#' 
+#' # Create a forest plot from the results
+#' forest_plot(results$results) # Forest plot of hazard ratios
 #'
 #' @export
 survival_statistics <- function(df,
@@ -211,14 +212,6 @@ survival_statistics <- function(df,
   
   # Create visualizations
   tryCatch({
-    # Only create forest plot if the ggplot2 package is available
-    if (requireNamespace("ggplot2", quietly = TRUE)) {
-      forest_plot <- create_forest_plot(results, title = "Hazard Ratios with 95% CIs")
-      if (!is.null(forest_plot)) {
-        result_list$forest_plot <- forest_plot
-      }
-    }
-    
     # Only create KM plot if the survminer package is available
     if (requireNamespace("survminer", quietly = TRUE)) {
       km_plot <- tryCatch({
@@ -382,7 +375,8 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
         
         return(list(
           model = model,
-          results = results
+          results = results,
+          method_used = "coxphf"
         ))
       } else {
         stop("Package 'coxphf' is required but not available")
@@ -399,6 +393,7 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     } else {
       model <- results$model
       results <- results$results
+      method_used <- results$method_used
     }
     
   } else if (has_issues) {
@@ -610,16 +605,4 @@ print_results <- function(results) {
   
   # Return the formatted table invisibly for further use if needed
   invisible(formatted_table)
-}
-
-#' Create Forest Plot for Hazard Ratios
-#' @noRd
-create_forest_plot <- function(results, title = "Forest Plot") {
-  # Instead of creating a forest plot directly, use the forest_plot function from plot_forest.R
-  if (requireNamespace("ggplot2", quietly = TRUE)) {
-    forest_plot(results, title = title)
-  } else {
-    warning("Package 'ggplot2' is required but not available for creating forest plots")
-    NULL
-  }
 }
