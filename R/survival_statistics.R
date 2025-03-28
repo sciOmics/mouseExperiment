@@ -195,23 +195,41 @@ survival_statistics <- function(df,
     # For each group, check if we have > 50% events but NA median
     for (i in 1:nrow(results)) {
       if (is.na(results$Median_Survival[i]) && results$Event_Rate[i] > 0.5) {
-        warning(sprintf("Group %s has > 50%% events (%.1f%%) but no median survival. This may be an issue with the calculation.", 
-                results$Group[i], results$Event_Rate[i] * 100))
+        # We should be able to calculate median survival when >50% of subjects have events
+        message(sprintf("Group %s has > 50%% events (%.1f%%) but no median survival calculated. Attempting to calculate it now.", 
+                        results$Group[i], results$Event_Rate[i] * 100))
         
-        # Try to recalculate the median for this group
+        # Try to calculate the median for this group
         group_data <- df[df[[treatment_column]] == results$Group[i], ]
         if (nrow(group_data) > 0) {
           # Create a separate survfit object for just this group
           group_surv_formula <- stats::as.formula(paste("Surv(", time_column, ",", censor_column, ") ~ 1"))
           group_km_fit <- survival::survfit(group_surv_formula, data = group_data)
           
-          # Extract quantiles (including median at 0.5)
-          group_quantiles <- summary(group_km_fit)$quantile
-          if (!is.null(group_quantiles) && "50%" %in% colnames(group_quantiles)) {
-            results$Median_Survival[i] <- group_quantiles["50%"]
-            message(sprintf("Recalculated median survival for group %s: %.1f days", 
-                            results$Group[i], results$Median_Survival[i]))
+          # Extract median (at 0.5)
+          if (!is.null(group_km_fit$median)) {
+            med_surv <- group_km_fit$median
+            if (!is.na(med_surv) && med_surv > 0) {
+              results$Median_Survival[i] <- med_surv
+              message(sprintf("Successfully calculated median survival for group %s: %.1f days", 
+                              results$Group[i], results$Median_Survival[i]))
+            } else {
+              message(sprintf("Could not calculate valid median survival for group %s despite >50%% events.", 
+                              results$Group[i]))
+            }
+          } else {
+            # Try alternate approach using quantiles
+            group_quantiles <- summary(group_km_fit)$quantile
+            if (!is.null(group_quantiles) && "50%" %in% colnames(group_quantiles)) {
+              results$Median_Survival[i] <- group_quantiles["50%"]
+              message(sprintf("Calculated median survival using quantiles for group %s: %.1f days", 
+                              results$Group[i], results$Median_Survival[i]))
+            } else {
+              message(sprintf("Could not extract median or quantiles for group %s.", results$Group[i]))
+            }
           }
+        } else {
+          message(sprintf("No data available for group %s to calculate median survival.", results$Group[i]))
         }
       }
     }
@@ -582,9 +600,31 @@ print_results <- function(results) {
       } else {
         # Check if we have event rate information
         if ("Event_Rate" %in% colnames(results) && !is.na(results$Event_Rate[i])) {
-          # If more than 50% of subjects had events, this should be calculable
+          # If more than 50% of subjects had events, try to calculate it
           if (results$Event_Rate[i] > 0.5) {
-            message("Median Survival: Not calculated (>50% events)")
+            # We need to calculate the median survival since we have >50% events
+            group_data <- df[df[[treatment_column]] == results$Group[i], ]
+            if (nrow(group_data) > 0) {
+              # Create a survfit object for just this group
+              group_surv_formula <- stats::as.formula(paste("Surv(", time_column, ",", censor_column, ") ~ 1"))
+              group_km_fit <- survival::survfit(group_surv_formula, data = group_data)
+              
+              # Try to extract the median survival
+              if (!is.null(group_km_fit$median)) {
+                med_surv <- group_km_fit$median
+                if (!is.na(med_surv) && med_surv > 0) {
+                  # Update the results data frame with the calculated median
+                  results$Median_Survival[i] <- med_surv
+                  message(sprintf("Median Survival: %.1f days", med_surv))
+                } else {
+                  message("Median Survival: Error calculating median")
+                }
+              } else {
+                message("Median Survival: Error extracting median from survfit")
+              }
+            } else {
+              message("Median Survival: No data available for group")
+            }
           } else {
             # Less than 50% had events, so "Not Reached" is accurate
             message("Median Survival: Not reached")
@@ -640,19 +680,40 @@ print_results <- function(results) {
       if (is.na(results$Median_Survival[i])) {
         # Check if we have event rate information
         if ("Event_Rate" %in% colnames(results) && !is.na(results$Event_Rate[i])) {
-          # If more than 50% of subjects had events, this should be calculable
+          # If more than 50% of subjects had events, try to calculate it
           if (results$Event_Rate[i] > 0.5) {
-            "Median not calculated (>50% events)"
+            # We need to calculate the median survival since we have >50% events
+            group_data <- df[df[[treatment_column]] == results$Group[i], ]
+            if (nrow(group_data) > 0) {
+              # Create a survfit object for just this group
+              group_surv_formula <- stats::as.formula(paste("Surv(", time_column, ",", censor_column, ") ~ 1"))
+              group_km_fit <- survival::survfit(group_surv_formula, data = group_data)
+              
+              # Try to extract the median survival
+              if (!is.null(group_km_fit$median)) {
+                med_surv <- group_km_fit$median
+                if (!is.na(med_surv) && med_surv > 0) {
+                  # Update the results data frame with the calculated median
+                  results$Median_Survival[i] <- med_surv
+                  return(sprintf("%.1f days", med_surv))
+                }
+              }
+              
+              # If we're here, we couldn't calculate it despite having >50% events
+              return("Error calculating median")
+            } else {
+              return("No data available")
+            }
           } else {
             # Less than 50% had events, so "Not Reached" is accurate
-            "Not reached"
+            return("Not reached")
           }
         } else {
           # If we don't have event rate info, use original behavior
-          "Not reached"
+          return("Not reached")
         }
       } else {
-        sprintf("%.1f days", results$Median_Survival[i])
+        return(sprintf("%.1f days", results$Median_Survival[i]))
       }
     })
   }
