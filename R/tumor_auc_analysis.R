@@ -13,6 +13,7 @@
 #' @param treatment_column Name of column containing treatment group information (default: "Treatment")
 #' @param id_column Name of column containing individual subject identifiers (default: "ID")
 #' @param auc_method Method for calculating AUC: "trapezoidal" (default) or "last_observation"
+#' @param extrapolation_points Minimum number of data points required for extrapolation (default: 3)
 #' @param reference_group Reference group for statistical comparisons (default: first alphabetically)
 #'
 #' @return A list containing:
@@ -41,6 +42,9 @@
 #' auc_results$auc_summary
 #' auc_results$auc_comparisons
 #' print(auc_results$auc_plot)
+#'
+#' # With extrapolation settings
+#' auc_results <- tumor_auc_analysis(tumor_data, extrapolation_points = 4)
 #' }
 #'
 #' @export
@@ -50,10 +54,17 @@ tumor_auc_analysis <- function(df,
                               treatment_column = "Treatment",
                               id_column = "ID",
                               auc_method = c("trapezoidal", "last_observation"),
+                              extrapolation_points = 3,
                               reference_group = NULL) {
   
   # Match arguments
   auc_method <- match.arg(auc_method)
+  
+  # Validate extrapolation_points
+  if (!is.numeric(extrapolation_points) || extrapolation_points < 2) {
+    warning("extrapolation_points must be a number >= 2. Using default value of 3.")
+    extrapolation_points <- 3
+  }
   
   # Check for required columns
   required_cols <- c(time_column, volume_column, treatment_column, id_column)
@@ -73,10 +84,20 @@ tumor_auc_analysis <- function(df,
     stop("Reference group '", reference_group, "' not found in the data.")
   }
   
+  # Calculate max experiment time for extrapolation detection
+  max_experiment_time <- max(df[[time_column]])
+  
   # Function to calculate AUC for one subject
   calculate_subject_auc <- function(subject_data, method) {
     # Sort by time
     subject_data <- subject_data[order(subject_data[[time_column]]), ]
+    
+    # Get the number of data points and max time for this subject
+    n_points <- nrow(subject_data)
+    subject_max_time <- max(subject_data[[time_column]], na.rm = TRUE)
+    
+    # Determine if extrapolation is needed
+    is_extrapolated <- n_points < extrapolation_points || subject_max_time < max_experiment_time
     
     if (method == "trapezoidal") {
       # Trapezoidal method
@@ -84,7 +105,7 @@ tumor_auc_analysis <- function(df,
       volumes <- subject_data[[volume_column]]
       
       if (length(times) < 2) {
-        return(NA) # Need at least 2 points for AUC
+        return(list(auc = NA, extrapolated = NA)) # Need at least 2 points for AUC
       }
       
       # Calculate AUC using trapezoidal rule
@@ -93,18 +114,20 @@ tumor_auc_analysis <- function(df,
         dt <- times[i] - times[i-1]
         auc <- auc + dt * (volumes[i] + volumes[i-1]) / 2
       }
-      return(auc)
+      
+      return(list(auc = auc, extrapolated = is_extrapolated))
       
     } else if (method == "last_observation") {
       # Last observation carried forward
       # Simply take the latest time point and its volume
       latest <- subject_data[which.max(subject_data[[time_column]]), ]
-      return(latest[[volume_column]])
+      return(list(auc = latest[[volume_column]], extrapolated = is_extrapolated))
     }
   }
   
   # Calculate AUC for each subject
   auc_results <- list()
+  
   for (subject in subjects) {
     subject_data <- df[df[[id_column]] == subject, ]
     
@@ -120,14 +143,17 @@ tumor_auc_analysis <- function(df,
       treatment <- treatment[1]
     }
     
-    # Calculate AUC
-    auc <- calculate_subject_auc(subject_data, auc_method)
+    # Calculate AUC and determine if extrapolation was used
+    result <- calculate_subject_auc(subject_data, auc_method)
     
     # Store result
     auc_results[[subject]] <- list(
       subject = subject,
       treatment = treatment,
-      auc = auc
+      auc = result$auc,
+      extrapolated = result$extrapolated,
+      n_points = nrow(subject_data),
+      last_time = max(subject_data[[time_column]], na.rm = TRUE)
     )
   }
   
@@ -137,9 +163,15 @@ tumor_auc_analysis <- function(df,
       Subject = x$subject,
       Treatment = x$treatment,
       AUC = x$auc,
+      Extrapolated = x$extrapolated,
+      NumPoints = x$n_points,
+      LastTime = x$last_time,
       stringsAsFactors = FALSE
     )
   }))
+  
+  # Add Group column for compatibility with plot_auc
+  auc_df$Group <- auc_df$Treatment
   
   # Remove NAs
   auc_df <- auc_df[!is.na(auc_df$AUC), ]
@@ -163,6 +195,29 @@ tumor_auc_analysis <- function(df,
     stringsAsFactors = FALSE
   )
   
+  # Calculate extrapolation statistics
+  extrapolation_stats <- stats::aggregate(Extrapolated ~ Treatment, data = auc_df, 
+                                    FUN = function(x) {
+                                      num_extrapolated <- sum(x, na.rm = TRUE)
+                                      total_subjects <- length(x)
+                                      pct_extrapolated <- 100 * num_extrapolated / total_subjects
+                                      c(n_extrapolated = num_extrapolated,
+                                        n_total = total_subjects,
+                                        pct_extrapolated = pct_extrapolated)
+                                    })
+  
+  # Convert extrapolation stats to data frame
+  extrapolation_summary <- data.frame(
+    Treatment = extrapolation_stats$Treatment,
+    N_Extrapolated = extrapolation_stats$Extrapolated[, "n_extrapolated"],
+    N_Total = extrapolation_stats$Extrapolated[, "n_total"],
+    Pct_Extrapolated = extrapolation_stats$Extrapolated[, "pct_extrapolated"],
+    stringsAsFactors = FALSE
+  )
+  
+  # Merge extrapolation info into summary
+  auc_summary <- merge(auc_summary, extrapolation_summary, by = "Treatment", all = TRUE)
+  
   # Create ANOVA model
   auc_model <- stats::aov(AUC ~ Treatment, data = auc_df)
   
@@ -171,16 +226,52 @@ tumor_auc_analysis <- function(df,
   
   # Create plot
   if (requireNamespace("ggplot2", quietly = TRUE)) {
-    auc_plot <- ggplot2::ggplot(auc_df, ggplot2::aes(x = Treatment, y = AUC, fill = Treatment)) +
-      ggplot2::geom_boxplot(alpha = 0.7) +
-      ggplot2::geom_point(position = ggplot2::position_jitter(width = 0.2), alpha = 0.5) +
-      ggplot2::theme_classic() +
-      ggplot2::labs(
-        title = "Area Under the Curve (AUC) by Treatment Group",
-        subtitle = paste("Method:", auc_method),
-        x = "Treatment Group",
-        y = "Area Under the Curve"
-      )
+    # Check if plot_auc function exists
+    if (exists("plot_auc", mode = "function")) {
+      tryCatch({
+        auc_plot <- plot_auc(
+          auc_data = auc_df,
+          title = paste("Area Under the Curve (AUC) by Treatment Group\nMethod:", auc_method),
+          show_mean = TRUE,
+          error_bar_type = "SEM",
+          extrapolated_column = "Extrapolated",
+          extrapolation_points = extrapolation_points
+        )
+      }, error = function(e) {
+        message("Error using plot_auc function: ", e$message)
+        # Create a basic plot as fallback
+        auc_plot <- ggplot2::ggplot(auc_df, ggplot2::aes(x = Treatment, y = AUC, color = Treatment)) +
+          ggplot2::geom_boxplot(alpha = 0.7) +
+          ggplot2::geom_jitter(ggplot2::aes(shape = Extrapolated), 
+                             position = ggplot2::position_jitter(width = 0.2), 
+                             alpha = 0.5) +
+          ggplot2::scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 1)) +
+          ggplot2::theme_classic() +
+          ggplot2::labs(
+            title = "Area Under the Curve (AUC) by Treatment Group",
+            subtitle = paste("Method:", auc_method, 
+                            ", Min Points for Extrapolation:", extrapolation_points),
+            x = "Treatment Group",
+            y = "Area Under the Curve"
+          )
+      })
+    } else {
+      # Fallback if plot_auc doesn't exist
+      auc_plot <- ggplot2::ggplot(auc_df, ggplot2::aes(x = Treatment, y = AUC, color = Treatment)) +
+        ggplot2::geom_boxplot(alpha = 0.7) +
+        ggplot2::geom_jitter(ggplot2::aes(shape = Extrapolated), 
+                           position = ggplot2::position_jitter(width = 0.2), 
+                           alpha = 0.5) +
+        ggplot2::scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 1)) +
+        ggplot2::theme_classic() +
+        ggplot2::labs(
+          title = "Area Under the Curve (AUC) by Treatment Group",
+          subtitle = paste("Method:", auc_method, 
+                         ", Min Points for Extrapolation:", extrapolation_points),
+          x = "Treatment Group",
+          y = "Area Under the Curve"
+        )
+    }
   } else {
     auc_plot <- NULL
     warning("Package 'ggplot2' is required for plotting but is not available.")

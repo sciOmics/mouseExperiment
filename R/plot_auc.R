@@ -18,6 +18,9 @@
 #' @param extrapolated_column Character string specifying the column name that indicates whether a data point 
 #'        was extrapolated. Values should be TRUE/FALSE or 1/0. If NULL, all points are treated as non-extrapolated. 
 #'        Default is NULL.
+#' @param extrapolation_points Numeric value specifying the minimum number of data points required to calculate 
+#'        extrapolation for subjects with incomplete data. If subjects have fewer than this number, 
+#'        they will be excluded from extrapolation. Default is 3.
 #' @param group_order Optional vector specifying the order of groups to display. 
 #'        If NULL, groups are ordered alphabetically. Default is NULL.
 #' @param point_size Numeric value specifying the size of the individual data points. Default is 3.
@@ -55,6 +58,9 @@
 #'
 #' # Specify a custom order for the groups
 #' plot_auc(auc_data, group_order = c("Control", "Treatment B", "Treatment A", "Treatment C"))
+#'
+#' # Control extrapolation with minimum number of data points
+#' plot_auc(auc_data, extrapolated_column = "Extrapolated", extrapolation_points = 4)
 #' }
 #'
 #' @export
@@ -64,6 +70,7 @@ plot_auc <- function(auc_data,
                      show_mean = TRUE,
                      error_bar_type = c("SEM", "SD", "CI", "none"),
                      extrapolated_column = NULL,
+                     extrapolation_points = 3,
                      group_order = NULL,
                      point_size = 3,
                      jitter_width = 0.2) {
@@ -93,6 +100,12 @@ plot_auc <- function(auc_data,
       warning("Specified extrapolated_column '", extrapolated_column, "' not found in data. All points will be treated as non-extrapolated.")
       extrapolated_column <- NULL
     }
+  }
+  
+  # Validate extrapolation_points
+  if (!is.numeric(extrapolation_points) || extrapolation_points < 2) {
+    warning("extrapolation_points must be a number >= 2. Using default value of 3.")
+    extrapolation_points <- 3
   }
   
   # Order groups if specified, otherwise sort by group name for consistency
@@ -188,6 +201,13 @@ plot_auc <- function(auc_data,
                                    size = point_size, alpha = 0.7,
                                    shape = 1) # empty circle
     }
+    
+    # Add legend for extrapolation status
+    p <- p + ggplot2::labs(
+      caption = paste0("Open circles represent extrapolated values (requiring at least ", 
+                      extrapolation_points, " data points)")
+    )
+    
   } else {
     # All points treated as non-extrapolated (filled circles)
     p <- p + ggplot2::geom_jitter(width = jitter_width, height = 0, 
@@ -235,7 +255,7 @@ plot_auc <- function(auc_data,
     title = title,
     x = "Treatment Group",
     y = "AUC (Tumor Burden)"
-  ) + ggplot2::theme_minimal() +
+  ) + ggplot2::theme_classic() +
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
       legend.position = "none"
