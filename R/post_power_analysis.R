@@ -88,5 +88,284 @@ post_power_analysis <- function(data,
                               volume_column = "Volume",
                               treatment_column = "Treatment",
                               id_column = "ID") {
-  # Rest of function implementation...
+  
+  # Match method argument
+  method <- match.arg(method)
+  
+  # Initialize result list
+  result <- list()
+  
+  # Check if data is a data frame or a tumor_growth_statistics result
+  if (is.data.frame(data)) {
+    # Input is a raw data frame
+    raw_data <- data
+    
+    # Verify required columns exist
+    required_cols <- c(time_column, volume_column, treatment_column, id_column)
+    missing_cols <- setdiff(required_cols, colnames(raw_data))
+    if (length(missing_cols) > 0) {
+      stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
+    }
+    
+    # Run tumor_growth_statistics if needed for the chosen method
+    if (method %in% c("parametric", "simulation")) {
+      # We'll need the model fit
+      message("Fitting tumor growth model...")
+      model_results <- tumor_growth_statistics(
+        df = raw_data,
+        time_column = time_column,
+        volume_column = volume_column,
+        treatment_column = treatment_column,
+        id_column = id_column,
+        return_model = TRUE
+      )
+    } else if (method == "auc") {
+      # For AUC method, we can calculate AUC directly
+      message("Calculating AUC values...")
+      
+      # Calculate AUC for each subject
+      auc_results <- tumor_auc_analysis(
+        raw_data,
+        time_column = time_column,
+        volume_column = volume_column,
+        treatment_column = treatment_column,
+        id_column = id_column
+      )
+      
+      model_results <- list(
+        auc_analysis = auc_results
+      )
+    }
+  } else if (is.list(data) && any(c("model", "auc_analysis") %in% names(data))) {
+    # Input is a tumor_growth_statistics result
+    model_results <- data
+    
+    # If needed, extract the raw data from the model results
+    if (method == "auc" && is.null(model_results$auc_analysis)) {
+      # If we need AUC but don't have it, try to extract from model
+      message("AUC analysis not found in model results. Recalculating...")
+      if (!is.null(model_results$data)) {
+        raw_data <- model_results$data
+        
+        # Calculate AUC for each subject
+        auc_results <- tumor_auc_analysis(
+          raw_data,
+          time_column = time_column,
+          volume_column = volume_column,
+          treatment_column = treatment_column,
+          id_column = id_column
+        )
+        
+        model_results$auc_analysis <- auc_results
+      } else {
+        stop("Cannot perform AUC power analysis: no raw data available in model results")
+      }
+    }
+  } else {
+    stop("Input must be either a data frame or a tumor_growth_statistics result object")
+  }
+  
+  # Extract sample sizes per group
+  if (method == "auc" && !is.null(model_results$auc_analysis)) {
+    # Extract from AUC analysis
+    auc_data <- model_results$auc_analysis$individual
+    sample_sizes <- table(auc_data[[treatment_column]])
+  } else if (!is.null(model_results$data_summary)) {
+    # Extract from data summary
+    sample_sizes <- model_results$data_summary$n_per_group
+  } else if (exists("raw_data")) {
+    # Calculate from raw data
+    sample_sizes <- table(unique(raw_data[c(id_column, treatment_column)])[[treatment_column]])
+  } else {
+    stop("Cannot determine sample sizes per group")
+  }
+  
+  # Store sample sizes
+  result$sample_sizes <- as.numeric(sample_sizes)
+  names(result$sample_sizes) <- names(sample_sizes)
+  
+  # Estimate effect sizes if not provided
+  if (is.null(effect_sizes)) {
+    message("Estimating effect sizes from data...")
+    
+    if (method == "auc" && !is.null(model_results$auc_analysis)) {
+      # For AUC method, estimate effect sizes from AUC differences
+      auc_summary <- model_results$auc_analysis$summary
+      
+      # Calculate standardized effect sizes (Cohen's d)
+      # Find the control/reference group
+      # For simplicity, assume first group is reference
+      ref_group <- auc_summary[[treatment_column]][1]
+      ref_mean <- auc_summary$AUC.Mean[1]
+      
+      # Calculate pooled SD
+      pooled_sd <- mean(auc_summary$AUC.SD, na.rm = TRUE)
+      
+      # Calculate effect sizes
+      observed_effects <- (auc_summary$AUC.Mean - ref_mean) / pooled_sd
+      observed_effects <- observed_effects[-1]  # Remove reference group
+      
+      # If all effects are NA, use default range
+      if (all(is.na(observed_effects))) {
+        effect_sizes <- c(0.2, 0.5, 0.8, 1.0, 1.5)
+      } else {
+        # Round to nearest 0.1 and take unique values
+        effect_sizes <- unique(round(abs(observed_effects[!is.na(observed_effects)]), 1))
+        
+        # If no valid effect sizes, use defaults
+        if (length(effect_sizes) == 0) {
+          effect_sizes <- c(0.2, 0.5, 0.8, 1.0, 1.5)
+        }
+      }
+      
+      result$observed_effects <- data.frame(
+        Group = auc_summary[[treatment_column]][-1],
+        Effect_Size = observed_effects,
+        stringsAsFactors = FALSE
+      )
+    } else {
+      # For parametric methods, use default range
+      effect_sizes <- c(0.2, 0.5, 0.8, 1.0, 1.5)
+    }
+  }
+  
+  # Perform power analysis based on method
+  if (method == "parametric") {
+    message("Performing parametric power analysis...")
+    
+    # Use power.t.test for a simple two-sample t-test power analysis
+    power_results <- data.frame(Effect_Size = effect_sizes, stringsAsFactors = FALSE)
+    
+    # Calculate power for each effect size
+    power_results$Power <- sapply(effect_sizes, function(d) {
+      # Calculate power for the minimum sample size
+      min_n <- min(result$sample_sizes)
+      power <- stats::power.t.test(
+        n = min_n, 
+        delta = d,
+        sd = 1,  # Effect size is already in units of SD
+        sig.level = alpha,
+        type = "two.sample"
+      )$power
+      
+      return(power)
+    })
+    
+    result$power_analysis <- power_results
+    
+    # Calculate sample size recommendations
+    target_powers <- c(0.8, 0.9, 0.95)
+    sample_size_rec <- sapply(effect_sizes, function(d) {
+      sapply(target_powers, function(p) {
+        ceiling(stats::power.t.test(
+          power = p,
+          delta = d,
+          sd = 1,
+          sig.level = alpha,
+          type = "two.sample"
+        )$n)
+      })
+    })
+    
+    # Create sample size recommendation data frame
+    ss_rec_df <- as.data.frame(sample_size_rec)
+    colnames(ss_rec_df) <- paste0("Effect_Size_", effect_sizes)
+    rownames(ss_rec_df) <- paste0(target_powers * 100, "%_Power")
+    
+    result$sample_size_recommendations <- ss_rec_df
+    
+  } else if (method == "auc") {
+    message("Performing AUC-based power analysis...")
+    
+    # Extract AUC data
+    auc_data <- model_results$auc_analysis$individual
+    
+    # Calculate observed group means and SDs
+    auc_summary <- stats::aggregate(
+      auc_data$AUC, 
+      by = list(Treatment = auc_data[[treatment_column]]),
+      FUN = function(x) c(Mean = mean(x), SD = stats::sd(x), N = length(x))
+    )
+    
+    # Unpack the results
+    auc_stats <- do.call(data.frame, c(
+      list(Treatment = auc_summary$Treatment),
+      lapply(1:nrow(auc_summary), function(i) auc_summary$x[i,])
+    ))
+    
+    # Calculate overall pooled SD
+    pooled_sd <- sqrt(
+      sum((auc_stats$N - 1) * auc_stats$SD^2) / 
+        sum(auc_stats$N - 1)
+    )
+    
+    # Perform power analysis for each effect size
+    power_results <- data.frame(Effect_Size = effect_sizes, stringsAsFactors = FALSE)
+    
+    # Calculate power
+    power_results$Power <- sapply(effect_sizes, function(d) {
+      # Use the minimum sample size for a conservative estimate
+      min_n <- min(auc_stats$N)
+      
+      # Calculate power
+      power <- stats::power.t.test(
+        n = min_n,
+        delta = d * pooled_sd,  # Convert standardized effect to raw
+        sd = pooled_sd,
+        sig.level = alpha,
+        type = "two.sample"
+      )$power
+      
+      return(power)
+    })
+    
+    result$power_analysis <- power_results
+    
+    # Calculate sample size recommendations
+    target_powers <- c(0.8, 0.9, 0.95)
+    sample_size_rec <- sapply(effect_sizes, function(d) {
+      sapply(target_powers, function(p) {
+        ceiling(stats::power.t.test(
+          power = p,
+          delta = d * pooled_sd,
+          sd = pooled_sd,
+          sig.level = alpha,
+          type = "two.sample"
+        )$n)
+      })
+    })
+    
+    # Create sample size recommendation data frame
+    ss_rec_df <- as.data.frame(sample_size_rec)
+    colnames(ss_rec_df) <- paste0("Effect_Size_", effect_sizes)
+    rownames(ss_rec_df) <- paste0(target_powers * 100, "%_Power")
+    
+    result$sample_size_recommendations <- ss_rec_df
+    
+  } else if (method == "simulation") {
+    message("Simulation-based power analysis is not implemented yet. Please use 'parametric' or 'auc' methods.")
+    return(NULL)
+  }
+  
+  # Create power curve plot
+  if (requireNamespace("ggplot2", quietly = TRUE)) {
+    # Power curve
+    power_curve <- ggplot2::ggplot(result$power_analysis, 
+                                 ggplot2::aes(x = Effect_Size, y = Power)) +
+      ggplot2::geom_line() +
+      ggplot2::geom_point() +
+      ggplot2::geom_hline(yintercept = 0.8, linetype = "dashed", color = "red") +
+      ggplot2::labs(
+        title = "Power Analysis Results",
+        x = "Effect Size (Cohen's d)",
+        y = "Statistical Power"
+      ) +
+      ggplot2::theme_classic() +
+      ggplot2::scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2))
+    
+    result$plots <- list(power_curve = power_curve)
+  }
+  
+  # Return results
+  return(result)
 }

@@ -6,6 +6,7 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 ### Added
 - New function `plot_combination_index()` to visualize Combination Index over time with synergy indicators
+- Implemented `post_power_analysis()` function for calculating statistical power and sample size recommendations based on experimental data
 
 ### Fixed
 - Fixed `plot_forest()` to properly handle both `HR` and `Hazard_Ratio` column naming from `survival_statistics()` results
