@@ -135,41 +135,27 @@ plot_survival <- function(data,
     risk.table = show_risk_table,
     tables.height = 0.25,
     legend.title = "Group",
-    legend = "top",  # This will be overridden by theme settings
     xlab = xlab,
     ylab = ylab,
-    risk.table.title = "Number at risk",
-    risk.table.col = "strata",  # Changed from "black" to use strata colors only for lines
-    risk.table.y.text = FALSE,  # Changed to FALSE to remove colored text in risk table
-    risk.table.height = 0.25,
     fontsize = font_size,
     font.family = font_family,
     censor = show_censoring,  # Control censoring marks
-    # Risk table theme
-    tables.theme = ggplot2::theme_classic() +
-      ggplot2::theme(
-        axis.text = ggplot2::element_text(size = font_size * 0.6),  # Reduced from 0.7
-        plot.title = ggplot2::element_text(size = font_size * 0.8),
-        plot.margin = ggplot2::unit(c(0.1, 0.5, 0.1, 0.5), "cm"),
-        axis.title = ggplot2::element_blank(),
-        axis.line = ggplot2::element_line(colour = "black"),
-        panel.grid.major = ggplot2::element_blank(),
-        panel.grid.minor = ggplot2::element_blank(),
-        panel.border = ggplot2::element_blank(),
-        axis.text.x = ggplot2::element_text(size = font_size * 0.6),  # Reduced from 0.7
-        # Ensure no colored text in the risk table
-        axis.text.y = ggplot2::element_text(size = font_size * 0.6, colour = "black")
-      ),
+    
+    # Critical parameters to fix risk table text coloring
+    risk.table.col = "black",  # Use black for risk table lines
+    risk.table.y.text = FALSE, # Don't color y-axis text in risk table
+    risk.table.fontsize = font_size * 0.6, # Smaller font for risk table
+    tables.col = "black", # Use black for all text in tables
+    
     # Main plot theme
     ggtheme = ggplot2::theme_classic() + 
       ggplot2::theme(
-        legend.position = c(0.95, 0.05),  # Changed to bottom right
-        legend.justification = c(1, 0),  # Changed to align with bottom right
+        legend.position = c(0.95, 0.05),
+        legend.justification = c(1, 0),
         legend.background = ggplot2::element_rect(fill = "white", color = NA),
-        legend.key.size = ggplot2::unit(0.8, "lines"),  # Slightly smaller legend
+        legend.key.size = ggplot2::unit(0.8, "lines"),
         legend.margin = ggplot2::margin(6, 6, 6, 6),
         legend.text = ggplot2::element_text(size = font_size * 0.8),
-        plot.margin = ggplot2::unit(c(0.5, 0.5, 0.1, 0.5), "cm"),
         plot.title = ggplot2::element_text(size = font_size * 1.2),
         plot.subtitle = ggplot2::element_text(size = font_size * 0.9)
       )
@@ -183,7 +169,7 @@ plot_survival <- function(data,
     plot_args$subtitle <- subtitle
   }
   
-  # Handle custom colors
+  # Handle custom colors for the main plot (not the risk table)
   if (!is.null(colors)) {
     # Get group levels
     group_levels <- levels(survival_data$group)
@@ -211,19 +197,7 @@ plot_survival <- function(data,
   # Create the plot
   surv_plot <- do.call(survminer::ggsurvplot, plot_args)
   
-  # Fix risk table labels if shown
-  if (show_risk_table && !is.null(surv_plot$table)) {
-    surv_plot$table <- surv_plot$table + 
-      ggplot2::scale_y_discrete(labels = function(x) gsub("^group=", "", x)) +
-      ggplot2::theme(
-        axis.title.y = ggplot2::element_blank(),
-        axis.title.x = ggplot2::element_blank(),
-        # Ensure all text in risk table is black
-        axis.text = ggplot2::element_text(colour = "black", size = font_size * 0.6)
-      )
-  }
-  
-  # Fix legend labels
+  # Fix group labels in the plot
   surv_plot$plot <- surv_plot$plot + 
     ggplot2::scale_color_discrete(labels = function(x) gsub("^group=", "", x)) +
     ggplot2::scale_fill_discrete(labels = function(x) gsub("^group=", "", x))
@@ -240,13 +214,6 @@ plot_survival <- function(data,
   }
   if (!is.null(ybreaks)) {
     surv_plot$plot <- surv_plot$plot + ggplot2::scale_y_continuous(breaks = ybreaks)
-  }
-  
-  # Ensure risk table colors match plot colors for lines only, not text
-  if (show_risk_table && !is.null(surv_plot$table)) {
-    # We don't add color scales to the risk table to keep text black
-    # We will rely on the risk.table.col = "strata" setting 
-    # to color only the lines, not the text
   }
   
   return(surv_plot)

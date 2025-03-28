@@ -593,7 +593,13 @@ tumor_growth_statistics <- function(df,
         auc_calculation_method = auc_method,
         statistical_test = "One-way ANOVA on AUC values",
         posthoc_method = if(!is.null(posthoc)) "Pairwise comparisons with Bonferroni adjustment" else NA,
-        individual_calculation = paste("AUC calculated using", auc_method, "method for each subject")
+        individual_calculation = paste("AUC calculated using", auc_method, "method for each subject"),
+        growth_rate_calculation = paste0(
+          "Growth rates are calculated by fitting a linear regression model to log1p-transformed volume data over time for each subject. ",
+          "The slope coefficient from this model represents the exponential growth rate. ",
+          "A value of 0.1 indicates approximately 10% tumor volume increase per day. ",
+          "Only subjects with 3 or more time points are included in growth rate calculations."
+        )
       ),
       notes = c(
         if(transform != "none") paste("Volume data was", transform, "transformed prior to analysis") else "No transformation applied to volume data",
@@ -730,7 +736,12 @@ tumor_growth_statistics <- function(df,
         volume_transformation = transform,
         anova_method = anova_type,
         posthoc_method = posthoc_method,
-        growth_rate_calculation = "Calculated as the slope of log-volume over time for each subject"
+        growth_rate_calculation = paste0(
+          "Growth rates are calculated by fitting a linear regression model to log1p-transformed volume data over time for each subject. ",
+          "The slope coefficient from this model represents the exponential growth rate. ",
+          "A value of 0.1 indicates approximately 10% tumor volume increase per day. ",
+          "Only subjects with 3 or more time points are included in growth rate calculations."
+        )
       ),
       notes = c(
         if(transform != "none") paste("Volume data was", transform, "transformed prior to analysis") else "No transformation applied to volume data",
