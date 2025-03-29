@@ -144,14 +144,21 @@ plot_auc <- function(auc_data,
   
   # Add points with or without extrapolation indication
   if (has_extrapolation) {
+    # Convert to factor first to ensure proper mapping and consistent display
+    auc_data[[extrapolated_column]] <- as.factor(auc_data[[extrapolated_column]])
+    
+    # Explicitly map TRUE to open circles (1) and FALSE to filled circles (16)
     p <- p + ggplot2::geom_jitter(
       ggplot2::aes(shape = .data[[extrapolated_column]]),
       position = ggplot2::position_jitter(width = jitter_width, seed = 123),
       size = point_size,
       alpha = 0.8
     ) +
-      ggplot2::scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 1),
-                                name = "Extrapolated")
+      ggplot2::scale_shape_manual(
+        values = c("TRUE" = 1, "FALSE" = 16),
+        name = "Extrapolated",
+        labels = c("TRUE" = "Yes", "FALSE" = "No")
+      )
   } else {
     p <- p + ggplot2::geom_jitter(
       position = ggplot2::position_jitter(width = jitter_width, seed = 123),

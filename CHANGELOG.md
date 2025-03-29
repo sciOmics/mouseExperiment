@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed `tumor_growth_statistics()` to correctly report the number of subjects in summary's data_description by using composite IDs that include cage information
 - Fixed `plot_growth_rate` function to correctly identify and display all mice (8 per group instead of 4) in treatment groups by incorporating cage information
 - Fixed `plot_auc` function to correctly display extrapolated points and ensure mean bars are shown in the correct columns
+- Fixed `plot_auc` function to properly distinguish between extrapolated and non-extrapolated data points by improving shape mapping
 - Changed default value of `show_mean` parameter in `plot_auc` function to TRUE
 - Modified mean display in `plot_auc` to use horizontal bars only (no diamonds)
 
