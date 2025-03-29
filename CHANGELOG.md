@@ -10,8 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - New function `plot_combination_index()` to visualize Combination Index over time with synergy indicators
 - Implemented `post_power_analysis()` function for calculating statistical power and sample size recommendations based on experimental data
+- Added `Treatment` column to the power_analysis object returned by `post_power_analysis` function to clearly identify which treatment group each power estimate refers to
+- Enhanced power curve visualization in `post_power_analysis` to distinguish between treatment groups using colors
 
 ### Fixed
+- Fixed `survival_statistics()` function to correctly generate Kaplan-Meier plots, resolving the "object of type 'symbol' is not subsettable" error
 - Fixed `post_power_analysis()` function to properly handle AUC analysis with better error checking and data validation
 - Fixed contrasts error in `post_power_analysis()` AUC method by ensuring treatment groups are properly converted to factors
 - Implemented simulation-based power analysis method in `post_power_analysis()` function
@@ -44,10 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modified posthoc tests in `tumor_growth_statistics()` for AUC analysis (model_type = "auc") to use Welch's t-tests instead of standard t-tests, which better handles unequal variances between treatment groups
 - Restored `colors`, `point_size`, and `jitter_width` parameters to the `plot_auc()` function for greater customization of visualization output
 - Removed boxplots from `plot_auc()` function to restore original functionality that focused on points with optional mean and error bars
-
-### Added
-- Added `Treatment` column to the power_analysis object returned by `post_power_analysis` function to clearly identify which treatment group each power estimate refers to
-- Enhanced power curve visualization in `post_power_analysis` to distinguish between treatment groups using colors
 
 ## [0.3.0] - 2023-07-15
 

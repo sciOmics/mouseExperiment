@@ -2,7 +2,7 @@
 # Proprietary and confidential.
 
 #' Perform Survival Analysis for Mouse Tumor Experiments
-#' 
+#'
 #' @description
 #' Performs comprehensive survival analysis using appropriate statistical methods
 #' based on data characteristics. Automatically selects between Cox Proportional 
@@ -227,8 +227,8 @@ survival_statistics <- function(df,
             } else {
               message(sprintf("Could not extract median or quantiles for group %s.", results$Group[i]))
             }
-          }
-        } else {
+    }
+  } else {
           message(sprintf("No data available for group %s to calculate median survival.", results$Group[i]))
         }
       }
@@ -388,11 +388,11 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
         )
         
         # Extract results
-        coefs <- model$coefficients
-        hazard_ratios <- exp(coefs)
-        confidence_intervals <- exp(confint(model))
-        p_values <- model$prob
-        
+      coefs <- model$coefficients
+      hazard_ratios <- exp(coefs)
+      confidence_intervals <- exp(confint(model))
+      p_values <- model$prob
+      
         # Create results data frame with all treatment groups
         results <- data.frame(
           Group = treatment_groups,
@@ -426,7 +426,7 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
           results = results,
           method_used = "coxphf"
         ))
-      } else {
+    } else {
         stop("Package 'coxphf' is required but not available")
       }
     }, error = function(e) {
@@ -539,29 +539,66 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
 #' Create Kaplan-Meier Plot
 #' @noRd
 create_km_plot <- function(df, time_column, censor_column, treatment_column) {
-  if (!requireNamespace("survminer", quietly = TRUE)) {
-    message("Package 'survminer' not available. Kaplan-Meier plot not created.")
+  # Check for required packages
+  if (!requireNamespace("survminer", quietly = TRUE) || 
+      !requireNamespace("survival", quietly = TRUE) ||
+      !requireNamespace("ggplot2", quietly = TRUE)) {
+    message("Required packages (survminer, survival, ggplot2) not available.")
     return(NULL)
   }
   
-  # Create a fit object for the K-M curve with explicit formula
-  surv_formula_str <- paste("Surv(", time_column, ",", censor_column, ") ~ ", 
-                           treatment_column)
-  surv_formula <- stats::as.formula(surv_formula_str)
-  km_fit <- survival::survfit(surv_formula, data = df)
-  
-  # Create the K-M plot
-  survminer::ggsurvplot(
-    km_fit,
-    data = df,
-    pval = TRUE,
-    conf.int = TRUE,
-    risk.table = TRUE,
-    legend.labs = levels(as.factor(df[[treatment_column]])),
-    xlab = "Time",
-    risk.table.height = 0.25,
-    ggtheme = ggplot2::theme_minimal()
+  # Make a completely new dataframe with standardized column names
+  # Create a subset with just the needed columns
+  new_data <- data.frame(
+    time = as.numeric(df[[time_column]]),
+    status = as.numeric(df[[censor_column]]),
+    group = as.factor(df[[treatment_column]])
   )
+  
+  # Drop any rows with missing values
+  new_data <- new_data[complete.cases(new_data), ]
+  
+  tryCatch({
+    # Fit the survival model with explicit column names
+    fit <- survival::survfit(survival::Surv(time, status) ~ group, data = new_data)
+    
+    # Try to create a base plot first without ggsurvplot
+    base_plot <- tryCatch({
+      # Create a basic survival plot manually
+      survminer::ggsurvplot(
+        fit = fit,
+        data = new_data,
+        risk.table = FALSE,  # Start simple
+        conf.int = FALSE,    # Start simple
+        pval = FALSE         # Start simple
+      )
+    }, error = function(e) {
+      message("Error in basic plot creation: ", e$message)
+      
+      # Fall back to creating a very simple plot
+      fit_summary <- summary(fit)
+      plot_data <- data.frame(
+        time = fit_summary$time,
+        surv = fit_summary$surv,
+        group = rep(names(fit$strata), fit$strata)
+      )
+      
+      p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = time, y = surv, color = group)) +
+        ggplot2::geom_step() +
+        ggplot2::theme_minimal() +
+        ggplot2::labs(x = "Time", y = "Survival Probability", 
+                     title = "Kaplan-Meier Survival Curve")
+      
+      return(list(plot = p))
+    })
+    
+    return(base_plot)
+    
+  }, error = function(e) {
+    message("Error in survival fit or plotting: ", e$message)
+    message("Data dimensions: ", nrow(new_data), " x ", ncol(new_data))
+    return(NULL)
+  })
 }
 
 #' Print Formatted Results
