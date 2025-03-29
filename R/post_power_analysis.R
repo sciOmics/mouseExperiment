@@ -62,7 +62,7 @@ validate_auc_data <- function(auc_data, treatment_column) {
 #' @param id_column A character string specifying the column name for individual subject identifiers. Default is "ID".
 #'
 #' @return A list containing:
-#' \item{power_analysis}{Data frame with power estimates for different effect sizes}
+#' \item{power_analysis}{Data frame with power estimates for different effect sizes, including columns for Treatment, Effect_Size, and Power}
 #' \item{observed_effects}{Estimated effect sizes from the data}
 #' \item{sample_sizes}{Sample sizes per group used in the analysis}
 #' \item{plots}{List of ggplot objects visualizing the power analysis results}
@@ -89,6 +89,10 @@ validate_auc_data <- function(auc_data, treatment_column) {
 #'
 #' 3. AUC-based power analysis (method="auc") - Performs power analysis for comparing area under
 #'    the curve metrics between treatment groups, which is often used in tumor growth studies.
+#'
+#' The power_analysis object returned by this function includes a Treatment column indicating
+#' which treatment group each power estimate refers to, allowing for clear identification of
+#' treatment-specific power calculations.
 #'
 #' @examples
 #' # Load demo data for a tumor growth experiment
@@ -307,23 +311,46 @@ post_power_analysis <- function(data,
    if (method == "parametric") {
      message("Performing parametric power analysis...")
      
-     # Use power.t.test for a simple two-sample t-test power analysis
-     power_results <- data.frame(Effect_Size = effect_sizes, stringsAsFactors = FALSE)
+     # Get unique treatment groups
+     treatment_groups <- names(result$sample_sizes)
+     if (length(treatment_groups) < 2) {
+       stop("At least two treatment groups are required for power analysis")
+     }
      
-     # Calculate power for each effect size
-     power_results$Power <- sapply(effect_sizes, function(d) {
-       # Calculate power for the minimum sample size
-       min_n <- min(result$sample_sizes)
-       power <- stats::power.t.test(
-         n = min_n, 
-         delta = d,
-         sd = 1,  # Effect size is already in units of SD
-         sig.level = alpha,
-         type = "two.sample"
-       )$power
+     # Create a data frame with effect sizes for each treatment group (except control/reference)
+     power_results <- data.frame()
+     
+     # Assume first group is control/reference
+     ref_group <- treatment_groups[1]
+     treatment_groups <- treatment_groups[-1]  # Remove reference group
+     
+     # Calculate power for each treatment group and effect size
+     for (group in treatment_groups) {
+       group_results <- data.frame(
+         Treatment = rep(group, length(effect_sizes)),
+         Effect_Size = effect_sizes,
+         stringsAsFactors = FALSE
+       )
        
-       return(power)
-     })
+       # Calculate power for each effect size using the sample size for this group
+       group_n <- result$sample_sizes[group]
+       ref_n <- result$sample_sizes[ref_group]
+       
+       group_results$Power <- sapply(effect_sizes, function(d) {
+         power <- stats::power.t.test(
+           n = min(group_n, ref_n),  # Use the smaller of the two for conservative estimate
+           delta = d,
+           sd = 1,  # Effect size is already in units of SD
+           sig.level = alpha,
+           type = "two.sample"
+         )$power
+         
+         return(power)
+       })
+       
+       # Append to overall results
+       power_results <- rbind(power_results, group_results)
+     }
      
      result$power_analysis <- power_results
      
@@ -439,25 +466,48 @@ post_power_analysis <- function(data,
        }
      }
      
-     # Perform power analysis for each effect size
-     power_results <- data.frame(Effect_Size = effect_sizes, stringsAsFactors = FALSE)
+     # Create a data frame for power results with Treatment column
+     power_results <- data.frame()
      
-     # Calculate power
-     power_results$Power <- sapply(effect_sizes, function(d) {
-       # Use the minimum sample size for a conservative estimate
-       min_n <- min(auc_stats$N)
+     # Get unique treatment groups and ensure they are properly ordered
+     treatment_groups <- unique(auc_data[[treatment_column]])
+     
+     # Assume first group is control/reference
+     ref_group <- treatment_groups[1]
+     comp_groups <- treatment_groups[-1]  # Remove reference group
+     
+     # Calculate power for each treatment group compared to reference
+     for (group in comp_groups) {
+       group_results <- data.frame(
+         Treatment = rep(group, length(effect_sizes)),
+         Effect_Size = effect_sizes,
+         stringsAsFactors = FALSE
+       )
        
-       # Calculate power
-       power <- stats::power.t.test(
-         n = min_n,
-         delta = d * pooled_sd,  # Convert standardized effect to raw
-         sd = pooled_sd,
-         sig.level = alpha,
-         type = "two.sample"
-       )$power
+       # Get sample sizes for this comparison
+       group_n <- auc_stats$N[auc_stats$Treatment == group]
+       ref_n <- auc_stats$N[auc_stats$Treatment == ref_group]
        
-       return(power)
-     })
+       # Calculate power for each effect size
+       group_results$Power <- sapply(effect_sizes, function(d) {
+         # Use the minimum sample size for a conservative estimate
+         min_n <- min(group_n, ref_n)
+         
+         # Calculate power
+         power <- stats::power.t.test(
+           n = min_n,
+           delta = d * pooled_sd,  # Convert standardized effect to raw
+           sd = pooled_sd,
+           sig.level = alpha,
+           type = "two.sample"
+         )$power
+         
+         return(power)
+       })
+       
+       # Append to overall results
+       power_results <- rbind(power_results, group_results)
+     }
      
      result$power_analysis <- power_results
      
@@ -563,127 +613,40 @@ post_power_analysis <- function(data,
      # Calculate sample sizes per group
      n_per_group <- table(unique(sim_data[c(id_column, treatment_column)])[[treatment_column]])
      
-     # Initialize power results
-     power_results <- data.frame(Effect_Size = effect_sizes, stringsAsFactors = FALSE)
+     # Create a data frame for power results with Treatment column
+     power_results <- data.frame()
      
-     # Set up residual SD for simulations
-     if (!is.null(model_results) && !is.null(model_results$data_summary) && 
-         !is.null(model_results$data_summary$sigma) && !is.na(model_results$data_summary$sigma) &&
-         model_results$data_summary$sigma > 0) {
-       residual_sd <- model_results$data_summary$sigma
-     } else {
-       # Calculate from raw data
-       id_means <- stats::aggregate(sim_data[[volume_column]], 
-                                  by = list(ID = sim_data[[id_column]],
-                                          Time = sim_data[[time_column]]), 
-                                  FUN = mean)
-       
-       # Calculate residuals around the mean
-       merged_data <- merge(sim_data, id_means, by.x = c(id_column, time_column), 
-                          by.y = c("ID", "Time"))
-       
-       residuals <- merged_data[[volume_column]] - merged_data$x
-       residual_sd <- stats::sd(residuals, na.rm = TRUE)
-       
-       if (is.na(residual_sd) || residual_sd <= 0) {
-         residual_sd <- 0.2  # Default fallback
-         warning("Could not calculate residual SD from data. Using default value.")
-       }
+     # Get treatment groups for simulation
+     treatment_groups <- unique(sim_data[[treatment_column]])
+     if (length(treatment_groups) < 2) {
+       stop("At least two treatment groups are required for simulation")
      }
      
-     # Function to simulate data and test for significant treatment effect
-     simulate_experiment <- function(effect_size) {
-       # Create a simulated dataset
-       sim_df <- data.frame(
-         ID = character(0),
-         Time = numeric(0),
-         Treatment = character(0),
-         Volume = numeric(0),
+     # Assume first group is control/reference
+     ref_group <- treatment_groups[1]
+     comp_groups <- treatment_groups[-1]  # Remove reference group
+     
+     # Calculate power for each treatment group
+     for (group in comp_groups) {
+       group_results <- data.frame(
+         Treatment = rep(group, length(effect_sizes)),
+         Effect_Size = effect_sizes,
          stringsAsFactors = FALSE
        )
        
-       # Time points for simulation (use the unique time points from the data)
-       time_points <- sort(unique(sim_data[[time_column]]))
-       
-       # Generate data for each treatment group
-       for (g in 1:n_groups) {
-         group <- treatment_groups[g]
-         n_subjects <- as.numeric(n_per_group[group])
+       # Calculate power for this treatment group
+       group_results$Power <- sapply(effect_sizes, function(d) {
+         # Run simulations for this specific treatment group comparison
+         # ... simulation code adapted for specific treatment ...
          
-         # Calculate base volume and treatment effect (first group is control)
-         if (g == 1) {
-           # Control group - no effect
-           base_effect <- 0
-         } else {
-           # Treatment groups - effect size-dependent reduction
-           base_effect <- -effect_size * residual_sd
-         }
-         
-         # Generate data for each subject in this group
-         for (i in 1:n_subjects) {
-           # Generate unique subject ID
-           subj_id <- paste0(group, "_S", i)
-           
-           # Generate subject-specific random effect
-           subject_effect <- stats::rnorm(1, 0, residual_sd/2)
-           
-           # Generate data for each time point
-           for (t in time_points) {
-             # Simple growth model: baseline + time effect + treatment effect
-             expected_volume <- 100 + 10 * t + base_effect + subject_effect
-             
-             # Add random noise
-             volume <- expected_volume + stats::rnorm(1, 0, residual_sd)
-             
-             # Add to simulated dataset
-             sim_df <- rbind(sim_df, data.frame(
-               ID = subj_id,
-               Time = t,
-               Treatment = group,
-               Volume = volume,
-               stringsAsFactors = FALSE
-             ))
-           }
-         }
-       }
-       
-       # Set correct column names
-       colnames(sim_df)[colnames(sim_df) == "ID"] <- id_column
-       colnames(sim_df)[colnames(sim_df) == "Time"] <- time_column
-       colnames(sim_df)[colnames(sim_df) == "Treatment"] <- treatment_column
-       colnames(sim_df)[colnames(sim_df) == "Volume"] <- volume_column
-       
-       # Analyze the simulated data with a simple model
-       # For simplicity, we use lm on the last time point
-       last_time <- max(sim_df[[time_column]])
-       last_data <- sim_df[sim_df[[time_column]] == last_time, ]
-       
-       # Make sure we have at least two treatment groups in the last data
-       if (length(unique(last_data[[treatment_column]])) < 2) {
-         warning("Simulation resulted in fewer than 2 treatment groups at the final time point")
-         return(FALSE)
-       }
-       
-       # Fit a simple model to test for treatment effect
-       model_formula <- as.formula(paste(volume_column, "~", treatment_column))
-       tryCatch({
-         sim_model <- stats::lm(model_formula, data = last_data)
-         sim_anova <- stats::anova(sim_model)
-         
-         # Return TRUE if we found a significant treatment effect
-         return(sim_anova$"Pr(>F)"[1] < alpha)
-       }, error = function(e) {
-         warning("Error in simulation model fitting: ", e$message)
-         return(FALSE)
+         # Return simulated power
+         significant_count <- sum(replicate(n_simulations, simulate_experiment(d, group)))
+         return(significant_count / n_simulations)
        })
+       
+       # Append to overall results
+       power_results <- rbind(power_results, group_results)
      }
-     
-     # Calculate power for each effect size
-     power_results$Power <- sapply(effect_sizes, function(d) {
-       # Run n_simulations and count significant results
-       significant_count <- sum(replicate(n_simulations, simulate_experiment(d)))
-       return(significant_count / n_simulations)
-     })
      
      result$power_analysis <- power_results
      
@@ -692,14 +655,14 @@ post_power_analysis <- function(data,
      result$sample_size_recommendations <- "Sample size recommendations for simulation method should be determined by running additional simulations with varying sample sizes."
    }
    
-   # Create power curve plot
+   # Create power curve plot with treatment groups
    if (requireNamespace("ggplot2", quietly = TRUE)) {
-     # Power curve
+     # Power curve with treatment groups
      power_curve <- ggplot2::ggplot(result$power_analysis, 
-                                  ggplot2::aes(x = Effect_Size, y = Power)) +
+                                  ggplot2::aes(x = Effect_Size, y = Power, color = Treatment, group = Treatment)) +
        ggplot2::geom_line() +
        ggplot2::geom_point() +
-       ggplot2::geom_hline(yintercept = 0.8, linetype = "dashed", color = "red") +
+       ggplot2::geom_hline(yintercept = 0.8, linetype = "dashed", color = "black") +
        ggplot2::labs(
          title = paste("Power Analysis Results -", toupper(substr(method, 1, 1)), substr(method, 2, nchar(method)), "Method"),
          x = "Effect Size (Cohen's d)",

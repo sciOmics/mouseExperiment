@@ -45,6 +45,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Restored `colors`, `point_size`, and `jitter_width` parameters to the `plot_auc()` function for greater customization of visualization output
 - Removed boxplots from `plot_auc()` function to restore original functionality that focused on points with optional mean and error bars
 
+### Added
+- Added `Treatment` column to the power_analysis object returned by `post_power_analysis` function to clearly identify which treatment group each power estimate refers to
+- Enhanced power curve visualization in `post_power_analysis` to distinguish between treatment groups using colors
+
 ## [0.3.0] - 2023-07-15
 
 ### Fixed
