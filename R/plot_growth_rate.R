@@ -91,17 +91,32 @@ plot_growth_rate <- function(growth_data,
     }
   }
   
-  # If we have a composite ID (containing cage information), make sure we count each unique mouse
-  if (grepl("_", growth_data$ID[1]) && any(grepl("_", growth_data$ID))) {
-    # Use the composite ID for proper identification of unique mice
-    id_to_use <- "ID"
-  } else if ("Cage" %in% colnames(growth_data) && "ID" %in% colnames(growth_data)) {
-    # Create a composite ID
-    growth_data$composite_id <- paste(growth_data$ID, growth_data$Treatment, growth_data$Cage, sep="_")
-    id_to_use <- "composite_id"
-  } else {
-    # Just use the existing ID
-    id_to_use <- "ID"
+  # Check if we need to create or use composite IDs that include cage information
+  id_column_to_use <- "ID"
+  if ("ID" %in% colnames(growth_data)) {
+    # Case 1: ID column already contains composite IDs with underscores (e.g., "01_Control_1")
+    if (any(grepl("_", growth_data$ID))) {
+      # Keep using the existing ID column as it already contains composite IDs
+      id_column_to_use <- "ID"
+    } 
+    # Case 2: Need to create composite IDs using ID, Treatment, and Cage
+    else if ("Cage" %in% colnames(growth_data)) {
+      # Create composite ID
+      growth_data$composite_id <- paste(growth_data$ID, growth_data$Treatment, growth_data$Cage, sep="_")
+      id_column_to_use <- "composite_id"
+    }
+  }
+  
+  # Check if the source data might have duplicate mice (same ID in different cages)
+  if (id_column_to_use == "composite_id") {
+    # Count unique IDs vs unique composite IDs
+    n_ids <- length(unique(growth_data$ID))
+    n_composite_ids <- length(unique(growth_data$composite_id))
+    
+    if (n_composite_ids > n_ids) {
+      cat("Note: Detected", n_composite_ids, "unique mice when accounting for cage information vs", 
+          n_ids, "when using ID alone.\n")
+    }
   }
   
   # Order groups if specified, otherwise sort by group name for consistency
@@ -148,8 +163,12 @@ plot_growth_rate <- function(growth_data,
   # Set factor levels for consistent ordering
   growth_data$Treatment <- factor(growth_data$Treatment, levels = group_levels)
   
+  # Make a copy of growth_data that has a Subject column for clarity
+  plot_data <- growth_data
+  plot_data$Subject <- if (id_column_to_use == "composite_id") plot_data$composite_id else plot_data$ID
+  
   # Calculate summary statistics for error bars
-  summary_stats <- stats::aggregate(growth_rate ~ Treatment, data = growth_data, 
+  summary_stats <- stats::aggregate(growth_rate ~ Treatment, data = plot_data, 
                                FUN = function(x) {
                                  n <- length(x)
                                  mean_x <- mean(x, na.rm = TRUE)
@@ -168,8 +187,15 @@ plot_growth_rate <- function(growth_data,
                                })
   summary_stats <- do.call(data.frame, summary_stats)
   
+  # Print summary of mice per treatment group
+  cat("Mice per treatment group in plot_growth_rate:\n")
+  for (treatment in levels(plot_data$Treatment)) {
+    n_mice <- length(unique(plot_data$Subject[plot_data$Treatment == treatment]))
+    cat("  ", treatment, ": ", n_mice, " mice\n", sep="")
+  }
+  
   # Create the base plot
-  p <- ggplot2::ggplot(growth_data, ggplot2::aes(x = Treatment, y = growth_rate, color = Treatment))
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Treatment, y = growth_rate, color = Treatment))
   
   # Add points
   p <- p + ggplot2::geom_jitter(width = jitter_width, height = 0, 
