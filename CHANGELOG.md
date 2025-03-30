@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved plotting capabilities for power curves and sample size recommendations
 
 ### Fixed
+- Fixed KM plot in `survival_statistics` function to correctly handle repeated measurements for the same subject, ensuring events are counted only once per subject
 - Fixed `survival_statistics()` function to correctly generate Kaplan-Meier plots, resolving the "object of type 'symbol' is not subsettable" error
 - Fixed `tumor_growth_statistics()` function to correctly mention cage information in the note about composite IDs and to include cage information in the `auc_analysis$individual` data frame
 - Fixed `post_power_analysis()` function to properly handle AUC analysis with better error checking and data validation
