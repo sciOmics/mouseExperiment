@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Fixed `survival_statistics()` function to correctly generate Kaplan-Meier plots, resolving the "object of type 'symbol' is not subsettable" error
+- Fixed `tumor_growth_statistics()` function to correctly mention cage information in the note about composite IDs and to include cage information in the `auc_analysis$individual` data frame
 - Fixed `post_power_analysis()` function to properly handle AUC analysis with better error checking and data validation
 - Fixed contrasts error in `post_power_analysis()` AUC method by ensuring treatment groups are properly converted to factors
 - Implemented simulation-based power analysis method in `post_power_analysis()` function

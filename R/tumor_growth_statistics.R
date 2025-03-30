@@ -499,9 +499,12 @@ tumor_growth_statistics <- function(df,
       id_parts <- strsplit(unique_id, "_")[[1]]
       actual_id <- id_parts[1]
       treatment <- id_parts[2]
-      if (length(id_parts) > 2) {
+      cage <- id_parts[3]
+      
+      if (length(id_parts) > 3) {
         # Handle the case where treatment has underscores (e.g., "Drug_A")
         treatment <- paste(id_parts[2:(length(id_parts)-1)], collapse = "_")
+        cage <- id_parts[length(id_parts)]
       }
       
       subject_data <- auc_df_with_id[composite_id == unique_id, ]
@@ -524,6 +527,7 @@ tumor_growth_statistics <- function(df,
       auc_data <- rbind(auc_data, data.frame(
         ID = actual_id,
         Treatment = treatment,
+        Cage = cage, # Add Cage column to output
         Group = treatment, # Added Group column for compatibility with plot_auc
         AUC = auc_value,
         Last_Day = last_observation_time,
@@ -714,7 +718,7 @@ tumor_growth_statistics <- function(df,
       ),
       notes = c(
         if(transform != "none") paste("Volume data was", transform, "transformed prior to analysis") else "No transformation applied to volume data",
-        "Composite IDs were created by combining subject ID and treatment group to ensure correct AUC values",
+        "Composite IDs were created by combining subject ID, treatment group, and cage information to ensure correct AUC values",
         "Welch's t-tests are used for pairwise comparisons to account for potentially unequal variances between treatment groups"
       )
     )
