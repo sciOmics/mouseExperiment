@@ -99,3 +99,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed extrapolation logic in `tumor_growth_statistics` to properly handle subjects missing data on the last day
 - Extrapolation now correctly identifies the true maximum day of the study and only extrapolates for subjects missing data on that day
 - Fixed issue where some extrapolated subjects had incorrect column structures causing rbind errors
+- Fixed growth rates calculation in `tumor_growth_statistics` to properly account for cage information, ensuring correct identification of mice with the same ID but in different cages

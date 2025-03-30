@@ -290,8 +290,10 @@ tumor_growth_statistics <- function(df,
   
   # Growth rate analysis
   growth_rates <- tryCatch({
-    # Split data by treatment and ID
-    split_data <- split(analysis_df, list(analysis_df[[treatment_column]], analysis_df[[id_column]]))
+    # Split data by treatment, ID, and cage to ensure unique subjects
+    split_data <- split(analysis_df, list(analysis_df[[treatment_column]], 
+                                        analysis_df[[id_column]], 
+                                        analysis_df[[cage_column]]))
     
     # Calculate growth rates for each subject
     growth_rates_list <- lapply(split_data, function(subject_data) {
@@ -306,10 +308,11 @@ tumor_growth_statistics <- function(df,
         model <- stats::lm(log_volume ~ subject_data[[time_column]])
         growth_rate <- stats::coef(model)[2]
         
-        # Return data frame with results
+        # Return data frame with results including cage information
         data.frame(
           Treatment = unique(subject_data[[treatment_column]]),
           ID = unique(subject_data[[id_column]]),
+          Cage = unique(subject_data[[cage_column]]),
           growth_rate = growth_rate
         )
       } else {
