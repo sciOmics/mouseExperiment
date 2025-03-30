@@ -92,3 +92,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Changed posthoc tests for AUC analysis in `tumor_growth_statistics()` to use Welch's t-tests instead of standard t-tests to handle unequal variances
 - Updated `tumor_growth_statistics()` function to include an `Extrapolated` column in AUC analysis results for seamless integration with `plot_auc()`
 - Enhanced `plot_auc()` function to show extrapolated data points as open circles and automatically detect extrapolation status from the data
+
+## [0.3.1] - 2023-11-??
+
+### Fixed
+- Fixed extrapolation logic in `tumor_growth_statistics` to properly handle subjects missing data on the last day
+- Extrapolation now correctly identifies the true maximum day of the study and only extrapolates for subjects missing data on that day
+- Fixed issue where some extrapolated subjects had incorrect column structures causing rbind errors
