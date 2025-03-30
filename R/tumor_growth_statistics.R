@@ -183,45 +183,93 @@ tumor_growth_statistics <- function(df,
   
   # Extrapolate data points if requested
   if (extrapolation_points > 0) {
-    if (verbose) cat("Extrapolating", extrapolation_points, "points for each subject\n")
+    if (verbose) cat("Extrapolating points for subjects with missing data at the last timepoint\n")
     
-    # Split data by subject
-    df_split <- split(df, list(df[[id_column]], df[[treatment_column]]))
+    # Find the true maximum day across all subjects (global maximum day of the study)
+    true_max_day <- max(df[[time_column]], na.rm = TRUE)
+    if (verbose) cat("True maximum day of the study:", true_max_day, "\n")
     
-    # Function to extrapolate for one subject
-    extrapolate_subject <- function(subject_data) {
-      if (nrow(subject_data) < 2) return(subject_data)  # Need at least 2 points for extrapolation
-      
-      # Fit linear model to last 3 points (or all points if less than 3)
-      n_points <- min(3, nrow(subject_data))
-      last_points <- tail(subject_data, n_points)
-      lm_fit <- stats::lm(paste(volume_column, "~", time_column), data = last_points)
-      
-      # Create new time points for extrapolation
-      last_time <- max(subject_data[[time_column]])
-      new_times <- seq(from = last_time + diff(range(subject_data[[time_column]])) / nrow(subject_data),
-                      length.out = extrapolation_points,
-                      by = diff(range(subject_data[[time_column]])) / nrow(subject_data))
-      
-      # Create data frame for prediction
-      new_data <- data.frame(time = new_times)
-      names(new_data) <- time_column
-      
-      # Predict new volumes and ensure they're non-negative
-      new_volumes <- pmax(0, stats::predict(lm_fit, newdata = new_data))
-      
-      # Create new rows
-      new_rows <- subject_data[1:extrapolation_points, ]
-      new_rows[[time_column]] <- new_times
-      new_rows[[volume_column]] <- new_volumes
-      
-      # Combine original and extrapolated data
-      rbind(subject_data, new_rows)
+    # Make sure all data has the Extrapolated column
+    if (!"Extrapolated" %in% colnames(df)) {
+      df$Extrapolated <- FALSE
     }
     
-    # Apply extrapolation to each subject
-    df_extrapolated <- do.call(rbind, lapply(df_split, extrapolate_subject))
-    df <- df_extrapolated[order(df_extrapolated[[time_column]]), ]
+    # Create a list to store results for each subject
+    subjects_with_extrapolation <- list()
+    
+    # Process each unique subject
+    unique_subjects <- unique(paste(df[[id_column]], df[[treatment_column]], df[[cage_column]], sep="__"))
+    
+    for (subject_id in unique_subjects) {
+      # Parse the composite ID
+      id_parts <- strsplit(subject_id, "__")[[1]]
+      id <- id_parts[1]
+      treatment <- id_parts[2]
+      cage <- id_parts[3]
+      
+      # Get data for this subject
+      subject_data <- df[df[[id_column]] == id & 
+                        df[[treatment_column]] == treatment & 
+                        df[[cage_column]] == cage, ]
+      
+      # Get the max day for this subject
+      max_subj_day <- max(subject_data[[time_column]])
+      
+      # Only extrapolate if the subject doesn't have data on the true max day
+      if (max_subj_day < true_max_day) {
+        # Need at least 2 points for extrapolation
+        if (nrow(subject_data) >= 2) {
+          # Use the last 3 points (or all if less than 3) to fit a linear model
+          n_points <- min(3, nrow(subject_data))
+          subject_data <- subject_data[order(subject_data[[time_column]]), ]
+          last_points <- tail(subject_data, n_points)
+          
+          # Try to fit model
+          tryCatch({
+            lm_fit <- stats::lm(paste(volume_column, "~", time_column), data = last_points)
+            
+            # Predict at true_max_day
+            new_data <- data.frame(time = true_max_day)
+            names(new_data) <- time_column
+            predicted_volume <- max(0, as.numeric(predict(lm_fit, newdata = new_data)))
+            
+            # Create a new row for the extrapolated point
+            new_row <- subject_data[1, ]
+            new_row[[time_column]] <- true_max_day
+            new_row[[volume_column]] <- predicted_volume
+            new_row$Extrapolated <- TRUE
+            
+            # Add the new extrapolated point to the subject data
+            subject_data <- rbind(subject_data, new_row)
+            
+            if (verbose) {
+              cat("Extrapolated subject", id, "from day", max_subj_day, "to day", true_max_day, "\n")
+            }
+          }, error = function(e) {
+            if (verbose) {
+              cat("Failed to extrapolate subject", id, ":", conditionMessage(e), "\n")
+            }
+          })
+        }
+      }
+      
+      # Store the processed subject data
+      subjects_with_extrapolation[[subject_id]] <- subject_data
+    }
+    
+    # Combine all subject data
+    df <- do.call(rbind, subjects_with_extrapolation)
+    
+    # Count extrapolated subjects for verbose output
+    if (verbose) {
+      extrapolated_subjects <- unique(df$Extrapolated[df$Extrapolated])
+      n_extrapolated <- length(extrapolated_subjects)
+      if (n_extrapolated > 0) {
+        cat("Successfully extrapolated", n_extrapolated, "subjects to day", true_max_day, "\n")
+      } else {
+        cat("No subjects needed or qualified for extrapolation to day", true_max_day, "\n")
+      }
+    }
   }
   
   # Create a copy of the data for analysis
@@ -513,27 +561,40 @@ tumor_growth_statistics <- function(df,
       # Calculate AUC using trapezoidal method
       auc_value <- calculate_auc(subject_data[[time_column]], subject_data[[volume_column]])
       
-      # Determine if extrapolation would be needed for this subject
-      # (based on whether their last observation is at the max experiment time)
-      last_observation_time <- max(subject_data[[time_column]])
-      is_extrapolated <- (last_observation_time < max_experiment_time)
+      # Check if this subject's data contains any extrapolated points
+      has_extrapolated <- FALSE
+      if ("Extrapolated" %in% colnames(subject_data)) {
+        has_extrapolated <- any(subject_data$Extrapolated, na.rm = TRUE)
+      }
       
-      # If extrapolation_points > 0, check if this subject would use extrapolation
-      # based on available points and the max experiment time
-      n_points <- nrow(subject_data)
-      can_extrapolate <- (n_points >= 2) && is_extrapolated && (extrapolation_points > 0)
+      # Get the true last observation time (excluding extrapolated points)
+      if (has_extrapolated && any(subject_data$Extrapolated, na.rm = TRUE)) {
+        # If there are extrapolated points, get the max day from non-extrapolated points
+        non_extrapolated_data <- subject_data[!subject_data$Extrapolated, ]
+        true_last_observation <- max(non_extrapolated_data[[time_column]])
+      } else {
+        # If no extrapolated points, just use the max day
+        true_last_observation <- max(subject_data[[time_column]])
+      }
+      
+      # Make sure we have NumPoints data
+      if (!"Extrapolated" %in% colnames(subject_data)) {
+        n_points <- nrow(subject_data)
+      } else {
+        n_points <- nrow(subject_data[!subject_data$Extrapolated, ])
+      }
       
       # Add to results
       auc_data <- rbind(auc_data, data.frame(
         ID = actual_id,
         Treatment = treatment,
-        Cage = cage, # Add Cage column to output
+        Cage = cage,
         Group = treatment, # Added Group column for compatibility with plot_auc
         AUC = auc_value,
-        Last_Day = last_observation_time,
+        Last_Day = true_last_observation,
         First_Day = min(subject_data[[time_column]]),
-        Extrapolated = can_extrapolate && (extrapolation_points > 0),
-        NumPoints = n_points
+        Extrapolated = has_extrapolated,
+        NumPoints = n_points # Count only non-extrapolated points
       ))
     }
     
