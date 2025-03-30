@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Implemented `post_power_analysis()` function for calculating statistical power and sample size recommendations based on experimental data
 - Added `Treatment` column to the power_analysis object returned by `post_power_analysis` function to clearly identify which treatment group each power estimate refers to
 - Enhanced power curve visualization in `post_power_analysis` to distinguish between treatment groups using colors
+- Enhanced `post_power_analysis` function to provide more structured output:
+  - Added `effect_sizes` object with detailed effect size calculations
+  - Added `post_power_analysis` object with comprehensive power analysis results
+  - Added `sample_size_estimates` object with recommendations for different power levels
+  - Added support for custom alpha levels and power targets
+  - Improved plotting capabilities for power curves and sample size recommendations
 
 ### Fixed
 - Fixed `survival_statistics()` function to correctly generate Kaplan-Meier plots, resolving the "object of type 'symbol' is not subsettable" error
@@ -38,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed `plot_auc` function to properly distinguish between extrapolated and non-extrapolated data points by improving shape mapping
 - Changed default value of `show_mean` parameter in `plot_auc` function to TRUE
 - Modified mean display in `plot_auc` to use horizontal bars only (no diamonds)
+- Fixed growth rates calculation in `tumor_growth_statistics` function to properly account for cage information
+- Fixed extrapolation logic in `tumor_growth_statistics` function to correctly handle subjects missing data on the last day
 
 ### Changed
 - Renamed `forest_plot()` function to `plot_forest()` for more consistent function naming throughout the package
