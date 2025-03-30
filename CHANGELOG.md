@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed extrapolation logic in `tumor_growth_statistics` function to correctly handle subjects missing data on the last day
 
 ### Changed
+- Removed the default caption "Open circles represent extrapolated values" from the `plot_auc` function
 - Renamed `forest_plot()` function to `plot_forest()` for more consistent function naming throughout the package
 - Removed `forest_plot` object from `survival_statistics()` output as this functionality is now handled by the separate `plot_forest()` function
 - Moved `plot_forest()` function (previously `forest_plot()`) from `plot_caterpillar.R` to its own file `plot_forest.R` for better code organization

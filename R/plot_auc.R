@@ -128,11 +128,6 @@ plot_auc <- function(auc_data,
     if (!is.logical(auc_data[[extrapolated_column]])) {
       auc_data[[extrapolated_column]] <- as.logical(auc_data[[extrapolated_column]])
     }
-    
-    # Add caption about extrapolated points if one was not provided
-    if (is.null(caption)) {
-      caption <- "Open circles represent extrapolated values"
-    }
   }
   
   # Create the base plot
