@@ -23,7 +23,6 @@
 #' \describe{
 #'   \item{model}{The fitted statistical model object}
 #'   \item{results}{Data frame with hazard ratios, confidence intervals, p-values, and median survival times}
-#'   \item{km_plot}{A Kaplan-Meier survival curve plot}
 #'   \item{reference_group}{The treatment group used as reference}
 #'   \item{method_used}{The statistical method used ("cox", "coxphf", or "logrank")}
 #' }
@@ -56,12 +55,6 @@
 #' median_surv <- results$results$Median_Survival
 #' names(median_surv) <- results$results$Group
 #' print(median_surv)
-#'
-#' # Display visualizations
-#' print(results$km_plot)      # Kaplan-Meier survival curves
-#' 
-#' # Create a forest plot from the results
-#' plot_forest(results$results) # Forest plot of hazard ratios
 #'
 #' @export
 survival_statistics <- function(df,
@@ -231,8 +224,8 @@ survival_statistics <- function(df,
             } else {
               message(sprintf("Could not extract median or quantiles for group %s.", results$Group[i]))
             }
-    }
-  } else {
+          }
+        } else {
           message(sprintf("No data available for group %s to calculate median survival.", results$Group[i]))
         }
       }
@@ -261,25 +254,6 @@ survival_statistics <- function(df,
   if (!is.null(model)) {
     result_list$model <- model
   }
-  
-  # Create visualizations
-  tryCatch({
-    # Only create KM plot if the survminer package is available
-    if (requireNamespace("survminer", quietly = TRUE)) {
-      km_plot <- tryCatch({
-        create_km_plot(df, time_column, censor_column, treatment_column, id_column)
-      }, error = function(e) {
-        message("Error creating Kaplan-Meier plot: ", e$message)
-        NULL
-      })
-      
-      if (!is.null(km_plot)) {
-        result_list$km_plot <- km_plot
-      }
-    }
-  }, error = function(e) {
-    message("Error in visualization: ", e$message)
-  })
   
   return(result_list)
 }
@@ -538,93 +512,6 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     results = results,
     method_used = method_used
   ))
-}
-
-#' Create Kaplan-Meier Plot
-#' @noRd
-create_km_plot <- function(df, time_column, censor_column, treatment_column, id_column = "ID") {
-  # Check for required packages
-  if (!requireNamespace("survminer", quietly = TRUE) || 
-      !requireNamespace("survival", quietly = TRUE) ||
-      !requireNamespace("ggplot2", quietly = TRUE)) {
-    message("Required packages (survminer, survival, ggplot2) not available.")
-    return(NULL)
-  }
-  
-  # Make a completely new dataframe with one row per subject
-  # First, get unique subjects
-  subjects <- unique(df[[id_column]])
-  
-  # Create a dataframe to hold subject-level data
-  subject_data <- data.frame(
-    id = character(length(subjects)),
-    time = numeric(length(subjects)),
-    status = numeric(length(subjects)),
-    group = character(length(subjects)),
-    stringsAsFactors = FALSE
-  )
-  
-  # For each subject, get their last observation and event status
-  for (i in seq_along(subjects)) {
-    id <- subjects[i]
-    subject_rows <- df[df[[id_column]] == id, ]
-    
-    # Sort by time to get the last observation
-    subject_rows <- subject_rows[order(subject_rows[[time_column]], decreasing = TRUE), ]
-    
-    # Check if subject had an event (if any row has an event, consider it an event)
-    had_event <- any(subject_rows[[censor_column]] == 1)
-    
-    # Add to subject_data
-    subject_data$id[i] <- id
-    subject_data$time[i] <- subject_rows[[time_column]][1] # Last observation
-    subject_data$status[i] <- ifelse(had_event, 1, 0)
-    subject_data$group[i] <- subject_rows[[treatment_column]][1]
-  }
-  
-  # Convert group to factor
-  subject_data$group <- factor(subject_data$group)
-  
-  tryCatch({
-    # Fit the survival model with explicit column names
-    fit <- survival::survfit(survival::Surv(time, status) ~ group, data = subject_data)
-    
-    # Create a plot using ggsurvplot
-    base_plot <- tryCatch({
-      survminer::ggsurvplot(
-        fit = fit,
-        data = subject_data,
-        risk.table = TRUE,
-        conf.int = TRUE,
-        pval = TRUE
-      )
-    }, error = function(e) {
-      message("Error in creating plot with ggsurvplot: ", e$message)
-      
-      # Fall back to creating a very simple plot
-      fit_summary <- summary(fit)
-      plot_data <- data.frame(
-        time = fit_summary$time,
-        surv = fit_summary$surv,
-        group = rep(names(fit$strata), fit$strata)
-      )
-      
-      p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = time, y = surv, color = group)) +
-        ggplot2::geom_step() +
-        ggplot2::theme_minimal() +
-        ggplot2::labs(x = "Time", y = "Survival Probability", 
-                      title = "Kaplan-Meier Survival Curve")
-      
-      return(list(plot = p))
-    })
-    
-    return(base_plot)
-    
-  }, error = function(e) {
-    message("Error in survival fit or plotting: ", e$message)
-    message("Data dimensions: ", nrow(subject_data), " x ", ncol(subject_data))
-    return(NULL)
-  })
 }
 
 #' Print Formatted Results

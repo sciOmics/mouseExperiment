@@ -9,159 +9,167 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
-  fig.width = 8,
-  fig.height = 6
+  fig.width = 7,
+  fig.height = 5
 )
 ```
 
 # Introduction
 
-The `mouseExperiment` package provides a comprehensive suite of tools for analyzing mouse tumor growth experiments. This vignette demonstrates the main functionality of the package, including:
+The `mouseExperiment` package provides a comprehensive set of tools for analyzing mouse tumor growth experiments. It includes functions for:
 
-- Tumor growth analysis using mixed-effects models
-- Survival analysis with Kaplan-Meier curves
-- Synergy analysis for combination treatments
-- Visualization tools for various analyses
+* Calculating tumor volumes
+* Analyzing growth rates
+* Generating summary statistics
+* Performing survival analysis
+* Assessing treatment synergy
+* Visualizing results
 
 # Installation
 
-```{r install, eval=FALSE}
-# Install from CRAN
-install.packages("mouseExperiment")
+You can install the `mouseExperiment` package from GitHub:
 
-# Or install the development version from GitHub
-# devtools::install_github("yourusername/mouseExperiment")
+```{r install, eval = FALSE}
+# Install devtools if not already installed
+if (!requireNamespace("devtools", quietly = TRUE)) {
+  install.packages("devtools")
+}
+
+# Install mouseExperiment from GitHub
+devtools::install_github("yourusername/mouseExperiment")
 ```
 
-# Loading the Package
+# Getting Started
 
-```{r load}
+## Loading the Package
+
+```{r library}
 library(mouseExperiment)
+```
+
+## Available Datasets
+
+The package includes synthetic datasets for demonstration:
+
+```{r datasets}
+data(combo_treatment_synthetic_data)
+data(survival_synthetic_data)
+data(single_treatment_synthetic_data)
+```
+
+# Basic Analysis
+
+## Volume Calculation
+
+The `calculate_volume` function converts tumor measurements to volume:
+
+```{r volume}
+# Calculate volume from dimensions
+data_with_volume <- calculate_volume(
+  df = combo_treatment_synthetic_data,
+  length_column = "Length",
+  width_column = "Width"
+)
+
+# View the first few rows
+head(data_with_volume)
+```
+
+## Date Calculation
+
+The `calculate_dates` function converts study days to actual dates:
+
+```{r dates}
+# Calculate dates from days
+data_with_dates <- calculate_dates(
+  df = data_with_volume,
+  start_date = "01/15/2023"
+)
+
+# View the first few rows
+head(data_with_dates)
 ```
 
 # Tumor Growth Analysis
 
-## Basic Usage
+## Statistical Analysis
 
-The `tumor_growth_statistics()` function analyzes tumor growth data using either linear mixed-effects models (lme4) or area under the curve (AUC) analysis.
+The `tumor_growth_statistics` function analyzes tumor growth:
 
-```{r tumor_growth}
-# Load example data
-data(combo_treatment_synthetic_data)
-
-# Analyze tumor growth using mixed-effects model
+```{r growth_stats}
+# Perform statistical analysis
 results <- tumor_growth_statistics(
-  data = combo_treatment_synthetic_data,
+  df = data_with_volume,
   time_column = "Day",
   volume_column = "Volume",
-  id_column = "Mouse_ID",
   treatment_column = "Treatment",
-  cage_column = "Cage",
-  model_type = "lme4"
+  id_column = "Mouse_ID",
+  cage_column = "Cage"
 )
 
-# Print summary of results
-print_results(results)
+# View summary statistics
+print(results$summary)
 ```
 
-## Visualizing Growth Rates
+## Growth Rate Visualization
 
-The `plot_growth_rate()` function creates visualizations of tumor growth rates:
+The `plot_growth_rate` function visualizes tumor growth rates:
 
-```{r plot_growth}
+```{r growth_rate_plot}
 # Create growth rate plot
 p <- plot_growth_rate(
   results$growth_rates,
   treatment_column = "Treatment",
   growth_rate_column = "growth_rate",
-  title = "Tumor Growth Rates by Treatment",
-  ylab = "Growth Rate (mm³/day)"
+  title = "Tumor Growth Rate by Treatment"
 )
 print(p)
 ```
 
-## Area Under the Curve Analysis
+## AUC Analysis
 
-You can also analyze tumor growth using AUC:
+The `tumor_auc_analysis` function calculates the area under the curve:
 
-```{r auc_analysis}
-# Perform AUC analysis
-auc_results <- tumor_growth_statistics(
-  data = combo_treatment_synthetic_data,
+```{r auc}
+# Calculate AUC
+auc_results <- tumor_auc_analysis(
+  df = data_with_volume,
   time_column = "Day",
   volume_column = "Volume",
-  id_column = "Mouse_ID",
   treatment_column = "Treatment",
-  cage_column = "Cage",
-  model_type = "auc"
+  id_column = "Mouse_ID"
 )
 
-# Visualize AUC results
+# Visualize AUC
 p_auc <- plot_auc(
   auc_results$auc_data,
-  group_column = "Treatment",
+  treatment_column = "Treatment",
   auc_column = "AUC",
-  title = "Area Under the Curve by Treatment",
-  ylab = "AUC (mm³·days)"
+  title = "Area Under the Curve by Treatment"
 )
 print(p_auc)
 ```
 
 # Survival Analysis
 
-## Basic Usage
-
-The `survival_statistics()` function performs survival analysis:
+The `survival_statistics` function performs survival analysis:
 
 ```{r survival}
-# Load example survival data
-data(survival_synthetic_data)
-
 # Perform survival analysis
 surv_results <- survival_statistics(
-  data = survival_synthetic_data,
+  df = survival_synthetic_data,
   time_column = "Time",
-  event_column = "Event",
+  censor_column = "Event",
   treatment_column = "Treatment",
   id_column = "Mouse_ID"
 )
 
 # Print summary
 print_results(surv_results)
-```
-
-## Visualizing Survival Curves
-
-The `plot_survival()` function creates Kaplan-Meier survival curves:
-
-```{r plot_survival}
-# Create survival plot
-p_surv <- plot_survival(
-  surv_results$survival_data,
-  time_column = "Time",
-  event_column = "Event",
-  treatment_column = "Treatment",
-  title = "Survival Curves by Treatment",
-  risk_table = TRUE
-)
-print(p_surv)
-```
-
-## Forest Plot
-
-The `forest_plot()` function visualizes hazard ratios:
-
-```{r forest_plot}
-# Create forest plot
-p_forest <- forest_plot(
-  surv_results$summary,
-  title = "Hazard Ratios by Treatment"
-)
-print(p_forest)
 ```
 
 # Synergy Analysis
@@ -245,7 +253,6 @@ write.csv(results$summary, "tumor_growth_summary.csv", row.names = FALSE)
 
 # Save plots
 ggsave("growth_rate_plot.pdf", p, width = 10, height = 6)
-ggsave("survival_plot.pdf", p_surv, width = 10, height = 6)
 ```
 
 # Conclusion

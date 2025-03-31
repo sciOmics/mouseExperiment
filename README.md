@@ -112,8 +112,6 @@ browseVignettes("mouseExperiment")
 
 ### Survival Analysis
 - `survival_statistics()`: Perform survival analysis
-- `plot_survival()`: Create Kaplan-Meier survival curves
-- `forest_plot()`: Visualize hazard ratios
 - `print_results()`: Print formatted results
 
 ### Synergy Analysis
@@ -129,6 +127,27 @@ The package includes several synthetic datasets for testing and demonstration:
 - `combo_treatment_synthetic_data`: Tumor growth data with combination treatments
 - `survival_synthetic_data`: Survival data with multiple treatment groups
 - `single_treatment_synthetic_data`: Tumor growth data with single treatments
+
+## Example
+
+```r
+# Analyze tumor growth data
+results <- tumor_growth_statistics(data = tumor_data)
+print(results$summary)
+plot_growth_rate(results$growth_rates)
+
+# Calculate Area Under the Curve
+auc_results <- tumor_auc_analysis(data = tumor_data)
+plot_auc(auc_results$auc_data)
+
+# Perform survival analysis
+surv_results <- survival_statistics(data = survival_data)
+print(surv_results$results)
+
+# Calculate Bliss synergy
+synergy_results <- bliss_independence(data = combo_data)
+plot_bliss(synergy_results)
+```
 
 ## Contributing
 
