@@ -165,18 +165,22 @@ survival_statistics <- function(df,
   
   # Add Events and Total columns
   # Improved approach to count unique subjects and their events per treatment group
-  # First, find the unique subjects (usually ID) in each treatment group
-  subject_treatment <- unique(df[, c(id_column, treatment_column)])
+  # First, find the unique subjects (including cage information) in each treatment group
+  subject_treatment <- unique(df[, c(id_column, treatment_column, cage_column)])
   total_counts <- table(subject_treatment[[treatment_column]])
   
   # Next, find subjects with events
   # We need to handle possible duplicates in the data (multiple rows per subject)
   # For each subject, if any row has an event, count it as an event
-  event_data <- df[, c(id_column, treatment_column, censor_column)]
+  event_data <- df[, c(id_column, treatment_column, censor_column, cage_column)]
   # Aggregate to get maximum event per subject (1 if any event occurred, 0 otherwise)
   event_by_subject <- stats::aggregate(
     event_data[[censor_column]], 
-    by = list(ID = event_data[[id_column]], Treatment = event_data[[treatment_column]]), 
+    by = list(
+      ID = event_data[[id_column]], 
+      Treatment = event_data[[treatment_column]],
+      Cage = event_data[[cage_column]]
+    ), 
     FUN = max
   )
   
