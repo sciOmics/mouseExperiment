@@ -269,9 +269,6 @@ post_power_analysis <- function(data,
        # For AUC method, estimate effect sizes from AUC differences
        auc_summary <- model_results$auc_analysis$summary
        
-       # Map column names for backwards compatibility
-       auc_summary <- rename_auc_columns(auc_summary)
-       
        # Make sure we have at least 2 groups in the summary
        if (nrow(auc_summary) < 2) {
          message("Not enough treatment groups in AUC summary. Using default effect sizes.")
@@ -280,18 +277,18 @@ post_power_analysis <- function(data,
          # Calculate standardized effect sizes (Cohen's d)
          # Find the control/reference group (assume first group is reference)
          ref_group <- auc_summary[[treatment_column]][1]
-         ref_mean <- auc_summary$Mean_AUC[1]
+         ref_mean <- auc_summary$AUC.Mean[1]
          
          # Calculate pooled SD 
-         if ("SD_AUC" %in% colnames(auc_summary) && sum(!is.na(auc_summary$SD_AUC)) > 0) {
-           pooled_sd <- mean(auc_summary$SD_AUC, na.rm = TRUE)
+         if ("AUC.SD" %in% colnames(auc_summary) && sum(!is.na(auc_summary$AUC.SD)) > 0) {
+           pooled_sd <- mean(auc_summary$AUC.SD, na.rm = TRUE)
            
            # Calculate effect sizes if pooled_sd is valid
            if (!is.na(pooled_sd) && pooled_sd > 0) {
              # For each treatment group (except reference)
              for (i in 2:nrow(auc_summary)) {
                treatment <- auc_summary[[treatment_column]][i]
-               mean_diff <- auc_summary$Mean_AUC[i] - ref_mean
+               mean_diff <- auc_summary$AUC.Mean[i] - ref_mean
                std_effect <- mean_diff / pooled_sd
                
                # Add to effect sizes data frame
@@ -320,7 +317,7 @@ post_power_analysis <- function(data,
              default_effect_sizes <- c(0.2, 0.5, 0.8, 1.0, 1.5)
            }
          } else {
-           message("SD_AUC not found in summary. Using default effect sizes.")
+           message("AUC.SD not found in summary. Using default effect sizes.")
            default_effect_sizes <- c(0.2, 0.5, 0.8, 1.0, 1.5)
          }
        }
@@ -724,54 +721,62 @@ post_power_analysis <- function(data,
    # ----- CREATE PLOTS -----
    
    # Create power curve plot with treatment groups
-   if (requireNamespace("ggplot2", quietly = TRUE)) {
-     # Get a subset of power_results for the default alpha (usually 0.05)
-     if (0.05 %in% alpha) {
-       default_alpha <- 0.05
-     } else {
-       default_alpha <- alpha[1]
-     }
+   if (nrow(power_results) > 0) {
+     # Create a unique identifier for each comparison
+     power_results$Comparison <- paste(power_results$Treatment, "vs", power_results$Reference)
      
-     plot_data <- power_results[power_results$Alpha == default_alpha, ]
-     
-     # Power curve with treatment groups
-     power_curve <- ggplot2::ggplot(plot_data, 
-                                  ggplot2::aes(x = Effect_Size, y = Power, color = Treatment, group = Treatment)) +
+     # Create power curve plot
+     p <- ggplot2::ggplot(power_results, ggplot2::aes(x = Effect_Size, y = Power, color = Comparison)) +
        ggplot2::geom_line() +
        ggplot2::geom_point() +
-       ggplot2::geom_hline(yintercept = 0.8, linetype = "dashed", color = "black") +
+       ggplot2::facet_wrap(~Alpha, labeller = ggplot2::label_bquote(alpha == .(Alpha))) +
+       ggplot2::scale_color_discrete(name = "Treatment Comparison") +
        ggplot2::labs(
-         title = paste("Power Analysis Results (α =", default_alpha, ") -", toupper(substr(method, 1, 1)), substr(method, 2, nchar(method)), "Method"),
-         x = "Effect Size (Cohen's d)",
-         y = "Statistical Power"
+         title = "Power Curves for Different Treatment Comparisons",
+         x = "Effect Size",
+         y = "Power",
+         color = "Treatment Comparison"
        ) +
-       ggplot2::theme_classic() +
-       ggplot2::scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2))
+       ggplot2::theme_minimal() +
+       ggplot2::theme(
+         legend.position = "bottom",
+         legend.box = "vertical",
+         legend.margin = ggplot2::margin()
+       )
      
-     # Create sample size recommendation plot
-     if (nrow(sample_size_df) > 0 && !all(is.na(sample_size_df$Sample_Size))) {
-       # Get a subset for plotting (for clarity)
-       if (0.05 %in% alpha && 0.8 %in% power) {
-         plot_ss_data <- sample_size_df[sample_size_df$Alpha == 0.05 & sample_size_df$Target_Power == 0.8, ]
-       } else {
-         plot_ss_data <- sample_size_df[sample_size_df$Alpha == alpha[1] & sample_size_df$Target_Power == power[1], ]
-       }
-       
-       sample_size_plot <- ggplot2::ggplot(plot_ss_data, 
-                                         ggplot2::aes(x = Effect_Size, y = Sample_Size, color = Treatment, group = Treatment)) +
-         ggplot2::geom_line() +
-         ggplot2::geom_point() +
-         ggplot2::labs(
-           title = paste("Sample Size Recommendations (α =", plot_ss_data$Alpha[1], ", Power =", plot_ss_data$Target_Power[1], ")"),
-           x = "Effect Size (Cohen's d)",
-           y = "Required Sample Size per Group"
-         ) +
-         ggplot2::theme_classic()
-       
-       result$plots <- list(power_curve = power_curve, sample_size_plot = sample_size_plot)
-     } else {
-       result$plots <- list(power_curve = power_curve)
-     }
+     # Add horizontal line at 0.8 power
+     p <- p + ggplot2::geom_hline(yintercept = 0.8, linetype = "dashed", color = "gray50")
+     
+     # Store plot
+     result$plots$power_curves <- p
+   }
+   
+   # Create sample size plot
+   if (nrow(sample_size_df) > 0) {
+     # Create a unique identifier for each comparison
+     sample_size_df$Comparison <- paste(sample_size_df$Treatment, "vs", sample_size_df$Reference)
+     
+     # Create sample size plot
+     p <- ggplot2::ggplot(sample_size_df, ggplot2::aes(x = Effect_Size, y = Sample_Size, color = Comparison)) +
+       ggplot2::geom_line() +
+       ggplot2::geom_point() +
+       ggplot2::facet_wrap(~Target_Power, labeller = ggplot2::label_bquote("Target Power" == .(Target_Power))) +
+       ggplot2::scale_color_discrete(name = "Treatment Comparison") +
+       ggplot2::labs(
+         title = "Required Sample Size for Different Treatment Comparisons",
+         x = "Effect Size",
+         y = "Sample Size per Group",
+         color = "Treatment Comparison"
+       ) +
+       ggplot2::theme_minimal() +
+       ggplot2::theme(
+         legend.position = "bottom",
+         legend.box = "vertical",
+         legend.margin = ggplot2::margin()
+       )
+     
+     # Store plot
+     result$plots$sample_size_curves <- p
    }
    
    # ----- RETURN RESULTS -----
@@ -882,25 +887,4 @@ calculate_auc_values <- function(data, time_column, volume_column, treatment_col
     message("Error calculating AUC: ", e$message)
     return(NULL)
   })
-}
-
-#' Rename AUC Summary Columns for Compatibility
-#' @noRd
-rename_auc_columns <- function(auc_summary) {
-  # Map old column names to new ones
-  column_mapping <- c(
-    "AUC.Mean" = "Mean_AUC",
-    "AUC.SD" = "SD_AUC",
-    "AUC.N" = "N",
-    "AUC.SEM" = "SEM_AUC"
-  )
-  
-  # Rename columns if they exist
-  for (old_name in names(column_mapping)) {
-    if (old_name %in% colnames(auc_summary)) {
-      colnames(auc_summary)[colnames(auc_summary) == old_name] <- column_mapping[old_name]
-    }
-  }
-  
-  return(auc_summary)
 }
