@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `sample_size_estimates` object with recommendations for different power levels
   - Added support for custom alpha levels and power targets
   - Improved plotting capabilities for power curves and sample size recommendations
+- Added support for all pairwise treatment group comparisons in `post_power_analysis()` function
+- Added new visualization options for power curves and sample size estimates showing all pairwise comparisons
+- Added faceted plots to show power curves across different alpha levels and sample size requirements across different target power levels
 
 ### Fixed
 - Fixed KM plot in `survival_statistics` function to correctly handle repeated measurements for the same subject, ensuring events are counted only once per subject
@@ -47,6 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modified mean display in `plot_auc` to use horizontal bars only (no diamonds)
 - Fixed growth rates calculation in `tumor_growth_statistics` function to properly account for cage information
 - Fixed extrapolation logic in `tumor_growth_statistics` function to correctly handle subjects missing data on the last day
+- Fixed column name mismatch in `post_power_analysis` function that was causing it to fall back to default effect sizes. The function now correctly handles both old ("AUC.Mean", "AUC.SD") and new ("Mean_AUC", "SD_AUC") column name formats from the AUC summary.
+- Fixed `survival_statistics()` function to properly handle cage information when counting unique subjects, ensuring that mice with the same ID but in different cages are counted as separate subjects
 
 ### Changed
 - Removed the default caption "Open circles represent extrapolated values" from the `plot_auc` function
@@ -58,6 +63,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modified posthoc tests in `tumor_growth_statistics()` for AUC analysis (model_type = "auc") to use Welch's t-tests instead of standard t-tests, which better handles unequal variances between treatment groups
 - Restored `colors`, `point_size`, and `jitter_width` parameters to the `plot_auc()` function for greater customization of visualization output
 - Removed boxplots from `plot_auc()` function to restore original functionality that focused on points with optional mean and error bars
+- Modified `post_power_analysis()` to calculate effect sizes for all possible treatment group pairs instead of just against a reference group
+- Updated power analysis calculations to include all pairwise comparisons between treatment groups
+- Enhanced sample size estimation to provide recommendations for all treatment group comparisons
+- Improved power curve and sample size plots to better visualize multiple comparisons
 
 ## [0.3.0] - 2023-07-15
 

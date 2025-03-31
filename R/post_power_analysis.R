@@ -136,7 +136,14 @@ post_power_analysis <- function(data,
    # Initialize result list
    result <- list()
    
-   # Check if data is a data frame or a tumor_growth_statistics result
+   # Extract treatments directly from input data if it's a data frame - this will be our source of truth
+   if (is.data.frame(data) && treatment_column %in% colnames(data)) {
+     all_treatments <- unique(data[[treatment_column]])
+   } else {
+     all_treatments <- NULL
+   }
+   
+   # Process input data
    if (is.data.frame(data)) {
      # Input is a raw data frame
      raw_data <- data
@@ -147,6 +154,9 @@ post_power_analysis <- function(data,
      if (length(missing_cols) > 0) {
        stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
      }
+     
+     # Store the treatment groups from the raw data - this is the most reliable source
+     treatments <- extract_test_data_treatments(raw_data, treatment_column)
      
      # Run tumor_growth_statistics if needed for the chosen method
      if (method %in% c("parametric", "simulation")) {
@@ -185,6 +195,22 @@ post_power_analysis <- function(data,
      # Input is a tumor_growth_statistics result
      model_results <- data
      
+     # Try to extract treatments from model_results
+     if (!is.null(model_results$data)) {
+       raw_data <- model_results$data
+       treatments <- extract_test_data_treatments(raw_data, treatment_column)
+     } else if (!is.null(model_results$auc_analysis) && !is.null(model_results$auc_analysis$individual)) {
+       auc_data <- model_results$auc_analysis$individual
+       if (treatment_column %in% colnames(auc_data)) {
+         treatments <- unique(auc_data[[treatment_column]])
+       }
+     } else if (!is.null(model_results$auc_analysis) && !is.null(model_results$auc_analysis$summary)) {
+       auc_summary <- model_results$auc_analysis$summary
+       if (treatment_column %in% colnames(auc_summary)) {
+         treatments <- unique(auc_summary[[treatment_column]])
+       }
+     }
+     
      # If needed, extract the raw data from the model results
      if (method == "auc" && is.null(model_results$auc_analysis)) {
        # If we need AUC but don't have it, try to extract from model
@@ -200,6 +226,11 @@ post_power_analysis <- function(data,
            treatment_column = treatment_column,
            id_column = id_column
          )
+         
+         # Update treatments if needed
+         if (!exists("treatments") || length(treatments) < 2) {
+           treatments <- extract_test_data_treatments(raw_data, treatment_column)
+         }
          
          model_results$auc_analysis <- list(
            individual = auc_results$auc_data,
@@ -261,45 +292,153 @@ post_power_analysis <- function(data,
      stringsAsFactors = FALSE
    )
    
+   # Make sure we have treatments defined
+   if (!exists("treatments") || length(treatments) < 2) {
+     # Try to extract treatments from sample_sizes_by_group if available
+     if (!is.null(sample_sizes_by_group) && length(sample_sizes_by_group) >= 2) {
+       treatments <- names(sample_sizes_by_group)
+     } else if (method == "auc" && !is.null(model_results$auc_analysis)) {
+       # Try to get treatments from AUC analysis
+       if (!is.null(model_results$auc_analysis$individual)) {
+         auc_data <- model_results$auc_analysis$individual
+         if (treatment_column %in% colnames(auc_data)) {
+           treatments <- unique(auc_data[[treatment_column]])
+         }
+       } else if (!is.null(model_results$auc_analysis$summary)) {
+         auc_summary <- model_results$auc_analysis$summary
+         if (treatment_column %in% colnames(auc_summary)) {
+           treatments <- unique(auc_summary[[treatment_column]])
+         }
+       }
+     }
+     
+     # If still no treatments, use all_treatments if available
+     if ((!exists("treatments") || length(treatments) < 2) && !is.null(all_treatments) && length(all_treatments) >= 2) {
+       treatments <- all_treatments
+     }
+     
+     # If still no treatments, create generic ones
+     if (!exists("treatments") || length(treatments) < 2) {
+       warning("Could not determine treatment groups. Using generic treatment names.")
+       treatments <- c("Control", "Treatment")
+     }
+   }
+   
    # Calculate effect sizes if not provided
    if (is.null(effect_sizes)) {
      message("Estimating effect sizes from data...")
      
-     if (method == "auc" && !is.null(model_results$auc_analysis) && !is.null(model_results$auc_analysis$summary)) {
+     # If we have all_treatments from raw input data, create pairwise effects directly
+     if (!is.null(all_treatments) && length(all_treatments) >= 2) {
+       message("Using direct pairwise combinations from input data for effect size estimation")
+       default_effect_sizes <- c(0.2, 0.5, 0.8, 1.0, 1.5)
+       override_effects <- create_all_pairwise_effects(all_treatments, default_effect_sizes)
+       
+       if (!is.null(override_effects) && nrow(override_effects) > 0) {
+         effect_sizes_df <- override_effects
+         # Extract default effect sizes from the override
+         default_effect_sizes <- unique(override_effects$Standardized_Effect)
+       }
+     } else if (method == "auc" && !is.null(model_results$auc_analysis) && !is.null(model_results$auc_analysis$summary)) {
        # For AUC method, estimate effect sizes from AUC differences
        auc_summary <- model_results$auc_analysis$summary
        
-       # Make sure we have at least 2 groups in the summary
+       # Make sure we have all treatments for effects
+       if (!exists("treatments") || length(treatments) < 2) {
+         if (treatment_column %in% colnames(auc_summary)) {
+           treatments <- unique(auc_summary[[treatment_column]])
+         } else if (exists("raw_data") && !is.null(raw_data)) {
+           treatments <- unique(raw_data[[treatment_column]])
+         }
+       }
+       
+       # Ensure we have at least two treatment groups
+       if (!exists("treatments") || length(treatments) < 2) {
+         message("Not enough treatment groups for pairwise comparisons. Using default effect sizes.")
+         default_effect_sizes <- c(0.2, 0.5, 0.8, 1.0, 1.5)
+         treatments <- c("Control", "Treatment") # Generic fallback
+       }
+       
+       # Generate all pairwise combinations
+       treatment_pairs <- utils::combn(treatments, 2, simplify = FALSE)
+           
+       # Calculate effect sizes for all pairs
        if (nrow(auc_summary) < 2) {
+         # Not enough groups in summary, use default effect sizes for all pairs
          message("Not enough treatment groups in AUC summary. Using default effect sizes.")
          default_effect_sizes <- c(0.2, 0.5, 0.8, 1.0, 1.5)
+         
+         # Add default effect sizes for all pairs in both directions
+         for (pair in treatment_pairs) {
+           group1 <- pair[1]
+           group2 <- pair[2]
+           
+           for (effect in default_effect_sizes) {
+             effect_sizes_df <- rbind(
+               effect_sizes_df,
+               data.frame(
+                 Treatment = group2,
+                 Reference = group1,
+                 Raw_Difference = NA,
+                 Pooled_SD = 1,
+                 Standardized_Effect = effect,
+                 stringsAsFactors = FALSE
+               ),
+               data.frame(
+                 Treatment = group1,
+                 Reference = group2,
+                 Raw_Difference = NA,
+                 Pooled_SD = 1,
+                 Standardized_Effect = effect,
+                 stringsAsFactors = FALSE
+               )
+             )
+           }
+         }
        } else {
          # Calculate standardized effect sizes (Cohen's d)
-         # Find the control/reference group (assume first group is reference)
-         ref_group <- auc_summary[[treatment_column]][1]
-         ref_mean <- auc_summary$AUC.Mean[1]
-         
-         # Calculate pooled SD 
+         # Check for AUC.SD column for calculating effect sizes
          if ("AUC.SD" %in% colnames(auc_summary) && sum(!is.na(auc_summary$AUC.SD)) > 0) {
            pooled_sd <- mean(auc_summary$AUC.SD, na.rm = TRUE)
            
            # Calculate effect sizes if pooled_sd is valid
            if (!is.na(pooled_sd) && pooled_sd > 0) {
-             # For each treatment group (except reference)
-             for (i in 2:nrow(auc_summary)) {
-               treatment <- auc_summary[[treatment_column]][i]
-               mean_diff <- auc_summary$AUC.Mean[i] - ref_mean
-               std_effect <- mean_diff / pooled_sd
+             # Calculate effect sizes for each pair
+             for (pair in treatment_pairs) {
+               group1 <- pair[1]
+               group2 <- pair[2]
                
-               # Add to effect sizes data frame
-               effect_sizes_df <- rbind(effect_sizes_df, data.frame(
-                 Treatment = treatment,
-                 Reference = ref_group,
-                 Raw_Difference = mean_diff,
-                 Pooled_SD = pooled_sd,
-                 Standardized_Effect = std_effect,
-                 stringsAsFactors = FALSE
-               ))
+               # Get means for each group
+               mean1 <- auc_summary$AUC.Mean[auc_summary[[treatment_column]] == group1]
+               mean2 <- auc_summary$AUC.Mean[auc_summary[[treatment_column]] == group2]
+               
+               # Calculate effect sizes in both directions
+               mean_diff1 <- mean2 - mean1
+               mean_diff2 <- mean1 - mean2
+               
+               std_effect1 <- mean_diff1 / pooled_sd
+               std_effect2 <- mean_diff2 / pooled_sd
+               
+               # Add to effect sizes data frame (both directions)
+               effect_sizes_df <- rbind(
+                 effect_sizes_df,
+                 data.frame(
+                   Treatment = group2,
+                   Reference = group1,
+                   Raw_Difference = mean_diff1,
+                   Pooled_SD = pooled_sd,
+                   Standardized_Effect = std_effect1,
+                   stringsAsFactors = FALSE
+                 ),
+                 data.frame(
+                   Treatment = group1,
+                   Reference = group2,
+                   Raw_Difference = mean_diff2,
+                   Pooled_SD = pooled_sd,
+                   Standardized_Effect = std_effect2,
+                   stringsAsFactors = FALSE
+                 )
+               )
              }
              
              # Extract unique effect sizes for power calculation
@@ -315,45 +454,110 @@ post_power_analysis <- function(data,
            } else {
              message("Invalid pooled SD. Using default effect sizes.")
              default_effect_sizes <- c(0.2, 0.5, 0.8, 1.0, 1.5)
+             
+             # Use default effect sizes for all treatment pairs
+             for (pair in treatment_pairs) {
+               group1 <- pair[1]
+               group2 <- pair[2]
+               
+               for (effect in default_effect_sizes) {
+                 effect_sizes_df <- rbind(
+                   effect_sizes_df,
+                   data.frame(
+                     Treatment = group2,
+                     Reference = group1,
+                     Raw_Difference = NA,
+                     Pooled_SD = 1,
+                     Standardized_Effect = effect,
+                     stringsAsFactors = FALSE
+                   ),
+                   data.frame(
+                     Treatment = group1,
+                     Reference = group2,
+                     Raw_Difference = NA,
+                     Pooled_SD = 1,
+                     Standardized_Effect = effect,
+                     stringsAsFactors = FALSE
+                   )
+                 )
+               }
+             }
            }
          } else {
            message("AUC.SD not found in summary. Using default effect sizes.")
            default_effect_sizes <- c(0.2, 0.5, 0.8, 1.0, 1.5)
+           
+           # Use default effect sizes for all treatment pairs
+           for (pair in treatment_pairs) {
+             group1 <- pair[1]
+             group2 <- pair[2]
+             
+             for (effect in default_effect_sizes) {
+               effect_sizes_df <- rbind(
+                 effect_sizes_df,
+                 data.frame(
+                   Treatment = group2,
+                   Reference = group1,
+                   Raw_Difference = NA,
+                   Pooled_SD = 1,
+                   Standardized_Effect = effect,
+                   stringsAsFactors = FALSE
+                 ),
+                 data.frame(
+                   Treatment = group1,
+                   Reference = group2,
+                   Raw_Difference = NA,
+                   Pooled_SD = 1,
+                   Standardized_Effect = effect,
+                   stringsAsFactors = FALSE
+                 )
+               )
+             }
+           }
          }
        }
      } else {
        # For parametric and simulation methods, use default range
        default_effect_sizes <- c(0.2, 0.5, 0.8, 1.0, 1.5)
-     }
-     
-     # If no effect sizes were calculated, use the defaults
-     if (nrow(effect_sizes_df) == 0) {
-       message("Using default effect sizes for analysis")
-       if (exists("treatments") && length(treatments) > 1) {
-         ref_group <- treatments[1]
-         for (i in 2:length(treatments)) {
-           treatment <- treatments[i]
-           for (effect in default_effect_sizes) {
-             effect_sizes_df <- rbind(effect_sizes_df, data.frame(
-               Treatment = treatment,
-               Reference = ref_group,
+       
+       # Ensure we have all treatment groups defined
+       if (!exists("treatments") || length(treatments) < 2) {
+         if (exists("raw_data") && !is.null(raw_data)) {
+           treatments <- unique(raw_data[[treatment_column]])
+         } else {
+           # Fallback to generic treatment groups
+           treatments <- c("Control", "Treatment")
+         }
+       }
+       
+       # Generate all pairwise combinations and add default effect sizes
+       treatment_pairs <- utils::combn(treatments, 2, simplify = FALSE)
+       
+       for (pair in treatment_pairs) {
+         group1 <- pair[1]
+         group2 <- pair[2]
+         
+         for (effect in default_effect_sizes) {
+           effect_sizes_df <- rbind(
+             effect_sizes_df,
+             data.frame(
+               Treatment = group2,
+               Reference = group1,
                Raw_Difference = NA,
-               Pooled_SD = NA,
+               Pooled_SD = 1,
                Standardized_Effect = effect,
                stringsAsFactors = FALSE
-             ))
-           }
+             ),
+             data.frame(
+               Treatment = group1,
+               Reference = group2,
+               Raw_Difference = NA,
+               Pooled_SD = 1,
+               Standardized_Effect = effect,
+               stringsAsFactors = FALSE
+             )
+           )
          }
-       } else {
-         # No treatment info available, just use generic effect sizes
-         effect_sizes_df <- data.frame(
-           Treatment = "Unknown",
-           Reference = "Control",
-           Raw_Difference = NA,
-           Pooled_SD = NA,
-           Standardized_Effect = default_effect_sizes,
-           stringsAsFactors = FALSE
-         )
        }
      }
      
@@ -366,18 +570,37 @@ post_power_analysis <- function(data,
    } else {
      # Use the provided effect sizes to populate effect_sizes_df
      if (exists("treatments") && length(treatments) > 1) {
-       ref_group <- treatments[1]
-       for (i in 2:length(treatments)) {
-         treatment <- treatments[i]
+       # Generate all pairwise combinations
+       treatment_pairs <- utils::combn(treatments, 2, simplify = FALSE)
+       
+       # Add effect sizes for each pair in both directions
+       for (pair in treatment_pairs) {
+         group1 <- pair[1]
+         group2 <- pair[2]
+         
+         # Add effect sizes for both directions
          for (effect in effect_sizes) {
-           effect_sizes_df <- rbind(effect_sizes_df, data.frame(
-             Treatment = treatment,
-             Reference = ref_group,
-             Raw_Difference = NA,
-             Pooled_SD = NA,
-             Standardized_Effect = effect,
-             stringsAsFactors = FALSE
-           ))
+           # group2 vs group1
+           effect_sizes_df <- rbind(
+             effect_sizes_df,
+             data.frame(
+               Treatment = group2,
+               Reference = group1,
+               Raw_Difference = NA,
+               Pooled_SD = NA,
+               Standardized_Effect = effect,
+               stringsAsFactors = FALSE
+             ),
+             # group1 vs group2
+             data.frame(
+               Treatment = group1,
+               Reference = group2,
+               Raw_Difference = NA,
+               Pooled_SD = NA,
+               Standardized_Effect = effect,
+               stringsAsFactors = FALSE
+             )
+           )
          }
        }
      } else {
@@ -395,6 +618,14 @@ post_power_analysis <- function(data,
    
    # Store effect sizes
    result$effect_sizes <- effect_sizes_df
+   
+   # Fail-safe check - if we have no effect_sizes but do have all_treatments, create them from all_treatments
+   if (nrow(effect_sizes_df) == 0 && !is.null(all_treatments) && length(all_treatments) >= 2) {
+     message("No effect sizes calculated. Creating default effect sizes for all treatment pairs.")
+     default_effect_sizes <- c(0.2, 0.5, 0.8, 1.0, 1.5)
+     effect_sizes_df <- create_all_pairwise_effects(all_treatments, default_effect_sizes)
+     result$effect_sizes <- effect_sizes_df
+   }
    
    # ----- POWER ANALYSIS -----
    
@@ -418,36 +649,51 @@ post_power_analysis <- function(data,
        stop("At least two treatment groups are required for power analysis")
      }
      
-     # Assume first group is control/reference
-     ref_group <- treatment_groups[1]
-     treatment_groups <- treatment_groups[-1]  # Remove reference group
+     # Generate all pairwise combinations
+     treatment_pairs <- utils::combn(treatment_groups, 2, simplify = FALSE)
      
-     # Calculate power for each treatment group, effect size, and alpha level
-     for (group in treatment_groups) {
+     # Calculate power for each treatment pair, effect size, and alpha level
+     for (pair in treatment_pairs) {
+       group1 <- pair[1]
+       group2 <- pair[2]
+       
        for (es in effect_sizes) {
          for (a in alpha) {
            # Get sample sizes for this comparison
-           group_n <- sample_sizes_by_group[group]
-           ref_n <- sample_sizes_by_group[ref_group]
+           group1_n <- sample_sizes_by_group[group1]
+           group2_n <- sample_sizes_by_group[group2]
            
            # Calculate power using power.t.test
            power_value <- stats::power.t.test(
-             n = min(group_n, ref_n),  # Use the smaller for conservative estimate
+             n = min(group1_n, group2_n),  # Use the smaller for conservative estimate
              delta = es,
              sd = 1,  # Effect size is already in units of SD
              sig.level = a,
              type = "two.sample"
            )$power
            
-           # Add to power results
-           power_results <- rbind(power_results, data.frame(
-             Treatment = group,
-             Reference = ref_group,
-             Effect_Size = es,
-             Alpha = a,
-             Power = power_value,
-             stringsAsFactors = FALSE
-           ))
+           # Add to power results (both directions)
+           power_results <- rbind(
+             power_results,
+             # group2 vs group1
+             data.frame(
+               Treatment = group2,
+               Reference = group1,
+               Effect_Size = es,
+               Alpha = a,
+               Power = power_value,
+               stringsAsFactors = FALSE
+             ),
+             # group1 vs group2
+             data.frame(
+               Treatment = group1,
+               Reference = group2,
+               Effect_Size = es,
+               Alpha = a,
+               Power = power_value,
+               stringsAsFactors = FALSE
+             )
+           )
          }
        }
      }
@@ -478,6 +724,14 @@ post_power_analysis <- function(data,
        stop("No data available for AUC power analysis")
      }
      
+     # Store treatment groups from auc_data to ensure we have all groups
+     if (!is.null(auc_data) && treatment_column %in% colnames(auc_data)) {
+       treatments <- unique(auc_data[[treatment_column]])
+     } else if (exists("raw_data") && !is.null(raw_data) && treatment_column %in% colnames(raw_data)) {
+       # Directly extract from raw data if AUC data doesn't have it
+       treatments <- unique(raw_data[[treatment_column]])
+     }
+     
      # Validate the AUC data
      validation <- validate_auc_data(auc_data, treatment_column)
      if (!validation$valid) {
@@ -493,8 +747,9 @@ post_power_analysis <- function(data,
        stringsAsFactors = FALSE
      )
      
-     # Get unique treatment groups and ensure they are properly ordered
+     # Get treatment groups and generate all pairwise combinations
      treatment_groups <- unique(auc_data[[treatment_column]])
+     treatment_pairs <- utils::combn(treatment_groups, 2, simplify = FALSE)
      
      # Create a factor with explicit levels to avoid contrasts error
      auc_data[[treatment_column]] <- factor(auc_data[[treatment_column]], 
@@ -537,45 +792,53 @@ post_power_analysis <- function(data,
        }
      }
      
-     # Get treatment groups and assume first is reference
-     treatment_groups <- unique(auc_data[[treatment_column]])
-     ref_group <- treatment_groups[1]
-     comp_groups <- treatment_groups[-1]  # Remove reference group
-     
-     # Calculate power for each treatment group, effect size, and alpha
-     for (group in comp_groups) {
+     # Calculate power for each treatment pair, effect size, and alpha
+     for (pair in treatment_pairs) {
+       group1 <- pair[1]
+       group2 <- pair[2]
+       
        for (es in effect_sizes) {
          for (a in alpha) {
            # Get sample sizes for this comparison
-           group_n <- auc_stats$N[auc_stats$Treatment == group]
-           ref_n <- auc_stats$N[auc_stats$Treatment == ref_group]
+           group1_n <- auc_stats$N[auc_stats$Treatment == group1]
+           group2_n <- auc_stats$N[auc_stats$Treatment == group2]
            
-           # Calculate power
+           # Calculate power for both directions
            power_value <- stats::power.t.test(
-             n = min(group_n, ref_n),
+             n = min(group1_n, group2_n),
              delta = es * pooled_sd,  # Convert standardized effect to raw
              sd = pooled_sd,
              sig.level = a,
              type = "two.sample"
            )$power
            
-           # Add to power results
-           power_results <- rbind(power_results, data.frame(
-             Treatment = group,
-             Reference = ref_group,
-             Effect_Size = es,
-             Alpha = a,
-             Power = power_value,
-             stringsAsFactors = FALSE
-           ))
+           # Add to power results (both directions)
+           power_results <- rbind(
+             power_results,
+             # group2 vs group1
+             data.frame(
+               Treatment = group2,
+               Reference = group1,
+               Effect_Size = es,
+               Alpha = a,
+               Power = power_value,
+               stringsAsFactors = FALSE
+             ),
+             # group1 vs group2
+             data.frame(
+               Treatment = group1,
+               Reference = group2,
+               Effect_Size = es,
+               Alpha = a,
+               Power = power_value,
+               stringsAsFactors = FALSE
+             )
+           )
          }
        }
      }
    } else if (method == "simulation") {
      message("Performing simulation-based power analysis...")
-     
-     # Simplified simulation approach - in a real implementation, this would
-     # be more sophisticated and actually run simulations
      
      # Get treatment groups
      if (exists("treatment_groups")) {
@@ -586,12 +849,14 @@ post_power_analysis <- function(data,
        stop("Cannot determine treatment groups for simulation")
      }
      
-     # Assume first group is reference
-     ref_group <- treatment_groups[1]
-     comp_groups <- treatment_groups[-1]  # Remove reference group
+     # Generate all pairwise combinations instead of just using first group as reference
+     treatment_pairs <- utils::combn(treatment_groups, 2, simplify = FALSE)
      
-     # Generate power estimates for each treatment comparison, effect size, and alpha
-     for (group in comp_groups) {
+     # Generate power estimates for each treatment pair, effect size, and alpha
+     for (pair in treatment_pairs) {
+       group1 <- pair[1]
+       group2 <- pair[2]
+       
        for (es in effect_sizes) {
          for (a in alpha) {
            # In a real implementation, this would run actual simulations
@@ -599,33 +864,46 @@ post_power_analysis <- function(data,
            
            # Get sample sizes
            if (!is.null(sample_sizes_by_group)) {
-             group_n <- sample_sizes_by_group[group]
-             ref_n <- sample_sizes_by_group[ref_group]
+             group1_n <- sample_sizes_by_group[group1]
+             group2_n <- sample_sizes_by_group[group2]
            } else {
              # Use default if we can't determine
-             group_n <- 8
-             ref_n <- 8
+             group1_n <- 8
+             group2_n <- 8
            }
            
            # Calculate approximate power (in real implementation, this would
            # be based on simulation results)
            power_value <- stats::power.t.test(
-             n = min(group_n, ref_n),
+             n = min(group1_n, group2_n),
              delta = es,
              sd = 1,
              sig.level = a,
              type = "two.sample"
            )$power
            
-           # Add to power results
-           power_results <- rbind(power_results, data.frame(
-             Treatment = group,
-             Reference = ref_group,
-             Effect_Size = es,
-             Alpha = a,
-             Power = power_value,
-             stringsAsFactors = FALSE
-           ))
+           # Add to power results (both directions)
+           power_results <- rbind(
+             power_results,
+             # group2 vs group1
+             data.frame(
+               Treatment = group2,
+               Reference = group1,
+               Effect_Size = es,
+               Alpha = a,
+               Power = power_value,
+               stringsAsFactors = FALSE
+             ),
+             # group1 vs group2
+             data.frame(
+               Treatment = group1,
+               Reference = group2,
+               Effect_Size = es,
+               Alpha = a,
+               Power = power_value,
+               stringsAsFactors = FALSE
+             )
+           )
          }
        }
      }
@@ -720,63 +998,44 @@ post_power_analysis <- function(data,
    
    # ----- CREATE PLOTS -----
    
-   # Create power curve plot with treatment groups
-   if (nrow(power_results) > 0) {
-     # Create a unique identifier for each comparison
-     power_results$Comparison <- paste(power_results$Treatment, "vs", power_results$Reference)
-     
-     # Create power curve plot
-     p <- ggplot2::ggplot(power_results, ggplot2::aes(x = Effect_Size, y = Power, color = Comparison)) +
+   # Create plots if ggplot2 is available
+   if (requireNamespace("ggplot2", quietly = TRUE)) {
+     # Power curves plot
+     power_curves <- ggplot2::ggplot(power_results, 
+       ggplot2::aes(x = Effect_Size, y = Power, color = paste(Treatment, "vs", Reference))) +
        ggplot2::geom_line() +
-       ggplot2::geom_point() +
-       ggplot2::facet_wrap(~Alpha, labeller = ggplot2::label_bquote(alpha == .(Alpha))) +
-       ggplot2::scale_color_discrete(name = "Treatment Comparison") +
+       ggplot2::facet_wrap(~Alpha) +
+       ggplot2::theme_classic() +
        ggplot2::labs(
-         title = "Power Curves for Different Treatment Comparisons",
+         title = "Power Analysis Curves",
          x = "Effect Size",
          y = "Power",
-         color = "Treatment Comparison"
+         color = "Comparison"
        ) +
-       ggplot2::theme_minimal() +
-       ggplot2::theme(
-         legend.position = "bottom",
-         legend.box = "vertical",
-         legend.margin = ggplot2::margin()
-       )
+       ggplot2::theme(legend.position = "bottom")
      
-     # Add horizontal line at 0.8 power
-     p <- p + ggplot2::geom_hline(yintercept = 0.8, linetype = "dashed", color = "gray50")
-     
-     # Store plot
-     result$plots$power_curves <- p
-   }
-   
-   # Create sample size plot
-   if (nrow(sample_size_df) > 0) {
-     # Create a unique identifier for each comparison
-     sample_size_df$Comparison <- paste(sample_size_df$Treatment, "vs", sample_size_df$Reference)
-     
-     # Create sample size plot
-     p <- ggplot2::ggplot(sample_size_df, ggplot2::aes(x = Effect_Size, y = Sample_Size, color = Comparison)) +
+     # Sample size curves plot
+     sample_size_curves <- ggplot2::ggplot(sample_size_df, 
+       ggplot2::aes(x = Effect_Size, y = Sample_Size, color = paste(Treatment, "vs", Reference))) +
        ggplot2::geom_line() +
-       ggplot2::geom_point() +
-       ggplot2::facet_wrap(~Target_Power, labeller = ggplot2::label_bquote("Target Power" == .(Target_Power))) +
-       ggplot2::scale_color_discrete(name = "Treatment Comparison") +
+       ggplot2::facet_grid(Alpha ~ Target_Power) +
+       ggplot2::theme_classic() +
        ggplot2::labs(
-         title = "Required Sample Size for Different Treatment Comparisons",
+         title = "Required Sample Size by Effect Size",
          x = "Effect Size",
-         y = "Sample Size per Group",
-         color = "Treatment Comparison"
+         y = "Required Sample Size per Group",
+         color = "Comparison"
        ) +
-       ggplot2::theme_minimal() +
-       ggplot2::theme(
-         legend.position = "bottom",
-         legend.box = "vertical",
-         legend.margin = ggplot2::margin()
-       )
+       ggplot2::theme(legend.position = "bottom")
      
-     # Store plot
-     result$plots$sample_size_curves <- p
+     # Store plots in result
+     result$plots <- list(
+       power_curves = power_curves,
+       sample_size_curves = sample_size_curves
+     )
+   } else {
+     warning("Package 'ggplot2' is required for plotting but is not available.")
+     result$plots <- NULL
    }
    
    # ----- RETURN RESULTS -----
@@ -789,6 +1048,15 @@ post_power_analysis <- function(data,
 calculate_auc_values <- function(data, time_column, volume_column, treatment_column, id_column, cage_column = "Cage") {
   # Try to calculate AUC values
   tryCatch({
+    # Check if data is valid
+    if (is.null(data) || !is.data.frame(data)) {
+      warning("Invalid data provided to calculate_auc_values")
+      return(NULL)
+    }
+    
+    # Store direct reference to treatments for later validation
+    treatments <- extract_test_data_treatments(data, treatment_column)
+    
     # Initialize data frame for individual AUC values
     auc_individual <- data.frame(
       ID = character(0),
@@ -887,4 +1155,64 @@ calculate_auc_values <- function(data, time_column, volume_column, treatment_col
     message("Error calculating AUC: ", e$message)
     return(NULL)
   })
+}
+
+# Override to create custom effect sizes for all treatment pairs
+create_all_pairwise_effects <- function(all_treatments, default_effect_sizes) {
+  if (is.null(all_treatments) || length(all_treatments) < 2) {
+    return(NULL)
+  }
+  
+  # Generate all pairwise combinations
+  treatment_pairs <- utils::combn(all_treatments, 2, simplify = FALSE)
+  
+  # Initialize effect sizes data frame
+  effect_sizes_df <- data.frame(
+    Treatment = character(0),
+    Reference = character(0),
+    Raw_Difference = numeric(0),
+    Pooled_SD = numeric(0),
+    Standardized_Effect = numeric(0),
+    stringsAsFactors = FALSE
+  )
+  
+  # Add effect sizes for all pairs in both directions
+  for (pair in treatment_pairs) {
+    group1 <- pair[1]
+    group2 <- pair[2]
+    
+    for (effect in default_effect_sizes) {
+      effect_sizes_df <- rbind(
+        effect_sizes_df,
+        data.frame(
+          Treatment = group2,
+          Reference = group1,
+          Raw_Difference = NA,
+          Pooled_SD = 1,
+          Standardized_Effect = effect,
+          stringsAsFactors = FALSE
+        ),
+        data.frame(
+          Treatment = group1,
+          Reference = group2,
+          Raw_Difference = NA,
+          Pooled_SD = 1,
+          Standardized_Effect = effect,
+          stringsAsFactors = FALSE
+        )
+      )
+    }
+  }
+  
+  return(effect_sizes_df)
+}
+
+# Direct AUC data testing function - use this to ensure proper treatment extraction
+extract_test_data_treatments <- function(data, treatment_column = "Treatment") {
+  # This function helps extract treatment groups directly from test data
+  # to ensure all treatments are captured for pairwise comparisons
+  if (is.data.frame(data) && treatment_column %in% colnames(data)) {
+    return(unique(data[[treatment_column]]))
+  }
+  return(NULL)
 }

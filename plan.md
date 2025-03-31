@@ -63,3 +63,87 @@ After implementing this fix, the `tumor_growth_statistics` function will correct
 3. Generate statistical analyses based on the complete dataset
 
 This will ensure that users get accurate results from their experiments, especially in cases where mice are housed in multiple cages per treatment group. 
+
+# Plan for Modifying post_power_analysis Function
+
+## Current Issue
+The `post_power_analysis` function currently only compares each treatment group against the first treatment group (assumed to be the reference group). This means we're missing important comparisons between other treatment groups.
+
+## Proposed Changes
+
+1. Modify the effect size calculation section to:
+   - Generate all possible pairwise combinations of treatment groups using `utils::combn()`
+   - Calculate effect sizes for each pair, not just against the reference group
+   - Store results in the effect_sizes data frame with both Treatment and Reference columns
+
+2. Update the power analysis section to:
+   - Calculate power for all pairwise comparisons
+   - Include all comparisons in the power_results data frame
+   - Ensure sample sizes are correctly used for each comparison
+
+3. Update the sample size estimation section to:
+   - Calculate sample size recommendations for all pairwise comparisons
+   - Include all comparisons in the sample_size_estimates data frame
+
+4. Update the plotting section to:
+   - Handle multiple comparisons in the power curves
+   - Ensure clear visualization of all treatment group comparisons
+
+## Implementation Details
+
+1. Effect Size Calculation:
+```R
+# Generate all pairwise combinations
+pairs <- utils::combn(treatments, 2, simplify = FALSE)
+
+# Calculate effect sizes for each pair
+for(pair in pairs) {
+  # Calculate effect size between pair[1] and pair[2]
+  # Store in effect_sizes_df with both directions
+}
+```
+
+2. Power Analysis:
+```R
+# Calculate power for each pair
+for(pair in pairs) {
+  # Calculate power for both directions of comparison
+  # Store in power_results
+}
+```
+
+3. Sample Size Estimation:
+```R
+# Calculate sample sizes for each pair
+for(pair in pairs) {
+  # Calculate sample sizes for both directions
+  # Store in sample_size_df
+}
+```
+
+## Testing Plan
+
+1. Create test cases with:
+   - 3 treatment groups (should generate 6 comparisons)
+   - 4 treatment groups (should generate 12 comparisons)
+   - Verify all pairwise combinations are included
+
+2. Verify effect sizes are calculated correctly for each comparison
+
+3. Check that power calculations use correct sample sizes for each comparison
+
+4. Ensure plots properly display all comparisons
+
+## Expected Output
+
+The modified function should return:
+- effect_sizes: Data frame with all pairwise comparisons
+- post_power_analysis: Data frame with power estimates for all comparisons
+- sample_size_estimates: Data frame with sample size recommendations for all comparisons
+- plots: Updated to show all comparisons
+
+## Documentation Updates
+
+1. Update function documentation to clarify that all pairwise comparisons are performed
+2. Add examples showing how to interpret results with multiple comparisons
+3. Update CHANGELOG.md to reflect the changes 
