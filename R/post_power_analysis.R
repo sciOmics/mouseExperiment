@@ -269,6 +269,9 @@ post_power_analysis <- function(data,
        # For AUC method, estimate effect sizes from AUC differences
        auc_summary <- model_results$auc_analysis$summary
        
+       # Map column names for backwards compatibility
+       auc_summary <- rename_auc_columns(auc_summary)
+       
        # Make sure we have at least 2 groups in the summary
        if (nrow(auc_summary) < 2) {
          message("Not enough treatment groups in AUC summary. Using default effect sizes.")
@@ -277,18 +280,18 @@ post_power_analysis <- function(data,
          # Calculate standardized effect sizes (Cohen's d)
          # Find the control/reference group (assume first group is reference)
          ref_group <- auc_summary[[treatment_column]][1]
-         ref_mean <- auc_summary$AUC.Mean[1]
+         ref_mean <- auc_summary$Mean_AUC[1]
          
          # Calculate pooled SD 
-         if ("AUC.SD" %in% colnames(auc_summary) && sum(!is.na(auc_summary$AUC.SD)) > 0) {
-           pooled_sd <- mean(auc_summary$AUC.SD, na.rm = TRUE)
+         if ("SD_AUC" %in% colnames(auc_summary) && sum(!is.na(auc_summary$SD_AUC)) > 0) {
+           pooled_sd <- mean(auc_summary$SD_AUC, na.rm = TRUE)
            
            # Calculate effect sizes if pooled_sd is valid
            if (!is.na(pooled_sd) && pooled_sd > 0) {
              # For each treatment group (except reference)
              for (i in 2:nrow(auc_summary)) {
                treatment <- auc_summary[[treatment_column]][i]
-               mean_diff <- auc_summary$AUC.Mean[i] - ref_mean
+               mean_diff <- auc_summary$Mean_AUC[i] - ref_mean
                std_effect <- mean_diff / pooled_sd
                
                # Add to effect sizes data frame
@@ -317,7 +320,7 @@ post_power_analysis <- function(data,
              default_effect_sizes <- c(0.2, 0.5, 0.8, 1.0, 1.5)
            }
          } else {
-           message("AUC.SD not found in summary. Using default effect sizes.")
+           message("SD_AUC not found in summary. Using default effect sizes.")
            default_effect_sizes <- c(0.2, 0.5, 0.8, 1.0, 1.5)
          }
        }
@@ -879,4 +882,25 @@ calculate_auc_values <- function(data, time_column, volume_column, treatment_col
     message("Error calculating AUC: ", e$message)
     return(NULL)
   })
+}
+
+#' Rename AUC Summary Columns for Compatibility
+#' @noRd
+rename_auc_columns <- function(auc_summary) {
+  # Map old column names to new ones
+  column_mapping <- c(
+    "AUC.Mean" = "Mean_AUC",
+    "AUC.SD" = "SD_AUC",
+    "AUC.N" = "N",
+    "AUC.SEM" = "SEM_AUC"
+  )
+  
+  # Rename columns if they exist
+  for (old_name in names(column_mapping)) {
+    if (old_name %in% colnames(auc_summary)) {
+      colnames(auc_summary)[colnames(auc_summary) == old_name] <- column_mapping[old_name]
+    }
+  }
+  
+  return(auc_summary)
 }
