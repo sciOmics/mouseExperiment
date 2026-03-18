@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Insight BioAnalytics. All rights reserved.
-# Proprietary and confidential.
+# Copyright (c) 2026 mouseExperiment Contributors
+# Licensed under the MIT License - see LICENSE file
 
 # Function to validate AUC data
 validate_auc_data <- function(auc_data, treatment_column) {

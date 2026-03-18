@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Insight BioAnalytics. All rights reserved.
-# Proprietary and confidential.
+# Copyright (c) 2026 mouseExperiment Contributors
+# Licensed under the MIT License - see LICENSE file
 
 #' Perform Area Under the Curve (AUC) Analysis for Tumor Growth Data
 #'
