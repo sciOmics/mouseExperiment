@@ -116,9 +116,6 @@ safe_analysis <- function(expr) {
     expr,
     error = function(e) {
       list(error = TRUE, message = conditionMessage(e))
-    },
-    warning = function(w) {
-      list(warning = TRUE, message = conditionMessage(w))
     }
   )
 }

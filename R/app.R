@@ -49,9 +49,20 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
       dataUploadUI()
     ),
     
-    # Tumor Growth Analysis tab
-    tabPanel("Tumor Growth",
-      tumorGrowthUI()
+    # Analysis menu
+    navbarMenu("Analysis",
+      # Tumor Growth sub-tab
+      tabPanel("Tumor Growth",
+        tumorGrowthUI()
+      ),
+      # Survival sub-tab
+      tabPanel("Survival",
+        survivalUI()
+      ),
+      # Synergy sub-tab
+      tabPanel("Drug Synergy",
+        synergyUI()
+      )
     ),
     
     # Help tab
@@ -72,13 +83,19 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     # Initialize tumor growth server
     tumor_growth_server(input, output, session, rv)
     
+    # Initialize survival server (Phase 2)
+    survival_server(input, output, session, rv)
+    
+    # Initialize synergy server (Phase 3)
+    synergy_server(input, output, session, rv)
+    
     # Navigation handlers (for buttons on Home tab)
     observeEvent(input$goto_upload, {
       updateNavbarPage(session, "main_nav", selected = "Data Upload")
     })
     
     observeEvent(input$goto_analysis, {
-      updateNavbarPage(session, "main_nav", selected = "Tumor Growth")
+      updateNavbarPage(session, "main_nav", selected = "Analysis")
     })
     
     # Navigation handler for proceed_analysis button on Data Upload tab

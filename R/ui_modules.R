@@ -105,7 +105,7 @@ column_mapping_ui <- function(col_names, detected_cols) {
     
     fluidRow(
       column(4,
-        h5("Required Columns"),
+        h4(strong("Required Columns")),
         selectInput("col_id", "Mouse/Subject ID",
                    choices = c("Select..." = "", col_names),
                    selected = detected_cols$id),
@@ -141,7 +141,7 @@ column_mapping_ui <- function(col_names, detected_cols) {
       ),
       
       column(4,
-        h5("Volume Measurement"),
+        h4(strong("Volume Measurement")),
         radioButtons("volume_method", "How to specify volume?",
                     choices = c(
                       "Direct volume column" = "direct",
@@ -174,11 +174,18 @@ column_mapping_ui <- function(col_names, detected_cols) {
       ),
       
       column(4,
-        h5("Optional Columns"),
+        h4(strong("Optional Columns")),
         selectInput("col_cage", "Cage ID",
                    choices = c("None" = "", col_names),
                    selected = detected_cols$cage),
-        tags$p(tags$small("Cage ID is important for distinguishing mice with same ID in different cages."))
+        tags$p(tags$small("Cage ID is important for distinguishing mice with same ID in different cages.")),
+        
+        br(),
+        h5("Survival Analysis"),
+        selectInput("col_survival_event", "Event/Censor Status Column",
+                   choices = c("None" = "", col_names),
+                   selected = detected_cols$survival_event),
+        tags$p(tags$small("Optional: Only needed if performing survival analysis. Time will use the same Day/Date settings as above."))
       )
     )
   )

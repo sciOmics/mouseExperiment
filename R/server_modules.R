@@ -68,14 +68,13 @@ data_upload_server <- function(input, output, session, rv) {
   
   output$preview_summary <- renderText({
     if (!rv$data_valid) return("")
-    paste("Showing first 20 rows of", nrow(rv$uploaded_data), 
-          "total rows")
+    paste("Dataset:", nrow(rv$uploaded_data), "rows ×", ncol(rv$uploaded_data), "columns")
   })
   
   output$data_table <- renderDT({
     req(rv$uploaded_data)
-    datatable(head(rv$uploaded_data, 20),
-             options = list(scrollX = TRUE, pageLength = 5))
+    datatable(rv$uploaded_data,
+             options = list(scrollX = TRUE, scrollY = "400px", pageLength = 25, paging = TRUE))
   })
   
   # Reset button
@@ -194,11 +193,25 @@ tumor_growth_server <- function(input, output, session, rv) {
     if (input$time_method == "from_date") {
       # Calculate days from start date
       start_date <- input$reference_date
+      
+      # Detect date format from the actual data in the date column
+      first_date <- as.character(data[1, input$col_date_for_day])
+      
+      # Determine date format by checking the pattern
+      date_format <- NULL
+      if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_date)) {
+        date_format <- "%m/%d/%Y"  # MM/DD/YYYY format
+      } else if (grepl("^\\d{4}-\\d{1,2}-\\d{1,2}$", first_date)) {
+        date_format <- "%Y-%m-%d"  # YYYY-MM-DD format
+      } else if (grepl("^\\d{1,2}-[A-Za-z]{3}$", first_date)) {
+        date_format <- "%d-%b"     # DD-Mon format
+      }
+      
       data <- mouseExperiment::calculate_dates(
         data,
         start_date = start_date,
         date_column = input$col_date_for_day,
-        date_format = "%m/%d/%Y"  # Assuming MM/DD/YYYY format based on sample data
+        date_format = date_format
       )
       time_col <- "Day"  # calculate_dates produces a "Day" column
     } else {
