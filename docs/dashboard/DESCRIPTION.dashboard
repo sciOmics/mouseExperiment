@@ -1,0 +1,32 @@
+Package: mouseExperimentDashboard
+Title: Interactive Dashboard for mouseExperiment Analysis
+Version: 0.1.0
+Authors@R: 
+    person("Insight", "BioAnalytics", , "david@sciomics.bio", role = c("aut", "cre"))
+Author: Insight BioAnalytics [aut, cre]
+Maintainer: Insight BioAnalytics <david@sciomics.bio>
+Description: Provides an interactive web-based dashboard interface for the mouseExperiment
+    package. Users can upload tumor growth data, configure analysis parameters through
+    a point-and-click interface, and interactively explore statistical results and
+    visualizations without requiring R programming knowledge.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Imports:
+    shiny (>= 1.7.0),
+    shinycssloaders (>= 1.0.0),
+    shinyFeedback (>= 0.4.0),
+    shinyjs (>= 2.1.0),
+    DT (>= 0.28),
+    dplyr (>= 1.1.0),
+    ggplot2 (>= 3.4.0),
+    tidyr (>= 1.3.0),
+    scales (>= 1.2.0),
+    emmeans (>= 1.8.0)
+Suggests:
+    mouseExperiment (>= 0.3.0),
+    testthat (>= 3.0.0),
+    shinytest2 (>= 0.2.0)
+Depends:
+    R (>= 4.0)

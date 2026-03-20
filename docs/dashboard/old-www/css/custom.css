@@ -1,0 +1,205 @@
+/* Custom CSS for mouseExperimentDashboard */
+
+:root {
+  --primary-color: #0073B7;
+  --success-color: #00A65A;
+  --info-color: #00BCD4;
+  --warning-color: #FF9800;
+  --danger-color: #DD4B39;
+}
+
+/* General Styling */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: #f5f5f5;
+}
+
+/* Navbar customization */
+.navbar-header {
+  background: linear-gradient(135deg, var(--primary-color), #005a87);
+  color: white;
+}
+
+.navbar-nav > li > a {
+  color: white !important;
+}
+
+.navbar-nav > li > a:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.navbar-nav > li.active > a {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+/* Well panel styling */
+.well {
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Alert customization */
+.alert {
+  border-radius: 4px;
+  border: none;
+  margin-bottom: 15px;
+}
+
+.alert-info {
+  background-color: #d1ecf1;
+  color: #0c5460;
+}
+
+.alert-success {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.alert-warning {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.alert-danger {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+/* Button styling */
+.btn-primary {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+  background-color: #005a87;
+  border-color: #005a87;
+}
+
+.btn-success {
+  background-color: var(--success-color);
+  border-color: var(--success-color);
+}
+
+.btn-success:hover {
+  background-color: #007a47;
+  border-color: #007a47;
+}
+
+/* Form control styling */
+.form-control:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 0.2rem rgba(0, 115, 183, 0.25);
+}
+
+/* Tab panel styling */
+.nav-tabs {
+  border-bottom: 2px solid #ddd;
+}
+
+.nav-tabs > li.active > a,
+.nav-tabs > li.active > a:focus,
+.nav-tabs > li.active > a:hover {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+}
+
+.nav-tabs > li > a {
+  color: var(--primary-color);
+}
+
+.tab-content {
+  background-color: white;
+  padding: 20px;
+  border-radius: 0 0 4px 4px;
+}
+
+/* DataTable customization */
+.dataTable {
+  font-size: 0.95em;
+}
+
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate {
+  padding: 10px;
+}
+
+/* Plots and outputs */
+.shiny-plot-output {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 10px;
+  background-color: white;
+}
+
+.shiny-text-output,
+.shiny-html-output {
+  padding: 10px;
+}
+
+/* Download buttons */
+.btn-sm {
+  padding: 4px 8px;
+  font-size: 0.875em;
+  margin-top: 5px;
+}
+
+/* Loading spinner */
+.spinner {
+  color: var(--primary-color);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .container-fluid {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  
+  .panel,
+  .well {
+    margin-bottom: 15px;
+  }
+}
+
+/* Status messages */
+.status-running {
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Footer styling */
+footer {
+  border-top: 1px solid #ddd;
+  background-color: white;
+  margin-top: 40px;
+}
+
+/* Utility classes */
+.text-muted {
+  color: #6c757d;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.m-t-20 {
+  margin-top: 20px;
+}
+
+.p-20 {
+  padding: 20px;
+}
+
+.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

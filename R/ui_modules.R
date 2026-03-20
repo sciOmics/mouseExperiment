@@ -1,0 +1,383 @@
+#' UI Modules for mouseExperimentDashboard
+
+#' Home Page UI
+#' @keywords internal
+homeUI <- function() {
+  fluidPage(
+    HTML("<div style='padding: 40px;'>"),
+    h1("Welcome to mouseExperimentDashboard"),
+    p("Analyze mouse tumor growth experiments without writing R code."),
+    
+    fluidRow(
+      column(6,
+        h3("Getting Started"),
+        p("1. Navigate to", strong("Data Upload"), "and load your tumor growth data"),
+        p("2. Configure column mappings if needed"),
+        p("3. Select", strong("Tumor Growth Analysis"), " to run statistical models"),
+        p("4. Download plots and tables from your analysis")
+      ),
+      column(6,
+        h3("Quick Links"),
+        p(actionButton("goto_upload", "Upload Data", icon("upload"), class = "btn-lg btn-primary"), 
+          style = "margin-bottom: 20px;"),
+        p(actionButton("goto_analysis", "Run Analysis", icon("calculator"), class = "btn-lg btn-success"))
+      )
+    ),
+    
+    hr(),
+    h4("Features"),
+    tags$ul(
+      tags$li("Upload CSV or RDA files"),
+      tags$li("Automatic column detection"),
+      tags$li("Multiple statistical models (LME4, AUC)"),
+      tags$li("Interactive visualizations"),
+      tags$li("Download results in multiple formats")
+    ),
+    
+    hr(),
+    HTML("</div>")
+  )
+}
+
+#' Data Upload UI
+#' @keywords internal
+dataUploadUI <- function() {
+  fluidPage(
+    h2("Data Upload & Configuration"),
+    
+    fluidRow(
+      column(12,
+        p("Upload your tumor growth data (CSV or RDA format). ",
+          "The dashboard will automatically detect column names."),
+        br()
+      )
+    ),
+    
+    fluidRow(
+      column(6,
+        wellPanel(
+          h4("Step 1: Upload File"),
+          fileInput("data_file", 
+                   "Choose File (CSV or RDA)",
+                   accept = c(".csv", ".rda", ".RData"))
+        )
+      ),
+      
+      column(6,
+        wellPanel(
+          h4("File Information"),
+          verbatimTextOutput("file_info"),
+          uiOutput("file_validation_msg")
+        )
+      )
+    ),
+    
+    hr(),
+    
+    # Column mapping section (shown after file upload)
+    uiOutput("column_mapping_ui"),
+    
+    hr(),
+    
+    # Data preview (shown after successful upload)
+    uiOutput("data_preview_ui"),
+    
+    hr(),
+    
+    # Action buttons
+    fluidRow(
+      column(12,
+        actionButton("reset_data", "Start Over", class = "btn-warning"),
+        actionButton("proceed_analysis", "Proceed to Analysis", 
+                    class = "btn-success")
+      )
+    )
+  )
+}
+
+#' Column Mapping UI
+#' @keywords internal
+column_mapping_ui <- function(col_names, detected_cols) {
+  wellPanel(
+    h4("Step 2: Configure Column Mapping"),
+    tags$p("Select which columns contain your data. ", 
+      "Suggested columns are pre-selected."),
+    
+    fluidRow(
+      column(4,
+        h5("Required Columns"),
+        selectInput("col_id", "Mouse/Subject ID",
+                   choices = c("Select..." = "", col_names),
+                   selected = detected_cols$id),
+        
+        h5("Time Points"),
+        radioButtons("time_method", "How to specify time?",
+                    choices = c(
+                      "Direct Day column" = "direct_day",
+                      "Calculate from Date column" = "from_date"
+                    ),
+                    selected = if (!is.null(detected_cols$day) && detected_cols$day != "") "direct_day" else "from_date"),
+        
+        conditionalPanel(
+          condition = "input.time_method == 'direct_day'",
+          selectInput("col_day", "Day Column",
+                     choices = c("Select..." = "", col_names),
+                     selected = detected_cols$day)
+        ),
+        
+        conditionalPanel(
+          condition = "input.time_method == 'from_date'",
+          selectInput("col_date_for_day", "Date Column",
+                     choices = c("Select..." = "", col_names),
+                     selected = detected_cols$date),
+          textInput("reference_date", "Reference Date (YYYY-MM-DD)",
+                   value = "2025-03-24",
+                   placeholder = "First measurement date")
+        ),
+        
+        selectInput("col_treatment", "Treatment Group",
+                   choices = c("Select..." = "", col_names),
+                   selected = detected_cols$treatment)
+      ),
+      
+      column(4,
+        h5("Volume Measurement"),
+        radioButtons("volume_method", "How to specify volume?",
+                    choices = c(
+                      "Direct volume column" = "direct",
+                      "Calculate from Length & Width" = "calculate"
+                    ),
+                    selected = if (!is.null(detected_cols$volume)) "direct" else "calculate"),
+        
+        conditionalPanel(
+          condition = "input.volume_method == 'direct'",
+          selectInput("col_volume", "Volume Column",
+                     choices = c("Select..." = "", col_names),
+                     selected = detected_cols$volume)
+        ),
+        
+        conditionalPanel(
+          condition = "input.volume_method == 'calculate'",
+          selectInput("col_length", "Length Column",
+                     choices = c("Select..." = "", col_names),
+                     selected = detected_cols$length),
+          selectInput("col_width", "Width Column",
+                     choices = c("Select..." = "", col_names),
+                     selected = detected_cols$width),
+          selectInput("volume_formula", "Volume Formula",
+                     choices = c("Ellipsoid (default)" = "ellipsoid",
+                                "Modified Ellipsoid" = "modified_ellipsoid",
+                                "Cylinder" = "cylinder",
+                                "Sphere" = "sphere"),
+                     selected = "ellipsoid")
+        )
+      ),
+      
+      column(4,
+        h5("Optional Columns"),
+        selectInput("col_cage", "Cage ID",
+                   choices = c("None" = "", col_names),
+                   selected = detected_cols$cage),
+        tags$p(tags$small("Cage ID is important for distinguishing mice with same ID in different cages."))
+      )
+    )
+  )
+}
+
+#' Data Preview UI
+#' @keywords internal
+data_preview_ui <- function() {
+  wellPanel(
+    h4("Step 3: Data Preview"),
+    fluidRow(
+      column(12,
+        p(strong(textOutput("preview_summary"))),
+        DTOutput("data_table")
+      )
+    )
+  )
+}
+
+#' Tumor Growth Analysis UI
+#' @keywords internal
+tumorGrowthUI <- function() {
+  fluidPage(
+    h2("Tumor Growth Analysis"),
+    
+    p("Configure analysis parameters and run statistical modeling. ",
+      "Ensure data is uploaded first from the Data Upload tab."),
+    
+    fluidRow(
+      column(3,
+        wellPanel(
+          h4("Analysis Parameters"),
+          
+          selectInput("tg_model_type",
+                     "Statistical Model",
+                     choices = c("Linear Mixed-Effects (LME4)" = "lme4",
+                                "Area Under Curve (AUC)" = "auc"),
+                     selected = "lme4"),
+          
+          conditionalPanel(
+            condition = "input.tg_model_type == 'lme4'",
+            selectInput("tg_transform",
+                       "Data Transformation",
+                       choices = c("Log" = "log",
+                                  "Square Root" = "sqrt",
+                                  "None" = "none"),
+                       selected = "log"),
+            
+            sliderInput("tg_poly_degree",
+                       "Polynomial Degree",
+                       min = 1, max = 3, value = 1),
+            
+            selectInput("tg_random_effects",
+                       "Random Effects",
+                       choices = c("Intercept only" = "intercept_only",
+                                  "Intercept + Slope" = "slope",
+                                  "None" = "none"),
+                       selected = "intercept_only"),
+            
+            selectInput("tg_cage_effect",
+                       "Cage Effect Handling",
+                       choices = c("Include if not collinear" = "include_if_not_collinear",
+                                  "Always include" = "always_include",
+                                  "Never include" = "never_include"),
+                       selected = "include_if_not_collinear")
+          ),
+          
+          selectInput("tg_reference",
+                     "Reference Group (Required)",
+                     choices = c("-- Select a reference group --" = "")),
+          
+          selectInput("tg_comparison_type",
+                     "Post-hoc Comparisons",
+                     choices = c("vs Reference Group" = "reference",
+                                "All Pairwise" = "pairwise",
+                                "Tukey HSD" = "tukey"),
+                     selected = "reference"),
+          
+          br(),
+          
+          actionButton("run_tg_analysis", 
+                      "Run Analysis",
+                      class = "btn-lg btn-primary btn-block"),
+          
+          uiOutput("tg_status_msg")
+        )
+      ),
+      
+      column(9,
+        tabsetPanel(
+          id = "tg_results_tabs",
+          
+          tabPanel("Summary",
+            shinycssloaders::withSpinner(
+              verbatimTextOutput("tg_summary")
+            )
+          ),
+          
+          tabPanel("ANOVA",
+            shinycssloaders::withSpinner(
+              DTOutput("tg_anova_table")
+            ),
+            downloadButton("download_tg_anova", "Download ANOVA")
+          ),
+          
+          tabPanel("Comparisons",
+            uiOutput("tg_comparisons_title"),
+            shinycssloaders::withSpinner(
+              DTOutput("tg_comparisons_table")
+            ),
+            downloadButton("download_tg_comparisons", "Download Comparisons")
+          ),
+          
+          tabPanel("Treatment Effects",
+            shinycssloaders::withSpinner(
+              DTOutput("tg_effects_table")
+            ),
+            downloadButton("download_tg_effects", "Download Effects")
+          ),
+          
+          tabPanel("Growth Rates",
+            shinycssloaders::withSpinner(
+              DTOutput("tg_growth_rates_table")
+            ),
+            downloadButton("download_tg_rates", "Download Growth Rates")
+          ),
+          
+          tabPanel("Plots",
+            fluidRow(
+              column(6,
+                h4("Tumor Growth Curves"),
+                shinycssloaders::withSpinner(
+                  plotOutput("tg_plot_growth", height = "400px")
+                ),
+                downloadButton("download_tg_plot_growth", "Download Plot")
+              ),
+              column(6,
+                h4("Growth Rate Distribution"),
+                shinycssloaders::withSpinner(
+                  plotOutput("tg_plot_rates", height = "400px")
+                ),
+                downloadButton("download_tg_plot_rates", "Download Plot")
+              )
+            ),
+            
+            fluidRow(
+              column(6,
+                h4("AUC Comparison"),
+                shinycssloaders::withSpinner(
+                  plotOutput("tg_plot_auc", height = "400px")
+                ),
+                downloadButton("download_tg_plot_auc", "Download Plot")
+              ),
+              column(6,
+                h4("Random Effects"),
+                shinycssloaders::withSpinner(
+                  plotOutput("tg_plot_caterpillar", height = "400px")
+                ),
+                downloadButton("download_tg_plot_caterpillar", "Download Plot")
+              )
+            )
+          ),
+          
+          tabPanel("Diagnostics",
+            verbatimTextOutput("tg_diagnostics")
+          )
+        )
+      )
+    )
+  )
+}
+
+#' Help/About UI
+#' @keywords internal
+helpUI <- function() {
+  fluidPage(
+    h2("Help & Documentation"),
+    
+    h3("Column Naming"),
+    p("The dashboard looks for common column names like:"),
+    tags$ul(
+      tags$li(strong("ID:"), "ID, Mouse_ID, Animal_ID, Subject"),
+      tags$li(strong("Time:"), "Day, Time, Timepoint"),
+      tags$li(strong("Volume:"), "Volume, Tumor_Volume"),
+      tags$li(strong("Treatment:"), "Treatment, Group"),
+      tags$li(strong("Cage:"), "Cage, Cage_ID")
+    ),
+    
+    h3("Statistical Methods"),
+    p("The analysis uses linear mixed-effects models (lme4) or area under the curve (AUC) methods."),
+    p("Consult the", a("mouseExperiment documentation", href = "https://github.com/"), 
+      "for detailed method information."),
+    
+    h3("Troubleshooting"),
+    p(strong("File won't upload:"), "Ensure it's a CSV or RDA file."),
+    p(strong("Columns not detected:"), "Check that column names match expected patterns."),
+    p(strong("Analysis fails:"), "Check that required columns are selected and contain valid data."),
+    
+    h3("Contact & Support"),
+    p("For issues or questions, contact the package maintainers.")
+  )
+}
