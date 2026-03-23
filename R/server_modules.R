@@ -60,6 +60,170 @@ data_upload_server <- function(input, output, session, rv) {
     column_mapping_ui(colnames(rv$uploaded_data), rv$detected_cols)
   })
   
+  # ---------------------------------------------------------------------------
+  # Reactive: compute preview data with calculated columns applied
+  # Mirrors the same transformations used in tumor_growth_server so the preview
+  # shows Volume and Day exactly as analysis will see them.
+  # ---------------------------------------------------------------------------
+  preview_data <- reactive({
+    req(rv$uploaded_data, rv$data_valid)
+    data <- rv$uploaded_data
+    
+    # Apply date -> Day calculation if selected
+    if (!is.null(input$time_method) && input$time_method == "from_date" &&
+        !is.null(input$col_date_for_day) && input$col_date_for_day != "") {
+      tryCatch({
+        first_val  <- as.character(data[1, input$col_date_for_day])
+        fmt <- if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_val)) "%m/%d/%Y"
+               else if (grepl("^\\d{4}-\\d{1,2}-\\d{1,2}$", first_val)) "%Y-%m-%d"
+               else if (grepl("^\\d{1,2}-[A-Za-z]{3}$", first_val)) "%d-%b"
+               else NULL
+        data <- mouseExperiment::calculate_dates(
+          data,
+          start_date  = input$reference_date,
+          date_column = input$col_date_for_day,
+          date_format = fmt
+        )
+      }, error = function(e) NULL)
+    }
+    
+    # Apply volume calculation if selected
+    if (!is.null(input$volume_method) && input$volume_method == "calculate" &&
+        !is.null(input$col_length) && input$col_length != "" &&
+        !is.null(input$col_width)  && input$col_width  != "") {
+      tryCatch({
+        data <- mouseExperiment::calculate_volume(
+          data,
+          length_column = input$col_length,
+          width_column  = input$col_width,
+          formula       = input$volume_formula
+        )
+      }, error = function(e) NULL)
+    }
+    
+    data
+  })
+  
+  # ---------------------------------------------------------------------------
+  # Dataset Summary
+  # ---------------------------------------------------------------------------
+  output$data_summary_ui <- renderUI({
+    if (!rv$data_valid) return(NULL)
+    
+    data    <- preview_data()
+    tx_col  <- if (!is.null(input$col_treatment) && input$col_treatment != "") input$col_treatment else NULL
+    cage_col <- if (!is.null(input$col_cage) && input$col_cage != "") input$col_cage else NULL
+    id_col  <- if (!is.null(input$col_id) && input$col_id != "") input$col_id else NULL
+    
+    # Determine the time column used in the preview
+    time_col <- if (!is.null(input$time_method) && input$time_method == "from_date") "Day"
+                else if (!is.null(input$col_day) && input$col_day != "") input$col_day
+                else NULL
+    
+    vol_col <- if (!is.null(input$volume_method) && input$volume_method == "calculate") "Volume"
+               else if (!is.null(input$col_volume) && input$col_volume != "") input$col_volume
+               else NULL
+    
+    # --- Treatment groups ---
+    tx_box <- if (!is.null(tx_col) && tx_col %in% colnames(data)) {
+      groups <- sort(unique(na.omit(as.character(data[[tx_col]]))))
+      div(class = "panel panel-default",
+        div(class = "panel-heading", tags$b("Treatment Groups")),
+        div(class = "panel-body",
+          tags$ul(lapply(groups, tags$li))
+        )
+      )
+    } else div(class = "text-muted", "(Treatment column not configured)")
+    
+    # --- Cage IDs ---
+    cage_box <- if (!is.null(cage_col) && cage_col %in% colnames(data)) {
+      cages <- sort(unique(na.omit(as.character(data[[cage_col]]))))
+      div(class = "panel panel-default",
+        div(class = "panel-heading", tags$b("Cage IDs")),
+        div(class = "panel-body",
+          p(paste(cages, collapse = ", "))
+        )
+      )
+    } else div(class = "text-muted", "(Cage column not configured)")
+    
+    # --- Day / date range ---
+    time_box <- if (!is.null(time_col) && time_col %in% colnames(data)) {
+      vals <- suppressWarnings(as.numeric(data[[time_col]]))
+      vals <- vals[!is.na(vals)]
+      if (length(vals) > 0) {
+        div(class = "panel panel-default",
+          div(class = "panel-heading", tags$b("Day Range")),
+          div(class = "panel-body",
+            p(paste0("Min: ", min(vals), " \u2014 Max: ", max(vals),
+                    " (", length(unique(vals)), " unique timepoints)"))
+          )
+        )
+      } else NULL
+    } else NULL
+    
+    # --- Mice per group ---
+    mice_box <- if (!is.null(tx_col) && tx_col %in% colnames(data) &&
+                    !is.null(id_col)  && id_col  %in% colnames(data)) {
+      
+      inner <- if (!is.null(cage_col) && cage_col %in% colnames(data)) {
+        # Cage × treatment table (includes both dimensions)
+        ct <- unique(data[, c(id_col, cage_col, tx_col)])
+        ct_counts <- as.data.frame(table(
+          Cage = as.character(ct[[cage_col]]),
+          Treatment = as.character(ct[[tx_col]])
+        ))
+        ct_counts <- ct_counts[ct_counts$Freq > 0, ]
+        ct_rows <- lapply(seq_len(nrow(ct_counts)), function(i)
+          tags$tr(tags$td(ct_counts$Cage[i]),
+                  tags$td(ct_counts$Treatment[i]),
+                  tags$td(ct_counts$Freq[i]))
+        )
+        tags$table(
+          class = "table table-condensed table-bordered",
+          style = "width:auto;",
+          tags$thead(tags$tr(tags$th("Cage"), tags$th("Treatment"), tags$th("Mice"))),
+          tags$tbody(ct_rows)
+        )
+      } else {
+        # Fallback: per-treatment only when no cage column configured
+        tx_counts <- tapply(
+          as.character(data[[id_col]]),
+          as.character(data[[tx_col]]),
+          function(x) length(unique(x))
+        )
+        tx_rows <- lapply(sort(names(tx_counts)), function(g)
+          tags$tr(tags$td(g), tags$td(tx_counts[[g]]))
+        )
+        tags$table(
+          class = "table table-condensed table-bordered",
+          style = "width:auto;",
+          tags$thead(tags$tr(tags$th("Treatment"), tags$th("Unique Mice"))),
+          tags$tbody(tx_rows)
+        )
+      }
+      
+      div(class = "panel panel-default",
+        div(class = "panel-heading", tags$b("Mice per Group")),
+        div(class = "panel-body", inner)
+      )
+    } else NULL
+    
+    tagList(
+      hr(),
+      wellPanel(
+        h4("Dataset Summary"),
+        p(strong(paste(nrow(data), "rows ×", ncol(data), "columns"))),
+        fluidRow(
+          column(3, tx_box),
+          column(3, cage_box),
+          column(3, time_box),
+          column(3, mice_box)
+        )
+      ),
+      hr()
+    )
+  })
+  
   # Data preview
   output$data_preview_ui <- renderUI({
     if (!rv$data_valid) return(NULL)
@@ -68,14 +232,20 @@ data_upload_server <- function(input, output, session, rv) {
   
   output$preview_summary <- renderText({
     if (!rv$data_valid) return("")
-    paste("Dataset:", nrow(rv$uploaded_data), "rows ×", ncol(rv$uploaded_data), "columns")
+    data <- preview_data()
+    paste("Dataset:", nrow(data), "rows ×", ncol(data), "columns")
   })
   
   output$data_table <- renderDT({
-    req(rv$uploaded_data)
-    datatable(rv$uploaded_data,
+    req(rv$data_valid)
+    datatable(preview_data(),
              options = list(scrollX = TRUE, scrollY = "400px", pageLength = 25, paging = TRUE))
   })
+  
+  output$download_preview_data <- downloadHandler(
+    filename = function() paste0("processed_data_", format(Sys.Date(), "%Y%m%d"), ".csv"),
+    content  = function(file) write.csv(preview_data(), file, row.names = FALSE)
+  )
   
   # Reset button
   observeEvent(input$reset_data, {
@@ -102,6 +272,10 @@ data_upload_server <- function(input, output, session, rv) {
       NULL
     })
     
+    output$data_summary_ui <- renderUI({
+      NULL
+    })
+    
     output$preview_summary <- renderText({
       ""
     })
@@ -113,6 +287,100 @@ data_upload_server <- function(input, output, session, rv) {
     
     # Reset the file input widget
     shinyjs::reset("data_file")
+    rv$schedule_data <- NULL
+    output$schedule_validation_msg <- renderUI(NULL)
+    output$schedule_preview_ui <- renderUI(NULL)
+  })
+  
+  # Treatment schedule file upload handler (optional)
+  observeEvent(input$schedule_file, {
+    req(input$schedule_file)
+    sch_info <- input$schedule_file
+    sch_path <- sch_info$datapath
+    sch_parts <- strsplit(sch_info$name, "\\.")[[1]]
+    sch_ext   <- tolower(sch_parts[length(sch_parts)])
+    
+    sch_result <- validate_uploaded_file(sch_path, sch_ext)
+    
+    if (sch_result$valid) {
+      rv$schedule_data <- sch_result$data
+      output$schedule_validation_msg <- renderUI({
+        div(class = "alert alert-success",
+            icon("check"),
+            paste("Schedule loaded:", nrow(sch_result$data), "rows,",
+                  ncol(sch_result$data), "cols."))
+      })
+    } else {
+      rv$schedule_data <- NULL
+      output$schedule_validation_msg <- renderUI(NULL)
+      output$schedule_preview_ui <- renderUI(NULL)
+      output$schedule_validation_msg <- renderUI({
+        div(class = "alert alert-danger",
+            icon("exclamation-circle"), sch_result$message)
+      })
+    }
+  })
+  
+  # Schedule data preview — with Day column calculated if applicable
+  preview_schedule <- reactive({
+    req(rv$schedule_data)
+    sch <- rv$schedule_data
+
+    # Apply date -> Day only when:
+    #  1. main data is using "from_date" mode
+    #  2. the schedule doesn't already have a "Day" column
+    #  3. the schedule has a column matching the date column chosen for the main data
+    if (!is.null(input$time_method) && input$time_method == "from_date" &&
+        !"Day" %in% colnames(sch) &&
+        !is.null(input$col_date_for_day) && input$col_date_for_day != "" &&
+        input$col_date_for_day %in% colnames(sch)) {
+      tryCatch({
+        first_val <- as.character(sch[1, input$col_date_for_day])
+        fmt <- if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_val))  "%m/%d/%Y"
+               else if (grepl("^\\d{4}-\\d{1,2}-\\d{1,2}$", first_val)) "%Y-%m-%d"
+               else if (grepl("^\\d{1,2}-[A-Za-z]{3}$", first_val))  "%d-%b"
+               else NULL
+        sch <- mouseExperiment::calculate_dates(
+          sch,
+          start_date  = input$reference_date,
+          date_column = input$col_date_for_day,
+          date_format = fmt
+        )
+      }, error = function(e) NULL)
+    }
+    sch
+  })
+
+  # Schedule data preview
+  output$schedule_preview_ui <- renderUI({
+    if (is.null(rv$schedule_data)) return(NULL)
+    tagList(
+      hr(),
+      wellPanel(
+        h4("Treatment Schedule Preview"),
+        fluidRow(
+          column(12,
+            p(strong(textOutput("schedule_preview_summary"))),
+            DTOutput("schedule_table")
+          )
+        )
+      )
+    )
+  })
+
+  output$schedule_preview_summary <- renderText({
+    if (is.null(rv$schedule_data)) return("")
+    sch <- preview_schedule()
+    paste("Schedule:", nrow(sch), "rows \u00d7",
+          ncol(sch), "columns \u2014",
+          paste(colnames(sch), collapse = ", "))
+  })
+
+  output$schedule_table <- renderDT({
+    req(rv$schedule_data)
+    datatable(preview_schedule(),
+             options = list(scrollX = TRUE, scrollY = "300px",
+                           pageLength = 25, paging = TRUE))
   })
   
   # Proceed button is always clickable - validation enforced at analysis time
@@ -135,8 +403,10 @@ tumor_growth_server <- function(input, output, session, rv) {
     if (!is.null(rv$uploaded_data) && rv$data_valid) {
       treatment_col <- rv$detected_cols$treatment
       cat("  Treatment column:", treatment_col, "\n")
-      cat("  All detected columns:", paste(names(rv$detected_cols), "=", 
-                                          unlist(rv$detected_cols), collapse="; "), "\n")
+      cat("  All detected columns:", paste(sapply(names(rv$detected_cols), function(k) {
+                                            v <- rv$detected_cols[[k]]
+                                            paste(k, "=", if (is.null(v)) "NULL" else v)
+                                          }), collapse="; "), "\n")
       
       if (!is.null(treatment_col) && treatment_col != "") {
         # Get the actual column from the data
@@ -155,8 +425,10 @@ tumor_growth_server <- function(input, output, session, rv) {
           new_choices <- c("-- Select a reference group --" = "", 
                           setNames(as.character(treatment_values), 
                                   as.character(treatment_values)))
-          updateSelectInput(session, "tg_reference", choices = new_choices)
-          cat("  Reference group updated with choices\n")
+          default_ref <- pick_reference_group(as.character(treatment_values))
+          updateSelectInput(session, "tg_reference", choices = new_choices,
+                            selected = default_ref)
+          cat("  Reference group updated with choices. Default:", default_ref, "\n")
         } else {
           cat("  WARNING: No treatment values found after unique/na.omit\n")
         }
@@ -231,6 +503,15 @@ tumor_growth_server <- function(input, output, session, rv) {
       vol_col <- input$col_volume
     }
     
+    # Store preprocessed data and resolved column names for reuse by other modules
+    rv$processed_data <- data
+    rv$time_col       <- time_col
+    rv$vol_col        <- vol_col
+    rv$tx_col         <- input$col_treatment
+    rv$id_col         <- input$col_id
+    rv$cage_col       <- if (!is.null(input$col_cage) && input$col_cage != "") input$col_cage else NULL
+    rv$dose_col       <- if (!is.null(input$col_dose) && input$col_dose != "") input$col_dose else NULL
+    
     # Prepare column names
     col_names <- list(
       time_column = time_col,
@@ -257,7 +538,7 @@ tumor_growth_server <- function(input, output, session, rv) {
         reference_group = input$tg_reference,  # Already validated to not be empty
         return_model = TRUE,
         include_diagnostics = TRUE,
-        plots = TRUE
+        plots = FALSE
       )
     })
     
@@ -356,12 +637,12 @@ tumor_growth_server <- function(input, output, session, rv) {
         
         # Type 1: All pairwise comparisons with Tukey adjustment
         result$all_pairwise_comparisons <- as.data.frame(
-          emmeans::pairs(emm, adjust = "tukey")
+          pairs(emm, adjust = "tukey")
         )
         
         # Type 2: Simple (non-adjusted) pairwise comparisons
         result$simple_pairwise_comparisons <- as.data.frame(
-          emmeans::pairs(emm, adjust = "none")
+          pairs(emm, adjust = "none")
         )
         
       }, error = function(e) {
@@ -672,6 +953,80 @@ tumor_growth_server <- function(input, output, session, rv) {
         print(rv$tg_results$caterpillar_plot)
         dev.off()
       }
+    }
+  )
+  
+  # Treatment schedule plot
+  output$tg_plot_treatment_schedule <- renderPlot({
+    if (is.null(rv$schedule_data)) {
+      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = "No treatment schedule uploaded (see Step 1b in Data Upload)")
+      return(invisible(NULL))
+    }
+    req(rv$data_valid)
+    
+    # Use the preprocessed data (with Day + Volume cols) if available;
+    # otherwise fall back to raw uploaded data
+    tg_data  <- if (!is.null(rv$processed_data)) rv$processed_data else rv$uploaded_data
+    time_col <- if (!is.null(rv$time_col)) rv$time_col else
+                  if (!is.null(input$col_day) && input$col_day != "") input$col_day else "Day"
+    tx_col   <- if (!is.null(rv$tx_col)) rv$tx_col else
+                  if (!is.null(input$col_treatment) && input$col_treatment != "") input$col_treatment else "Treatment"
+    
+    # Determine which Day/Treatment columns exist in the schedule file
+    sch <- rv$schedule_data
+    sch_time_col <- if (time_col %in% colnames(sch)) time_col else
+                     if ("Day" %in% colnames(sch)) "Day" else colnames(sch)[1]
+    sch_tx_col   <- if (tx_col %in% colnames(sch)) tx_col else
+                     if ("Treatment" %in% colnames(sch)) "Treatment" else colnames(sch)[2]
+    
+    # Coerce Day column to numeric (CSV uploads read all columns as character)
+    sch[[sch_time_col]] <- suppressWarnings(as.numeric(sch[[sch_time_col]]))
+    if (time_col %in% colnames(tg_data)) {
+      tg_data[[time_col]] <- suppressWarnings(as.numeric(tg_data[[time_col]]))
+    }
+    
+    tryCatch(
+      mouseExperiment::plot_treatments(
+        treatment_data    = sch,
+        tumor_growth_data = tg_data,
+        day_column        = sch_time_col,
+        treatment_column  = sch_tx_col
+      ),
+      error = function(e) {
+        plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+             main = paste("Treatment schedule plot error:", e$message))
+      }
+    )
+  })
+  
+  output$download_tg_plot_schedule <- downloadHandler(
+    filename = "treatment_schedule.png",
+    content = function(file) {
+      req(rv$schedule_data, rv$data_valid)
+      tg_data  <- if (!is.null(rv$processed_data)) rv$processed_data else rv$uploaded_data
+      time_col <- if (!is.null(rv$time_col)) rv$time_col else "Day"
+      tx_col   <- if (!is.null(rv$tx_col)) rv$tx_col else "Treatment"
+      sch <- rv$schedule_data
+      sch_time_col <- if (time_col %in% colnames(sch)) time_col else
+                       if ("Day" %in% colnames(sch)) "Day" else colnames(sch)[1]
+      sch_tx_col   <- if (tx_col %in% colnames(sch)) tx_col else
+                       if ("Treatment" %in% colnames(sch)) "Treatment" else colnames(sch)[2]
+      sch[[sch_time_col]] <- suppressWarnings(as.numeric(sch[[sch_time_col]]))
+      if (time_col %in% colnames(tg_data)) {
+        tg_data[[time_col]] <- suppressWarnings(as.numeric(tg_data[[time_col]]))
+      }
+      png(file, width = 1000, height = 400)
+      tryCatch(
+        print(mouseExperiment::plot_treatments(
+          treatment_data    = sch,
+          tumor_growth_data = tg_data,
+          day_column        = sch_time_col,
+          treatment_column  = sch_tx_col
+        )),
+        error = function(e) cat("Error generating schedule plot:", e$message, "\n")
+      )
+      dev.off()
     }
   )
 }

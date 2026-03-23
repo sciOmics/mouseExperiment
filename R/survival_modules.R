@@ -42,12 +42,19 @@ survivalUI <- function() {
           id = "surv_results_tabs",
           
           tabPanel("Summary",
+            tab_info(strong("Survival summary: "), "Per-group event counts, total subjects, event rate, and median survival time (the day by which 50\u202f% of animals have reached the endpoint). \u2018Not reached\u2019 means fewer than half the group experienced an event by the end of the study."),
             shinycssloaders::withSpinner(
               verbatimTextOutput("surv_summary")
             )
           ),
           
           tabPanel("Cox Model",
+            tab_info(strong("Cox proportional hazards model. "),
+              "\u2018Hazard Ratio (HR)\u2019 is relative to the reference group. ",
+              strong("HR\u202f<\u202f1"), " = lower hazard (better survival); ",
+              strong("HR\u202f>\u202f1"), " = higher hazard. ",
+              "95\u202f% CI not crossing 1.0 indicates statistical significance. ",
+              "Firth\u2019s bias-reduced method is applied automatically when perfect separation is detected (e.g. a group with zero events)."),
             shinycssloaders::withSpinner(
               verbatimTextOutput("surv_cox_summary")
             ),
@@ -58,6 +65,7 @@ survivalUI <- function() {
           ),
           
           tabPanel("Kaplan-Meier Curve",
+            tab_info(strong("Kaplan-Meier survival curve: "), "non-parametric step-function estimating the probability of surviving past each timepoint. Each drop represents one or more events; tick marks represent censored animals still alive at last observation. Groups that remain higher on the y-axis have better survival."),
             shinycssloaders::withSpinner(
               plotOutput("surv_plot_km", height = "500px")
             ),
@@ -65,10 +73,21 @@ survivalUI <- function() {
           ),
           
           tabPanel("Risk Table",
+            tab_info(strong("Numbers at risk table: "), "at each event time, shows how many animals per group are still at risk (N Risk), how many experienced the event (N Events), and how many were censored (N Censored). Declining N Risk over time reflects events and censoring."),
             shinycssloaders::withSpinner(
               DTOutput("surv_risk_table")
             ),
             downloadButton("download_surv_risk_table", "Download Table")
+          ),
+          
+          tabPanel("Forest Plot",
+            tab_info(strong("Hazard ratio forest plot: "), "each row is a treatment group vs the reference. The point is the estimated HR; horizontal bars are 95\u202f% confidence intervals. ",
+              "The x-axis uses a log\u2082 scale, symmetric around HR\u202f=\u202f1 (the vertical dashed line). ",
+              "Points to the left indicate a protective effect; points to the right indicate increased hazard, relative to the reference group."),
+            shinycssloaders::withSpinner(
+              plotOutput("surv_forest_plot", height = "500px")
+            ),
+            downloadButton("download_surv_forest_plot", "Download Plot")
           )
         )
       )
@@ -94,11 +113,12 @@ survival_server <- function(input, output, session, rv) {
         treatment_groups <- sort(unique(as.character(na.omit(treatment_col))))
         
         if (length(treatment_groups) > 0) {
+          default_ref <- pick_reference_group(treatment_groups)
           return(
             selectInput("surv_reference_group",
                        "Reference Group",
                        choices = treatment_groups,
-                       selected = treatment_groups[1])
+                       selected = default_ref)
           )
         }
       }
@@ -432,6 +452,58 @@ survival_server <- function(input, output, session, rv) {
   })
   
   # Log-rank test (method information)
+  # Forest plot
+  output$surv_forest_plot <- renderPlot({
+    req(rv$surv_results)
+    if (isTRUE(rv$surv_results$error) || is.null(rv$surv_results$results)) return(NULL)
+    
+    res <- rv$surv_results$results
+    req(all(c("Group", "HR", "CI_Lower", "CI_Upper", "P_Value") %in% colnames(res)))
+    
+    ref_grp <- rv$surv_results$reference_group
+    
+    # Exclude reference group row if HR == 1 and CI_Lower == CI_Upper
+    plot_df <- res[!is.na(res$HR), ]
+    if (!is.null(ref_grp)) {
+      plot_df <- plot_df[plot_df$Group != ref_grp, ]
+    }
+    req(nrow(plot_df) > 0)
+    
+    # Compute symmetric log2 axis limits
+    all_hr_vals <- c(plot_df$HR, plot_df$CI_Lower, plot_df$CI_Upper)
+    all_hr_vals <- all_hr_vals[!is.na(all_hr_vals) & all_hr_vals > 0]
+    max_log2 <- max(abs(log2(all_hr_vals)), na.rm = TRUE)
+    max_log2 <- ceiling(max_log2)  # round up to nearest integer
+    x_lim <- c(2^(-max_log2), 2^max_log2)
+    x_breaks <- 2^seq(-max_log2, max_log2, by = 1)
+    x_labels <- ifelse(x_breaks >= 1,
+                       as.character(x_breaks),
+                       paste0("1/", as.character(1 / x_breaks)))
+    
+    ggplot2::ggplot(plot_df,
+                   ggplot2::aes(x = HR, y = reorder(Group, HR),
+                                xmin = CI_Lower, xmax = CI_Upper)) +
+      ggplot2::geom_point(size = 4, color = "steelblue") +
+      ggplot2::geom_errorbarh(height = 0.25, linewidth = 0.8, color = "steelblue") +
+      ggplot2::geom_vline(xintercept = 1, linetype = "dashed", color = "grey40") +
+      ggplot2::scale_x_continuous(
+        trans  = "log2",
+        limits = x_lim,
+        breaks = x_breaks,
+        labels = x_labels
+      ) +
+      ggplot2::labs(
+        title = paste("Forest Plot: Hazard Ratios vs", ref_grp),
+        x = "Hazard Ratio (log\u2082 scale)",
+        y = NULL
+      ) +
+      ggplot2::theme_minimal(base_size = 14) +
+      ggplot2::theme(
+        panel.grid.minor = ggplot2::element_blank(),
+        legend.position = "none"
+      )
+  })
+  
   # Download handlers
   output$download_surv_plot_km <- downloadHandler(
     filename = "kaplan_meier_plot.png",
@@ -467,6 +539,44 @@ survival_server <- function(input, output, session, rv) {
         Survival  = round(km_sum$surv, 4)
       )
       write.csv(risk_df, file, row.names = FALSE)
+    }
+  )
+  
+  output$download_surv_forest_plot <- downloadHandler(
+    filename = "forest_plot.png",
+    content = function(file) {
+      req(rv$surv_results, !isTRUE(rv$surv_results$error), rv$surv_results$results)
+      p <- local({
+        res <- rv$surv_results$results
+        ref_grp <- rv$surv_results$reference_group
+        plot_df <- res[!is.na(res$HR), ]
+        if (!is.null(ref_grp)) plot_df <- plot_df[plot_df$Group != ref_grp, ]
+        all_hr_vals <- c(plot_df$HR, plot_df$CI_Lower, plot_df$CI_Upper)
+        all_hr_vals <- all_hr_vals[!is.na(all_hr_vals) & all_hr_vals > 0]
+        max_log2 <- ceiling(max(abs(log2(all_hr_vals)), na.rm = TRUE))
+        x_lim    <- c(2^(-max_log2), 2^max_log2)
+        x_breaks <- 2^seq(-max_log2, max_log2, by = 1)
+        x_labels <- ifelse(x_breaks >= 1,
+                           as.character(x_breaks),
+                           paste0("1/", as.character(1 / x_breaks)))
+        ggplot2::ggplot(plot_df,
+                       ggplot2::aes(x = HR, y = reorder(Group, HR),
+                                    xmin = CI_Lower, xmax = CI_Upper)) +
+          ggplot2::geom_point(size = 4, color = "steelblue") +
+          ggplot2::geom_errorbarh(height = 0.25, linewidth = 0.8, color = "steelblue") +
+          ggplot2::geom_vline(xintercept = 1, linetype = "dashed", color = "grey40") +
+          ggplot2::scale_x_continuous(
+            trans  = "log2",
+            limits = x_lim,
+            breaks = x_breaks,
+            labels = x_labels
+          ) +
+          ggplot2::labs(title = paste("Forest Plot: Hazard Ratios vs", ref_grp),
+                       x = "Hazard Ratio (log\u2082 scale)", y = NULL) +
+          ggplot2::theme_minimal(base_size = 14) +
+          ggplot2::theme(legend.position = "none")
+      })
+      png(file, width = 900, height = 600); print(p); dev.off()
     }
   )
   

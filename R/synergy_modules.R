@@ -4,48 +4,34 @@ synergyUI <- function() {
   fluidPage(
     h2("Drug Synergy Analysis"),
     
-    p("Analyze drug interactions and synergy effects using combination index and Bliss model. ",
-      "Requires data with multiple drug treatments and dose information."),
+    p("Test whether a drug combination shows synergistic, additive, or antagonistic effects ",
+      "using Bliss independence and Loewe additivity models. ",
+      "Ensure tumor growth data is uploaded and configured in the Data Upload tab."),
     
     fluidRow(
       column(3,
         wellPanel(
-          h4("Analysis Parameters"),
+          h4("Treatment Groups"),
           
-          selectInput("syn_drug1_column",
-                     "Drug 1 Column",
-                     choices = c("-- Select column --" = "")),
+          p(tags$small("Select which treatment group in your data corresponds to each role:")),
           
-          selectInput("syn_drug2_column",
-                     "Drug 2 Column",
-                     choices = c("-- Select column --" = "")),
+          uiOutput("syn_group_selectors_ui"),
           
-          selectInput("syn_dose_column",
-                     "Dose Column",
-                     choices = c("-- Select column --" = "")),
+          hr(),
           
-          selectInput("syn_response_column",
-                     "Response/Effect Column",
-                     choices = c("-- Select column --" = "")),
+          h4("Analysis Options"),
           
-          selectInput("syn_model",
-                     "Synergy Model",
-                     choices = c("Combination Index" = "combindex",
-                                "Bliss Independence" = "bliss",
-                                "Loewe Additivity" = "loewe"),
-                     selected = "bliss"),
+          numericInput("syn_eval_timepoint",
+                      "Evaluation Timepoint (leave blank for last)",
+                      value = NA, min = 0, step = 1),
           
-          checkboxInput("syn_include_3d",
-                       "Generate 3D Surface Plot",
-                       value = TRUE),
-          
-          sliderInput("syn_confidence",
-                     "Confidence Level",
-                     min = 0.80, max = 0.99, value = 0.95, step = 0.01),
+          checkboxInput("syn_over_time",
+                       "Analyze synergy across all timepoints",
+                       value = FALSE),
           
           br(),
           
-          actionButton("run_syn_analysis", 
+          actionButton("run_syn_analysis",
                       "Run Analysis",
                       class = "btn-lg btn-primary btn-block"),
           
@@ -58,47 +44,69 @@ synergyUI <- function() {
           id = "syn_results_tabs",
           
           tabPanel("Summary",
+            tab_info(strong("Synergy summary: "), "Overall assessment combining Bliss independence and Combination Index (CI) metrics. Reports whether the drug combination is synergistic, additive, or antagonistic at the evaluated timepoint, and lists the key quantitative scores."),
             shinycssloaders::withSpinner(
               verbatimTextOutput("syn_summary")
             )
           ),
           
+          tabPanel("Synergy Metrics",
+            tab_info(strong("Quantitative synergy scores. "),
+              strong("Bliss excess: "), "observed\u202f\u2212\u202fexpected effect (positive\u202f=\u202fsynergy, negative\u202f=\u202fantagonism). ",
+              strong("Combination Index (CI): "), "CI\u202f<\u202f1 synergistic, CI\u202f=\u202f1 additive, CI\u202f>\u202f1 antagonistic. ",
+              "When \u2018Analyze over time\u2019 is enabled, this table shows metrics at every measured timepoint."),
+            shinycssloaders::withSpinner(
+              DTOutput("syn_metrics_table")
+            ),
+            downloadButton("download_syn_metrics", "Download Results")
+          ),
+          
+          tabPanel("TGI Table",
+            tab_info(strong("Tumor Growth Inhibition (TGI): "), "percentage reduction in tumor volume relative to the control group at the evaluation timepoint. Higher TGI\u202f% indicates greater anti-tumor activity. The table also shows mean volumes and standard errors per group."),
+            shinycssloaders::withSpinner(
+              DTOutput("syn_tgi_table")
+            ),
+            downloadButton("download_syn_tgi", "Download TGI")
+          ),
+          
+          tabPanel("Synergy Plot",
+            tab_info(strong("Visual synergy comparison: "), "bars showing observed combination effect alongside the expected effect if the two drugs acted independently (Bliss model). A combination bar taller than the expected bar indicates synergy at the evaluation timepoint."),
+            shinycssloaders::withSpinner(
+              plotOutput("syn_plot_main", height = "500px")
+            ),
+            downloadButton("download_syn_plot_main", "Download Plot")
+          ),
+          
+          tabPanel("Trend Over Time",
+            tab_info(strong("Synergy trend: "), "synergy/antagonism scores plotted across all measured timepoints. Shows whether the interaction between the two drugs strengthens, weakens, or reverses over the course of the experiment. Requires \u2018Analyze synergy across all timepoints\u2019 to be enabled."),
+            conditionalPanel(
+              condition = "input.syn_over_time",
+              shinycssloaders::withSpinner(
+                plotOutput("syn_plot_trend", height = "500px")
+              ),
+              downloadButton("download_syn_plot_trend", "Download Plot")
+            ),
+            conditionalPanel(
+              condition = "!input.syn_over_time",
+              br(),
+              p("Enable 'Analyze synergy across all timepoints' to see trend plots.")
+            )
+          ),
+          
           tabPanel("Combination Index",
-            shinycssloaders::withSpinner(
-              DTOutput("syn_ci_table")
+            tab_info(strong("Combination Index (CI) over time: "), "CI values at each measured timepoint. The dashed reference line at CI\u202f=\u202f1 represents additivity. Points below 1 indicate synergism at that timepoint; points above 1 indicate antagonism. Requires \u2018Analyze synergy across all timepoints\u2019 to be enabled."),
+            conditionalPanel(
+              condition = "input.syn_over_time",
+              shinycssloaders::withSpinner(
+                plotOutput("syn_plot_ci", height = "500px")
+              ),
+              downloadButton("download_syn_plot_ci", "Download Plot")
             ),
-            downloadButton("download_syn_ci", "Download Results")
-          ),
-          
-          tabPanel("Bliss Plot",
-            shinycssloaders::withSpinner(
-              plotOutput("syn_plot_bliss", height = "500px")
-            ),
-            downloadButton("download_syn_plot_bliss", "Download Plot")
-          ),
-          
-          tabPanel("Synergy Map",
-            shinycssloaders::withSpinner(
-              plotOutput("syn_plot_synergy_map", height = "500px")
-            ),
-            downloadButton("download_syn_plot_synergy_map", "Download Plot")
-          ),
-          
-          tabPanel("3D Surface",
-            shinycssloaders::withSpinner(
-              conditionalPanel(
-                condition = "input.syn_include_3d",
-                plotOutput("syn_plot_3d", height = "600px")
-              )
-            ),
-            downloadButton("download_syn_plot_3d", "Download Plot")
-          ),
-          
-          tabPanel("Dose Response Curves",
-            shinycssloaders::withSpinner(
-              plotOutput("syn_plot_doseresponse", height = "500px")
-            ),
-            downloadButton("download_syn_plot_doseresponse", "Download Plot")
+            conditionalPanel(
+              condition = "!input.syn_over_time",
+              br(),
+              p("Enable 'Analyze synergy across all timepoints' to see combination index over time.")
+            )
           )
         )
       )
@@ -111,87 +119,177 @@ synergyUI <- function() {
 synergy_server <- function(input, output, session, rv) {
   
   rv$syn_results <- NULL
-  rv$syn_running <- FALSE
+  rv$syn_over_time <- FALSE
   
-  # Update column choices when data loads
-  observe({
-    if (!is.null(rv$uploaded_data) && rv$data_valid) {
-      col_names <- colnames(rv$uploaded_data)
-      updateSelectInput(session, "syn_drug1_column", choices = c("-- Select column --" = "", col_names))
-      updateSelectInput(session, "syn_drug2_column", choices = c("-- Select column --" = "", col_names))
-      updateSelectInput(session, "syn_dose_column", choices = c("-- Select column --" = "", col_names))
-      updateSelectInput(session, "syn_response_column", choices = c("-- Select column --" = "", col_names))
+  # Dynamically render group selector dropdowns from treatment column
+  output$syn_group_selectors_ui <- renderUI({
+    req(rv$uploaded_data, rv$data_valid)
+    
+    treatment_col <- input$col_treatment
+    if (is.null(treatment_col) || treatment_col == "") {
+      return(p(class = "text-warning",
+               icon("exclamation-triangle"),
+               "Select Treatment column in Data Upload first."))
     }
+    
+    groups <- sort(unique(as.character(na.omit(rv$uploaded_data[[treatment_col]]))))
+    choices <- setNames(groups, groups)
+    
+    tagList(
+      selectInput("syn_drug_a", "Drug A (single agent)",
+                 choices = choices,
+                 selected = if (length(groups) >= 2) groups[2] else groups[1]),
+      
+      selectInput("syn_drug_b", "Drug B (single agent)",
+                 choices = choices,
+                 selected = if (length(groups) >= 3) groups[3] else groups[1]),
+      
+      selectInput("syn_combo", "Combination Treatment",
+                 choices = choices,
+                 selected = if (length(groups) >= 4) groups[4] else groups[1]),
+      
+      selectInput("syn_control", "Control Group",
+                 choices = choices,
+                 selected = pick_reference_group(groups))
+    )
   })
   
   # Run synergy analysis
   observeEvent(input$run_syn_analysis, {
     req(rv$uploaded_data, rv$data_valid)
     
-    # Validate selections
-    if (input$syn_drug1_column == "" || input$syn_drug2_column == "" || 
-        input$syn_dose_column == "" || input$syn_response_column == "") {
+    needed <- c(input$syn_drug_a, input$syn_drug_b, input$syn_combo, input$syn_control)
+    if (any(is.null(needed)) || any(needed == "")) {
       output$syn_status_msg <- renderUI({
         div(class = "alert alert-danger",
-            icon("exclamation-circle"), 
-            "Error: Please select all required columns")
+            icon("exclamation-circle"),
+            "Please select all four treatment groups.")
       })
       return()
     }
     
-    rv$syn_running <- TRUE
+    if (length(unique(needed)) < 4) {
+      output$syn_status_msg <- renderUI({
+        div(class = "alert alert-danger",
+            icon("exclamation-circle"),
+            "Each role (Drug A, Drug B, Combination, Control) must be a different group.")
+      })
+      return()
+    }
+    
     output$syn_status_msg <- renderUI({
       div(class = "alert alert-info",
           icon("spinner", class = "fa-spin"), "Running synergy analysis...")
     })
     
-    # Run analysis
-    result <- safe_analysis({
-      mouseExperiment::analyze_drug_synergy(
-        df = rv$uploaded_data,
-        drug1_column = input$syn_drug1_column,
-        drug2_column = input$syn_drug2_column,
-        dose_column = input$syn_dose_column,
-        response_column = input$syn_response_column,
-        model = input$syn_model,
-        confidence_level = input$syn_confidence
-      )
-    })
+    # Use preprocessed data (Volume + Day resolved) if TG analysis has already
+    # been run; otherwise preprocess inline from the raw uploaded data.
+    if (!is.null(rv$processed_data)) {
+      analysis_data <- rv$processed_data
+      vol_col  <- rv$vol_col
+      time_col <- rv$time_col
+      tx_col   <- rv$tx_col
+    } else {
+      # Inline preprocessing mirroring the tumor_growth_server logic
+      analysis_data <- rv$uploaded_data
+      tx_col   <- if (!is.null(input$col_treatment) && input$col_treatment != "") input$col_treatment else "Treatment"
+      id_col   <- if (!is.null(input$col_id)        && input$col_id        != "") input$col_id        else "ID"
+      
+      if (!is.null(input$time_method) && input$time_method == "from_date" &&
+          !is.null(input$col_date_for_day) && input$col_date_for_day != "") {
+        first_val <- as.character(analysis_data[1, input$col_date_for_day])
+        fmt <- if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_val)) "%m/%d/%Y" else
+               if (grepl("^\\d{4}-\\d{1,2}-\\d{1,2}$", first_val)) "%Y-%m-%d" else
+               if (grepl("^\\d{1,2}-[A-Za-z]{3}$", first_val)) "%d-%b" else NULL
+        tryCatch({
+          analysis_data <- mouseExperiment::calculate_dates(analysis_data,
+            start_date = input$reference_date,
+            date_column = input$col_date_for_day,
+            date_format = fmt)
+        }, error = function(e) NULL)
+        time_col <- "Day"
+      } else {
+        time_col <- if (!is.null(input$col_day) && input$col_day != "") input$col_day else "Day"
+      }
+      
+      if (!is.null(input$volume_method) && input$volume_method == "calculate" &&
+          !is.null(input$col_length) && input$col_length != "" &&
+          !is.null(input$col_width)  && input$col_width  != "") {
+        tryCatch({
+          analysis_data <- mouseExperiment::calculate_volume(analysis_data,
+            length_column = input$col_length, width_column = input$col_width,
+            formula = input$volume_formula)
+        }, error = function(e) NULL)
+        vol_col <- "Volume"
+      } else {
+        vol_col <- if (!is.null(input$col_volume) && input$col_volume != "") input$col_volume else "Volume"
+      }
+    }
     
-    # Generate Bliss plot
-    if (!isTRUE(result$error) && !is.null(result$bliss_data)) {
-      tryCatch({
-        result$plot_bliss <- mouseExperiment::plot_bliss(result$bliss_data)
-      }, error = function(e) {
-        cat("WARNING: Error generating Bliss plot:", e$message, "\n")
+    # Coerce time and volume to numeric (guard against CSV character reads)
+    if (time_col %in% colnames(analysis_data))
+      analysis_data[[time_col]] <- suppressWarnings(as.numeric(analysis_data[[time_col]]))
+    if (vol_col %in% colnames(analysis_data))
+      analysis_data[[vol_col]]  <- suppressWarnings(as.numeric(analysis_data[[vol_col]]))
+    
+    eval_tp  <- if (!is.null(input$syn_eval_timepoint) && !is.na(input$syn_eval_timepoint)) {
+      input$syn_eval_timepoint
+    } else {
+      NULL
+    }
+    
+    rv$syn_over_time <- isTRUE(input$syn_over_time)
+    
+    if (rv$syn_over_time) {
+      result <- safe_analysis({
+        mouseExperiment::analyze_drug_synergy_over_time(
+          df               = analysis_data,
+          treatment_column = tx_col,
+          volume_column    = vol_col,
+          time_column      = time_col,
+          drug_a_name      = input$syn_drug_a,
+          drug_b_name      = input$syn_drug_b,
+          combo_name       = input$syn_combo,
+          control_name     = input$syn_control
+        )
+      })
+    } else {
+      result <- safe_analysis({
+        mouseExperiment::analyze_drug_synergy(
+          df               = analysis_data,
+          treatment_column = tx_col,
+          volume_column    = vol_col,
+          time_column      = time_col,
+          drug_a_name      = input$syn_drug_a,
+          drug_b_name      = input$syn_drug_b,
+          combo_name       = input$syn_combo,
+          control_name     = input$syn_control,
+          eval_time_point  = eval_tp
+        )
       })
     }
     
-    # Generate combination index plot
-    if (!isTRUE(result$error) && !is.null(result$ci_data)) {
-      tryCatch({
-        result$plot_ci <- mouseExperiment::plot_combination_index(result$ci_data)
-      }, error = function(e) {
-        cat("WARNING: Error generating CI plot:", e$message, "\n")
-      })
-    }
-    
-    # Generate synergy combined visualization
     if (!isTRUE(result$error)) {
-      tryCatch({
-        result$plot_synergy_combined <- mouseExperiment::plot_synergy_combined(result)
-      }, error = function(e) {
-        cat("WARNING: Error generating synergy plot:", e$message, "\n")
-      })
+      if (rv$syn_over_time) {
+        tryCatch({
+          result$plot_main  <- mouseExperiment::plot_synergy_combined(result)
+          result$plot_trend <- mouseExperiment::plot_synergy_trend(result)
+          # plot_combination_index() takes a synergy_summary data frame, not the full result
+          result$plot_ci    <- mouseExperiment::plot_combination_index(result$synergy_summary)
+        }, error = function(e) cat("WARNING: Synergy over-time plot error:", e$message, "\n"))
+      } else {
+        tryCatch({
+          result$plot_main  <- mouseExperiment::plot_drug_synergy(result)
+        }, error = function(e) cat("WARNING: Synergy plot error:", e$message, "\n"))
+      }
     }
     
     rv$syn_results <- result
-    rv$syn_running <- FALSE
     
     if (isTRUE(result$error)) {
       output$syn_status_msg <- renderUI({
         div(class = "alert alert-danger",
-            icon("exclamation-circle"), 
+            icon("exclamation-circle"),
             "Error:", result$message)
       })
     } else {
@@ -202,145 +300,133 @@ synergy_server <- function(input, output, session, rv) {
     }
   })
   
-  # Summary output
   output$syn_summary <- renderText({
     req(rv$syn_results)
-    if (isTRUE(rv$syn_results$error)) {
-      return(paste("Error:", rv$syn_results$message))
-    }
+    if (isTRUE(rv$syn_results$error)) return(paste("Error:", rv$syn_results$message))
     
-    summary_text <- capture.output({
+    res <- rv$syn_results
+    paste(capture.output({
       cat("=== DRUG SYNERGY ANALYSIS SUMMARY ===\n\n")
-      cat("Drug 1:", input$syn_drug1_column, "\n")
-      cat("Drug 2:", input$syn_drug2_column, "\n")
-      cat("Dose Column:", input$syn_dose_column, "\n")
-      cat("Response Column:", input$syn_response_column, "\n\n")
-      cat("Model:", input$syn_model, "\n")
-      cat("Confidence Level:", round(input$syn_confidence * 100), "%\n\n")
+      cat("Drug A (single agent): ", input$syn_drug_a, "\n")
+      cat("Drug B (single agent): ", input$syn_drug_b, "\n")
+      cat("Combination:           ", input$syn_combo, "\n")
+      cat("Control:               ", input$syn_control, "\n\n")
       
-      if (!is.null(rv$syn_results$synergy_assessment)) {
-        cat("Overall Assessment:\n")
-        print(rv$syn_results$synergy_assessment)
+      if (isTRUE(rv$syn_over_time)) {
+        cat("Analysis type: Over all timepoints\n\n")
+        if (!is.null(res$peak_bliss_synergy)) cat("Peak Bliss synergy at timepoint:", res$peak_bliss_synergy$time_point, "\n")
+        if (!is.null(res$peak_ci_synergy))    cat("Strongest CI synergy at timepoint:", res$peak_ci_synergy$time_point, "\n")
+      } else {
+        cat("Analysis type: Single timepoint\n")
+        if (!is.null(res$evaluation_time_point)) cat("Evaluated at Day:", res$evaluation_time_point, "\n")
+        cat("\nOverall Assessment:", res$overall_assessment, "\n\n")
+        if (!is.null(res$combination_index)) {
+          cat("Combination Index (CI):", round(res$combination_index$ci, 4), "\n")
+          cat("Interpretation:", res$combination_index$interpretation, "\n")
+          cat("  CI < 1 = Synergistic, CI = 1 = Additive, CI > 1 = Antagonistic\n\n")
+        }
+        if (!is.null(res$bliss_independence)) {
+          bi <- res$bliss_independence
+          cat("Bliss Independence:\n")
+          cat("  Expected effect:", round(bi$expected_effect, 4), "\n")
+          cat("  Observed effect:", round(bi$observed_effect, 4), "\n")
+          cat("  Synergistic:    ", bi$synergy, "\n")
+        }
       }
-    })
-    
-    paste(summary_text, collapse = "\n")
+    }), collapse = "\n")
   })
   
-  # Combination Index table
-  output$syn_ci_table <- renderDT({
+  output$syn_metrics_table <- renderDT({
     req(rv$syn_results)
-    if (isTRUE(rv$syn_results$error) || is.null(rv$syn_results$ci_data)) {
-      return(datatable(data.frame(Message = "CI data not available")))
+    if (isTRUE(rv$syn_results$error)) return(datatable(data.frame(Message = "Results not available")))
+    
+    df <- if (isTRUE(rv$syn_over_time) && !is.null(rv$syn_results$synergy_summary)) {
+      rv$syn_results$synergy_summary
+    } else if (!is.null(rv$syn_results$synergy_metrics)) {
+      as.data.frame(rv$syn_results$synergy_metrics)
+    } else {
+      data.frame(Message = "No metrics available")
     }
-    
-    ci_df <- as.data.frame(rv$syn_results$ci_data)
-    numeric_cols <- sapply(ci_df, is.numeric)
-    ci_df[numeric_cols] <- round(ci_df[numeric_cols], 4)
-    
-    datatable(ci_df, options = list(scrollX = TRUE, pageLength = 10))
+    numeric_cols <- sapply(df, is.numeric)
+    df[numeric_cols] <- round(df[numeric_cols], 4)
+    datatable(df, options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE)
   })
   
-  # Bliss plot
-  output$syn_plot_bliss <- renderPlot({
+  output$syn_tgi_table <- renderDT({
+    req(rv$syn_results)
+    if (isTRUE(rv$syn_results$error) || is.null(rv$syn_results$summary)) {
+      return(datatable(data.frame(Message = "TGI data not available")))
+    }
+    df <- as.data.frame(rv$syn_results$summary)
+    numeric_cols <- sapply(df, is.numeric)
+    df[numeric_cols] <- round(df[numeric_cols], 4)
+    datatable(df, options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
+  })
+  
+  output$syn_plot_main <- renderPlot({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error)) return(NULL)
-    
-    if (!is.null(rv$syn_results$plot_bliss)) {
-      return(rv$syn_results$plot_bliss)
-    } else {
-      plot(1, 1, type="n", main="Bliss plot not available", xlab="", ylab="")
-    }
+    if (!is.null(rv$syn_results$plot_main)) print(rv$syn_results$plot_main)
+    else plot(1, 1, type = "n", main = "Plot not available", xlab = "", ylab = "")
   })
   
-  # Synergy map/heatmap
-  output$syn_plot_synergy_map <- renderPlot({
+  output$syn_plot_trend <- renderPlot({
     req(rv$syn_results)
-    if (isTRUE(rv$syn_results$error)) return(NULL)
-    
-    if (!is.null(rv$syn_results$plot_synergy_combined)) {
-      return(rv$syn_results$plot_synergy_combined)
-    } else {
-      plot(1, 1, type="n", main="Synergy map not available", xlab="", ylab="")
-    }
+    if (isTRUE(rv$syn_results$error) || !isTRUE(rv$syn_over_time)) return(NULL)
+    if (!is.null(rv$syn_results$plot_trend)) print(rv$syn_results$plot_trend)
+    else plot(1, 1, type = "n", main = "Trend plot not available", xlab = "", ylab = "")
   })
   
-  # 3D surface plot
-  output$syn_plot_3d <- renderPlot({
+  output$syn_plot_ci <- renderPlot({
     req(rv$syn_results)
-    if (isTRUE(rv$syn_results$error)) return(NULL)
-    
-    if (!is.null(rv$syn_results$plot_3d)) {
-      return(rv$syn_results$plot_3d)
-    } else if (!input$syn_include_3d) {
-      plot(1, 1, type="n", main="3D plot disabled", xlab="", ylab="")
-    } else {
-      plot(1, 1, type="n", main="3D plot not available", xlab="", ylab="")
-    }
+    if (isTRUE(rv$syn_results$error) || !isTRUE(rv$syn_over_time)) return(NULL)
+    if (!is.null(rv$syn_results$plot_ci)) print(rv$syn_results$plot_ci)
+    else plot(1, 1, type = "n", main = "CI plot not available", xlab = "", ylab = "")
   })
   
-  # Dose-response plot
-  output$syn_plot_doseresponse <- renderPlot({
-    req(rv$syn_results)
-    if (isTRUE(rv$syn_results$error)) return(NULL)
-    
-    if (!is.null(rv$syn_results$plot_doseresponse)) {
-      return(rv$syn_results$plot_doseresponse)
-    } else {
-      plot(1, 1, type="n", main="Dose-response plot not available", xlab="", ylab="")
-    }
-  })
-  
-  # Download handlers
-  output$download_syn_ci <- downloadHandler(
-    filename = "combination_index_results.csv",
+  output$download_syn_metrics <- downloadHandler(
+    filename = "synergy_metrics.csv",
     content = function(file) {
-      if (!is.null(rv$syn_results$ci_data)) {
-        write.csv(as.data.frame(rv$syn_results$ci_data), file, row.names = FALSE)
+      df <- if (isTRUE(rv$syn_over_time) && !is.null(rv$syn_results$synergy_summary)) {
+        rv$syn_results$synergy_summary
+      } else if (!is.null(rv$syn_results$synergy_metrics)) {
+        as.data.frame(rv$syn_results$synergy_metrics)
+      } else NULL
+      if (!is.null(df)) write.csv(df, file, row.names = FALSE)
+    }
+  )
+  
+  output$download_syn_tgi <- downloadHandler(
+    filename = "synergy_tgi.csv",
+    content = function(file) {
+      if (!is.null(rv$syn_results$summary))
+        write.csv(as.data.frame(rv$syn_results$summary), file, row.names = FALSE)
+    }
+  )
+  
+  output$download_syn_plot_main <- downloadHandler(
+    filename = "synergy_plot.png",
+    content = function(file) {
+      if (!is.null(rv$syn_results$plot_main)) {
+        png(file, width = 900, height = 600); print(rv$syn_results$plot_main); dev.off()
       }
     }
   )
   
-  output$download_syn_plot_bliss <- downloadHandler(
-    filename = "bliss_plot.png",
+  output$download_syn_plot_trend <- downloadHandler(
+    filename = "synergy_trend.png",
     content = function(file) {
-      if (!is.null(rv$syn_results$plot_bliss)) {
-        png(file, width = 800, height = 600)
-        print(rv$syn_results$plot_bliss)
-        dev.off()
+      if (!is.null(rv$syn_results$plot_trend)) {
+        png(file, width = 900, height = 600); print(rv$syn_results$plot_trend); dev.off()
       }
     }
   )
   
-  output$download_syn_plot_synergy_map <- downloadHandler(
-    filename = "synergy_map.png",
+  output$download_syn_plot_ci <- downloadHandler(
+    filename = "combination_index.png",
     content = function(file) {
-      if (!is.null(rv$syn_results$plot_synergy_combined)) {
-        png(file, width = 800, height = 600)
-        print(rv$syn_results$plot_synergy_combined)
-        dev.off()
-      }
-    }
-  )
-  
-  output$download_syn_plot_3d <- downloadHandler(
-    filename = "synergy_3d_surface.png",
-    content = function(file) {
-      if (!is.null(rv$syn_results$plot_3d)) {
-        png(file, width = 900, height = 600)
-        print(rv$syn_results$plot_3d)
-        dev.off()
-      }
-    }
-  )
-  
-  output$download_syn_plot_doseresponse <- downloadHandler(
-    filename = "dose_response_curves.png",
-    content = function(file) {
-      if (!is.null(rv$syn_results$plot_doseresponse)) {
-        png(file, width = 800, height = 600)
-        print(rv$syn_results$plot_doseresponse)
-        dev.off()
+      if (!is.null(rv$syn_results$plot_ci)) {
+        png(file, width = 900, height = 600); print(rv$syn_results$plot_ci); dev.off()
       }
     }
   )
