@@ -86,21 +86,17 @@ dataUploadUI <- function() {
     ),
 
     fluidRow(
-      column(12,
-        p("Upload your tumor growth data (CSV or RDA format). ",
-          "The dashboard will automatically detect column names."),
-        br()
-      )
-    ),
-    
-    fluidRow(
       column(6,
         wellPanel(
           h4(strong("Upload Tumor Growth Data")),
           fileInput("data_file", 
                    "Choose File (CSV or RDA)",
-                   accept = c(".csv", ".rda", ".RData"))
-        ),
+                   accept = c(".csv", ".rda", ".RData")),
+          uiOutput("file_validation_msg")
+        )
+      ),
+
+      column(6,
         wellPanel(
           h4(strong("Upload Treatment Schedule (Optional)")),
           p(tags$small("Upload a CSV/RDA file describing the treatment timeline (e.g. dosing days).",
@@ -110,10 +106,6 @@ dataUploadUI <- function() {
                    accept = c(".csv", ".rda", ".RData")),
           uiOutput("schedule_validation_msg")
         )
-      ),
-      
-      column(6,
-        uiOutput("file_validation_msg")
       )
     ),
     
