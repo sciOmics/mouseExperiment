@@ -662,6 +662,24 @@ tumor_growth_server <- function(input, output, session, rv) {
             extra_pts2 <- if (!is.null(input$tg_extrapolation_points) &&
                               !is.na(input$tg_extrapolation_points))
                             as.integer(input$tg_extrapolation_points) else 0L
+            auc_ind <- result$auc_analysis$individual
+            # Safety: if the Group column values don't match known treatment groups
+            # (can happen when IDs with underscores confuse the package's string-split),
+            # re-derive Group by joining on the original ID column.
+            known_groups <- unique(as.character(data[[col_names$treatment_column]]))
+            if (!all(auc_ind$Group %in% known_groups)) {
+              id_tx <- unique(data[, c(col_names$id_column, col_names$treatment_column),
+                                   drop = FALSE])
+              merged <- merge(auc_ind, id_tx,
+                              by.x = "ID", by.y = col_names$id_column,
+                              all.x = TRUE)
+              new_grp <- merged[[col_names$treatment_column]]
+              if (!is.null(new_grp) && !all(is.na(new_grp))) {
+                auc_ind$Group    <- as.character(new_grp)
+                auc_ind$Treatment <- as.character(new_grp)
+                result$auc_analysis$individual <- auc_ind
+              }
+            }
             result$auc_plot <- mouseExperiment::plot_auc(
               result$auc_analysis$individual,
               show_mean = TRUE,
@@ -677,19 +695,31 @@ tumor_growth_server <- function(input, output, session, rv) {
         if (is.null(result$auc_plot) && !is.null(result$treatment_effects)) {
           effects_df <- as.data.frame(result$treatment_effects)
           if (nrow(effects_df) > 0) {
-            numeric_cols <- which(sapply(effects_df, is.numeric))
-            if (length(numeric_cols) > 0) {
-              effect_col <- numeric_cols[1]
+            # treatment_effects uses "Group" (lme4) or "Treatment" (AUC) as the label column;
+            # do NOT fall back to rownames() since rbind() resets them to "1","2","3"...
+            label_col <- intersect(c("Group", "Treatment"), colnames(effects_df))[1]
+            # Choose a meaningful numeric column: prefer adjusted mean / mean AUC over
+            # count/DF/Reference columns
+            preferred <- c("Adjusted_Mean", "Mean_AUC", "emmean", "estimate", "mean")
+            effect_col <- intersect(preferred, colnames(effects_df))[1]
+            if (is.na(effect_col)) {
+              # fallback: first numeric that isn't N / DF / Reference
+              skip_cols <- c("N", "DF", "Reference")
+              num_cols <- colnames(effects_df)[sapply(effects_df, is.numeric)]
+              num_cols <- setdiff(num_cols, c(skip_cols, label_col))
+              effect_col <- if (length(num_cols) > 0) num_cols[1] else NA
+            }
+            if (!is.na(label_col) && !is.na(effect_col)) {
               plot_df <- data.frame(
-                Treatment = rownames(effects_df),
-                Effect = as.numeric(effects_df[[effect_col]])
+                Treatment = as.character(effects_df[[label_col]]),
+                Effect    = as.numeric(effects_df[[effect_col]])
               )
               result$auc_plot <- ggplot2::ggplot(plot_df,
                                                   ggplot2::aes(x = reorder(Treatment, Effect),
                                                                y = Effect, fill = Treatment)) +
                 ggplot2::geom_col(width = 0.6) +
                 ggplot2::labs(title = "Treatment Effects (Adjusted Means)",
-                             x = "Treatment", y = "Effect Size") +
+                             x = "Treatment", y = effect_col) +
                 ggplot2::theme_classic() +
                 ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
                               legend.position = "none")
@@ -780,6 +810,15 @@ tumor_growth_server <- function(input, output, session, rv) {
                 stringsAsFactors = FALSE
               )
 
+              # Balanced symmetric axis: same extent either side of 0,
+              # rounded up to the nearest whole unit (mirrors HR forest plot logic)
+              all_vals <- c(forest_df$Estimate, forest_df$Lower, forest_df$Upper)
+              max_abs  <- ceiling(max(abs(all_vals), na.rm = TRUE))
+              # Add 20% padding on the right so p-value labels aren't clipped
+              x_lim <- c(-max_abs, max_abs * 1.20)
+              x_breaks <- pretty(c(-max_abs, max_abs), n = 6)
+              x_breaks <- x_breaks[x_breaks >= -max_abs & x_breaks <= max_abs]
+
               result$effect_forest_plot <- ggplot2::ggplot(
                 forest_df,
                 ggplot2::aes(x = Estimate, y = stats::reorder(Contrast, Estimate))
@@ -793,6 +832,10 @@ tumor_growth_server <- function(input, output, session, rv) {
                 ggplot2::geom_text(
                   ggplot2::aes(label = P_Label, x = Upper),
                   hjust = -0.2, size = 3.2
+                ) +
+                ggplot2::scale_x_continuous(
+                  limits = x_lim,
+                  breaks = x_breaks
                 ) +
                 ggplot2::labs(
                   title = "Pairwise Effect Size Forest Plot",
