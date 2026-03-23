@@ -151,7 +151,7 @@ safe_analysis <- function(expr) {
 #' @return Character string(s)
 #' @keywords internal
 format_pval <- function(x, digits = 3) {
-  formatC(x, digits = digits, format = "g")
+  ifelse(is.na(x), NA_character_, formatC(x, digits = digits, format = "g"))
 }
 
 #' Format a data frame for tabular display
@@ -166,14 +166,28 @@ format_pval <- function(x, digits = 3) {
 #' @return Data frame with formatted columns
 #' @keywords internal
 format_df_for_display <- function(df, digits = 4) {
+  # Flatten any array/table/matrix columns to plain atomic vectors first.
+  # Columns returned by survival_statistics (Events, Total, Event_Rate) can be
+  # table- or array-class objects; round() and datatable() both have trouble with
+  # these non-standard types.
+  for (col in names(df)) {
+    v <- df[[col]]
+    if (!is.null(dim(v)) || inherits(v, "table")) {
+      df[[col]] <- as.vector(v)
+    }
+  }
   pval_pattern <- "p[._]?value|p[._]?adj|padj|^p$|Pr\\("
   for (col in names(df)) {
     if (!is.numeric(df[[col]])) next
-    if (grepl(pval_pattern, col, ignore.case = TRUE)) {
-      df[[col]] <- format_pval(df[[col]])
-    } else {
-      df[[col]] <- round(df[[col]], digits)
-    }
+    tryCatch({
+      if (grepl(pval_pattern, col, ignore.case = TRUE)) {
+        df[[col]] <- format_pval(df[[col]])
+      } else {
+        df[[col]] <- round(df[[col]], digits)
+      }
+    }, error = function(e) {
+      # Leave the column as-is if formatting fails
+    })
   }
   df
 }

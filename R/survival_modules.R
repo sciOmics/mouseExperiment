@@ -191,47 +191,57 @@ survival_server <- function(input, output, session, rv) {
     }
     
     # For survival analysis, reduce data to one row per animal
-    # Get unique animals (ID/Cage combination)
-    if ("ID" %in% colnames(data) && "Cage" %in% colnames(data)) {
-      # Aggregate by ID and Cage - take the last (most recent) measurement
-      unique_animals <- unique(data[, c("ID", "Cage"), drop = FALSE])
-      survival_data <- data.frame()
-      
-      for (i in 1:nrow(unique_animals)) {
-        animal_rows <- data[
-          data$ID == unique_animals[i, "ID"] & 
-          data$Cage == unique_animals[i, "Cage"],
-        ]
-        # Take the last row for this animal
+    # Use the user-selected ID and Cage columns (not hardcoded names)
+    id_col_surv   <- if (!is.null(input$col_id)   && nzchar(input$col_id))   input$col_id   else "ID"
+    cage_col_surv <- if (!is.null(input$col_cage) && nzchar(input$col_cage) &&
+                         input$col_cage != "None") input$col_cage else NULL
+
+    has_id   <- !is.null(id_col_surv)   && id_col_surv   %in% colnames(data)
+    has_cage <- !is.null(cage_col_surv) && cage_col_surv %in% colnames(data)
+
+    if (has_id) {
+      # Build key columns for deduplication
+      key_cols <- if (has_cage) c(id_col_surv, cage_col_surv) else id_col_surv
+      unique_animals <- unique(data[, key_cols, drop = FALSE])
+      survival_rows <- vector("list", nrow(unique_animals))
+
+      for (i in seq_len(nrow(unique_animals))) {
+        if (has_cage) {
+          mask <- data[[id_col_surv]]   == unique_animals[i, id_col_surv] &
+                  data[[cage_col_surv]] == unique_animals[i, cage_col_surv]
+        } else {
+          mask <- data[[id_col_surv]] == unique_animals[i, id_col_surv]
+        }
+        animal_rows <- data[mask, , drop = FALSE]
         if (nrow(animal_rows) > 0) {
-          survival_data <- rbind(survival_data, animal_rows[nrow(animal_rows), ])
+          survival_rows[[i]] <- animal_rows[nrow(animal_rows), , drop = FALSE]
         }
       }
-      
+      survival_data <- do.call(rbind, Filter(Negate(is.null), survival_rows))
+
       # Validate aggregation
-      if (nrow(survival_data) == 0) {
+      if (is.null(survival_data) || nrow(survival_data) == 0) {
         result <- list(error = TRUE, message = "Data aggregation resulted in empty dataset. Check ID and Cage columns.")
         rv$surv_results <- result
         rv$surv_running <- FALSE
         output$surv_status_msg <- renderUI({
           div(class = "alert alert-danger",
-              icon("exclamation-circle"), 
+              icon("exclamation-circle"),
               "Error:", result$message)
         })
         return()
       }
-      
+
       data <- survival_data
     } else {
-      # If no ID/Cage columns, try to operate on data as-is (single measurement per animal)
+      # No ID column mapped — operate on data as-is (assume one row per animal)
       if (nrow(data) == 0) {
         result <- list(error = TRUE, message = "No data available for analysis.")
         rv$surv_results <- result
         rv$surv_running <- FALSE
         output$surv_status_msg <- renderUI({
           div(class = "alert alert-danger",
-              icon("exclamation-circle"), 
-              "Error: No data available for analysis")
+              icon("exclamation-circle"), "Error: No data available for analysis")
         })
         return()
       }
