@@ -217,10 +217,11 @@ body {
   -webkit-user-drag: none;
 }
 
-/* Bottom-right: mouse_outline1 */
+/* Bottom-right: mouse_outline1, mirrored so nose faces inward */
 #mouse-bg-img1 {
   bottom: 10px;
   right: 10px;
+  transform: scaleX(-1);
 }
 
 /* Bottom-left: mouse_outline2, mirrored so nose faces inward */
