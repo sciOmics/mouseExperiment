@@ -48,7 +48,16 @@ powerAnalysisUI <- function() {
                                         "0.90" = "0.90",
                                         "0.95" = "0.95"),
                             selected = c("0.80", "0.90")),
-          
+
+          hr(),
+
+          h4("Custom Effect Sizes"),
+          textInput("pw_custom_effect_sizes",
+                   "Effect Sizes (comma-separated, optional)",
+                   value = "",
+                   placeholder = "e.g. 0.2, 0.5, 0.8, 1.0"),
+          p(tags$small("Overrides the auto-detected effect sizes. Leave blank to use the values estimated from the data.")),
+
           br(),
           
           actionButton("run_pw_analysis",
@@ -158,7 +167,15 @@ power_server <- function(input, output, session, rv) {
     alpha_vals  <- as.numeric(input$pw_alpha)
     power_vals  <- as.numeric(input$pw_power)
     n_sims      <- if (input$pw_method == "simulation") input$pw_n_simulations else 1000
-    
+
+    # Parse optional custom effect sizes
+    custom_effect_sizes <- NULL
+    if (!is.null(input$pw_custom_effect_sizes) && nzchar(trimws(input$pw_custom_effect_sizes))) {
+      parsed <- suppressWarnings(as.numeric(strsplit(trimws(input$pw_custom_effect_sizes), "[,\\s]+")[[1]]))
+      parsed <- parsed[!is.na(parsed) & parsed > 0]
+      if (length(parsed) > 0) custom_effect_sizes <- parsed
+    }
+
     result <- safe_analysis({
       mouseExperiment::post_power_analysis(
         data             = rv$processed_data,
@@ -169,7 +186,8 @@ power_server <- function(input, output, session, rv) {
         time_column      = time_col,
         volume_column    = vol_col,
         treatment_column = tx_col,
-        id_column        = id_col
+        id_column        = id_col,
+        effect_sizes     = custom_effect_sizes
       )
     })
     

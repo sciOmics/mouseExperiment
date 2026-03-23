@@ -260,12 +260,16 @@ survival_server <- function(input, output, session, rv) {
     }
     cat("====================================\n\n")
     
+    tx_col_surv <- if (!is.null(rv$tx_col) && nzchar(rv$tx_col)) rv$tx_col else input$col_treatment
+
     result <- safe_analysis({
       mouseExperiment::survival_statistics(
         df = data,
         time_column = time_col,
         censor_column = input$col_survival_event,
-        treatment_column = input$col_treatment,
+        treatment_column = tx_col_surv,
+        cage_column = if (!is.null(input$col_cage) && nzchar(input$col_cage)) input$col_cage else "Cage",
+        dose_column = rv$dose_col,
         reference_group = input$surv_reference_group,
         firth_correction = TRUE
       )
@@ -281,33 +285,50 @@ survival_server <- function(input, output, session, rv) {
       tryCatch({
         # Use the survival_data returned by survival_statistics (has Time, Event, Treatment columns)
         surv_df <- result$survival_data
-        
+
+        # Keep a survfit object for the risk table tab
         km_fit <- survival::survfit(survival::Surv(Time, Event) ~ Treatment, data = surv_df)
-        
-        # Store the KM fit
         result$km_fit <- km_fit
-        
-        # Generate ggsurvplot (includes both plot and table)
-        km_plot_obj <- survminer::ggsurvplot(
-          km_fit,
-          data = surv_df,
-          palette = input$surv_palette,
-          risk.table = TRUE,
-          risk.table.y.text.col = TRUE,
-          conf.int = FALSE,
-          xlab = "Time (Days)",
-          ylab = "Survival Probability",
-          title = "Kaplan-Meier Survival Curves by Treatment"
+
+        # Use the exported plot_survival() function from the package to generate the KM plot
+        # (matches demo notebook approach; returns a ggsurvplot object)
+        result$km_plot <- mouseExperiment::plot_survival(
+          data              = data,
+          time_column       = time_col,
+          censor_column     = input$col_survival_event,
+          treatment_column  = tx_col_surv,
+          id_column         = input$col_id,
+          cage_column       = if (!is.null(input$col_cage) && nzchar(input$col_cage)) input$col_cage else NULL,
+          dose_column       = rv$dose_col,
+          colors            = NULL,
+          show_risk_table   = TRUE,
+          title             = "Kaplan-Meier Survival Curves by Treatment"
         )
-        
-        # Store both plot and table
-        result$km_plot <- km_plot_obj$plot
-        result$km_table <- km_plot_obj$table
-        result$km_plot_obj <- km_plot_obj
-        
-        cat("KM plot generated successfully\n")
+
+        cat("KM plot generated successfully via plot_survival()\n")
       }, error = function(e) {
-        cat("ERROR generating KM plot:", e$message, "\n")
+        cat("ERROR generating KM plot via plot_survival():", e$message, "\n")
+        # Fallback to manual ggsurvplot if plot_survival() fails
+        tryCatch({
+          surv_df <- result$survival_data
+          km_fit <- survival::survfit(survival::Surv(Time, Event) ~ Treatment, data = surv_df)
+          result$km_fit <<- km_fit
+          km_plot_obj <- survminer::ggsurvplot(
+            km_fit,
+            data = surv_df,
+            palette = input$surv_palette,
+            risk.table = TRUE,
+            risk.table.y.text.col = TRUE,
+            conf.int = FALSE,
+            xlab = "Time (Days)",
+            ylab = "Survival Probability",
+            title = "Kaplan-Meier Survival Curves by Treatment"
+          )
+          result$km_plot <<- km_plot_obj
+          cat("KM plot generated via fallback ggsurvplot\n")
+        }, error = function(e2) {
+          cat("ERROR in KM fallback:", e2$message, "\n")
+        })
       })
     }
     
@@ -390,9 +411,10 @@ survival_server <- function(input, output, session, rv) {
   output$surv_plot_km <- renderPlot({
     req(rv$surv_results)
     if (isTRUE(rv$surv_results$error)) return(NULL)
-    
+
     if (!is.null(rv$surv_results$km_plot)) {
-      return(rv$surv_results$km_plot)
+      # plot_survival() returns a ggsurvplot object; print() renders it correctly
+      print(rv$surv_results$km_plot)
     } else {
       plot(1, 1, type="n", main="KM plot not available", xlab="", ylab="")
     }

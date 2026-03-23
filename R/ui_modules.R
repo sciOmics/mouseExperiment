@@ -421,6 +421,19 @@ tumorGrowthUI <- function() {
             
             fluidRow(
               column(12,
+                h4("Effect Size Forest Plot"),
+                tab_info(strong("Pairwise effect sizes: "), "mean differences between treatment groups with 95% confidence intervals. Points to the left of zero indicate lower volume vs. reference; points to the right indicate higher volume."),
+                shinycssloaders::withSpinner(
+                  plotOutput("tg_plot_effect_forest", height = "400px")
+                ),
+                downloadButton("download_tg_plot_effect_forest", "Download Plot")
+              )
+            ),
+            
+            hr(),
+            
+            fluidRow(
+              column(12,
                 h4("Treatment Schedule"),
                 p(tags$small("Requires a treatment schedule file uploaded in Data Upload (Step 1b)")),
                 shinycssloaders::withSpinner(

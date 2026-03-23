@@ -538,6 +538,7 @@ tumor_growth_server <- function(input, output, session, rv) {
         volume_column = col_names$volume_column,
         id_column = col_names$id_column,
         treatment_column = col_names$treatment_column,
+        dose_column = rv$dose_col,
         cage_column = col_names$cage_column,
         model_type = input$tg_model_type,
         transform = input$tg_transform,
@@ -574,7 +575,8 @@ tumor_growth_server <- function(input, output, session, rv) {
             df = data,
             volume_column = col_names$volume_column,
             day_column = col_names$time_column,
-            treatment_column = col_names$treatment_column,
+            treatment_column = if (!is.null(rv$dose_col)) input$col_treatment else col_names$treatment_column,
+            dose_column = rv$dose_col,
             ID_column = col_names$id_column,
             cage_column = col_names$cage_column,
             survival_column = if (surv_col_mapped) input$col_survival_event else NULL,
@@ -656,6 +658,68 @@ tumor_growth_server <- function(input, output, session, rv) {
             ggplot2::labs(title = "Q-Q Plot of Residuals",
                          x = "Theoretical Quantiles",
                          y = "Sample Quantiles")
+        }
+        
+        # Plot 5: Effect size forest plot from pairwise comparisons
+        pc <- if (!is.null(result$pairwise_comparisons)) result$pairwise_comparisons
+              else if (!is.null(result$all_pairwise_comparisons)) result$all_pairwise_comparisons
+              else NULL
+        if (!is.null(pc)) {
+          tryCatch({
+            pc_df <- as.data.frame(pc)
+            # Standardise column names from emmeans / model output
+            label_col   <- intersect(c("contrast", "Contrast", "comparison", "pair"), colnames(pc_df))[1]
+            est_col     <- intersect(c("estimate", "Estimate"), colnames(pc_df))[1]
+            se_col      <- intersect(c("SE"), colnames(pc_df))[1]
+            lower_col   <- intersect(c("lower.CL", "Lower", "lower_CL", "lower"), colnames(pc_df))[1]
+            upper_col   <- intersect(c("upper.CL", "Upper", "upper_CL", "upper"), colnames(pc_df))[1]
+            p_col       <- intersect(c("p.value", "p_value", "p.adj", "adj.p.value", "P_Value"), colnames(pc_df))[1]
+
+            if (!is.na(label_col) && !is.na(est_col)) {
+              # Compute CIs from SE if explicit CI columns are absent
+              if (is.na(lower_col) && !is.na(se_col)) {
+                pc_df$lower.CL <- pc_df[[est_col]] - 1.96 * pc_df[[se_col]]
+                pc_df$upper.CL <- pc_df[[est_col]] + 1.96 * pc_df[[se_col]]
+                lower_col <- "lower.CL"; upper_col <- "upper.CL"
+              }
+              p_label <- if (!is.na(p_col))
+                           paste0("p=", formatC(pc_df[[p_col]], digits = 3, format = "g"))
+                         else NULL
+
+              forest_df <- data.frame(
+                Contrast  = pc_df[[label_col]],
+                Estimate  = pc_df[[est_col]],
+                Lower     = if (!is.na(lower_col)) pc_df[[lower_col]] else pc_df[[est_col]],
+                Upper     = if (!is.na(upper_col)) pc_df[[upper_col]] else pc_df[[est_col]],
+                P_Label   = if (is.null(p_label)) "" else p_label,
+                stringsAsFactors = FALSE
+              )
+
+              result$effect_forest_plot <- ggplot2::ggplot(
+                forest_df,
+                ggplot2::aes(x = Estimate, y = stats::reorder(Contrast, Estimate))
+              ) +
+                ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "red", linewidth = 0.6) +
+                ggplot2::geom_errorbarh(
+                  ggplot2::aes(xmin = Lower, xmax = Upper),
+                  height = 0.25, colour = "steelblue"
+                ) +
+                ggplot2::geom_point(size = 3, colour = "steelblue") +
+                ggplot2::geom_text(
+                  ggplot2::aes(label = P_Label, x = Upper),
+                  hjust = -0.2, size = 3.2
+                ) +
+                ggplot2::labs(
+                  title = "Pairwise Effect Size Forest Plot",
+                  x = "Mean Difference (vs. Reference)",
+                  y = NULL
+                ) +
+                ggplot2::theme_classic() +
+                ggplot2::theme(axis.text.y = ggplot2::element_text(size = 10))
+            }
+          }, error = function(e) {
+            cat("WARNING: effect forest plot failed:", e$message, "\n")
+          })
         }
         
       }, error = function(e) {
@@ -898,6 +962,18 @@ tumor_growth_server <- function(input, output, session, rv) {
       plot(1, 1, type="n", main="QQ plot generating...", xlab="", ylab="")
     }
   })
+
+  # Effect size forest plot
+  output$tg_plot_effect_forest <- renderPlot({
+    req(rv$tg_results)
+    if (isTRUE(rv$tg_results$error)) return(NULL)
+
+    if (!is.null(rv$tg_results$effect_forest_plot)) {
+      return(rv$tg_results$effect_forest_plot)
+    } else {
+      plot(1, 1, type="n", main="Effect size forest plot not available\n(requires pairwise comparison data)", xlab="", ylab="")
+    }
+  })
   
   # Diagnostics
   output$tg_diagnostics <- renderText({
@@ -988,6 +1064,17 @@ tumor_growth_server <- function(input, output, session, rv) {
       if (!is.null(rv$tg_results$caterpillar_plot)) {
         png(file, width = 800, height = 600)
         print(rv$tg_results$caterpillar_plot)
+        dev.off()
+      }
+    }
+  )
+
+  output$download_tg_plot_effect_forest <- downloadHandler(
+    filename = "effect_size_forest_plot.png",
+    content = function(file) {
+      if (!is.null(rv$tg_results$effect_forest_plot)) {
+        png(file, width = 900, height = 600)
+        print(rv$tg_results$effect_forest_plot)
         dev.off()
       }
     }
