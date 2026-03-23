@@ -21,6 +21,17 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
 
   if (!exists("APP_VERSION")) APP_VERSION <- "0.1.0 (Development)"
 
+  # Mount static assets explicitly so they resolve regardless of working
+  # directory. system.file(package=) returns the project root under
+  # devtools::load_all(), so "www" is always one level below it.
+  pkg_root <- system.file(package = "mouseExperimentDashboard")
+  www_dir  <- file.path(pkg_root, "www")
+  if (!dir.exists(www_dir)) www_dir <- file.path(getwd(), "www")
+  if (dir.exists(www_dir)) {
+    shiny::addResourcePath("css",    file.path(www_dir, "css"))
+    shiny::addResourcePath("images", file.path(www_dir, "images"))
+  }
+
   # JS injected on page load:
   #  1. Moves Help + Citation to a right-aligned nav
   #  2. Adds "navbar-center" class to the main nav for CSS centering
@@ -65,7 +76,7 @@ window.enableNavTab  = enableNavTab;
         tags$link(rel = "stylesheet", href = "css/custom.css"),
         tags$script(nav_js)
       ),
-      # Decorative mouse outline images — fixed, behind all interactive content
+      # Decorative mouse outline images — fixed overlay, click-through
       tags$div(
         id = "mouse-bg-layer",
         tags$img(id = "mouse-bg-img1", class = "mouse-bg-img",
