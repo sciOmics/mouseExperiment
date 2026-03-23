@@ -479,9 +479,12 @@ survival_server <- function(input, output, session, rv) {
     ggplot2::ggplot(plot_df,
                    ggplot2::aes(x = HR, y = reorder(Group, HR),
                                 xmin = CI_Lower, xmax = CI_Upper)) +
-      ggplot2::geom_point(size = 4, color = "steelblue") +
+      ggplot2::geom_point(size = 5, color = "steelblue") +
       ggplot2::geom_errorbarh(height = 0.25, linewidth = 0.8, color = "steelblue") +
       ggplot2::geom_vline(xintercept = 1, linetype = "dashed", color = "grey40") +
+      ggplot2::geom_text(
+        ggplot2::aes(label = paste0("HR: ", round(HR, 2), ", p = ", round(P_Value, 4))),
+        vjust = 3, hjust = -0.1, size = 4, color = "grey30") +
       ggplot2::scale_x_continuous(
         trans  = "log2",
         limits = x_lim,
@@ -493,9 +496,9 @@ survival_server <- function(input, output, session, rv) {
         x = "Hazard Ratio (log\u2082 scale)",
         y = NULL
       ) +
-      ggplot2::theme_minimal(base_size = 14) +
+      ggplot2::theme_classic(base_size = 14) +
       ggplot2::theme(
-        panel.grid.minor = ggplot2::element_blank(),
+        axis.text.y = ggplot2::element_text(size = 11),
         legend.position = "none"
       )
   })
@@ -558,9 +561,12 @@ survival_server <- function(input, output, session, rv) {
         ggplot2::ggplot(plot_df,
                        ggplot2::aes(x = HR, y = reorder(Group, HR),
                                     xmin = CI_Lower, xmax = CI_Upper)) +
-          ggplot2::geom_point(size = 4, color = "steelblue") +
+          ggplot2::geom_point(size = 5, color = "steelblue") +
           ggplot2::geom_errorbarh(height = 0.25, linewidth = 0.8, color = "steelblue") +
           ggplot2::geom_vline(xintercept = 1, linetype = "dashed", color = "grey40") +
+          ggplot2::geom_text(
+            ggplot2::aes(label = paste0("HR: ", round(HR, 2), ", p = ", round(P_Value, 4))),
+            vjust = 3, hjust = -0.1, size = 4, color = "grey30") +
           ggplot2::scale_x_continuous(
             trans  = "log2",
             limits = x_lim,
@@ -569,8 +575,9 @@ survival_server <- function(input, output, session, rv) {
           ) +
           ggplot2::labs(title = paste("Forest Plot: Hazard Ratios vs", ref_grp),
                        x = "Hazard Ratio (log\u2082 scale)", y = NULL) +
-          ggplot2::theme_minimal(base_size = 14) +
-          ggplot2::theme(legend.position = "none")
+          ggplot2::theme_classic(base_size = 14) +
+          ggplot2::theme(axis.text.y = ggplot2::element_text(size = 11),
+                        legend.position = "none")
       })
       png(file, width = 900, height = 600); print(p); dev.off()
     }

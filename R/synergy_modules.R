@@ -272,10 +272,40 @@ synergy_server <- function(input, output, session, rv) {
     if (!isTRUE(result$error)) {
       if (rv$syn_over_time) {
         tryCatch({
-          result$plot_main  <- mouseExperiment::plot_synergy_combined(result)
-          result$plot_trend <- mouseExperiment::plot_synergy_trend(result)
-          # plot_combination_index() takes a synergy_summary data frame, not the full result
-          result$plot_ci    <- mouseExperiment::plot_combination_index(result$synergy_summary)
+          syn_df <- result$synergy_summary
+
+          # Bliss Independence plot — matches demo Fig 4 style
+          result$plot_main <- ggplot2::ggplot(syn_df, ggplot2::aes(x = Time_Point)) +
+            ggplot2::geom_line(ggplot2::aes(y = TGI_Drug_A, color = "Drug A")) +
+            ggplot2::geom_line(ggplot2::aes(y = TGI_Drug_B, color = "Drug B")) +
+            ggplot2::geom_line(ggplot2::aes(y = TGI_Combo, color = "Combination")) +
+            ggplot2::geom_line(ggplot2::aes(y = Bliss_Expected_TGI, color = "Bliss Value"),
+                               alpha = 0.5, linewidth = 3) +
+            ggplot2::scale_color_manual(
+              values = c("Drug A" = "blue", "Drug B" = "red",
+                         "Combination" = "purple", "Bliss Value" = "grey")) +
+            ggplot2::labs(x = "Days", y = "Percent Tumor Growth Inhibition", color = NULL) +
+            ggplot2::ylim(0, 100) +
+            ggplot2::theme_classic() +
+            ggplot2::theme(legend.position = c(0.85, 0.2))
+
+          # Combination Index plot — matches demo Fig 5 style with shaded regions
+          mid_x <- mean(syn_df$Time_Point)
+          result$plot_ci <- ggplot2::ggplot(syn_df,
+                                            ggplot2::aes(x = Time_Point, y = Combination_Index)) +
+            ggplot2::geom_ribbon(ggplot2::aes(ymin = 0,    ymax = 0.85), fill = "blue",  alpha = 0.2) +
+            ggplot2::geom_ribbon(ggplot2::aes(ymin = 0.85, ymax = 1.15), fill = "grey",  alpha = 0.4) +
+            ggplot2::geom_ribbon(ggplot2::aes(ymin = 1.15, ymax = 2),    fill = "red",   alpha = 0.2) +
+            ggplot2::geom_line(color = "purple", linewidth = 1.5) +
+            ggplot2::annotate("text", x = mid_x, y = 0.20, label = "Synergistic",
+                              color = "blue", size = 5) +
+            ggplot2::annotate("text", x = mid_x, y = 1.05, label = "Additive",    size = 5) +
+            ggplot2::annotate("text", x = mid_x, y = 1.80, label = "Antagonistic",
+                              color = "red",  size = 5) +
+            ggplot2::labs(x = "Days", y = "Combination Index", title = "") +
+            ggplot2::ylim(0, 2) +
+            ggplot2::theme_classic()
+
         }, error = function(e) cat("WARNING: Synergy over-time plot error:", e$message, "\n"))
       } else {
         tryCatch({

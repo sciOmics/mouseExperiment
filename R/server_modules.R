@@ -565,7 +565,7 @@ tumor_growth_server <- function(input, output, session, rv) {
             cage_column = col_names$cage_column,
             survival_column = if (!is.null(col_names$survival_column)) col_names$survival_column else NULL,
             group_summary_line = TRUE
-          )
+          ) + ggplot2::theme_classic()
         }
         
         # Plot 2: Growth rate distribution
@@ -574,37 +574,43 @@ tumor_growth_server <- function(input, output, session, rv) {
             growth_data = result$growth_rates,
             show_mean = TRUE,
             error_bar_type = "SEM"
-          )
+          ) + ggplot2::theme_classic()
         }
         
-        # Plot 3: Treatment effects plot (AUC equivalent for LME4 analysis)
-        if (!is.null(result$treatment_effects)) {
+        # Plot 3: AUC / treatment effects plot
+        # When model_type="auc" the result contains auc_analysis$individual with
+        # per-subject AUC values — use the package's plot_auc() to match the demo.
+        # For lme4 models fall back to a bar chart of adjusted means.
+        if (!is.null(result$auc_analysis) && !is.null(result$auc_analysis$individual)) {
+          tryCatch({
+            result$auc_plot <- mouseExperiment::plot_auc(
+              result$auc_analysis$individual,
+              show_mean = TRUE,
+              error_bar_type = "CI"
+            ) + ggplot2::theme_classic()
+          }, error = function(e) {
+            cat("WARNING: plot_auc() failed:", e$message, "\n")
+          })
+        }
+        if (is.null(result$auc_plot) && !is.null(result$treatment_effects)) {
           effects_df <- as.data.frame(result$treatment_effects)
           if (nrow(effects_df) > 0) {
-            # Try to convert to a plottable format
-            if (ncol(effects_df) >= 1) {
-              # Get the first numeric column as the effect size
-              numeric_cols <- which(sapply(effects_df, is.numeric))
-              if (length(numeric_cols) > 0) {
-                effect_col <- numeric_cols[1]
-                plot_df <- data.frame(
-                  Treatment = rownames(effects_df),
-                  Effect = as.numeric(effects_df[[effect_col]])
-                )
-                
-                result$auc_plot <- ggplot2::ggplot(plot_df, 
-                                                    ggplot2::aes(x = Treatment, 
-                                                                 y = Effect, 
-                                                                 fill = Treatment)) +
-                  ggplot2::geom_col() +
-                  ggplot2::theme_minimal() +
-                  ggplot2::labs(title = "Treatment Effects (Adjusted Means)",
-                              x = "Treatment",
-                              y = "Effect Size",
-                              fill = "Treatment") +
-                  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
-                               legend.position = "none")
-              }
+            numeric_cols <- which(sapply(effects_df, is.numeric))
+            if (length(numeric_cols) > 0) {
+              effect_col <- numeric_cols[1]
+              plot_df <- data.frame(
+                Treatment = rownames(effects_df),
+                Effect = as.numeric(effects_df[[effect_col]])
+              )
+              result$auc_plot <- ggplot2::ggplot(plot_df,
+                                                  ggplot2::aes(x = reorder(Treatment, Effect),
+                                                               y = Effect, fill = Treatment)) +
+                ggplot2::geom_col(width = 0.6) +
+                ggplot2::labs(title = "Treatment Effects (Adjusted Means)",
+                             x = "Treatment", y = "Effect Size") +
+                ggplot2::theme_classic() +
+                ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+                              legend.position = "none")
             }
           }
         }
@@ -619,12 +625,12 @@ tumor_growth_server <- function(input, output, session, rv) {
             sample = qq_data$y
           )
           
-          result$caterpillar_plot <- ggplot2::ggplot(qq_df, 
-                                                      ggplot2::aes(x = theoretical, 
+          result$caterpillar_plot <- ggplot2::ggplot(qq_df,
+                                                      ggplot2::aes(x = theoretical,
                                                                    y = sample)) +
             ggplot2::geom_point(alpha = 0.6) +
             ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
-            ggplot2::theme_minimal() +
+            ggplot2::theme_classic() +
             ggplot2::labs(title = "Q-Q Plot of Residuals",
                          x = "Theoretical Quantiles",
                          y = "Sample Quantiles")

@@ -289,19 +289,19 @@ dose_response_server <- function(input, output, session, rv) {
   output$dr_plot_scatter <- renderPlot({
     req(rv$dr_results)
     if (isTRUE(rv$dr_results$error) || is.null(rv$dr_results$plots$scatter)) return(NULL)
-    rv$dr_results$plots$scatter
+    rv$dr_results$plots$scatter + ggplot2::theme_classic()
   })
 
   output$dr_plot_boxplot <- renderPlot({
     req(rv$dr_results)
     if (isTRUE(rv$dr_results$error) || is.null(rv$dr_results$plots$boxplot)) return(NULL)
-    rv$dr_results$plots$boxplot
+    rv$dr_results$plots$boxplot + ggplot2::theme_classic()
   })
 
   output$dr_plot_barplot <- renderPlot({
     req(rv$dr_results)
     if (isTRUE(rv$dr_results$error) || is.null(rv$dr_results$plots$barplot)) return(NULL)
-    rv$dr_results$plots$barplot
+    rv$dr_results$plots$barplot + ggplot2::theme_classic()
   })
 
   # ---- Statistical Tests ----

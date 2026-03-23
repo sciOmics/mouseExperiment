@@ -273,7 +273,7 @@ power_server <- function(input, output, session, rv) {
               ggplot2::geom_line() + ggplot2::geom_point() +
               ggplot2::labs(title = "Power Curves", x = "N per Group",
                            y = "Power", color = "Alpha") +
-              ggplot2::theme_minimal()
+              ggplot2::theme_classic()
           )
         } else {
           plot(1, 1, type = "n", main = "Power curves not available in expected format",
