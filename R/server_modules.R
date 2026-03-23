@@ -394,43 +394,43 @@ tumor_growth_server <- function(input, output, session, rv) {
   rv$tg_results <- NULL
   rv$tg_running <- FALSE
   
-  # Update reference group choices when data is available
+  # Update reference group choices when data is available or column mapping changes.
+  # When a dose column is also mapped, group choices are shown as "Treatment Dose"
+  # combinations so each dose level is independently selectable as the reference.
   observe({
-    cat("DEBUG: Checking if reference group should be updated...\n")
-    cat("  Data valid?", rv$data_valid, "\n")
-    cat("  Data null?", is.null(rv$uploaded_data), "\n")
-    
     if (!is.null(rv$uploaded_data) && rv$data_valid) {
-      treatment_col <- rv$detected_cols$treatment
-      cat("  Treatment column:", treatment_col, "\n")
-      cat("  All detected columns:", paste(sapply(names(rv$detected_cols), function(k) {
-                                            v <- rv$detected_cols[[k]]
-                                            paste(k, "=", if (is.null(v)) "NULL" else v)
-                                          }), collapse="; "), "\n")
-      
-      if (!is.null(treatment_col) && treatment_col != "") {
-        # Get the actual column from the data
-        col_data <- rv$uploaded_data[[treatment_col]]
-        cat("  Column data class:", class(col_data), "\n")
-        cat("  Column data length:", length(col_data), "\n")
-        cat("  First 5 values:", paste(head(col_data, 5), collapse=", "), "\n")
-        cat("  Any NA?", any(is.na(col_data)), "\n")
-        
-        treatment_values <- unique(na.omit(col_data))
-        cat("  Unique treatment values:", paste(treatment_values, collapse=", "), "\n")
-        cat("  Number of unique values:", length(treatment_values), "\n")
-        
+      # Prefer the user-selected treatment column; fall back to auto-detected one
+      treatment_col <- if (!is.null(input$col_treatment) && nzchar(input$col_treatment))
+                         input$col_treatment
+                       else
+                         rv$detected_cols$treatment
+      dose_col <- if (!is.null(input$col_dose) && nzchar(input$col_dose))
+                    input$col_dose
+                  else NULL
+
+      cat("DEBUG: Updating reference group choices. treatment_col=", treatment_col,
+          " dose_col=", if (is.null(dose_col)) "NULL" else dose_col, "\n")
+
+      if (!is.null(treatment_col) && nzchar(treatment_col)) {
+        df <- rv$uploaded_data
+
+        if (!is.null(dose_col) && dose_col %in% colnames(df)) {
+          # Build unique treatment+dose combination labels
+          treatment_values <- sort(unique(na.omit(
+            paste(as.character(df[[treatment_col]]),
+                  as.character(df[[dose_col]]), sep = " ")
+          )))
+        } else {
+          treatment_values <- sort(unique(na.omit(as.character(df[[treatment_col]]))))
+        }
+
         if (length(treatment_values) > 0) {
-          # Update with proper choice format
-          new_choices <- c("-- Select a reference group --" = "", 
-                          setNames(as.character(treatment_values), 
-                                  as.character(treatment_values)))
-          default_ref <- pick_reference_group(as.character(treatment_values))
+          new_choices <- c("-- Select a reference group --" = "",
+                          setNames(treatment_values, treatment_values))
+          default_ref <- pick_reference_group(treatment_values)
           updateSelectInput(session, "tg_reference", choices = new_choices,
                             selected = default_ref)
-          cat("  Reference group updated with choices. Default:", default_ref, "\n")
-        } else {
-          cat("  WARNING: No treatment values found after unique/na.omit\n")
+          cat("  Reference group choices updated. Default:", default_ref, "\n")
         }
       }
     }
@@ -511,13 +511,22 @@ tumor_growth_server <- function(input, output, session, rv) {
     rv$id_col         <- input$col_id
     rv$cage_col       <- if (!is.null(input$col_cage) && input$col_cage != "") input$col_cage else NULL
     rv$dose_col       <- if (!is.null(input$col_dose) && input$col_dose != "") input$col_dose else NULL
-    
+
+    # When a dose column is mapped, combine treatment + dose into a single
+    # group label so each dose level is treated as its own group by all analyses.
+    if (!is.null(rv$dose_col)) {
+      data[["TreatmentGroup"]] <- paste(data[[input$col_treatment]],
+                                        data[[rv$dose_col]], sep = " ")
+      rv$processed_data <- data
+      rv$tx_col         <- "TreatmentGroup"
+    }
+
     # Prepare column names
     col_names <- list(
       time_column = time_col,
       volume_column = vol_col,
       id_column = input$col_id,
-      treatment_column = input$col_treatment,
+      treatment_column = rv$tx_col,
       cage_column = if (input$col_cage != "") input$col_cage else NULL
     )
     
