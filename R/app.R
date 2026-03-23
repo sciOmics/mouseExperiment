@@ -64,6 +64,14 @@ window.enableNavTab  = enableNavTab;
       tags$head(
         tags$link(rel = "stylesheet", href = "css/custom.css"),
         tags$script(nav_js)
+      ),
+      # Decorative mouse outline images — fixed, behind all interactive content
+      tags$div(
+        id = "mouse-bg-layer",
+        tags$img(id = "mouse-bg-img1", class = "mouse-bg-img",
+                 src = "images/mouse_outline1.png", alt = ""),
+        tags$img(id = "mouse-bg-img2", class = "mouse-bg-img",
+                 src = "images/mouse_outline2.png", alt = "")
       )
     ),
 

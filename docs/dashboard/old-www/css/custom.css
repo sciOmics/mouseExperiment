@@ -194,6 +194,44 @@ body {
   50% { opacity: 0.7; }
 }
 
+/* ============================================================
+   Mouse outline background decorations
+   Fixed overlay (pointer-events: none) at very low opacity so
+   the images float over the layout without blocking anything.
+   Images are 1408 × 768 (RGBA), displayed at ~380 px wide.
+   ============================================================ */
+
+#mouse-bg-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;   /* all clicks pass straight through */
+  z-index: 9999;
+  overflow: hidden;
+  opacity: 0.10;
+}
+
+.mouse-bg-img {
+  position: absolute;
+  width: 380px;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Bottom-right: mouse_outline1 */
+#mouse-bg-img1 {
+  bottom: 10px;
+  right: 10px;
+}
+
+/* Bottom-left: mouse_outline2, mirrored so nose faces inward */
+#mouse-bg-img2 {
+  bottom: 10px;
+  left: 10px;
+  transform: scaleX(-1);
+}
+
+/* ============================================================ */
+
 /* Footer styling */
 footer {
   border-top: 1px solid #ddd;
