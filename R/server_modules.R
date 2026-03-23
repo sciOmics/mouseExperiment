@@ -710,19 +710,45 @@ tumor_growth_server <- function(input, output, session, rv) {
               effect_col <- if (length(num_cols) > 0) num_cols[1] else NA
             }
             if (!is.na(label_col) && !is.na(effect_col)) {
+              # Detect CI or SE columns for error bars
+              lower_col <- intersect(c("lower.CL", "lower_CL", "Lower", "lower"), colnames(effects_df))[1]
+              upper_col <- intersect(c("upper.CL", "upper_CL", "Upper", "upper"), colnames(effects_df))[1]
+              se_col    <- intersect(c("SE", "se", "SEM", "sem"), colnames(effects_df))[1]
+              has_ci    <- !is.na(lower_col) && !is.na(upper_col)
+              has_se    <- !is.na(se_col)
+
               plot_df <- data.frame(
                 Treatment = as.character(effects_df[[label_col]]),
-                Effect    = as.numeric(effects_df[[effect_col]])
+                Effect    = as.numeric(effects_df[[effect_col]]),
+                stringsAsFactors = FALSE
               )
-              result$auc_plot <- ggplot2::ggplot(plot_df,
-                                                  ggplot2::aes(x = reorder(Treatment, Effect),
-                                                               y = Effect, fill = Treatment)) +
+              if (has_ci) {
+                plot_df$Lower <- as.numeric(effects_df[[lower_col]])
+                plot_df$Upper <- as.numeric(effects_df[[upper_col]])
+              } else if (has_se) {
+                se_vals <- as.numeric(effects_df[[se_col]])
+                plot_df$Lower <- plot_df$Effect - 1.96 * se_vals
+                plot_df$Upper <- plot_df$Effect + 1.96 * se_vals
+              }
+
+              p_fallback <- ggplot2::ggplot(plot_df,
+                                            ggplot2::aes(x = reorder(Treatment, Effect),
+                                                         y = Effect, fill = Treatment)) +
                 ggplot2::geom_col(width = 0.6) +
                 ggplot2::labs(title = "Treatment Effects (Adjusted Means)",
                              x = "Treatment", y = effect_col) +
                 ggplot2::theme_classic() +
-                ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+                ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5),
                               legend.position = "none")
+
+              if ("Lower" %in% colnames(plot_df)) {
+                p_fallback <- p_fallback +
+                  ggplot2::geom_errorbar(
+                    ggplot2::aes(ymin = Lower, ymax = Upper),
+                    width = 0.2, colour = "black", linewidth = 0.8
+                  )
+              }
+              result$auc_plot <- p_fallback
             }
           }
         }
