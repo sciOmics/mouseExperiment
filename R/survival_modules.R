@@ -12,10 +12,6 @@ survivalUI <- function() {
         wellPanel(
           h4("Analysis Parameters"),
           
-          checkboxInput("surv_include_risk_table",
-                       "Show Risk Table",
-                       value = TRUE),
-          
           selectInput("surv_palette",
                      "Color Palette",
                      choices = c("Default" = "hue",
@@ -296,7 +292,7 @@ survival_server <- function(input, output, session, rv) {
           km_fit,
           data = surv_df,
           palette = input$surv_palette,
-          risk.table = input$surv_include_risk_table,
+          risk.table = TRUE,
           risk.table.y.text.col = TRUE,
           conf.int = FALSE,
           xlab = "Time (Days)",
