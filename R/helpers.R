@@ -3,6 +3,25 @@
 #' Utility functions for data validation, formatting, and processing
 #'
 
+#' Pick the best default reference group
+#'
+#' Returns the first group whose name matches common control-group terms
+#' (case-insensitive partial match). If none match, returns the first group.
+#'
+#' @param groups Character vector of treatment group names
+#' @return Single character string
+#' @keywords internal
+pick_reference_group <- function(groups) {
+  if (length(groups) == 0) return("")
+  control_patterns <- c("vehicle", "control", "igg", "dmso")
+  for (g in groups) {
+    if (any(grepl(paste(control_patterns, collapse = "|"), g, ignore.case = TRUE))) {
+      return(g)
+    }
+  }
+  groups[1]
+}
+
 #' Validate uploaded data file
 #'
 #' @param file_path Path to uploaded file
@@ -76,6 +95,7 @@ detect_columns <- function(col_names) {
     treatment = detect_column(col_names, col_names_lower, c("treatment", "group", "treatment_group")),
     cage = detect_column(col_names, col_names_lower, c("cage", "cage_id")),
     date = detect_column(col_names, col_names_lower, c("date", "measurement_date")),
+    dose = detect_column(col_names, col_names_lower, c("dose", "dose_level", "concentration", "conc")),
     survival_time = detect_column(col_names, col_names_lower, c("survival_time", "time_to_event", "days_to_event")),
     survival_event = detect_column(col_names, col_names_lower, c("survival_event", "event", "survival_censor", "censor"))
   )

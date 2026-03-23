@@ -1,5 +1,13 @@
 #' UI Modules for mouseExperimentDashboard
 
+# Shared helper: creates a styled info box for tab descriptions
+tab_info <- function(...) {
+  div(
+    class = "alert alert-info",
+    style = "font-size:0.88em; margin:10px 0 8px 0; padding:8px 14px;",
+    ...
+  )
+}
 #' Home Page UI
 #' @keywords internal
 homeUI <- function() {
@@ -56,10 +64,19 @@ dataUploadUI <- function() {
     fluidRow(
       column(6,
         wellPanel(
-          h4("Step 1: Upload File"),
+          h4("Step 1: Upload Tumor Growth Data"),
           fileInput("data_file", 
                    "Choose File (CSV or RDA)",
                    accept = c(".csv", ".rda", ".RData"))
+        ),
+        wellPanel(
+          h4("Step 1b: Upload Treatment Schedule (Optional)"),
+          p(tags$small("Upload a CSV/RDA file describing the treatment timeline (e.g. dosing days).",
+                       "Used to overlay treatment events on tumor growth plots.")),
+          fileInput("schedule_file",
+                   "Treatment Schedule File (CSV or RDA)",
+                   accept = c(".csv", ".rda", ".RData")),
+          uiOutput("schedule_validation_msg")
         )
       ),
       
@@ -79,8 +96,14 @@ dataUploadUI <- function() {
     
     hr(),
     
+    # Dataset summary (shown after successful upload + column config)
+    uiOutput("data_summary_ui"),
+    
     # Data preview (shown after successful upload)
     uiOutput("data_preview_ui"),
+    
+    # Treatment schedule preview (shown after schedule upload)
+    uiOutput("schedule_preview_ui"),
     
     hr(),
     
@@ -181,6 +204,13 @@ column_mapping_ui <- function(col_names, detected_cols) {
         tags$p(tags$small("Cage ID is important for distinguishing mice with same ID in different cages.")),
         
         br(),
+        
+        selectInput("col_dose", "Dose Level (optional)",
+                   choices = c("None" = "", col_names),
+                   selected = detected_cols$dose),
+        tags$p(tags$small("Required for Dose-Response Analysis. Should contain numeric dose concentrations or levels.")),
+        
+        br(),
         h5("Survival Analysis"),
         selectInput("col_survival_event", "Event/Censor Status Column",
                    choices = c("None" = "", col_names),
@@ -196,10 +226,14 @@ column_mapping_ui <- function(col_names, detected_cols) {
 data_preview_ui <- function() {
   wellPanel(
     h4("Step 3: Data Preview"),
+    p(tags$small("Shows calculated columns (Volume, Day from start date) where applicable.")),
     fluidRow(
       column(12,
         p(strong(textOutput("preview_summary"))),
-        DTOutput("data_table")
+        DTOutput("data_table"),
+        br(),
+        downloadButton("download_preview_data", "Download Processed Data as CSV",
+                      class = "btn-sm btn-default")
       )
     )
   )
@@ -279,12 +313,15 @@ tumorGrowthUI <- function() {
           id = "tg_results_tabs",
           
           tabPanel("Summary",
+            tab_info(strong("Model summary: "), "Reports the model type (LME4 or AUC), data transformation applied, polynomial degree, random effects structure, number of subjects and treatment groups, reference group, and any convergence warnings."),
             shinycssloaders::withSpinner(
               verbatimTextOutput("tg_summary")
             )
           ),
           
           tabPanel("ANOVA",
+            tab_info(strong("Type III ANOVA "), "from the linear mixed-effects model. Tests whether treatment, time, and/or their interaction significantly explain variation in tumor volume. ",
+              strong("p\u202f<\u202f0.05"), " indicates a statistically significant effect. The ", em("Treatment:Time"), " interaction term is the most biologically informative."),
             shinycssloaders::withSpinner(
               DTOutput("tg_anova_table")
             ),
@@ -292,6 +329,14 @@ tumorGrowthUI <- function() {
           ),
           
           tabPanel("Comparisons",
+            tab_info(strong("Post-hoc pairwise contrasts "), "between treatment groups based on estimated marginal means. ",
+              br(),
+              strong("vs Reference: "), "each group vs the baseline. ",
+              strong("All Pairwise: "), "unadjusted contrasts between every pair. ",
+              strong("Tukey HSD: "), "all pairs with familywise error correction. ",
+              br(),
+              "\u2018estimate\u2019 is the mean difference on the transformed scale; ",
+              "\u2018p.value\u2019\u202f<\u202f0.05 indicates a significant difference between groups."),
             uiOutput("tg_comparisons_title"),
             shinycssloaders::withSpinner(
               DTOutput("tg_comparisons_table")
@@ -300,6 +345,7 @@ tumorGrowthUI <- function() {
           ),
           
           tabPanel("Treatment Effects",
+            tab_info(strong("Estimated marginal means "), "(adjusted group means) from the model. Reflects the model-estimated volume at each timepoint for each treatment group, controlling for cage effects and individual variability. Provides the key effect sizes for biological interpretation."),
             shinycssloaders::withSpinner(
               DTOutput("tg_effects_table")
             ),
@@ -307,6 +353,7 @@ tumorGrowthUI <- function() {
           ),
           
           tabPanel("Growth Rates",
+            tab_info(strong("Per-animal growth rates "), "calculated from individual tumor volume trajectories. Used to assess within-group variability and for power analysis effect size estimation. Not the primary model output \u2014 use Treatment Effects for group-level inference."),
             shinycssloaders::withSpinner(
               DTOutput("tg_growth_rates_table")
             ),
@@ -314,6 +361,12 @@ tumorGrowthUI <- function() {
           ),
           
           tabPanel("Plots",
+            tab_info(
+              strong("Tumor Growth Curves: "), "individual mouse trajectories with group mean overlay. ",
+              strong("Growth Rate Distribution: "), "spread of per-animal rates within each group. ",
+              strong("AUC / Treatment Effects: "), "model-estimated effect sizes per group. ",
+              strong("Q\u2011Q Plot: "), "assesses normality of model residuals \u2014 points should follow the diagonal line for valid inference."
+            ),
             fluidRow(
               column(6,
                 h4("Tumor Growth Curves"),
@@ -346,10 +399,24 @@ tumorGrowthUI <- function() {
                 ),
                 downloadButton("download_tg_plot_caterpillar", "Download Plot")
               )
+            ),
+            
+            hr(),
+            
+            fluidRow(
+              column(12,
+                h4("Treatment Schedule"),
+                p(tags$small("Requires a treatment schedule file uploaded in Data Upload (Step 1b)")),
+                shinycssloaders::withSpinner(
+                  plotOutput("tg_plot_treatment_schedule", height = "350px")
+                ),
+                downloadButton("download_tg_plot_schedule", "Download Plot")
+              )
             )
           ),
           
           tabPanel("Diagnostics",
+            tab_info(strong("Model diagnostics: "), "convergence status, singularity warnings (random effects structure may be too complex), residual statistics, and variance component estimates. A singular fit warning suggests simplifying the random effects (e.g. removing the slope term)."),
             verbatimTextOutput("tg_diagnostics")
           )
         )
