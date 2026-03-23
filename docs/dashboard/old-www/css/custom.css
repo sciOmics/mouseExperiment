@@ -14,22 +14,41 @@ body {
   background-color: #f5f5f5;
 }
 
-/* Navbar customization */
+/* Navbar customization — Bootstrap 5 compatible
+   .navbar-header only covers the brand in BS3; target .navbar for full width */
+.navbar {
+  background: linear-gradient(135deg, var(--primary-color), #005a87) !important;
+  border-bottom: 2px solid #004a70;
+}
+
+/* BS3 brand area */
 .navbar-header {
-  background: linear-gradient(135deg, var(--primary-color), #005a87);
+  background: transparent;
   color: white;
 }
 
-.navbar-nav > li > a {
+/* BS5: .navbar-brand */
+.navbar .navbar-brand,
+.navbar-brand {
   color: white !important;
 }
 
-.navbar-nav > li > a:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+/* BS3 + BS5 nav links */
+.navbar-nav > li > a,
+.navbar-nav .nav-link {
+  color: white !important;
 }
 
-.navbar-nav > li.active > a {
-  background-color: rgba(0, 0, 0, 0.2);
+.navbar-nav > li > a:hover,
+.navbar-nav .nav-link:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: white !important;
+}
+
+.navbar-nav > li.active > a,
+.navbar-nav .nav-link.active {
+  background-color: rgba(0, 0, 0, 0.2) !important;
+  color: white !important;
 }
 
 /* Center the main navbar tabs */

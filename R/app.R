@@ -44,14 +44,17 @@ $(document).ready(function() {
   var citationLi = $mainNav.find('a[data-value=\"Citation\"]').closest('li').detach();
   var $rightNav  = $('<ul class=\"nav navbar-nav navbar-right\" id=\"nav-right\"></ul>');
   $rightNav.append(helpLi).append(citationLi);
-  $mainNav.closest('.navbar-collapse').append($rightNav);
+  // Bootstrap 5: no .navbar-collapse wrapper — append directly to .container-fluid
+  var $container = $mainNav.closest('.container-fluid, .navbar-collapse');
+  if ($container.length === 0) $container = $mainNav.parent();
+  $container.append($rightNav);
 
   // Mark main nav for centering via CSS
   $mainNav.addClass('navbar-center');
 });
 
 // Prevent clicks on disabled tabs
-$(document).on('click', '.nav-tab-disabled > a', function(e) {
+$(document).on('click', '.nav-tab-disabled > a, .nav-tab-disabled > .nav-link', function(e) {
   e.preventDefault(); e.stopPropagation(); return false;
 });
 
