@@ -21,13 +21,7 @@ synergyUI <- function() {
           
           h4("Analysis Options"),
           
-          numericInput("syn_eval_timepoint",
-                      "Evaluation Timepoint (leave blank for last)",
-                      value = NA, min = 0, step = 1),
-          
-          checkboxInput("syn_over_time",
-                       "Analyze synergy across all timepoints",
-                       value = FALSE),
+          uiOutput("syn_time_point_ui"),
           
           br(),
           
@@ -78,34 +72,34 @@ synergyUI <- function() {
           ),
           
           tabPanel("Trend Over Time",
-            tab_info(strong("Synergy trend: "), "synergy/antagonism scores plotted across all measured timepoints. Shows whether the interaction between the two drugs strengthens, weakens, or reverses over the course of the experiment. Requires \u2018Analyze synergy across all timepoints\u2019 to be enabled."),
+            tab_info(strong("Synergy trend: "), "synergy/antagonism scores plotted across all measured timepoints. Shows whether the interaction between the two drugs strengthens, weakens, or reverses over the course of the experiment. Available when 'All dates' is selected."),
             conditionalPanel(
-              condition = "input.syn_over_time",
+              condition = "input.syn_time_point == 'all'",
               shinycssloaders::withSpinner(
                 plotOutput("syn_plot_trend", height = "500px")
               ),
               downloadButton("download_syn_plot_trend", "Download Plot")
             ),
             conditionalPanel(
-              condition = "!input.syn_over_time",
+              condition = "input.syn_time_point != 'all'",
               br(),
-              p("Enable 'Analyze synergy across all timepoints' to see trend plots.")
+              p("Select 'All dates' in the Time Point dropdown to see trend plots.")
             )
           ),
           
           tabPanel("Combination Index",
-            tab_info(strong("Combination Index (CI) over time: "), "CI values at each measured timepoint. The dashed reference line at CI\u202f=\u202f1 represents additivity. Points below 1 indicate synergism at that timepoint; points above 1 indicate antagonism. Requires \u2018Analyze synergy across all timepoints\u2019 to be enabled."),
+            tab_info(strong("Combination Index (CI) over time: "), "CI values at each measured timepoint. The dashed reference line at CI\u202f=\u202f1 represents additivity. Points below 1 indicate synergism at that timepoint; points above 1 indicate antagonism. Available when 'All dates' is selected."),
             conditionalPanel(
-              condition = "input.syn_over_time",
+              condition = "input.syn_time_point == 'all'",
               shinycssloaders::withSpinner(
                 plotOutput("syn_plot_ci", height = "500px")
               ),
               downloadButton("download_syn_plot_ci", "Download Plot")
             ),
             conditionalPanel(
-              condition = "!input.syn_over_time",
+              condition = "input.syn_time_point != 'all'",
               br(),
-              p("Enable 'Analyze synergy across all timepoints' to see combination index over time.")
+              p("Select 'All dates' in the Time Point dropdown to see combination index over time.")
             )
           )
         )
@@ -153,7 +147,28 @@ synergy_server <- function(input, output, session, rv) {
                  selected = pick_reference_group(groups))
     )
   })
-  
+
+  # Dynamic time-point selector: "All dates" (default) + individual Day values
+  output$syn_time_point_ui <- renderUI({
+    days <- NULL
+    if (!is.null(rv$processed_data) && !is.null(rv$time_col) &&
+        rv$time_col %in% colnames(rv$processed_data)) {
+      days <- sort(unique(na.omit(rv$processed_data[[rv$time_col]])))
+    } else if (!is.null(rv$uploaded_data)) {
+      day_candidate <- if (!is.null(input$col_day) && nzchar(input$col_day)) input$col_day else "Day"
+      if (day_candidate %in% colnames(rv$uploaded_data))
+        days <- sort(unique(na.omit(suppressWarnings(
+          as.numeric(rv$uploaded_data[[day_candidate]])))))
+    }
+    day_choices <- c("All dates" = "all")
+    if (!is.null(days) && length(days) > 0)
+      day_choices <- c(day_choices, setNames(as.character(days), paste("Day", days)))
+    selectInput("syn_time_point",
+                "Time Point for Analysis",
+                choices  = day_choices,
+                selected = "all")
+  })
+
   # Run synergy analysis
   observeEvent(input$run_syn_analysis, {
     req(rv$uploaded_data, rv$data_valid)
@@ -232,13 +247,13 @@ synergy_server <- function(input, output, session, rv) {
     if (vol_col %in% colnames(analysis_data))
       analysis_data[[vol_col]]  <- suppressWarnings(as.numeric(analysis_data[[vol_col]]))
     
-    eval_tp  <- if (!is.null(input$syn_eval_timepoint) && !is.na(input$syn_eval_timepoint)) {
-      input$syn_eval_timepoint
+    eval_tp <- if (!is.null(input$syn_time_point) && input$syn_time_point != "all") {
+      as.numeric(input$syn_time_point)
     } else {
       NULL
     }
-    
-    rv$syn_over_time <- isTRUE(input$syn_over_time)
+
+    rv$syn_over_time <- is.null(eval_tp)
     
     if (rv$syn_over_time) {
       result <- safe_analysis({
