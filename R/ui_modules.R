@@ -64,13 +64,13 @@ dataUploadUI <- function() {
     fluidRow(
       column(6,
         wellPanel(
-          h4("Step 1: Upload Tumor Growth Data"),
+          h4(strong("Upload Tumor Growth Data")),
           fileInput("data_file", 
                    "Choose File (CSV or RDA)",
                    accept = c(".csv", ".rda", ".RData"))
         ),
         wellPanel(
-          h4("Step 1b: Upload Treatment Schedule (Optional)"),
+          h4(strong("Upload Treatment Schedule (Optional)")),
           p(tags$small("Upload a CSV/RDA file describing the treatment timeline (e.g. dosing days).",
                        "Used to overlay treatment events on tumor growth plots.")),
           fileInput("schedule_file",
@@ -81,11 +81,7 @@ dataUploadUI <- function() {
       ),
       
       column(6,
-        wellPanel(
-          h4("File Information"),
-          verbatimTextOutput("file_info"),
-          uiOutput("file_validation_msg")
-        )
+        uiOutput("file_validation_msg")
       )
     ),
     
@@ -122,7 +118,7 @@ dataUploadUI <- function() {
 #' @keywords internal
 column_mapping_ui <- function(col_names, detected_cols) {
   wellPanel(
-    h4("Step 2: Configure Column Mapping"),
+    h4(strong("Configure Column Mapping")),
     tags$p("Select which columns contain your data. ", 
       "Suggested columns are pre-selected."),
     
@@ -225,7 +221,7 @@ column_mapping_ui <- function(col_names, detected_cols) {
 #' @keywords internal
 data_preview_ui <- function() {
   wellPanel(
-    h4("Step 3: Data Preview"),
+    h4(strong("Data Preview")),
     p(tags$small("Shows calculated columns (Volume, Day from start date) where applicable.")),
     fluidRow(
       column(12,
@@ -429,7 +425,7 @@ tumorGrowthUI <- function() {
             fluidRow(
               column(12,
                 h4("Treatment Schedule"),
-                p(tags$small("Requires a treatment schedule file uploaded in Data Upload (Step 1b)")),
+                p(tags$small("Requires a treatment schedule file uploaded under 'Upload Treatment Schedule' in the Data tab.")),
                 shinycssloaders::withSpinner(
                   plotOutput("tg_plot_treatment_schedule", height = "350px")
                 ),
