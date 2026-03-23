@@ -9,6 +9,93 @@ data_upload_server <- function(input, output, session, rv) {
   rv$data_valid <- FALSE
   rv$detected_cols <- NULL
   
+  # Demo data loader
+  observeEvent(input$load_demo_data, {
+    req(input$demo_dataset)
+
+    demo_files <- list(
+      combo = list(
+        data     = "combo_treatment_synthetic_data.csv",
+        schedule = "combo_treatment_schedule.csv",
+        ref_date = "2025-03-24",
+        label    = "Combo Treatment demo"
+      ),
+      dose_levels = list(
+        data     = "dose_levels_synthetic_data.csv",
+        schedule = "dose_levels_treatment_schedule.csv",
+        ref_date = "2025-03-24",
+        label    = "Dose Levels demo"
+      )
+    )
+
+    chosen   <- demo_files[[input$demo_dataset]]
+    pkg_name <- "mouseExperimentDashboard"
+
+    # Locate files: installed package first, then development source tree
+    find_demo <- function(filename) {
+      p <- system.file("sample_data", filename, package = pkg_name)
+      if (nzchar(p)) return(p)
+      # fallback for devtools::load_all() / running from source
+      local_p <- file.path("inst", "sample_data", filename)
+      if (file.exists(local_p)) return(local_p)
+      NULL
+    }
+
+    data_path <- find_demo(chosen$data)
+    if (is.null(data_path)) {
+      output$demo_load_msg <- renderUI({
+        div(class="alert alert-danger", icon("exclamation-circle"),
+            "Demo file not found. Please reinstall the package.")
+      })
+      return()
+    }
+
+    # Load main data file
+    result <- validate_uploaded_file(data_path, "csv")
+    if (!result$valid) {
+      output$demo_load_msg <- renderUI({
+        div(class="alert alert-danger", icon("exclamation-circle"), result$message)
+      })
+      return()
+    }
+
+    rv$uploaded_data  <- result$data
+    rv$data_valid     <- TRUE
+    rv$detected_cols  <- detect_columns(colnames(result$data))
+
+    # Set reference date for this dataset
+    updateTextInput(session, "reference_date", value = chosen$ref_date)
+
+    output$file_validation_msg <- renderUI({
+      div(class="alert alert-success",
+          icon("check"),
+          paste(chosen$label, "loaded:",
+                nrow(result$data), "rows,",
+                ncol(result$data), "cols."))
+    })
+
+    output$demo_load_msg <- renderUI({
+      div(class="alert alert-success", style="margin:0;",
+          icon("check"), " Loaded!")
+    })
+
+    # Also load the matching treatment schedule
+    sch_path <- find_demo(chosen$schedule)
+    if (!is.null(sch_path)) {
+      sch_result <- validate_uploaded_file(sch_path, "csv")
+      if (sch_result$valid) {
+        rv$schedule_data <- sch_result$data
+        output$schedule_validation_msg <- renderUI({
+          div(class="alert alert-success",
+              icon("check"),
+              paste("Schedule loaded:",
+                    nrow(sch_result$data), "rows,",
+                    ncol(sch_result$data), "cols."))
+        })
+      }
+    }
+  })
+
   # File upload handler
   observeEvent(input$data_file, {
     req(input$data_file)

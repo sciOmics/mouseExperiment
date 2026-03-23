@@ -52,7 +52,37 @@ homeUI <- function() {
 dataUploadUI <- function() {
   fluidPage(
     h2("Data Upload & Configuration"),
-    
+
+    fluidRow(
+      column(12,
+        wellPanel(
+          style = "background:#f0f8ff; border:1px solid #b8d4ea;",
+          h4(strong(icon("flask"), " Try Demo Data")),
+          p("New here? Load a built-in demo dataset to explore the dashboard's features."),
+          fluidRow(
+            column(5,
+              selectInput("demo_dataset", NULL,
+                choices = c(
+                  "Combo Treatment (Control / HDACi / aPD1 / HDACi+PD1, survival data)" = "combo",
+                  "Dose Levels (dose-response data with survival)" = "dose_levels"
+                )
+              )
+            ),
+            column(3,
+              br(),
+              actionButton("load_demo_data", "Load Demo Data",
+                           icon = icon("play-circle"),
+                           class = "btn-info btn-block")
+            ),
+            column(4,
+              br(),
+              uiOutput("demo_load_msg")
+            )
+          )
+        )
+      )
+    ),
+
     fluidRow(
       column(12,
         p("Upload your tumor growth data (CSV or RDA format). ",
