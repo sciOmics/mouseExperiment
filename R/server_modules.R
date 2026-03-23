@@ -545,6 +545,9 @@ tumor_growth_server <- function(input, output, session, rv) {
         random_effects_specification = input$tg_random_effects,
         handle_cage_effects = input$tg_cage_effect,
         reference_group = input$tg_reference,  # Already validated to not be empty
+        extrapolation_points = if (!is.null(input$tg_extrapolation_points) &&
+                                    !is.na(input$tg_extrapolation_points))
+                                 as.integer(input$tg_extrapolation_points) else 0L,
         return_model = TRUE,
         include_diagnostics = TRUE,
         plots = FALSE
@@ -554,8 +557,19 @@ tumor_growth_server <- function(input, output, session, rv) {
     # Generate plots from the results
     if (!isTRUE(result$error)) {
       tryCatch({
-        # Plot 1: Tumor growth curves from original data
+        # Plot 1: Tumor growth curves from original data.
+        # Enable extrapolation when a survival/censor column is mapped and
+        # extrapolation_points > 0, matching the demo notebook approach.
         if (!is.null(result$growth_rates)) {
+          surv_col_mapped <- !is.null(input$col_survival_event) &&
+                             input$col_survival_event != "" &&
+                             input$col_survival_event != "None" &&
+                             input$col_survival_event %in% colnames(data)
+          extra_pts <- if (!is.null(input$tg_extrapolation_points) &&
+                           !is.na(input$tg_extrapolation_points))
+                         as.integer(input$tg_extrapolation_points) else 0L
+          do_extrapolate <- surv_col_mapped && extra_pts > 0L
+
           result$tumor_growth_plot <- mouseExperiment::plot_tumor_growth(
             df = data,
             volume_column = col_names$volume_column,
@@ -563,7 +577,9 @@ tumor_growth_server <- function(input, output, session, rv) {
             treatment_column = col_names$treatment_column,
             ID_column = col_names$id_column,
             cage_column = col_names$cage_column,
-            survival_column = if (!is.null(col_names$survival_column)) col_names$survival_column else NULL,
+            survival_column = if (surv_col_mapped) input$col_survival_event else NULL,
+            extrapolate_volumes = do_extrapolate,
+            extrapolation_points = if (extra_pts > 0L) extra_pts else "all",
             group_summary_line = TRUE
           ) + ggplot2::theme_classic()
         }
@@ -583,10 +599,16 @@ tumor_growth_server <- function(input, output, session, rv) {
         # For lme4 models fall back to a bar chart of adjusted means.
         if (!is.null(result$auc_analysis) && !is.null(result$auc_analysis$individual)) {
           tryCatch({
+            extra_pts2 <- if (!is.null(input$tg_extrapolation_points) &&
+                              !is.na(input$tg_extrapolation_points))
+                            as.integer(input$tg_extrapolation_points) else 0L
             result$auc_plot <- mouseExperiment::plot_auc(
               result$auc_analysis$individual,
               show_mean = TRUE,
-              error_bar_type = "CI"
+              error_bar_type = "CI",
+              extrapolated_column = if (extra_pts2 > 0L &&
+                                       "Extrapolated" %in% colnames(result$auc_analysis$individual))
+                                      "Extrapolated" else NULL
             ) + ggplot2::theme_classic()
           }, error = function(e) {
             cat("WARNING: plot_auc() failed:", e$message, "\n")

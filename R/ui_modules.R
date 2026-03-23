@@ -291,7 +291,14 @@ tumorGrowthUI <- function() {
               div(style = "padding-top: 8px;",
                 sliderInput("tg_poly_degree",
                            "Polynomial Degree",
-                           min = 1, max = 3, value = 1)
+                           min = 1, max = 3, value = 1),
+                numericInput("tg_extrapolation_points",
+                            "Extrapolation Points",
+                            value = 3, min = 0, max = 10, step = 1),
+                helpText("Number of final time-points used to extrapolate tumor volumes ",
+                         "for mice that died before the last study day. ",
+                         "Set to 0 to disable extrapolation. Requires an Event/Censor column ",
+                         "to be mapped in Data Upload (for the growth curves plot).")
               )
             )
           ),
