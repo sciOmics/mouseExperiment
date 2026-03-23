@@ -445,8 +445,24 @@ tumorGrowthUI <- function() {
           ),
           
           tabPanel("Diagnostics",
-            tab_info(strong("Model diagnostics: "), "convergence status, singularity warnings (random effects structure may be too complex), residual statistics, and variance component estimates. A singular fit warning suggests simplifying the random effects (e.g. removing the slope term)."),
-            verbatimTextOutput("tg_diagnostics")
+            tab_info(
+              strong("Q\u2011Q Plot: "), "residuals should follow the diagonal for valid inference. ",
+              strong("Residuals vs Fitted: "), "random scatter around zero indicates a good model fit; patterns suggest model misspecification or heteroscedasticity."
+            ),
+            fluidRow(
+              column(6,
+                h4("Q-Q Plot of Residuals"),
+                shinycssloaders::withSpinner(
+                  plotOutput("tg_diag_qq", height = "400px")
+                )
+              ),
+              column(6,
+                h4("Residuals vs Fitted"),
+                shinycssloaders::withSpinner(
+                  plotOutput("tg_diag_resid_fitted", height = "400px")
+                )
+              )
+            )
           )
         )
       )

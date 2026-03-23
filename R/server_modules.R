@@ -639,25 +639,52 @@ tumor_growth_server <- function(input, output, session, rv) {
           }
         }
         
-        # Plot 4: QQ-plot for residual diagnostics (caterpillar equivalent)
+        # Plot 4: QQ-plot + residuals-vs-fitted for diagnostics tab
         if (!is.null(result$diagnostics) && !is.null(result$diagnostics$residuals)) {
-          residuals <- result$diagnostics$residuals$residuals
-          # Create QQ plot data
-          qq_data <- qqnorm(residuals, plot.it = FALSE)
-          qq_df <- data.frame(
-            theoretical = qq_data$x,
-            sample = qq_data$y
-          )
-          
-          result$caterpillar_plot <- ggplot2::ggplot(qq_df,
-                                                      ggplot2::aes(x = theoretical,
-                                                                   y = sample)) +
+          resid_vec <- result$diagnostics$residuals$residuals
+          # QQ plot
+          qq_data <- qqnorm(resid_vec, plot.it = FALSE)
+          qq_df <- data.frame(theoretical = qq_data$x, sample = qq_data$y)
+          qq_p <- ggplot2::ggplot(qq_df, ggplot2::aes(x = theoretical, y = sample)) +
             ggplot2::geom_point(alpha = 0.6) +
-            ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+            ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed", colour = "red") +
             ggplot2::theme_classic() +
             ggplot2::labs(title = "Q-Q Plot of Residuals",
-                         x = "Theoretical Quantiles",
-                         y = "Sample Quantiles")
+                         x = "Theoretical Quantiles", y = "Sample Quantiles")
+          result$caterpillar_plot <- qq_p  # keep for Plots tab
+          result$diag_qq_plot     <- qq_p
+        } else if (!is.null(result$model)) {
+          tryCatch({
+            resid_vec <- stats::residuals(result$model)
+            qq_data   <- qqnorm(resid_vec, plot.it = FALSE)
+            qq_df     <- data.frame(theoretical = qq_data$x, sample = qq_data$y)
+            qq_p <- ggplot2::ggplot(qq_df, ggplot2::aes(x = theoretical, y = sample)) +
+              ggplot2::geom_point(alpha = 0.6) +
+              ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed", colour = "red") +
+              ggplot2::theme_classic() +
+              ggplot2::labs(title = "Q-Q Plot of Residuals",
+                           x = "Theoretical Quantiles", y = "Sample Quantiles")
+            result$caterpillar_plot <- qq_p
+            result$diag_qq_plot     <- qq_p
+          }, error = function(e) cat("WARNING: QQ plot from model failed:", e$message, "\n"))
+        }
+        # Residuals vs Fitted
+        if (!is.null(result$model)) {
+          tryCatch({
+            fit_vals  <- stats::fitted(result$model)
+            resid_vals <- stats::residuals(result$model)
+            rf_df <- data.frame(Fitted = fit_vals, Residuals = resid_vals)
+            result$diag_resid_fitted_plot <- ggplot2::ggplot(
+              rf_df, ggplot2::aes(x = Fitted, y = Residuals)
+            ) +
+              ggplot2::geom_point(alpha = 0.5) +
+              ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "red") +
+              ggplot2::geom_smooth(method = "loess", se = FALSE,
+                                  colour = "steelblue", linewidth = 0.8) +
+              ggplot2::theme_classic() +
+              ggplot2::labs(title = "Residuals vs Fitted",
+                           x = "Fitted Values", y = "Residuals")
+          }, error = function(e) cat("WARNING: resid-vs-fitted plot failed:", e$message, "\n"))
         }
         
         # Plot 5: Effect size forest plot from pairwise comparisons
@@ -976,15 +1003,24 @@ tumor_growth_server <- function(input, output, session, rv) {
   })
   
   # Diagnostics
-  output$tg_diagnostics <- renderText({
+  # Diagnostics tab: Q-Q plot
+  output$tg_diag_qq <- renderPlot({
     req(rv$tg_results)
-    if (isTRUE(rv$tg_results$error)) return("Diagnostics not available")
-    
-    if (!is.null(rv$tg_results$diagnostics)) {
-      paste(capture.output(print(rv$tg_results$diagnostics)), collapse = "\n")
-    } else {
-      "No diagnostic information available"
+    if (isTRUE(rv$tg_results$error)) return(NULL)
+    if (!is.null(rv$tg_results$diag_qq_plot)) {
+      return(rv$tg_results$diag_qq_plot)
     }
+    plot(1, 1, type = "n", main = "Q-Q plot not available", xlab = "", ylab = "")
+  })
+
+  # Diagnostics tab: Residuals vs Fitted
+  output$tg_diag_resid_fitted <- renderPlot({
+    req(rv$tg_results)
+    if (isTRUE(rv$tg_results$error)) return(NULL)
+    if (!is.null(rv$tg_results$diag_resid_fitted_plot)) {
+      return(rv$tg_results$diag_resid_fitted_plot)
+    }
+    plot(1, 1, type = "n", main = "Residuals vs Fitted not available", xlab = "", ylab = "")
   })
   
   # Download handlers (placeholder implementations)
