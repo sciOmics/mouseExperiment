@@ -265,7 +265,7 @@ post_power_analysis <- function(data,
      
      # Calculate sample sizes per group
      sample_sizes <- table(auc_data[[treatment_column]])
-   } else if (!is.null(model_results$data_summary)) {
+   } else if (!is.null(model_results$data_summary$n_per_group)) {
      # Extract from data summary
      sample_sizes <- model_results$data_summary$n_per_group
    } else if (exists("raw_data")) {

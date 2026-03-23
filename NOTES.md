@@ -2,4 +2,5 @@
 
 ## Notes:
 - Add Bayesian methods
-- Make a GUI
+- Make a GUI (Shiny)
+    - Add Mouse picture as background

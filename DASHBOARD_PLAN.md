@@ -82,6 +82,9 @@ The dashboard would reduce the learning curve for R code while leveraging all ex
 │  ├─ Treatment column
 │  ├─ Cage column (optional)
 │  └─ Date column (optional)
+├─ Optional: Upload treatment schedule file (second CSV/RDA)
+│  ├─ Preview schedule data
+│  └─ Map Day and Treatment columns
 ├─ Configure volume formula (ellipsoid, modified, cylinder, sphere, box)
 ├─ Parse dates with format specification
 ├─ Display validation results
@@ -112,8 +115,18 @@ The dashboard would reduce the learning curve for R code while leveraging all ex
    ├─ Tumor Growth Curves
    ├─ Growth Rate Box Plot
    ├─ AUC Comparison
-   └─ Caterpillar Plot (random effects)
+   ├─ Caterpillar Plot (random effects)
+   └─ Treatment Schedule Plot (if schedule data uploaded)
 ```
+
+**Treatment Schedule Plot (`plot_treatments`):**
+- Optional second file upload for treatment schedule data (CSV/RDA)
+- Calls `plot_treatments(treatment_data, tumor_growth_data)` using x-axis aligned to tumor growth days
+- Parameter controls:
+  - Treatment order selector (drag-to-reorder or dropdown)
+  - Color palette selector (matches tumor growth palette)
+- Output: triangle-marker timeline plot showing which treatments were given on which days, one row per treatment group
+- Download button for PNG export
 
 #### **Module 3: Survival Analysis**
 - Interface for survival_statistics()
