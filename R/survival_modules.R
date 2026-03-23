@@ -101,25 +101,41 @@ survival_server <- function(input, output, session, rv) {
   # Dynamically generate reference group dropdown based on treatment groups
   output$surv_reference_group_ui <- renderUI({
     req(rv$uploaded_data, rv$data_valid)
-    
-    # Get unique treatment values
-    if (!is.null(input$col_treatment) && input$col_treatment != "") {
-      treatment_col <- rv$uploaded_data[[input$col_treatment]]
-      if (!is.null(treatment_col)) {
-        treatment_groups <- sort(unique(as.character(na.omit(treatment_col))))
-        
-        if (length(treatment_groups) > 0) {
-          default_ref <- pick_reference_group(treatment_groups)
-          return(
-            selectInput("surv_reference_group",
-                       "Reference Group",
-                       choices = treatment_groups,
-                       selected = default_ref)
-          )
-        }
+
+    # Determine which column / labels to use.
+    # When a dose column is mapped rv$tx_col == "TreatmentGroup" and the
+    # actual groups are "Treatment Dose" combinations.  Build that vector
+    # on-the-fly from the raw upload so the dropdown is always correct even
+    # before a full analysis has been run.
+    get_groups <- function() {
+      d <- rv$uploaded_data
+      if (!is.null(rv$tx_col) && rv$tx_col == "TreatmentGroup" &&
+          !is.null(rv$dose_col) && nzchar(rv$dose_col) &&
+          rv$dose_col %in% colnames(d) &&
+          !is.null(input$col_treatment) && nzchar(input$col_treatment) &&
+          input$col_treatment %in% colnames(d)) {
+        combined <- paste(d[[input$col_treatment]], d[[rv$dose_col]], sep = " ")
+        return(sort(unique(as.character(na.omit(combined)))))
       }
+      if (!is.null(input$col_treatment) && nzchar(input$col_treatment) &&
+          input$col_treatment %in% colnames(d)) {
+        return(sort(unique(as.character(na.omit(d[[input$col_treatment]])))))
+      }
+      character(0)
     }
-    
+
+    treatment_groups <- get_groups()
+
+    if (length(treatment_groups) > 0) {
+      default_ref <- pick_reference_group(treatment_groups)
+      return(
+        selectInput("surv_reference_group",
+                   "Reference Group",
+                   choices = treatment_groups,
+                   selected = default_ref)
+      )
+    }
+
     # Fallback if no data
     selectInput("surv_reference_group",
                "Reference Group",
@@ -159,7 +175,18 @@ survival_server <- function(input, output, session, rv) {
     
     # Prepare data - apply same time processing as tumor growth analysis
     data <- rv$uploaded_data
-    
+
+    # When a dose column is mapped the treatment column is set to "TreatmentGroup"
+    # (a combined "Treatment Dose" label).  rv$uploaded_data never carries that
+    # synthetic column, so we must build it here before any deduplication or
+    # date calculations so it is preserved throughout the pipeline.
+    if (!is.null(rv$dose_col) && nzchar(rv$dose_col) &&
+        rv$dose_col %in% colnames(data) &&
+        !is.null(rv$tx_col) && rv$tx_col == "TreatmentGroup") {
+      data[["TreatmentGroup"]] <- paste(data[[input$col_treatment]],
+                                        data[[rv$dose_col]], sep = " ")
+    }
+
     # Handle time column - either use direct day or calculate from date
     # This mirrors the tumor growth analysis logic
     if (input$time_method == "from_date") {
