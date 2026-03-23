@@ -11,7 +11,7 @@ data_upload_server <- function(input, output, session, rv) {
   
   # Demo data loader
   observeEvent(input$load_demo_data, {
-    req(input$demo_dataset)
+    req(nzchar(input$demo_dataset))
 
     demo_files <- list(
       combo = list(
@@ -248,17 +248,8 @@ data_upload_server <- function(input, output, session, rv) {
       }
     } else div(class = "text-muted", "(Treatment column not configured)")
     
-    # --- Cage IDs ---
-    cage_box <- if (!is.null(cage_col) && cage_col %in% colnames(data)) {
-      cages <- sort(unique(na.omit(as.character(data[[cage_col]]))))
-      div(class = "panel panel-default",
-        div(class = "panel-heading", tags$b("Cage IDs")),
-        div(class = "panel-body",
-          p(paste(cages, collapse = ", "))
-        )
-      )
-    } else div(class = "text-muted", "(Cage column not configured)")
-    
+    # --- Cage IDs removed --- #
+
     # --- Day / date range ---
     time_box <- if (!is.null(time_col) && time_col %in% colnames(data)) {
       vals <- suppressWarnings(as.numeric(data[[time_col]]))
@@ -348,7 +339,7 @@ data_upload_server <- function(input, output, session, rv) {
       }
 
       div(class = "panel panel-default",
-        div(class = "panel-heading", tags$b("Mice per Group")),
+        div(class = "panel-heading", tags$b("Cage Info")),
         div(class = "panel-body", inner)
       )
     } else NULL
@@ -359,10 +350,9 @@ data_upload_server <- function(input, output, session, rv) {
         h4("Dataset Summary"),
         p(strong(paste(nrow(data), "rows ×", ncol(data), "columns"))),
         fluidRow(
-          column(3, tx_box),
-          column(3, cage_box),
-          column(3, time_box),
-          column(3, mice_box)
+          column(4, tx_box),
+          column(4, time_box),
+          column(4, mice_box)
         )
       ),
       hr()

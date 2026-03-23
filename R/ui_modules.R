@@ -63,9 +63,11 @@ dataUploadUI <- function() {
             column(5,
               selectInput("demo_dataset", NULL,
                 choices = c(
+                  "-- Select a demo dataset --" = "",
                   "Combo Treatment (Control / HDACi / aPD1 / HDACi+PD1, survival data)" = "combo",
                   "Dose Levels (dose-response data with survival)" = "dose_levels"
-                )
+                ),
+                selected = ""
               )
             ),
             column(3,
