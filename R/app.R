@@ -35,9 +35,7 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
   ui <- navbarPage(
     title = "mouseExperiment Dashboard",
     id = "main_nav",
-    
-    # Initialize shinyjs for dynamic UI manipulation
-    shinyjs::useShinyjs(),
+    header = shinyjs::useShinyjs(),
     
     # Home tab
     tabPanel("Home",
@@ -62,6 +60,14 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
       # Synergy sub-tab
       tabPanel("Drug Synergy",
         synergyUI()
+      ),
+      # Power Analysis sub-tab
+      tabPanel("Power Analysis",
+        powerAnalysisUI()
+      ),
+      # Dose Response sub-tab
+      tabPanel("Dose Response",
+        doseResponseUI()
       )
     ),
     
@@ -88,6 +94,12 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     
     # Initialize synergy server (Phase 3)
     synergy_server(input, output, session, rv)
+    
+    # Initialize power analysis server
+    power_server(input, output, session, rv)
+    
+    # Initialize dose-response server
+    dose_response_server(input, output, session, rv)
     
     # Navigation handlers (for buttons on Home tab)
     observeEvent(input$goto_upload, {
