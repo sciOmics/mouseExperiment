@@ -377,8 +377,7 @@ synergy_server <- function(input, output, session, rv) {
     } else {
       data.frame(Message = "No metrics available")
     }
-    numeric_cols <- sapply(df, is.numeric)
-    df[numeric_cols] <- round(df[numeric_cols], 4)
+    df <- format_df_for_display(df)
     datatable(df, options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE)
   })
   
@@ -388,8 +387,7 @@ synergy_server <- function(input, output, session, rv) {
       return(datatable(data.frame(Message = "TGI data not available")))
     }
     df <- as.data.frame(rv$syn_results$summary)
-    numeric_cols <- sapply(df, is.numeric)
-    df[numeric_cols] <- round(df[numeric_cols], 4)
+    df <- format_df_for_display(df)
     datatable(df, options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
   })
   

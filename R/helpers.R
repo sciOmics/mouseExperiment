@@ -140,6 +140,44 @@ safe_analysis <- function(expr) {
   )
 }
 
+#' Format a p-value for display
+#'
+#' Very small p-values are shown in scientific notation rather than being
+#' rounded to "0". Uses \code{formatC} with \code{format="g"} so the output
+#' automatically switches to scientific notation when needed.
+#'
+#' @param x Numeric p-value(s)
+#' @param digits Significant digits (default 3)
+#' @return Character string(s)
+#' @keywords internal
+format_pval <- function(x, digits = 3) {
+  formatC(x, digits = digits, format = "g")
+}
+
+#' Format a data frame for tabular display
+#'
+#' Rounds ordinary numeric columns to \code{digits} decimal places.
+#' Columns whose names match common p-value patterns are formatted with
+#' \code{\link{format_pval}} so very small values appear in scientific
+#' notation rather than being displayed as "0".
+#'
+#' @param df Data frame
+#' @param digits Decimal places for regular numeric columns (default 4)
+#' @return Data frame with formatted columns
+#' @keywords internal
+format_df_for_display <- function(df, digits = 4) {
+  pval_pattern <- "p[._]?value|p[._]?adj|padj|^p$|Pr\\("
+  for (col in names(df)) {
+    if (!is.numeric(df[[col]])) next
+    if (grepl(pval_pattern, col, ignore.case = TRUE)) {
+      df[[col]] <- format_pval(df[[col]])
+    } else {
+      df[[col]] <- round(df[[col]], digits)
+    }
+  }
+  df
+}
+
 #' Create a summary table from analysis results
 #'
 #' @param result Analysis result object

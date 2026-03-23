@@ -280,8 +280,7 @@ dose_response_server <- function(input, output, session, rv) {
     req(rv$dr_results)
     if (isTRUE(rv$dr_results$error)) return(datatable(data.frame(Message = "Results not available")))
     tbl <- as.data.frame(rv$dr_results$summary_table)
-    num_cols <- sapply(tbl, is.numeric)
-    tbl[num_cols] <- round(tbl[num_cols], 4)
+    tbl <- format_df_for_display(tbl)
     datatable(tbl, options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE)
   })
 
@@ -334,8 +333,7 @@ dose_response_server <- function(input, output, session, rv) {
     tbl <- as.data.frame(tukey[[1]])
     tbl$Comparison <- rownames(tbl)
     tbl <- tbl[, c("Comparison", setdiff(names(tbl), "Comparison"))]
-    num_cols <- sapply(tbl, is.numeric)
-    tbl[num_cols] <- round(tbl[num_cols], 4)
+    tbl <- format_df_for_display(tbl)
     datatable(tbl, options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
   })
 

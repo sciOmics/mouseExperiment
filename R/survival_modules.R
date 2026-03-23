@@ -438,8 +438,7 @@ survival_server <- function(input, output, session, rv) {
     }
     
     results_df <- rv$surv_results$results
-    numeric_cols <- sapply(results_df, is.numeric)
-    results_df[numeric_cols] <- round(results_df[numeric_cols], 4)
+    results_df <- format_df_for_display(results_df)
     
     datatable(results_df, options = list(scrollX = TRUE, pageLength = 10))
   })

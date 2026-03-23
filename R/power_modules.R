@@ -241,7 +241,7 @@ power_server <- function(input, output, session, rv) {
       return(datatable(data.frame(Message = "Effect sizes not available")))
     }
     df <- as.data.frame(rv$pw_results$effect_sizes)
-    num_cols <- sapply(df, is.numeric); df[num_cols] <- round(df[num_cols], 4)
+    df <- format_df_for_display(df)
     datatable(df, options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE)
   })
   
@@ -251,7 +251,7 @@ power_server <- function(input, output, session, rv) {
       return(datatable(data.frame(Message = "Power analysis table not available")))
     }
     df <- as.data.frame(rv$pw_results$post_power_analysis)
-    num_cols <- sapply(df, is.numeric); df[num_cols] <- round(df[num_cols], 4)
+    df <- format_df_for_display(df)
     datatable(df, options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
   })
   
@@ -261,7 +261,7 @@ power_server <- function(input, output, session, rv) {
       return(datatable(data.frame(Message = "Sample size estimates not available")))
     }
     df <- as.data.frame(rv$pw_results$sample_size_estimates)
-    num_cols <- sapply(df, is.numeric); df[num_cols] <- round(df[num_cols], 4)
+    df <- format_df_for_display(df)
     datatable(df, options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
   })
   

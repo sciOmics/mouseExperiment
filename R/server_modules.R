@@ -112,6 +112,7 @@ data_upload_server <- function(input, output, session, rv) {
     
     data    <- preview_data()
     tx_col  <- if (!is.null(input$col_treatment) && input$col_treatment != "") input$col_treatment else NULL
+    dose_col <- if (!is.null(input$col_dose) && input$col_dose != "" && input$col_dose != "None") input$col_dose else NULL
     cage_col <- if (!is.null(input$col_cage) && input$col_cage != "") input$col_cage else NULL
     id_col  <- if (!is.null(input$col_id) && input$col_id != "") input$col_id else NULL
     
@@ -126,13 +127,38 @@ data_upload_server <- function(input, output, session, rv) {
     
     # --- Treatment groups ---
     tx_box <- if (!is.null(tx_col) && tx_col %in% colnames(data)) {
-      groups <- sort(unique(na.omit(as.character(data[[tx_col]]))))
-      div(class = "panel panel-default",
-        div(class = "panel-heading", tags$b("Treatment Groups")),
-        div(class = "panel-body",
-          tags$ul(lapply(groups, tags$li))
+      if (!is.null(dose_col) && dose_col %in% colnames(data)) {
+        # Show treatment × dose breakdown as a table
+        td <- unique(data[, c(tx_col, dose_col)])
+        td[[tx_col]]   <- as.character(td[[tx_col]])
+        td[[dose_col]] <- as.character(td[[dose_col]])
+        td <- td[order(td[[tx_col]], td[[dose_col]]), ]
+        # Collapse doses per treatment into a single row
+        dose_per_tx <- tapply(td[[dose_col]], td[[tx_col]], function(d)
+          paste(sort(unique(d)), collapse = ", "))
+        tx_rows <- lapply(sort(names(dose_per_tx)), function(g)
+          tags$tr(tags$td(g), tags$td(dose_per_tx[[g]]))
         )
-      )
+        div(class = "panel panel-default",
+          div(class = "panel-heading", tags$b("Treatment Groups")),
+          div(class = "panel-body",
+            tags$table(
+              class = "table table-condensed table-bordered",
+              style = "width:auto;",
+              tags$thead(tags$tr(tags$th("Treatment"), tags$th("Dose(s)"))),
+              tags$tbody(tx_rows)
+            )
+          )
+        )
+      } else {
+        groups <- sort(unique(na.omit(as.character(data[[tx_col]]))))
+        div(class = "panel panel-default",
+          div(class = "panel-heading", tags$b("Treatment Groups")),
+          div(class = "panel-body",
+            tags$ul(lapply(groups, tags$li))
+          )
+        )
+      }
     } else div(class = "text-muted", "(Treatment column not configured)")
     
     # --- Cage IDs ---
@@ -164,44 +190,76 @@ data_upload_server <- function(input, output, session, rv) {
     # --- Mice per group ---
     mice_box <- if (!is.null(tx_col) && tx_col %in% colnames(data) &&
                     !is.null(id_col)  && id_col  %in% colnames(data)) {
-      
+
+      has_dose <- !is.null(dose_col) && dose_col %in% colnames(data)
+
       inner <- if (!is.null(cage_col) && cage_col %in% colnames(data)) {
-        # Cage × treatment table (includes both dimensions)
-        ct <- unique(data[, c(id_col, cage_col, tx_col)])
-        ct_counts <- as.data.frame(table(
-          Cage = as.character(ct[[cage_col]]),
-          Treatment = as.character(ct[[tx_col]])
-        ))
-        ct_counts <- ct_counts[ct_counts$Freq > 0, ]
-        ct_rows <- lapply(seq_len(nrow(ct_counts)), function(i)
-          tags$tr(tags$td(ct_counts$Cage[i]),
-                  tags$td(ct_counts$Treatment[i]),
-                  tags$td(ct_counts$Freq[i]))
+        # Cage × treatment (× dose) table
+        key_cols <- c(id_col, cage_col, tx_col, if (has_dose) dose_col)
+        ct <- unique(data[, key_cols])
+        group_cols <- c("Cage", "Treatment", if (has_dose) "Dose")
+        ct_renamed <- data.frame(
+          Cage      = as.character(ct[[cage_col]]),
+          Treatment = as.character(ct[[tx_col]]),
+          stringsAsFactors = FALSE
         )
+        if (has_dose) ct_renamed$Dose <- as.character(ct[[dose_col]])
+        ct_counts <- as.data.frame(table(ct_renamed[, group_cols, drop = FALSE]))
+        ct_counts <- ct_counts[ct_counts$Freq > 0, ]
+        ct_counts <- ct_counts[do.call(order, ct_counts[, group_cols, drop = FALSE]), ]
+        ct_rows <- lapply(seq_len(nrow(ct_counts)), function(i) {
+          cells <- lapply(group_cols, function(col) tags$td(as.character(ct_counts[[col]][i])))
+          do.call(tags$tr, c(cells, list(tags$td(ct_counts$Freq[i]))))
+        })
+        header_cells <- lapply(c(group_cols, "Mice"), tags$th)
         tags$table(
           class = "table table-condensed table-bordered",
           style = "width:auto;",
-          tags$thead(tags$tr(tags$th("Cage"), tags$th("Treatment"), tags$th("Mice"))),
+          tags$thead(do.call(tags$tr, header_cells)),
           tags$tbody(ct_rows)
         )
       } else {
-        # Fallback: per-treatment only when no cage column configured
-        tx_counts <- tapply(
-          as.character(data[[id_col]]),
-          as.character(data[[tx_col]]),
-          function(x) length(unique(x))
-        )
-        tx_rows <- lapply(sort(names(tx_counts)), function(g)
-          tags$tr(tags$td(g), tags$td(tx_counts[[g]]))
-        )
-        tags$table(
-          class = "table table-condensed table-bordered",
-          style = "width:auto;",
-          tags$thead(tags$tr(tags$th("Treatment"), tags$th("Unique Mice"))),
-          tags$tbody(tx_rows)
-        )
+        # Per-treatment (+ dose) when no cage column configured
+        key_cols <- c(id_col, tx_col, if (has_dose) dose_col)
+        ct <- unique(data[, key_cols])
+        if (has_dose) {
+          group_df <- data.frame(
+            Treatment = as.character(ct[[tx_col]]),
+            Dose      = as.character(ct[[dose_col]]),
+            stringsAsFactors = FALSE
+          )
+          counts <- as.data.frame(table(group_df))
+          counts <- counts[counts$Freq > 0, ]
+          counts <- counts[order(counts$Treatment, counts$Dose), ]
+          tx_rows <- lapply(seq_len(nrow(counts)), function(i)
+            tags$tr(tags$td(counts$Treatment[i]),
+                    tags$td(counts$Dose[i]),
+                    tags$td(counts$Freq[i]))
+          )
+          tags$table(
+            class = "table table-condensed table-bordered",
+            style = "width:auto;",
+            tags$thead(tags$tr(tags$th("Treatment"), tags$th("Dose"), tags$th("Mice"))),
+            tags$tbody(tx_rows)
+          )
+        } else {
+          tx_counts <- tapply(
+            as.character(data[[id_col]]),
+            as.character(data[[tx_col]]),
+            function(x) length(unique(x))
+          )
+          tx_rows <- lapply(sort(names(tx_counts)), function(g)
+            tags$tr(tags$td(g), tags$td(tx_counts[[g]]))
+          )
+          tags$table(
+            class = "table table-condensed table-bordered",
+            style = "width:auto;",
+            tags$thead(tags$tr(tags$th("Treatment"), tags$th("Unique Mice"))),
+            tags$tbody(tx_rows)
+          )
+        }
       }
-      
+
       div(class = "panel panel-default",
         div(class = "panel-heading", tags$b("Mice per Group")),
         div(class = "panel-body", inner)
@@ -842,9 +900,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     }
     
     anova_df <- as.data.frame(rv$tg_results$anova)
-    # Round numeric columns for better display
-    numeric_cols <- sapply(anova_df, is.numeric)
-    anova_df[numeric_cols] <- round(anova_df[numeric_cols], 4)
+    anova_df <- format_df_for_display(anova_df)
     
     datatable(anova_df, options = list(scrollX = TRUE, pageLength = 10))
   })
@@ -904,9 +960,7 @@ tumor_growth_server <- function(input, output, session, rv) {
       return(datatable(data.frame(Message = paste("Comparisons not available for", comp_type))))
     }
     
-    # Round numeric columns for better display
-    numeric_cols <- sapply(comp_df, is.numeric)
-    comp_df[numeric_cols] <- round(comp_df[numeric_cols], 4)
+    comp_df <- format_df_for_display(comp_df)
     
     # Create and return datatable
     datatable(comp_df, options = list(scrollX = TRUE, pageLength = 10))
@@ -920,9 +974,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     }
     
     effects_df <- as.data.frame(rv$tg_results$treatment_effects)
-    # Round numeric columns
-    numeric_cols <- sapply(effects_df, is.numeric)
-    effects_df[numeric_cols] <- round(effects_df[numeric_cols], 4)
+    effects_df <- format_df_for_display(effects_df)
     
     datatable(effects_df, options = list(scrollX = TRUE, pageLength = 10))
   })
@@ -935,9 +987,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     }
     
     rates_df <- as.data.frame(rv$tg_results$growth_rates)
-    # Round numeric columns
-    numeric_cols <- sapply(rates_df, is.numeric)
-    rates_df[numeric_cols] <- round(rates_df[numeric_cols], 4)
+    rates_df <- format_df_for_display(rates_df)
     
     datatable(rates_df, options = list(scrollX = TRUE, pageLength = 15))
   })
