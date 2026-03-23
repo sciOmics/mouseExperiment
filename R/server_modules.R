@@ -384,7 +384,7 @@ data_upload_server <- function(input, output, session, rv) {
   output$data_table <- renderDT({
     req(rv$data_valid)
     datatable(preview_data(),
-             options = list(scrollX = TRUE, scrollY = "400px", pageLength = 25, paging = TRUE))
+             options = list(scrollX = TRUE, scrollY = "600px", paging = FALSE, dom = "ti"))
   })
   
   output$download_preview_data <- downloadHandler(
@@ -524,8 +524,8 @@ data_upload_server <- function(input, output, session, rv) {
   output$schedule_table <- renderDT({
     req(rv$schedule_data)
     datatable(preview_schedule(),
-             options = list(scrollX = TRUE, scrollY = "300px",
-                           pageLength = 25, paging = TRUE))
+             options = list(scrollX = TRUE, scrollY = "400px",
+                           paging = FALSE, dom = "ti"))
   })
   
   # Proceed button is always clickable - validation enforced at analysis time
