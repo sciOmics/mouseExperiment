@@ -381,7 +381,8 @@ tumorGrowthUI <- function() {
               strong("Tumor Growth Curves: "), "individual mouse trajectories with group mean overlay. ",
               strong("Growth Rate Distribution: "), "spread of per-animal rates within each group. ",
               strong("AUC / Treatment Effects: "), "model-estimated effect sizes per group. ",
-              strong("Q\u2011Q Plot: "), "assesses normality of model residuals \u2014 points should follow the diagonal line for valid inference."
+              strong("Effect Size Forest Plot: "), "pairwise mean differences with 95% CIs. ",
+              "See the Diagnostics tab for residual Q\u2011Q and residuals-vs-fitted plots."
             ),
             fluidRow(
               column(6,
@@ -401,19 +402,12 @@ tumorGrowthUI <- function() {
             ),
             
             fluidRow(
-              column(6,
+              column(8,
                 h4("AUC Comparison"),
                 shinycssloaders::withSpinner(
                   plotOutput("tg_plot_auc", height = "400px")
                 ),
                 downloadButton("download_tg_plot_auc", "Download Plot")
-              ),
-              column(6,
-                h4("Random Effects"),
-                shinycssloaders::withSpinner(
-                  plotOutput("tg_plot_caterpillar", height = "400px")
-                ),
-                downloadButton("download_tg_plot_caterpillar", "Download Plot")
               )
             ),
             
