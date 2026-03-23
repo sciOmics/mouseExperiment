@@ -5,121 +5,139 @@
 #' @param host The host IP address to listen on. Default: "127.0.0.1" (localhost)
 #' @param port The port number. Default: 3838
 #'
-#' @importFrom shiny shinyApp navbarPage tabPanel fluidPage tags observeEvent updateNavbarPage reactiveValues
+#' @importFrom shiny shinyApp navbarPage tabPanel fluidPage tags observeEvent updateNavbarPage reactiveValues observe
 #' @export
 #'
 #' @examples
 #' \dontrun{
-#' # Launch the dashboard
 #' runDashboard()
-#' 
-#' # Or with custom host/port
 #' runDashboard(port = 8080)
 #' }
 runDashboard <- function(host = "127.0.0.1", port = 3838) {
-  
-  # Ensure shiny is loaded
+
   if (!requireNamespace("shiny", quietly = TRUE)) {
     stop("shiny package is required but not installed")
   }
-  
-  # Ensure constant is available (from global.R)
-  if (!exists("APP_VERSION")) {
-    APP_VERSION <- "0.1.0 (Development)"
-  }
-  
-  # Note: UI and server functions (homeUI, dataUploadUI, etc.) are already
-  # loaded as part of the package namespace, so we don't need to source them
-  
-  # Define UI
+
+  if (!exists("APP_VERSION")) APP_VERSION <- "0.1.0 (Development)"
+
+  # JS injected on page load:
+  #  1. Moves Help + Citation to a right-aligned nav
+  #  2. Adds "navbar-center" class to the main nav for CSS centering
+  #  3. Exposes disableNavTab / enableNavTab helpers for server-side use
+  nav_js <- HTML("
+$(document).ready(function() {
+  // Move Help and Citation to a right-aligned nav list
+  var $mainNav = $('.navbar-nav:first');
+  var helpLi     = $mainNav.find('a[data-value=\"Help\"]').closest('li').detach();
+  var citationLi = $mainNav.find('a[data-value=\"Citation\"]').closest('li').detach();
+  var $rightNav  = $('<ul class=\"nav navbar-nav navbar-right\" id=\"nav-right\"></ul>');
+  $rightNav.append(helpLi).append(citationLi);
+  $mainNav.closest('.navbar-collapse').append($rightNav);
+
+  // Mark main nav for centering via CSS
+  $mainNav.addClass('navbar-center');
+});
+
+// Prevent clicks on disabled tabs
+$(document).on('click', '.nav-tab-disabled > a', function(e) {
+  e.preventDefault(); e.stopPropagation(); return false;
+});
+
+function disableNavTab(val) {
+  $('.navbar-nav li a[data-value=\"' + val + '\"]').closest('li').addClass('nav-tab-disabled');
+  $('#nav-right li a[data-value=\"' + val + '\"]').closest('li').addClass('nav-tab-disabled');
+}
+function enableNavTab(val) {
+  $('.navbar-nav li a[data-value=\"' + val + '\"]').closest('li').removeClass('nav-tab-disabled');
+  $('#nav-right li a[data-value=\"' + val + '\"]').closest('li').removeClass('nav-tab-disabled');
+}
+window.disableNavTab = disableNavTab;
+window.enableNavTab  = enableNavTab;
+")
+
   ui <- navbarPage(
-    title = "mouseExperiment Dashboard",
-    id = "main_nav",
-    header = shinyjs::useShinyjs(),
-    
-    # Home tab
-    tabPanel("Home",
-      homeUI()
-    ),
-    
-    # Data Upload tab
-    tabPanel("Data Upload",
-      dataUploadUI()
-    ),
-    
-    # Analysis menu
-    navbarMenu("Analysis",
-      # Tumor Growth sub-tab
-      tabPanel("Tumor Growth",
-        tumorGrowthUI()
-      ),
-      # Survival sub-tab
-      tabPanel("Survival",
-        survivalUI()
-      ),
-      # Synergy sub-tab
-      tabPanel("Drug Synergy",
-        synergyUI()
-      ),
-      # Power Analysis sub-tab
-      tabPanel("Power Analysis",
-        powerAnalysisUI()
-      ),
-      # Dose Response sub-tab
-      tabPanel("Dose Response",
-        doseResponseUI()
+    title = tags$span(id = "nav-brand", "mouseExperiment"),
+    id    = "main_nav",
+    header = tagList(
+      shinyjs::useShinyjs(),
+      tags$head(
+        tags$link(rel = "stylesheet", href = "css/custom.css"),
+        tags$script(nav_js)
       )
     ),
-    
-    # Help tab
-    tabPanel("Help",
-      helpUI()
-    )
+
+    tabPanel("Data",          dataUploadUI()),
+    tabPanel("Tumor Growth",  tumorGrowthUI()),
+    tabPanel("Survival",      survivalUI()),
+    tabPanel("Dose Response", doseResponseUI()),
+    tabPanel("Drug Synergy",  synergyUI()),
+    tabPanel("Power Analysis",powerAnalysisUI()),
+    tabPanel("Help",          helpUI()),
+    tabPanel("Citation",      citationUI())
   )
-  
-  # Define server logic
+
   server <- function(input, output, session) {
-    
-    # Reactive values container
+
     rv <- reactiveValues()
-    
-    # Initialize data upload server
+
     data_upload_server(input, output, session, rv)
-    
-    # Initialize tumor growth server
     tumor_growth_server(input, output, session, rv)
-    
-    # Initialize survival server (Phase 2)
     survival_server(input, output, session, rv)
-    
-    # Initialize synergy server (Phase 3)
     synergy_server(input, output, session, rv)
-    
-    # Initialize power analysis server
     power_server(input, output, session, rv)
-    
-    # Initialize dose-response server
     dose_response_server(input, output, session, rv)
-    
-    # Navigation handlers (for buttons on Home tab)
-    observeEvent(input$goto_upload, {
-      updateNavbarPage(session, "main_nav", selected = "Data Upload")
+
+    # Analysis tabs that require data to be uploaded first
+    analysis_tabs <- c("Tumor Growth", "Survival", "Dose Response",
+                       "Drug Synergy", "Power Analysis")
+
+    # Disable all analysis tabs on startup
+    shinyjs::runjs(paste(
+      sprintf("window.disableNavTab('%s');", analysis_tabs),
+      collapse = "\n"
+    ))
+
+    # Enable / disable analysis tabs reactively
+    observe({
+      if (isTRUE(rv$data_valid)) {
+        # Always available once data is loaded
+        shinyjs::runjs("window.enableNavTab('Tumor Growth');")
+        shinyjs::runjs("window.enableNavTab('Power Analysis');")
+        shinyjs::runjs("window.enableNavTab('Drug Synergy');")
+
+        # Survival: only when a censor/event column is mapped
+        surv_mapped <- !is.null(input$col_survival_event) &&
+                       nzchar(input$col_survival_event) &&
+                       input$col_survival_event != "None"
+        if (surv_mapped) {
+          shinyjs::runjs("window.enableNavTab('Survival');")
+        } else {
+          shinyjs::runjs("window.disableNavTab('Survival');")
+        }
+
+        # Dose Response: only when a dose column is mapped
+        dose_mapped <- !is.null(rv$dose_col) && nzchar(rv$dose_col)
+        if (dose_mapped) {
+          shinyjs::runjs("window.enableNavTab('Dose Response');")
+        } else {
+          shinyjs::runjs("window.disableNavTab('Dose Response');")
+        }
+
+      } else {
+        shinyjs::runjs(paste(
+          sprintf("window.disableNavTab('%s');", analysis_tabs),
+          collapse = "\n"
+        ))
+      }
     })
-    
-    observeEvent(input$goto_analysis, {
-      updateNavbarPage(session, "main_nav", selected = "Analysis")
-    })
-    
-    # Navigation handler for proceed_analysis button on Data Upload tab
+
+    # Navigate to Tumor Growth after data configuration
     observeEvent(input$proceed_analysis, {
-      cat("DEBUG: Proceed to Analysis button clicked\n")
       updateNavbarPage(session, "main_nav", selected = "Tumor Growth")
     })
   }
-  
-  # Create and run Shiny app
+
   app <- shinyApp(ui = ui, server = server)
-  
-  # Run the app
   shiny::runApp(app, host = host, port = port, launch.browser = TRUE)
 }

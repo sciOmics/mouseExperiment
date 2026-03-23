@@ -469,7 +469,37 @@ tumorGrowthUI <- function() {
 helpUI <- function() {
   fluidPage(
     h2("Help & Documentation"),
-    
+
+    fluidRow(
+      column(6,
+        wellPanel(
+          h3(icon("book"), " Documentation"),
+          p("Full documentation, tutorials, and function reference for the ",
+            strong("mouseExperiment"), " package:"),
+          tags$a(
+            href  = "https://github.com/sciOmics/mouseExperiment",
+            target = "_blank",
+            class = "btn btn-primary btn-lg",
+            icon("github"), " GitHub Repository"
+          )
+        )
+      ),
+      column(6,
+        wellPanel(
+          h3(icon("bug"), " Report Issues"),
+          p("Found a bug or want to request a new feature? Open an issue on GitHub:"),
+          tags$a(
+            href  = "https://github.com/sciOmics/mouseExperiment/issues",
+            target = "_blank",
+            class = "btn btn-warning btn-lg",
+            icon("exclamation-circle"), " Submit Issue / Feature Request"
+          )
+        )
+      )
+    ),
+
+    hr(),
+
     h3("Column Naming"),
     p("The dashboard looks for common column names like:"),
     tags$ul(
@@ -477,20 +507,58 @@ helpUI <- function() {
       tags$li(strong("Time:"), "Day, Time, Timepoint"),
       tags$li(strong("Volume:"), "Volume, Tumor_Volume"),
       tags$li(strong("Treatment:"), "Treatment, Group"),
-      tags$li(strong("Cage:"), "Cage, Cage_ID")
+      tags$li(strong("Cage:"), "Cage, Cage_ID"),
+      tags$li(strong("Dose (optional):"), "Dose, dose, DoseLevel"),
+      tags$li(strong("Survival/Censor (optional):"), "Survival_Censor, Censor, Event")
     ),
-    
+
     h3("Statistical Methods"),
     p("The analysis uses linear mixed-effects models (lme4) or area under the curve (AUC) methods."),
-    p("Consult the", a("mouseExperiment documentation", href = "https://github.com/"), 
-      "for detailed method information."),
-    
+    p("Consult the ",
+      tags$a("mouseExperiment documentation",
+             href = "https://github.com/sciOmics/mouseExperiment", target = "_blank"),
+      " for detailed method information."),
+
     h3("Troubleshooting"),
-    p(strong("File won't upload:"), "Ensure it's a CSV or RDA file."),
-    p(strong("Columns not detected:"), "Check that column names match expected patterns."),
-    p(strong("Analysis fails:"), "Check that required columns are selected and contain valid data."),
-    
-    h3("Contact & Support"),
-    p("For issues or questions, contact the package maintainers.")
+    p(strong("File won't upload:"), "Ensure it is a CSV or RDA file."),
+    p(strong("Columns not detected:"), "Check that column names match expected patterns above."),
+    p(strong("Analysis tab greyed out:"), "Upload and configure data first. Survival requires a censor column; Dose Response requires a dose column."),
+    p(strong("Analysis fails:"), "Check that required columns are selected and contain valid data.")
+  )
+}
+
+#' Citation UI
+#' @keywords internal
+citationUI <- function() {
+  fluidPage(
+    h2("Citation"),
+
+    wellPanel(
+      h3("How to Cite"),
+      p("If you use mouseExperiment or this dashboard in your research, please cite:"),
+      tags$blockquote(
+        style = "font-size: 1em; border-left: 4px solid #0073B7; padding-left: 16px;",
+        p(strong("mouseExperiment: "), "An R package for statistical analysis of mouse tumor growth experiments."),
+        p("Available at: ",
+          tags$a("https://github.com/sciOmics/mouseExperiment",
+                 href = "https://github.com/sciOmics/mouseExperiment", target = "_blank"))
+      )
+    ),
+
+    wellPanel(
+      h3("R Citation"),
+      p("To get the citation information directly in R:"),
+      tags$pre(
+        style = "background:#f5f5f5; padding:12px; border-radius:4px;",
+        'citation("mouseExperiment")'
+      )
+    ),
+
+    wellPanel(
+      h3("License"),
+      p("mouseExperiment is released under the ",
+        tags$a("MIT License", href = "https://github.com/sciOmics/mouseExperiment/blob/main/LICENSE",
+               target = "_blank"), ".")
+    )
   )
 }
