@@ -268,10 +268,6 @@ tumorGrowthUI <- function() {
                                   "None" = "none"),
                        selected = "log"),
             
-            sliderInput("tg_poly_degree",
-                       "Polynomial Degree",
-                       min = 1, max = 3, value = 1),
-            
             selectInput("tg_random_effects",
                        "Random Effects",
                        choices = c("Intercept only" = "intercept_only",
@@ -284,7 +280,20 @@ tumorGrowthUI <- function() {
                        choices = c("Include if not collinear" = "include_if_not_collinear",
                                   "Always include" = "always_include",
                                   "Never include" = "never_include"),
-                       selected = "include_if_not_collinear")
+                       selected = "include_if_not_collinear"),
+
+            tags$details(
+              style = "margin-top: 10px;",
+              tags$summary(
+                style = "cursor: pointer; color: #555; font-size: 0.9em;",
+                "Advanced Options"
+              ),
+              div(style = "padding-top: 8px;",
+                sliderInput("tg_poly_degree",
+                           "Polynomial Degree",
+                           min = 1, max = 3, value = 1)
+              )
+            )
           ),
           
           selectInput("tg_reference",
