@@ -24,10 +24,7 @@ doseResponseUI <- function() {
                        choices = "",
                        selected = ""),
 
-            numericInput("dr_time_point",
-                        "Time Point for Analysis (leave blank for last)",
-                        value = NA,
-                        min = 0, step = 1),
+            uiOutput("dr_time_point_ui"),
 
             br(),
             actionButton("run_dr_analysis",
@@ -169,6 +166,18 @@ dose_response_server <- function(input, output, session, rv) {
                       selected = default_ctrl)
   })
 
+  # Dynamic time-point selector: "All dates" (default) + individual Day values
+  output$dr_time_point_ui <- renderUI({
+    req(rv$processed_data, rv$time_col)
+    days <- sort(unique(na.omit(rv$processed_data[[rv$time_col]])))
+    day_choices <- c("All dates" = "all",
+                     setNames(as.character(days), paste("Day", days)))
+    selectInput("dr_time_point",
+                "Time Point for Analysis",
+                choices  = day_choices,
+                selected = "all")
+  })
+
   observeEvent(input$run_dr_analysis, {
     req(rv$processed_data, dr_dose_available())
 
@@ -195,7 +204,9 @@ dose_response_server <- function(input, output, session, rv) {
       return()
     }
 
-    time_point_val <- if (!is.na(input$dr_time_point) && input$dr_time_point != "") {
+    time_point_val <- if (!is.null(input$dr_time_point) &&
+                           input$dr_time_point != "all" &&
+                           nzchar(input$dr_time_point)) {
       as.numeric(input$dr_time_point)
     } else {
       NULL
