@@ -74,15 +74,18 @@ window.enableNavTab  = enableNavTab;
       shinyjs::useShinyjs(),
       tags$head(
         tags$link(rel = "stylesheet", href = "css/custom.css"),
-        tags$script(nav_js)
-      ),
-      # Decorative mouse outline images — fixed overlay, click-through
-      tags$div(
-        id = "mouse-bg-layer",
-        tags$img(id = "mouse-bg-img1", class = "mouse-bg-img",
-                 src = "images/mouse_outline1.png", alt = ""),
-        tags$img(id = "mouse-bg-img2", class = "mouse-bg-img",
-                 src = "images/mouse_outline2.png", alt = "")
+        tags$script(nav_js),
+        # Inject mouse overlay as a direct child of <body> to avoid
+        # z-index conflicts with the Bootstrap navbar.
+        tags$script(HTML("
+$(document).ready(function() {
+  var layer = $('<div id=\"mouse-bg-layer\">' +
+    '<img id=\"mouse-bg-img1\" class=\"mouse-bg-img\" src=\"images/mouse_outline1.png\" alt=\"\">' +
+    '<img id=\"mouse-bg-img2\" class=\"mouse-bg-img\" src=\"images/mouse_outline2.png\" alt=\"\">' +
+    '</div>');
+  $('body').append(layer);
+});
+"))
       )
     ),
 
