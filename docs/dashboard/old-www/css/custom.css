@@ -153,6 +153,7 @@ body {
   background-color: white;
   padding: 20px;
   border-radius: 0 0 4px 4px;
+  min-height: calc(100vh - 56px); /* fill viewport so body background doesn't show */
 }
 
 /* DataTable customization */
