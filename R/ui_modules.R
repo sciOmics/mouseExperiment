@@ -56,11 +56,10 @@ dataUploadUI <- function() {
     fluidRow(
       column(12,
         wellPanel(
-          style = "background:#e0e0e0; border:1px solid #bdbdbd;",
-          h4(strong(icon("flask"), " Try Demo Data")),
-          p("New here? Load a built-in demo dataset to explore the dashboard's features."),
           fluidRow(
-            column(5,
+            column(4,
+              h5(strong("Try Demo Data")),
+              p("New here? Load a built-in demo dataset to explore the dashboard's features."),
               selectInput("demo_dataset", NULL,
                 choices = c(
                   "-- Select a demo dataset --" = "",
@@ -68,43 +67,33 @@ dataUploadUI <- function() {
                   "Dose Levels (dose-response data with survival)" = "dose_levels"
                 ),
                 selected = ""
+              ),
+              fluidRow(
+                column(6,
+                  actionButton("load_demo_data", "Load Demo Data",
+                               icon = icon("play-circle"),
+                               class = "btn-default btn-block")
+                ),
+                column(6, uiOutput("demo_load_msg"))
               )
             ),
-            column(3,
-              br(),
-              actionButton("load_demo_data", "Load Demo Data",
-                           icon = icon("play-circle"),
-                           class = "btn-default btn-block")
+            column(4,
+              h5(strong("Upload Tumor Growth Data")),
+              fileInput("data_file",
+                       "Choose File (CSV or RDA)",
+                       accept = c(".csv", ".rda", ".RData")),
+              uiOutput("file_validation_msg")
             ),
             column(4,
-              br(),
-              uiOutput("demo_load_msg")
+              h5(strong("Upload Treatment Schedule (Optional)")),
+              p(tags$small("Upload a CSV/RDA file describing the treatment timeline (e.g. dosing days).",
+                           "Used to overlay treatment events on tumor growth plots.")),
+              fileInput("schedule_file",
+                       "Treatment Schedule File (CSV or RDA)",
+                       accept = c(".csv", ".rda", ".RData")),
+              uiOutput("schedule_validation_msg")
             )
           )
-        )
-      )
-    ),
-
-    fluidRow(
-      column(6,
-        wellPanel(
-          h4(strong("Upload Tumor Growth Data")),
-          fileInput("data_file", 
-                   "Choose File (CSV or RDA)",
-                   accept = c(".csv", ".rda", ".RData")),
-          uiOutput("file_validation_msg")
-        )
-      ),
-
-      column(6,
-        wellPanel(
-          h4(strong("Upload Treatment Schedule (Optional)")),
-          p(tags$small("Upload a CSV/RDA file describing the treatment timeline (e.g. dosing days).",
-                       "Used to overlay treatment events on tumor growth plots.")),
-          fileInput("schedule_file",
-                   "Treatment Schedule File (CSV or RDA)",
-                   accept = c(".csv", ".rda", ".RData")),
-          uiOutput("schedule_validation_msg")
         )
       )
     ),
@@ -125,16 +114,6 @@ dataUploadUI <- function() {
     # Treatment schedule preview (shown after schedule upload)
     uiOutput("schedule_preview_ui"),
     
-    hr(),
-    
-    # Action buttons
-    fluidRow(
-      column(12,
-        actionButton("reset_data", "Start Over", class = "btn-warning"),
-        actionButton("proceed_analysis", "Proceed to Analysis", 
-                    class = "btn-success")
-      )
-    )
   )
 }
 
