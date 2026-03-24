@@ -17,8 +17,8 @@ body {
 /* Navbar customization — Bootstrap 5 compatible
    .navbar-header only covers the brand in BS3; target .navbar for full width */
 .navbar {
-  background: linear-gradient(135deg, var(--primary-color), #005a87) !important;
-  border-bottom: 2px solid #004a70;
+  background: #3a3a3a !important;
+  border-bottom: 2px solid #1f1f1f;
 }
 
 /* BS3 brand area */
@@ -31,12 +31,14 @@ body {
 .navbar .navbar-brand,
 .navbar-brand {
   color: white !important;
+  font-size: 1.25rem;
 }
 
 /* BS3 + BS5 nav links */
 .navbar-nav > li > a,
 .navbar-nav .nav-link {
   color: white !important;
+  font-size: 1.05rem;
 }
 
 .navbar-nav > li > a:hover,
@@ -47,7 +49,7 @@ body {
 
 .navbar-nav > li.active > a,
 .navbar-nav .nav-link.active {
-  background-color: rgba(0, 0, 0, 0.2) !important;
+  background-color: rgba(255, 255, 255, 0.15) !important;
   color: white !important;
 }
 
