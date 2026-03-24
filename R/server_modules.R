@@ -1167,6 +1167,7 @@ tumor_growth_server <- function(input, output, session, rv) {
 
   # Growth curves plot  — reactive: re-renders on colour/option changes
   output$tg_plot_growth <- renderPlot({
+    tryCatch({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
     req(rv$tg_plot_data, rv$tg_col_names)
@@ -1175,18 +1176,21 @@ tumor_growth_server <- function(input, output, session, rv) {
     ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
     colors    <- build_color_vector(input, "tg_color", ordered_grps)
     # Apply user-specified group order as factor levels
-    if (!is.null(ordered_grps) && col_names$treatment_column %in% colnames(data))
+    if (isTRUE(length(ordered_grps) > 0) &&
+        isTRUE(col_names$treatment_column %in% colnames(data)))
       data[[col_names$treatment_column]] <- factor(data[[col_names$treatment_column]],
                                                    levels = ordered_grps)
 
-    surv_col_mapped <- !is.null(input$col_survival_event) &&
-                       input$col_survival_event != "" &&
-                       input$col_survival_event != "None" &&
-                       input$col_survival_event %in% colnames(data)
-    extra_pts <- if (!is.null(input$tg_extrapolation_points) &&
-                     !is.na(input$tg_extrapolation_points))
-                   as.integer(input$tg_extrapolation_points) else 0L
-    do_extrapolate <- surv_col_mapped && extra_pts > 0L && isTRUE(input$tg_opt_show_extrap)
+    surv_col_mapped <- local({
+      col <- input$col_survival_event
+      is.character(col) && length(col) == 1L &&
+        nzchar(col) && col != "None" && isTRUE(col %in% colnames(data))
+    })
+    extra_pts <- local({
+      ep <- input$tg_extrapolation_points
+      if (is.numeric(ep) && length(ep) == 1L && !is.na(ep)) as.integer(ep) else 0L
+    })
+    do_extrapolate <- isTRUE(surv_col_mapped) && extra_pts > 0L && isTRUE(input$tg_opt_show_extrap)
 
     p <- tryCatch({
       mouseExperiment::plot_tumor_growth(
@@ -1197,7 +1201,7 @@ tumor_growth_server <- function(input, output, session, rv) {
         dose_column         = rv$dose_col,
         ID_column           = col_names$id_column,
         cage_column         = col_names$cage_column,
-        survival_column     = if (surv_col_mapped) input$col_survival_event else NULL,
+        survival_column     = if (isTRUE(surv_col_mapped)) input$col_survival_event else NULL,
         extrapolate_volumes = do_extrapolate,
         extrapolation_points = if (extra_pts > 0L) extra_pts else "all",
         group_summary_line  = isTRUE(input$tg_opt_group_line)
@@ -1211,6 +1215,16 @@ tumor_growth_server <- function(input, output, session, rv) {
       p <- p + ggplot2::scale_color_manual(values = colors)
     }
     p
+    }, error = function(e) {
+      msg <- conditionMessage(e)
+      calls <- paste(sapply(sys.calls(), deparse), collapse = " -> ")
+      cat("ERROR in tg_plot_growth:", msg, "\nCALLS:", calls, "\n")
+      ggplot2::ggplot() +
+        ggplot2::annotate("text", x = 0.5, y = 0.5,
+          label = paste0("Plot error:\n", msg),
+          hjust = 0.5, vjust = 0.5, size = 4, color = "red") +
+        ggplot2::theme_void()
+    })
   })
   
   # Growth rate distribution plot — reactive
@@ -1227,7 +1241,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     rates      <- rv$tg_results$growth_rates
     # Apply user group order as factor levels
     grp_col_r  <- intersect(c("Group", "Treatment"), colnames(rates))[1]
-    if (!is.na(grp_col_r) && !is.null(ordered_grps))
+    if (isTRUE(!is.na(grp_col_r)) && isTRUE(length(ordered_grps) > 0))
       rates[[grp_col_r]] <- factor(rates[[grp_col_r]], levels = ordered_grps)
     p <- tryCatch({
       mouseExperiment::plot_growth_rate(
@@ -1266,7 +1280,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     auc_ind    <- rv$tg_results$auc_analysis$individual
     # Apply user group order as factor levels
     grp_col_a  <- intersect(c("Group", "Treatment"), colnames(auc_ind))[1]
-    if (!is.na(grp_col_a) && !is.null(ordered_grps))
+    if (isTRUE(!is.na(grp_col_a)) && isTRUE(length(ordered_grps) > 0))
       auc_ind[[grp_col_a]] <- factor(auc_ind[[grp_col_a]], levels = ordered_grps)
     p <- tryCatch({
       mouseExperiment::plot_auc(

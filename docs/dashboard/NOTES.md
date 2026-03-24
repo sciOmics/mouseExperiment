@@ -15,6 +15,20 @@
     - Drug Synergy: 
     - Power Analysis: 
 - Polynomial transformation is missing from Tumor Growth Analysis. 
+- Add option for plots determining what the horizontal bar shows: "none", "mean", "median", "geometric_mean"
+- Controls for text size on plots
+- Add option for "Legend Position": "None" "Above" "Below", "Left", "Right"...
+- Add option for plot dimensions.
+- AUC Comparison plot should be beeswarm plot. 
+- Treatment schedule plots are not working. 
+- The legend/lines/coloring in the Trend Over Time plot is mixing up groups. The dotted line that should be the Bliss Expected is being labeled "HDACi", while the line that is the combination treatment (HDACi + PD1) is being labeled Bliss Expected. The line that is one durg is being labeled as the combo (HDACi + PD1). 
+- The Trend Over Time plot should always have the y-axis scaled from 0 to 100. 
+- In the Trend Over Time plot, the Synergy and Antagonism legend needs to be elsewhere. It is currently ontop of the plot.
+- Synergy Plot and Trend Over Time Plot are the same. Eliminate the Synergy Plot and rename Trend over Time to Synergy Plot
+- Add y-axis scaling options (linear, log2, log10) on Tumor Growth Curves. 
+- Extraploated points on the Tumor Growth Curves should be hollow circles. Include a legend with this info. 
+- In the Drug Synergy Analysis, the Synergy Metrics and TGI Table have the same information. Eliminate the TGI Table.
+
 
 ## Completed Tasks
 - Merge mouseExperiment and mouseExperimentDemo (vignette) 
