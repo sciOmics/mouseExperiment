@@ -282,7 +282,7 @@ group_order_ui <- function(prefix, groups) {
   if (is.null(groups) || length(groups) < 2L) return(NULL)
   sortable::rank_list(
     text     = shiny::tags$span(shiny::icon("sort"), " Group order"),
-    labels   = groups,
+    labels   = as.list(groups),
     input_id = paste0(prefix, "_order"),
     class    = "default-sortable"
   )

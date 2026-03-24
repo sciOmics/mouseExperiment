@@ -30,6 +30,7 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
   if (dir.exists(www_dir)) {
     shiny::addResourcePath("css",    file.path(www_dir, "css"))
     shiny::addResourcePath("images", file.path(www_dir, "images"))
+    shiny::addResourcePath("js",     file.path(www_dir, "js"))
   }
 
   # JS injected on page load:
@@ -81,6 +82,7 @@ window.enableNavTab  = enableNavTab;
       tags$head(
         tags$link(rel = "stylesheet", href = "css/custom.css"),
         tags$script(nav_js),
+        tags$script(src = "js/sidebar.js"),
         # Inject mouse overlay as a direct child of <body> to avoid
         # z-index conflicts with the Bootstrap navbar.
         tags$script(HTML("

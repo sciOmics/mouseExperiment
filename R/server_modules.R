@@ -805,22 +805,62 @@ tumor_growth_server <- function(input, output, session, rv) {
                 plot_df$Upper <- plot_df$Effect + 1.96 * se_vals
               }
 
-              p_fallback <- ggplot2::ggplot(plot_df,
-                                            ggplot2::aes(x = reorder(Treatment, Effect),
-                                                         y = Effect, fill = Treatment)) +
-                ggplot2::geom_col(width = 0.6) +
-                ggplot2::labs(title = "Treatment Effects (Adjusted Means)",
-                             x = "Treatment", y = effect_col) +
-                ggplot2::theme_classic() +
-                ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5),
-                              legend.position = "none")
+              # Build beeswarm using per-subject growth rates when available,
+              # overlaid with the LME adjusted mean ± CI from treatment_effects.
+              gr_df <- tryCatch(as.data.frame(result$growth_rates), error = function(e) NULL)
+              grp_col_gr <- if (!is.null(gr_df)) intersect(c("Group","Treatment","TreatmentGroup"), colnames(gr_df))[1] else NA
+              val_col_gr <- if (!is.null(gr_df)) intersect(c("growth_rate","GrowthRate"), colnames(gr_df))[1] else NA
 
-              if ("Lower" %in% colnames(plot_df)) {
-                p_fallback <- p_fallback +
-                  ggplot2::geom_errorbar(
-                    ggplot2::aes(ymin = Lower, ymax = Upper),
-                    width = 0.2, colour = "black", linewidth = 0.8
-                  )
+              if (!is.null(gr_df) && !is.na(grp_col_gr) && !is.na(val_col_gr)) {
+                # Individual data beeswarm + mean-CI overlay from LME
+                gr_df$._Group <- as.character(gr_df[[grp_col_gr]])
+                gr_df$._Val   <- as.numeric(gr_df[[val_col_gr]])
+                # Keep group ordering consistent with treatment_effects
+                grp_levels <- as.character(plot_df$Treatment)
+                gr_df$._Group <- factor(gr_df$._Group, levels = grp_levels)
+                plot_df$Treatment_f <- factor(plot_df$Treatment, levels = grp_levels)
+
+                p_fallback <- ggplot2::ggplot(gr_df,
+                                              ggplot2::aes(x = ._Group, y = ._Val, colour = ._Group)) +
+                  ggbeeswarm::geom_beeswarm(size = 2.5, alpha = 0.8, cex = 2.5) +
+                  ggplot2::labs(title = "Individual Growth Rates by Treatment Group",
+                               x = "Treatment", y = "Growth Rate") +
+                  ggplot2::theme_classic() +
+                  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5),
+                                legend.position = "none")
+
+                if ("Lower" %in% colnames(plot_df)) {
+                  p_fallback <- p_fallback +
+                    ggplot2::geom_pointrange(
+                      data = plot_df,
+                      ggplot2::aes(x = Treatment_f, y = Effect, ymin = Lower, ymax = Upper),
+                      inherit.aes = FALSE,
+                      colour = "black", size = 0.8, linewidth = 1.1
+                    )
+                } else {
+                  p_fallback <- p_fallback +
+                    ggplot2::stat_summary(fun = mean, geom = "crossbar",
+                                         width = 0.45, colour = "black", linewidth = 0.7)
+                }
+              } else {
+                # No individual data — point + errorbar (still not a bar chart)
+                p_fallback <- ggplot2::ggplot(plot_df,
+                                              ggplot2::aes(x = reorder(Treatment, Effect),
+                                                           y = Effect, colour = Treatment)) +
+                  ggplot2::geom_point(size = 4) +
+                  ggplot2::labs(title = "Treatment Effects (Adjusted Means)",
+                               x = "Treatment", y = effect_col) +
+                  ggplot2::theme_classic() +
+                  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5),
+                                legend.position = "none")
+
+                if ("Lower" %in% colnames(plot_df)) {
+                  p_fallback <- p_fallback +
+                    ggplot2::geom_errorbar(
+                      ggplot2::aes(ymin = Lower, ymax = Upper),
+                      width = 0.2, colour = "black", linewidth = 0.8
+                    )
+                }
               }
               result$auc_plot <- p_fallback
             }

@@ -8,8 +8,8 @@ synergyUI <- function() {
       "using Bliss independence and Loewe additivity models. ",
       "Ensure tumor growth data is uploaded and configured in the Data Upload tab."),
     
-    fluidRow(
-      column(3,
+    tags$div(class = "row collapsible-sidebar-row",
+      tags$div(class = "col-sm-3 sidebar-panel-col",
         wellPanel(
           h4("Treatment Groups"),
           
@@ -33,7 +33,13 @@ synergyUI <- function() {
         )
       ),
       
-      column(9,
+      tags$div(class = "col-sm-9 main-panel-col",
+        tags$button(
+          class = "btn btn-default btn-xs sidebar-toggle-btn",
+          type  = "button",
+          title = "Toggle options panel",
+          tags$i(class = "fa fa-chevron-left fa-fw"), " Collapse"
+        ),
         tabsetPanel(
           id = "syn_results_tabs",
           

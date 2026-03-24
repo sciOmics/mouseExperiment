@@ -2,18 +2,6 @@
 
 ## Tasks in Progress
 
-
-## Tasks to be Done
-
-- Compare results against manual analysis
-- Fix "explanations" in the analysis pages
-- Add "Methods" section
-- Have each analysis section have it's own color scheme:
-    - Tumor Growth:
-    - Survival:
-    - Dose Response:
-    - Drug Synergy: 
-    - Power Analysis: 
 - Polynomial transformation is missing from Tumor Growth Analysis. 
 - Add option for plots determining what the horizontal bar shows: "none", "mean", "median", "geometric_mean"
 - Controls for text size on plots
@@ -28,6 +16,23 @@
 - Add y-axis scaling options (linear, log2, log10) on Tumor Growth Curves. 
 - Extraploated points on the Tumor Growth Curves should be hollow circles. Include a legend with this info. 
 - In the Drug Synergy Analysis, the Synergy Metrics and TGI Table have the same information. Eliminate the TGI Table.
+
+## Tasks to be Done
+
+- Compare results against manual analysis
+- Fix "explanations" in the analysis pages
+- Add "Methods" section
+- Have each analysis section have it's own color scheme:
+    - Tumor Growth:
+    - Survival:
+    - Dose Response:
+    - Drug Synergy: 
+    - Power Analysis: 
+- Make the left side menus on the Analyses pages collapsable to give more horizontal room for the results/plots. 
+- Smart detect/recommend Statistical Model and Transformation? 
+- Add "in plot - top left" & "in plot - top right" options to legend locations.
+- Remove "log2" option for Y-axis scale. 
+- Add back the Antagonism/Synergy shading to the Synergy Plot
 
 
 ## Completed Tasks

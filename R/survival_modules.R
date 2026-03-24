@@ -7,8 +7,8 @@ survivalUI <- function() {
     p("Analyze time-to-event data using Kaplan-Meier survival curves and proportional hazards models. ",
       "Ensure data is uploaded and configured in the Data Upload tab."),
     
-    fluidRow(
-      column(3,
+    tags$div(class = "row collapsible-sidebar-row",
+      tags$div(class = "col-sm-3 sidebar-panel-col",
         wellPanel(
           h4("Analysis Parameters"),
           
@@ -24,7 +24,13 @@ survivalUI <- function() {
         )
       ),
       
-      column(9,
+      tags$div(class = "col-sm-9 main-panel-col",
+        tags$button(
+          class = "btn btn-default btn-xs sidebar-toggle-btn",
+          type  = "button",
+          title = "Toggle options panel",
+          tags$i(class = "fa fa-chevron-left fa-fw"), " Collapse"
+        ),
         tabsetPanel(
           id = "surv_results_tabs",
           
