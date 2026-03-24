@@ -390,8 +390,16 @@ synergy_server <- function(input, output, session, rv) {
       
       if (isTRUE(rv$syn_over_time)) {
         cat("Analysis type: Over all timepoints\n\n")
-        if (!is.null(res$peak_bliss_synergy)) cat("Peak Bliss synergy at timepoint:", res$peak_bliss_synergy$time_point, "\n")
-        if (!is.null(res$peak_ci_synergy))    cat("Strongest CI synergy at timepoint:", res$peak_ci_synergy$time_point, "\n")
+        if (!is.null(res$peak_bliss_synergy)) {
+          pb <- res$peak_bliss_synergy
+          cat("Peak Bliss synergy at timepoint:", pb$Time_Point,
+              " (Bliss Difference =", round(pb$Bliss_Difference, 1), "%)\n")
+        }
+        if (!is.null(res$peak_ci_synergy)) {
+          pc <- res$peak_ci_synergy
+          cat("Strongest CI synergy at timepoint:", pc$Time_Point,
+              " (CI =", round(pc$Combination_Index, 2), ")\n")
+        }
       } else {
         cat("Analysis type: Single timepoint\n")
         if (!is.null(res$evaluation_time_point)) cat("Evaluated at Day:", res$evaluation_time_point, "\n")
