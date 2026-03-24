@@ -61,12 +61,25 @@ synergyUI <- function() {
                 wellPanel(
                   uiOutput("syn_plot_selector_ui"),
                   hr(),
-                  h6(icon("palette"), " Appearance"),
-                  colourpicker::colourInput("syn_color_A",     "Drug A",      value = "#2166AC"),
-                  colourpicker::colourInput("syn_color_B",     "Drug B",      value = "#D6604D"),
-                  colourpicker::colourInput("syn_color_combo", "Combination", value = "#762A83"),
-                  colourpicker::colourInput("syn_color_ctrl",  "Control / Bliss expected",
-                                            value = "#999999")
+                  uiOutput("syn_color_pickers_ui"),
+                  hr(),
+                  h6(icon("sliders-h"), " Options"),
+                  sliderInput("syn_opt_text_size", "Text size (pt)",
+                              min = 8, max = 20, value = 12, step = 1),
+                  selectInput("syn_opt_legend_pos", "Legend position",
+                    choices = c("Auto" = "auto", "None" = "none",
+                                "Top" = "top", "Bottom" = "bottom",
+                                "Left" = "left", "Right" = "right",
+                                "In plot - top left"  = "inplot_tl",
+                                "In plot - top right" = "inplot_tr"),
+                    selected = "inplot_tr"
+                  ),
+                  conditionalPanel(
+                    "input.syn_plot_selector == 'trend'",
+                    checkboxInput("syn_opt_show_shading",
+                                  "Show Synergy / Antagonism shading",
+                                  value = TRUE)
+                  )
                 )
               ),
               column(9,
@@ -357,6 +370,22 @@ synergy_server <- function(input, output, session, rv) {
     }
   })
   
+  # Colour pickers with real drug names once analysis has been run
+  output$syn_color_pickers_ui <- renderUI({
+    grps <- rv$syn_plot_inputs
+    label_a     <- if (!is.null(grps)) grps$drug_a  else "Drug A"
+    label_b     <- if (!is.null(grps)) grps$drug_b  else "Drug B"
+    label_combo <- if (!is.null(grps)) grps$combo   else "Combination"
+    label_ctrl  <- if (!is.null(grps)) paste0(grps$control, " / Bliss expected") else "Control / Bliss expected"
+    tagList(
+      h6(icon("palette"), " Appearance"),
+      colourpicker::colourInput("syn_color_A",     label_a,     value = "#2166AC"),
+      colourpicker::colourInput("syn_color_B",     label_b,     value = "#D6604D"),
+      colourpicker::colourInput("syn_color_combo", label_combo, value = "#762A83"),
+      colourpicker::colourInput("syn_color_ctrl",  label_ctrl,  value = "#999999")
+    )
+  })
+
   # Dynamic plot selector (Trend / CI only available for all-dates analysis)
   output$syn_plot_selector_ui <- renderUI({
     if (isTRUE(rv$syn_over_time)) {
@@ -473,18 +502,69 @@ synergy_server <- function(input, output, session, rv) {
   output$syn_plot_trend <- renderPlot({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error) || !isTRUE(rv$syn_over_time)) return(NULL)
-    col_A     <- input$syn_color_A     %||% "#2166AC"
-    col_B     <- input$syn_color_B     %||% "#D6604D"
-    col_combo <- input$syn_color_combo %||% "#762A83"
-    col_ctrl  <- input$syn_color_ctrl  %||% "#999999"
-    # Use plot_main which is built with correct group labels and ylim(0,100)
-    p <- rv$syn_results$plot_main
-    req(!is.null(p))
-    # Re-apply colors with the canonical label names used in plot_main
-    p <- p + ggplot2::scale_color_manual(
-      values = c("Drug A" = col_A, "Drug B" = col_B,
-                 "Combination" = col_combo, "Bliss Value" = col_ctrl)
-    )
+    req(rv$syn_results$synergy_summary)
+
+    syn_df      <- rv$syn_results$synergy_summary
+    grps        <- rv$syn_plot_inputs %||%
+                   list(drug_a = "Drug A", drug_b = "Drug B",
+                        combo = "Combination", control = "Control")
+    col_A       <- input$syn_color_A     %||% "#2166AC"
+    col_B       <- input$syn_color_B     %||% "#D6604D"
+    col_combo   <- input$syn_color_combo %||% "#762A83"
+    col_ctrl    <- input$syn_color_ctrl  %||% "#999999"
+    text_sz     <- input$syn_opt_text_size  %||% 12
+    leg_pos     <- input$syn_opt_legend_pos %||% "inplot_tr"
+    show_shade  <- isTRUE(input$syn_opt_show_shading)
+
+    # Map internal color keys -> real drug name labels for the legend
+    color_vals   <- c("Drug A"      = col_A,
+                      "Drug B"      = col_B,
+                      "Combination" = col_combo,
+                      "Bliss Value" = col_ctrl)
+    color_labels <- c("Drug A"      = grps$drug_a,
+                      "Drug B"      = grps$drug_b,
+                      "Combination" = grps$combo,
+                      "Bliss Value" = paste0(grps$control, " (Bliss)"))
+
+    p <- ggplot2::ggplot(syn_df, ggplot2::aes(x = Time_Point))
+
+    # Synergy / antagonism shading between Combo TGI and Bliss expected TGI
+    if (show_shade &&
+        all(c("TGI_Combo", "Bliss_Expected_TGI") %in% colnames(syn_df))) {
+      p <- p +
+        # synergy region: combo > bliss (blue)
+        ggplot2::geom_ribbon(
+          ggplot2::aes(
+            ymin = Bliss_Expected_TGI,
+            ymax = ifelse(TGI_Combo >= Bliss_Expected_TGI,
+                          TGI_Combo, Bliss_Expected_TGI)
+          ),
+          fill = "steelblue", alpha = 0.18
+        ) +
+        # antagonism region: combo < bliss (red)
+        ggplot2::geom_ribbon(
+          ggplot2::aes(
+            ymin = ifelse(TGI_Combo < Bliss_Expected_TGI,
+                          TGI_Combo, Bliss_Expected_TGI),
+            ymax = Bliss_Expected_TGI
+          ),
+          fill = "tomato", alpha = 0.18
+        )
+    }
+
+    p <- p +
+      ggplot2::geom_line(ggplot2::aes(y = TGI_Drug_A,         color = "Drug A")) +
+      ggplot2::geom_line(ggplot2::aes(y = TGI_Drug_B,         color = "Drug B")) +
+      ggplot2::geom_line(ggplot2::aes(y = TGI_Combo,          color = "Combination")) +
+      ggplot2::geom_line(ggplot2::aes(y = Bliss_Expected_TGI, color = "Bliss Value"),
+                         alpha = 0.5, linewidth = 3) +
+      ggplot2::scale_color_manual(values = color_vals, labels = color_labels) +
+      ggplot2::labs(x = "Days", y = "Percent Tumor Growth Inhibition", color = NULL) +
+      ggplot2::ylim(0, 100) +
+      ggplot2::theme_classic() +
+      ggplot2::theme(text = ggplot2::element_text(size = text_sz))
+
+    p <- apply_legend_pos(p, leg_pos)
     print(p)
   })
   
