@@ -949,10 +949,23 @@ tumor_growth_server <- function(input, output, session, rv) {
                 P_Label   = if (is.null(p_label)) "" else p_label,
                 stringsAsFactors = FALSE
               )
+              # Add reference group row at Estimate = 0
+              ref_grp_ef <- if (!is.null(input$tg_reference) && nzchar(input$tg_reference))
+                              input$tg_reference else NULL
+              if (!is.null(ref_grp_ef)) {
+                forest_df <- rbind(forest_df, data.frame(
+                  Contrast = paste0(ref_grp_ef, "\n(Reference)"),
+                  Estimate = 0, Lower = NA_real_, Upper = NA_real_,
+                  P_Label  = "", stringsAsFactors = FALSE
+                ))
+              }
+              forest_df$is_ref <- seq_len(nrow(forest_df)) == nrow(forest_df) & !is.null(ref_grp_ef)
 
               # Balanced symmetric axis: same extent either side of 0,
               # rounded up to the nearest whole unit (mirrors HR forest plot logic)
-              all_vals <- c(forest_df$Estimate, forest_df$Lower, forest_df$Upper)
+              all_vals <- c(forest_df$Estimate[!forest_df$is_ref],
+                            forest_df$Lower[!forest_df$is_ref],
+                            forest_df$Upper[!forest_df$is_ref])
               max_abs  <- ceiling(max(abs(all_vals), na.rm = TRUE))
               # Add 20% padding on the right so p-value labels aren't clipped
               x_lim <- c(-max_abs, max_abs * 1.20)
@@ -965,11 +978,18 @@ tumor_growth_server <- function(input, output, session, rv) {
               ) +
                 ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "red", linewidth = 0.6) +
                 ggplot2::geom_errorbarh(
+                  data = ~ subset(., !is_ref),
                   ggplot2::aes(xmin = Lower, xmax = Upper),
                   height = 0.25, colour = "steelblue"
                 ) +
-                ggplot2::geom_point(size = 3, colour = "steelblue") +
+                ggplot2::geom_point(
+                  data = ~ subset(., !is_ref), size = 3, colour = "steelblue"
+                ) +
+                ggplot2::geom_point(
+                  data = ~ subset(., is_ref), size = 4, colour = "grey50", shape = 18
+                ) +
                 ggplot2::geom_text(
+                  data = ~ subset(., !is_ref & nzchar(P_Label)),
                   ggplot2::aes(label = P_Label, x = Upper),
                   hjust = -0.2, size = 3.2
                 ) +

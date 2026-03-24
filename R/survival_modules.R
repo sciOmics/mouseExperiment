@@ -617,15 +617,31 @@ survival_server <- function(input, output, session, rv) {
     
     ref_grp <- rv$surv_results$reference_group
     
-    # Exclude reference group row if HR == 1 and CI_Lower == CI_Upper
+    # Exclude reference group row from the main data, then re-add as reference anchor
     plot_df <- res[!is.na(res$HR), ]
     if (!is.null(ref_grp)) {
       plot_df <- plot_df[plot_df$Group != ref_grp, ]
     }
     req(nrow(plot_df) > 0)
-    
-    # Compute symmetric log10 axis limits
-    all_hr_vals <- c(plot_df$HR, plot_df$CI_Lower, plot_df$CI_Upper)
+    # Add reference group row at HR = 1 (no CI)
+    ref_row_cols <- colnames(plot_df)
+    ref_row <- as.data.frame(lapply(ref_row_cols, function(cn) {
+      if      (cn == "Group")    paste0(ref_grp, "\n(Reference)")
+      else if (cn == "HR")       1
+      else if (cn %in% c("CI_Lower", "CI_Upper")) NA_real_
+      else NA
+    }), stringsAsFactors = FALSE)
+    colnames(ref_row) <- ref_row_cols
+    ref_row$HR       <- 1
+    ref_row$CI_Lower <- NA_real_
+    ref_row$CI_Upper <- NA_real_
+    plot_df <- rbind(plot_df, ref_row)
+    plot_df$is_ref <- plot_df$Group == paste0(ref_grp, "\n(Reference)")
+
+    # Compute symmetric log10 axis limits (exclude reference row)
+    all_hr_vals <- c(plot_df$HR[!plot_df$is_ref],
+                     plot_df$CI_Lower[!plot_df$is_ref],
+                     plot_df$CI_Upper[!plot_df$is_ref])
     all_hr_vals <- all_hr_vals[!is.na(all_hr_vals) & all_hr_vals > 0]
     max_log10 <- max(abs(log10(all_hr_vals)), na.rm = TRUE)
     max_log10 <- ceiling(max_log10)
@@ -652,11 +668,20 @@ survival_server <- function(input, output, session, rv) {
     ggplot2::ggplot(plot_df,
                    ggplot2::aes(x = HR, y = reorder(Group, HR),
                                 xmin = CI_Lower, xmax = CI_Upper)) +
-      ggplot2::geom_point(size = 5, color = pt_color) +
-      ggplot2::geom_errorbarh(height = 0.25, linewidth = 0.8, color = pt_color) +
       ggplot2::geom_vline(xintercept = 1, linetype = "dashed", color = "grey40") +
-      { if (any(nzchar(plot_df$label_text)))
+      ggplot2::geom_errorbarh(
+        data = ~ subset(., !is_ref),
+        height = 0.25, linewidth = 0.8, color = pt_color
+      ) +
+      ggplot2::geom_point(
+        data = ~ subset(., !is_ref), size = 5, color = pt_color
+      ) +
+      ggplot2::geom_point(
+        data = ~ subset(., is_ref), size = 5, color = "grey50", shape = 18
+      ) +
+      { if (any(nzchar(plot_df$label_text[!plot_df$is_ref])))
           ggplot2::geom_text(
+            data = ~ subset(., !is_ref),
             ggplot2::aes(label = label_text),
             vjust = 3, hjust = -0.1, size = 4, color = "grey30")
         else list() } +
@@ -725,7 +750,18 @@ survival_server <- function(input, output, session, rv) {
         ref_grp <- rv$surv_results$reference_group
         plot_df <- res[!is.na(res$HR), ]
         if (!is.null(ref_grp)) plot_df <- plot_df[plot_df$Group != ref_grp, ]
-        all_hr_vals <- c(plot_df$HR, plot_df$CI_Lower, plot_df$CI_Upper)
+        ref_row_cols2 <- colnames(plot_df)
+        ref_row2 <- as.data.frame(lapply(ref_row_cols2, function(cn) {
+          if      (cn == "Group")    paste0(ref_grp, "\n(Reference)")
+          else if (cn == "HR")       1
+          else if (cn %in% c("CI_Lower", "CI_Upper")) NA_real_
+          else NA
+        }), stringsAsFactors = FALSE)
+        colnames(ref_row2) <- ref_row_cols2
+        ref_row2$HR <- 1; ref_row2$CI_Lower <- NA_real_; ref_row2$CI_Upper <- NA_real_
+        plot_df <- rbind(plot_df, ref_row2)
+        plot_df$is_ref <- plot_df$Group == paste0(ref_grp, "\n(Reference)")
+        all_hr_vals <- c(plot_df$HR[!plot_df$is_ref], plot_df$CI_Lower[!plot_df$is_ref], plot_df$CI_Upper[!plot_df$is_ref])
         all_hr_vals <- all_hr_vals[!is.na(all_hr_vals) & all_hr_vals > 0]
         max_log10 <- max(ceiling(max(abs(log10(all_hr_vals)), na.rm = TRUE)), 1L)
         x_lim    <- c(10^(-max_log10), 10^max_log10)
@@ -747,11 +783,20 @@ survival_server <- function(input, output, session, rv) {
         ggplot2::ggplot(plot_df,
                        ggplot2::aes(x = HR, y = reorder(Group, HR),
                                     xmin = CI_Lower, xmax = CI_Upper)) +
-          ggplot2::geom_point(size = 5, color = pt_color) +
-          ggplot2::geom_errorbarh(height = 0.25, linewidth = 0.8, color = pt_color) +
           ggplot2::geom_vline(xintercept = 1, linetype = "dashed", color = "grey40") +
-          { if (any(nzchar(plot_df$label_text)))
+          ggplot2::geom_errorbarh(
+            data = ~ subset(., !is_ref),
+            height = 0.25, linewidth = 0.8, color = pt_color
+          ) +
+          ggplot2::geom_point(
+            data = ~ subset(., !is_ref), size = 5, color = pt_color
+          ) +
+          ggplot2::geom_point(
+            data = ~ subset(., is_ref), size = 5, color = "grey50", shape = 18
+          ) +
+          { if (any(nzchar(plot_df$label_text[!plot_df$is_ref])))
               ggplot2::geom_text(
+                data = ~ subset(., !is_ref),
                 ggplot2::aes(label = label_text),
                 vjust = 3, hjust = -0.1, size = 4, color = "grey30")
             else list() } +
