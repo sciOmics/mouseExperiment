@@ -302,9 +302,10 @@ group_order_ui <- function(prefix, groups) {
 get_ordered_groups <- function(input, prefix, groups) {
   if (is.null(groups)) return(groups)
   ord <- input[[paste0(prefix, "_order")]]
+  if (!is.null(ord)) ord <- as.character(unlist(ord))
   if (!is.null(ord) &&
       length(ord) == length(groups) &&
-      setequal(ord, groups)) {
+      isTRUE(setequal(ord, groups))) {
     ord
   } else {
     groups
