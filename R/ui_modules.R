@@ -409,7 +409,9 @@ tumorGrowthUI <- function() {
                   selectInput("tg_opt_legend_pos", "Legend position",
                     choices = c("Auto" = "auto", "None" = "none",
                                 "Top" = "top", "Bottom" = "bottom",
-                                "Left" = "left", "Right" = "right"),
+                                "Left" = "left", "Right" = "right",
+                                "In plot - top left"  = "inplot_tl",
+                                "In plot - top right" = "inplot_tr"),
                     selected = "auto"
                   ),
                   conditionalPanel(
@@ -420,7 +422,6 @@ tumorGrowthUI <- function() {
                                   "Show extrapolated curves/points", value = FALSE),
                     selectInput("tg_opt_yscale", "Y-axis scale",
                       choices = c("Linear" = "linear",
-                                  "Log2"   = "log2",
                                   "Log10"  = "log10"),
                       selected = "linear"
                     )

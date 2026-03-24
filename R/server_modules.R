@@ -1235,11 +1235,10 @@ tumor_growth_server <- function(input, output, session, rv) {
     text_size  <- input$tg_opt_text_size %||% 12
     legend_pos <- input$tg_opt_legend_pos %||% "auto"
     p <- p + ggplot2::theme(text = ggplot2::element_text(size = text_size))
-    if (legend_pos != "auto") p <- p + ggplot2::theme(legend.position = legend_pos)
+    p <- apply_legend_pos(p, legend_pos)
     # Apply y-axis scale
     yscale <- input$tg_opt_yscale %||% "linear"
-    if (yscale == "log2")  p <- p + ggplot2::scale_y_continuous(trans = "log2", expand = ggplot2::expansion(mult = c(0, 0.05)))
-    else if (yscale == "log10") p <- p + ggplot2::scale_y_log10(expand = ggplot2::expansion(mult = c(0, 0.05)))
+    if (yscale == "log10") p <- p + ggplot2::scale_y_log10(expand = ggplot2::expansion(mult = c(0, 0.05)))
     # Annotate hollow circles = extrapolated when extrapolation is active
     if (isTRUE(do_extrapolate))
       p <- p + ggplot2::labs(caption = "Hollow circles / dashed lines = extrapolated data points after mouse death")
@@ -1298,7 +1297,7 @@ tumor_growth_server <- function(input, output, session, rv) {
       )
     }
     p <- p + ggplot2::theme(text = ggplot2::element_text(size = text_size))
-    if (legend_pos != "auto") p <- p + ggplot2::theme(legend.position = legend_pos)
+    p <- apply_legend_pos(p, legend_pos)
     p
   })
   
@@ -1364,7 +1363,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     }, error = function(e) rv$tg_results$auc_plot)
     req(!is.null(p))
     p <- p + ggplot2::theme(text = ggplot2::element_text(size = text_size))
-    if (legend_pos != "auto") p <- p + ggplot2::theme(legend.position = legend_pos)
+    p <- apply_legend_pos(p, legend_pos)
     p
   })
   
