@@ -74,7 +74,12 @@ survivalUI <- function() {
                   ),
                   conditionalPanel("input.surv_plot_selector == 'forest'",
                     colourpicker::colourInput("surv_forest_pt_color",
-                                             "Point colour", value = "steelblue")
+                                             "Point colour", value = "steelblue"),
+                    hr(),
+                    h6("Annotation"),
+                    checkboxInput("surv_forest_show_hr", "Show HR",      value = TRUE),
+                    checkboxInput("surv_forest_show_ci", "Show 95% CI",  value = TRUE),
+                    checkboxInput("surv_forest_show_p",  "Show p-value", value = TRUE)
                   )
                 )
               ),
@@ -98,7 +103,7 @@ survivalUI <- function() {
                   tab_info(
                     strong("Hazard ratio forest plot: "),
                     "each row is a treatment group vs the reference. ",
-                    "The x-axis uses a log\u2082 scale, symmetric around HR\u202f=\u202f1. ",
+                    "The x-axis uses a log\u2081\u2080 scale, symmetric around HR\u202f=\u202f1. ",
                     "Points to the left indicate a protective effect; points to the right ",
                     "indicate increased hazard relative to the reference group."
                   ),
@@ -596,7 +601,6 @@ survival_server <- function(input, output, session, rv) {
               rownames = FALSE)
   })
   
-  # Log-rank test (method information)
   # Forest plot
   output$surv_forest_plot <- renderPlot({
     req(rv$surv_results)
@@ -614,36 +618,51 @@ survival_server <- function(input, output, session, rv) {
     }
     req(nrow(plot_df) > 0)
     
-    # Compute symmetric log2 axis limits
+    # Compute symmetric log10 axis limits
     all_hr_vals <- c(plot_df$HR, plot_df$CI_Lower, plot_df$CI_Upper)
     all_hr_vals <- all_hr_vals[!is.na(all_hr_vals) & all_hr_vals > 0]
-    max_log2 <- max(abs(log2(all_hr_vals)), na.rm = TRUE)
-    max_log2 <- ceiling(max_log2)  # round up to nearest integer
-    x_lim <- c(2^(-max_log2), 2^max_log2)
-    x_breaks <- 2^seq(-max_log2, max_log2, by = 1)
+    max_log10 <- max(abs(log10(all_hr_vals)), na.rm = TRUE)
+    max_log10 <- ceiling(max_log10)
+    max_log10 <- max(max_log10, 1L)  # at least one decade each side
+    x_lim    <- c(10^(-max_log10), 10^max_log10)
+    x_breaks <- 10^seq(-max_log10, max_log10, by = 1)
     x_labels <- ifelse(x_breaks >= 1,
-                       as.character(x_breaks),
-                       paste0("1/", as.character(1 / x_breaks)))
-    
+                       as.character(round(x_breaks, 0)),
+                       as.character(x_breaks))
+
+    # Build annotation label from checkbox selections
+    pt_color   <- input$surv_forest_pt_color %||% "steelblue"
+    show_hr    <- isTRUE(input$surv_forest_show_hr)
+    show_ci    <- isTRUE(input$surv_forest_show_ci)
+    show_p     <- isTRUE(input$surv_forest_show_p)
+    label_parts <- character(0)
+    if (show_hr) label_parts <- c(label_parts, paste0("HR: ", round(plot_df$HR, 2)))
+    if (show_ci) label_parts <- c(label_parts,
+                  paste0("[", round(plot_df$CI_Lower, 2), "\u2013", round(plot_df$CI_Upper, 2), "]"))
+    if (show_p)  label_parts <- c(label_parts, paste0("p = ", round(plot_df$P_Value, 4)))
+    plot_df$label_text <- if (length(label_parts) > 0)
+      apply(sapply(label_parts, identity), 1, paste, collapse = "  ") else ""
+
     ggplot2::ggplot(plot_df,
                    ggplot2::aes(x = HR, y = reorder(Group, HR),
                                 xmin = CI_Lower, xmax = CI_Upper)) +
-      ggplot2::geom_point(size = 5, color = input$surv_forest_pt_color %||% "steelblue") +
-      ggplot2::geom_errorbarh(height = 0.25, linewidth = 0.8,
-                              color = input$surv_forest_pt_color %||% "steelblue") +
+      ggplot2::geom_point(size = 5, color = pt_color) +
+      ggplot2::geom_errorbarh(height = 0.25, linewidth = 0.8, color = pt_color) +
       ggplot2::geom_vline(xintercept = 1, linetype = "dashed", color = "grey40") +
-      ggplot2::geom_text(
-        ggplot2::aes(label = paste0("HR: ", round(HR, 2), ", p = ", round(P_Value, 4))),
-        vjust = 3, hjust = -0.1, size = 4, color = "grey30") +
+      { if (any(nzchar(plot_df$label_text)))
+          ggplot2::geom_text(
+            ggplot2::aes(label = label_text),
+            vjust = 3, hjust = -0.1, size = 4, color = "grey30")
+        else list() } +
       ggplot2::scale_x_continuous(
-        trans  = "log2",
+        trans  = "log10",
         limits = x_lim,
         breaks = x_breaks,
         labels = x_labels
       ) +
       ggplot2::labs(
         title = paste("Forest Plot: Hazard Ratios vs", ref_grp),
-        x = "Hazard Ratio (log\u2082 scale)",
+        x = "Hazard Ratio (log\u2081\u2080 scale)",
         y = NULL
       ) +
       ggplot2::theme_classic(base_size = 14) +
@@ -702,29 +721,42 @@ survival_server <- function(input, output, session, rv) {
         if (!is.null(ref_grp)) plot_df <- plot_df[plot_df$Group != ref_grp, ]
         all_hr_vals <- c(plot_df$HR, plot_df$CI_Lower, plot_df$CI_Upper)
         all_hr_vals <- all_hr_vals[!is.na(all_hr_vals) & all_hr_vals > 0]
-        max_log2 <- ceiling(max(abs(log2(all_hr_vals)), na.rm = TRUE))
-        x_lim    <- c(2^(-max_log2), 2^max_log2)
-        x_breaks <- 2^seq(-max_log2, max_log2, by = 1)
+        max_log10 <- max(ceiling(max(abs(log10(all_hr_vals)), na.rm = TRUE)), 1L)
+        x_lim    <- c(10^(-max_log10), 10^max_log10)
+        x_breaks <- 10^seq(-max_log10, max_log10, by = 1)
         x_labels <- ifelse(x_breaks >= 1,
-                           as.character(x_breaks),
-                           paste0("1/", as.character(1 / x_breaks)))
+                           as.character(round(x_breaks, 0)),
+                           as.character(x_breaks))
+        show_hr <- isTRUE(input$surv_forest_show_hr %||% TRUE)
+        show_ci <- isTRUE(input$surv_forest_show_ci %||% TRUE)
+        show_p  <- isTRUE(input$surv_forest_show_p  %||% TRUE)
+        label_parts <- character(0)
+        if (show_hr) label_parts <- c(label_parts, paste0("HR: ", round(plot_df$HR, 2)))
+        if (show_ci) label_parts <- c(label_parts,
+                      paste0("[", round(plot_df$CI_Lower, 2), "\u2013", round(plot_df$CI_Upper, 2), "]"))
+        if (show_p)  label_parts <- c(label_parts, paste0("p = ", round(plot_df$P_Value, 4)))
+        plot_df$label_text <- if (length(label_parts) > 0)
+          apply(sapply(label_parts, identity), 1, paste, collapse = "  ") else ""
+        pt_color <- input$surv_forest_pt_color %||% "steelblue"
         ggplot2::ggplot(plot_df,
                        ggplot2::aes(x = HR, y = reorder(Group, HR),
                                     xmin = CI_Lower, xmax = CI_Upper)) +
-          ggplot2::geom_point(size = 5, color = "steelblue") +
-          ggplot2::geom_errorbarh(height = 0.25, linewidth = 0.8, color = "steelblue") +
+          ggplot2::geom_point(size = 5, color = pt_color) +
+          ggplot2::geom_errorbarh(height = 0.25, linewidth = 0.8, color = pt_color) +
           ggplot2::geom_vline(xintercept = 1, linetype = "dashed", color = "grey40") +
-          ggplot2::geom_text(
-            ggplot2::aes(label = paste0("HR: ", round(HR, 2), ", p = ", round(P_Value, 4))),
-            vjust = 3, hjust = -0.1, size = 4, color = "grey30") +
+          { if (any(nzchar(plot_df$label_text)))
+              ggplot2::geom_text(
+                ggplot2::aes(label = label_text),
+                vjust = 3, hjust = -0.1, size = 4, color = "grey30")
+            else list() } +
           ggplot2::scale_x_continuous(
-            trans  = "log2",
+            trans  = "log10",
             limits = x_lim,
             breaks = x_breaks,
             labels = x_labels
           ) +
           ggplot2::labs(title = paste("Forest Plot: Hazard Ratios vs", ref_grp),
-                       x = "Hazard Ratio (log\u2082 scale)", y = NULL) +
+                       x = "Hazard Ratio (log\u2081\u2080 scale)", y = NULL) +
           ggplot2::theme_classic(base_size = 14) +
           ggplot2::theme(axis.text.y = ggplot2::element_text(size = 11),
                         legend.position = "none")

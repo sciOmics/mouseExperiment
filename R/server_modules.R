@@ -1239,6 +1239,12 @@ tumor_growth_server <- function(input, output, session, rv) {
     # Apply y-axis scale
     yscale <- input$tg_opt_yscale %||% "linear"
     if (yscale == "log10") p <- p + ggplot2::scale_y_log10(expand = ggplot2::expansion(mult = c(0, 0.05)))
+    # Apply x-axis start
+    x_start <- local({
+      v <- input$tg_opt_xstart
+      if (is.numeric(v) && length(v) == 1L && !is.na(v) && v > 0) v else NULL
+    })
+    if (!is.null(x_start)) p <- p + ggplot2::coord_cartesian(xlim = c(x_start, NA))
     # Annotate hollow circles = extrapolated when extrapolation is active
     if (isTRUE(do_extrapolate))
       p <- p + ggplot2::labs(caption = "Hollow circles / dashed lines = extrapolated data points after mouse death")

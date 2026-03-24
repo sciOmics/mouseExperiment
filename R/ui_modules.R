@@ -424,7 +424,9 @@ tumorGrowthUI <- function() {
                       choices = c("Linear" = "linear",
                                   "Log10"  = "log10"),
                       selected = "linear"
-                    )
+                    ),
+                    numericInput("tg_opt_xstart", "X-axis start (Day)",
+                                 value = 0, min = 0, step = 1)
                   ),
                   conditionalPanel(
                     "['growth_rate','auc'].indexOf(input.tg_plot_selector) >= 0",
