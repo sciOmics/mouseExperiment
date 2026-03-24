@@ -839,15 +839,15 @@ tumor_growth_server <- function(input, output, session, rv) {
 
               if (!is.null(gr_df) && !is.na(grp_col_gr) && !is.na(val_col_gr)) {
                 # Individual data beeswarm + mean-CI overlay from LME
-                gr_df$._Group <- as.character(gr_df[[grp_col_gr]])
-                gr_df$._Val   <- as.numeric(gr_df[[val_col_gr]])
+                gr_df$plot_group <- as.character(gr_df[[grp_col_gr]])
+                gr_df$plot_val   <- as.numeric(gr_df[[val_col_gr]])
                 # Keep group ordering consistent with treatment_effects
                 grp_levels <- as.character(plot_df$Treatment)
-                gr_df$._Group <- factor(gr_df$._Group, levels = grp_levels)
+                gr_df$plot_group <- factor(gr_df$plot_group, levels = grp_levels)
                 plot_df$Treatment_f <- factor(plot_df$Treatment, levels = grp_levels)
 
                 p_fallback <- ggplot2::ggplot(gr_df,
-                                              ggplot2::aes(x = ._Group, y = ._Val, colour = ._Group)) +
+                                              ggplot2::aes(x = plot_group, y = plot_val, colour = plot_group)) +
                   ggbeeswarm::geom_beeswarm(size = 2.5, alpha = 0.8, cex = 2.5) +
                   ggplot2::labs(title = "Individual Growth Rates by Treatment Group",
                                x = "Treatment", y = "Growth Rate") +
