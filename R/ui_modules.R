@@ -56,7 +56,7 @@ dataUploadUI <- function() {
     fluidRow(
       column(12,
         wellPanel(
-          style = "background:#f0f8ff; border:1px solid #b8d4ea;",
+          style = "background:#e0e0e0; border:1px solid #bdbdbd;",
           h4(strong(icon("flask"), " Try Demo Data")),
           p("New here? Load a built-in demo dataset to explore the dashboard's features."),
           fluidRow(
@@ -74,7 +74,7 @@ dataUploadUI <- function() {
               br(),
               actionButton("load_demo_data", "Load Demo Data",
                            icon = icon("play-circle"),
-                           class = "btn-info btn-block")
+                           class = "btn-default btn-block")
             ),
             column(4,
               br(),
