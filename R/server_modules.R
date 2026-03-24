@@ -345,7 +345,6 @@ data_upload_server <- function(input, output, session, rv) {
     } else NULL
     
     tagList(
-      hr(),
       wellPanel(
         h4("Dataset Summary"),
         p(strong(paste(nrow(data), "rows ×", ncol(data), "columns"))),
@@ -354,8 +353,7 @@ data_upload_server <- function(input, output, session, rv) {
           column(4, time_box),
           column(4, mice_box)
         )
-      ),
-      hr()
+      )
     )
   })
   
@@ -490,7 +488,6 @@ data_upload_server <- function(input, output, session, rv) {
   output$schedule_preview_ui <- renderUI({
     if (is.null(rv$schedule_data)) return(NULL)
     tagList(
-      hr(),
       wellPanel(
         h4("Treatment Schedule Preview"),
         fluidRow(
