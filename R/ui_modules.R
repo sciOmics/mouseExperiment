@@ -410,6 +410,9 @@ tumorGrowthUI <- function() {
                     )
                   ),
                   hr(),
+                  h6(icon("sort"), " Group Order"),
+                  uiOutput("tg_group_order_ui"),
+                  hr(),
                   h6(icon("palette"), " Appearance"),
                   uiOutput("tg_color_pickers_ui"),
                   hr(),

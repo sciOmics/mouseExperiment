@@ -1146,10 +1146,17 @@ tumor_growth_server <- function(input, output, session, rv) {
     datatable(rates_df, options = list(scrollX = TRUE, pageLength = 15))
   })
   
+  # ---- Group order drag-and-drop for Plots tab ----
+  output$tg_group_order_ui <- renderUI({
+    req(rv$tg_plot_groups)
+    group_order_ui("tg", rv$tg_plot_groups)
+  })
+
   # ---- Colour picker UI for Plots tab ----
   output$tg_color_pickers_ui <- renderUI({
     req(rv$tg_plot_groups)
-    group_color_pickers_ui("tg_color", rv$tg_plot_groups)
+    ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
+    group_color_pickers_ui("tg_color", ordered_grps)
   })
 
   # Growth curves plot  — reactive: re-renders on colour/option changes
@@ -1159,7 +1166,12 @@ tumor_growth_server <- function(input, output, session, rv) {
     req(rv$tg_plot_data, rv$tg_col_names)
     data      <- rv$tg_plot_data
     col_names <- rv$tg_col_names
-    colors    <- build_color_vector(input, "tg_color", rv$tg_plot_groups)
+    ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
+    colors    <- build_color_vector(input, "tg_color", ordered_grps)
+    # Apply user-specified group order as factor levels
+    if (!is.null(ordered_grps) && col_names$treatment_column %in% colnames(data))
+      data[[col_names$treatment_column]] <- factor(data[[col_names$treatment_column]],
+                                                   levels = ordered_grps)
 
     surv_col_mapped <- !is.null(input$col_survival_event) &&
                        input$col_survival_event != "" &&
@@ -1200,14 +1212,20 @@ tumor_growth_server <- function(input, output, session, rv) {
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
     req(rv$tg_results$growth_rates)
-    colors     <- build_color_vector(input, "tg_color", rv$tg_plot_groups)
+    ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
+    colors     <- build_color_vector(input, "tg_color", ordered_grps)
     show_mean  <- isTRUE(input$tg_opt_show_mean)
     err_type   <- input$tg_opt_error_bar  %||% "SEM"
     pt_size    <- input$tg_opt_point_size %||% 2.5
     jit_width  <- input$tg_opt_jitter_width %||% 0.2
+    rates      <- rv$tg_results$growth_rates
+    # Apply user group order as factor levels
+    grp_col_r  <- intersect(c("Group", "Treatment"), colnames(rates))[1]
+    if (!is.na(grp_col_r) && !is.null(ordered_grps))
+      rates[[grp_col_r]] <- factor(rates[[grp_col_r]], levels = ordered_grps)
     p <- tryCatch({
       mouseExperiment::plot_growth_rate(
-        growth_data    = rv$tg_results$growth_rates,
+        growth_data    = rates,
         colors         = colors,
         show_mean      = show_mean,
         error_bar_type = err_type,
@@ -1230,7 +1248,8 @@ tumor_growth_server <- function(input, output, session, rv) {
       req(!is.null(p))
       return(p)
     }
-    colors     <- build_color_vector(input, "tg_color", rv$tg_plot_groups)
+    ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
+    colors     <- build_color_vector(input, "tg_color", ordered_grps)
     show_mean  <- isTRUE(input$tg_opt_show_mean)
     err_type   <- input$tg_opt_error_bar  %||% "CI"
     pt_size    <- input$tg_opt_point_size %||% 2.5
@@ -1239,6 +1258,10 @@ tumor_growth_server <- function(input, output, session, rv) {
                       !is.na(input$tg_extrapolation_points))
                     as.integer(input$tg_extrapolation_points) else 0L
     auc_ind    <- rv$tg_results$auc_analysis$individual
+    # Apply user group order as factor levels
+    grp_col_a  <- intersect(c("Group", "Treatment"), colnames(auc_ind))[1]
+    if (!is.na(grp_col_a) && !is.null(ordered_grps))
+      auc_ind[[grp_col_a]] <- factor(auc_ind[[grp_col_a]], levels = ordered_grps)
     p <- tryCatch({
       mouseExperiment::plot_auc(
         auc_ind,

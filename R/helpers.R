@@ -268,3 +268,45 @@ group_color_pickers_ui <- function(prefix, groups, header = "Group Colours") {
     })
   )
 }
+
+#' Render a drag-and-drop rank list for reordering treatment groups
+#'
+#' Returns a \code{sortable::rank_list} widget.  The current order is
+#' read back from \code{input[[paste0(prefix, "_order")]]}.
+#'
+#' @param prefix    Input-ID prefix shared with colour pickers (e.g. \code{"tg"}).
+#' @param groups    Character vector of group names in their default order.
+#' @return A \code{sortable::rank_list} tag, or \code{NULL} when fewer than 2 groups.
+#' @keywords internal
+group_order_ui <- function(prefix, groups) {
+  if (is.null(groups) || length(groups) < 2L) return(NULL)
+  sortable::rank_list(
+    text     = shiny::tags$span(shiny::icon("sort"), " Group order"),
+    labels   = groups,
+    input_id = paste0(prefix, "_order"),
+    class    = "default-sortable"
+  )
+}
+
+#' Return groups in the user-specified drag-and-drop order
+#'
+#' Reads \code{input[[paste0(prefix, "_order")]]} and validates it.
+#' Falls back to \code{groups} (original order) if the input is absent or
+#' does not contain exactly the same set of labels.
+#'
+#' @param input  Shiny \code{input} object.
+#' @param prefix Input-ID prefix used when calling \code{group_order_ui}.
+#' @param groups Character vector of group names in their default order.
+#' @return Character vector of group names in the current user-selected order.
+#' @keywords internal
+get_ordered_groups <- function(input, prefix, groups) {
+  if (is.null(groups)) return(groups)
+  ord <- input[[paste0(prefix, "_order")]]
+  if (!is.null(ord) &&
+      length(ord) == length(groups) &&
+      setequal(ord, groups)) {
+    ord
+  } else {
+    groups
+  }
+}

@@ -3,14 +3,13 @@
 ## Tasks in Progress
 
 
-
 ## Tasks to be Done
 
-- Make plots interactive/customizable. Instead of showing all plots at once, have it selectable what plot to show. 
-- Add mouse outline png as background (lower right side of page)
 
 ## Complete Tasks
 
+- - Make plots interactive/customizable. Instead of showing all plots at once, have it selectable what plot to show. 
+- Add mouse outline png as background.
 - Generate demo data sets and code to use for automated testing of dashboard and statistics/analysis/plots. In particular, we need to ensure that the statistics being reported are correct. 
 - For reference group choosing, the default should look for a group that contains similar wording to "vehicle" "control" "IgG" or "DMSO". 
 - The forest plot x-axis scaling should be log(2) based and balanced such that whatever the max value one direction from the value of "0", the other direction should have the same. For example, if the plot min is -2 as determined by the data, the max should be 2. Also, do not color by significance. 

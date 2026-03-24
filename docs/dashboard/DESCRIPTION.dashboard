@@ -25,7 +25,8 @@ Imports:
     scales (>= 1.2.0),
     emmeans (>= 1.8.0),
     survminer (>= 0.4.9),
-    colourpicker (>= 1.1.1)
+    colourpicker (>= 1.1.1),
+    sortable (>= 0.4.4)
 Suggests:
     mouseExperiment (>= 0.3.0),
     testthat (>= 3.0.0),

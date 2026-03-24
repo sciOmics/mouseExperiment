@@ -64,6 +64,7 @@ survivalUI <- function() {
                   hr(),
                   h6(icon("palette"), " Appearance"),
                   conditionalPanel("input.surv_plot_selector == 'km'",
+                    uiOutput("surv_group_order_ui"),
                     uiOutput("surv_color_pickers_ui"),
                     checkboxInput("surv_opt_conf_int",
                                   "Show confidence interval", value = FALSE),
@@ -481,23 +482,39 @@ survival_server <- function(input, output, session, rv) {
     paste(summary_text, collapse = "\n")
   })
   
-  # Dynamic colour pickers for KM groups
-  output$surv_color_pickers_ui <- renderUI({
+  # Dynamic group order drag-and-drop for KM/Survival plots
+  output$surv_group_order_ui <- renderUI({
     req(rv$surv_plot_groups)
-    group_color_pickers_ui("surv_color", rv$surv_plot_groups)
+    group_order_ui("surv", rv$surv_plot_groups)
   })
 
-  # Kaplan-Meier plot — re-renders live when colour pickers or conf.int option change
+  # Dynamic colour pickers for KM groups (shown in user-specified order)
+  output$surv_color_pickers_ui <- renderUI({
+    req(rv$surv_plot_groups)
+    ordered_grps <- get_ordered_groups(input, "surv", rv$surv_plot_groups)
+    group_color_pickers_ui("surv_color", ordered_grps)
+  })
+
+  # Kaplan-Meier plot — re-renders live when colour pickers, order, or conf.int option change
   output$surv_plot_km <- renderPlot({
     req(rv$surv_results)
     if (isTRUE(rv$surv_results$error)) return(NULL)
     req(rv$surv_results$km_fit, rv$surv_results$survival_data)
 
     surv_df <- rv$surv_results$survival_data
-    km_fit  <- rv$surv_results$km_fit
 
-    # Build colour vector from per-group colourInputs
-    groups  <- rv$surv_plot_groups
+    # Apply user group order as factor levels and refit KM so strata follow that order
+    ordered_grps <- get_ordered_groups(input, "surv", rv$surv_plot_groups)
+    if (!is.null(ordered_grps) && "Treatment" %in% colnames(surv_df)) {
+      surv_df$Treatment <- factor(surv_df$Treatment, levels = ordered_grps)
+    }
+    km_fit <- tryCatch(
+      survival::survfit(survival::Surv(Time, Event) ~ Treatment, data = surv_df),
+      error = function(e) rv$surv_results$km_fit
+    )
+
+    # Build colour vector from per-group colourInputs (ordered to match strata)
+    groups  <- if (!is.null(ordered_grps)) ordered_grps else rv$surv_plot_groups
     pal     <- build_color_vector(input, "surv_color", groups)
     # unname so ggsurvplot assigns colours positionally (strata are "Treatment=X", not "X")
     if (!is.null(pal)) pal <- unname(pal)

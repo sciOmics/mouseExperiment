@@ -142,7 +142,10 @@ $(document).ready(function() {
         }
 
         # Dose Response: only when a dose column is mapped
-        dose_mapped <- !is.null(rv$dose_col) && nzchar(rv$dose_col)
+        dose_mapped <- (!is.null(input$col_dose) &&
+                        nzchar(input$col_dose) &&
+                        input$col_dose != "None") ||
+                       (!is.null(rv$dose_col) && nzchar(rv$dose_col))
         if (dose_mapped) {
           shinyjs::runjs("window.enableNavTab('Dose Response');")
         } else {
