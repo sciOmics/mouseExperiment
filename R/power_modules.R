@@ -268,37 +268,64 @@ power_server <- function(input, output, session, rv) {
   output$pw_plot_curves <- renderPlot({
     req(rv$pw_results)
     if (isTRUE(rv$pw_results$error)) return(NULL)
-    
-    plots <- rv$pw_results$plots
-    
-    if (!is.null(plots$power_curves)) {
-      print(plots$power_curves)
-    } else if (!is.null(plots) && length(plots) > 0) {
-      # Show first available plot
-      p <- plots[[1]]
-      if (!is.null(p)) print(p)
+
+    # Build power-vs-N curves from observed effect sizes
+    es_df <- rv$pw_results$effect_sizes
+    if (!is.null(es_df) && "Standardized_Effect" %in% colnames(es_df)) {
+      unique_effects <- sort(unique(round(
+        abs(es_df$Standardized_Effect[!is.na(es_df$Standardized_Effect)]), 2
+      )))
+      unique_effects <- unique_effects[unique_effects > 0]
     } else {
-      # Fallback: build a simple power vs sample size curve from sample_size_estimates
-      ss <- rv$pw_results$sample_size_estimates
-      if (!is.null(ss) && nrow(as.data.frame(ss)) > 0) {
-        df <- as.data.frame(ss)
-        if (all(c("power", "n_per_group") %in% tolower(colnames(df)))) {
-          colnames(df) <- tolower(colnames(df))
-          print(
-            ggplot2::ggplot(df, ggplot2::aes(x = n_per_group, y = power,
-                                              color = factor(alpha),
-                                              group = factor(alpha))) +
-              ggplot2::geom_line() + ggplot2::geom_point() +
-              ggplot2::labs(title = "Power Curves", x = "N per Group",
-                           y = "Power", color = "Alpha") +
-              ggplot2::theme_classic()
-          )
-        } else {
-          plot(1, 1, type = "n", main = "Power curves not available in expected format",
-               xlab = "", ylab = "")
-        }
+      unique_effects <- c(0.2, 0.5, 0.8, 1.0, 1.5)
+    }
+
+    if (length(unique_effects) > 0) {
+      n_seq <- seq(2, 60, by = 1)
+      rows <- lapply(unique_effects, function(es) {
+        data.frame(
+          N            = n_seq,
+          Power        = vapply(n_seq, function(n)
+            tryCatch(
+              stats::power.t.test(n = n, delta = es, sd = 1, sig.level = 0.05)$power,
+              error = function(e) NA_real_
+            ), numeric(1)),
+          Effect_Size  = paste0("d\u202f=\u202f", round(es, 2)),
+          stringsAsFactors = FALSE
+        )
+      })
+      pw_df <- do.call(rbind, rows)
+
+      print(
+        ggplot2::ggplot(pw_df,
+          ggplot2::aes(x = N, y = Power,
+                       color = Effect_Size, group = Effect_Size)) +
+          ggplot2::geom_line(linewidth = 0.9) +
+          ggplot2::geom_hline(yintercept = 0.80, linetype = "dashed",
+                              colour = "grey40", linewidth = 0.6) +
+          ggplot2::geom_hline(yintercept = 0.90, linetype = "dashed",
+                              colour = "grey60", linewidth = 0.6) +
+          ggplot2::annotate("text", x = 60, y = 0.81, label = "0.80",
+                            hjust = 1, size = 3, colour = "grey40") +
+          ggplot2::annotate("text", x = 60, y = 0.91, label = "0.90",
+                            hjust = 1, size = 3, colour = "grey60") +
+          ggplot2::scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+          ggplot2::labs(
+            title  = "Power vs N per Group",
+            subtitle = "Horizontal dashed lines: 0.80 and 0.90 power thresholds",
+            x      = "N per Group",
+            y      = "Power",
+            colour = "Effect Size\n(Cohen\u2019s d)"
+          ) +
+          ggplot2::theme_classic() +
+          ggplot2::theme(legend.position = "right")
+      )
+    } else {
+      plots <- rv$pw_results$plots
+      if (!is.null(plots$power_curves)) {
+        print(plots$power_curves)
       } else {
-        plot(1, 1, type = "n", main = "No power curve data available", xlab = "", ylab = "")
+        plot(1, 1, type = "n", main = "Power curves not available", xlab = "", ylab = "")
       }
     }
   })

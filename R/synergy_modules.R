@@ -482,15 +482,24 @@ synergy_server <- function(input, output, session, rv) {
   output$syn_plot_trend <- renderPlot({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error) || !isTRUE(rv$syn_over_time)) return(NULL)
-    p <- rv$syn_results$plot_trend
-    req(p)
     col_A     <- input$syn_color_A     %||% "#2166AC"
     col_B     <- input$syn_color_B     %||% "#D6604D"
     col_combo <- input$syn_color_combo %||% "#762A83"
     col_ctrl  <- input$syn_color_ctrl  %||% "#999999"
-    print(p + ggplot2::scale_color_manual(
-      values = c("Drug A" = col_A, "Drug B" = col_B,
-                 "Combination" = col_combo, "Bliss Value" = col_ctrl)))
+    # Use actual treatment group names stored in synergy results as color map keys
+    drug_a <- rv$syn_results$drug_a_name %||% "Drug A"
+    drug_b <- rv$syn_results$drug_b_name %||% "Drug B"
+    combo  <- rv$syn_results$combo_name  %||% "Combination"
+    custom_colors <- stats::setNames(
+      c(col_A, col_B, col_combo, col_ctrl),
+      c(drug_a, drug_b, combo, "Bliss Expected")
+    )
+    p <- tryCatch(
+      mouseExperiment::plot_synergy_trend(rv$syn_results, custom_colors = custom_colors),
+      error = function(e) NULL
+    )
+    req(!is.null(p))
+    print(p)
   })
   
   output$syn_plot_ci <- renderPlot({

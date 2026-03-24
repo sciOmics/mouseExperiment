@@ -12,15 +12,6 @@ survivalUI <- function() {
         wellPanel(
           h4("Analysis Parameters"),
           
-          selectInput("surv_palette",
-                     "Color Palette",
-                     choices = c("Default" = "hue",
-                                "Colorblind" = "colorblind",
-                                "Viridis" = "viridis",
-                                "Set1" = "Set1",
-                                "Set2" = "Set2"),
-                     selected = "hue"),
-          
           uiOutput("surv_reference_group_ui"),
           
           br(),
@@ -75,7 +66,10 @@ survivalUI <- function() {
                   conditionalPanel("input.surv_plot_selector == 'km'",
                     uiOutput("surv_color_pickers_ui"),
                     checkboxInput("surv_opt_conf_int",
-                                  "Show confidence interval", value = FALSE)
+                                  "Show confidence interval", value = FALSE),
+                    numericInput("surv_km_xstart",
+                                 "X-axis start (Day)",
+                                 value = 0, min = 0, step = 1)
                   ),
                   conditionalPanel("input.surv_plot_selector == 'forest'",
                     colourpicker::colourInput("surv_forest_pt_color",
@@ -505,7 +499,13 @@ survival_server <- function(input, output, session, rv) {
     # Build colour vector from per-group colourInputs
     groups  <- rv$surv_plot_groups
     pal     <- build_color_vector(input, "surv_color", groups)
+    # unname so ggsurvplot assigns colours positionally (strata are "Treatment=X", not "X")
+    if (!is.null(pal)) pal <- unname(pal)
     if (is.null(pal)) pal <- "hue"
+
+    # X-axis start
+    x_start <- if (!is.null(input$surv_km_xstart) && !is.na(input$surv_km_xstart))
+                  as.numeric(input$surv_km_xstart) else 0
 
     tryCatch({
       km_obj <- survminer::ggsurvplot(
@@ -515,6 +515,7 @@ survival_server <- function(input, output, session, rv) {
         risk.table            = TRUE,
         risk.table.y.text.col = TRUE,
         conf.int              = isTRUE(input$surv_opt_conf_int),
+        xlim                  = c(x_start, NA),
         xlab                  = "Time (Days)",
         ylab                  = "Survival Probability",
         title                 = "Kaplan-Meier Survival Curves by Treatment"

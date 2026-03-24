@@ -1168,7 +1168,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     extra_pts <- if (!is.null(input$tg_extrapolation_points) &&
                      !is.na(input$tg_extrapolation_points))
                    as.integer(input$tg_extrapolation_points) else 0L
-    do_extrapolate <- surv_col_mapped && extra_pts > 0L
+    do_extrapolate <- surv_col_mapped && extra_pts > 0L && isTRUE(input$tg_opt_show_extrap)
 
     p <- tryCatch({
       mouseExperiment::plot_tumor_growth(
@@ -1223,7 +1223,13 @@ tumor_growth_server <- function(input, output, session, rv) {
   output$tg_plot_auc <- renderPlot({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
-    req(rv$tg_results$auc_analysis, rv$tg_results$auc_analysis$individual)
+    # If AUC analysis not available (e.g. lme4 model path), fall back to stored plot
+    if (is.null(rv$tg_results$auc_analysis) ||
+        is.null(rv$tg_results$auc_analysis$individual)) {
+      p <- rv$tg_results$auc_plot
+      req(!is.null(p))
+      return(p)
+    }
     colors     <- build_color_vector(input, "tg_color", rv$tg_plot_groups)
     show_mean  <- isTRUE(input$tg_opt_show_mean)
     err_type   <- input$tg_opt_error_bar  %||% "CI"
@@ -1461,4 +1467,7 @@ tumor_growth_server <- function(input, output, session, rv) {
       dev.off()
     }
   )
+
+  # Keep treatment schedule plot alive even when its conditionalPanel is hidden
+  outputOptions(output, "tg_plot_treatment_schedule", suspendWhenHidden = FALSE)
 }

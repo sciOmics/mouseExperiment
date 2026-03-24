@@ -417,7 +417,9 @@ tumorGrowthUI <- function() {
                   conditionalPanel(
                     "input.tg_plot_selector == 'growth_curves'",
                     checkboxInput("tg_opt_group_line",
-                                  "Show group average line", value = TRUE)
+                                  "Show group average line", value = TRUE),
+                    checkboxInput("tg_opt_show_extrap",
+                                  "Show extrapolated curves/points", value = FALSE)
                   ),
                   conditionalPanel(
                     "['growth_rate','auc'].indexOf(input.tg_plot_selector) >= 0",
