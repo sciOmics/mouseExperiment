@@ -71,7 +71,10 @@ window.enableNavTab  = enableNavTab;
 ")
 
   ui <- navbarPage(
-    title = tags$span(id = "nav-brand", "mouseExperiment"),
+    title = tags$span(id = "nav-brand", "mouseExperiment",
+               tags$img(src = "images/mouse_icon.png",
+                        id  = "nav-brand-icon",
+                        alt = "")),
     id    = "main_nav",
     header = tagList(
       shinyjs::useShinyjs(),

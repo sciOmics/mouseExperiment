@@ -27,6 +27,16 @@ body {
   color: white;
 }
 
+/* Mouse icon in navbar brand */
+#nav-brand-icon {
+  height: 1.7rem;
+  width: auto;
+  vertical-align: middle;
+  margin-left: 0.4rem;
+  margin-bottom: 0.15rem;
+  opacity: 0.92;
+}
+
 /* BS5: .navbar-brand */
 .navbar .navbar-brand,
 .navbar-brand {
