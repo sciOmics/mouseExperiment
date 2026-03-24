@@ -86,8 +86,6 @@ dataUploadUI <- function() {
             ),
             column(4,
               h5(strong("Upload Treatment Schedule (Optional)")),
-              p(tags$small("Upload a CSV/RDA file describing the treatment timeline (e.g. dosing days).",
-                           "Used to overlay treatment events on tumor growth plots.")),
               fileInput("schedule_file",
                        "Treatment Schedule File (CSV or RDA)",
                        accept = c(".csv", ".rda", ".RData")),
