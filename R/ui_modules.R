@@ -212,7 +212,7 @@ column_mapping_ui <- function(col_names, detected_cols) {
         
         br(),
         
-        selectInput("col_dose", "Dose Level (optional)",
+        selectInput("col_dose", "Dose Level",
                    choices = c("None" = "", col_names),
                    selected = detected_cols$dose),
         tags$p(tags$small("Required for Dose-Response Analysis. Should contain numeric dose concentrations or levels.")),
