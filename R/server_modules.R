@@ -985,8 +985,13 @@ tumor_growth_server <- function(input, output, session, rv) {
     # Store the data and column names needed for reactive plot re-rendering
     rv$tg_plot_data   <- data
     rv$tg_col_names   <- col_names
-    rv$tg_plot_groups <- if (!is.null(data) && !is.null(col_names$treatment_column) &&
-                              col_names$treatment_column %in% colnames(data)) {
+    rv$tg_plot_groups <- if (!is.null(rv$dose_col) && rv$dose_col %in% colnames(data) &&
+                              !is.null(input$col_treatment) && input$col_treatment %in% colnames(data)) {
+      # plot_tumor_growth builds Group as paste(treatment, dose, sep = " - Dose: ")
+      # so colour-picker names must match that format exactly
+      unique(paste(data[[input$col_treatment]], data[[rv$dose_col]], sep = " - Dose: "))
+    } else if (!is.null(data) && !is.null(col_names$treatment_column) &&
+                col_names$treatment_column %in% colnames(data)) {
       unique(as.character(data[[col_names$treatment_column]]))
     } else NULL
     
@@ -1175,11 +1180,20 @@ tumor_growth_server <- function(input, output, session, rv) {
     col_names <- rv$tg_col_names
     ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
     colors    <- build_color_vector(input, "tg_color", ordered_grps)
-    # Apply user-specified group order as factor levels
-    if (isTRUE(length(ordered_grps) > 0) &&
-        isTRUE(col_names$treatment_column %in% colnames(data)))
-      data[[col_names$treatment_column]] <- factor(data[[col_names$treatment_column]],
-                                                   levels = ordered_grps)
+    # For dose data, apply factor level order on the original treatment column;
+    # plot_tumor_growth will build Group = 'Treatment - Dose: X' internally.
+    # For non-dose data, apply order on the treatment column directly.
+    if (isTRUE(length(ordered_grps) > 0)) {
+      if (!is.null(rv$dose_col) && rv$dose_col %in% colnames(data) &&
+          !is.null(input$col_treatment) && input$col_treatment %in% colnames(data)) {
+        # Derive treatment-level order from the combined group order
+        tx_order <- unique(sub(" - Dose: .*$", "", ordered_grps))
+        data[[input$col_treatment]] <- factor(data[[input$col_treatment]], levels = tx_order)
+      } else if (isTRUE(col_names$treatment_column %in% colnames(data))) {
+        data[[col_names$treatment_column]] <- factor(data[[col_names$treatment_column]],
+                                                     levels = ordered_grps)
+      }
+    }
 
     surv_col_mapped <- local({
       col <- input$col_survival_event
@@ -1197,7 +1211,10 @@ tumor_growth_server <- function(input, output, session, rv) {
         df                  = data,
         volume_column       = col_names$volume_column,
         day_column          = col_names$time_column,
-        treatment_column    = col_names$treatment_column,
+        # When a dose column is present, pass the original treatment column so
+        # plot_tumor_growth can build 'Group = Treatment - Dose: X' itself,
+        # matching the names used in rv$tg_plot_groups and the colour pickers.
+        treatment_column    = if (!is.null(rv$dose_col)) input$col_treatment else col_names$treatment_column,
         dose_column         = rv$dose_col,
         ID_column           = col_names$id_column,
         cage_column         = col_names$cage_column,
