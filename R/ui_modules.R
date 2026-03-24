@@ -98,12 +98,8 @@ dataUploadUI <- function() {
       )
     ),
     
-    hr(),
-    
     # Column mapping section (shown after file upload)
     uiOutput("column_mapping_ui"),
-    
-    hr(),
     
     # Dataset summary (shown after successful upload + column config)
     uiOutput("data_summary_ui"),

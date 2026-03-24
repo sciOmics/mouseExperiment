@@ -31,14 +31,14 @@ body {
 .navbar .navbar-brand,
 .navbar-brand {
   color: white !important;
-  font-size: 1.5rem;
+  font-size: 1.9rem;
 }
 
 /* BS3 + BS5 nav links */
 .navbar-nav > li > a,
 .navbar-nav .nav-link {
   color: white !important;
-  font-size: 1.4rem;
+  font-size: 1.6rem;
 }
 
 .navbar-nav > li > a:hover,
