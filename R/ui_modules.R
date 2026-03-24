@@ -221,7 +221,7 @@ column_mapping_ui <- function(col_names, detected_cols) {
         selectInput("col_survival_event", "Event/Censor Status Column",
                    choices = c("None" = "", col_names),
                    selected = detected_cols$survival_event),
-        tags$p(tags$small("Optional: Only needed if performing survival analysis. Time will use the same Day/Date settings as above."))
+        tags$p(tags$small("Required for Survival Analysis. Time will use the same Day/Date settings as above."))
       )
     )
   )
