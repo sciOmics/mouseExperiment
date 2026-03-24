@@ -1138,8 +1138,17 @@ tumor_growth_server <- function(input, output, session, rv) {
     }
     
     rates_df <- as.data.frame(rv$tg_results$growth_rates)
+    if ("growth_rate" %in% colnames(rates_df)) {
+      rates_df$daily_fold_change <- exp(rates_df$growth_rate)
+      # Reorder: put daily_fold_change right after growth_rate
+      gr_idx  <- which(colnames(rates_df) == "growth_rate")
+      other   <- setdiff(seq_len(ncol(rates_df)), c(gr_idx, ncol(rates_df)))
+      rates_df <- rates_df[, c(other[other < gr_idx],
+                                gr_idx,
+                                ncol(rates_df),
+                                other[other > gr_idx])]
+    }
     rates_df <- format_df_for_display(rates_df)
-    
     datatable(rates_df, options = list(scrollX = TRUE, pageLength = 15))
   })
   
@@ -1353,7 +1362,10 @@ tumor_growth_server <- function(input, output, session, rv) {
     filename = "growth_rates.csv",
     content = function(file) {
       if (!is.null(rv$tg_results$growth_rates)) {
-        write.csv(as.data.frame(rv$tg_results$growth_rates), file, row.names = FALSE)
+        df <- as.data.frame(rv$tg_results$growth_rates)
+        if ("growth_rate" %in% colnames(df))
+          df$daily_fold_change <- exp(df$growth_rate)
+        write.csv(df, file, row.names = FALSE)
       }
     }
   )

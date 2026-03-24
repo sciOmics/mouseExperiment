@@ -372,7 +372,10 @@ tumorGrowthUI <- function() {
           ),
           
           tabPanel("Growth Rates",
-            tab_info(strong("Per-animal growth rates "), "calculated from individual tumor volume trajectories. Used to assess within-group variability and for power analysis effect size estimation. Not the primary model output \u2014 use Treatment Effects for group-level inference."),
+            tab_info(strong("Per-animal growth rates "), "calculated from individual tumor volume trajectories. ",
+              strong("growth_rate"), ": slope of log\u2081\u209a(volume) over time (log-scale units/day). ",
+              strong("daily_fold_change"), ": exp(growth_rate) — the multiplicative volume change per day (e.g. 1.10 = 10% growth/day). ",
+              "Used to assess within-group variability and for power analysis effect size estimation. Not the primary model output \u2014 use Treatment Effects for group-level inference."),
             shinycssloaders::withSpinner(
               DTOutput("tg_growth_rates_table")
             ),
