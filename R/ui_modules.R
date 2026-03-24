@@ -206,7 +206,6 @@ column_mapping_ui <- function(col_names, detected_cols) {
         tags$p(tags$small("Required for Dose-Response Analysis. Should contain numeric dose concentrations or levels.")),
         
         br(),
-        h5("Survival Analysis"),
         selectInput("col_survival_event", "Event/Censor Status Column",
                    choices = c("None" = "", col_names),
                    selected = detected_cols$survival_event),
