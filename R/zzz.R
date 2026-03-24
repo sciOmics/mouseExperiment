@@ -8,3 +8,9 @@
   requireNamespace("shiny", quietly = TRUE)
   requireNamespace("mouseExperiment", quietly = TRUE)
 }
+
+#' Null-coalescing operator
+#'
+#' Returns \code{lhs} unless it is \code{NULL}, in which case returns \code{rhs}.
+#' @keywords internal
+`%||%` <- function(lhs, rhs) if (!is.null(lhs)) lhs else rhs

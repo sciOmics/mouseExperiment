@@ -211,3 +211,60 @@ extract_summary_table <- function(result) {
   
   NULL
 }
+#' Build a named colour vector from colourInput values
+#'
+#' Reads shiny `input[[paste0(prefix, "_", make.names(group))]]` for each group
+#' and returns a named character vector suitable for ggplot2's
+#' `scale_color_manual(values = ...)` / `scale_fill_manual(values = ...)`.
+#' Entries whose input value is NULL or empty are dropped.
+#'
+#' @param input  The Shiny `input` list.
+#' @param prefix Character prefix used when naming the colourInput widgets,
+#'   e.g. `"tg_color"` → input ID `"tg_color_<make.names(group)>"`.
+#' @param groups Character vector of group names.
+#' @return Named character vector of hex colours, or NULL if all are missing.
+#' @keywords internal
+build_color_vector <- function(input, prefix, groups) {
+  if (is.null(groups) || length(groups) == 0L) return(NULL)
+  colors <- vapply(groups, function(g) {
+    val <- input[[paste0(prefix, "_", make.names(g))]]
+    if (is.null(val) || !nzchar(val)) NA_character_ else val
+  }, character(1L))
+  colors <- colors[!is.na(colors)]
+  if (length(colors) == 0L) NULL else colors
+}
+
+#' Generate n evenly-spaced ggplot2-style default colours for n groups
+#'
+#' @param n Integer number of colours.
+#' @return Character vector of hex colour strings.
+#' @keywords internal
+default_group_colors <- function(n) {
+  if (n <= 0L) return(character(0L))
+  scales::hue_pal()(n)
+}
+
+#' Render colourInput widgets for a set of treatment groups
+#'
+#' Returns a \code{tagList} of \code{colourpicker::colourInput} widgets,
+#' one per group, with auto-assigned ggplot2-style default colours.
+#'
+#' @param prefix    Input-ID prefix (e.g. \code{"tg_color"}).
+#' @param groups    Character vector of group names.
+#' @param header    Optional header string. Default \code{"Group Colours"}.
+#' @return A \code{tagList}, or \code{NULL} when \code{groups} is empty.
+#' @keywords internal
+group_color_pickers_ui <- function(prefix, groups, header = "Group Colours") {
+  if (is.null(groups) || length(groups) == 0L) return(NULL)
+  defaults <- default_group_colors(length(groups))
+  shiny::tagList(
+    shiny::tags$h6(shiny::icon("palette"), " ", header),
+    lapply(seq_along(groups), function(i) {
+      colourpicker::colourInput(
+        inputId = paste0(prefix, "_", make.names(groups[i])),
+        label   = groups[i],
+        value   = defaults[i]
+      )
+    })
+  )
+}

@@ -63,43 +63,55 @@ synergyUI <- function() {
             downloadButton("download_syn_tgi", "Download TGI")
           ),
           
-          tabPanel("Synergy Plot",
-            tab_info(strong("Visual synergy comparison: "), "bars showing observed combination effect alongside the expected effect if the two drugs acted independently (Bliss model). A combination bar taller than the expected bar indicates synergy at the evaluation timepoint."),
-            shinycssloaders::withSpinner(
-              plotOutput("syn_plot_main", height = "500px")
-            ),
-            downloadButton("download_syn_plot_main", "Download Plot")
-          ),
-          
-          tabPanel("Trend Over Time",
-            tab_info(strong("Synergy trend: "), "synergy/antagonism scores plotted across all measured timepoints. Shows whether the interaction between the two drugs strengthens, weakens, or reverses over the course of the experiment. Available when 'All dates' is selected."),
-            conditionalPanel(
-              condition = "input.syn_time_point == 'all'",
-              shinycssloaders::withSpinner(
-                plotOutput("syn_plot_trend", height = "500px")
+          tabPanel("Plots",
+            fluidRow(
+              column(3,
+                wellPanel(
+                  uiOutput("syn_plot_selector_ui"),
+                  hr(),
+                  h6(icon("palette"), " Appearance"),
+                  colourpicker::colourInput("syn_color_A",     "Drug A",      value = "#2166AC"),
+                  colourpicker::colourInput("syn_color_B",     "Drug B",      value = "#D6604D"),
+                  colourpicker::colourInput("syn_color_combo", "Combination", value = "#762A83"),
+                  colourpicker::colourInput("syn_color_ctrl",  "Control / Bliss expected",
+                                            value = "#999999")
+                )
               ),
-              downloadButton("download_syn_plot_trend", "Download Plot")
-            ),
-            conditionalPanel(
-              condition = "input.syn_time_point != 'all'",
-              br(),
-              p("Select 'All dates' in the Time Point dropdown to see trend plots.")
-            )
-          ),
-          
-          tabPanel("Combination Index",
-            tab_info(strong("Combination Index (CI) over time: "), "CI values at each measured timepoint. The dashed reference line at CI\u202f=\u202f1 represents additivity. Points below 1 indicate synergism at that timepoint; points above 1 indicate antagonism. Available when 'All dates' is selected."),
-            conditionalPanel(
-              condition = "input.syn_time_point == 'all'",
-              shinycssloaders::withSpinner(
-                plotOutput("syn_plot_ci", height = "500px")
-              ),
-              downloadButton("download_syn_plot_ci", "Download Plot")
-            ),
-            conditionalPanel(
-              condition = "input.syn_time_point != 'all'",
-              br(),
-              p("Select 'All dates' in the Time Point dropdown to see combination index over time.")
+              column(9,
+                conditionalPanel("input.syn_plot_selector == 'main'",
+                  h4("Synergy Plot"),
+                  tab_info(strong("Visual synergy comparison: "),
+                    "bars showing observed combination effect alongside the expected effect ",
+                    "if the two drugs acted independently (Bliss model). A combination bar ",
+                    "taller than the expected bar indicates synergy at the evaluation timepoint."),
+                  shinycssloaders::withSpinner(
+                    plotOutput("syn_plot_main", height = "500px")
+                  ),
+                  downloadButton("download_syn_plot_main", "Download Plot")
+                ),
+                conditionalPanel("input.syn_plot_selector == 'trend'",
+                  h4("Trend Over Time"),
+                  tab_info(strong("Synergy trend: "),
+                    "synergy/antagonism scores plotted across all measured timepoints. ",
+                    "Shows whether the interaction between the two drugs strengthens, weakens, ",
+                    "or reverses over the course of the experiment."),
+                  shinycssloaders::withSpinner(
+                    plotOutput("syn_plot_trend", height = "500px")
+                  ),
+                  downloadButton("download_syn_plot_trend", "Download Plot")
+                ),
+                conditionalPanel("input.syn_plot_selector == 'ci'",
+                  h4("Combination Index"),
+                  tab_info(strong("Combination Index (CI) over time: "),
+                    "CI values at each measured timepoint. The dashed reference line at ",
+                    "CI\u202f=\u202f1 represents additivity. Points below 1 indicate synergism; ",
+                    "points above 1 indicate antagonism."),
+                  shinycssloaders::withSpinner(
+                    plotOutput("syn_plot_ci", height = "500px")
+                  ),
+                  downloadButton("download_syn_plot_ci", "Download Plot")
+                )
+              )
             )
           )
         )
@@ -330,6 +342,14 @@ synergy_server <- function(input, output, session, rv) {
     }
     
     rv$syn_results <- result
+
+    # Store the 4 group names so the Plots tab can build the color-named vector
+    rv$syn_plot_inputs <- list(
+      drug_a  = input$syn_drug_a,
+      drug_b  = input$syn_drug_b,
+      combo   = input$syn_combo,
+      control = input$syn_control
+    )
     
     if (isTRUE(result$error)) {
       output$syn_status_msg <- renderUI({
@@ -345,6 +365,17 @@ synergy_server <- function(input, output, session, rv) {
     }
   })
   
+  # Dynamic plot selector (Trend / CI only available for all-dates analysis)
+  output$syn_plot_selector_ui <- renderUI({
+    choices <- c("Synergy Plot" = "main")
+    if (isTRUE(rv$syn_over_time)) {
+      choices <- c(choices,
+                   "Trend Over Time"   = "trend",
+                   "Combination Index" = "ci")
+    }
+    selectInput("syn_plot_selector", "Select Plot", choices = choices)
+  })
+
   output$syn_summary <- renderText({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error)) return(paste("Error:", rv$syn_results$message))
@@ -409,15 +440,57 @@ synergy_server <- function(input, output, session, rv) {
   output$syn_plot_main <- renderPlot({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error)) return(NULL)
-    if (!is.null(rv$syn_results$plot_main)) print(rv$syn_results$plot_main)
-    else plot(1, 1, type = "n", main = "Plot not available", xlab = "", ylab = "")
+
+    # Build colour vector matching the 4 synergy roles
+    col_A     <- input$syn_color_A     %||% "#2166AC"
+    col_B     <- input$syn_color_B     %||% "#D6604D"
+    col_combo <- input$syn_color_combo %||% "#762A83"
+    col_ctrl  <- input$syn_color_ctrl  %||% "#999999"
+
+    if (isTRUE(rv$syn_over_time)) {
+      # Over-time Bliss plot stored in rv uses "Drug A" / "Drug B" etc. as colour labels
+      p <- rv$syn_results$plot_main
+      req(p)
+      print(p + ggplot2::scale_color_manual(
+        values = c("Drug A" = col_A, "Drug B" = col_B,
+                   "Combination" = col_combo, "Bliss Value" = col_ctrl)))
+    } else {
+      # Single timepoint - re-call plot_drug_synergy with custom_colors mapped to actual group names
+      grps <- rv$syn_plot_inputs
+      if (!is.null(grps)) {
+        custom_colors <- c(grps$drug_a, grps$drug_b, grps$combo, grps$control)
+        names(custom_colors) <- c(grps$drug_a, grps$drug_b, grps$combo, grps$control)
+        custom_colors[grps$drug_a]  <- col_A
+        custom_colors[grps$drug_b]  <- col_B
+        custom_colors[grps$combo]   <- col_combo
+        custom_colors[grps$control] <- col_ctrl
+      } else {
+        custom_colors <- NULL
+      }
+      tryCatch({
+        p <- mouseExperiment::plot_drug_synergy(rv$syn_results,
+                                                custom_colors = custom_colors)
+        print(p)
+      }, error = function(e) {
+        if (!is.null(rv$syn_results$plot_main)) print(rv$syn_results$plot_main)
+        else plot(1, 1, type = "n", main = "Synergy plot not available",
+                  xlab = "", ylab = "")
+      })
+    }
   })
-  
+
   output$syn_plot_trend <- renderPlot({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error) || !isTRUE(rv$syn_over_time)) return(NULL)
-    if (!is.null(rv$syn_results$plot_trend)) print(rv$syn_results$plot_trend)
-    else plot(1, 1, type = "n", main = "Trend plot not available", xlab = "", ylab = "")
+    p <- rv$syn_results$plot_trend
+    req(p)
+    col_A     <- input$syn_color_A     %||% "#2166AC"
+    col_B     <- input$syn_color_B     %||% "#D6604D"
+    col_combo <- input$syn_color_combo %||% "#762A83"
+    col_ctrl  <- input$syn_color_ctrl  %||% "#999999"
+    print(p + ggplot2::scale_color_manual(
+      values = c("Drug A" = col_A, "Drug B" = col_B,
+                 "Combination" = col_combo, "Bliss Value" = col_ctrl)))
   })
   
   output$syn_plot_ci <- renderPlot({

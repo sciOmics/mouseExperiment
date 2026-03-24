@@ -984,6 +984,14 @@ tumor_growth_server <- function(input, output, session, rv) {
     
     rv$tg_results <- result
     rv$tg_running <- FALSE
+
+    # Store the data and column names needed for reactive plot re-rendering
+    rv$tg_plot_data   <- data
+    rv$tg_col_names   <- col_names
+    rv$tg_plot_groups <- if (!is.null(data) && !is.null(col_names$treatment_column) &&
+                              col_names$treatment_column %in% colnames(data)) {
+      unique(as.character(data[[col_names$treatment_column]]))
+    } else NULL
     
     cat("DEBUG: Analysis complete. Plots and comparisons generated.\n")
     
@@ -1138,40 +1146,108 @@ tumor_growth_server <- function(input, output, session, rv) {
     datatable(rates_df, options = list(scrollX = TRUE, pageLength = 15))
   })
   
-  # Growth curves plot
+  # ---- Colour picker UI for Plots tab ----
+  output$tg_color_pickers_ui <- renderUI({
+    req(rv$tg_plot_groups)
+    group_color_pickers_ui("tg_color", rv$tg_plot_groups)
+  })
+
+  # Growth curves plot  — reactive: re-renders on colour/option changes
   output$tg_plot_growth <- renderPlot({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
-    
-    if (!is.null(rv$tg_results$tumor_growth_plot)) {
-      return(rv$tg_results$tumor_growth_plot)
-    } else {
-      plot(1, 1, type="n", main="Growth curves plot - generating...", xlab="", ylab="")
+    req(rv$tg_plot_data, rv$tg_col_names)
+    data      <- rv$tg_plot_data
+    col_names <- rv$tg_col_names
+    colors    <- build_color_vector(input, "tg_color", rv$tg_plot_groups)
+
+    surv_col_mapped <- !is.null(input$col_survival_event) &&
+                       input$col_survival_event != "" &&
+                       input$col_survival_event != "None" &&
+                       input$col_survival_event %in% colnames(data)
+    extra_pts <- if (!is.null(input$tg_extrapolation_points) &&
+                     !is.na(input$tg_extrapolation_points))
+                   as.integer(input$tg_extrapolation_points) else 0L
+    do_extrapolate <- surv_col_mapped && extra_pts > 0L
+
+    p <- tryCatch({
+      mouseExperiment::plot_tumor_growth(
+        df                  = data,
+        volume_column       = col_names$volume_column,
+        day_column          = col_names$time_column,
+        treatment_column    = col_names$treatment_column,
+        dose_column         = rv$dose_col,
+        ID_column           = col_names$id_column,
+        cage_column         = col_names$cage_column,
+        survival_column     = if (surv_col_mapped) input$col_survival_event else NULL,
+        extrapolate_volumes = do_extrapolate,
+        extrapolation_points = if (extra_pts > 0L) extra_pts else "all",
+        group_summary_line  = isTRUE(input$tg_opt_group_line)
+      ) + ggplot2::theme_classic()
+    }, error = function(e) {
+      if (!is.null(rv$tg_results$tumor_growth_plot)) return(rv$tg_results$tumor_growth_plot)
+      NULL
+    })
+    req(!is.null(p))
+    if (!is.null(colors)) {
+      p <- p + ggplot2::scale_color_manual(values = colors)
     }
+    p
   })
   
-  # Growth rate distribution plot
+  # Growth rate distribution plot — reactive
   output$tg_plot_rates <- renderPlot({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
-    
-    if (!is.null(rv$tg_results$growth_rate_plot)) {
-      return(rv$tg_results$growth_rate_plot)
-    } else {
-      plot(1, 1, type="n", main="Growth rate distribution not available", xlab="", ylab="")
-    }
+    req(rv$tg_results$growth_rates)
+    colors     <- build_color_vector(input, "tg_color", rv$tg_plot_groups)
+    show_mean  <- isTRUE(input$tg_opt_show_mean)
+    err_type   <- input$tg_opt_error_bar  %||% "SEM"
+    pt_size    <- input$tg_opt_point_size %||% 2.5
+    jit_width  <- input$tg_opt_jitter_width %||% 0.2
+    p <- tryCatch({
+      mouseExperiment::plot_growth_rate(
+        growth_data    = rv$tg_results$growth_rates,
+        colors         = colors,
+        show_mean      = show_mean,
+        error_bar_type = err_type,
+        point_size     = pt_size,
+        jitter_width   = jit_width
+      ) + ggplot2::theme_classic()
+    }, error = function(e) rv$tg_results$growth_rate_plot)
+    req(!is.null(p))
+    p
   })
   
-  # AUC/Treatment effects plot
+  # AUC/Treatment effects plot — reactive
   output$tg_plot_auc <- renderPlot({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
-    
-    if (!is.null(rv$tg_results$auc_plot)) {
-      return(rv$tg_results$auc_plot)
-    } else {
-      plot(1, 1, type="n", main="Treatment effects plot generating...", xlab="", ylab="")
-    }
+    req(rv$tg_results$auc_analysis, rv$tg_results$auc_analysis$individual)
+    colors     <- build_color_vector(input, "tg_color", rv$tg_plot_groups)
+    show_mean  <- isTRUE(input$tg_opt_show_mean)
+    err_type   <- input$tg_opt_error_bar  %||% "CI"
+    pt_size    <- input$tg_opt_point_size %||% 2.5
+    jit_width  <- input$tg_opt_jitter_width %||% 0.2
+    extra_pts  <- if (!is.null(input$tg_extrapolation_points) &&
+                      !is.na(input$tg_extrapolation_points))
+                    as.integer(input$tg_extrapolation_points) else 0L
+    auc_ind    <- rv$tg_results$auc_analysis$individual
+    p <- tryCatch({
+      mouseExperiment::plot_auc(
+        auc_ind,
+        colors               = colors,
+        show_mean            = show_mean,
+        error_bar_type       = err_type,
+        point_size           = pt_size,
+        jitter_width         = jit_width,
+        extrapolated_column  = if (extra_pts > 0L &&
+                                   "Extrapolated" %in% colnames(auc_ind))
+                                 "Extrapolated" else NULL
+      ) + ggplot2::theme_classic()
+    }, error = function(e) rv$tg_results$auc_plot)
+    req(!is.null(p))
+    p
   })
   
   # Diagnostics/QQ plot

@@ -397,63 +397,93 @@ tumorGrowthUI <- function() {
           ),
           
           tabPanel("Plots",
-            tab_info(
-              strong("Tumor Growth Curves: "), "individual mouse trajectories with group mean overlay. ",
-              strong("Growth Rate Distribution: "), "spread of per-animal rates within each group. ",
-              strong("AUC / Treatment Effects: "), "model-estimated effect sizes per group. ",
-              strong("Effect Size Forest Plot: "), "pairwise mean differences with 95% CIs. ",
-              "See the Diagnostics tab for residual Q\u2011Q and residuals-vs-fitted plots."
-            ),
             fluidRow(
-              column(6,
-                h4("Tumor Growth Curves"),
-                shinycssloaders::withSpinner(
-                  plotOutput("tg_plot_growth", height = "400px")
-                ),
-                downloadButton("download_tg_plot_growth", "Download Plot")
+              column(3,
+                wellPanel(
+                  selectInput("tg_plot_selector", "Select Plot",
+                    choices = c(
+                      "Tumor Growth Curves"      = "growth_curves",
+                      "Growth Rate Distribution" = "growth_rate",
+                      "AUC Comparison"           = "auc",
+                      "Effect Size Forest Plot"  = "effect_forest",
+                      "Treatment Schedule"       = "treatment_schedule"
+                    )
+                  ),
+                  hr(),
+                  h6(icon("palette"), " Appearance"),
+                  uiOutput("tg_color_pickers_ui"),
+                  hr(),
+                  h6(icon("sliders-h"), " Options"),
+                  conditionalPanel(
+                    "input.tg_plot_selector == 'growth_curves'",
+                    checkboxInput("tg_opt_group_line",
+                                  "Show group average line", value = TRUE)
+                  ),
+                  conditionalPanel(
+                    "['growth_rate','auc'].indexOf(input.tg_plot_selector) >= 0",
+                    checkboxInput("tg_opt_show_mean",
+                                  "Show group mean line", value = TRUE),
+                    selectInput("tg_opt_error_bar", "Error bars",
+                      choices  = c("None" = "none", "SEM" = "SEM",
+                                   "SD" = "SD", "95% CI" = "CI"),
+                      selected = "SEM"
+                    ),
+                    sliderInput("tg_opt_point_size",   "Point size",
+                                0.5, 8, 2.5, step = 0.5),
+                    sliderInput("tg_opt_jitter_width", "Jitter width",
+                                0, 1, 0.2, step = 0.05)
+                  )
+                )
               ),
-              column(6,
-                h4("Growth Rate Distribution"),
-                shinycssloaders::withSpinner(
-                  plotOutput("tg_plot_rates", height = "400px")
+              column(9,
+                conditionalPanel("input.tg_plot_selector == 'growth_curves'",
+                  h4("Tumor Growth Curves"),
+                  tab_info(strong("Tumor Growth Curves: "),
+                    "individual mouse trajectories with optional group mean overlay."),
+                  shinycssloaders::withSpinner(
+                    plotOutput("tg_plot_growth", height = "550px")
+                  ),
+                  downloadButton("download_tg_plot_growth", "Download Plot")
                 ),
-                downloadButton("download_tg_plot_rates", "Download Plot")
-              )
-            ),
-            
-            fluidRow(
-              column(8,
-                h4("AUC Comparison"),
-                shinycssloaders::withSpinner(
-                  plotOutput("tg_plot_auc", height = "400px")
+                conditionalPanel("input.tg_plot_selector == 'growth_rate'",
+                  h4("Growth Rate Distribution"),
+                  tab_info(strong("Growth Rate Distribution: "),
+                    "spread of per-animal growth rates within each group."),
+                  shinycssloaders::withSpinner(
+                    plotOutput("tg_plot_rates", height = "550px")
+                  ),
+                  downloadButton("download_tg_plot_rates", "Download Plot")
                 ),
-                downloadButton("download_tg_plot_auc", "Download Plot")
-              )
-            ),
-            
-            hr(),
-            
-            fluidRow(
-              column(12,
-                h4("Effect Size Forest Plot"),
-                tab_info(strong("Pairwise effect sizes: "), "mean differences between treatment groups with 95% confidence intervals. Points to the left of zero indicate lower volume vs. reference; points to the right indicate higher volume."),
-                shinycssloaders::withSpinner(
-                  plotOutput("tg_plot_effect_forest", height = "400px")
+                conditionalPanel("input.tg_plot_selector == 'auc'",
+                  h4("AUC Comparison"),
+                  tab_info(strong("AUC / Treatment Effects: "),
+                    "model-estimated area under the curve, one point per subject."),
+                  shinycssloaders::withSpinner(
+                    plotOutput("tg_plot_auc", height = "550px")
+                  ),
+                  downloadButton("download_tg_plot_auc", "Download Plot")
                 ),
-                downloadButton("download_tg_plot_effect_forest", "Download Plot")
-              )
-            ),
-            
-            hr(),
-            
-            fluidRow(
-              column(12,
-                h4("Treatment Schedule"),
-                p(tags$small("Requires a treatment schedule file uploaded under 'Upload Treatment Schedule' in the Data tab.")),
-                shinycssloaders::withSpinner(
-                  plotOutput("tg_plot_treatment_schedule", height = "350px")
+                conditionalPanel("input.tg_plot_selector == 'effect_forest'",
+                  h4("Effect Size Forest Plot"),
+                  tab_info(strong("Pairwise effect sizes: "),
+                    "mean differences between treatment groups with 95% CIs. ",
+                    "Points left of zero indicate lower volume vs. reference; ",
+                    "points to the right indicate higher volume."),
+                  shinycssloaders::withSpinner(
+                    plotOutput("tg_plot_effect_forest", height = "550px")
+                  ),
+                  downloadButton("download_tg_plot_effect_forest", "Download Plot")
                 ),
-                downloadButton("download_tg_plot_schedule", "Download Plot")
+                conditionalPanel("input.tg_plot_selector == 'treatment_schedule'",
+                  h4("Treatment Schedule"),
+                  tab_info(p(tags$small(
+                    "Requires a treatment schedule file uploaded under ",
+                    "'Upload Treatment Schedule' in the Data tab."))),
+                  shinycssloaders::withSpinner(
+                    plotOutput("tg_plot_treatment_schedule", height = "500px")
+                  ),
+                  downloadButton("download_tg_plot_schedule", "Download Plot")
+                )
               )
             )
           ),

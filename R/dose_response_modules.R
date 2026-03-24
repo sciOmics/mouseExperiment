@@ -65,40 +65,80 @@ doseResponseUI <- function() {
             downloadButton("download_dr_table", "Download CSV")
           ),
 
-          tabPanel("Scatter Plot",
-            tab_info(
-              strong("Dose vs tumor volume scatter plot: "),
-              "Each point is one animal. The blue line is the linear regression fit. ",
-              "A steep slope with a narrow confidence band suggests a strong dose-response relationship."
-            ),
-            shinycssloaders::withSpinner(
-              plotOutput("dr_plot_scatter", height = "500px")
-            ),
-            downloadButton("download_dr_scatter", "Download Plot")
-          ),
-
-          tabPanel("Boxplot by Dose",
-            tab_info(
-              strong("Tumor volume distribution by dose level: "),
-              "Each box shows the median, IQR, and individual data points per dose group. ",
-              "Useful for assessing variance across dose levels and identifying outliers."
-            ),
-            shinycssloaders::withSpinner(
-              plotOutput("dr_plot_boxplot", height = "500px")
-            ),
-            downloadButton("download_dr_boxplot", "Download Plot")
-          ),
-
-          tabPanel("Mean by Dose",
-            tab_info(
-              strong("Mean tumor volume with 95\u00a0% confidence intervals: "),
-              "Bar heights represent group means; error bars are 95\u00a0% CIs. ",
-              "Non-overlapping error bars between adjacent dose groups are a rough indicator of significance."
-            ),
-            shinycssloaders::withSpinner(
-              plotOutput("dr_plot_barplot", height = "500px")
-            ),
-            downloadButton("download_dr_barplot", "Download Plot")
+          tabPanel("Plots",
+            fluidRow(
+              column(3,
+                wellPanel(
+                  selectInput("dr_plot_selector", "Select Plot",
+                    choices = c(
+                      "Scatter Plot"       = "scatter",
+                      "Boxplot by Dose"    = "boxplot",
+                      "Mean by Dose (Bar)" = "barplot"
+                    )
+                  ),
+                  hr(),
+                  h6(icon("palette"), " Appearance"),
+                  conditionalPanel("input.dr_plot_selector == 'scatter'",
+                    colourpicker::colourInput("dr_scatter_pt_color",
+                                             "Point colour",
+                                             value = "#555555"),
+                    colourpicker::colourInput("dr_scatter_line_color",
+                                             "Regression line colour",
+                                             value = "#2166AC")
+                  ),
+                  conditionalPanel("input.dr_plot_selector == 'boxplot'",
+                    colourpicker::colourInput("dr_box_fill_color",
+                                             "Box fill colour",
+                                             value = "#4292C6")
+                  ),
+                  conditionalPanel("input.dr_plot_selector == 'barplot'",
+                    colourpicker::colourInput("dr_bar_fill_color",
+                                             "Bar fill colour",
+                                             value = "#4292C6")
+                  )
+                )
+              ),
+              column(9,
+                conditionalPanel("input.dr_plot_selector == 'scatter'",
+                  h4("Scatter Plot"),
+                  tab_info(
+                    strong("Dose vs tumor volume scatter plot: "),
+                    "each point is one animal. The line is the linear regression fit. ",
+                    "A steep slope with a narrow confidence band suggests a strong ",
+                    "dose-response relationship."
+                  ),
+                  shinycssloaders::withSpinner(
+                    plotOutput("dr_plot_scatter", height = "500px")
+                  ),
+                  downloadButton("download_dr_scatter", "Download Plot")
+                ),
+                conditionalPanel("input.dr_plot_selector == 'boxplot'",
+                  h4("Boxplot by Dose"),
+                  tab_info(
+                    strong("Tumor volume distribution by dose level: "),
+                    "each box shows the median, IQR, and individual data points per dose group. ",
+                    "Useful for assessing variance across dose levels and identifying outliers."
+                  ),
+                  shinycssloaders::withSpinner(
+                    plotOutput("dr_plot_boxplot", height = "500px")
+                  ),
+                  downloadButton("download_dr_boxplot", "Download Plot")
+                ),
+                conditionalPanel("input.dr_plot_selector == 'barplot'",
+                  h4("Mean by Dose"),
+                  tab_info(
+                    strong("Mean tumor volume with 95\u00a0% confidence intervals: "),
+                    "bar heights represent group means; error bars are 95\u00a0% CIs. ",
+                    "Non-overlapping error bars between adjacent dose groups are a rough ",
+                    "indicator of significance."
+                  ),
+                  shinycssloaders::withSpinner(
+                    plotOutput("dr_plot_barplot", height = "500px")
+                  ),
+                  downloadButton("download_dr_barplot", "Download Plot")
+                )
+              )
+            )
           ),
 
           tabPanel("Statistical Tests",
@@ -225,6 +265,28 @@ dose_response_server <- function(input, output, session, rv) {
       )
     })
 
+    # Attach analysis_data and summary_stats for reactive plot rebuilding
+    if (!isTRUE(result$error)) {
+      tryCatch({
+        # Re-prepare the analysis_data subset used by plots
+        ad <- mouseExperiment:::prepare_dose_data(
+          data,
+          dose_column      = dose_col,
+          treatment_column = tx_col,
+          volume_column    = vol_col,
+          day_column       = time_col,
+          id_column        = id_col,
+          time_point       = time_point_val
+        )
+        ss <- mouseExperiment:::generate_summary_statistics(ad,
+          dose_column = dose_col, volume_column = vol_col)
+        result$analysis_data <- ad
+        result$summary_stats <- ss
+      }, error = function(e) {
+        cat("WARNING: Could not cache analysis_data for reactive DR plots:", e$message, "\n")
+      })
+    }
+
     rv$dr_results <- result
 
     if (isTRUE(result$error)) {
@@ -295,23 +357,55 @@ dose_response_server <- function(input, output, session, rv) {
     datatable(tbl, options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE)
   })
 
-  # ---- Plots ----
+  # ---- Plots (rebuilt reactively so colour options take effect immediately) ----
   output$dr_plot_scatter <- renderPlot({
     req(rv$dr_results)
-    if (isTRUE(rv$dr_results$error) || is.null(rv$dr_results$plots$scatter)) return(NULL)
-    rv$dr_results$plots$scatter + ggplot2::theme_classic()
+    if (isTRUE(rv$dr_results$error)) return(NULL)
+    ad <- rv$dr_results$analysis_data
+    req(ad)
+    dose_col <- rv$dose_col %||% "Dose"
+    vol_col  <- rv$vol_col  %||% "Volume"
+    pt_col   <- input$dr_scatter_pt_color   %||% "#555555"
+    ln_col   <- input$dr_scatter_line_color %||% "#2166AC"
+    ggplot2::ggplot(ad, ggplot2::aes_string(x = dose_col, y = vol_col)) +
+      ggplot2::geom_point(alpha = 0.7, color = pt_col) +
+      ggplot2::geom_smooth(method = "lm", formula = y ~ x, color = ln_col) +
+      ggplot2::labs(title = "Linear Dose-Response Relationship",
+                   x = "Dose", y = "Tumor Volume") +
+      ggplot2::theme_classic()
   })
 
   output$dr_plot_boxplot <- renderPlot({
     req(rv$dr_results)
-    if (isTRUE(rv$dr_results$error) || is.null(rv$dr_results$plots$boxplot)) return(NULL)
-    rv$dr_results$plots$boxplot + ggplot2::theme_classic()
+    if (isTRUE(rv$dr_results$error)) return(NULL)
+    ad <- rv$dr_results$analysis_data
+    req(ad)
+    dose_col    <- rv$dose_col %||% "Dose"
+    vol_col     <- rv$vol_col  %||% "Volume"
+    box_color   <- input$dr_box_fill_color %||% "#4292C6"
+    dose_factor <- paste0("factor(", dose_col, ")")
+    ggplot2::ggplot(ad, ggplot2::aes_string(x = dose_factor, y = vol_col)) +
+      ggplot2::geom_boxplot(outlier.shape = NA, fill = box_color, alpha = 0.7) +
+      ggplot2::geom_jitter(width = 0.2, alpha = 0.5) +
+      ggplot2::labs(title = "Tumor Volume by Dose Level",
+                   x = "Dose", y = "Tumor Volume") +
+      ggplot2::theme_classic()
   })
 
   output$dr_plot_barplot <- renderPlot({
     req(rv$dr_results)
-    if (isTRUE(rv$dr_results$error) || is.null(rv$dr_results$plots$barplot)) return(NULL)
-    rv$dr_results$plots$barplot + ggplot2::theme_classic()
+    if (isTRUE(rv$dr_results$error)) return(NULL)
+    ss <- rv$dr_results$summary_stats
+    req(ss)
+    dose_col  <- rv$dose_col %||% "Dose"
+    bar_color <- input$dr_bar_fill_color %||% "#4292C6"
+    ggplot2::ggplot(ss, ggplot2::aes_string(x = dose_col, y = "mean_volume")) +
+      ggplot2::geom_bar(stat = "identity", fill = bar_color, alpha = 0.8) +
+      ggplot2::geom_errorbar(
+        ggplot2::aes(ymin = ci95_lower, ymax = ci95_upper), width = 0.2) +
+      ggplot2::labs(title = "Mean Tumor Volume by Dose Level (with 95% CI)",
+                   x = "Dose", y = "Mean Tumor Volume") +
+      ggplot2::theme_classic()
   })
 
   # ---- Statistical Tests ----
@@ -360,30 +454,65 @@ dose_response_server <- function(input, output, session, rv) {
   output$download_dr_scatter <- downloadHandler(
     filename = "dose_scatter.png",
     content  = function(file) {
-      req(rv$dr_results$plots$scatter)
-      png(file, width = 800, height = 600)
-      print(rv$dr_results$plots$scatter)
-      dev.off()
+      req(rv$dr_results)
+      ad       <- rv$dr_results$analysis_data %||% rv$dr_results$plots$scatter$data
+      dose_col <- rv$dose_col %||% "Dose"
+      vol_col  <- rv$vol_col  %||% "Volume"
+      pt_col   <- input$dr_scatter_pt_color   %||% "#555555"
+      ln_col   <- input$dr_scatter_line_color %||% "#2166AC"
+      p <- if (!is.null(ad)) {
+        ggplot2::ggplot(ad, ggplot2::aes_string(x = dose_col, y = vol_col)) +
+          ggplot2::geom_point(alpha = 0.7, color = pt_col) +
+          ggplot2::geom_smooth(method = "lm", formula = y ~ x, color = ln_col) +
+          ggplot2::labs(title = "Linear Dose-Response Relationship",
+                        x = "Dose", y = "Tumor Volume") +
+          ggplot2::theme_classic()
+      } else rv$dr_results$plots$scatter
+      req(!is.null(p))
+      png(file, width = 800, height = 600); print(p); dev.off()
     }
   )
 
   output$download_dr_boxplot <- downloadHandler(
     filename = "dose_boxplot.png",
     content  = function(file) {
-      req(rv$dr_results$plots$boxplot)
-      png(file, width = 800, height = 600)
-      print(rv$dr_results$plots$boxplot)
-      dev.off()
+      req(rv$dr_results)
+      ad       <- rv$dr_results$analysis_data
+      dose_col <- rv$dose_col %||% "Dose"
+      vol_col  <- rv$vol_col  %||% "Volume"
+      bc       <- input$dr_box_fill_color %||% "#4292C6"
+      p <- if (!is.null(ad)) {
+        ggplot2::ggplot(ad, ggplot2::aes_string(x = paste0("factor(", dose_col, ")"),
+                                                y = vol_col)) +
+          ggplot2::geom_boxplot(outlier.shape = NA, fill = bc, alpha = 0.7) +
+          ggplot2::geom_jitter(width = 0.2, alpha = 0.5) +
+          ggplot2::labs(title = "Tumor Volume by Dose Level",
+                        x = "Dose", y = "Tumor Volume") +
+          ggplot2::theme_classic()
+      } else rv$dr_results$plots$boxplot
+      req(!is.null(p))
+      png(file, width = 800, height = 600); print(p); dev.off()
     }
   )
 
   output$download_dr_barplot <- downloadHandler(
     filename = "dose_barplot.png",
     content  = function(file) {
-      req(rv$dr_results$plots$barplot)
-      png(file, width = 800, height = 600)
-      print(rv$dr_results$plots$barplot)
-      dev.off()
+      req(rv$dr_results)
+      ss       <- rv$dr_results$summary_stats
+      dose_col <- rv$dose_col %||% "Dose"
+      bc       <- input$dr_bar_fill_color %||% "#4292C6"
+      p <- if (!is.null(ss)) {
+        ggplot2::ggplot(ss, ggplot2::aes_string(x = dose_col, y = "mean_volume")) +
+          ggplot2::geom_bar(stat = "identity", fill = bc, alpha = 0.8) +
+          ggplot2::geom_errorbar(
+            ggplot2::aes(ymin = ci95_lower, ymax = ci95_upper), width = 0.2) +
+          ggplot2::labs(title = "Mean Tumor Volume by Dose Level (with 95% CI)",
+                        x = "Dose", y = "Mean Tumor Volume") +
+          ggplot2::theme_classic()
+      } else rv$dr_results$plots$barplot
+      req(!is.null(p))
+      png(file, width = 800, height = 600); print(p); dev.off()
     }
   )
 

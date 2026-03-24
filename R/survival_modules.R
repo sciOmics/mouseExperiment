@@ -60,30 +60,68 @@ survivalUI <- function() {
             downloadButton("download_surv_cox", "Download Results")
           ),
           
-          tabPanel("Kaplan-Meier Curve",
-            tab_info(strong("Kaplan-Meier survival curve: "), "non-parametric step-function estimating the probability of surviving past each timepoint. Each drop represents one or more events; tick marks represent censored animals still alive at last observation. Groups that remain higher on the y-axis have better survival."),
-            shinycssloaders::withSpinner(
-              plotOutput("surv_plot_km", height = "500px")
-            ),
-            downloadButton("download_surv_plot_km", "Download Plot")
+          tabPanel("Plots",
+            fluidRow(
+              column(3,
+                wellPanel(
+                  selectInput("surv_plot_selector", "Select Plot",
+                    choices = c(
+                      "Kaplan-Meier Curve"       = "km",
+                      "Hazard Ratio Forest Plot" = "forest"
+                    )
+                  ),
+                  hr(),
+                  h6(icon("palette"), " Appearance"),
+                  conditionalPanel("input.surv_plot_selector == 'km'",
+                    uiOutput("surv_color_pickers_ui"),
+                    checkboxInput("surv_opt_conf_int",
+                                  "Show confidence interval", value = FALSE)
+                  ),
+                  conditionalPanel("input.surv_plot_selector == 'forest'",
+                    colourpicker::colourInput("surv_forest_pt_color",
+                                             "Point colour", value = "steelblue")
+                  )
+                )
+              ),
+              column(9,
+                conditionalPanel("input.surv_plot_selector == 'km'",
+                  h4("Kaplan-Meier Survival Curves"),
+                  tab_info(
+                    strong("Kaplan-Meier survival curve: "),
+                    "non-parametric step-function estimating the probability of ",
+                    "surviving past each timepoint. Each drop represents one or more ",
+                    "events; tick marks represent censored animals still alive at last ",
+                    "observation. Groups that remain higher on the y-axis have better survival."
+                  ),
+                  shinycssloaders::withSpinner(
+                    plotOutput("surv_plot_km", height = "500px")
+                  ),
+                  downloadButton("download_surv_plot_km", "Download Plot")
+                ),
+                conditionalPanel("input.surv_plot_selector == 'forest'",
+                  h4("Hazard Ratio Forest Plot"),
+                  tab_info(
+                    strong("Hazard ratio forest plot: "),
+                    "each row is a treatment group vs the reference. ",
+                    "The x-axis uses a log\u2082 scale, symmetric around HR\u202f=\u202f1. ",
+                    "Points to the left indicate a protective effect; points to the right ",
+                    "indicate increased hazard relative to the reference group."
+                  ),
+                  shinycssloaders::withSpinner(
+                    plotOutput("surv_forest_plot", height = "500px")
+                  ),
+                  downloadButton("download_surv_forest_plot", "Download Plot")
+                )
+              )
+            )
           ),
-          
+
           tabPanel("Risk Table",
             tab_info(strong("Numbers at risk table: "), "at each event time, shows how many animals per group are still at risk (N Risk), how many experienced the event (N Events), and how many were censored (N Censored). Declining N Risk over time reflects events and censoring."),
             shinycssloaders::withSpinner(
               DTOutput("surv_risk_table")
             ),
             downloadButton("download_surv_risk_table", "Download Table")
-          ),
-          
-          tabPanel("Forest Plot",
-            tab_info(strong("Hazard ratio forest plot: "), "each row is a treatment group vs the reference. The point is the estimated HR; horizontal bars are 95\u202f% confidence intervals. ",
-              "The x-axis uses a log\u2082 scale, symmetric around HR\u202f=\u202f1 (the vertical dashed line). ",
-              "Points to the left indicate a protective effect; points to the right indicate increased hazard, relative to the reference group."),
-            shinycssloaders::withSpinner(
-              plotOutput("surv_forest_plot", height = "500px")
-            ),
-            downloadButton("download_surv_forest_plot", "Download Plot")
           )
         )
       )
@@ -371,6 +409,11 @@ survival_server <- function(input, output, session, rv) {
     
     rv$surv_results <- result
     rv$surv_running <- FALSE
+
+    # Store treatment group names for the per-group colour pickers in the Plots tab
+    rv$surv_plot_groups <- if (!is.null(result$survival_data) && "Treatment" %in% colnames(result$survival_data)) {
+      unique(as.character(result$survival_data$Treatment))
+    } else NULL
     
     # Debug: Log the structure of the result
     cat("\n=== RESULT OBJECT STRUCTURE ===\n")
@@ -444,17 +487,47 @@ survival_server <- function(input, output, session, rv) {
     paste(summary_text, collapse = "\n")
   })
   
-  # Kaplan-Meier plot
+  # Dynamic colour pickers for KM groups
+  output$surv_color_pickers_ui <- renderUI({
+    req(rv$surv_plot_groups)
+    group_color_pickers_ui("surv_color", rv$surv_plot_groups)
+  })
+
+  # Kaplan-Meier plot — re-renders live when colour pickers or conf.int option change
   output$surv_plot_km <- renderPlot({
     req(rv$surv_results)
     if (isTRUE(rv$surv_results$error)) return(NULL)
+    req(rv$surv_results$km_fit, rv$surv_results$survival_data)
 
-    if (!is.null(rv$surv_results$km_plot)) {
-      # plot_survival() returns a ggsurvplot object; print() renders it correctly
-      print(rv$surv_results$km_plot)
-    } else {
-      plot(1, 1, type="n", main="KM plot not available", xlab="", ylab="")
-    }
+    surv_df <- rv$surv_results$survival_data
+    km_fit  <- rv$surv_results$km_fit
+
+    # Build colour vector from per-group colourInputs
+    groups  <- rv$surv_plot_groups
+    pal     <- build_color_vector(input, "surv_color", groups)
+    if (is.null(pal)) pal <- "hue"
+
+    tryCatch({
+      km_obj <- survminer::ggsurvplot(
+        km_fit,
+        data                  = surv_df,
+        palette               = pal,
+        risk.table            = TRUE,
+        risk.table.y.text.col = TRUE,
+        conf.int              = isTRUE(input$surv_opt_conf_int),
+        xlab                  = "Time (Days)",
+        ylab                  = "Survival Probability",
+        title                 = "Kaplan-Meier Survival Curves by Treatment"
+      )
+      print(km_obj)
+    }, error = function(e) {
+      # Fallback: print pre-generated stored KM plot
+      if (!is.null(rv$surv_results$km_plot)) {
+        print(rv$surv_results$km_plot)
+      } else {
+        plot(1, 1, type = "n", main = "KM plot not available", xlab = "", ylab = "")
+      }
+    })
   })
   
   # Cox model summary
@@ -537,8 +610,9 @@ survival_server <- function(input, output, session, rv) {
     ggplot2::ggplot(plot_df,
                    ggplot2::aes(x = HR, y = reorder(Group, HR),
                                 xmin = CI_Lower, xmax = CI_Upper)) +
-      ggplot2::geom_point(size = 5, color = "steelblue") +
-      ggplot2::geom_errorbarh(height = 0.25, linewidth = 0.8, color = "steelblue") +
+      ggplot2::geom_point(size = 5, color = input$surv_forest_pt_color %||% "steelblue") +
+      ggplot2::geom_errorbarh(height = 0.25, linewidth = 0.8,
+                              color = input$surv_forest_pt_color %||% "steelblue") +
       ggplot2::geom_vline(xintercept = 1, linetype = "dashed", color = "grey40") +
       ggplot2::geom_text(
         ggplot2::aes(label = paste0("HR: ", round(HR, 2), ", p = ", round(P_Value, 4))),
