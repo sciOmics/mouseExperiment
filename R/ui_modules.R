@@ -128,7 +128,6 @@ column_mapping_ui <- function(col_names, detected_cols) {
                    choices = c("Select..." = "", col_names),
                    selected = detected_cols$id),
         
-        h5("Time Points"),
         radioButtons("time_method", "How to specify time?",
                     choices = c(
                       "Direct Day column" = "direct_day",
