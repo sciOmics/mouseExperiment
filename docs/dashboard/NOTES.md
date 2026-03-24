@@ -5,10 +5,20 @@
 
 ## Tasks to be Done
 
+- Compare results against manual analysis
+- Fix "explanations" in the analysis pages
+- Add "Methods" section
+- Have each analysis section have it's own color scheme:
+    - Tumor Growth:
+    - Survival:
+    - Dose Response:
+    - Drug Synergy: 
+    - Power Analysis: 
+- Polynomial transformation is missing from Tumor Growth Analysis. 
 
-## Complete Tasks
-
-- - Make plots interactive/customizable. Instead of showing all plots at once, have it selectable what plot to show. 
+## Completed Tasks
+- Merge mouseExperiment and mouseExperimentDemo (vignette) 
+- Make plots interactive/customizable. Instead of showing all plots at once, have it selectable what plot to show. 
 - Add mouse outline png as background.
 - Generate demo data sets and code to use for automated testing of dashboard and statistics/analysis/plots. In particular, we need to ensure that the statistics being reported are correct. 
 - For reference group choosing, the default should look for a group that contains similar wording to "vehicle" "control" "IgG" or "DMSO". 

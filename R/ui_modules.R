@@ -187,7 +187,19 @@ column_mapping_ui <- function(col_names, detected_cols) {
                                 "Modified Ellipsoid" = "modified_ellipsoid",
                                 "Cylinder" = "cylinder",
                                 "Sphere" = "sphere"),
-                     selected = "ellipsoid")
+                     selected = "ellipsoid"),
+          conditionalPanel("input.volume_formula == 'ellipsoid'",
+            tags$p(tags$small(HTML("V = (&pi;/6) &times; L &times; W&sup2;")))
+          ),
+          conditionalPanel("input.volume_formula == 'modified_ellipsoid'",
+            tags$p(tags$small(HTML("V = (L &times; W&sup2;) / 2")))
+          ),
+          conditionalPanel("input.volume_formula == 'cylinder'",
+            tags$p(tags$small(HTML("V = &pi; &times; (W/2)&sup2; &times; L")))
+          ),
+          conditionalPanel("input.volume_formula == 'sphere'",
+            tags$p(tags$small(HTML("V = (&pi;/6) &times; ((L + W) / 2)&sup3;")))
+          )
         )
       ),
       
