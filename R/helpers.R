@@ -269,6 +269,45 @@ group_color_pickers_ui <- function(prefix, groups, header = "Group Colours") {
   )
 }
 
+#' Synthesize a survival/censor column from dropout patterns
+#'
+#' When no censor column is available, this function infers which mice died
+#' before the study end by checking whether each mouse's last observed timepoint
+#' is before the global maximum timepoint. For each such mouse, the row at its
+#' last observed timepoint is flagged with \code{1} (dead); all other rows
+#' receive \code{0} (alive/censored-at-study-end).
+#'
+#' @param data        A data frame of per-mouse longitudinal measurements.
+#' @param id_col      Name of the column containing mouse/subject IDs.
+#' @param time_col    Name of the column containing the timepoint (e.g. Day).
+#' @param new_col     Name to give the synthesized column. Default \code{"_auto_censor"}.
+#' @return A list with:
+#'   \describe{
+#'     \item{\code{data}}{The input data frame with the new column appended.}
+#'     \item{\code{col}}{The name of the new column.}
+#'     \item{\code{n_flagged}}{Number of mice flagged as early dropouts.}
+#'   }
+#' @keywords internal
+synthesize_censor_column <- function(data, id_col, time_col,
+                                     new_col = "_auto_censor") {
+  data[[new_col]] <- 0L
+  study_end <- max(data[[time_col]], na.rm = TRUE)
+
+  ids <- unique(data[[id_col]])
+  n_flagged <- 0L
+  for (id in ids) {
+    idx <- which(data[[id_col]] == id)
+    last_t <- max(data[[time_col]][idx], na.rm = TRUE)
+    if (last_t < study_end) {
+      # Mark only the very last row for this mouse
+      last_idx <- idx[which.max(data[[time_col]][idx])]
+      data[[new_col]][last_idx] <- 1L
+      n_flagged <- n_flagged + 1L
+    }
+  }
+  list(data = data, col = new_col, n_flagged = n_flagged)
+}
+
 #' Render a drag-and-drop rank list for reordering treatment groups
 #'
 #' Returns a \code{sortable::rank_list} widget.  The current order is
@@ -281,7 +320,7 @@ group_color_pickers_ui <- function(prefix, groups, header = "Group Colours") {
 group_order_ui <- function(prefix, groups) {
   if (is.null(groups) || length(groups) < 2L) return(NULL)
   sortable::rank_list(
-    text     = shiny::tags$span(shiny::icon("sort"), " Group order"),
+    text     = "Group order",
     labels   = as.list(groups),
     input_id = paste0(prefix, "_order"),
     class    = "default-sortable"

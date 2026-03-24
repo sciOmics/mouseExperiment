@@ -691,8 +691,10 @@ tumor_growth_server <- function(input, output, session, rv) {
     if (!isTRUE(result$error)) {
       tryCatch({
         # Plot 1: Tumor growth curves from original data.
-        # Enable extrapolation when a survival/censor column is mapped and
-        # extrapolation_points > 0, matching the demo notebook approach.
+        # Enable extrapolation when extrapolation_points > 0.
+        # If a survival/censor column is mapped, use it directly.
+        # Otherwise synthesize one by flagging mice that disappear before
+        # the study's final timepoint.
         if (!is.null(result$growth_rates)) {
           surv_col_mapped <- !is.null(input$col_survival_event) &&
                              input$col_survival_event != "" &&
@@ -701,17 +703,41 @@ tumor_growth_server <- function(input, output, session, rv) {
           extra_pts <- if (!is.null(input$tg_extrapolation_points) &&
                            !is.na(input$tg_extrapolation_points))
                          as.integer(input$tg_extrapolation_points) else 0L
-          do_extrapolate <- surv_col_mapped && extra_pts > 0L
+          do_extrapolate <- extra_pts > 0L
+
+          # Resolve which data frame + censor column to use
+          plot_data  <- data
+          surv_col   <- NULL
+          if (do_extrapolate) {
+            if (surv_col_mapped) {
+              surv_col <- input$col_survival_event
+            } else {
+              syn <- synthesize_censor_column(
+                data     = data,
+                id_col   = col_names$id_column,
+                time_col = col_names$time_column
+              )
+              if (syn$n_flagged > 0L) {
+                plot_data <- syn$data
+                surv_col  <- syn$col
+                cat(sprintf("INFO: Auto-detected %d early-dropout mice; synthesized censor column '%s'\n",
+                            syn$n_flagged, syn$col))
+              } else {
+                # All mice survived to study end — nothing to extrapolate
+                do_extrapolate <- FALSE
+              }
+            }
+          }
 
           result$tumor_growth_plot <- mouseExperiment::plot_tumor_growth(
-            df = data,
+            df = plot_data,
             volume_column = col_names$volume_column,
             day_column = col_names$time_column,
             treatment_column = if (!is.null(rv$dose_col)) input$col_treatment else col_names$treatment_column,
             dose_column = rv$dose_col,
             ID_column = col_names$id_column,
             cage_column = col_names$cage_column,
-            survival_column = if (surv_col_mapped) input$col_survival_event else NULL,
+            survival_column = surv_col,
             extrapolate_volumes = do_extrapolate,
             extrapolation_points = if (extra_pts > 0L) extra_pts else "all",
             group_summary_line = TRUE

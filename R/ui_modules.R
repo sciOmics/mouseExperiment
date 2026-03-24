@@ -299,10 +299,12 @@ tumorGrowthUI <- function() {
                 numericInput("tg_extrapolation_points",
                             "Extrapolation Points",
                             value = 3, min = 0, max = 10, step = 1),
-                helpText("Number of final time-points used to extrapolate tumor volumes ",
-                         "for mice that died before the last study day. ",
-                         "Set to 0 to disable extrapolation. Requires an Event/Censor column ",
-                         "to be mapped in Data Upload (for the growth curves plot).")
+                helpText("Number of recent timepoints used to estimate the growth ",
+                         "slope for extrapolating tumor volumes of mice that died before ",
+                         "the study end. Set to 0 to disable. ",
+                         "If an Event/Censor column is mapped in Data Upload it will be used; ",
+                         "otherwise mice that disappear before the final timepoint are ",
+                         "automatically detected.")
               )
             )
           ),
