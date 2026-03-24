@@ -26,7 +26,8 @@ Imports:
     emmeans (>= 1.8.0),
     survminer (>= 0.4.9),
     colourpicker (>= 1.1.1),
-    sortable (>= 0.4.4)
+    sortable (>= 0.4.4),
+    ggbeeswarm (>= 0.7.0)
 Suggests:
     mouseExperiment (>= 0.3.0),
     testthat (>= 3.0.0),

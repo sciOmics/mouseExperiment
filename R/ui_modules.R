@@ -285,6 +285,10 @@ tumorGrowthUI <- function() {
                                   "Never include" = "never_include"),
                        selected = "include_if_not_collinear"),
 
+            sliderInput("tg_poly_degree",
+                       "Polynomial Degree (time)",
+                       min = 1, max = 3, value = 1),
+
             tags$details(
               style = "margin-top: 10px;",
               tags$summary(
@@ -292,9 +296,6 @@ tumorGrowthUI <- function() {
                 "Advanced Options"
               ),
               div(style = "padding-top: 8px;",
-                sliderInput("tg_poly_degree",
-                           "Polynomial Degree",
-                           min = 1, max = 3, value = 1),
                 numericInput("tg_extrapolation_points",
                             "Extrapolation Points",
                             value = 3, min = 0, max = 10, step = 1),
@@ -403,17 +404,35 @@ tumorGrowthUI <- function() {
                   uiOutput("tg_color_pickers_ui"),
                   hr(),
                   h6(icon("sliders-h"), " Options"),
+                  sliderInput("tg_opt_text_size", "Text size (pt)",
+                              min = 8, max = 20, value = 12, step = 1),
+                  selectInput("tg_opt_legend_pos", "Legend position",
+                    choices = c("Auto" = "auto", "None" = "none",
+                                "Top" = "top", "Bottom" = "bottom",
+                                "Left" = "left", "Right" = "right"),
+                    selected = "auto"
+                  ),
                   conditionalPanel(
                     "input.tg_plot_selector == 'growth_curves'",
                     checkboxInput("tg_opt_group_line",
                                   "Show group average line", value = TRUE),
                     checkboxInput("tg_opt_show_extrap",
-                                  "Show extrapolated curves/points", value = FALSE)
+                                  "Show extrapolated curves/points", value = FALSE),
+                    selectInput("tg_opt_yscale", "Y-axis scale",
+                      choices = c("Linear" = "linear",
+                                  "Log2"   = "log2",
+                                  "Log10"  = "log10"),
+                      selected = "linear"
+                    )
                   ),
                   conditionalPanel(
                     "['growth_rate','auc'].indexOf(input.tg_plot_selector) >= 0",
-                    checkboxInput("tg_opt_show_mean",
-                                  "Show group mean line", value = TRUE),
+                    selectInput("tg_opt_center_bar", "Center line / bar",
+                      choices = c("Mean" = "mean", "Median" = "median",
+                                  "Geometric Mean" = "geometric_mean",
+                                  "None" = "none"),
+                      selected = "mean"
+                    ),
                     selectInput("tg_opt_error_bar", "Error bars",
                       choices  = c("None" = "none", "SEM" = "SEM",
                                    "SD" = "SD", "95% CI" = "CI"),

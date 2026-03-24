@@ -55,14 +55,6 @@ synergyUI <- function() {
             downloadButton("download_syn_metrics", "Download Results")
           ),
           
-          tabPanel("TGI Table",
-            tab_info(strong("Tumor Growth Inhibition (TGI): "), "percentage reduction in tumor volume relative to the control group at the evaluation timepoint. Higher TGI\u202f% indicates greater anti-tumor activity. The table also shows mean volumes and standard errors per group."),
-            shinycssloaders::withSpinner(
-              DTOutput("syn_tgi_table")
-            ),
-            downloadButton("download_syn_tgi", "Download TGI")
-          ),
-          
           tabPanel("Plots",
             fluidRow(
               column(3,
@@ -90,11 +82,11 @@ synergyUI <- function() {
                   downloadButton("download_syn_plot_main", "Download Plot")
                 ),
                 conditionalPanel("input.syn_plot_selector == 'trend'",
-                  h4("Trend Over Time"),
-                  tab_info(strong("Synergy trend: "),
-                    "synergy/antagonism scores plotted across all measured timepoints. ",
-                    "Shows whether the interaction between the two drugs strengthens, weakens, ",
-                    "or reverses over the course of the experiment."),
+                  h4("Synergy Plot"),
+                  tab_info(strong("Tumor Growth Inhibition over time: "),
+                    "percent tumor growth inhibition for each treatment group at every measured timepoint. ",
+                    "Synergy and antagonism annotations are shown where the combination significantly ",
+                    "exceeds or falls short of the expected Bliss-independent effect."),
                   shinycssloaders::withSpinner(
                     plotOutput("syn_plot_trend", height = "500px")
                   ),
@@ -367,11 +359,10 @@ synergy_server <- function(input, output, session, rv) {
   
   # Dynamic plot selector (Trend / CI only available for all-dates analysis)
   output$syn_plot_selector_ui <- renderUI({
-    choices <- c("Synergy Plot" = "main")
     if (isTRUE(rv$syn_over_time)) {
-      choices <- c(choices,
-                   "Trend Over Time"   = "trend",
-                   "Combination Index" = "ci")
+      choices <- c("Synergy Plot" = "trend", "Combination Index" = "ci")
+    } else {
+      choices <- c("Synergy Plot" = "main")
     }
     selectInput("syn_plot_selector", "Select Plot", choices = choices)
   })
@@ -435,22 +426,7 @@ synergy_server <- function(input, output, session, rv) {
     datatable(df, options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE)
   })
   
-  output$syn_tgi_table <- renderDT({
-    req(rv$syn_results)
-    if (isTRUE(rv$syn_results$error)) {
-      return(datatable(data.frame(Message = "TGI data not available")))
-    }
-    # Over-time analysis stores TGI in synergy_summary; single-timepoint in summary
-    df <- if (isTRUE(rv$syn_over_time) && !is.null(rv$syn_results$synergy_summary)) {
-      as.data.frame(rv$syn_results$synergy_summary)
-    } else if (!is.null(rv$syn_results$summary)) {
-      as.data.frame(rv$syn_results$summary)
-    } else {
-      return(datatable(data.frame(Message = "TGI data not available")))
-    }
-    df <- format_df_for_display(df)
-    datatable(df, options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
-  })
+  # TGI Table removed (duplicate of Synergy Metrics)
   
   output$syn_plot_main <- renderPlot({
     req(rv$syn_results)
@@ -501,19 +477,14 @@ synergy_server <- function(input, output, session, rv) {
     col_B     <- input$syn_color_B     %||% "#D6604D"
     col_combo <- input$syn_color_combo %||% "#762A83"
     col_ctrl  <- input$syn_color_ctrl  %||% "#999999"
-    # Use actual treatment group names stored in synergy results as color map keys
-    drug_a <- rv$syn_results$drug_a_name %||% "Drug A"
-    drug_b <- rv$syn_results$drug_b_name %||% "Drug B"
-    combo  <- rv$syn_results$combo_name  %||% "Combination"
-    custom_colors <- stats::setNames(
-      c(col_A, col_B, col_combo, col_ctrl),
-      c(drug_a, drug_b, combo, "Bliss Expected")
-    )
-    p <- tryCatch(
-      mouseExperiment::plot_synergy_trend(rv$syn_results, custom_colors = custom_colors),
-      error = function(e) NULL
-    )
+    # Use plot_main which is built with correct group labels and ylim(0,100)
+    p <- rv$syn_results$plot_main
     req(!is.null(p))
+    # Re-apply colors with the canonical label names used in plot_main
+    p <- p + ggplot2::scale_color_manual(
+      values = c("Drug A" = col_A, "Drug B" = col_B,
+                 "Combination" = col_combo, "Bliss Value" = col_ctrl)
+    )
     print(p)
   })
   
@@ -533,14 +504,6 @@ synergy_server <- function(input, output, session, rv) {
         as.data.frame(rv$syn_results$synergy_metrics)
       } else NULL
       if (!is.null(df)) write.csv(df, file, row.names = FALSE)
-    }
-  )
-  
-  output$download_syn_tgi <- downloadHandler(
-    filename = "synergy_tgi.csv",
-    content = function(file) {
-      if (!is.null(rv$syn_results$summary))
-        write.csv(as.data.frame(rv$syn_results$summary), file, row.names = FALSE)
     }
   )
   

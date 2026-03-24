@@ -1214,6 +1214,18 @@ tumor_growth_server <- function(input, output, session, rv) {
     if (!is.null(colors)) {
       p <- p + ggplot2::scale_color_manual(values = colors)
     }
+    # Apply text size and legend position
+    text_size  <- input$tg_opt_text_size %||% 12
+    legend_pos <- input$tg_opt_legend_pos %||% "auto"
+    p <- p + ggplot2::theme(text = ggplot2::element_text(size = text_size))
+    if (legend_pos != "auto") p <- p + ggplot2::theme(legend.position = legend_pos)
+    # Apply y-axis scale
+    yscale <- input$tg_opt_yscale %||% "linear"
+    if (yscale == "log2")  p <- p + ggplot2::scale_y_continuous(trans = "log2", expand = ggplot2::expansion(mult = c(0, 0.05)))
+    else if (yscale == "log10") p <- p + ggplot2::scale_y_log10(expand = ggplot2::expansion(mult = c(0, 0.05)))
+    # Annotate hollow circles = extrapolated when extrapolation is active
+    if (isTRUE(do_extrapolate))
+      p <- p + ggplot2::labs(caption = "Hollow circles / dashed lines = extrapolated data points after mouse death")
     p
     }, error = function(e) {
       msg <- conditionMessage(e)
@@ -1234,10 +1246,13 @@ tumor_growth_server <- function(input, output, session, rv) {
     req(rv$tg_results$growth_rates)
     ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
     colors     <- build_color_vector(input, "tg_color", ordered_grps)
-    show_mean  <- isTRUE(input$tg_opt_show_mean)
+    center_bar <- input$tg_opt_center_bar %||% "mean"
+    show_mean  <- center_bar == "mean"
     err_type   <- input$tg_opt_error_bar  %||% "SEM"
     pt_size    <- input$tg_opt_point_size %||% 2.5
     jit_width  <- input$tg_opt_jitter_width %||% 0.2
+    text_size  <- input$tg_opt_text_size %||% 12
+    legend_pos <- input$tg_opt_legend_pos %||% "auto"
     rates      <- rv$tg_results$growth_rates
     # Apply user group order as factor levels
     grp_col_r  <- intersect(c("Group", "Treatment"), colnames(rates))[1]
@@ -1254,14 +1269,27 @@ tumor_growth_server <- function(input, output, session, rv) {
       ) + ggplot2::theme_classic()
     }, error = function(e) rv$tg_results$growth_rate_plot)
     req(!is.null(p))
+    # Extra center bar overlays for median / geometric mean
+    if (center_bar %in% c("median", "geometric_mean") && !is.na(grp_col_r)) {
+      cfun <- if (center_bar == "median") median else
+                function(x) exp(mean(log(pmax(x, 1e-9, na.rm = TRUE))))
+      p <- p + ggplot2::stat_summary(
+        data = rates,
+        ggplot2::aes(x = .data[[grp_col_r]], y = growth_rate,
+                     color = .data[[grp_col_r]], group = .data[[grp_col_r]]),
+        fun = cfun, geom = "crossbar", width = 0.4, fatten = 2
+      )
+    }
+    p <- p + ggplot2::theme(text = ggplot2::element_text(size = text_size))
+    if (legend_pos != "auto") p <- p + ggplot2::theme(legend.position = legend_pos)
     p
   })
   
-  # AUC/Treatment effects plot — reactive
+  # AUC/Treatment effects plot — reactive (beeswarm)
   output$tg_plot_auc <- renderPlot({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
-    # If AUC analysis not available (e.g. lme4 model path), fall back to stored plot
+    # Fall back to stored plot if AUC individual data not available
     if (is.null(rv$tg_results$auc_analysis) ||
         is.null(rv$tg_results$auc_analysis$individual)) {
       p <- rv$tg_results$auc_plot
@@ -1270,32 +1298,56 @@ tumor_growth_server <- function(input, output, session, rv) {
     }
     ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
     colors     <- build_color_vector(input, "tg_color", ordered_grps)
-    show_mean  <- isTRUE(input$tg_opt_show_mean)
-    err_type   <- input$tg_opt_error_bar  %||% "CI"
+    center_bar <- input$tg_opt_center_bar %||% "mean"
+    err_type   <- input$tg_opt_error_bar  %||% "SEM"
     pt_size    <- input$tg_opt_point_size %||% 2.5
-    jit_width  <- input$tg_opt_jitter_width %||% 0.2
-    extra_pts  <- if (!is.null(input$tg_extrapolation_points) &&
-                      !is.na(input$tg_extrapolation_points))
-                    as.integer(input$tg_extrapolation_points) else 0L
+    text_size  <- input$tg_opt_text_size %||% 12
+    legend_pos <- input$tg_opt_legend_pos %||% "auto"
     auc_ind    <- rv$tg_results$auc_analysis$individual
-    # Apply user group order as factor levels
-    grp_col_a  <- intersect(c("Group", "Treatment"), colnames(auc_ind))[1]
+    grp_col_a  <- intersect(c("Treatment", "Group"), colnames(auc_ind))[1]
     if (isTRUE(!is.na(grp_col_a)) && isTRUE(length(ordered_grps) > 0))
       auc_ind[[grp_col_a]] <- factor(auc_ind[[grp_col_a]], levels = ordered_grps)
     p <- tryCatch({
-      mouseExperiment::plot_auc(
-        auc_ind,
-        colors               = colors,
-        show_mean            = show_mean,
-        error_bar_type       = err_type,
-        point_size           = pt_size,
-        jitter_width         = jit_width,
-        extrapolated_column  = if (extra_pts > 0L &&
-                                   "Extrapolated" %in% colnames(auc_ind))
-                                 "Extrapolated" else NULL
-      ) + ggplot2::theme_classic()
+      p_b <- ggplot2::ggplot(auc_ind,
+               ggplot2::aes(x = .data[[grp_col_a]], y = AUC,
+                            color = .data[[grp_col_a]])) +
+        ggbeeswarm::geom_beeswarm(size = pt_size, cex = 2.5, alpha = 0.85) +
+        ggplot2::theme_classic() +
+        ggplot2::labs(x = NULL, y = "AUC", title = "AUC Comparison") +
+        ggplot2::theme(legend.title = ggplot2::element_blank())
+      # Error bars
+      if (err_type != "none") {
+        sem_fn  <- function(x) mean(x, na.rm=TRUE) + c(-1,1) * sd(x, na.rm=TRUE)/sqrt(sum(!is.na(x)))
+        sd_fn   <- function(x) mean(x, na.rm=TRUE) + c(-1,1) * sd(x, na.rm=TRUE)
+        ci_fn   <- function(x) mean(x, na.rm=TRUE) + c(-1,1) * qt(0.975, df=max(sum(!is.na(x))-1,1)) * sd(x, na.rm=TRUE)/sqrt(sum(!is.na(x)))
+        eb_fn   <- switch(err_type, SEM=sem_fn, SD=sd_fn, CI=ci_fn, sem_fn)
+        p_b <- p_b + ggplot2::stat_summary(
+          ggplot2::aes(group = .data[[grp_col_a]]),
+          fun.min = function(x) eb_fn(x)[1],
+          fun     = function(x) mean(x, na.rm=TRUE),
+          fun.max = function(x) eb_fn(x)[2],
+          geom = "errorbar", width = 0.2, color = "black"
+        )
+      }
+      # Center bar / line
+      if (center_bar != "none") {
+        cfun <- switch(center_bar,
+          mean           = function(x) mean(x, na.rm=TRUE),
+          median         = function(x) median(x, na.rm=TRUE),
+          geometric_mean = function(x) exp(mean(log(pmax(x, 1e-9, na.rm=TRUE)))),
+          function(x) mean(x, na.rm=TRUE)
+        )
+        p_b <- p_b + ggplot2::stat_summary(
+          fun = cfun, geom = "crossbar", width = 0.5, fatten = 2,
+          ggplot2::aes(group = .data[[grp_col_a]], color = .data[[grp_col_a]])
+        )
+      }
+      if (!is.null(colors)) p_b <- p_b + ggplot2::scale_color_manual(values = colors)
+      p_b
     }, error = function(e) rv$tg_results$auc_plot)
     req(!is.null(p))
+    p <- p + ggplot2::theme(text = ggplot2::element_text(size = text_size))
+    if (legend_pos != "auto") p <- p + ggplot2::theme(legend.position = legend_pos)
     p
   })
   
@@ -1469,6 +1521,10 @@ tumor_growth_server <- function(input, output, session, rv) {
     if (time_col %in% colnames(tg_data)) {
       tg_data[[time_col]] <- suppressWarnings(as.numeric(tg_data[[time_col]]))
     }
+    
+    # Ensure tg_data has a column named sch_time_col so plot_treatments can align axes
+    if (!sch_time_col %in% colnames(tg_data) && time_col %in% colnames(tg_data))
+      tg_data[[sch_time_col]] <- tg_data[[time_col]]
     
     tryCatch(
       mouseExperiment::plot_treatments(
