@@ -437,10 +437,17 @@ synergy_server <- function(input, output, session, rv) {
   
   output$syn_tgi_table <- renderDT({
     req(rv$syn_results)
-    if (isTRUE(rv$syn_results$error) || is.null(rv$syn_results$summary)) {
+    if (isTRUE(rv$syn_results$error)) {
       return(datatable(data.frame(Message = "TGI data not available")))
     }
-    df <- as.data.frame(rv$syn_results$summary)
+    # Over-time analysis stores TGI in synergy_summary; single-timepoint in summary
+    df <- if (isTRUE(rv$syn_over_time) && !is.null(rv$syn_results$synergy_summary)) {
+      as.data.frame(rv$syn_results$synergy_summary)
+    } else if (!is.null(rv$syn_results$summary)) {
+      as.data.frame(rv$syn_results$summary)
+    } else {
+      return(datatable(data.frame(Message = "TGI data not available")))
+    }
     df <- format_df_for_display(df)
     datatable(df, options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
   })
