@@ -16,9 +16,19 @@
 - Add y-axis scaling options (linear, log2, log10) on Tumor Growth Curves. 
 - Extraploated points on the Tumor Growth Curves should be hollow circles. Include a legend with this info. 
 - In the Drug Synergy Analysis, the Synergy Metrics and TGI Table have the same information. Eliminate the TGI Table.
+- Add "in plot - top left" & "in plot - top right" options to legend locations.
+- Remove "log2" option for Y-axis scale. 
+- Add back the Antagonism/Synergy shading to the Synergy Plot; have as controllable (show/do not show) from the side menu
+- Add controls for the text size and legend location to the Synergy Plot. 
+- The Synergy Plot legend drug names should use the real drug names selected in the data menu (e.g. Drug A (single agent) is aPD1; use aPD1 as name)
+- Add the "X-axis start (Day)" feature from the KM plots to the Tuomr Growth Plots.
+- Add controls for what to show on the HR Forest Plot: HR, 95% CI, p-value. 
+- The x-axis labels on the HR Forest Plot are crowded. Try switching to a log10 scale. 
+- Make the left side menus on the Analyses pages collapsable to give more horizontal room for the results/plots. 
+- Add the control group to the forest plots to help orient users that the control group exists and the values are relative to it. 
 
 ## Tasks to be Done
-
+- Add Bayesian stats
 - Compare results against manual analysis
 - Fix "explanations" in the analysis pages
 - Add "Methods" section
@@ -28,11 +38,8 @@
     - Dose Response:
     - Drug Synergy: 
     - Power Analysis: 
-- Make the left side menus on the Analyses pages collapsable to give more horizontal room for the results/plots. 
 - Smart detect/recommend Statistical Model and Transformation? 
-- Add "in plot - top left" & "in plot - top right" options to legend locations.
-- Remove "log2" option for Y-axis scale. 
-- Add back the Antagonism/Synergy shading to the Synergy Plot
+- Add statement of no liability
 
 
 ## Completed Tasks
