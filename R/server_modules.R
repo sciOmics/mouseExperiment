@@ -1332,14 +1332,20 @@ tumor_growth_server <- function(input, output, session, rv) {
     text_size  <- input$tg_opt_text_size %||% 12
     legend_pos <- input$tg_opt_legend_pos %||% "auto"
     rates      <- rv$tg_results$growth_rates
-    # Apply user group order as factor levels
     grp_col_r  <- intersect(c("Group", "Treatment"), colnames(rates))[1]
-    if (isTRUE(!is.na(grp_col_r)) && isTRUE(length(ordered_grps) > 0))
-      rates[[grp_col_r]] <- factor(rates[[grp_col_r]], levels = ordered_grps)
+    # Derive treatment-level order for plot_growth_rate (strip dose suffix if present)
+    gr_order <- if (length(ordered_grps) > 0) {
+      raw <- unique(sub(" - Dose: .*$", "", ordered_grps))
+      raw[raw %in% as.character(unique(rates[["Treatment"]]))]
+    } else NULL
+    # Also factor the rates data for any stat_summary overlays added after the main plot
+    if (!is.null(gr_order) && length(gr_order) > 0 && "Treatment" %in% colnames(rates))
+      rates$Treatment <- factor(rates$Treatment, levels = gr_order)
     p <- tryCatch({
       mouseExperiment::plot_growth_rate(
         growth_data    = rates,
         colors         = colors,
+        group_order    = if (length(gr_order) > 0) gr_order else NULL,
         show_mean      = show_mean,
         error_bar_type = err_type,
         point_size     = pt_size,
