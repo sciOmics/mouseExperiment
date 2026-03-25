@@ -318,6 +318,12 @@ footer {
   width: 100% !important;
 }
 
+/* Smaller description text in analysis sidebar panels */
+.sidebar-panel-col .help-block {
+  font-size: 0.78em;
+  line-height: 1.35;
+}
+
 .sidebar-toggle-btn {
   display: inline-block;
   margin-bottom: 8px;
