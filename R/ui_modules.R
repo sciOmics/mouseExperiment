@@ -498,6 +498,16 @@ tumorGrowthUI <- function() {
                                 0.5, 8, 2.5, step = 0.5),
                     sliderInput("tg_opt_jitter_width", "Jitter width",
                                 0, 1, 0.2, step = 0.05)
+                  ),
+                  hr(),
+                  h6(icon("download"), " Export"),
+                  fluidRow(
+                    column(6, numericInput("tg_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
+                    column(6, numericInput("tg_plot_height", "Height (px)", 550, min = 200, max = 5000, step = 50))
+                  ),
+                  fluidRow(
+                    column(6, numericInput("tg_plot_dpi", "DPI", 100, min = 72, max = 300, step = 1)),
+                    column(6, tags$div(style = "margin-top: 25px;", uiOutput("tg_download_plot_btn")))
                   )
                 )
               ),
@@ -507,27 +517,24 @@ tumorGrowthUI <- function() {
                   tab_info(strong("Tumor Growth Curves: "),
                     "individual mouse trajectories with optional group mean overlay."),
                   shinycssloaders::withSpinner(
-                    plotOutput("tg_plot_growth", height = "550px")
-                  ),
-                  downloadButton("download_tg_plot_growth", "Download Plot")
+                    plotOutput("tg_plot_growth", height = "auto")
+                  )
                 ),
                 conditionalPanel("input.tg_plot_selector == 'growth_rate'",
                   h4("Growth Rate Distribution"),
                   tab_info(strong("Growth Rate Distribution: "),
                     "spread of per-animal growth rates within each group."),
                   shinycssloaders::withSpinner(
-                    plotOutput("tg_plot_rates", height = "550px")
-                  ),
-                  downloadButton("download_tg_plot_rates", "Download Plot")
+                    plotOutput("tg_plot_rates", height = "auto")
+                  )
                 ),
                 conditionalPanel("input.tg_plot_selector == 'auc'",
                   h4("AUC Comparison"),
                   tab_info(strong("AUC / Treatment Effects: "),
                     "model-estimated area under the curve, one point per subject."),
                   shinycssloaders::withSpinner(
-                    plotOutput("tg_plot_auc", height = "550px")
-                  ),
-                  downloadButton("download_tg_plot_auc", "Download Plot")
+                    plotOutput("tg_plot_auc", height = "auto")
+                  )
                 ),
                 conditionalPanel("input.tg_plot_selector == 'effect_forest'",
                   h4("Effect Size Forest Plot"),
@@ -536,9 +543,8 @@ tumorGrowthUI <- function() {
                     "Points left of zero indicate lower volume vs. reference; ",
                     "points to the right indicate higher volume."),
                   shinycssloaders::withSpinner(
-                    plotOutput("tg_plot_effect_forest", height = "550px")
-                  ),
-                  downloadButton("download_tg_plot_effect_forest", "Download Plot")
+                    plotOutput("tg_plot_effect_forest", height = "auto")
+                  )
                 ),
 
               )

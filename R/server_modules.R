@@ -1053,6 +1053,17 @@ tumor_growth_server <- function(input, output, session, rv) {
   })
   
   # ANOVA table
+  output$tg_download_plot_btn <- renderUI({
+    btn_id <- switch(input$tg_plot_selector %||% "growth_curves",
+      growth_curves  = "download_tg_plot_growth",
+      growth_rate    = "download_tg_plot_rates",
+      auc            = "download_tg_plot_auc",
+      effect_forest  = "download_tg_plot_effect_forest",
+      "download_tg_plot_growth"
+    )
+    downloadButton(btn_id, "Download")
+  })
+
   output$tg_anova_tab_info <- renderUI({
     model_type <- input$tg_model_type %||% "lme4"
     if (model_type == "auc") {
@@ -1338,7 +1349,7 @@ tumor_growth_server <- function(input, output, session, rv) {
           hjust = 0.5, vjust = 0.5, size = 4, color = "red") +
         ggplot2::theme_void()
     })
-  })
+  }, height = function() input$tg_plot_height %||% 550)
   
   # Growth rate distribution plot — reactive
   output$tg_plot_rates <- renderPlot({
@@ -1385,7 +1396,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     p <- p + ggplot2::theme(text = ggplot2::element_text(size = text_size))
     p <- apply_legend_pos(p, legend_pos)
     p
-  })
+  }, height = function() input$tg_plot_height %||% 550)
   
   # AUC/Treatment effects plot — reactive (beeswarm)
   output$tg_plot_auc <- renderPlot({
@@ -1467,7 +1478,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     p <- p + ggplot2::theme(text = ggplot2::element_text(size = text_size))
     p <- apply_legend_pos(p, legend_pos)
     p
-  })
+  }, height = function() input$tg_plot_height %||% 550)
   
   # Diagnostics/QQ plot
   output$tg_plot_caterpillar <- renderPlot({
@@ -1491,7 +1502,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     } else {
       plot(1, 1, type="n", main="Effect size forest plot not available\n(requires pairwise comparison data)", xlab="", ylab="")
     }
-  })
+  }, height = function() input$tg_plot_height %||% 550)
   
   # Diagnostics
   # Diagnostics tab: Q-Q plot
