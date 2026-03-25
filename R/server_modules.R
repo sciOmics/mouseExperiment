@@ -1055,10 +1055,15 @@ tumor_growth_server <- function(input, output, session, rv) {
           pairs(emm, adjust = "tukey")
         )
         
-        # Type 2: Simple (non-adjusted) pairwise comparisons
-        result$simple_pairwise_comparisons <- as.data.frame(
-          pairs(emm, adjust = "none")
-        )
+        # Type 2: vs Reference Group with Dunnett correction
+        ref_group <- if (!is.null(input$tg_reference) && nzchar(input$tg_reference))
+          input$tg_reference else levels(emm)[[1]]
+        ref_idx <- which(levels(emm) == ref_group)
+        if (length(ref_idx) == 1) {
+          result$reference_comparisons_dunnett <- as.data.frame(
+            emmeans::contrast(emm, method = "trt.vs.ctrl", ref = ref_idx, adjust = "dunnett")
+          )
+        }
         
       }, error = function(e) {
         cat("WARNING: Error generating comparison types:", e$message, "\n")
@@ -1179,16 +1184,13 @@ tumor_growth_server <- function(input, output, session, rv) {
     table_title <- NULL
     
     if (comp_type == "reference") {
-      # Reference group comparisons (default from mouseExperiment)
-      if (!is.null(rv$tg_results$pairwise_comparisons)) {
+      # vs Reference with Dunnett correction (preferred), fallback to unadjusted
+      if (!is.null(rv$tg_results$reference_comparisons_dunnett)) {
+        comp_df <- as.data.frame(rv$tg_results$reference_comparisons_dunnett)
+        table_title <- "Comparisons: vs Reference Group (Dunnett-Adjusted)"
+      } else if (!is.null(rv$tg_results$pairwise_comparisons)) {
         comp_df <- as.data.frame(rv$tg_results$pairwise_comparisons)
         table_title <- "Comparisons: vs Reference Group"
-      }
-    } else if (comp_type == "pairwise") {
-      # All pairwise comparisons (unadjusted)
-      if (!is.null(rv$tg_results$simple_pairwise_comparisons)) {
-        comp_df <- as.data.frame(rv$tg_results$simple_pairwise_comparisons)
-        table_title <- "Comparisons: All Pairwise (Unadjusted)"
       }
     } else if (comp_type == "tukey") {
       # All pairwise with Tukey HSD adjustment

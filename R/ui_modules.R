@@ -282,7 +282,9 @@ tumorGrowthUI <- function() {
                                 "All Comparisons" = "tukey"),
                      selected = "reference"),
           helpText("Determines which group comparisons are performed after the primary ",
-                   "model. 'vs Reference' tests each treatment against the reference. ",
+                   "model. 'vs Reference' tests each treatment against the reference ",
+                   "group using Dunnett's correction, which is designed for this ",
+                   "comparison structure and is less conservative than Bonferroni. ",
                    "'All Comparisons' tests every pair with Tukey HSD familywise error ",
                    "correction."),
 
