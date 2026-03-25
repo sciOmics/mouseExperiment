@@ -362,8 +362,15 @@ tumorGrowthUI <- function() {
           ),
           
           tabPanel("ANOVA",
-            tab_info(strong("Type III ANOVA "), "from the linear mixed-effects model. Tests whether treatment, time, and/or their interaction significantly explain variation in tumor volume. ",
-              strong("p\u202f<\u202f0.05"), " indicates a statistically significant effect. The ", em("Treatment:Time"), " interaction term is the most biologically informative."),
+            tab_info(
+              strong("Type III ANOVA "), "from the linear mixed-effects model. Tests whether each fixed effect (treatment group, time, and their interaction) significantly explains variance in tumor volume after accounting for all other terms.",
+              tags$ul(
+                tags$li(strong("Chisq"), " — likelihood-ratio chi-square statistic for the effect. Larger values indicate stronger evidence against the null hypothesis."),
+                tags$li(strong("Df"), " — degrees of freedom for the test (number of parameters being tested)."),
+                tags$li(strong("Pr(>Chisq)"), " — p-value. Values below 0.05 indicate a statistically significant effect at the 5% level.")
+              ),
+              "The ", em("Treatment:Time"), " interaction row is the most biologically informative: a significant interaction means treatment groups diverge in their growth trajectories over time, not just in overall volume."
+            ),
             shinycssloaders::withSpinner(
               DTOutput("tg_anova_table")
             ),
@@ -371,14 +378,19 @@ tumorGrowthUI <- function() {
           ),
           
           tabPanel("Comparisons",
-            tab_info(strong("Post-hoc pairwise contrasts "), "between treatment groups based on estimated marginal means. ",
-              br(),
-              strong("vs Reference: "), "each group vs the baseline. ",
-              strong("All Pairwise: "), "unadjusted contrasts between every pair. ",
-              strong("Tukey HSD: "), "all pairs with familywise error correction. ",
-              br(),
-              "\u2018estimate\u2019 is the mean difference on the transformed scale; ",
-              "\u2018p.value\u2019\u202f<\u202f0.05 indicates a significant difference between groups."),
+            tab_info(
+              strong("Post-hoc pairwise contrasts "), "between treatment groups, computed from estimated marginal means (emmeans). Use the Analysis Parameters dropdown to switch between comparison types.",
+              tags$ul(
+                tags$li(strong("contrast"), " — the two groups being compared (\u2018Treatment \u2212 Reference\u2019 for Dunnett, \u2018A \u2212 B\u2019 for Tukey)."),
+                tags$li(strong("estimate"), " — mean difference between the two groups on the analysis scale (log or sqrt if a transformation was applied). Negative values mean the first group has lower volume."),
+                tags$li(strong("SE"), " — standard error of the estimated difference."),
+                tags$li(strong("df"), " — Satterthwaite or Kenward\u2013Roger approximate degrees of freedom used for the t-test."),
+                tags$li(strong("t.ratio"), " — t-statistic (estimate \u00f7 SE). Large absolute values indicate a larger difference relative to its uncertainty."),
+                tags$li(strong("p.value"), " — adjusted p-value (Dunnett correction for \u2018vs Reference\u2019; Tukey HSD for \u2018All Comparisons\u2019). Values below 0.05 indicate a significant difference."),
+                tags$li(strong("lower.CL / upper.CL"), " — 95% confidence interval for the mean difference on the analysis scale."),
+                tags$li(strong("Fold_Change"), " (log-transform models only) — exp(estimate): the multiplicative ratio of group means on the original scale. Values below 1.0 indicate the treatment group has lower volume than reference.")
+              )
+            ),
             uiOutput("tg_comparisons_title"),
             shinycssloaders::withSpinner(
               DTOutput("tg_comparisons_table")
@@ -387,7 +399,19 @@ tumorGrowthUI <- function() {
           ),
           
           tabPanel("Treatment Effects",
-            tab_info(strong("Estimated marginal means "), "(adjusted group means) from the model. Reflects the model-estimated volume at each timepoint for each treatment group, controlling for cage effects and individual variability. Provides the key effect sizes for biological interpretation."),
+            tab_info(
+              strong("Estimated marginal means "), "(EMMs, also called least-squares means) from the mixed-effects model, averaged over the time course. These are the model-adjusted group means that control for random animal effects and cage structure.",
+              tags$ul(
+                tags$li(strong("Group"), " — treatment group name."),
+                tags$li(strong("Adj_Mean"), " — model-estimated mean tumor volume for the group (on the transformed scale if a transformation was applied; matching \u2018original units\u2019 column gives the back-transformed value)."),
+                tags$li(strong("SE"), " — standard error of the estimated marginal mean."),
+                tags$li(strong("DF"), " — Kenward\u2013Roger approximate degrees of freedom for the confidence interval."),
+                tags$li(strong("Lower_CL / Upper_CL"), " — lower and upper bounds of the 95% confidence interval."),
+                tags$li(strong("Adj_Mean (original units)"), " (shown when log/sqrt transform used) — back-transformed mean on the original mm\u00b3 scale."),
+                tags$li(strong("Note"), " — flags the reference group row.")
+              ),
+              "For AUC models the columns are ", strong("Mean_AUC"), ", ", strong("SD"), ", and ", strong("N"), ": the raw mean area under the curve per subject, its standard deviation, and sample size."
+            ),
             shinycssloaders::withSpinner(
               DTOutput("tg_effects_table")
             ),
@@ -395,10 +419,19 @@ tumorGrowthUI <- function() {
           ),
           
           tabPanel("Growth Rates",
-            tab_info(strong("Per-animal growth rates "), "calculated from individual tumor volume trajectories. ",
-              strong("growth_rate"), ": slope of log\u2081\u209a(volume) over time (log-scale units/day). ",
-              strong("daily_fold_change"), ": exp(growth_rate) — the multiplicative volume change per day (e.g. 1.10 = 10% growth/day). ",
-              "Used to assess within-group variability and for power analysis effect size estimation. Not the primary model output \u2014 use Treatment Effects for group-level inference."),
+            tab_info(
+              strong("Per-animal exponential growth rates "), "estimated from each subject\u2019s individual tumor volume trajectory using linear regression on log\u2081\u209a(volume) vs time. Requires \u22653 time points per animal.",
+              tags$ul(
+                tags$li(strong("Treatment"), " — treatment group."),
+                tags$li(strong("ID"), " — individual animal identifier."),
+                tags$li(strong("Cage"), " — cage identifier."),
+                tags$li(strong("growth_rate (log-scale/day)"), " — slope of the log\u2081\u209a(volume)\u2013time regression. Represents the instantaneous exponential growth constant: a value of 0.10 means ~10% volume increase per day on a continuous compounding basis."),
+                tags$li(strong("daily_fold_change (\u00d7/day)"), " — exp(growth_rate): the multiplicative volume change per day. Values above 1.0 indicate growth (e.g. 1.10 = 10% larger each day); values below 1.0 indicate regression."),
+                tags$li(strong("% change/day"), " — (daily_fold_change \u2212 1) \u00d7 100: the same quantity expressed as a percentage change per day (e.g. +10.5% or \u22123.2%)."),
+                tags$li(strong("R\u00b2"), " (if present) — goodness-of-fit of the log-linear regression for that animal.")
+              ),
+              em("These are descriptive per-animal values used to visualise within-group spread and for sample size estimation. For group-level inference, use the Treatment Effects tab.")
+            ),
             shinycssloaders::withSpinner(
               DTOutput("tg_growth_rates_table")
             ),
