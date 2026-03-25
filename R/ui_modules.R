@@ -77,19 +77,11 @@ dataUploadUI <- function() {
                 column(6, uiOutput("demo_load_msg"))
               )
             ),
-            column(4,
-              h5(strong("Upload Tumor Growth Data")),
+            column(8,
               fileInput("data_file",
                        "Choose File (CSV or RDA)",
                        accept = c(".csv", ".rda", ".RData")),
               uiOutput("file_validation_msg")
-            ),
-            column(4,
-              h5(strong("Upload Treatment Schedule (Optional)")),
-              fileInput("schedule_file",
-                       "Treatment Schedule File (CSV or RDA)",
-                       accept = c(".csv", ".rda", ".RData")),
-              uiOutput("schedule_validation_msg")
             )
           )
         )
@@ -104,9 +96,6 @@ dataUploadUI <- function() {
     
     # Data preview (shown after successful upload)
     uiOutput("data_preview_ui"),
-    
-    # Treatment schedule preview (shown after schedule upload)
-    uiOutput("schedule_preview_ui"),
     
   )
 }
@@ -425,8 +414,7 @@ tumorGrowthUI <- function() {
                       "Tumor Growth Curves"      = "growth_curves",
                       "Growth Rate Distribution" = "growth_rate",
                       "AUC Comparison"           = "auc",
-                      "Effect Size Forest Plot"  = "effect_forest",
-                      "Treatment Schedule"       = "treatment_schedule"
+                      "Effect Size Forest Plot"  = "effect_forest"
                     )
                   ),
                   hr(),
@@ -522,16 +510,7 @@ tumorGrowthUI <- function() {
                   ),
                   downloadButton("download_tg_plot_effect_forest", "Download Plot")
                 ),
-                conditionalPanel("input.tg_plot_selector == 'treatment_schedule'",
-                  h4("Treatment Schedule"),
-                  tab_info(p(tags$small(
-                    "Requires a treatment schedule file uploaded under ",
-                    "'Upload Treatment Schedule' in the Data tab."))),
-                  shinycssloaders::withSpinner(
-                    plotOutput("tg_plot_treatment_schedule", height = "500px")
-                  ),
-                  downloadButton("download_tg_plot_schedule", "Download Plot")
-                )
+
               )
             )
           ),

@@ -16,13 +16,11 @@ data_upload_server <- function(input, output, session, rv) {
     demo_files <- list(
       combo = list(
         data     = "combo_treatment_synthetic_data.csv",
-        schedule = "combo_treatment_schedule.csv",
         ref_date = "2025-03-24",
         label    = "Combo Treatment demo"
       ),
       dose_levels = list(
         data     = "dose_levels_synthetic_data.csv",
-        schedule = "dose_levels_treatment_schedule.csv",
         ref_date = "2025-03-24",
         label    = "Dose Levels demo"
       )
@@ -79,21 +77,6 @@ data_upload_server <- function(input, output, session, rv) {
           icon("check"), " Loaded!")
     })
 
-    # Also load the matching treatment schedule
-    sch_path <- find_demo(chosen$schedule)
-    if (!is.null(sch_path)) {
-      sch_result <- validate_uploaded_file(sch_path, "csv")
-      if (sch_result$valid) {
-        rv$schedule_data <- sch_result$data
-        output$schedule_validation_msg <- renderUI({
-          div(class="alert alert-success",
-              icon("check"),
-              paste("Schedule loaded:",
-                    nrow(sch_result$data), "rows,",
-                    ncol(sch_result$data), "cols."))
-        })
-      }
-    }
   })
 
   # File upload handler
@@ -420,100 +403,9 @@ data_upload_server <- function(input, output, session, rv) {
     
     # Reset the file input widget
     shinyjs::reset("data_file")
-    rv$schedule_data <- NULL
-    output$schedule_validation_msg <- renderUI(NULL)
-    output$schedule_preview_ui <- renderUI(NULL)
   })
   
-  # Treatment schedule file upload handler (optional)
-  observeEvent(input$schedule_file, {
-    req(input$schedule_file)
-    sch_info <- input$schedule_file
-    sch_path <- sch_info$datapath
-    sch_parts <- strsplit(sch_info$name, "\\.")[[1]]
-    sch_ext   <- tolower(sch_parts[length(sch_parts)])
-    
-    sch_result <- validate_uploaded_file(sch_path, sch_ext)
-    
-    if (sch_result$valid) {
-      rv$schedule_data <- sch_result$data
-      output$schedule_validation_msg <- renderUI({
-        div(class = "alert alert-success",
-            icon("check"),
-            paste("Schedule loaded:", nrow(sch_result$data), "rows,",
-                  ncol(sch_result$data), "cols."))
-      })
-    } else {
-      rv$schedule_data <- NULL
-      output$schedule_validation_msg <- renderUI(NULL)
-      output$schedule_preview_ui <- renderUI(NULL)
-      output$schedule_validation_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"), sch_result$message)
-      })
-    }
-  })
-  
-  # Schedule data preview — with Day column calculated if applicable
-  preview_schedule <- reactive({
-    req(rv$schedule_data)
-    sch <- rv$schedule_data
 
-    # Apply date -> Day only when:
-    #  1. main data is using "from_date" mode
-    #  2. the schedule doesn't already have a "Day" column
-    #  3. the schedule has a column matching the date column chosen for the main data
-    if (!is.null(input$time_method) && input$time_method == "from_date" &&
-        !"Day" %in% colnames(sch) &&
-        !is.null(input$col_date_for_day) && input$col_date_for_day != "" &&
-        input$col_date_for_day %in% colnames(sch)) {
-      tryCatch({
-        first_val <- as.character(sch[1, input$col_date_for_day])
-        fmt <- if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_val))  "%m/%d/%Y"
-               else if (grepl("^\\d{4}-\\d{1,2}-\\d{1,2}$", first_val)) "%Y-%m-%d"
-               else if (grepl("^\\d{1,2}-[A-Za-z]{3}$", first_val))  "%d-%b"
-               else NULL
-        sch <- mouseExperiment::calculate_dates(
-          sch,
-          start_date  = input$reference_date,
-          date_column = input$col_date_for_day,
-          date_format = fmt
-        )
-      }, error = function(e) NULL)
-    }
-    sch
-  })
-
-  # Schedule data preview
-  output$schedule_preview_ui <- renderUI({
-    if (is.null(rv$schedule_data)) return(NULL)
-    tagList(
-      wellPanel(
-        h4("Treatment Schedule Preview"),
-        fluidRow(
-          column(12,
-            p(strong(textOutput("schedule_preview_summary"))),
-            DTOutput("schedule_table")
-          )
-        )
-      )
-    )
-  })
-
-  output$schedule_preview_summary <- renderText({
-    if (is.null(rv$schedule_data)) return("")
-    sch <- preview_schedule()
-    paste("Schedule:", nrow(sch), "rows \u00d7",
-          ncol(sch), "columns \u2014",
-          paste(colnames(sch), collapse = ", "))
-  })
-
-  output$schedule_table <- renderDT({
-    req(rv$schedule_data)
-    datatable(preview_schedule(),
-             options = list(scrollX = TRUE, scrollY = "400px",
-                           paging = FALSE, dom = "ti"))
-  })
   
   # Proceed button is always clickable - validation enforced at analysis time
   # No need to disable/enable the button
@@ -1703,86 +1595,4 @@ tumor_growth_server <- function(input, output, session, rv) {
     }
   )
   
-  # Treatment schedule plot
-  output$tg_plot_treatment_schedule <- renderPlot({
-    if (is.null(rv$schedule_data)) {
-      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
-           main = "No treatment schedule uploaded (see Step 1b in Data Upload)")
-      return(invisible(NULL))
-    }
-    req(rv$data_valid)
-    
-    # Use the preprocessed data (with Day + Volume cols) if available;
-    # otherwise fall back to raw uploaded data
-    tg_data  <- if (!is.null(rv$processed_data)) rv$processed_data else rv$uploaded_data
-    time_col <- if (!is.null(rv$time_col)) rv$time_col else
-                  if (!is.null(input$col_day) && input$col_day != "") input$col_day else "Day"
-    tx_col   <- if (!is.null(rv$tx_col)) rv$tx_col else
-                  if (!is.null(input$col_treatment) && input$col_treatment != "") input$col_treatment else "Treatment"
-    
-    # Determine which Day/Treatment columns exist in the schedule file
-    sch <- rv$schedule_data
-    sch_time_col <- if (time_col %in% colnames(sch)) time_col else
-                     if ("Day" %in% colnames(sch)) "Day" else colnames(sch)[1]
-    sch_tx_col   <- if (tx_col %in% colnames(sch)) tx_col else
-                     if ("Treatment" %in% colnames(sch)) "Treatment" else colnames(sch)[2]
-    
-    # Coerce Day column to numeric (CSV uploads read all columns as character)
-    sch[[sch_time_col]] <- suppressWarnings(as.numeric(sch[[sch_time_col]]))
-    if (time_col %in% colnames(tg_data)) {
-      tg_data[[time_col]] <- suppressWarnings(as.numeric(tg_data[[time_col]]))
-    }
-    
-    # Ensure tg_data has a column named sch_time_col so plot_treatments can align axes
-    if (!sch_time_col %in% colnames(tg_data) && time_col %in% colnames(tg_data))
-      tg_data[[sch_time_col]] <- tg_data[[time_col]]
-    
-    tryCatch(
-      mouseExperiment::plot_treatments(
-        treatment_data    = sch,
-        tumor_growth_data = tg_data,
-        day_column        = sch_time_col,
-        treatment_column  = sch_tx_col
-      ),
-      error = function(e) {
-        plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
-             main = paste("Treatment schedule plot error:", e$message))
-      }
-    )
-  })
-  
-  output$download_tg_plot_schedule <- downloadHandler(
-    filename = "treatment_schedule.png",
-    content = function(file) {
-      req(rv$schedule_data, rv$data_valid)
-      tg_data  <- if (!is.null(rv$processed_data)) rv$processed_data else rv$uploaded_data
-      time_col <- if (!is.null(rv$time_col)) rv$time_col else "Day"
-      tx_col   <- if (!is.null(rv$tx_col)) rv$tx_col else "Treatment"
-      sch <- rv$schedule_data
-      sch_time_col <- if (time_col %in% colnames(sch)) time_col else
-                       if ("Day" %in% colnames(sch)) "Day" else colnames(sch)[1]
-      sch_tx_col   <- if (tx_col %in% colnames(sch)) tx_col else
-                       if ("Treatment" %in% colnames(sch)) "Treatment" else colnames(sch)[2]
-      sch[[sch_time_col]] <- suppressWarnings(as.numeric(sch[[sch_time_col]]))
-      if (time_col %in% colnames(tg_data)) {
-        tg_data[[time_col]] <- suppressWarnings(as.numeric(tg_data[[time_col]]))
-      }
-      png(file, width = input$tg_plot_width %||% 1000,
-                height = input$tg_plot_height %||% 400,
-                units = "px", res = input$tg_plot_dpi %||% 100)
-      tryCatch(
-        print(mouseExperiment::plot_treatments(
-          treatment_data    = sch,
-          tumor_growth_data = tg_data,
-          day_column        = sch_time_col,
-          treatment_column  = sch_tx_col
-        )),
-        error = function(e) cat("Error generating schedule plot:", e$message, "\n")
-      )
-      dev.off()
-    }
-  )
-
-  # Keep treatment schedule plot alive even when its conditionalPanel is hidden
-  outputOptions(output, "tg_plot_treatment_schedule", suspendWhenHidden = FALSE)
 }
