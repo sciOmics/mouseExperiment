@@ -380,9 +380,15 @@ tumorGrowthUI <- function() {
           tabPanel("Comparisons",
             tab_info(
               strong("Post-hoc pairwise contrasts "), "between treatment groups, computed from estimated marginal means (emmeans). Use the Analysis Parameters dropdown to switch between comparison types.",
+              tags$p(
+                strong("What is being compared:"), " these contrasts compare model-predicted ",
+                strong("tumor volume"), " between groups — not growth rate. Each group\u2019s marginal mean is evaluated at the ",
+                em("average study day"), ", so ", strong("estimate"), " answers: \u201cAt the typical timepoint, how much larger or smaller is one group\u2019s predicted volume relative to another?\u201d",
+                " To test whether ", em("growth trajectories diverge"), " across groups, see the ", strong("Treatment:Time"), " interaction row in the ANOVA tab. Per-animal growth rates are in the Growth Rates tab."
+              ),
               tags$ul(
                 tags$li(strong("contrast"), " — the two groups being compared (\u2018Treatment \u2212 Reference\u2019 for Dunnett, \u2018A \u2212 B\u2019 for Tukey)."),
-                tags$li(strong("estimate"), " — mean difference between the two groups on the analysis scale (log or sqrt if a transformation was applied). Negative values mean the first group has lower volume."),
+                tags$li(strong("estimate"), " — mean difference in tumor volume between the two groups on the analysis scale (log or sqrt if a transformation was applied). Negative values mean the first group has lower volume."),
                 tags$li(strong("SE"), " — standard error of the estimated difference."),
                 tags$li(strong("df"), " — Satterthwaite or Kenward\u2013Roger approximate degrees of freedom used for the t-test."),
                 tags$li(strong("t.ratio"), " — t-statistic (estimate \u00f7 SE). Large absolute values indicate a larger difference relative to its uncertainty."),
