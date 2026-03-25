@@ -313,7 +313,8 @@ tumor_growth_statistics <- function(df,
           Treatment = unique(subject_data[[treatment_column]]),
           ID = unique(subject_data[[id_column]]),
           Cage = unique(subject_data[[cage_column]]),
-          growth_rate = growth_rate
+          growth_rate = growth_rate,
+          R_squared   = round(summary(model)$r.squared, 4)
         )
       } else {
         NULL
