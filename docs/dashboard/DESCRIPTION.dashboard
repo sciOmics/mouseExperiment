@@ -1,6 +1,7 @@
 Package: mouseExperimentDashboard
 Title: Interactive Dashboard for mouseExperiment Analysis
 Version: 0.1.0
+Date: 2026-03-25
 Authors@R: 
     person("Insight", "BioAnalytics", , "david@sciomics.bio", role = c("aut", "cre"))
 Author: Insight BioAnalytics [aut, cre]

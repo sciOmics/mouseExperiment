@@ -654,11 +654,75 @@ helpUI <- function() {
   )
 }
 
-#' Citation UI
+#' About UI
 #' @keywords internal
 citationUI <- function() {
+  pkg_version   <- tryCatch(as.character(utils::packageVersion("mouseExperiment")),      error = function(e) "(not installed)")
+  dash_version  <- tryCatch(as.character(utils::packageVersion("mouseExperimentDashboard")), error = function(e) "(not installed)")
+  pkg_date      <- tryCatch({
+    d <- utils::packageDescription("mouseExperiment")$Date
+    if (is.null(d) || is.na(d)) "2026-03-25" else d
+  }, error = function(e) "2026-03-25")
+  dash_date     <- tryCatch({
+    d <- utils::packageDescription("mouseExperimentDashboard")$Date
+    if (is.null(d) || is.na(d)) "2026-03-25" else d
+  }, error = function(e) "2026-03-25")
+
   fluidPage(
-    h2("Citation"),
+    h2("About"),
+
+    fluidRow(
+      column(6,
+        wellPanel(
+          h4(icon("box-open"), " mouseExperiment"),
+          tags$table(
+            class = "table table-condensed",
+            style = "margin-bottom:0;",
+            tags$tbody(
+              tags$tr(
+                tags$td(strong("Version")),
+                tags$td(pkg_version)
+              ),
+              tags$tr(
+                tags$td(strong("Last Updated")),
+                tags$td(pkg_date)
+              ),
+              tags$tr(
+                tags$td(strong("Repository")),
+                tags$td(tags$a("github.com/sciOmics/mouseExperiment",
+                               href = "https://github.com/sciOmics/mouseExperiment",
+                               target = "_blank"))
+              )
+            )
+          )
+        )
+      ),
+      column(6,
+        wellPanel(
+          h4(icon("gauge"), " mouseExperimentDashboard"),
+          tags$table(
+            class = "table table-condensed",
+            style = "margin-bottom:0;",
+            tags$tbody(
+              tags$tr(
+                tags$td(strong("Version")),
+                tags$td(dash_version)
+              ),
+              tags$tr(
+                tags$td(strong("Last Updated")),
+                tags$td(dash_date)
+              ),
+              tags$tr(
+                tags$td(strong("Repository")),
+                tags$td(tags$a("github.com/sciOmics/mouseExperimentDashboard",
+                               href = "https://github.com/sciOmics/mouseExperimentDashboard",
+                               target = "_blank"))
+              )
+            )
+          )
+        )
+      )
+    ),
 
     wellPanel(
       h3("How to Cite"),

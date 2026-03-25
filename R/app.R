@@ -42,7 +42,7 @@ $(document).ready(function() {
   // Move Help and Citation to a right-aligned nav list
   var $mainNav = $('.navbar-nav:first');
   var helpLi     = $mainNav.find('a[data-value=\"Help\"]').closest('li').detach();
-  var citationLi = $mainNav.find('a[data-value=\"Citation\"]').closest('li').detach();
+  var citationLi = $mainNav.find('a[data-value=\"About\"]').closest('li').detach();
   var $rightNav  = $('<ul class=\"nav navbar-nav navbar-right\" id=\"nav-right\"></ul>');
   $rightNav.append(helpLi).append(citationLi);
   // Bootstrap 5: no .navbar-collapse wrapper — append directly to .container-fluid
@@ -120,7 +120,7 @@ $(document).ready(function() {
     tabPanel("Drug Synergy",  synergyUI()),
     tabPanel("Power Analysis",powerAnalysisUI()),
     tabPanel("Help",          helpUI()),
-    tabPanel("Citation",      citationUI())
+    tabPanel("About",          citationUI())
   )
 
   server <- function(input, output, session) {
