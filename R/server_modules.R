@@ -847,9 +847,9 @@ tumor_growth_server <- function(input, output, session, rv) {
         # Get emmeans object for treatment
         emm <- emmeans::emmeans(result$model, as.formula(paste("~", treatment_col_name)))
         
-        # Type 1: All pairwise comparisons with Tukey adjustment
+        # Type 1: All pairwise comparisons with Tukey adjustment (confint adds lower.CL/upper.CL)
         result$all_pairwise_comparisons <- as.data.frame(
-          pairs(emm, adjust = "tukey")
+          confint(pairs(emm, adjust = "tukey"))
         )
         
         # Type 2: vs Reference Group with Dunnett correction
@@ -858,7 +858,7 @@ tumor_growth_server <- function(input, output, session, rv) {
         ref_idx <- which(levels(emm) == ref_group)
         if (length(ref_idx) == 1) {
           result$reference_comparisons_dunnett <- as.data.frame(
-            emmeans::contrast(emm, method = "trt.vs.ctrl", ref = ref_idx, adjust = "dunnett")
+            confint(emmeans::contrast(emm, method = "trt.vs.ctrl", ref = ref_idx, adjust = "dunnett"))
           )
         }
 
@@ -1196,20 +1196,23 @@ tumor_growth_server <- function(input, output, session, rv) {
     if ("growth_rate" %in% colnames(rates_df)) {
       rates_df$daily_fold_change  <- exp(rates_df$growth_rate)
       rates_df$pct_change_per_day <- (exp(rates_df$growth_rate) - 1) * 100
-      # Reorder: put both new columns right after growth_rate
+      # Reorder: growth_rate, R_squared (if present), then derived columns, then rest
       gr_idx    <- which(colnames(rates_df) == "growth_rate")
+      r2_idx    <- match("R_squared", colnames(rates_df))
       new_idxs  <- match(c("daily_fold_change", "pct_change_per_day"), colnames(rates_df))
-      other     <- setdiff(seq_len(ncol(rates_df)), c(gr_idx, new_idxs))
-      rates_df  <- rates_df[, c(other[other < gr_idx], gr_idx, new_idxs, other[other > gr_idx])]
+      fixed     <- c(gr_idx, r2_idx[!is.na(r2_idx)], new_idxs)
+      other     <- setdiff(seq_len(ncol(rates_df)), fixed)
+      rates_df  <- rates_df[, c(other[other < gr_idx], fixed, other[other > max(fixed)])]
     }
     rates_df <- format_df_for_display(rates_df)
     datatable(rates_df,
       options  = list(scrollX = TRUE, paging = FALSE, scrollY = "500px", scrollCollapse = TRUE),
       colnames = setNames(colnames(rates_df),
         ifelse(colnames(rates_df) == "growth_rate",          "growth_rate (log-scale/day)",
-        ifelse(colnames(rates_df) == "daily_fold_change",    "daily_fold_change (×/day)",
+        ifelse(colnames(rates_df) == "R_squared",            "R\u00b2 (fit quality)",
+        ifelse(colnames(rates_df) == "daily_fold_change",    "daily_fold_change (\u00d7/day)",
         ifelse(colnames(rates_df) == "pct_change_per_day",   "% change/day",
-        colnames(rates_df))))))
+        colnames(rates_df)))))))
   })
   
   # ---- Group order drag-and-drop for Plots tab ----
