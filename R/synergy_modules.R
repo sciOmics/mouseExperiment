@@ -53,10 +53,27 @@ synergyUI <- function() {
           ),
           
           tabPanel("Synergy Metrics",
-            tab_info(strong("Quantitative synergy scores. "),
-              strong("Bliss excess: "), "observed\u202f\u2212\u202fexpected effect (positive\u202f=\u202fsynergy, negative\u202f=\u202fantagonism). ",
-              strong("Combination Index (CI): "), "CI\u202f<\u202f1 synergistic, CI\u202f=\u202f1 additive, CI\u202f>\u202f1 antagonistic. ",
-              "When \u2018Analyze over time\u2019 is enabled, this table shows metrics at every measured timepoint."),
+            tab_info(
+              strong("Quantitative synergy scores. "),
+              "When \\u2018Analyze over time\\u2019 is disabled, the table has two columns (",
+              strong("Metric"), " / ", strong("Value"), ") summarising scores at the selected timepoint: ",
+              tags$ul(
+                tags$li(strong("Bliss Difference"), " \\u2014 observed combination effect minus the Bliss-independent expected effect (TGI\\u2009combo \\u2212 TGI\\u2009Bliss). Positive = synergy; negative = antagonism."),
+                tags$li(strong("Loewe Difference"), " \\u2014 same concept using the Loewe additivity model."),
+                tags$li(strong("Combination Index (CI)"), " \\u2014 CI\\u202f<\\u202f0.85 synergistic; 0.85\\u202f\\u2264\\u202fCI\\u202f\\u2264\\u202f1.15 additive; CI\\u202f>\\u202f1.15 antagonistic."),
+                tags$li(strong("Interpretation"), " \\u2014 plain-language summary based on the CI threshold.")
+              ),
+              "When \\u2018Analyze over time\\u2019 is enabled, each row is a measured timepoint with columns:",
+              tags$ul(
+                tags$li(strong("Time_Point"), " \\u2014 study day."),
+                tags$li(strong("TGI_Drug_A / TGI_Drug_B / TGI_Combo"), " \\u2014 % tumor growth inhibition for Drug A, Drug B, and the combination relative to control."),
+                tags$li(strong("Bliss_Expected_TGI / Loewe_Expected_TGI"), " \\u2014 predicted TGI if the drugs were purely independent under each model."),
+                tags$li(strong("Bliss_Difference / Loewe_Difference"), " \\u2014 TGI_Combo minus the expected TGI; positive values indicate synergy."),
+                tags$li(strong("Combination_Index"), " \\u2014 CI at this timepoint (see thresholds above)."),
+                tags$li(strong("P_Value_vs_Drug_A / P_Value_vs_Drug_B"), " \\u2014 two-sample t-test p-value comparing the combination group to each mono-therapy; values below 0.05 indicate a statistically significant difference."),
+                tags$li(strong("Synergy_Assessment"), " \\u2014 plain-language classification at each timepoint.")
+              )
+            ),
             shinycssloaders::withSpinner(
               DTOutput("syn_metrics_table")
             ),

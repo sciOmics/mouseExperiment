@@ -80,10 +80,19 @@ powerAnalysisUI <- function() {
           ),
           
           tabPanel("Effect Sizes",
-            tab_info(strong("Cohen\u2019s\u202fd effect sizes "), "between each treatment group pair, estimated from the observed data. Conventional benchmarks: ",
+            tab_info(
+              strong("Cohen\u2019s\u202fd effect sizes "), "between each treatment group pair estimated from the observed data. Conventional benchmarks: ",
               strong("small\u202f\u2248\u202f0.2"), ", ",
               strong("medium\u202f\u2248\u202f0.5"), ", ",
-              strong("large\u202f\u2248\u202f0.8"), ". Larger effect sizes require smaller samples to detect reliably."),
+              strong("large\u202f\u2248\u202f0.8"), ". Larger effect sizes require smaller samples to detect reliably.",
+              tags$ul(
+                tags$li(strong("Treatment"), " \u2014 the treatment group being compared."),
+                tags$li(strong("Reference"), " \u2014 the group it is compared against."),
+                tags$li(strong("Raw_Difference"), " \u2014 unadjusted mean difference in the outcome measure between Treatment and Reference."),
+                tags$li(strong("Pooled_SD"), " \u2014 pooled within-group standard deviation used as the denominator for Cohen\u2019s d."),
+                tags$li(strong("Standardized_Effect"), " \u2014 Cohen\u2019s d = Raw_Difference \u00f7 Pooled_SD. Positive values mean Treatment > Reference.")
+              )
+            ),
             shinycssloaders::withSpinner(
               DTOutput("pw_effect_sizes_table")
             ),
@@ -91,7 +100,16 @@ powerAnalysisUI <- function() {
           ),
           
           tabPanel("Power Analysis",
-            tab_info(strong("Achieved power (1\u202f\u2212\u202f\u03b2) "), "for the current N per group at each combination of alpha level and effect size. Power\u202f\u2265\u202f0.80 is the conventional minimum threshold. Values below this suggest the study may be underpowered for that comparison."),
+            tab_info(
+              strong("Achieved power (1\u202f\u2212\u202f\u03b2) "), "at the current observed N per group, for each combination of comparison, alpha level, and effect size scenario.",
+              tags$ul(
+                tags$li(strong("Treatment / Reference"), " \u2014 the pair of groups being evaluated."),
+                tags$li(strong("Effect_Size"), " \u2014 Cohen\u2019s d used for this row (drawn from the observed effect sizes above or from a standard scenario grid)."),
+                tags$li(strong("Alpha"), " \u2014 significance threshold (typically 0.05)."),
+                tags$li(strong("Power"), " \u2014 probability of correctly detecting an effect of this size at this alpha with the current N. Values below 0.80 suggest the study may be underpowered.")
+              ),
+              em("Post-hoc power should be interpreted cautiously: the same data used to fit the model is used to estimate the effect size, which inflates apparent power.")
+            ),
             shinycssloaders::withSpinner(
               DTOutput("pw_power_table")
             ),
@@ -99,7 +117,16 @@ powerAnalysisUI <- function() {
           ),
           
           tabPanel("Sample Size Recommendations",
-            tab_info(strong("N per group needed "), "to achieve each target power level at each alpha and effect size. Use these to plan future experiments. Note that estimates for small effect sizes or stringent alpha/power targets may be impractically large."),
+            tab_info(
+              strong("N per group needed "), "to achieve each target power level, for each combination of comparison, alpha, and effect size. Use these to plan future experiments.",
+              tags$ul(
+                tags$li(strong("Treatment / Reference"), " \u2014 the pair being evaluated."),
+                tags$li(strong("Effect_Size"), " \u2014 Cohen\u2019s d for this scenario."),
+                tags$li(strong("Alpha"), " \u2014 significance threshold."),
+                tags$li(strong("Target_Power"), " \u2014 the desired power level (e.g. 0.80 or 0.90)."),
+                tags$li(strong("Sample_Size"), " \u2014 N per group required to achieve the target power. Estimates for small effects or stringent targets may be impractically large.")
+              )
+            ),
             shinycssloaders::withSpinner(
               DTOutput("pw_sample_sizes_table")
             ),

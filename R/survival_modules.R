@@ -44,12 +44,21 @@ survivalUI <- function() {
           ),
           
           tabPanel("Cox Model",
-            tab_info(strong("Cox proportional hazards model. "),
-              "\u2018Hazard Ratio (HR)\u2019 is relative to the reference group. ",
-              strong("HR\u202f<\u202f1"), " = lower hazard (better survival); ",
-              strong("HR\u202f>\u202f1"), " = higher hazard. ",
-              "95\u202f% CI not crossing 1.0 indicates statistical significance. ",
-              "Firth\u2019s bias-reduced method is applied automatically when perfect separation is detected (e.g. a group with zero events)."),
+            tab_info(
+              strong("Cox proportional hazards model. "),
+              "Hazard Ratios (HR) are computed relative to the reference group. Firth\u2019s bias-reduced method is applied automatically when a group has zero events.",
+              tags$ul(
+                tags$li(strong("Group"), " \u2014 treatment group name."),
+                tags$li(strong("HR"), " \u2014 Hazard Ratio: the instantaneous risk of the event in this group relative to the reference. HR\u202f<\u202f1 means lower hazard (better survival); HR\u202f>\u202f1 means higher hazard."),
+                tags$li(strong("CI_Lower / CI_Upper"), " \u2014 95\u202f% confidence interval for the HR. If this interval does not include 1.0, the difference is statistically significant at the 5\u202f% level."),
+                tags$li(strong("P_Value"), " \u2014 p-value for the individual group coefficient from the Cox model."),
+                tags$li(strong("Events"), " \u2014 number of animals that experienced the endpoint (e.g. reached the tumour size threshold or were euthanised)."),
+                tags$li(strong("Total"), " \u2014 total number of animals in the group."),
+                tags$li(strong("Event_Rate"), " \u2014 Events \u00f7 Total. Values close to 1.0 mean most animals reached the endpoint."),
+                tags$li(strong("Median_Survival"), " \u2014 day by which 50\u202f% of the group experienced the event. \u2018Not reached\u2019 if fewer than half had events by study end."),
+                tags$li(strong("Note"), " \u2014 flags the reference group row.")
+              )
+            ),
             shinycssloaders::withSpinner(
               verbatimTextOutput("surv_cox_summary")
             ),
@@ -125,7 +134,18 @@ survivalUI <- function() {
           ),
 
           tabPanel("Risk Table",
-            tab_info(strong("Numbers at risk table: "), "at each event time, shows how many animals per group are still at risk (N Risk), how many experienced the event (N Events), and how many were censored (N Censored). Declining N Risk over time reflects events and censoring."),
+            tab_info(
+              strong("Numbers at risk table: "), "one row per group per event time point, summarising what happened to the cohort at that moment.",
+              tags$ul(
+                tags$li(strong("Group"), " \u2014 treatment group name."),
+                tags$li(strong("Time"), " \u2014 the day on which one or more events occurred."),
+                tags$li(strong("N_Risk"), " \u2014 number of animals still alive and uncensored at the start of this time interval."),
+                tags$li(strong("N_Events"), " \u2014 number of animals that experienced the endpoint at exactly this time."),
+                tags$li(strong("N_Censored"), " \u2014 number of animals whose last observation was at this time without experiencing the endpoint (e.g. removed from study)."),
+                tags$li(strong("Survival"), " \u2014 Kaplan\u2013Meier estimated survival probability at this time point (1.0\u202f=\u202f100\u202f% surviving).")
+              ),
+              "N_Risk decreases over time as events and censoring accumulate; a rapid drop indicates many events in a short window."
+            ),
             shinycssloaders::withSpinner(
               DTOutput("surv_risk_table")
             ),

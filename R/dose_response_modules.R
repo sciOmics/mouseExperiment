@@ -63,9 +63,15 @@ doseResponseUI <- function() {
 
           tabPanel("Dose-Response Table",
             tab_info(
-              strong("Per-dose summary statistics: "),
-              "Mean, SD, and 95\u00a0% CI of tumor volume at each dose level at the selected time point. ",
-              "Use this to quickly compare mean responses across doses."
+              strong("Per-dose summary statistics "), "of tumor volume at the selected time point, one row per dose level.",
+              tags$ul(
+                tags$li(strong("Dose"), " \u2014 dose level (concentration or quantity as provided in your data)."),
+                tags$li(strong("n"), " \u2014 number of animals at this dose."),
+                tags$li(strong("mean_volume"), " \u2014 arithmetic mean tumor volume across all animals at this dose."),
+                tags$li(strong("sd_volume"), " \u2014 standard deviation of tumor volume; reflects within-dose variability."),
+                tags$li(strong("sem_volume"), " \u2014 standard error of the mean (SD \u00f7 \u221an); indicates precision of the mean estimate."),
+                tags$li(strong("ci95_lower / ci95_upper"), " \u2014 lower and upper bounds of the 95\u202f% confidence interval for the mean (using the t-distribution). Non-overlapping intervals between adjacent doses suggest a significant dose step.")
+              )
             ),
             shinycssloaders::withSpinner(
               DTOutput("dr_summary_table")
@@ -151,11 +157,15 @@ doseResponseUI <- function() {
 
           tabPanel("Statistical Tests",
             tab_info(
-              strong("Full statistical test results: "),
-              "Includes linear regression coefficients (slope, intercept, p-value, R\u00b2), ",
-              "one-way ANOVA table, and Tukey HSD post-hoc comparisons between dose groups (shown when ANOVA p\u00a0<\u00a00.05). ",
-              "Polynomial trend p-values indicate whether a quadratic or higher-order relationship fits better than a line. ",
-              "Non-linear model AIC/BIC are shown when the drc package fit converges."
+              strong("Full statistical test results. "),
+              "The text output includes linear regression (slope, intercept, p-value, R\u00b2), one-way ANOVA table, and polynomial trend p-values. Non-linear model AIC/BIC are shown when the drc package fit converges. ",
+              "When ANOVA p\u202f<\u202f0.05 the Tukey HSD post-hoc table is shown below:",
+              tags$ul(
+                tags$li(strong("Comparison"), " \u2014 the two dose levels being compared (\u2018DoseA\u202f-\u202fDoseB\u2019)."),
+                tags$li(strong("diff"), " \u2014 estimated mean difference in tumor volume (Dose A minus Dose B)."),
+                tags$li(strong("lwr / upr"), " \u2014 lower and upper bounds of the Tukey-adjusted 95\u202f% confidence interval for the difference."),
+                tags$li(strong("p adj"), " \u2014 Tukey family-wise error rate adjusted p-value. Values below 0.05 indicate a significant difference between that dose pair.")
+              )
             ),
             shinycssloaders::withSpinner(
               verbatimTextOutput("dr_stat_tests")
