@@ -70,6 +70,14 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
   # Create a copy of the dataframe for plotting
   plot_df <- df
   
+  # Capture any user-specified factor ordering on the treatment column before
+  # constructing the composite Group column so it can be preserved below.
+  tx_levels <- if (is.factor(plot_df[[treatment_column]])) {
+    levels(plot_df[[treatment_column]])
+  } else {
+    NULL
+  }
+
   # Create a composite group identifier based on Treatment (and Dose if available)
   if (!is.null(dose_column)) {
     # Create a group identifier combining Treatment and Dose
@@ -88,8 +96,26 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
                              plot_df[[ID_column]], sep = "_")
   }
   
-  # Ensure the group column is treated as a factor
-  plot_df$Group <- factor(plot_df$Group)
+  # Convert Group to a factor, preserving the user-specified treatment ordering.
+  if (!is.null(dose_column)) {
+    # For dose data the Group is a composite string:
+    # Build ordered levels by iterating over treatment levels in order.
+    if (!is.null(tx_levels)) {
+      ordered_grp_levels <- unique(unlist(lapply(tx_levels, function(tx) {
+        sort(unique(plot_df$Group[as.character(plot_df[[treatment_column]]) == tx]))
+      })))
+      plot_df$Group <- factor(plot_df$Group, levels = ordered_grp_levels)
+    } else {
+      plot_df$Group <- factor(plot_df$Group)
+    }
+  } else {
+    # Non-dose path: apply treatment levels directly (Group == treatment column values).
+    if (!is.null(tx_levels)) {
+      plot_df$Group <- factor(plot_df$Group, levels = tx_levels)
+    } else {
+      plot_df$Group <- factor(plot_df$Group)
+    }
+  }
   
   # Add an Extrapolated flag column that will be used later
   plot_df$Extrapolated <- FALSE
