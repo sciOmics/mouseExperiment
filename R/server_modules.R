@@ -566,7 +566,7 @@ tumor_growth_server <- function(input, output, session, rv) {
         cage_column = col_names$cage_column,
         model_type = input$tg_model_type,
         transform = input$tg_transform,
-        polynomial_degree = input$tg_poly_degree,
+        polynomial_degree = 1L,
         random_effects_specification = input$tg_random_effects,
         handle_cage_effects = input$tg_cage_effect,
         reference_group = input$tg_reference,  # Already validated to not be empty
@@ -1043,7 +1043,7 @@ tumor_growth_server <- function(input, output, session, rv) {
       "MODEL DETAILS:",
       paste("  Fixed Effects:", summary_list$model_specification$fixed_effects),
       paste("  Random Effects:", summary_list$model_specification$random_effects),
-      paste("  Polynomial Degree:", summary_list$model_specification$polynomial_degree),
+      paste("  Polynomial Degree:", summary_list$model_specification$polynomial_degree %||% 1L),
       "",
       "NOTES:",
       paste("  ", paste(summary_list$notes, collapse="\n  "))
