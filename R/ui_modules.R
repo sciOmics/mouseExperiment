@@ -589,12 +589,9 @@ helpUI <- function() {
         " without warranty of any kind, express or implied. The authors and contributors",
         " accept no liability for errors, inaccuracies, or any consequences — including",
         " but not limited to incorrect results, data loss, or decisions made on the basis",
-        " of outputs from this software."
-      ),
-      p(
-        strong("All results must be independently validated"),
-        " before use in publications, reports, regulatory submissions, clinical decisions,",
-        " or any other application. Use of this tool is entirely at your own risk."
+        " of outputs from this software.",
+        " All results must be independently validated before use in publications, reports,",
+        " regulatory submissions, clinical decisions, or any other application."
       )
     ),
 
