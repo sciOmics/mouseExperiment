@@ -140,6 +140,22 @@ safe_analysis <- function(expr) {
   )
 }
 
+#' Back-transform values from analysis scale to original scale
+#'
+#' @param x Numeric vector on the transformed scale
+#' @param transform One of "log" (log1p), "sqrt", or "none"
+#' @return Numeric vector on the original scale
+#' @keywords internal
+back_transform <- function(x, transform) {
+  x <- suppressWarnings(as.numeric(x))
+  switch(transform,
+    "log"  = expm1(x),   # inverse of log(x + 1)
+    "sqrt" = x ^ 2,      # inverse of sqrt
+    "none" = x,
+    x
+  )
+}
+
 #' Format a p-value for display
 #'
 #' Very small p-values are shown in scientific notation rather than being

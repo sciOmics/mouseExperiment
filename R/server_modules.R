@@ -1203,10 +1203,29 @@ tumor_growth_server <- function(input, output, session, rv) {
     if (is.null(comp_df)) {
       return(datatable(data.frame(Message = paste("Comparisons not available for", comp_type))))
     }
-    
+
+    # Add fold-change back-transform for LME4 log-scale models
+    transform_used   <- rv$tg_results$methods$volume_transformation %||% "none"
+    model_type_used  <- input$tg_model_type %||% "lme4"
+    if (model_type_used == "lme4" && transform_used == "log") {
+      est_col <- intersect(c("estimate", "Estimate"), colnames(comp_df))[1]
+      lo_col  <- intersect(c("lower.CL", "lower_CL", "Lower"), colnames(comp_df))[1]
+      hi_col  <- intersect(c("upper.CL", "upper_CL", "Upper"), colnames(comp_df))[1]
+      if (!is.na(est_col)) {
+        comp_df$Fold_Change <- round(exp(as.numeric(comp_df[[est_col]])), 3)
+        if (!is.na(lo_col)) comp_df$Fold_Change_Lower <- round(exp(as.numeric(comp_df[[lo_col]])), 3)
+        if (!is.na(hi_col)) comp_df$Fold_Change_Upper <- round(exp(as.numeric(comp_df[[hi_col]])), 3)
+        # Insert fold-change columns right after the estimate column
+        est_idx  <- which(colnames(comp_df) == est_col)
+        fc_idxs  <- match(c("Fold_Change", "Fold_Change_Lower", "Fold_Change_Upper"),
+                          colnames(comp_df))
+        fc_idxs  <- fc_idxs[!is.na(fc_idxs)]
+        rest     <- setdiff(seq_len(ncol(comp_df)), c(est_idx, fc_idxs))
+        comp_df  <- comp_df[, c(rest[rest <= est_idx], est_idx, fc_idxs, rest[rest > est_idx])]
+      }
+    }
+
     comp_df <- format_df_for_display(comp_df)
-    
-    # Create and return datatable
     datatable(comp_df, options = list(scrollX = TRUE, pageLength = 10))
   })
   
@@ -1218,8 +1237,34 @@ tumor_growth_server <- function(input, output, session, rv) {
     }
     
     effects_df <- as.data.frame(rv$tg_results$treatment_effects)
+
+    # Add back-transformed columns when LME4 model used a transformation
+    transform_used <- rv$tg_results$methods$volume_transformation %||% "none"
+    bt_cols <- intersect(c("Adjusted_Mean", "Lower_CL", "Upper_CL"), colnames(effects_df))
+    if (transform_used %in% c("log", "sqrt") && length(bt_cols) > 0) {
+      for (col in bt_cols) {
+        effects_df[[paste0(col, "_orig")]] <- round(back_transform(effects_df[[col]], transform_used), 3)
+      }
+      # Interleave _orig columns immediately after their source
+      col_order <- character(0)
+      for (col in colnames(effects_df)) {
+        col_order <- c(col_order, col)
+        orig <- paste0(col, "_orig")
+        if (orig %in% colnames(effects_df)) col_order <- c(col_order, orig)
+      }
+      effects_df <- effects_df[, col_order]
+    }
+
     effects_df <- format_df_for_display(effects_df)
-    
+    # Improve column headers
+    scale_note <- switch(transform_used, "log" = " (log scale)", "sqrt" = " (sqrt scale)", "")
+    orig_note  <- " (original units)"
+    colnames(effects_df) <- gsub("Adjusted_Mean$",       paste0("Adj_Mean", scale_note), colnames(effects_df))
+    colnames(effects_df) <- gsub("Adjusted_Mean_orig$",  paste0("Adj_Mean", orig_note),  colnames(effects_df))
+    colnames(effects_df) <- gsub("Lower_CL$",            paste0("Lower_CL", scale_note), colnames(effects_df))
+    colnames(effects_df) <- gsub("Lower_CL_orig$",       paste0("Lower_CL", orig_note),  colnames(effects_df))
+    colnames(effects_df) <- gsub("Upper_CL$",            paste0("Upper_CL", scale_note), colnames(effects_df))
+    colnames(effects_df) <- gsub("Upper_CL_orig$",       paste0("Upper_CL", orig_note),  colnames(effects_df))
     datatable(effects_df, options = list(scrollX = TRUE, pageLength = 10))
   })
   
@@ -1232,17 +1277,22 @@ tumor_growth_server <- function(input, output, session, rv) {
     
     rates_df <- as.data.frame(rv$tg_results$growth_rates)
     if ("growth_rate" %in% colnames(rates_df)) {
-      rates_df$daily_fold_change <- exp(rates_df$growth_rate)
-      # Reorder: put daily_fold_change right after growth_rate
-      gr_idx  <- which(colnames(rates_df) == "growth_rate")
-      other   <- setdiff(seq_len(ncol(rates_df)), c(gr_idx, ncol(rates_df)))
-      rates_df <- rates_df[, c(other[other < gr_idx],
-                                gr_idx,
-                                ncol(rates_df),
-                                other[other > gr_idx])]
+      rates_df$daily_fold_change  <- exp(rates_df$growth_rate)
+      rates_df$pct_change_per_day <- (exp(rates_df$growth_rate) - 1) * 100
+      # Reorder: put both new columns right after growth_rate
+      gr_idx    <- which(colnames(rates_df) == "growth_rate")
+      new_idxs  <- match(c("daily_fold_change", "pct_change_per_day"), colnames(rates_df))
+      other     <- setdiff(seq_len(ncol(rates_df)), c(gr_idx, new_idxs))
+      rates_df  <- rates_df[, c(other[other < gr_idx], gr_idx, new_idxs, other[other > gr_idx])]
     }
     rates_df <- format_df_for_display(rates_df)
-    datatable(rates_df, options = list(scrollX = TRUE, pageLength = 15))
+    datatable(rates_df,
+      options  = list(scrollX = TRUE, pageLength = 15),
+      colnames = setNames(colnames(rates_df),
+        ifelse(colnames(rates_df) == "growth_rate",          "growth_rate (log-scale/day)",
+        ifelse(colnames(rates_df) == "daily_fold_change",    "daily_fold_change (×/day)",
+        ifelse(colnames(rates_df) == "pct_change_per_day",   "% change/day",
+        colnames(rates_df))))))
   })
   
   # ---- Group order drag-and-drop for Plots tab ----
@@ -1539,8 +1589,10 @@ tumor_growth_server <- function(input, output, session, rv) {
     content = function(file) {
       if (!is.null(rv$tg_results$growth_rates)) {
         df <- as.data.frame(rv$tg_results$growth_rates)
-        if ("growth_rate" %in% colnames(df))
-          df$daily_fold_change <- exp(df$growth_rate)
+        if ("growth_rate" %in% colnames(df)) {
+          df$daily_fold_change  <- exp(df$growth_rate)
+          df$pct_change_per_day <- (exp(df$growth_rate) - 1) * 100
+        }
         write.csv(df, file, row.names = FALSE)
       }
     }
