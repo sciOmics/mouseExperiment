@@ -846,6 +846,7 @@ tumor_growth_server <- function(input, output, session, rv) {
         
         # Get emmeans object for treatment
         emm <- emmeans::emmeans(result$model, as.formula(paste("~", treatment_col_name)))
+        emm_levels <- levels(emm)[[1]]   # character vector of factor levels
         
         # Type 1: All pairwise comparisons with Tukey adjustment (confint adds lower.CL/upper.CL)
         result$all_pairwise_comparisons <- as.data.frame(
@@ -854,8 +855,8 @@ tumor_growth_server <- function(input, output, session, rv) {
         
         # Type 2: vs Reference Group with Dunnett correction
         ref_group <- if (!is.null(input$tg_reference) && nzchar(input$tg_reference))
-          input$tg_reference else levels(emm)[[1]]
-        ref_idx <- which(levels(emm) == ref_group)
+          input$tg_reference else emm_levels[1]
+        ref_idx <- which(emm_levels == ref_group)
         if (length(ref_idx) == 1) {
           result$reference_comparisons_dunnett <- as.data.frame(
             confint(emmeans::contrast(emm, method = "trt.vs.ctrl", ref = ref_idx, adjust = "dunnett"))
@@ -1318,9 +1319,9 @@ tumor_growth_server <- function(input, output, session, rv) {
           hjust = 0.5, vjust = 0.5, size = 4, color = "red") +
         ggplot2::theme_void()
     })
-  }, height = function() input$tg_plot_height %||% 550)
+  }, width = function() input$tg_plot_width %||% 800,
+     height = function() input$tg_plot_height %||% 550)
   
-  # Growth rate distribution plot — reactive
   output$tg_plot_rates <- renderPlot({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
@@ -1371,7 +1372,8 @@ tumor_growth_server <- function(input, output, session, rv) {
     p <- p + ggplot2::theme(text = ggplot2::element_text(size = text_size))
     p <- apply_legend_pos(p, legend_pos)
     p
-  }, height = function() input$tg_plot_height %||% 550)
+  }, width = function() input$tg_plot_width %||% 800,
+     height = function() input$tg_plot_height %||% 550)
   
   # AUC/Treatment effects plot — reactive (beeswarm)
   output$tg_plot_auc <- renderPlot({
@@ -1453,7 +1455,8 @@ tumor_growth_server <- function(input, output, session, rv) {
     p <- p + ggplot2::theme(text = ggplot2::element_text(size = text_size))
     p <- apply_legend_pos(p, legend_pos)
     p
-  }, height = function() input$tg_plot_height %||% 550)
+  }, width = function() input$tg_plot_width %||% 800,
+     height = function() input$tg_plot_height %||% 550)
   
   # Diagnostics/QQ plot
   output$tg_plot_caterpillar <- renderPlot({
@@ -1477,7 +1480,8 @@ tumor_growth_server <- function(input, output, session, rv) {
     } else {
       plot(1, 1, type="n", main="Effect size forest plot not available\n(requires pairwise comparison data)", xlab="", ylab="")
     }
-  }, height = function() input$tg_plot_height %||% 550)
+  }, width = function() input$tg_plot_width %||% 800,
+     height = function() input$tg_plot_height %||% 550)
   
   # Diagnostics
   # Diagnostics tab: Q-Q plot
