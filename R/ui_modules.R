@@ -279,13 +279,12 @@ tumorGrowthUI <- function() {
           selectInput("tg_comparison_type",
                      "Post-hoc Comparisons",
                      choices = c("vs Reference Group" = "reference",
-                                "All Pairwise" = "pairwise",
-                                "Tukey HSD" = "tukey"),
+                                "All Comparisons" = "tukey"),
                      selected = "reference"),
           helpText("Determines which group comparisons are performed after the primary ",
                    "model. 'vs Reference' tests each treatment against the reference. ",
-                   "'All Pairwise' tests every combination. 'Tukey HSD' applies a ",
-                   "familywise error correction across all pairs."),
+                   "'All Comparisons' tests every pair with Tukey HSD familywise error ",
+                   "correction."),
 
           # 4. Data Transformation (LME4 only)
           conditionalPanel(
