@@ -53,6 +53,18 @@ $(document).ready(function() {
 
   // Mark main nav for centering via CSS
   $mainNav.addClass('navbar-center');
+
+  // Cross-nav active-state sync:
+  // Bootstrap only clears 'active' within the same <ul>. Because Help/Citation
+  // live in #nav-right (a separate <ul>), clicking a main-nav tab leaves them
+  // visually active, causing a double-click requirement.
+  // Solution: clear active from the *other* nav whenever a tab is clicked.
+  $(document).on('click', '#nav-right a[data-value]', function() {
+    $mainNav.find('li.active').removeClass('active');
+  });
+  $(document).on('click', '.navbar-center a[data-value]', function() {
+    $('#nav-right li.active').removeClass('active');
+  });
 });
 
 // Prevent clicks on disabled tabs
