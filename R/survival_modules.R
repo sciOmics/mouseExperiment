@@ -85,6 +85,8 @@ survivalUI <- function() {
                     uiOutput("surv_color_pickers_ui"),
                     checkboxInput("surv_opt_conf_int",
                                   "Show confidence interval", value = FALSE),
+                    checkboxInput("surv_opt_risk_table",
+                                  "Show risk table on plot", value = TRUE),
                     numericInput("surv_km_xstart",
                                  "X-axis start (Day)",
                                  value = 0, min = 0, step = 1)
@@ -562,7 +564,7 @@ survival_server <- function(input, output, session, rv) {
         km_fit,
         data                  = surv_df,
         palette               = pal,
-        risk.table            = TRUE,
+        risk.table            = isTRUE(input$surv_opt_risk_table),
         risk.table.y.text.col = TRUE,
         conf.int              = isTRUE(input$surv_opt_conf_int),
         xlim                  = c(x_start, NA),
@@ -814,13 +816,42 @@ survival_server <- function(input, output, session, rv) {
   output$download_surv_plot_km <- downloadHandler(
     filename = "kaplan_meier_plot.png",
     content = function(file) {
-      if (!is.null(rv$surv_results$km_plot)) {
-        png(file, width = input$surv_plot_width %||% 800,
-                  height = input$surv_plot_height %||% 600,
-                  units = "px", res = input$surv_plot_dpi %||% 100)
-        print(rv$surv_results$km_plot)
-        dev.off()
-      }
+      req(rv$surv_results)
+      surv_df <- rv$surv_results$survival_data
+      ordered_grps <- get_ordered_groups(input, "surv", rv$surv_plot_groups)
+      if (!is.null(ordered_grps) && "Treatment" %in% colnames(surv_df))
+        surv_df$Treatment <- factor(surv_df$Treatment, levels = ordered_grps)
+      km_fit <- tryCatch(
+        survival::survfit(survival::Surv(Time, Event) ~ Treatment, data = surv_df),
+        error = function(e) rv$surv_results$km_fit
+      )
+      groups <- if (!is.null(ordered_grps)) ordered_grps else rv$surv_plot_groups
+      pal <- build_color_vector(input, "surv_color", groups)
+      if (!is.null(pal)) pal <- unname(pal)
+      if (is.null(pal)) pal <- "hue"
+      x_start <- if (!is.null(input$surv_km_xstart) && !is.na(input$surv_km_xstart))
+                   as.numeric(input$surv_km_xstart) else 0
+      km_obj <- tryCatch(
+        survminer::ggsurvplot(
+          km_fit,
+          data                  = surv_df,
+          palette               = pal,
+          risk.table            = isTRUE(input$surv_opt_risk_table),
+          risk.table.y.text.col = TRUE,
+          conf.int              = isTRUE(input$surv_opt_conf_int),
+          xlim                  = c(x_start, NA),
+          xlab                  = "Time (Days)",
+          ylab                  = "Survival Probability",
+          title                 = "Kaplan-Meier Survival Curves by Treatment"
+        ),
+        error = function(e) rv$surv_results$km_plot
+      )
+      req(!is.null(km_obj))
+      png(file, width  = input$surv_plot_width  %||% 800,
+                height = input$surv_plot_height %||% 600,
+                units  = "px", res = input$surv_plot_dpi %||% 100)
+      print(km_obj)
+      dev.off()
     }
   )
   
