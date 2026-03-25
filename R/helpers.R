@@ -143,15 +143,25 @@ safe_analysis <- function(expr) {
 #' Format a p-value for display
 #'
 #' Very small p-values are shown in scientific notation rather than being
-#' rounded to "0". Uses \code{formatC} with \code{format="g"} so the output
-#' automatically switches to scientific notation when needed.
+#' rounded to "0". Values that underflow to exactly 0 are reported as
+#' "< 2.2e-16" (the smallest representable positive double). Uses
+#' \code{formatC} with \code{format="g"} which automatically switches to
+#' scientific notation for small values.
 #'
 #' @param x Numeric p-value(s)
 #' @param digits Significant digits (default 3)
 #' @return Character string(s)
 #' @keywords internal
 format_pval <- function(x, digits = 3) {
-  ifelse(is.na(x), NA_character_, formatC(x, digits = digits, format = "g"))
+  limit <- .Machine$double.eps  # ~2.2e-16
+  ifelse(
+    is.na(x), NA_character_,
+    ifelse(
+      x == 0 | (!is.na(x) & x < limit),
+      paste0("< ", formatC(limit, digits = 2, format = "e")),
+      formatC(x, digits = digits, format = "g")
+    )
+  )
 }
 
 #' Format a data frame for tabular display

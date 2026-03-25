@@ -650,7 +650,7 @@ survival_server <- function(input, output, session, rv) {
       parts <- character(0)
       if (show_hr && !is.na(hr_vals[i]))  parts <- c(parts, paste0("HR: ", round(hr_vals[i], 2)))
       if (show_ci && !is.na(ci_lo[i]))    parts <- c(parts, paste0("[", round(ci_lo[i], 2), "\u2013", round(ci_hi[i], 2), "]"))
-      if (show_p  && !is.na(p_vals[i]))   parts <- c(parts, paste0("p = ", round(p_vals[i], 4)))
+      if (show_p  && !is.na(p_vals[i]))   parts <- c(parts, paste0("p = ", format_pval(p_vals[i])))
       paste(parts, collapse = "  ")
     }, character(1))
 
@@ -746,7 +746,7 @@ survival_server <- function(input, output, session, rv) {
     if (show_hr) label_parts <- c(label_parts, paste0("HR: ", round(plot_df$HR, 2)))
     if (show_ci) label_parts <- c(label_parts,
                   paste0("[", round(plot_df$CI_Lower, 2), "\u2013", round(plot_df$CI_Upper, 2), "]"))
-    if (show_p)  label_parts <- c(label_parts, paste0("p = ", round(plot_df$P_Value, 4)))
+    if (show_p)  label_parts <- c(label_parts, paste0("p = ", vapply(as.numeric(plot_df$P_Value), format_pval, character(1))))
     plot_df$label_text <- if (length(label_parts) > 0)
       apply(sapply(label_parts, identity), 1, paste, collapse = "  ") else ""
 
