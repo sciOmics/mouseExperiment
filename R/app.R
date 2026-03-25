@@ -51,7 +51,7 @@ $(document).ready(function() {
   $container.append($rightNav);
 
   // Dark mode toggle button (appended after right nav)
-  var $toggleBtn = $('<button id="dark-mode-toggle" title="Switch to dark mode"><i class="fa fa-moon-o fa-fw"></i></button>');
+  var $toggleBtn = $('<button id=\"dark-mode-toggle\" title=\"Switch to dark mode\"><i class=\"fa fa-moon-o fa-fw\"></i></button>');
   $container.append($toggleBtn);
 
   // Mark main nav for centering via CSS
