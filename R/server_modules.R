@@ -1603,7 +1603,9 @@ tumor_growth_server <- function(input, output, session, rv) {
     filename = "tumor_growth_curves.png",
     content = function(file) {
       if (!is.null(rv$tg_results$tumor_growth_plot)) {
-        png(file, width = 800, height = 600)
+        png(file, width = input$tg_plot_width %||% 800,
+                  height = input$tg_plot_height %||% 600,
+                  units = "px", res = input$tg_plot_dpi %||% 100)
         print(rv$tg_results$tumor_growth_plot)
         dev.off()
       }
@@ -1614,7 +1616,9 @@ tumor_growth_server <- function(input, output, session, rv) {
     filename = "growth_rate_distribution.png",
     content = function(file) {
       if (!is.null(rv$tg_results$growth_rate_plot)) {
-        png(file, width = 800, height = 600)
+        png(file, width = input$tg_plot_width %||% 800,
+                  height = input$tg_plot_height %||% 600,
+                  units = "px", res = input$tg_plot_dpi %||% 100)
         print(rv$tg_results$growth_rate_plot)
         dev.off()
       }
@@ -1625,7 +1629,9 @@ tumor_growth_server <- function(input, output, session, rv) {
     filename = "treatment_effects.png",
     content = function(file) {
       if (!is.null(rv$tg_results$auc_plot)) {
-        png(file, width = 800, height = 600)
+        png(file, width = input$tg_plot_width %||% 800,
+                  height = input$tg_plot_height %||% 600,
+                  units = "px", res = input$tg_plot_dpi %||% 100)
         print(rv$tg_results$auc_plot)
         dev.off()
       }
@@ -1636,7 +1642,9 @@ tumor_growth_server <- function(input, output, session, rv) {
     filename = "qq_plot.png",
     content = function(file) {
       if (!is.null(rv$tg_results$caterpillar_plot)) {
-        png(file, width = 800, height = 600)
+        png(file, width = input$tg_plot_width %||% 800,
+                  height = input$tg_plot_height %||% 600,
+                  units = "px", res = input$tg_plot_dpi %||% 100)
         print(rv$tg_results$caterpillar_plot)
         dev.off()
       }
@@ -1647,7 +1655,9 @@ tumor_growth_server <- function(input, output, session, rv) {
     filename = "effect_size_forest_plot.png",
     content = function(file) {
       if (!is.null(rv$tg_results$effect_forest_plot)) {
-        png(file, width = 900, height = 600)
+        png(file, width = input$tg_plot_width %||% 900,
+                  height = input$tg_plot_height %||% 600,
+                  units = "px", res = input$tg_plot_dpi %||% 100)
         print(rv$tg_results$effect_forest_plot)
         dev.off()
       }
@@ -1718,7 +1728,9 @@ tumor_growth_server <- function(input, output, session, rv) {
       if (time_col %in% colnames(tg_data)) {
         tg_data[[time_col]] <- suppressWarnings(as.numeric(tg_data[[time_col]]))
       }
-      png(file, width = 1000, height = 400)
+      png(file, width = input$tg_plot_width %||% 1000,
+                height = input$tg_plot_height %||% 400,
+                units = "px", res = input$tg_plot_dpi %||% 100)
       tryCatch(
         print(mouseExperiment::plot_treatments(
           treatment_data    = sch,

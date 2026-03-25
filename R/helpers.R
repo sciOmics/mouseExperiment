@@ -140,6 +140,34 @@ safe_analysis <- function(expr) {
   )
 }
 
+#' Plot export dimension controls
+#'
+#' Generates Width (px), Height (px), and Resolution (DPI) numeric inputs that
+#' are placed at the bottom of each analysis sidebar. Download handlers read
+#' these with \code{input[[paste0(prefix, "_plot_width")]]} etc.
+#'
+#' @param prefix Input ID prefix, e.g. \code{"tg"}, \code{"surv"}.
+#' @keywords internal
+plot_export_ui <- function(prefix) {
+  tagList(
+    hr(style = "margin-top: 14px; margin-bottom: 8px;"),
+    p(style = "font-weight: 600; margin-bottom: 4px; font-size: 0.88em;",
+      "\U0001F4BE  Plot Export Settings"),
+    fluidRow(
+      column(6,
+        numericInput(paste0(prefix, "_plot_width"),  "Width (px)",
+                     value = 800, min = 200, max = 5000, step = 50)
+      ),
+      column(6,
+        numericInput(paste0(prefix, "_plot_height"), "Height (px)",
+                     value = 600, min = 200, max = 5000, step = 50)
+      )
+    ),
+    numericInput(paste0(prefix, "_plot_dpi"), "Resolution (DPI)",
+                 value = 100, min = 72, max = 600, step = 10)
+  )
+}
+
 #' Back-transform values from analysis scale to original scale
 #'
 #' @param x Numeric vector on the transformed scale

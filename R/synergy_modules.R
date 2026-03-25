@@ -29,7 +29,9 @@ synergyUI <- function() {
                       "Run Analysis",
                       class = "btn-lg btn-primary btn-block"),
           
-          uiOutput("syn_status_msg")
+          uiOutput("syn_status_msg"),
+
+          plot_export_ui("syn")
         )
       ),
       
@@ -597,7 +599,10 @@ synergy_server <- function(input, output, session, rv) {
     filename = "synergy_plot.png",
     content = function(file) {
       if (!is.null(rv$syn_results$plot_main)) {
-        png(file, width = 900, height = 600); print(rv$syn_results$plot_main); dev.off()
+        png(file, width = input$syn_plot_width %||% 900,
+                  height = input$syn_plot_height %||% 600,
+                  units = "px", res = input$syn_plot_dpi %||% 100)
+        print(rv$syn_results$plot_main); dev.off()
       }
     }
   )
@@ -606,7 +611,10 @@ synergy_server <- function(input, output, session, rv) {
     filename = "synergy_trend.png",
     content = function(file) {
       if (!is.null(rv$syn_results$plot_trend)) {
-        png(file, width = 900, height = 600); print(rv$syn_results$plot_trend); dev.off()
+        png(file, width = input$syn_plot_width %||% 900,
+                  height = input$syn_plot_height %||% 600,
+                  units = "px", res = input$syn_plot_dpi %||% 100)
+        print(rv$syn_results$plot_trend); dev.off()
       }
     }
   )
@@ -615,7 +623,10 @@ synergy_server <- function(input, output, session, rv) {
     filename = "combination_index.png",
     content = function(file) {
       if (!is.null(rv$syn_results$plot_ci)) {
-        png(file, width = 900, height = 600); print(rv$syn_results$plot_ci); dev.off()
+        png(file, width = input$syn_plot_width %||% 900,
+                  height = input$syn_plot_height %||% 600,
+                  units = "px", res = input$syn_plot_dpi %||% 100)
+        print(rv$syn_results$plot_ci); dev.off()
       }
     }
   )

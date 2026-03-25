@@ -20,7 +20,9 @@ survivalUI <- function() {
                       "Run Analysis",
                       class = "btn-lg btn-primary btn-block"),
           
-          uiOutput("surv_status_msg")
+          uiOutput("surv_status_msg"),
+
+          plot_export_ui("surv")
         )
       ),
       
@@ -793,7 +795,9 @@ survival_server <- function(input, output, session, rv) {
     filename = "kaplan_meier_plot.png",
     content = function(file) {
       if (!is.null(rv$surv_results$km_plot)) {
-        png(file, width = 800, height = 600)
+        png(file, width = input$surv_plot_width %||% 800,
+                  height = input$surv_plot_height %||% 600,
+                  units = "px", res = input$surv_plot_dpi %||% 100)
         print(rv$surv_results$km_plot)
         dev.off()
       }
@@ -839,7 +843,10 @@ survival_server <- function(input, output, session, rv) {
         show_p   = isTRUE(input$surv_forest_show_p  %||% TRUE)
       )
       req(!is.null(p))
-      png(file, width = 900, height = 600); print(p); dev.off()
+      png(file, width = input$surv_plot_width %||% 900,
+                height = input$surv_plot_height %||% 600,
+                units = "px", res = input$surv_plot_dpi %||% 100)
+      print(p); dev.off()
     }
   )
   

@@ -349,7 +349,9 @@ tumorGrowthUI <- function() {
                       "Run Analysis",
                       class = "btn-lg btn-primary btn-block"),
 
-          uiOutput("tg_status_msg")
+          uiOutput("tg_status_msg"),
+
+          plot_export_ui("tg")
         )
       ),
       

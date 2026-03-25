@@ -33,7 +33,9 @@ doseResponseUI <- function() {
           ),
 
           br(),
-          uiOutput("dr_status_msg")
+          uiOutput("dr_status_msg"),
+
+          plot_export_ui("dr")
         )
       ),
 
@@ -475,7 +477,10 @@ dose_response_server <- function(input, output, session, rv) {
           ggplot2::theme_classic()
       } else rv$dr_results$plots$scatter
       req(!is.null(p))
-      png(file, width = 800, height = 600); print(p); dev.off()
+      png(file, width = input$dr_plot_width %||% 800,
+                height = input$dr_plot_height %||% 600,
+                units = "px", res = input$dr_plot_dpi %||% 100)
+      print(p); dev.off()
     }
   )
 
@@ -497,7 +502,10 @@ dose_response_server <- function(input, output, session, rv) {
           ggplot2::theme_classic()
       } else rv$dr_results$plots$boxplot
       req(!is.null(p))
-      png(file, width = 800, height = 600); print(p); dev.off()
+      png(file, width = input$dr_plot_width %||% 800,
+                height = input$dr_plot_height %||% 600,
+                units = "px", res = input$dr_plot_dpi %||% 100)
+      print(p); dev.off()
     }
   )
 
@@ -518,7 +526,10 @@ dose_response_server <- function(input, output, session, rv) {
           ggplot2::theme_classic()
       } else rv$dr_results$plots$barplot
       req(!is.null(p))
-      png(file, width = 800, height = 600); print(p); dev.off()
+      png(file, width = input$dr_plot_width %||% 800,
+                height = input$dr_plot_height %||% 600,
+                units = "px", res = input$dr_plot_dpi %||% 100)
+      print(p); dev.off()
     }
   )
 
