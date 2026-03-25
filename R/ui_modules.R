@@ -255,13 +255,39 @@ tumorGrowthUI <- function() {
       tags$div(class = "col-sm-3 sidebar-panel-col",
         wellPanel(
           h4("Analysis Parameters"),
-          
+
+          # 1. Statistical Model
           selectInput("tg_model_type",
                      "Statistical Model",
                      choices = c("Linear Mixed-Effects (LME4)" = "lme4",
                                 "Area Under Curve (AUC)" = "auc"),
                      selected = "lme4"),
-          
+          helpText("LME4 models tumor volume trajectories over time using a linear ",
+                   "mixed-effects model, which handles repeated measures and unequal ",
+                   "timepoints. AUC summarizes total tumor burden as the area under ",
+                   "each animal's growth curve."),
+
+          # 2. Reference Group
+          selectInput("tg_reference",
+                     "Reference Group (Required)",
+                     choices = c("-- Select a reference group --" = "")),
+          helpText("The group all comparisons are made against (typically a vehicle or ",
+                   "IgG control). Automatically set to the most likely control group ",
+                   "when data is uploaded."),
+
+          # 3. Post-hoc Comparisons
+          selectInput("tg_comparison_type",
+                     "Post-hoc Comparisons",
+                     choices = c("vs Reference Group" = "reference",
+                                "All Pairwise" = "pairwise",
+                                "Tukey HSD" = "tukey"),
+                     selected = "reference"),
+          helpText("Determines which group comparisons are performed after the primary ",
+                   "model. 'vs Reference' tests each treatment against the reference. ",
+                   "'All Pairwise' tests every combination. 'Tukey HSD' applies a ",
+                   "familywise error correction across all pairs."),
+
+          # 4. Data Transformation (LME4 only)
           conditionalPanel(
             condition = "input.tg_model_type == 'lme4'",
             selectInput("tg_transform",
@@ -270,62 +296,58 @@ tumorGrowthUI <- function() {
                                   "Square Root" = "sqrt",
                                   "None" = "none"),
                        selected = "log"),
-            
-            selectInput("tg_random_effects",
-                       "Random Effects",
-                       choices = c("Intercept only" = "intercept_only",
-                                  "Intercept + Slope" = "slope",
-                                  "None" = "none"),
-                       selected = "intercept_only"),
-            
+            helpText("Transformation applied to tumor volume before modeling. Log ",
+                     "transformation is recommended for most tumor growth data as it ",
+                     "stabilizes variance and linearizes exponential growth. Use 'None' ",
+                     "for already-linear data.")
+          ),
+
+          # 5. Extrapolation Points (always visible)
+          numericInput("tg_extrapolation_points",
+                      "Extrapolation Points",
+                      value = 3, min = 0, max = 10, step = 1),
+          helpText("Number of recent timepoints used to estimate the growth slope for ",
+                   "extrapolating tumor volumes of mice that died before the study end. ",
+                   "Set to 0 to disable. If an Event/Censor column is mapped in Data ",
+                   "Upload it will be used; otherwise mice that disappear before the ",
+                   "final timepoint are automatically detected."),
+
+          # 6. Cage Effect Handling (LME4 only)
+          conditionalPanel(
+            condition = "input.tg_model_type == 'lme4'",
             selectInput("tg_cage_effect",
                        "Cage Effect Handling",
                        choices = c("Include if not collinear" = "include_if_not_collinear",
                                   "Always include" = "always_include",
                                   "Never include" = "never_include"),
                        selected = "include_if_not_collinear"),
-
-            sliderInput("tg_poly_degree",
-                       "Polynomial Degree (time)",
-                       min = 1, max = 3, value = 1),
-
-            tags$details(
-              style = "margin-top: 10px;",
-              tags$summary(
-                style = "cursor: pointer; color: #555; font-size: 0.9em;",
-                "Advanced Options"
-              ),
-              div(style = "padding-top: 8px;",
-                numericInput("tg_extrapolation_points",
-                            "Extrapolation Points",
-                            value = 3, min = 0, max = 10, step = 1),
-                helpText("Number of recent timepoints used to estimate the growth ",
-                         "slope for extrapolating tumor volumes of mice that died before ",
-                         "the study end. Set to 0 to disable. ",
-                         "If an Event/Censor column is mapped in Data Upload it will be used; ",
-                         "otherwise mice that disappear before the final timepoint are ",
-                         "automatically detected.")
-              )
-            )
+            helpText("Controls whether cage is included as a covariate to account for ",
+                     "housing effects on tumor growth. 'Include if not collinear' adds ",
+                     "cage automatically when it is statistically separable from ",
+                     "treatment. Requires a Cage ID column to be mapped in Data Upload.")
           ),
-          
-          selectInput("tg_reference",
-                     "Reference Group (Required)",
-                     choices = c("-- Select a reference group --" = "")),
-          
-          selectInput("tg_comparison_type",
-                     "Post-hoc Comparisons",
-                     choices = c("vs Reference Group" = "reference",
-                                "All Pairwise" = "pairwise",
-                                "Tukey HSD" = "tukey"),
-                     selected = "reference"),
-          
+
+          # 7. Random Effects (LME4 only)
+          conditionalPanel(
+            condition = "input.tg_model_type == 'lme4'",
+            selectInput("tg_random_effects",
+                       "Random Effects",
+                       choices = c("Intercept only" = "intercept_only",
+                                  "Intercept + Slope" = "slope",
+                                  "None" = "none"),
+                       selected = "intercept_only"),
+            helpText("Specifies the random effects structure for individual animals. ",
+                     "'Intercept only' allows each animal to have its own baseline ",
+                     "volume. 'Intercept + Slope' also allows individual growth rates, ",
+                     "which is more flexible but may fail to converge with small samples.")
+          ),
+
           br(),
-          
-          actionButton("run_tg_analysis", 
+
+          actionButton("run_tg_analysis",
                       "Run Analysis",
                       class = "btn-lg btn-primary btn-block"),
-          
+
           uiOutput("tg_status_msg")
         )
       ),
