@@ -450,7 +450,7 @@ tumor_growth_statistics <- function(df,
     diagnostics$residuals <- list(
       fitted = stats::fitted(model),
       residuals = stats::residuals(model),
-      qq_plot = stats::qqnorm(stats::residuals(model))
+      qq_plot = stats::qqnorm(stats::residuals(model), plot.it = FALSE)
     )
     
     # Random effects plots
@@ -751,7 +751,7 @@ tumor_growth_statistics <- function(df,
         residuals = list(
           fitted = stats::fitted(auc_model),
           residuals = stats::residuals(auc_model),
-          qq_plot = stats::qqnorm(stats::residuals(auc_model))
+          qq_plot = stats::qqnorm(stats::residuals(auc_model), plot.it = FALSE)
         )
       )
     } else {
