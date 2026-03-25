@@ -362,15 +362,7 @@ tumorGrowthUI <- function() {
           ),
           
           tabPanel("ANOVA",
-            tab_info(
-              strong("Type III ANOVA "), "from the linear mixed-effects model. Tests whether each fixed effect (treatment group, time, and their interaction) significantly explains variance in tumor volume after accounting for all other terms.",
-              tags$ul(
-                tags$li(strong("Chisq"), " — likelihood-ratio chi-square statistic for the effect. Larger values indicate stronger evidence against the null hypothesis."),
-                tags$li(strong("Df"), " — degrees of freedom for the test (number of parameters being tested)."),
-                tags$li(strong("Pr(>Chisq)"), " — p-value. Values below 0.05 indicate a statistically significant effect at the 5% level.")
-              ),
-              "The ", em("Treatment:Time"), " interaction row is the most biologically informative: a significant interaction means treatment groups diverge in their growth trajectories over time, not just in overall volume."
-            ),
+            uiOutput("tg_anova_tab_info"),
             shinycssloaders::withSpinner(
               DTOutput("tg_anova_table")
             ),

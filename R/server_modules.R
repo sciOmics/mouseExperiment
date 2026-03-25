@@ -1053,6 +1053,33 @@ tumor_growth_server <- function(input, output, session, rv) {
   })
   
   # ANOVA table
+  output$tg_anova_tab_info <- renderUI({
+    model_type <- input$tg_model_type %||% "lme4"
+    if (model_type == "auc") {
+      tab_info(
+        strong("One-way ANOVA "), "on per-animal AUC (area under the growth curve) values. Tests whether mean AUC differs significantly across treatment groups.",
+        tags$ul(
+          tags$li(strong("Df"), " — degrees of freedom (Treatment row = number of groups minus 1; Residuals row = total animals minus number of groups)."),
+          tags$li(strong("Sum Sq"), " — sum of squares: variance attributable to that source."),
+          tags$li(strong("Mean Sq"), " — Sum Sq ÷ Df."),
+          tags$li(strong("F value"), " — ratio of the Treatment Mean Sq to the Residuals Mean Sq. Larger values indicate more separation between group means relative to within-group variability."),
+          tags$li(strong("Pr(>F)"), " — p-value. Values below 0.05 indicate a statistically significant difference in mean AUC across treatment groups.")
+        ),
+        "This test assumes independent observations and equal variances across groups. For pairwise differences see the Comparisons tab."
+      )
+    } else {
+      tab_info(
+        strong("Type III ANOVA "), "from the linear mixed-effects model. Tests whether each fixed effect (treatment group, time, and their interaction) significantly explains variance in tumor volume after accounting for all other terms.",
+        tags$ul(
+          tags$li(strong("Chisq"), " — likelihood-ratio chi-square statistic for the effect. Larger values indicate stronger evidence against the null hypothesis."),
+          tags$li(strong("Df"), " — degrees of freedom for the test (number of parameters being tested)."),
+          tags$li(strong("Pr(>Chisq)"), " — p-value. Values below 0.05 indicate a statistically significant effect at the 5% level.")
+        ),
+        "The ", em("Treatment:Time"), " interaction row is the most biologically informative: a significant interaction means treatment groups diverge in their growth trajectories over time, not just in overall volume."
+      )
+    }
+  })
+
   output$tg_anova_table <- renderDT({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$anova)) {
