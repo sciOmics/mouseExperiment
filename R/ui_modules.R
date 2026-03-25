@@ -458,6 +458,8 @@ tumorGrowthUI <- function() {
                                   "Log10"  = "log10"),
                       selected = "linear"
                     ),
+                    sliderInput("tg_opt_growth_pt_size", "Point size",
+                                min = 0.5, max = 8, value = 2, step = 0.5),
                     numericInput("tg_opt_xstart", "X-axis start (Day)",
                                  value = 0, min = 0, step = 1)
                   ),

@@ -1359,7 +1359,8 @@ tumor_growth_server <- function(input, output, session, rv) {
         survival_column     = if (isTRUE(surv_col_mapped)) input$col_survival_event else NULL,
         extrapolate_volumes = do_extrapolate,
         extrapolation_points = if (extra_pts > 0L) extra_pts else "all",
-        group_summary_line  = isTRUE(input$tg_opt_group_line)
+        group_summary_line  = isTRUE(input$tg_opt_group_line),
+        point_size          = input$tg_opt_growth_pt_size %||% 2
       ) + ggplot2::theme_classic()
     }, error = function(e) {
       if (!is.null(rv$tg_results$tumor_growth_plot)) return(rv$tg_results$tumor_growth_plot)
