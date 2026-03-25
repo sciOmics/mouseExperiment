@@ -59,7 +59,7 @@ dataUploadUI <- function() {
           fluidRow(
             column(4,
               h5(strong("Try Demo Data")),
-              p("New here? Load a built-in demo dataset to explore the dashboard's features."),
+              p("Load a built-in demo dataset to explore the dashboard's features."),
               selectInput("demo_dataset", NULL,
                 choices = c(
                   "-- Select a demo dataset --" = "",
@@ -205,7 +205,7 @@ column_mapping_ui <- function(col_names, detected_cols) {
         selectInput("col_cage", "Cage ID",
                    choices = c("None" = "", col_names),
                    selected = detected_cols$cage),
-        tags$p(tags$small("Cage ID is important for distinguishing mice with same ID in different cages.")),
+        tags$p(tags$small("Cage ID is used to distinguish mice with same ID in different cages.")),
         
         br(),
         

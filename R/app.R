@@ -50,6 +50,10 @@ $(document).ready(function() {
   if ($container.length === 0) $container = $mainNav.parent();
   $container.append($rightNav);
 
+  // Dark mode toggle button (appended after right nav)
+  var $toggleBtn = $('<button id="dark-mode-toggle" title="Switch to dark mode"><i class="fa fa-moon-o fa-fw"></i></button>');
+  $container.append($toggleBtn);
+
   // Mark main nav for centering via CSS
   $mainNav.addClass('navbar-center');
 });
@@ -81,8 +85,10 @@ window.enableNavTab  = enableNavTab;
       shinyjs::useShinyjs(),
       tags$head(
         tags$link(rel = "stylesheet", href = "css/custom.css"),
+        tags$link(rel = "stylesheet", href = "css/dark.css"),
         tags$script(nav_js),
         tags$script(src = "js/sidebar.js"),
+        tags$script(src = "js/darkmode.js"),
         # Inject mouse overlay as a direct child of <body> to avoid
         # z-index conflicts with the Bootstrap navbar.
         tags$script(HTML("
