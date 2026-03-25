@@ -46,7 +46,8 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
                              survival_column = "Survival_Censor", 
                              extrapolate_volumes = FALSE,
                              extrapolation_points = "all",
-                             group_summary_line = TRUE) {
+                             group_summary_line = TRUE,
+                             point_size = 2) {
   
   # Input validation
   req_cols <- c(volume_column, day_column, treatment_column, cage_column, ID_column)
@@ -257,7 +258,7 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
   # Base plot with individual growth curves using the composite identifiers
   plot <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data[[day_column]], y = .data[[volume_column]], group = Mouse_ID)) +
     ggplot2::geom_line(ggplot2::aes(color = Group), alpha = 0.5, size = 0.5) +
-    ggplot2::geom_point(ggplot2::aes(color = Group), alpha = 0.5, shape = "square")
+    ggplot2::geom_point(ggplot2::aes(color = Group), alpha = 0.5, shape = 16, size = point_size)
   
   # If extrapolation was done, mark extrapolated points differently
   if (extrapolate_volumes) {
@@ -269,7 +270,7 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
           ggplot2::aes(x = .data[[day_column]], y = .data[[volume_column]], color = Group),
           shape = 1,  # hollow circle
           alpha = 0.7,
-          size = 1
+          size = point_size
         ) +
         ggplot2::geom_line(
           data = extrapolated_points,
