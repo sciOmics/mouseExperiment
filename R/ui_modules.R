@@ -393,8 +393,8 @@ tumorGrowthUI <- function() {
                 tags$li(strong("df"), " — Satterthwaite or Kenward\u2013Roger approximate degrees of freedom used for the t-test."),
                 tags$li(strong("t.ratio"), " — t-statistic (estimate \u00f7 SE). Large absolute values indicate a larger difference relative to its uncertainty."),
                 tags$li(strong("p.value"), " — adjusted p-value (Dunnett correction for \u2018vs Reference\u2019; Tukey HSD for \u2018All Comparisons\u2019). Values below 0.05 indicate a significant difference."),
-                tags$li(strong("lower.CL / upper.CL"), " — 95% confidence interval for the mean difference on the analysis scale."),
-                tags$li(strong("Fold_Change"), " (log-transform models only) — exp(estimate): the multiplicative ratio of group means on the original scale. Values below 1.0 indicate the treatment group has lower volume than reference.")
+                tags$li(strong("lower.CL / upper.CL"), " (if shown) — 95% confidence interval bounds for the mean difference on the analysis scale."),
+                tags$li(strong("Fold_Change"), " (if shown; log-transform models only) — exp(estimate): the multiplicative ratio of group geometric means on the original volume scale. Values below 1.0 indicate the treatment group has lower volume than reference. Fold_Change_Lower / Fold_Change_Upper give the back-transformed CI bounds.")
               )
             ),
             uiOutput("tg_comparisons_title"),
@@ -407,16 +407,16 @@ tumorGrowthUI <- function() {
           tabPanel("Treatment Effects",
             tab_info(
               strong("Estimated marginal means "), "(EMMs, also called least-squares means) from the mixed-effects model, averaged over the time course. These are the model-adjusted group means that control for random animal effects and cage structure.",
+              tags$p("For ", strong("LME4 models"), " the columns are:"),
               tags$ul(
                 tags$li(strong("Group"), " — treatment group name."),
-                tags$li(strong("Adj_Mean"), " — model-estimated mean tumor volume for the group (on the transformed scale if a transformation was applied; matching \u2018original units\u2019 column gives the back-transformed value)."),
+                tags$li(strong("Adj_Mean"), " — model-estimated marginal mean tumor volume for the group. If a transformation was applied, the header will read \'Adj_Mean (log scale)\' or \'Adj_Mean (sqrt scale)\'. A paired \'Adj_Mean (original units)\' column gives the back-transformed value on the mm\u00b3 scale."),
                 tags$li(strong("SE"), " — standard error of the estimated marginal mean."),
                 tags$li(strong("DF"), " — Kenward\u2013Roger approximate degrees of freedom for the confidence interval."),
-                tags$li(strong("Lower_CL / Upper_CL"), " — lower and upper bounds of the 95% confidence interval."),
-                tags$li(strong("Adj_Mean (original units)"), " (shown when log/sqrt transform used) — back-transformed mean on the original mm\u00b3 scale."),
+                tags$li(strong("Lower_CL / Upper_CL"), " — 95% confidence interval bounds (on the analysis scale; back-transformed \'original units\' versions shown alongside if a transformation was used)."),
                 tags$li(strong("Note"), " — flags the reference group row.")
               ),
-              "For AUC models the columns are ", strong("Mean_AUC"), ", ", strong("SD"), ", and ", strong("N"), ": the raw mean area under the curve per subject, its standard deviation, and sample size."
+              "For ", strong("AUC models"), " the columns are ", strong("Mean_AUC"), ", ", strong("SD"), ", ", strong("N"), ", and ", strong("Reference"), ": the raw mean area under the growth curve per subject, its standard deviation, sample size, and the reference group label."
             ),
             shinycssloaders::withSpinner(
               DTOutput("tg_effects_table")
@@ -433,8 +433,7 @@ tumorGrowthUI <- function() {
                 tags$li(strong("Cage"), " — cage identifier."),
                 tags$li(strong("growth_rate (log-scale/day)"), " — slope of the log\u2081\u209a(volume)\u2013time regression. Represents the instantaneous exponential growth constant: a value of 0.10 means ~10% volume increase per day on a continuous compounding basis."),
                 tags$li(strong("daily_fold_change (\u00d7/day)"), " — exp(growth_rate): the multiplicative volume change per day. Values above 1.0 indicate growth (e.g. 1.10 = 10% larger each day); values below 1.0 indicate regression."),
-                tags$li(strong("% change/day"), " — (daily_fold_change \u2212 1) \u00d7 100: the same quantity expressed as a percentage change per day (e.g. +10.5% or \u22123.2%)."),
-                tags$li(strong("R\u00b2"), " (if present) — goodness-of-fit of the log-linear regression for that animal.")
+                tags$li(strong("% change/day"), " — (daily_fold_change \u2212 1) \u00d7 100: the same quantity expressed as a percentage change per day (e.g. +10.5% or \u22123.2%).")
               ),
               em("These are descriptive per-animal values used to visualise within-group spread and for sample size estimation. For group-level inference, use the Treatment Effects tab.")
             ),

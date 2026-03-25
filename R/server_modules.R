@@ -1200,7 +1200,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     }
     rates_df <- format_df_for_display(rates_df)
     datatable(rates_df,
-      options  = list(scrollX = TRUE, pageLength = 15),
+      options  = list(scrollX = TRUE, paging = FALSE, scrollY = "500px", scrollCollapse = TRUE),
       colnames = setNames(colnames(rates_df),
         ifelse(colnames(rates_df) == "growth_rate",          "growth_rate (log-scale/day)",
         ifelse(colnames(rates_df) == "daily_fold_change",    "daily_fold_change (×/day)",
