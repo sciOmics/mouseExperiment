@@ -762,54 +762,14 @@ survival_server <- function(input, output, session, rv) {
                        as.character(x_breaks))
 
     # Build annotation label from checkbox selections
-    pt_color   <- input$surv_forest_pt_color %||% "steelblue"
-    show_hr    <- isTRUE(input$surv_forest_show_hr)
-    show_ci    <- isTRUE(input$surv_forest_show_ci)
-    show_p     <- isTRUE(input$surv_forest_show_p)
-    label_parts <- character(0)
-    if (show_hr) label_parts <- c(label_parts, paste0("HR: ", round(plot_df$HR, 2)))
-    if (show_ci) label_parts <- c(label_parts,
-                  paste0("[", round(plot_df$CI_Lower, 2), "\u2013", round(plot_df$CI_Upper, 2), "]"))
-    if (show_p)  label_parts <- c(label_parts, paste0("p = ", vapply(as.numeric(plot_df$P_Value), format_pval, character(1))))
-    plot_df$label_text <- if (length(label_parts) > 0)
-      apply(sapply(label_parts, identity), 1, paste, collapse = "  ") else ""
+    pt_color <- input$surv_forest_pt_color %||% "steelblue"
+    show_hr  <- isTRUE(input$surv_forest_show_hr)
+    show_ci  <- isTRUE(input$surv_forest_show_ci)
+    show_p   <- isTRUE(input$surv_forest_show_p)
 
-    ggplot2::ggplot(plot_df,
-                   ggplot2::aes(x = HR, y = reorder(Group, HR),
-                                xmin = CI_Lower, xmax = CI_Upper)) +
-      ggplot2::geom_vline(xintercept = 1, linetype = "dashed", color = "grey40") +
-      ggplot2::geom_errorbarh(
-        data = ~ subset(., !is_ref),
-        height = 0.25, linewidth = 0.8, color = pt_color
-      ) +
-      ggplot2::geom_point(
-        data = ~ subset(., !is_ref), size = 5, color = pt_color
-      ) +
-      ggplot2::geom_point(
-        data = ~ subset(., is_ref), size = 5, color = "grey50", shape = 18
-      ) +
-      { if (any(nzchar(plot_df$label_text[!plot_df$is_ref])))
-          ggplot2::geom_text(
-            data = ~ subset(., !is_ref),
-            ggplot2::aes(label = label_text),
-            vjust = 3, hjust = -0.1, size = 4, color = "grey30")
-        else list() } +
-      ggplot2::scale_x_continuous(
-        trans  = "log10",
-        limits = x_lim,
-        breaks = x_breaks,
-        labels = x_labels
-      ) +
-      ggplot2::labs(
-        title = paste("Forest Plot: Hazard Ratios vs", ref_grp),
-        x = "Hazard Ratio (log\u2081\u2080 scale)",
-        y = NULL
-      ) +
-      ggplot2::theme_classic(base_size = 14) +
-      ggplot2::theme(
-        axis.text.y = ggplot2::element_text(size = 11),
-        legend.position = "none"
-      )
+    p <- build_surv_forest_plot(res, ref_grp, pt_color, show_hr, show_ci, show_p)
+    req(!is.null(p))
+    p
   })
   
   # Download handlers

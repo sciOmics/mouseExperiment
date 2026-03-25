@@ -833,122 +833,6 @@ tumor_growth_server <- function(input, output, session, rv) {
           }, error = function(e) cat("WARNING: resid-vs-fitted plot failed:", e$message, "\n"))
         }
         
-        # Plot 5: Effect size forest plot.
-        # Use reference_comparisons_dunnett (treatment - control, correct sign)
-        # in preference to all_pairwise_comparisons (alphabetical pairs whose
-        # sign depends on factor level order and is often backwards).
-        pc <- if (!is.null(result$reference_comparisons_dunnett)) result$reference_comparisons_dunnett
-              else if (!is.null(result$all_pairwise_comparisons)) result$all_pairwise_comparisons
-              else if (!is.null(result$pairwise_comparisons)) result$pairwise_comparisons
-              else NULL
-        if (!is.null(pc)) {
-          tryCatch({
-            pc_df <- as.data.frame(pc)
-            # Standardise column names from emmeans / model output
-            label_col   <- intersect(c("contrast", "Contrast", "comparison", "pair"), colnames(pc_df))[1]
-            est_col     <- intersect(c("estimate", "Estimate"), colnames(pc_df))[1]
-            se_col      <- intersect(c("SE"), colnames(pc_df))[1]
-            lower_col   <- intersect(c("lower.CL", "Lower", "lower_CL", "lower"), colnames(pc_df))[1]
-            upper_col   <- intersect(c("upper.CL", "Upper", "upper_CL", "upper"), colnames(pc_df))[1]
-            p_col       <- intersect(c("p.value", "p_value", "p.adj", "adj.p.value", "P_Value"), colnames(pc_df))[1]
-
-            if (!is.na(label_col) && !is.na(est_col)) {
-              # Compute CIs from SE if explicit CI columns are absent
-              if (is.na(lower_col) && !is.na(se_col)) {
-                pc_df$lower.CL <- pc_df[[est_col]] - 1.96 * pc_df[[se_col]]
-                pc_df$upper.CL <- pc_df[[est_col]] + 1.96 * pc_df[[se_col]]
-                lower_col <- "lower.CL"; upper_col <- "upper.CL"
-              }
-              p_label <- if (!is.na(p_col))
-                           vapply(pc_df[[p_col]], format_pval, character(1))
-                         else NULL
-
-              # For dunnett contrasts the label is already "TreatA - Reference";
-              # strip the reference name from the label so it reads more cleanly
-              # in the forest plot (e.g. "HDACi - Control" → "HDACi").
-              using_dunnett <- !is.null(result$reference_comparisons_dunnett) &&
-                               identical(pc, result$reference_comparisons_dunnett)
-              ref_grp_ef <- if (!is.null(input$tg_reference) && nzchar(input$tg_reference))
-                              input$tg_reference else NULL
-              contrast_labels <- pc_df[[label_col]]
-              if (isTRUE(using_dunnett) && !is.null(ref_grp_ef)) {
-                # emmeans trt.vs.ctrl labels: "HDACi - Control" → "HDACi"
-                suffix_pat <- paste0("\\s*[-–]\\s*", gsub("([+()])", "\\\\\\1", ref_grp_ef), "$")
-                clean_labels <- sub(suffix_pat, "", contrast_labels)
-                # Only apply the strip if every label had the suffix (safety check)
-                if (all(clean_labels != contrast_labels)) contrast_labels <- clean_labels
-              }
-
-              forest_df <- data.frame(
-                Contrast  = contrast_labels,
-                Estimate  = pc_df[[est_col]],
-                Lower     = if (!is.na(lower_col)) pc_df[[lower_col]] else pc_df[[est_col]],
-                Upper     = if (!is.na(upper_col)) pc_df[[upper_col]] else pc_df[[est_col]],
-                P_Label   = if (is.null(p_label)) "" else paste0("p=", p_label),
-                stringsAsFactors = FALSE
-              )
-              # Add reference group row at Estimate = 0
-              if (!is.null(ref_grp_ef)) {
-                forest_df <- rbind(forest_df, data.frame(
-                  Contrast = paste0(ref_grp_ef, "\n(Reference)"),
-                  Estimate = 0, Lower = NA_real_, Upper = NA_real_,
-                  P_Label  = "", stringsAsFactors = FALSE
-                ))
-              }
-              forest_df$is_ref <- seq_len(nrow(forest_df)) == nrow(forest_df) & !is.null(ref_grp_ef)
-
-              # Balanced symmetric axis: same extent either side of 0,
-              # rounded up to the nearest whole unit (mirrors HR forest plot logic)
-              all_vals <- c(forest_df$Estimate[!forest_df$is_ref],
-                            forest_df$Lower[!forest_df$is_ref],
-                            forest_df$Upper[!forest_df$is_ref])
-              max_abs  <- ceiling(max(abs(all_vals), na.rm = TRUE))
-              # Add 20% padding on the right so p-value labels aren't clipped
-              x_lim <- c(-max_abs, max_abs * 1.20)
-              x_breaks <- pretty(c(-max_abs, max_abs), n = 6)
-              x_breaks <- x_breaks[x_breaks >= -max_abs & x_breaks <= max_abs]
-
-              result$effect_forest_plot <- ggplot2::ggplot(
-                forest_df,
-                # reorder by -Estimate: most negative (most effective) at top
-                ggplot2::aes(x = Estimate, y = stats::reorder(Contrast, -Estimate))
-              ) +
-                ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "red", linewidth = 0.6) +
-                ggplot2::geom_errorbarh(
-                  data = ~ subset(., !is_ref),
-                  ggplot2::aes(xmin = Lower, xmax = Upper),
-                  height = 0.25, colour = "steelblue"
-                ) +
-                ggplot2::geom_point(
-                  data = ~ subset(., !is_ref), size = 3, colour = "steelblue"
-                ) +
-                ggplot2::geom_point(
-                  data = ~ subset(., is_ref), size = 4, colour = "grey50", shape = 18
-                ) +
-                ggplot2::geom_text(
-                  data = ~ subset(., !is_ref & nzchar(P_Label) & !is.na(Upper)),
-                  ggplot2::aes(label = P_Label, x = Upper),
-                  hjust = -0.2, size = 3.2
-                ) +
-                ggplot2::scale_x_continuous(
-                  limits = x_lim,
-                  breaks = x_breaks
-                ) +
-                ggplot2::labs(
-                  title = "Effect Size Forest Plot",
-                  x = if (isTRUE(using_dunnett))
-                        "Mean Difference (treatment \u2212 reference)"
-                      else "Mean Difference",
-                  y = NULL
-                ) +
-                ggplot2::theme_classic() +
-                ggplot2::theme(axis.text.y = ggplot2::element_text(size = 10))
-            }
-          }, error = function(e) {
-            cat("WARNING: effect forest plot failed:", e$message, "\n")
-          })
-        }
-        
       }, error = function(e) {
         cat("WARNING: Error generating plots:", e$message, "\n")
       })
@@ -977,12 +861,94 @@ tumor_growth_server <- function(input, output, session, rv) {
             emmeans::contrast(emm, method = "trt.vs.ctrl", ref = ref_idx, adjust = "dunnett")
           )
         }
-        
+
+        # Plot 5: Effect size forest plot — built here so reference_comparisons_dunnett exists
+        pc <- if (!is.null(result$reference_comparisons_dunnett)) result$reference_comparisons_dunnett
+              else if (!is.null(result$all_pairwise_comparisons)) result$all_pairwise_comparisons
+              else NULL
+        if (!is.null(pc)) {
+          tryCatch({
+            pc_df <- as.data.frame(pc)
+            label_col   <- intersect(c("contrast", "Contrast", "comparison", "pair"), colnames(pc_df))[1]
+            est_col     <- intersect(c("estimate", "Estimate"), colnames(pc_df))[1]
+            se_col      <- intersect(c("SE"), colnames(pc_df))[1]
+            lower_col   <- intersect(c("lower.CL", "Lower", "lower_CL", "lower"), colnames(pc_df))[1]
+            upper_col   <- intersect(c("upper.CL", "Upper", "upper_CL", "upper"), colnames(pc_df))[1]
+            p_col       <- intersect(c("p.value", "p_value", "p.adj", "adj.p.value", "P_Value"), colnames(pc_df))[1]
+            if (!is.na(label_col) && !is.na(est_col)) {
+              if (is.na(lower_col) && !is.na(se_col)) {
+                pc_df$lower.CL <- pc_df[[est_col]] - 1.96 * pc_df[[se_col]]
+                pc_df$upper.CL <- pc_df[[est_col]] + 1.96 * pc_df[[se_col]]
+                lower_col <- "lower.CL"; upper_col <- "upper.CL"
+              }
+              p_label <- if (!is.na(p_col)) vapply(pc_df[[p_col]], format_pval, character(1)) else NULL
+              using_dunnett <- !is.null(result$reference_comparisons_dunnett) &&
+                               identical(pc, result$reference_comparisons_dunnett)
+              ref_grp_ef <- if (!is.null(input$tg_reference) && nzchar(input$tg_reference))
+                              input$tg_reference else NULL
+              contrast_labels <- pc_df[[label_col]]
+              if (isTRUE(using_dunnett) && !is.null(ref_grp_ef)) {
+                suffix_pat <- paste0("\\s*[-\u2013]\\s*", gsub("([+()])", "\\\\\\1", ref_grp_ef), "$")
+                clean_labels <- sub(suffix_pat, "", contrast_labels)
+                if (all(clean_labels != contrast_labels)) contrast_labels <- clean_labels
+              }
+              forest_df <- data.frame(
+                Contrast = contrast_labels,
+                Estimate = pc_df[[est_col]],
+                Lower    = if (!is.na(lower_col)) pc_df[[lower_col]] else pc_df[[est_col]],
+                Upper    = if (!is.na(upper_col)) pc_df[[upper_col]] else pc_df[[est_col]],
+                P_Label  = if (is.null(p_label)) "" else paste0("p=", p_label),
+                stringsAsFactors = FALSE
+              )
+              if (!is.null(ref_grp_ef)) {
+                forest_df <- rbind(forest_df, data.frame(
+                  Contrast = paste0(ref_grp_ef, "\n(Reference)"),
+                  Estimate = 0, Lower = NA_real_, Upper = NA_real_,
+                  P_Label  = "", stringsAsFactors = FALSE
+                ))
+              }
+              forest_df$is_ref <- seq_len(nrow(forest_df)) == nrow(forest_df) & !is.null(ref_grp_ef)
+              all_vals <- c(forest_df$Estimate[!forest_df$is_ref],
+                            forest_df$Lower[!forest_df$is_ref],
+                            forest_df$Upper[!forest_df$is_ref])
+              max_abs  <- ceiling(max(abs(all_vals), na.rm = TRUE))
+              x_lim    <- c(-max_abs, max_abs * 1.20)
+              x_breaks <- pretty(c(-max_abs, max_abs), n = 6)
+              x_breaks <- x_breaks[x_breaks >= -max_abs & x_breaks <= max_abs]
+              result$effect_forest_plot <- ggplot2::ggplot(
+                forest_df,
+                ggplot2::aes(x = Estimate, y = stats::reorder(Contrast, -Estimate))
+              ) +
+                ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "red", linewidth = 0.6) +
+                ggplot2::geom_errorbarh(
+                  data = ~ subset(., !is_ref),
+                  ggplot2::aes(xmin = Lower, xmax = Upper),
+                  height = 0.25, colour = "steelblue"
+                ) +
+                ggplot2::geom_point(data = ~ subset(., !is_ref), size = 3, colour = "steelblue") +
+                ggplot2::geom_point(data = ~ subset(., is_ref),  size = 4, colour = "grey50", shape = 18) +
+                ggplot2::geom_text(
+                  data = ~ subset(., !is_ref & nzchar(P_Label) & !is.na(Upper)),
+                  ggplot2::aes(label = P_Label, x = Upper),
+                  hjust = -0.2, size = 3.2
+                ) +
+                ggplot2::scale_x_continuous(limits = x_lim, breaks = x_breaks) +
+                ggplot2::labs(
+                  title = "Effect Size Forest Plot",
+                  x = if (isTRUE(using_dunnett)) "Mean Difference (treatment \u2212 reference)" else "Mean Difference",
+                  y = NULL
+                ) +
+                ggplot2::theme_classic() +
+                ggplot2::theme(axis.text.y = ggplot2::element_text(size = 10))
+            }
+          }, error = function(e) cat("WARNING: effect forest plot failed:", e$message, "\n"))
+        }
+
       }, error = function(e) {
         cat("WARNING: Error generating comparison types:", e$message, "\n")
       })
     }
-    
+
     rv$tg_results <- result
     rv$tg_running <- FALSE
 
