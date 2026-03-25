@@ -217,7 +217,15 @@ power_server <- function(input, output, session, rv) {
         effect_sizes     = custom_effect_sizes
       )
     })
-    
+
+    # Inject run-time parameters into summary so renderText can display them
+    if (!isTRUE(result$error)) {
+      if (is.null(result$summary)) result$summary <- list()
+      result$summary$method        <- input$pw_method
+      result$summary$alpha_levels  <- alpha_vals
+      result$summary$power_targets <- power_vals
+    }
+
     rv$pw_results <- result
     
     if (isTRUE(result$error)) {
@@ -245,9 +253,22 @@ power_server <- function(input, output, session, rv) {
         if (is.character(res$summary)) {
           cat(res$summary)
         } else {
-          cat("Method:       ", res$summary$method, "\n")
-          cat("Alpha levels: ", paste(res$summary$alpha_levels, collapse = ", "), "\n")
-          cat("Power targets:", paste(res$summary$power_targets, collapse = ", "), "\n\n")
+          method_label <- switch(res$summary$method,
+            parametric  = "Parametric (t-test based)",
+            simulation  = "Simulation",
+            auc         = "AUC-based",
+            res$summary$method
+          )
+          cat("Method:        ", method_label, "\n")
+          cat("Alpha levels:  ", paste(res$summary$alpha_levels,  collapse = ", "), "\n")
+          cat("Power targets: ", paste(res$summary$power_targets, collapse = ", "), "\n")
+          if (!is.null(res$summary$sample_sizes) && length(res$summary$sample_sizes) > 0) {
+            cat("\nSample sizes per group:\n")
+            for (nm in names(res$summary$sample_sizes)) {
+              cat("  ", nm, ": ", res$summary$sample_sizes[[nm]], "\n", sep = "")
+            }
+          }
+          cat("\n")
           if (!is.null(res$summary$overall_power)) {
             cat("Overall observed power:", round(res$summary$overall_power, 4), "\n\n")
           }
