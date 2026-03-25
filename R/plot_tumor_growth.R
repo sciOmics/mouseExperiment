@@ -281,10 +281,16 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
     plot_df <- plot_with_extrap
   }
   
-  # Base plot with individual growth curves using the composite identifiers
+  # Base plot with individual growth curves — non-extrapolated points only
   plot <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data[[day_column]], y = .data[[volume_column]], group = Mouse_ID)) +
-    ggplot2::geom_line(ggplot2::aes(color = Group), alpha = 0.5, size = 0.5) +
-    ggplot2::geom_point(ggplot2::aes(color = Group), alpha = 0.5, shape = 16, size = point_size)
+    ggplot2::geom_line(
+      data = ~ subset(., !Extrapolated),
+      ggplot2::aes(color = Group), alpha = 0.5, size = 0.5
+    ) +
+    ggplot2::geom_point(
+      data = ~ subset(., !Extrapolated),
+      ggplot2::aes(color = Group), alpha = 0.5, shape = 16, size = point_size
+    )
   
   # If extrapolation was done, mark extrapolated points differently
   if (extrapolate_volumes) {
@@ -328,7 +334,7 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
     ggplot2::ylab(bquote("Tumor Volume"(mm^3))) +
     ggplot2::xlab("Day") +
     ggplot2::ggtitle(title) +
-    ggplot2::scale_x_continuous(expand = c(0, 0), limits = c(0, NA)) + # Always start x-axis at 0
+    ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0, 0.05)), limits = c(0, NA)) + # Start at 0, 5% right padding
     ggplot2::scale_y_continuous(expand = c(0, 0.05), limits = c(0, NA)) + # Set y-axis to start at 0
     ggplot2::theme_classic() +
     # Move legend to top-left with proper spacing from title
