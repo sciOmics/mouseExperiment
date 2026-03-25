@@ -941,9 +941,13 @@ tumor_growth_server <- function(input, output, session, rv) {
           }, error = function(e) cat("WARNING: resid-vs-fitted plot failed:", e$message, "\n"))
         }
         
-        # Plot 5: Effect size forest plot from pairwise comparisons
-        pc <- if (!is.null(result$pairwise_comparisons)) result$pairwise_comparisons
+        # Plot 5: Effect size forest plot.
+        # Use reference_comparisons_dunnett (treatment - control, correct sign)
+        # in preference to all_pairwise_comparisons (alphabetical pairs whose
+        # sign depends on factor level order and is often backwards).
+        pc <- if (!is.null(result$reference_comparisons_dunnett)) result$reference_comparisons_dunnett
               else if (!is.null(result$all_pairwise_comparisons)) result$all_pairwise_comparisons
+              else if (!is.null(result$pairwise_comparisons)) result$pairwise_comparisons
               else NULL
         if (!is.null(pc)) {
           tryCatch({
@@ -964,20 +968,34 @@ tumor_growth_server <- function(input, output, session, rv) {
                 lower_col <- "lower.CL"; upper_col <- "upper.CL"
               }
               p_label <- if (!is.na(p_col))
-                           paste0("p=", formatC(pc_df[[p_col]], digits = 3, format = "g"))
+                           vapply(pc_df[[p_col]], format_pval, character(1))
                          else NULL
 
+              # For dunnett contrasts the label is already "TreatA - Reference";
+              # strip the reference name from the label so it reads more cleanly
+              # in the forest plot (e.g. "HDACi - Control" → "HDACi").
+              using_dunnett <- !is.null(result$reference_comparisons_dunnett) &&
+                               identical(pc, result$reference_comparisons_dunnett)
+              ref_grp_ef <- if (!is.null(input$tg_reference) && nzchar(input$tg_reference))
+                              input$tg_reference else NULL
+              contrast_labels <- pc_df[[label_col]]
+              if (isTRUE(using_dunnett) && !is.null(ref_grp_ef)) {
+                # emmeans trt.vs.ctrl labels: "HDACi - Control" → "HDACi"
+                suffix_pat <- paste0("\\s*[-–]\\s*", gsub("([+()])", "\\\\\\1", ref_grp_ef), "$")
+                clean_labels <- sub(suffix_pat, "", contrast_labels)
+                # Only apply the strip if every label had the suffix (safety check)
+                if (all(clean_labels != contrast_labels)) contrast_labels <- clean_labels
+              }
+
               forest_df <- data.frame(
-                Contrast  = pc_df[[label_col]],
+                Contrast  = contrast_labels,
                 Estimate  = pc_df[[est_col]],
                 Lower     = if (!is.na(lower_col)) pc_df[[lower_col]] else pc_df[[est_col]],
                 Upper     = if (!is.na(upper_col)) pc_df[[upper_col]] else pc_df[[est_col]],
-                P_Label   = if (is.null(p_label)) "" else p_label,
+                P_Label   = if (is.null(p_label)) "" else paste0("p=", p_label),
                 stringsAsFactors = FALSE
               )
               # Add reference group row at Estimate = 0
-              ref_grp_ef <- if (!is.null(input$tg_reference) && nzchar(input$tg_reference))
-                              input$tg_reference else NULL
               if (!is.null(ref_grp_ef)) {
                 forest_df <- rbind(forest_df, data.frame(
                   Contrast = paste0(ref_grp_ef, "\n(Reference)"),
@@ -1000,7 +1018,8 @@ tumor_growth_server <- function(input, output, session, rv) {
 
               result$effect_forest_plot <- ggplot2::ggplot(
                 forest_df,
-                ggplot2::aes(x = Estimate, y = stats::reorder(Contrast, Estimate))
+                # reorder by -Estimate: most negative (most effective) at top
+                ggplot2::aes(x = Estimate, y = stats::reorder(Contrast, -Estimate))
               ) +
                 ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "red", linewidth = 0.6) +
                 ggplot2::geom_errorbarh(
@@ -1015,7 +1034,7 @@ tumor_growth_server <- function(input, output, session, rv) {
                   data = ~ subset(., is_ref), size = 4, colour = "grey50", shape = 18
                 ) +
                 ggplot2::geom_text(
-                  data = ~ subset(., !is_ref & nzchar(P_Label)),
+                  data = ~ subset(., !is_ref & nzchar(P_Label) & !is.na(Upper)),
                   ggplot2::aes(label = P_Label, x = Upper),
                   hjust = -0.2, size = 3.2
                 ) +
@@ -1024,8 +1043,10 @@ tumor_growth_server <- function(input, output, session, rv) {
                   breaks = x_breaks
                 ) +
                 ggplot2::labs(
-                  title = "Pairwise Effect Size Forest Plot",
-                  x = "Mean Difference (vs. Reference)",
+                  title = "Effect Size Forest Plot",
+                  x = if (isTRUE(using_dunnett))
+                        "Mean Difference (treatment \u2212 reference)"
+                      else "Mean Difference",
                   y = NULL
                 ) +
                 ggplot2::theme_classic() +
