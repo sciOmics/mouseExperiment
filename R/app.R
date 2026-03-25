@@ -50,9 +50,6 @@ $(document).ready(function() {
   if ($container.length === 0) $container = $mainNav.parent();
   $container.append($rightNav);
 
-  // Dark mode toggle button (appended after right nav)
-  var $toggleBtn = $('<button id=\"dark-mode-toggle\" title=\"Switch to dark mode\"><i class=\"fa fa-moon-o fa-fw\"></i></button>');
-  $container.append($toggleBtn);
 
   // Mark main nav for centering via CSS
   $mainNav.addClass('navbar-center');
@@ -77,9 +74,10 @@ window.enableNavTab  = enableNavTab;
 
   ui <- navbarPage(
     title = tags$span(id = "nav-brand", "mouseExperiment",
-               tags$img(src = "images/mouse_icon.png",
-                        id  = "nav-brand-icon",
-                        alt = "")),
+               tags$img(src   = "images/mouse_icon.png",
+                        id    = "nav-brand-icon",
+                        title = "Toggle dark mode",
+                        alt   = "Toggle dark mode")),
     id    = "main_nav",
     header = tagList(
       shinyjs::useShinyjs(),

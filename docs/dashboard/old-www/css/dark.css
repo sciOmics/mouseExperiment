@@ -194,20 +194,13 @@ body.dark-mode ::-webkit-scrollbar-thumb:hover {
   background: #777;
 }
 
-/* ---- Dark mode toggle button in navbar ---- */
-#dark-mode-toggle {
-  background: transparent;
-  border: 1px solid rgba(255,255,255,0.35);
-  border-radius: 4px;
-  color: white !important;
-  cursor: pointer;
-  font-size: 1.1rem;
-  padding: 3px 9px;
-  margin-top: 12px;
-  line-height: 1.4;
-  transition: background 0.2s;
+/* ---- Nav brand icon & background mice in dark mode ---- */
+/* Invert the mouse logo so it stays visible on the dark navbar */
+body.dark-mode #nav-brand-icon {
+  filter: invert(1);
 }
 
-#dark-mode-toggle:hover {
-  background: rgba(255,255,255,0.15);
+/* Invert the background mouse outline images for dark mode */
+body.dark-mode .mouse-bg-img {
+  filter: invert(1);
 }
