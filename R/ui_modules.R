@@ -79,7 +79,7 @@ dataUploadUI <- function() {
             ),
             column(8,
               fileInput("data_file",
-                       "Choose File (CSV or RDA)",
+                       "Choose File (CSV)",
                        accept = c(".csv", ".rda", ".RData")),
               uiOutput("file_validation_msg")
             )
@@ -582,6 +582,26 @@ tumorGrowthUI <- function() {
 helpUI <- function() {
   fluidPage(
     h2("Help & Documentation"),
+
+    div(
+      class = "alert alert-warning",
+      style = "border-left: 5px solid #e2a000;",
+      h4(icon("triangle-exclamation"), " Disclaimer"),
+      p(
+        strong("mouseExperiment"), " is provided \"as is\" for research purposes only,",
+        " without warranty of any kind, express or implied. The authors and contributors",
+        " accept no liability for errors, inaccuracies, or any consequences — including",
+        " but not limited to incorrect results, data loss, or decisions made on the basis",
+        " of outputs from this software."
+      ),
+      p(
+        strong("All results must be independently validated"),
+        " before use in publications, reports, regulatory submissions, clinical decisions,",
+        " or any other application. Use of this tool is entirely at your own risk."
+      )
+    ),
+
+    hr(),
 
     fluidRow(
       column(6,

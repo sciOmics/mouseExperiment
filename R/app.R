@@ -115,6 +115,34 @@ $(document).ready(function() {
 
     rv <- reactiveValues()
 
+    # Startup disclaimer modal — shown once per session
+    shiny::showModal(
+      shiny::modalDialog(
+        title = shiny::tagList(
+          shiny::icon("triangle-exclamation"), " Disclaimer"
+        ),
+        shiny::p(
+          shiny::strong("mouseExperiment"), " is provided \"as is\" for research purposes only,",
+          " without warranty of any kind, express or implied. The authors and contributors",
+          " accept no liability for errors, inaccuracies, or any consequences — including",
+          " but not limited to incorrect results, data loss, or decisions made on the basis",
+          " of outputs from this software."
+        ),
+        shiny::p(
+          shiny::strong("All results must be independently validated"),
+          " before use in publications, reports, regulatory submissions, clinical decisions,",
+          " or any other application. Use of this tool is entirely at your own risk."
+        ),
+        shiny::p(
+          "By clicking ", shiny::strong("I Understand"),
+          ", you acknowledge that you have read this disclaimer and accept full responsibility",
+          " for validating any results produced by this software."
+        ),
+        footer = shiny::modalButton("I Understand"),
+        easyClose = FALSE
+      )
+    )
+
     data_upload_server(input, output, session, rv)
     tumor_growth_server(input, output, session, rv)
     survival_server(input, output, session, rv)
