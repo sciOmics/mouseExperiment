@@ -1438,7 +1438,8 @@ tumor_growth_server <- function(input, output, session, rv) {
         data = rates,
         ggplot2::aes(x = .data[[grp_col_r]], y = growth_rate,
                      color = .data[[grp_col_r]], group = .data[[grp_col_r]]),
-        fun = cfun, geom = "crossbar", width = 0.4, fatten = 2
+        fun.min = cfun, fun = cfun, fun.max = cfun,
+        geom = "crossbar", width = 0.4, linewidth = 0.8
       )
     }
     p <- p + ggplot2::theme(text = ggplot2::element_text(size = text_size))
@@ -1466,17 +1467,23 @@ tumor_growth_server <- function(input, output, session, rv) {
     legend_pos <- input$tg_opt_legend_pos %||% "auto"
     auc_ind    <- rv$tg_results$auc_analysis$individual
     grp_col_a  <- intersect(c("Treatment", "Group"), colnames(auc_ind))[1]
-    if (isTRUE(!is.na(grp_col_a)) && isTRUE(length(ordered_grps) > 0))
-      auc_ind[[grp_col_a]] <- factor(auc_ind[[grp_col_a]], levels = ordered_grps)
+    if (isTRUE(!is.na(grp_col_a)) && isTRUE(length(ordered_grps) > 0)) {
+      # The AUC individual data uses plain treatment names (no " - Dose: X" suffix).
+      # When dose data is loaded, ordered_grps contains composite names — strip
+      # the dose portion so the factor levels match the actual Treatment values.
+      auc_levels <- unique(sub(" - Dose: .*$", "", ordered_grps))
+      auc_levels <- auc_levels[auc_levels %in% as.character(unique(auc_ind[[grp_col_a]]))]
+      if (length(auc_levels) > 0)
+        auc_ind[[grp_col_a]] <- factor(auc_ind[[grp_col_a]], levels = auc_levels)
+    }
     p <- tryCatch({
       p_b <- ggplot2::ggplot(auc_ind,
-               ggplot2::aes(x = .data[[grp_col_a]], y = AUC,
+               ggplot2::aes(x = .data[[grp_col_a]], y = .data[["AUC"]],
                             color = .data[[grp_col_a]])) +
-        ggbeeswarm::geom_beeswarm(size = pt_size, cex = 2.5, alpha = 0.85) +
         ggplot2::theme_classic() +
         ggplot2::labs(x = NULL, y = "AUC", title = "AUC Comparison") +
         ggplot2::theme(legend.title = ggplot2::element_blank())
-      # Error bars
+      # Error bars — drawn first so individual points render on top
       if (err_type != "none") {
         sem_fn  <- function(x) mean(x, na.rm=TRUE) + c(-1,1) * sd(x, na.rm=TRUE)/sqrt(sum(!is.na(x)))
         sd_fn   <- function(x) mean(x, na.rm=TRUE) + c(-1,1) * sd(x, na.rm=TRUE)
@@ -1487,10 +1494,12 @@ tumor_growth_server <- function(input, output, session, rv) {
           fun.min = function(x) eb_fn(x)[1],
           fun     = function(x) mean(x, na.rm=TRUE),
           fun.max = function(x) eb_fn(x)[2],
-          geom = "errorbar", width = 0.2, color = "black"
+          geom = "errorbar", width = 0.4, linewidth = 0.8, color = "black"
         )
       }
-      # Center bar / line
+      # Center bar — degenerate crossbar (ymin = y = ymax) renders as a
+      # horizontal bar at the centre value; drawn before points so it stays
+      # under the individual data cloud.
       if (center_bar != "none") {
         cfun <- switch(center_bar,
           mean           = function(x) mean(x, na.rm=TRUE),
@@ -1499,10 +1508,18 @@ tumor_growth_server <- function(input, output, session, rv) {
           function(x) mean(x, na.rm=TRUE)
         )
         p_b <- p_b + ggplot2::stat_summary(
-          fun = cfun, geom = "crossbar", width = 0.5, fatten = 2,
+          fun.min = cfun, fun = cfun, fun.max = cfun,
+          geom = "crossbar", width = 0.5, linewidth = 0.8,
           ggplot2::aes(group = .data[[grp_col_a]], color = .data[[grp_col_a]])
         )
       }
+      # Individual points — use geom_jitter (matches plot_auc() backend) so
+      # the y aesthetic is never affected by beeswarm position computation.
+      # height = 0 keeps all points at their true AUC values.
+      p_b <- p_b + ggplot2::geom_jitter(
+        position = ggplot2::position_jitter(width = 0.15, height = 0, seed = 123),
+        size = pt_size, alpha = 0.85
+      )
       if (!is.null(colors)) p_b <- p_b + ggplot2::scale_color_manual(values = colors)
       p_b
     }, error = function(e) rv$tg_results$auc_plot)
