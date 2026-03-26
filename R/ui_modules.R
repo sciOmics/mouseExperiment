@@ -81,6 +81,11 @@ dataUploadUI <- function() {
               fileInput("data_file",
                        "Choose File (CSV)",
                        accept = c(".csv", ".rda", ".RData")),
+              tags$p(tags$small(
+                icon("info-circle"), " Data must be in ",
+                tags$strong("long format"), " — one row per observation/measurement",
+                " (e.g. one row per mouse per timepoint)."
+              )),
               uiOutput("file_validation_msg")
             )
           )
