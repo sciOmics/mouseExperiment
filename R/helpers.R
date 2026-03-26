@@ -312,7 +312,7 @@ group_color_pickers_ui <- function(prefix, groups, header = "Group Colors") {
   if (is.null(groups) || length(groups) == 0L) return(NULL)
   defaults <- default_group_colors(length(groups))
   shiny::tagList(
-    shiny::tags$h6(style = "font-size: 1rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
+    shiny::tags$h6(style = "font-size: 14px; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
                    shiny::icon("palette"), " ", header),
     lapply(seq_along(groups), function(i) {
       colourpicker::colourInput(
