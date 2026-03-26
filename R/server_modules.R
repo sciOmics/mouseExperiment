@@ -1544,6 +1544,15 @@ tumor_growth_server <- function(input, output, session, rv) {
       }))
     }
 
+    # Helper: y-axis limits — floor at 0 (unless data dips below), 10% top buffer
+    y_limits <- function(point_vals, lo_vals = NULL, hi_vals = NULL) {
+      all_vals <- c(point_vals, lo_vals, hi_vals)
+      all_vals <- all_vals[!is.na(all_vals)]
+      ymin <- min(0, min(all_vals))
+      ymax <- max(all_vals) * 1.10
+      c(ymin, ymax)
+    }
+
     # Helper: apply colours + labels + legend
     finish_plot <- function(p) {
       if (!is.null(colors)) p <- p + ggplot2::scale_colour_manual(values = colors)
@@ -1596,6 +1605,8 @@ tumor_growth_server <- function(input, output, session, rv) {
         position = ggplot2::position_jitter(width = jit_width, height = 0, seed = 42),
         size = pt_size, alpha = 0.85)
 
+      ylims <- y_limits(auc_ind[["AUC"]], summ$lo, summ$hi)
+      p <- p + ggplot2::coord_cartesian(ylim = ylims)
       return(finish_plot(p))
     }
 
@@ -1642,6 +1653,8 @@ tumor_growth_server <- function(input, output, session, rv) {
         position = ggplot2::position_jitter(width = jit_width, height = 0, seed = 42),
         size = pt_size, alpha = 0.85)
 
+      ylims <- y_limits(rates[["growth_rate"]], summ$lo, summ$hi)
+      p <- p + ggplot2::coord_cartesian(ylim = ylims)
       return(finish_plot(p))
     }
 
