@@ -1684,6 +1684,16 @@ tumor_growth_server <- function(input, output, session, rv) {
     vol_col     <- col_names$volume_column
     trt_col     <- col_names$treatment_column
     id_col      <- col_names$id_column
+    cage_col    <- col_names$cage_column
+
+    # Build a unique animal key: if cage info is present use "CageX / AnimalY"
+    # to avoid ID collisions across cages (IDs are only unique within a cage)
+    animal_key <- ".wf_animal_id"
+    if (!is.null(cage_col) && cage_col %in% colnames(data)) {
+      data[[animal_key]] <- paste0(data[[cage_col]], "/", data[[id_col]])
+    } else {
+      data[[animal_key]] <- as.character(data[[id_col]])
+    }
 
     cat("DEBUG WF: time_col=", time_col, " vol_col=", vol_col,
         " trt_col=", trt_col, " id_col=", id_col, "\n")
@@ -1693,10 +1703,10 @@ tumor_growth_server <- function(input, output, session, rv) {
     tryCatch({
       # Baseline: volume at each animal's earliest recorded timepoint
       baseline <- data |>
-        dplyr::group_by(.data[[id_col]]) |>
+        dplyr::group_by(.data[[animal_key]]) |>
         dplyr::slice_min(.data[[time_col]], n = 1, with_ties = FALSE) |>
         dplyr::ungroup() |>
-        dplyr::select(dplyr::all_of(c(id_col, trt_col, vol_col))) |>
+        dplyr::select(dplyr::all_of(c(animal_key, trt_col, vol_col))) |>
         dplyr::rename_with(~ "baseline_vol", .cols = dplyr::all_of(vol_col))
 
       # Endpoint: latest timepoint <= selected day, per animal
@@ -1710,16 +1720,16 @@ tumor_growth_server <- function(input, output, session, rv) {
 
       endpoint <- data |>
         dplyr::filter(.data[[time_col]] <= endpoint_day) |>
-        dplyr::group_by(.data[[id_col]]) |>
+        dplyr::group_by(.data[[animal_key]]) |>
         dplyr::slice_max(.data[[time_col]], n = 1, with_ties = FALSE) |>
         dplyr::ungroup() |>
-        dplyr::select(dplyr::all_of(c(id_col, vol_col))) |>
+        dplyr::select(dplyr::all_of(c(animal_key, vol_col))) |>
         dplyr::rename_with(~ "endpoint_vol", .cols = dplyr::all_of(vol_col))
 
       cat("DEBUG WF: nrow(baseline)=", nrow(baseline),
           " nrow(endpoint)=", nrow(endpoint), "\n")
 
-      wf_data <- dplyr::left_join(baseline, endpoint, by = id_col) |>
+      wf_data <- dplyr::left_join(baseline, endpoint, by = animal_key) |>
         dplyr::filter(!is.na(.data$baseline_vol), .data$baseline_vol > 0,
                       !is.na(.data$endpoint_vol)) |>
         dplyr::mutate(
@@ -1732,8 +1742,8 @@ tumor_growth_server <- function(input, output, session, rv) {
       cat("DEBUG WF: nrow(wf_data)=", nrow(wf_data), "\n")
       req(nrow(wf_data) > 0)
 
-      groups     <- get_ordered_groups(wf_data, trt_col)
-      colors     <- build_color_vector(groups, input$tg_color_palette %||% "Set1")
+      ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
+      colors       <- build_color_vector(input, "tg_color", ordered_grps)
       text_size  <- input$tg_opt_text_size %||% 12
       show_thr   <- isTRUE(input$tg_wf_show_thresholds)
       thr_low    <- input$tg_wf_threshold_low  %||% -30
@@ -1749,7 +1759,7 @@ tumor_growth_server <- function(input, output, session, rv) {
         ggplot2::scale_fill_manual(values = colors, name = trt_col) +
         ggplot2::scale_x_continuous(
           breaks = wf_data$rank,
-          labels = wf_data[[id_col]],
+          labels = wf_data[[animal_key]],
           expand = c(0.01, 0)) +
         ggplot2::labs(
           x = "Animal ID",
