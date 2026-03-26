@@ -349,3 +349,21 @@ footer {
   color: #333;
   border-color: #bbb;
 }
+
+/* ---- Collapsible plot-control sections ---- */
+a[data-toggle="collapse"] {
+  display: block;
+  color: #333;
+  text-decoration: none !important;
+}
+a[data-toggle="collapse"]:hover {
+  color: #000;
+  background-color: rgba(0,0,0,0.04);
+  border-radius: 3px;
+}
+a[data-toggle="collapse"] .pull-right {
+  transition: transform 0.2s ease;
+}
+a[data-toggle="collapse"].collapsed .pull-right {
+  transform: rotate(-90deg);
+}

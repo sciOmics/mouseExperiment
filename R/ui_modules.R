@@ -8,6 +8,34 @@ tab_info <- function(...) {
     ...
   )
 }
+
+# Helper: collapsible section for the plot control panel.
+# Starts collapsed; click the header to expand.
+ctrl_section <- function(id, icon_nm, title, ...) {
+  collapse_id <- paste0("ctrl-", id)
+  tagList(
+    tags$a(
+      href = paste0("#", collapse_id),
+      `data-toggle` = "collapse",
+      class = "collapsed",
+      style = paste0(
+        "display:block; font-size:1.05rem; font-weight:700; ",
+        "color:#333; text-decoration:none; ",
+        "padding:5px 2px; margin-top:4px; user-select:none; ",
+        "cursor:pointer;"
+      ),
+      icon(icon_nm, style = "margin-right:5px;"),
+      title,
+      tags$span(
+        class = "pull-right text-muted",
+        style = "font-size:0.75rem; padding-top:3px;",
+        HTML("&#9660;")
+      )
+    ),
+    tags$div(id = collapse_id, class = "collapse", ...),
+    hr(style = "margin:5px 0;")
+  )
+}
 #' Home Page UI
 #' @keywords internal
 homeUI <- function() {
@@ -461,81 +489,76 @@ tumorGrowthUI <- function() {
                       "Effect Size Forest Plot"  = "effect_forest"
                     )
                   ),
-                  hr(),
-                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
-                     icon("sort"), " Group Order"),
-                  uiOutput("tg_group_order_ui"),
-                  hr(),
-                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
-                     icon("palette"), " Appearance"),
-                  uiOutput("tg_color_pickers_ui"),
-                  hr(),
-                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
-                     icon("sliders-h"), " Options"),
-                  sliderInput("tg_opt_text_size", "Text size (pt)",
-                              min = 8, max = 20, value = 12, step = 1),
-                  selectInput("tg_opt_legend_pos", "Legend position",
-                    choices = c("Auto" = "auto", "None" = "none",
-                                "Top" = "top", "Bottom" = "bottom",
-                                "Left" = "left", "Right" = "right",
-                                "In plot - top left"  = "inplot_tl",
-                                "In plot - top right" = "inplot_tr"),
-                    selected = "auto"
+                  ctrl_section("group-order", "sort", "Group Order",
+                    uiOutput("tg_group_order_ui")
                   ),
-                  conditionalPanel(
-                    "input.tg_plot_selector == 'growth_curves'",
-                    checkboxInput("tg_opt_group_line",
-                                  "Show group average line", value = TRUE),
-                    checkboxInput("tg_opt_show_extrap",
-                                  "Show extrapolated curves/points", value = FALSE),
-                    selectInput("tg_opt_yscale", "Y-axis scale",
-                      choices = c("Linear" = "linear",
-                                  "Log10"  = "log10"),
-                      selected = "linear"
+                  ctrl_section("appearance", "palette", "Appearance",
+                    uiOutput("tg_color_pickers_ui")
+                  ),
+                  ctrl_section("options", "sliders-h", "Options",
+                    sliderInput("tg_opt_text_size", "Text size (pt)",
+                                min = 8, max = 20, value = 12, step = 1),
+                    selectInput("tg_opt_legend_pos", "Legend position",
+                      choices = c("Auto" = "auto", "None" = "none",
+                                  "Top" = "top", "Bottom" = "bottom",
+                                  "Left" = "left", "Right" = "right",
+                                  "In plot - top left"  = "inplot_tl",
+                                  "In plot - top right" = "inplot_tr"),
+                      selected = "auto"
                     ),
-                    sliderInput("tg_opt_growth_pt_size", "Point size",
-                                min = 0.5, max = 8, value = 2, step = 0.5),
-                    numericInput("tg_opt_xstart", "X-axis start (Day)",
-                                 value = 0, min = 0, step = 1)
-                  ),
-                  conditionalPanel(
-                    "['growth_rate','auc'].indexOf(input.tg_plot_selector) >= 0",
-                    selectInput("tg_opt_center_bar", "Center line / bar",
-                      choices = c("Mean" = "mean", "Median" = "median",
-                                  "Geometric Mean" = "geometric_mean",
-                                  "None" = "none"),
-                      selected = "mean"
+                    conditionalPanel(
+                      "input.tg_plot_selector == 'growth_curves'",
+                      checkboxInput("tg_opt_group_line",
+                                    "Show group average line", value = TRUE),
+                      checkboxInput("tg_opt_show_extrap",
+                                    "Show extrapolated curves/points", value = FALSE),
+                      selectInput("tg_opt_yscale", "Y-axis scale",
+                        choices = c("Linear" = "linear",
+                                    "Log10"  = "log10"),
+                        selected = "linear"
+                      ),
+                      sliderInput("tg_opt_growth_pt_size", "Point size",
+                                  min = 0.5, max = 8, value = 2, step = 0.5),
+                      numericInput("tg_opt_xstart", "X-axis start (Day)",
+                                   value = 0, min = 0, step = 1)
                     ),
-                    selectInput("tg_opt_error_bar", "Error bars",
-                      choices  = c("None" = "none", "SEM" = "SEM",
-                                   "SD" = "SD", "95% CI" = "CI"),
-                      selected = "SEM"
+                    conditionalPanel(
+                      "['growth_rate','auc'].indexOf(input.tg_plot_selector) >= 0",
+                      selectInput("tg_opt_center_bar", "Center line / bar",
+                        choices = c("Mean" = "mean", "Median" = "median",
+                                    "Geometric Mean" = "geometric_mean",
+                                    "None" = "none"),
+                        selected = "mean"
+                      ),
+                      selectInput("tg_opt_error_bar", "Error bars",
+                        choices  = c("None" = "none", "SEM" = "SEM",
+                                     "SD" = "SD", "95% CI" = "CI"),
+                        selected = "SEM"
+                      ),
+                      sliderInput("tg_opt_point_size",   "Point size",
+                                  0.5, 8, 2.5, step = 0.5),
+                      sliderInput("tg_opt_jitter_width", "Jitter width",
+                                  0, 1, 0.2, step = 0.05)
+                    )
+                  ),
+                  ctrl_section("title", "heading", "Title & Subtitle",
+                    textInput("tg_plot_title", "Title",
+                              placeholder = "Leave blank for default"),
+                    selectInput("tg_plot_title_align", "Title alignment",
+                      choices = c("Left" = "left", "Center" = "center", "Right" = "right"),
+                      selected = "center"),
+                    textInput("tg_plot_subtitle", "Subtitle",
+                              placeholder = "Optional subtitle")
+                  ),
+                  ctrl_section("export", "arrows-alt", "Plot Size / Export",
+                    fluidRow(
+                      column(6, numericInput("tg_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
+                      column(6, numericInput("tg_plot_height", "Height (px)", 550, min = 200, max = 5000, step = 50))
                     ),
-                    sliderInput("tg_opt_point_size",   "Point size",
-                                0.5, 8, 2.5, step = 0.5),
-                    sliderInput("tg_opt_jitter_width", "Jitter width",
-                                0, 1, 0.2, step = 0.05)
-                  ),
-                  hr(),
-                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
-                     icon("heading"), " Title & Subtitle"),
-                  textInput("tg_plot_title", "Title",
-                            placeholder = "Leave blank for default"),
-                  selectInput("tg_plot_title_align", "Title alignment",
-                    choices = c("Left" = "left", "Center" = "center", "Right" = "right"),
-                    selected = "center"),
-                  textInput("tg_plot_subtitle", "Subtitle",
-                            placeholder = "Optional subtitle"),
-                  hr(),
-                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
-                     icon("arrows-alt"), " Plot Size / Export"),
-                  fluidRow(
-                    column(6, numericInput("tg_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
-                    column(6, numericInput("tg_plot_height", "Height (px)", 550, min = 200, max = 5000, step = 50))
-                  ),
-                  fluidRow(
-                    column(6, numericInput("tg_plot_dpi", "DPI", 100, min = 72, max = 300, step = 1)),
-                    column(6, tags$div(style = "margin-top: 25px;", uiOutput("tg_download_plot_btn")))
+                    fluidRow(
+                      column(6, numericInput("tg_plot_dpi", "DPI", 100, min = 72, max = 300, step = 1)),
+                      column(6, tags$div(style = "margin-top: 25px;", uiOutput("tg_download_plot_btn")))
+                    )
                   )
                 )
               ),
