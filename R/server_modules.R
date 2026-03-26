@@ -1072,7 +1072,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     anova_df <- as.data.frame(rv$tg_results$anova)
     anova_df <- format_df_for_display(anova_df)
     
-    datatable(anova_df, options = list(scrollX = TRUE, pageLength = 10))
+    datatable(anova_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
   # Comparisons title (reactive based on selection)
@@ -1198,7 +1198,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     colnames(effects_df) <- gsub("Lower_CL_orig$",       paste0("Lower_CL", orig_note),  colnames(effects_df))
     colnames(effects_df) <- gsub("Upper_CL$",            paste0("Upper_CL", scale_note), colnames(effects_df))
     colnames(effects_df) <- gsub("Upper_CL_orig$",       paste0("Upper_CL", orig_note),  colnames(effects_df))
-    datatable(effects_df, options = list(scrollX = TRUE, pageLength = 10))
+    datatable(effects_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
   # Growth rates table
@@ -1253,7 +1253,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     for (old in names(rename_map)) new_names[new_names == old] <- rename_map[[old]]
     datatable(rates_df,
       colnames = new_names,
-      options  = list(scrollX = TRUE, paging = FALSE, scrollY = "500px", scrollCollapse = TRUE)
+      options  = list(scrollX = TRUE, paging = FALSE, searching = FALSE, scrollY = "500px", scrollCollapse = TRUE)
     )
   })
   

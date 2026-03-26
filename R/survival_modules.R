@@ -603,7 +603,7 @@ survival_server <- function(input, output, session, rv) {
     results_df <- rv$surv_results$results
     results_df <- format_df_for_display(results_df)
     
-    datatable(results_df, options = list(scrollX = TRUE, pageLength = 10))
+    datatable(results_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
   # Risk table output - numbers at risk per time point per group
@@ -627,7 +627,7 @@ survival_server <- function(input, output, session, rv) {
     risk_df <- risk_df[order(risk_df$Group, risk_df$Time), ]
     
     datatable(risk_df,
-              options = list(scrollX = TRUE, pageLength = 15),
+              options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
               rownames = FALSE)
   })
   

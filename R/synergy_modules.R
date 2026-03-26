@@ -477,7 +477,7 @@ synergy_server <- function(input, output, session, rv) {
       data.frame(Message = "No metrics available")
     }
     df <- format_df_for_display(df)
-    datatable(df, options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE)
+    datatable(df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE), rownames = FALSE)
   })
   
   # TGI Table removed (duplicate of Synergy Metrics)
