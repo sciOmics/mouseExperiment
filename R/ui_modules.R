@@ -549,7 +549,7 @@ tumorGrowthUI <- function() {
                 conditionalPanel("input.tg_plot_selector == 'auc'",
                   h4("Area Under the Curve Plot"),
                   tab_info(strong("AUC mode: "), "model-estimated area under the curve, one point per subject. ",
-                    strong("LME4 mode: "), "emmeans-estimated marginal means per treatment group with 95% confidence intervals."),
+                    strong("LME4 mode: "), "per-animal growth rates with group mean and error bars (same plot style as AUC mode)."),
                   shinycssloaders::withSpinner(
                     plotOutput("tg_plot_auc", width = "auto", height = "auto")
                   )
