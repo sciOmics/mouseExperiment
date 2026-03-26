@@ -1415,7 +1415,7 @@ tumor_growth_server <- function(input, output, session, rv) {
   })
 
   # Growth curves plot  — reactive: re-renders on colour/option changes
-  output$tg_plot_growth <- renderPlot({
+  tg_growth_plot <- reactive({
     tryCatch({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
@@ -1513,10 +1513,14 @@ tumor_growth_server <- function(input, output, session, rv) {
           hjust = 0.5, vjust = 0.5, size = 4, color = "red") +
         ggplot2::theme_void()
     })
+  })
+
+  output$tg_plot_growth <- renderPlot({
+    tg_growth_plot()
   }, width = function() input$tg_plot_width %||% 800,
      height = function() input$tg_plot_height %||% 550)
   
-  output$tg_plot_rates <- renderPlot({
+  tg_rates_plot <- reactive({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
     req(rv$tg_results$growth_rates)
@@ -1567,11 +1571,15 @@ tumor_growth_server <- function(input, output, session, rv) {
                            input$tg_plot_title_align %||% "center", text_size)
     p <- apply_legend_pos(p, legend_pos)
     p
+  })
+
+  output$tg_plot_rates <- renderPlot({
+    tg_rates_plot()
   }, width = function() input$tg_plot_width %||% 800,
      height = function() input$tg_plot_height %||% 550)
   
   # AUC/Treatment effects plot — reactive
-  output$tg_plot_auc <- renderPlot({
+  tg_auc_plot <- reactive({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
 
@@ -1712,8 +1720,12 @@ tumor_growth_server <- function(input, output, session, rv) {
 
     # ── Path C: last resort — return stored plot ──────────────────────────
     p <- rv$tg_results$auc_plot
-    req(!is.null(p))
+    if (is.null(p)) return(NULL)
     finish_plot(p)
+  })
+
+  output$tg_plot_auc <- renderPlot({
+    tg_auc_plot()
   }, width = function() input$tg_plot_width %||% 800,
      height = function() input$tg_plot_height %||% 550)
   
@@ -1797,15 +1809,21 @@ tumor_growth_server <- function(input, output, session, rv) {
   })
 
   # Effect size forest plot
-  output$tg_plot_effect_forest <- renderPlot({
+  tg_forest_plot <- reactive({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
     text_size <- input$tg_opt_text_size %||% 12
-
     if (!is.null(rv$tg_results$effect_forest_plot)) {
-      return(apply_plot_labels(rv$tg_results$effect_forest_plot,
-                               input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
-                               input$tg_plot_title_align %||% "center", text_size))
+      apply_plot_labels(rv$tg_results$effect_forest_plot,
+                        input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
+                        input$tg_plot_title_align %||% "center", text_size)
+    } else NULL
+  })
+
+  output$tg_plot_effect_forest <- renderPlot({
+    p <- tg_forest_plot()
+    if (!is.null(p)) {
+      p
     } else {
       plot(1, 1, type="n", main="Effect size forest plot not available\n(requires pairwise comparison data)", xlab="", ylab="")
     }
@@ -1879,11 +1897,12 @@ tumor_growth_server <- function(input, output, session, rv) {
   output$download_tg_plot_growth <- downloadHandler(
     filename = "tumor_growth_curves.png",
     content = function(file) {
-      if (!is.null(rv$tg_results$tumor_growth_plot)) {
+      p <- tg_growth_plot()
+      if (!is.null(p)) {
         png(file, width = input$tg_plot_width %||% 800,
                   height = input$tg_plot_height %||% 600,
                   units = "px", res = input$tg_plot_dpi %||% 100)
-        print(rv$tg_results$tumor_growth_plot)
+        print(p)
         dev.off()
       }
     }
@@ -1892,11 +1911,12 @@ tumor_growth_server <- function(input, output, session, rv) {
   output$download_tg_plot_rates <- downloadHandler(
     filename = "growth_rate_distribution.png",
     content = function(file) {
-      if (!is.null(rv$tg_results$growth_rate_plot)) {
+      p <- tg_rates_plot()
+      if (!is.null(p)) {
         png(file, width = input$tg_plot_width %||% 800,
                   height = input$tg_plot_height %||% 600,
                   units = "px", res = input$tg_plot_dpi %||% 100)
-        print(rv$tg_results$growth_rate_plot)
+        print(p)
         dev.off()
       }
     }
@@ -1905,11 +1925,12 @@ tumor_growth_server <- function(input, output, session, rv) {
   output$download_tg_plot_auc <- downloadHandler(
     filename = "treatment_effects.png",
     content = function(file) {
-      if (!is.null(rv$tg_results$auc_plot)) {
+      p <- tg_auc_plot()
+      if (!is.null(p)) {
         png(file, width = input$tg_plot_width %||% 800,
                   height = input$tg_plot_height %||% 600,
                   units = "px", res = input$tg_plot_dpi %||% 100)
-        print(rv$tg_results$auc_plot)
+        print(p)
         dev.off()
       }
     }
@@ -1931,11 +1952,12 @@ tumor_growth_server <- function(input, output, session, rv) {
   output$download_tg_plot_effect_forest <- downloadHandler(
     filename = "effect_size_forest_plot.png",
     content = function(file) {
-      if (!is.null(rv$tg_results$effect_forest_plot)) {
+      p <- tg_forest_plot()
+      if (!is.null(p)) {
         png(file, width = input$tg_plot_width %||% 900,
                   height = input$tg_plot_height %||% 600,
                   units = "px", res = input$tg_plot_dpi %||% 100)
-        print(rv$tg_results$effect_forest_plot)
+        print(p)
         dev.off()
       }
     }
