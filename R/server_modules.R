@@ -1507,92 +1507,148 @@ tumor_growth_server <- function(input, output, session, rv) {
   }, width = function() input$tg_plot_width %||% 800,
      height = function() input$tg_plot_height %||% 550)
   
-  # AUC/Treatment effects plot — reactive (beeswarm)
+  # AUC/Treatment effects plot — reactive
   output$tg_plot_auc <- renderPlot({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
-    # Fall back to stored plot if AUC individual data not available
-    if (is.null(rv$tg_results$auc_analysis) ||
-        is.null(rv$tg_results$auc_analysis$individual)) {
-      p <- rv$tg_results$auc_plot
-      req(!is.null(p))
-      text_size <- input$tg_opt_text_size %||% 12
-      return(apply_plot_labels(p, input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
-                               input$tg_plot_title_align %||% "center", text_size))
-    }
+
+    # Shared controls
     ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
     colors     <- build_color_vector(input, "tg_color", ordered_grps)
     center_bar <- input$tg_opt_center_bar %||% "mean"
     err_type   <- input$tg_opt_error_bar  %||% "SEM"
     pt_size    <- input$tg_opt_point_size %||% 2.5
+    jit_width  <- input$tg_opt_jitter_width %||% 0.2
     text_size  <- input$tg_opt_text_size %||% 12
     legend_pos <- input$tg_opt_legend_pos %||% "auto"
-    auc_ind    <- rv$tg_results$auc_analysis$individual
-    grp_col_a  <- intersect(c("Treatment", "Group"), colnames(auc_ind))[1]
-    if (isTRUE(!is.na(grp_col_a)) && isTRUE(length(ordered_grps) > 0)) {
-      # The AUC individual data uses plain treatment names (no " - Dose: X" suffix).
-      # When dose data is loaded, ordered_grps contains composite names — strip
-      # the dose portion so the factor levels match the actual Treatment values.
-      auc_levels <- unique(sub(" - Dose: .*$", "", ordered_grps))
-      auc_levels <- auc_levels[auc_levels %in% as.character(unique(auc_ind[[grp_col_a]]))]
-      if (length(auc_levels) > 0)
-        auc_ind[[grp_col_a]] <- factor(auc_ind[[grp_col_a]], levels = auc_levels)
-    }
-    p <- tryCatch({
-      # Helper: half-width of error bar given type
-      eb_half <- switch(err_type,
-        SEM = function(x) sd(x, na.rm=TRUE) / sqrt(sum(!is.na(x))),
-        SD  = function(x) sd(x, na.rm=TRUE),
-        CI  = function(x) qt(0.975, df=max(sum(!is.na(x))-1L,1L)) * sd(x,na.rm=TRUE) / sqrt(sum(!is.na(x))),
-              function(x) sd(x, na.rm=TRUE) / sqrt(sum(!is.na(x)))   # default SEM
-      )
-      cfun <- switch(center_bar,
-        mean           = function(x) mean(x, na.rm=TRUE),
-        median         = function(x) median(x, na.rm=TRUE),
-        geometric_mean = function(x) exp(mean(log(pmax(x, 1e-9)))),
-                         function(x) mean(x, na.rm=TRUE)
-      )
 
-      p_b <- ggplot2::ggplot(auc_ind,
-               ggplot2::aes(x = .data[[grp_col_a]], y = .data[["AUC"]],
-                            colour = .data[[grp_col_a]])) +
+    # Helper: build a summary df (per group: center, lower, upper)
+    make_summary <- function(df, grp_col, val_col) {
+      groups <- levels(factor(df[[grp_col]]))
+      do.call(rbind, lapply(groups, function(g) {
+        x <- df[[val_col]][as.character(df[[grp_col]]) == g]
+        x <- x[!is.na(x)]
+        n <- length(x)
+        ctr <- switch(center_bar,
+          mean           = mean(x),
+          median         = median(x),
+          geometric_mean = exp(mean(log(pmax(x, 1e-9)))),
+                           mean(x))
+        half <- switch(err_type,
+          SEM = sd(x) / sqrt(n),
+          SD  = sd(x),
+          CI  = qt(0.975, df = max(n - 1L, 1L)) * sd(x) / sqrt(n),
+                0)
+        data.frame(grp = g, ctr = ctr, lo = ctr - half, hi = ctr + half,
+                   stringsAsFactors = FALSE)
+      }))
+    }
+
+    # Helper: apply colours + labels + legend
+    finish_plot <- function(p) {
+      if (!is.null(colors)) p <- p + ggplot2::scale_colour_manual(values = colors)
+      p <- apply_plot_labels(p, input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
+                             input$tg_plot_title_align %||% "center", text_size)
+      apply_legend_pos(p, legend_pos)
+    }
+
+    # ── Path A: AUC model ── per-animal AUC values available ──────────────
+    if (!is.null(rv$tg_results$auc_analysis) &&
+        !is.null(rv$tg_results$auc_analysis$individual)) {
+
+      auc_ind   <- rv$tg_results$auc_analysis$individual
+      grp_col_a <- intersect(c("Treatment", "Group"), colnames(auc_ind))[1]
+      req(!is.na(grp_col_a))
+
+      # Factor ordering
+      if (length(ordered_grps) > 0) {
+        auc_levels <- unique(sub(" - Dose: .*$", "", ordered_grps))
+        auc_levels <- auc_levels[auc_levels %in% as.character(unique(auc_ind[[grp_col_a]]))]
+        if (length(auc_levels) > 0)
+          auc_ind[[grp_col_a]] <- factor(auc_ind[[grp_col_a]], levels = auc_levels)
+      }
+
+      summ <- make_summary(auc_ind, grp_col_a, "AUC")
+      summ$grp <- factor(summ$grp, levels = levels(factor(auc_ind[[grp_col_a]])))
+
+      p <- ggplot2::ggplot(auc_ind,
+             ggplot2::aes(x = .data[[grp_col_a]], y = .data[["AUC"]],
+                          colour = .data[[grp_col_a]])) +
         ggplot2::theme_classic() +
         ggplot2::labs(x = "Treatment", y = "AUC", title = "AUC Comparison") +
         ggplot2::theme(legend.title = ggplot2::element_blank())
 
-      # Layer 1: Error bars with horizontal end caps
-      if (err_type != "none") {
-        p_b <- p_b + ggplot2::stat_summary(
-          fun.min = function(x) mean(x, na.rm=TRUE) - eb_half(x),
-          fun.max = function(x) mean(x, na.rm=TRUE) + eb_half(x),
-          geom = "errorbar", colour = "black", width = 0.25, linewidth = 0.9
-        )
+      if (err_type != "none")
+        p <- p + ggplot2::geom_errorbar(
+          data = summ,
+          ggplot2::aes(x = grp, ymin = lo, ymax = hi),
+          inherit.aes = FALSE,
+          colour = "black", width = 0.25, linewidth = 0.9)
+
+      if (center_bar != "none")
+        p <- p + ggplot2::geom_crossbar(
+          data = summ,
+          ggplot2::aes(x = grp, y = ctr, ymin = ctr, ymax = ctr),
+          inherit.aes = FALSE,
+          colour = "black", width = 0.25, linewidth = 0.9)
+
+      p <- p + ggplot2::geom_point(
+        position = ggplot2::position_jitter(width = jit_width, height = 0, seed = 42),
+        size = pt_size, alpha = 0.85)
+
+      return(finish_plot(p))
+    }
+
+    # ── Path B: LME4 model ── rebuild from growth_rates reactively ────────
+    if (!is.null(rv$tg_results$growth_rates)) {
+      rates     <- as.data.frame(rv$tg_results$growth_rates)
+      grp_col_r <- intersect(c("Treatment", "Group"), colnames(rates))[1]
+      req(!is.na(grp_col_r))
+
+      # Factor ordering
+      if (length(ordered_grps) > 0) {
+        gr_levels <- unique(sub(" - Dose: .*$", "", ordered_grps))
+        gr_levels <- gr_levels[gr_levels %in% as.character(unique(rates[[grp_col_r]]))]
+        if (length(gr_levels) > 0)
+          rates[[grp_col_r]] <- factor(rates[[grp_col_r]], levels = gr_levels)
       }
 
-      # Layer 2: Mean/median marker as horizontal bar (degenerate crossbar)
-      if (center_bar != "none") {
-        p_b <- p_b + ggplot2::stat_summary(
-          fun     = cfun,
-          fun.min = cfun,
-          fun.max = cfun,
-          geom = "crossbar", colour = "black", width = 0.25, linewidth = 0.9
-        )
-      }
+      summ <- make_summary(rates, grp_col_r, "growth_rate")
+      summ$grp <- factor(summ$grp, levels = levels(factor(rates[[grp_col_r]])))
 
-      # Layer 3: Individual points on top with horizontal jitter only
-      p_b <- p_b + ggplot2::geom_point(
-        position = ggplot2::position_jitter(width = 0.08, height = 0, seed = 42),
-        size = pt_size, alpha = 0.85
-      )
+      p <- ggplot2::ggplot(rates,
+             ggplot2::aes(x = .data[[grp_col_r]], y = growth_rate,
+                          colour = .data[[grp_col_r]])) +
+        ggplot2::theme_classic() +
+        ggplot2::labs(x = "Treatment", y = "Growth Rate (log-volume / day)",
+                      title = "Growth Rate Comparison") +
+        ggplot2::theme(legend.title = ggplot2::element_blank())
 
-      if (!is.null(colors)) p_b <- p_b + ggplot2::scale_colour_manual(values = colors)
-      p_b
-    }, error = function(e) rv$tg_results$auc_plot)
+      if (err_type != "none")
+        p <- p + ggplot2::geom_errorbar(
+          data = summ,
+          ggplot2::aes(x = grp, ymin = lo, ymax = hi),
+          inherit.aes = FALSE,
+          colour = "black", width = 0.25, linewidth = 0.9)
+
+      if (center_bar != "none")
+        p <- p + ggplot2::geom_crossbar(
+          data = summ,
+          ggplot2::aes(x = grp, y = ctr, ymin = ctr, ymax = ctr),
+          inherit.aes = FALSE,
+          colour = "black", width = 0.25, linewidth = 0.9)
+
+      p <- p + ggplot2::geom_point(
+        position = ggplot2::position_jitter(width = jit_width, height = 0, seed = 42),
+        size = pt_size, alpha = 0.85)
+
+      return(finish_plot(p))
+    }
+
+    # ── Path C: last resort — return stored plot ──────────────────────────
+    p <- rv$tg_results$auc_plot
     req(!is.null(p))
-    p <- apply_plot_labels(p, input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
-                           input$tg_plot_title_align %||% "center", text_size)
-    p <- apply_legend_pos(p, legend_pos)
-    p
+    finish_plot(p)
   }, width = function() input$tg_plot_width %||% 800,
      height = function() input$tg_plot_height %||% 550)
   
