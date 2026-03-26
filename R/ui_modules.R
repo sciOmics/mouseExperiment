@@ -19,7 +19,7 @@ ctrl_section <- function(id, icon_nm, title, ...) {
       `data-toggle` = "collapse",
       class = "collapsed",
       style = paste0(
-        "display:block; font-size:1.05rem; font-weight:700; ",
+        "display:block; font-size:1.2rem; font-weight:700; ",
         "color:#333; text-decoration:none; ",
         "padding:5px 2px; margin-top:4px; user-select:none; ",
         "cursor:pointer;"
