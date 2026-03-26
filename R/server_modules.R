@@ -1681,8 +1681,35 @@ tumor_growth_server <- function(input, output, session, rv) {
       return(finish_plot(p))
     }
 
-    # ── Path B: LME4 model ── fall through to stored auc_plot ───────────
-    # (rv$tg_results$auc_plot is a growth-rate jitter plot matching AUC style)
+    # ── Path B: LME4 model ── rebuild from growth_rates so ordering is respected ──
+    rates <- rv$tg_results$growth_rates
+    if (!is.null(rates) && nrow(rates) > 0) {
+      grp_col_b <- intersect(c("Treatment", "Group"), colnames(rates))[1]
+      if (!is.na(grp_col_b)) {
+        gr_order <- if (length(ordered_grps) > 0) {
+          raw <- unique(sub(" - Dose: .*$", "", ordered_grps))
+          raw[raw %in% as.character(unique(rates[[grp_col_b]]))]
+        } else NULL
+        if (!is.null(gr_order) && length(gr_order) > 0)
+          rates[[grp_col_b]] <- factor(rates[[grp_col_b]], levels = gr_order)
+
+        val_col <- intersect(c("growth_rate", "GrowthRate"), colnames(rates))[1]
+        p <- tryCatch({
+          mouseExperiment::plot_growth_rate(
+            growth_data    = rates,
+            colors         = colors,
+            group_order    = if (!is.null(gr_order) && length(gr_order) > 0) gr_order else NULL,
+            show_mean      = center_bar == "mean",
+            error_bar_type = err_type,
+            point_size     = pt_size,
+            jitter_width   = jit_width
+          ) + ggplot2::theme_classic()
+        }, error = function(e) rv$tg_results$auc_plot)
+        if (!is.null(p)) return(finish_plot(p))
+      }
+    }
+
+    # ── Path C: last resort — stored plot ─────────────────────────────────
     p <- rv$tg_results$auc_plot
     if (is.null(p)) return(NULL)
     finish_plot(p)
