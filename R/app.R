@@ -175,7 +175,19 @@ $(document).ready(function() {
         # Always available once data is loaded
         shinyjs::runjs("window.enableNavTab('Tumor Growth');")
         shinyjs::runjs("window.enableNavTab('Power Analysis');")
-        shinyjs::runjs("window.enableNavTab('Drug Synergy');")
+
+        # Drug Synergy: only when treatment column has >= 3 unique groups
+        tx_col <- input$col_treatment
+        n_groups <- if (!is.null(tx_col) && nzchar(tx_col) &&
+                        !is.null(rv$uploaded_data) &&
+                        tx_col %in% colnames(rv$uploaded_data)) {
+          length(unique(na.omit(as.character(rv$uploaded_data[[tx_col]]))))
+        } else 0L
+        if (n_groups >= 3L) {
+          shinyjs::runjs("window.enableNavTab('Drug Synergy');")
+        } else {
+          shinyjs::runjs("window.disableNavTab('Drug Synergy');")
+        }
 
         # Survival: only when a censor/event column is mapped
         surv_mapped <- !is.null(input$col_survival_event) &&

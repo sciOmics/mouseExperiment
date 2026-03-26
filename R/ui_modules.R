@@ -668,7 +668,7 @@ helpUI <- function() {
     h3("Troubleshooting"),
     p(strong("File won't upload:"), "Ensure it is a CSV or RDA file."),
     p(strong("Columns not detected:"), "Check that column names match expected patterns above."),
-    p(strong("Analysis tab greyed out:"), "Upload and configure data first. Survival requires a censor column; Dose Response requires a dose column."),
+    p(strong("Analysis tab greyed out:"), "Upload and configure data first. Survival requires a censor column; Dose Response requires a dose column; Drug Synergy requires at least 3 treatment groups (e.g. control, Drug A, and combination)."),
     p(strong("Analysis fails:"), "Check that required columns are selected and contain valid data.")
   )
 }
