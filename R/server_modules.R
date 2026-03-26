@@ -1691,7 +1691,7 @@ tumor_growth_server <- function(input, output, session, rv) {
       dplyr::slice_min(.data[[time_col]], n = 1, with_ties = FALSE) |>
       dplyr::ungroup() |>
       dplyr::select(dplyr::all_of(c(id_col, trt_col, vol_col))) |>
-      dplyr::rename(baseline_vol = dplyr::all_of(vol_col))
+      dplyr::rename_with(~ "baseline_vol", .cols = dplyr::all_of(vol_col))
 
     # Endpoint: user-selected day (or last available per animal)
     endpoint_day <- as.numeric(input$tg_wf_endpoint_day %||%
@@ -1704,7 +1704,7 @@ tumor_growth_server <- function(input, output, session, rv) {
       dplyr::slice(1) |>
       dplyr::ungroup() |>
       dplyr::select(dplyr::all_of(c(id_col, vol_col))) |>
-      dplyr::rename(endpoint_vol = dplyr::all_of(vol_col))
+      dplyr::rename_with(~ "endpoint_vol", .cols = dplyr::all_of(vol_col))
 
     wf_data <- dplyr::left_join(baseline, endpoint, by = id_col) |>
       dplyr::filter(!is.na(.data$baseline_vol), .data$baseline_vol > 0,
