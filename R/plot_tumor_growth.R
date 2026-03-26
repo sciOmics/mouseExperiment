@@ -49,8 +49,8 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
                              group_summary_line = TRUE,
                              point_size = 2) {
   
-  # Input validation
-  req_cols <- c(volume_column, day_column, treatment_column, cage_column, ID_column)
+  # Input validation — cage_column is optional
+  req_cols <- c(volume_column, day_column, treatment_column, ID_column)
   if (!all(req_cols %in% colnames(df))) {
     stop("Missing required columns in data frame: ", 
          paste(req_cols[!req_cols %in% colnames(df)], collapse = ", "))
@@ -66,9 +66,16 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
     warning(paste("Dose column", dose_column, "not found in data frame, proceeding without dose information"))
     dose_column <- NULL
   }
-  
+
   # Create a copy of the dataframe for plotting
   plot_df <- df
+
+  # When cage_column is NULL or absent, inject a synthetic placeholder so that
+  # downstream df[[cage_column]] calls do not crash with get1index errors.
+  if (is.null(cage_column) || !cage_column %in% colnames(plot_df)) {
+    cage_column <- ".cage_placeholder"
+    plot_df[[cage_column]] <- "1"
+  }
   
   # Capture any user-specified factor ordering on the treatment column before
   # constructing the composite Group column so it can be preserved below.
