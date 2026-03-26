@@ -445,7 +445,7 @@ tumorGrowthUI <- function() {
                   selectInput("tg_plot_selector", "Select Plot",
                     choices = c(
                       "Tumor Growth Curves"      = "growth_curves",
-                      "Growth Rate Distribution" = "growth_rate",
+                      "Growth Rates Plot"        = "growth_rate",
                       "AUC Comparison"           = "auc",
                       "Waterfall Plot"           = "waterfall",
                       "Effect Size Forest Plot"  = "effect_forest"
@@ -539,18 +539,17 @@ tumorGrowthUI <- function() {
                   )
                 ),
                 conditionalPanel("input.tg_plot_selector == 'growth_rate'",
-                  h4("Growth Rate Distribution"),
-                  tab_info(strong("Growth Rate Distribution: "),
+                  h4("Growth Rates Plot"),
+                  tab_info(strong("Growth Rates Plot: "),
                     "spread of per-animal growth rates within each group."),
                   shinycssloaders::withSpinner(
                     plotOutput("tg_plot_rates", width = "auto", height = "auto")
                   )
                 ),
                 conditionalPanel("input.tg_plot_selector == 'auc'",
-                  h4("AUC / Treatment Effects"),
-                  tab_info(strong("AUC mode: "), "model-estimated area under the curve, one point per subject. ",
-                    strong("LME4 mode: "), "emmeans-estimated marginal means per treatment group ",
-                    "with 95% confidence intervals from the mixed-effects model."),
+                  h4("AUC Comparison"),
+                  tab_info(strong("AUC Comparison: "), "model-estimated area under the curve, one point per subject. ",
+                    "Only available when the AUC model type is selected."),
                   shinycssloaders::withSpinner(
                     plotOutput("tg_plot_auc", width = "auto", height = "auto")
                   )

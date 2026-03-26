@@ -1681,43 +1681,6 @@ tumor_growth_server <- function(input, output, session, rv) {
       return(finish_plot(p))
     }
 
-    # ── Path B: LME4 model ── show emmeans treatment effects with 95% CI ──
-    if (!is.null(rv$tg_results$treatment_effects)) {
-      te        <- as.data.frame(rv$tg_results$treatment_effects)
-      grp_col_b <- intersect(c("Group", "Treatment"), colnames(te))[1]
-      req(!is.na(grp_col_b),
-          "Adjusted_Mean" %in% colnames(te),
-          "Lower_CL"      %in% colnames(te),
-          "Upper_CL"      %in% colnames(te))
-
-      # Factor ordering
-      if (length(ordered_grps) > 0) {
-        te_levels <- unique(sub(" - Dose: .*$", "", ordered_grps))
-        te_levels <- te_levels[te_levels %in% as.character(unique(te[[grp_col_b]]))]
-        if (length(te_levels) > 0)
-          te[[grp_col_b]] <- factor(te[[grp_col_b]], levels = te_levels)
-      }
-
-      p <- ggplot2::ggplot(
-             te,
-             ggplot2::aes(x = .data[[grp_col_b]],
-                          y = .data[["Adjusted_Mean"]],
-                          colour = .data[[grp_col_b]])) +
-        ggplot2::geom_errorbar(
-          ggplot2::aes(ymin = .data[["Lower_CL"]], ymax = .data[["Upper_CL"]]),
-          width = 0.15, linewidth = 0.9, colour = "black") +
-        ggplot2::geom_point(size = pt_size + 1) +
-        ggplot2::theme_classic() +
-        ggplot2::labs(x = "Treatment",
-                      y = "Estimated Marginal Mean (log-volume)",
-                      title = "Model-Estimated Treatment Effects") +
-        ggplot2::theme(legend.title = ggplot2::element_blank())
-
-      ylims <- y_limits(te[["Adjusted_Mean"]], te[["Lower_CL"]], te[["Upper_CL"]])
-      p <- p + ggplot2::coord_cartesian(ylim = ylims)
-      return(finish_plot(p))
-    }
-
     # ── Path C: last resort — return stored plot ──────────────────────────
     p <- rv$tg_results$auc_plot
     if (is.null(p)) return(NULL)
@@ -1812,12 +1775,59 @@ tumor_growth_server <- function(input, output, session, rv) {
   tg_forest_plot <- reactive({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
-    text_size <- input$tg_opt_text_size %||% 12
-    if (!is.null(rv$tg_results$effect_forest_plot)) {
-      apply_plot_labels(rv$tg_results$effect_forest_plot,
-                        input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
-                        input$tg_plot_title_align %||% "center", text_size)
-    } else NULL
+    fp <- rv$tg_results$effect_forest_plot
+    if (is.null(fp)) return(NULL)
+    text_size    <- input$tg_opt_text_size %||% 12
+    ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
+    forest_df    <- fp$data
+    # Build factor levels for y-axis: user group order if available,
+    # otherwise default to descending Estimate (reference row always at bottom)
+    ref_rows     <- which(isTRUE(forest_df$is_ref) | forest_df$is_ref == TRUE)
+    non_ref_rows <- which(!forest_df$is_ref)
+    if (length(ordered_grps) > 0) {
+      grps_clean <- unique(sub(" - Dose: .*$", "", ordered_grps))
+      rank_fn    <- function(lbl) {
+        clean <- sub("\n\\(Reference\\)$", "", as.character(lbl))
+        pos   <- match(clean, grps_clean)
+        if (is.na(pos)) .Machine$integer.max else pos
+      }
+      sorted_non_ref <- non_ref_rows[order(sapply(forest_df$Contrast[non_ref_rows], rank_fn))]
+    } else {
+      sorted_non_ref <- non_ref_rows[order(-forest_df$Estimate[non_ref_rows])]
+    }
+    # y-axis: factor levels listed bottom-to-top; reference at bottom, groups top-to-bottom
+    y_levels      <- c(as.character(forest_df$Contrast[ref_rows]),
+                       rev(as.character(forest_df$Contrast[sorted_non_ref])))
+    forest_df$Contrast <- factor(forest_df$Contrast, levels = y_levels)
+    # Recompute x limits
+    all_vals <- c(forest_df$Estimate[!forest_df$is_ref],
+                  forest_df$Lower[!forest_df$is_ref],
+                  forest_df$Upper[!forest_df$is_ref])
+    max_abs  <- ceiling(max(abs(all_vals), na.rm = TRUE))
+    x_lim    <- c(-max_abs, max_abs * 1.20)
+    x_breaks <- pretty(c(-max_abs, max_abs), n = 6)
+    x_breaks <- x_breaks[x_breaks >= -max_abs & x_breaks <= max_abs]
+    p <- ggplot2::ggplot(forest_df, ggplot2::aes(x = Estimate, y = Contrast)) +
+      ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "red", linewidth = 0.6) +
+      ggplot2::geom_errorbarh(
+        data = ~ subset(., !is_ref),
+        ggplot2::aes(xmin = Lower, xmax = Upper),
+        height = 0.25, colour = "steelblue") +
+      ggplot2::geom_point(data = ~ subset(., !is_ref), size = 3, colour = "steelblue") +
+      ggplot2::geom_point(data = ~ subset(., is_ref),  size = 4, colour = "grey50", shape = 18) +
+      ggplot2::geom_text(
+        data = ~ subset(., !is_ref & nzchar(P_Label) & !is.na(Upper)),
+        ggplot2::aes(label = P_Label, x = Upper),
+        hjust = -0.2, size = 3.2) +
+      ggplot2::scale_x_continuous(limits = x_lim, breaks = x_breaks) +
+      ggplot2::labs(x = fp$labels$x, y = NULL, title = fp$labels$title) +
+      ggplot2::theme_classic() +
+      ggplot2::theme(axis.text.y = ggplot2::element_text(size = 10))
+    apply_plot_labels(p,
+      input$tg_plot_title    %||% "",
+      input$tg_plot_subtitle %||% "",
+      input$tg_plot_title_align %||% "center",
+      text_size)
   })
 
   output$tg_plot_effect_forest <- renderPlot({
