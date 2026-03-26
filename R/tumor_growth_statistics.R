@@ -163,11 +163,21 @@ tumor_growth_statistics <- function(df,
     cat("Transform:", transform, "\n")
   }
   
-  # Check if required columns exist
-  required_cols <- c(time_column, volume_column, treatment_column, id_column, cage_column)
+  # Check if required columns exist (cage_column is optional — NULL means no cage data)
+  required_cols <- c(time_column, volume_column, treatment_column, id_column)
   missing_cols <- required_cols[!required_cols %in% colnames(df)]
   if (length(missing_cols) > 0) {
     stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+
+  # When cage_column is NULL or not present in the data, create a synthetic
+  # single-value placeholder so all downstream [[cage_column]] references work
+  # without modification.  This also suppresses spurious cage-effect analysis.
+  no_cage_mode <- is.null(cage_column) || !cage_column %in% colnames(df)
+  if (no_cage_mode) {
+    cage_column <- ".cage_placeholder"
+    df[[cage_column]] <- "1"
+    if (verbose) cat("No cage column provided — cage effects will not be analysed.\n")
   }
   
   # Set reference group if not specified
@@ -379,6 +389,9 @@ tumor_growth_statistics <- function(df,
   
   cage_analysis$effects <- cage_effects
 
+  # Helper: wrap a column name in backticks for use inside formula strings
+  bt <- function(x) paste0("`", x, "`")
+
   # Model selection
   model_selection <- list()
   
@@ -388,7 +401,7 @@ tumor_growth_statistics <- function(df,
   # Base model (intercept only)
   models$intercept_only <- tryCatch({
     lme4::lmer(
-      stats::as.formula(paste(volume_column, "~", time_column, "*", treatment_column, "+ (1|", id_column, ")")),
+      stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (1|", bt(id_column), ")")),
       data = analysis_df,
       control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
                                 check.nobs.vs.nRE = "ignore")
@@ -403,7 +416,7 @@ tumor_growth_statistics <- function(df,
   # Random slope model
   models$random_slope <- tryCatch({
     lme4::lmer(
-      stats::as.formula(paste(volume_column, "~", time_column, "*", treatment_column, "+ (", time_column, "|", id_column, ")")),
+      stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (", bt(time_column), "|", bt(id_column), ")")),
       data = analysis_df,
       control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
                                 check.nobs.vs.nRE = "ignore")
@@ -436,7 +449,7 @@ tumor_growth_statistics <- function(df,
   } else {
     warning("No valid models could be fitted. Using intercept-only model as fallback.")
     model <- lme4::lmer(
-      stats::as.formula(paste(volume_column, "~", time_column, "*", treatment_column, "+ (1|", id_column, ")")),
+      stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (1|", bt(id_column), ")")),
       data = analysis_df,
       control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
                                 check.nobs.vs.nRE = "ignore")
@@ -827,7 +840,7 @@ tumor_growth_statistics <- function(df,
     # Create pairwise comparisons
     if (requireNamespace("emmeans", quietly = TRUE)) {
       # Set up emmeans with reference group, averaging over time points
-      lsmeans_obj <- emmeans::emmeans(model, specs = treatment_column, at = list(Day = mean(analysis_df$Day)))
+      lsmeans_obj <- emmeans::emmeans(model, specs = treatment_column, at = stats::setNames(list(mean(analysis_df[[time_column]])), time_column))
       
       # Extract treatment effects
       emm_summary <- summary(lsmeans_obj)
