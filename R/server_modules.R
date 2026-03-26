@@ -1701,8 +1701,9 @@ tumor_growth_server <- function(input, output, session, rv) {
         " days=", paste(sort(unique(data[[time_col]])), collapse=","), "\n")
 
     tryCatch({
-      # Baseline: volume at each animal's earliest recorded timepoint
+      # Baseline: first timepoint per animal where volume > 0
       baseline <- data |>
+        dplyr::filter(.data[[vol_col]] > 0) |>
         dplyr::group_by(.data[[animal_key]]) |>
         dplyr::slice_min(.data[[time_col]], n = 1, with_ties = FALSE) |>
         dplyr::ungroup() |>
@@ -1730,7 +1731,7 @@ tumor_growth_server <- function(input, output, session, rv) {
           " nrow(endpoint)=", nrow(endpoint), "\n")
 
       wf_data <- dplyr::left_join(baseline, endpoint, by = animal_key) |>
-        dplyr::filter(!is.na(.data$baseline_vol), .data$baseline_vol > 0,
+        dplyr::filter(!is.na(.data$baseline_vol),
                       !is.na(.data$endpoint_vol)) |>
         dplyr::mutate(
           pct_change = (.data$endpoint_vol - .data$baseline_vol) /
