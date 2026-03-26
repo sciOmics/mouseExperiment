@@ -398,6 +398,26 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
             results$P_Value[idx] <- p_values[i]
           }
         }
+
+        # Fallback: for non-reference groups where coxphf failed to converge
+        # (p_value is NA), compute a pairwise log-rank p-value instead.
+        non_ref_na <- which(results$Group != reference_group & is.na(results$P_Value))
+        for (idx in non_ref_na) {
+          grp <- results$Group[idx]
+          pair_df <- df[df[[treatment_column]] %in% c(reference_group, grp), , drop = FALSE]
+          pair_df[[treatment_column]] <- factor(pair_df[[treatment_column]])
+          tryCatch({
+            pair_formula <- stats::as.formula(
+              paste0("survival::Surv(", time_column, ", ", censor_column, ") ~ ", treatment_column)
+            )
+            lr <- survival::survdiff(pair_formula, data = pair_df)
+            results$P_Value[idx] <- round(1 - stats::pchisq(lr$chisq, df = 1), 4)
+            message(sprintf("  Pairwise log-rank p-value used for %s (coxphf did not converge): %.4f",
+                            grp, results$P_Value[idx]))
+          }, error = function(e) {
+            message(sprintf("  Could not compute fallback p-value for %s: %s", grp, e$message))
+          })
+        }
         
         return(list(
           model = model,
@@ -616,7 +636,14 @@ print_results <- function(results, df = NULL, treatment_column = NULL, time_colu
       }
     }),
     "P-value" = sapply(1:nrow(results), function(i) {
-      ifelse(is.na(results$P_Value[i]), "Ref", sprintf("%.4f", results$P_Value[i]))
+      is_ref <- !is.na(results$Note[i]) && results$Note[i] == "Reference group"
+      if (is_ref) {
+        "Ref"
+      } else if (is.na(results$P_Value[i])) {
+        "NC"  # Not Converged
+      } else {
+        sprintf("%.4f", results$P_Value[i])
+      }
     }),
     "Events/Total" = sapply(1:nrow(results), function(i) {
       if (!is.na(results$Events[i]) && !is.na(results$Total[i])) {
