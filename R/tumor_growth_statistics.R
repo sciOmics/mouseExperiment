@@ -307,14 +307,17 @@ tumor_growth_statistics <- function(df,
         # Fit linear model
         model <- stats::lm(log_volume ~ subject_data[[time_column]])
         growth_rate <- stats::coef(model)[2]
-        
+        ci <- tryCatch(stats::confint(model, level = 0.95)[2, ], error = function(e) c(NA_real_, NA_real_))
+
         # Return data frame with results including cage information
         data.frame(
-          Treatment = unique(subject_data[[treatment_column]]),
-          ID = unique(subject_data[[id_column]]),
-          Cage = unique(subject_data[[cage_column]]),
-          growth_rate = growth_rate,
-          R_squared   = round(summary(model)$r.squared, 4)
+          Treatment          = unique(subject_data[[treatment_column]]),
+          ID                 = unique(subject_data[[id_column]]),
+          Cage               = unique(subject_data[[cage_column]]),
+          growth_rate        = growth_rate,
+          growth_rate_lower  = ci[1],
+          growth_rate_upper  = ci[2],
+          R_squared          = round(summary(model)$r.squared, 4)
         )
       } else {
         NULL
