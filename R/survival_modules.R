@@ -183,9 +183,11 @@ survival_server <- function(input, output, session, rv) {
     # before a full analysis has been run.
     get_groups <- function() {
       d <- rv$uploaded_data
-      if (!is.null(rv$tx_col) && rv$tx_col == "TreatmentGroup" &&
-          !is.null(rv$dose_col) && nzchar(rv$dose_col) &&
-          rv$dose_col %in% colnames(d) &&
+      # When a dose column is mapped, build combined "Treatment Dose" labels
+      # regardless of whether TG analysis has been run (rv$tx_col may not yet
+      # be set to "TreatmentGroup" if the user skips directly to Survival).
+      has_dose <- !is.null(rv$dose_col) && nzchar(rv$dose_col) && rv$dose_col %in% colnames(d)
+      if (has_dose &&
           !is.null(input$col_treatment) && nzchar(input$col_treatment) &&
           input$col_treatment %in% colnames(d)) {
         combined <- paste(d[[input$col_treatment]], d[[rv$dose_col]], sep = " ")
@@ -250,13 +252,16 @@ survival_server <- function(input, output, session, rv) {
     # Prepare data - apply same time processing as tumor growth analysis
     data <- rv$uploaded_data
 
-    # When a dose column is mapped the treatment column is set to "TreatmentGroup"
-    # (a combined "Treatment Dose" label).  rv$uploaded_data never carries that
-    # synthetic column, so we must build it here before any deduplication or
-    # date calculations so it is preserved throughout the pipeline.
-    if (!is.null(rv$dose_col) && nzchar(rv$dose_col) &&
-        rv$dose_col %in% colnames(data) &&
-        !is.null(rv$tx_col) && rv$tx_col == "TreatmentGroup") {
+    # When a dose column is mapped, build a combined "Treatment Dose" group label
+    # so each dose level is treated as its own group. This must happen before
+    # deduplication so the synthetic column is preserved throughout the pipeline.
+    # We check rv$dose_col directly rather than rv$tx_col == "TreatmentGroup"
+    # so this works even if the user skips TG analysis.
+    has_dose_surv <- !is.null(rv$dose_col) && nzchar(rv$dose_col) &&
+                     rv$dose_col %in% colnames(data) &&
+                     !is.null(input$col_treatment) && nzchar(input$col_treatment) &&
+                     input$col_treatment %in% colnames(data)
+    if (has_dose_surv) {
       data[["TreatmentGroup"]] <- paste(data[[input$col_treatment]],
                                         data[[rv$dose_col]], sep = " ")
     }
@@ -371,7 +376,7 @@ survival_server <- function(input, output, session, rv) {
     }
     cat("====================================\n\n")
     
-    tx_col_surv <- if (!is.null(rv$tx_col) && nzchar(rv$tx_col)) rv$tx_col else input$col_treatment
+    tx_col_surv <- if (has_dose_surv) "TreatmentGroup" else if (!is.null(rv$tx_col) && nzchar(rv$tx_col)) rv$tx_col else input$col_treatment
 
     result <- safe_analysis({
       mouseExperiment::survival_statistics(
