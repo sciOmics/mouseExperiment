@@ -296,6 +296,15 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
   if (extrapolate_volumes) {
     extrapolated_points <- plot_df[plot_df$Extrapolated == TRUE, ]
     if (nrow(extrapolated_points) > 0) {
+      # Include each mouse's last real point so the dashed line connects to the observed data
+      mice_with_extrap <- unique(extrapolated_points$Mouse_ID)
+      last_real_points <- do.call(rbind, lapply(mice_with_extrap, function(mid) {
+        real_pts <- plot_df[plot_df$Mouse_ID == mid & !plot_df$Extrapolated, ]
+        if (nrow(real_pts) == 0) return(NULL)
+        real_pts[which.max(real_pts[[day_column]]), ]
+      }))
+      extrap_line_data <- rbind(last_real_points, extrapolated_points)
+
       plot <- plot + 
         ggplot2::geom_point(
           data = extrapolated_points,
@@ -305,7 +314,7 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
           size = point_size
         ) +
         ggplot2::geom_line(
-          data = extrapolated_points,
+          data = extrap_line_data,
           ggplot2::aes(x = .data[[day_column]], y = .data[[volume_column]], color = Group, group = Mouse_ID),
           linetype = "dashed",
           alpha = 0.5,
