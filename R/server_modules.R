@@ -1389,7 +1389,8 @@ tumor_growth_server <- function(input, output, session, rv) {
         is.null(rv$tg_results$auc_analysis$individual)) {
       p <- rv$tg_results$auc_plot
       req(!is.null(p))
-      return(p)
+      text_size <- input$tg_opt_text_size %||% 12
+      return(p + ggplot2::theme(text = ggplot2::element_text(size = text_size)))
     }
     ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
     colors     <- build_color_vector(input, "tg_color", ordered_grps)
@@ -1479,9 +1480,11 @@ tumor_growth_server <- function(input, output, session, rv) {
   output$tg_plot_effect_forest <- renderPlot({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
+    text_size <- input$tg_opt_text_size %||% 12
 
     if (!is.null(rv$tg_results$effect_forest_plot)) {
-      return(rv$tg_results$effect_forest_plot)
+      return(rv$tg_results$effect_forest_plot +
+               ggplot2::theme(text = ggplot2::element_text(size = text_size)))
     } else {
       plot(1, 1, type="n", main="Effect size forest plot not available\n(requires pairwise comparison data)", xlab="", ylab="")
     }
