@@ -1681,11 +1681,12 @@ tumor_growth_server <- function(input, output, session, rv) {
       return(finish_plot(p))
     }
 
-    # ── Path B: LME4 model ── rebuild from growth_rates so ordering is respected ──
+    # ── Path B: LME4 model ── same visual style as Path A, using growth rates ──
     rates <- rv$tg_results$growth_rates
     if (!is.null(rates) && nrow(rates) > 0) {
       grp_col_b <- intersect(c("Treatment", "Group"), colnames(rates))[1]
-      if (!is.na(grp_col_b)) {
+      val_col_b <- intersect(c("growth_rate", "GrowthRate"), colnames(rates))[1]
+      if (!is.na(grp_col_b) && !is.na(val_col_b)) {
         gr_order <- if (length(ordered_grps) > 0) {
           raw <- unique(sub(" - Dose: .*$", "", ordered_grps))
           raw[raw %in% as.character(unique(rates[[grp_col_b]]))]
@@ -1693,19 +1694,38 @@ tumor_growth_server <- function(input, output, session, rv) {
         if (!is.null(gr_order) && length(gr_order) > 0)
           rates[[grp_col_b]] <- factor(rates[[grp_col_b]], levels = gr_order)
 
-        val_col <- intersect(c("growth_rate", "GrowthRate"), colnames(rates))[1]
-        p <- tryCatch({
-          mouseExperiment::plot_growth_rate(
-            growth_data    = rates,
-            colors         = colors,
-            group_order    = if (!is.null(gr_order) && length(gr_order) > 0) gr_order else NULL,
-            show_mean      = center_bar == "mean",
-            error_bar_type = err_type,
-            point_size     = pt_size,
-            jitter_width   = jit_width
-          ) + ggplot2::theme_classic()
-        }, error = function(e) rv$tg_results$auc_plot)
-        if (!is.null(p)) return(finish_plot(p))
+        summ_b <- make_summary(rates, grp_col_b, val_col_b)
+        summ_b$grp <- factor(summ_b$grp, levels = levels(factor(rates[[grp_col_b]])))
+
+        p <- ggplot2::ggplot(rates,
+               ggplot2::aes(x = .data[[grp_col_b]], y = .data[[val_col_b]],
+                            colour = .data[[grp_col_b]])) +
+          ggplot2::theme_classic() +
+          ggplot2::labs(x = "Treatment", y = "Growth Rate (log-volume / day)",
+                        title = "Growth Rate Comparison") +
+          ggplot2::theme(legend.title = ggplot2::element_blank())
+
+        if (err_type != "none")
+          p <- p + ggplot2::geom_errorbar(
+            data = summ_b,
+            ggplot2::aes(x = grp, ymin = lo, ymax = hi),
+            inherit.aes = FALSE,
+            colour = "black", width = 0.25, linewidth = 0.9)
+
+        if (center_bar != "none")
+          p <- p + ggplot2::geom_crossbar(
+            data = summ_b,
+            ggplot2::aes(x = grp, y = ctr, ymin = ctr, ymax = ctr),
+            inherit.aes = FALSE,
+            colour = "black", width = 0.25, linewidth = 0.9)
+
+        p <- p + ggplot2::geom_point(
+          position = ggplot2::position_jitter(width = jit_width, height = 0, seed = 42),
+          size = pt_size, alpha = 0.85)
+
+        ylims <- y_limits(rates[[val_col_b]], summ_b$lo, summ_b$hi)
+        p <- p + ggplot2::coord_cartesian(ylim = ylims)
+        return(finish_plot(p))
       }
     }
 
