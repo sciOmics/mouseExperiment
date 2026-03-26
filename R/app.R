@@ -97,7 +97,10 @@ window.enableNavTab  = enableNavTab;
         tags$link(rel = "stylesheet", href = "css/custom.css"),
         tags$link(rel = "stylesheet", href = "css/dark.css"),
         tags$style(HTML("
-          .navbar-nav li a[data-value='__toxicity_disabled__'] {
+          .navbar-nav li a[data-value='__toxicity_disabled__'],
+          .navbar-nav li a[data-value='__dose_response_disabled__'],
+          .navbar-nav li a[data-value='__drug_synergy_disabled__'],
+          .navbar-nav li a[data-value='__power_analysis_disabled__'] {
             pointer-events: none;
             opacity: 0.45;
           }
@@ -129,9 +132,27 @@ $(document).ready(function() {
       value = "__toxicity_disabled__",
       ""
     ),
-    tabPanel("Dose Response", doseResponseUI()),
-    tabPanel("Drug Synergy",  synergyUI()),
-    tabPanel("Power Analysis",powerAnalysisUI()),
+    tabPanel(
+      title = tags$span("Dose Response",
+                        style = "color: #999; cursor: not-allowed;",
+                        title = "Coming soon"),
+      value = "__dose_response_disabled__",
+      ""
+    ),
+    tabPanel(
+      title = tags$span("Drug Synergy",
+                        style = "color: #999; cursor: not-allowed;",
+                        title = "Coming soon"),
+      value = "__drug_synergy_disabled__",
+      ""
+    ),
+    tabPanel(
+      title = tags$span("Power Analysis",
+                        style = "color: #999; cursor: not-allowed;",
+                        title = "Coming soon"),
+      value = "__power_analysis_disabled__",
+      ""
+    ),
     tabPanel("Help",          helpUI()),
     tabPanel("About",          citationUI())
   )
@@ -172,15 +193,16 @@ $(document).ready(function() {
     power_server(input, output, session, rv)
     dose_response_server(input, output, session, rv)
 
-    # Guard: redirect away from the placeholder Toxicity tab if reached via keyboard
+    # Guard: redirect away from placeholder tabs if reached via keyboard
     observeEvent(input$main_nav, {
-      if (identical(input$main_nav, "__toxicity_disabled__"))
+      disabled_vals <- c("__toxicity_disabled__", "__dose_response_disabled__",
+                         "__drug_synergy_disabled__", "__power_analysis_disabled__")
+      if (input$main_nav %in% disabled_vals)
         updateNavbarPage(session, "main_nav", selected = "Survival")
     }, ignoreInit = TRUE)
 
     # Analysis tabs that require data to be uploaded first
-    analysis_tabs <- c("Tumor Growth", "Survival", "Dose Response",
-                       "Drug Synergy", "Power Analysis")
+    analysis_tabs <- c("Tumor Growth", "Survival")
 
     # Disable all analysis tabs on startup
     shinyjs::runjs(paste(
@@ -193,20 +215,6 @@ $(document).ready(function() {
       if (isTRUE(rv$data_valid)) {
         # Always available once data is loaded
         shinyjs::runjs("window.enableNavTab('Tumor Growth');")
-        shinyjs::runjs("window.enableNavTab('Power Analysis');")
-
-        # Drug Synergy: only when treatment column has >= 3 unique groups
-        tx_col <- input$col_treatment
-        n_groups <- if (!is.null(tx_col) && nzchar(tx_col) &&
-                        !is.null(rv$uploaded_data) &&
-                        tx_col %in% colnames(rv$uploaded_data)) {
-          length(unique(na.omit(as.character(rv$uploaded_data[[tx_col]]))))
-        } else 0L
-        if (n_groups >= 3L) {
-          shinyjs::runjs("window.enableNavTab('Drug Synergy');")
-        } else {
-          shinyjs::runjs("window.disableNavTab('Drug Synergy');")
-        }
 
         # Survival: only when a censor/event column is mapped
         surv_mapped <- !is.null(input$col_survival_event) &&
@@ -216,17 +224,6 @@ $(document).ready(function() {
           shinyjs::runjs("window.enableNavTab('Survival');")
         } else {
           shinyjs::runjs("window.disableNavTab('Survival');")
-        }
-
-        # Dose Response: only when a dose column is mapped
-        dose_mapped <- (!is.null(input$col_dose) &&
-                        nzchar(input$col_dose) &&
-                        input$col_dose != "None") ||
-                       (!is.null(rv$dose_col) && nzchar(rv$dose_col))
-        if (dose_mapped) {
-          shinyjs::runjs("window.enableNavTab('Dose Response');")
-        } else {
-          shinyjs::runjs("window.disableNavTab('Dose Response');")
         }
 
       } else {
