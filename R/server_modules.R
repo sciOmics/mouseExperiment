@@ -1167,6 +1167,10 @@ tumor_growth_server <- function(input, output, session, rv) {
     
     effects_df <- as.data.frame(rv$tg_results$treatment_effects)
 
+    # Drop any _orig columns already present in the backend result — the
+    # renderDT back-transform block below will recreate them correctly.
+    effects_df <- effects_df[, !grepl("_orig(\\.\\d+)?$", colnames(effects_df)), drop = FALSE]
+
     # Add back-transformed columns when LME4 model used a transformation
     transform_used <- rv$tg_results$transform_used %||% "none"
     bt_cols <- intersect(c("Adjusted_Mean", "Lower_CL", "Upper_CL"), colnames(effects_df))
