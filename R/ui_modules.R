@@ -111,10 +111,6 @@ column_mapping_ui <- function(col_names, detected_cols) {
     fluidRow(
       column(4,
         h4(strong("Required Columns")),
-        selectInput("col_id", "Mouse/Subject ID",
-                   choices = c("Select..." = "", col_names),
-                   selected = detected_cols$id),
-        
         radioButtons("time_method", "How to specify time?",
                     choices = c(
                       "Direct Day column" = "direct_day",
@@ -138,6 +134,10 @@ column_mapping_ui <- function(col_names, detected_cols) {
                    value = "2025-03-24",
                    placeholder = "First measurement date")
         ),
+
+        selectInput("col_id", "Mouse/Subject ID",
+                   choices = c("Select..." = "", col_names),
+                   selected = detected_cols$id),
         
         selectInput("col_treatment", "Treatment Group",
                    choices = c("Select..." = "", col_names),
