@@ -1138,18 +1138,24 @@ tumor_growth_server <- function(input, output, session, rv) {
         comp_df$Fold_Change <- round(exp(as.numeric(comp_df[[est_col]])), 3)
         if (!is.na(lo_col)) comp_df$Fold_Change_Lower <- round(exp(as.numeric(comp_df[[lo_col]])), 3)
         if (!is.na(hi_col)) comp_df$Fold_Change_Upper <- round(exp(as.numeric(comp_df[[hi_col]])), 3)
-        # Insert fold-change columns right after the estimate column
-        est_idx  <- which(colnames(comp_df) == est_col)
-        fc_idxs  <- match(c("Fold_Change", "Fold_Change_Lower", "Fold_Change_Upper"),
-                          colnames(comp_df))
-        fc_idxs  <- fc_idxs[!is.na(fc_idxs)]
-        rest     <- setdiff(seq_len(ncol(comp_df)), c(est_idx, fc_idxs))
-        comp_df  <- comp_df[, c(rest[rest <= est_idx], est_idx, fc_idxs, rest[rest > est_idx])]
       }
     }
 
+    # Enforce column order: contrast, df, estimate, lower.CL, upper.CL, SE,
+    # Fold_Change, Fold_Change_Lower, Fold_Change_Upper, then any remaining cols
+    preferred_order <- c("contrast", "Contrast",
+                         "df",
+                         "estimate", "Estimate",
+                         "lower.CL", "lower_CL",
+                         "upper.CL", "upper_CL",
+                         "SE",
+                         "Fold_Change", "Fold_Change_Lower", "Fold_Change_Upper")
+    ordered_cols <- intersect(preferred_order, colnames(comp_df))
+    rest_cols    <- setdiff(colnames(comp_df), ordered_cols)
+    comp_df      <- comp_df[, c(ordered_cols, rest_cols), drop = FALSE]
+
     comp_df <- format_df_for_display(comp_df)
-    datatable(comp_df, options = list(scrollX = TRUE, pageLength = 10))
+    datatable(comp_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
   # Treatment effects table

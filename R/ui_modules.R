@@ -378,13 +378,13 @@ tumorGrowthUI <- function() {
               ),
               tags$ul(
                 tags$li(strong("contrast"), " — the two groups being compared (\u2018Treatment \u2212 Reference\u2019 for Dunnett, \u2018A \u2212 B\u2019 for Tukey)."),
-                tags$li(strong("estimate"), " — mean difference in tumor volume between the two groups on the analysis scale (log or sqrt if a transformation was applied). Negative values mean the first group has lower volume."),
-                tags$li(strong("SE"), " — standard error of the estimated difference."),
                 tags$li(strong("df"), " — Satterthwaite or Kenward\u2013Roger approximate degrees of freedom used for the t-test."),
-                tags$li(strong("t.ratio"), " — t-statistic (estimate \u00f7 SE). Large absolute values indicate a larger difference relative to its uncertainty."),
-                tags$li(strong("p.value"), " — adjusted p-value (Dunnett correction for \u2018vs Reference\u2019; Tukey HSD for \u2018All Comparisons\u2019). Values below 0.05 indicate a significant difference."),
+                tags$li(strong("estimate"), " — mean difference in tumor volume between the two groups on the analysis scale (log or sqrt if a transformation was applied). Negative values mean the first group has lower volume."),
                 tags$li(strong("lower.CL / upper.CL"), " (if shown) — 95% confidence interval bounds for the mean difference on the analysis scale."),
-                tags$li(strong("Fold_Change"), " (if shown; log-transform models only) — exp(estimate): the multiplicative ratio of group geometric means on the original volume scale. Values below 1.0 indicate the treatment group has lower volume than reference. Fold_Change_Lower / Fold_Change_Upper give the back-transformed CI bounds.")
+                tags$li(strong("SE"), " — standard error of the estimated difference."),
+                tags$li(strong("Fold_Change"), " (if shown; log-transform models only) — exp(estimate): the multiplicative ratio of group geometric means on the original volume scale. Values below 1.0 indicate the treatment group has lower volume than reference. Fold_Change_Lower / Fold_Change_Upper give the back-transformed CI bounds."),
+                tags$li(strong("t.ratio"), " — t-statistic (estimate \u00f7 SE). Large absolute values indicate a larger difference relative to its uncertainty."),
+                tags$li(strong("p.value"), " — adjusted p-value (Dunnett correction for \u2018vs Reference\u2019; Tukey HSD for \u2018All Comparisons\u2019). Values below 0.05 indicate a significant difference.")
               )
             ),
             uiOutput("tg_comparisons_title"),
