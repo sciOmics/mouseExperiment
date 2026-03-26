@@ -1688,115 +1688,51 @@ tumor_growth_server <- function(input, output, session, rv) {
      height = function() input$tg_plot_height %||% 550)
   
   # ── Waterfall Plot ────────────────────────────────────────────────────────
-  output$tg_wf_endpoint_ui <- renderUI({
-    req(rv$tg_plot_data, rv$tg_col_names)
-    time_col <- rv$tg_col_names$time_column
-    days     <- sort(unique(rv$tg_plot_data[[time_col]]))
-    selectInput("tg_wf_endpoint_day", "Endpoint day",
-                choices = days, selected = days[length(days)])
-  })
-
   tg_wf_plot <- reactive({
-    req(rv$tg_plot_data, rv$tg_col_names)
+    req(rv$tg_results)
+    if (isTRUE(rv$tg_results$error)) return(NULL)
 
-    data        <- rv$tg_plot_data
-    col_names   <- rv$tg_col_names
-    time_col    <- col_names$time_column
-    vol_col     <- col_names$volume_column
-    trt_col     <- col_names$treatment_column
-    id_col      <- col_names$id_column
-    cage_col    <- col_names$cage_column
-
-    # Build a unique animal key: cage+ID when cage is present, else treatment+ID
-    animal_key <- ".wf_animal_id"
-    if (!is.null(cage_col) && cage_col %in% colnames(data)) {
-      data[[animal_key]] <- paste0(data[[cage_col]], "/", data[[id_col]])
-    } else {
-      data[[animal_key]] <- paste0(data[[trt_col]], "/", data[[id_col]])
-    }
-
-    cat("DEBUG WF: time_col=", time_col, " vol_col=", vol_col,
-        " trt_col=", trt_col, " id_col=", id_col, "\n")
-    cat("DEBUG WF: nrow(data)=", nrow(data),
-        " days=", paste(sort(unique(data[[time_col]])), collapse=","), "\n")
+    rates <- rv$tg_results$growth_rates
+    req(!is.null(rates), nrow(rates) > 0)
 
     tryCatch({
-      # Baseline: first timepoint per animal where volume > 0
-      baseline <- data |>
-        dplyr::filter(.data[[vol_col]] > 0) |>
-        dplyr::group_by(.data[[animal_key]]) |>
-        dplyr::slice_min(.data[[time_col]], n = 1, with_ties = FALSE) |>
-        dplyr::ungroup() |>
-        dplyr::select(dplyr::all_of(c(animal_key, id_col, trt_col, vol_col))) |>
-        dplyr::rename_with(~ "baseline_vol", .cols = dplyr::all_of(vol_col))
-
-      # Endpoint: latest timepoint <= selected day, per animal
-      endpoint_day <- suppressWarnings(
-        as.numeric(input$tg_wf_endpoint_day %||%
-                     max(data[[time_col]], na.rm = TRUE))
-      )
-      if (is.na(endpoint_day)) endpoint_day <- max(data[[time_col]], na.rm = TRUE)
-
-      cat("DEBUG WF: endpoint_day=", endpoint_day, "\n")
-
-      endpoint <- data |>
-        dplyr::filter(.data[[time_col]] <= endpoint_day) |>
-        dplyr::group_by(.data[[animal_key]]) |>
-        dplyr::slice_max(.data[[time_col]], n = 1, with_ties = FALSE) |>
-        dplyr::ungroup() |>
-        dplyr::select(dplyr::all_of(c(animal_key, vol_col))) |>
-        dplyr::rename_with(~ "endpoint_vol", .cols = dplyr::all_of(vol_col))
-
-      cat("DEBUG WF: nrow(baseline)=", nrow(baseline),
-          " nrow(endpoint)=", nrow(endpoint), "\n")
-
-      wf_data <- dplyr::left_join(baseline, endpoint, by = animal_key) |>
-        dplyr::filter(!is.na(.data$baseline_vol),
-                      !is.na(.data$endpoint_vol)) |>
+      wf_data <- rates |>
+        dplyr::filter(!is.na(.data$growth_rate)) |>
         dplyr::mutate(
-          pct_change = (.data$endpoint_vol - .data$baseline_vol) /
-                        .data$baseline_vol * 100
+          animal_label = if ("Cage" %in% colnames(rates))
+                           paste0(.data$Cage, "/", .data$ID)
+                         else
+                           as.character(.data$ID),
+          pct_per_day = (exp(.data$growth_rate) - 1) * 100
         ) |>
-        dplyr::arrange(dplyr::desc(.data$pct_change)) |>
-        dplyr::mutate(rank = dplyr::row_number(),
-                      display_label = as.character(.data[[id_col]]))
+        dplyr::arrange(dplyr::desc(.data$pct_per_day)) |>
+        dplyr::mutate(rank = dplyr::row_number())
 
-      cat("DEBUG WF: nrow(wf_data)=", nrow(wf_data), "\n")
       req(nrow(wf_data) > 0)
 
+      trt_col      <- "Treatment"
       ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
       colors       <- build_color_vector(input, "tg_color", ordered_grps)
-      text_size  <- input$tg_opt_text_size %||% 12
-      show_thr   <- isTRUE(input$tg_wf_show_thresholds)
-      thr_low    <- input$tg_wf_threshold_low  %||% -30
-      thr_high   <- input$tg_wf_threshold_high %||%  20
+      text_size    <- input$tg_opt_text_size %||% 12
 
       p <- ggplot2::ggplot(
              wf_data,
              ggplot2::aes(x = .data$rank,
-                          y = .data$pct_change,
+                          y = .data$pct_per_day,
                           fill = .data[[trt_col]])) +
         ggplot2::geom_col(width = 0.8, colour = "grey30", linewidth = 0.2) +
         ggplot2::geom_hline(yintercept = 0, linewidth = 0.6) +
         ggplot2::scale_fill_manual(values = colors, name = trt_col) +
         ggplot2::scale_x_continuous(
           breaks = wf_data$rank,
-          labels = wf_data$display_label,
+          labels = wf_data$animal_label,
           expand = c(0.01, 0)) +
         ggplot2::labs(
-          x = "Animal ID",
-          y = "Tumor volume change from baseline (%)") +
-        ggplot2::theme_bw(base_size = text_size) +
+          x = "Animal",
+          y = "Tumor growth rate (% change per day)") +
+        ggplot2::theme_classic(base_size = text_size) +
         ggplot2::theme(
           axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5))
-
-      if (show_thr) {
-        p <- p +
-          ggplot2::geom_hline(yintercept = thr_low,  linetype = "dashed",
-                              colour = "steelblue",  linewidth = 0.7) +
-          ggplot2::geom_hline(yintercept = thr_high, linetype = "dashed",
-                              colour = "firebrick",  linewidth = 0.7)
-      }
 
       p <- apply_legend_pos(p, input$tg_legend_position %||% "right")
       apply_plot_labels(p,

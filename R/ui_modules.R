@@ -488,18 +488,6 @@ tumorGrowthUI <- function() {
                                  value = 0, min = 0, step = 1)
                   ),
                   conditionalPanel(
-                    "input.tg_plot_selector == 'waterfall'",
-                    uiOutput("tg_wf_endpoint_ui"),
-                    checkboxInput("tg_wf_show_thresholds",
-                                  "Show response thresholds", value = TRUE),
-                    numericInput("tg_wf_threshold_low",
-                                 "Partial response threshold (%)",
-                                 value = -30, step = 5),
-                    numericInput("tg_wf_threshold_high",
-                                 "Progression threshold (%)",
-                                 value = 20, step = 5)
-                  ),
-                  conditionalPanel(
                     "['growth_rate','auc'].indexOf(input.tg_plot_selector) >= 0",
                     selectInput("tg_opt_center_bar", "Center line / bar",
                       choices = c("Mean" = "mean", "Median" = "median",
@@ -568,8 +556,8 @@ tumorGrowthUI <- function() {
                 conditionalPanel("input.tg_plot_selector == 'waterfall'",
                   h4("Waterfall Plot"),
                   tab_info(strong("Waterfall Plot: "),
-                    "percent change in tumor volume from baseline to the selected endpoint, ",
-                    "one bar per animal, sorted from greatest decrease to greatest increase."),
+                    "per-animal tumor growth rate (% change per day) derived from the log-linear slope, ",
+                    "sorted from fastest to slowest growth, colored by treatment group."),
                   shinycssloaders::withSpinner(
                     plotOutput("tg_plot_waterfall", width = "auto", height = "auto")
                   )
