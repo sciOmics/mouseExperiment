@@ -599,11 +599,32 @@ tumor_growth_server <- function(input, output, session, rv) {
     
     # Apply volume calculation if needed
     if (input$volume_method == "calculate") {
+      len_col <- input$col_length %||% ""
+      wid_col <- input$col_width  %||% ""
+      if (!nzchar(len_col) || !nzchar(wid_col)) {
+        output$tg_status_msg <- renderUI({
+          div(class = "alert alert-danger",
+              icon("exclamation-circle"),
+              "Please select both Length and Width columns before running analysis.")
+        })
+        rv$tg_running <- FALSE
+        return()
+      }
+      if (!len_col %in% colnames(data) || !wid_col %in% colnames(data)) {
+        output$tg_status_msg <- renderUI({
+          div(class = "alert alert-danger",
+              icon("exclamation-circle"),
+              paste0("Column not found in data: '",
+                     if (!len_col %in% colnames(data)) len_col else wid_col, "'"))
+        })
+        rv$tg_running <- FALSE
+        return()
+      }
       data <- mouseExperiment::calculate_volume(
         data,
-        length_column = input$col_length,
-        width_column = input$col_width,
-        formula = input$volume_formula
+        length_column = len_col,
+        width_column  = wid_col,
+        formula       = input$volume_formula
       )
       vol_col <- "Volume"
     } else {
