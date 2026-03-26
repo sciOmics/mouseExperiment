@@ -418,11 +418,16 @@ tumorGrowthUI <- function() {
             tab_info(
               strong("Per-animal exponential growth rates "), "estimated from each subject\u2019s individual tumor volume trajectory using linear regression on log\u2081\u209a(volume) vs time. Requires \u22653 time points per animal.",
               tags$ul(
-                tags$li(strong("Treatment"), " — treatment group."),
-                tags$li(strong("ID"), " — individual animal identifier."),
-                tags$li(strong("Cage"), " — cage identifier."),
-                tags$li(strong("growth_rate (log-scale/day)"), " — slope of the log\u2081\u209a(volume)\u2013time regression. Represents the instantaneous exponential growth constant: a value of 0.10 means ~10% volume increase per day on a continuous compounding basis."),                tags$li(strong("R_squared"), " — R² from the per-animal log-linear regression fit. Values close to 1.0 indicate the exponential model describes that animal’s trajectory well; lower values suggest irregular growth or too few time points."),                tags$li(strong("daily_fold_change (\u00d7/day)"), " — exp(growth_rate): the multiplicative volume change per day. Values above 1.0 indicate growth (e.g. 1.10 = 10% larger each day); values below 1.0 indicate regression."),
-                tags$li(strong("% change/day"), " — (daily_fold_change \u2212 1) \u00d7 100: the same quantity expressed as a percentage change per day (e.g. +10.5% or \u22123.2%).")
+                tags$li(strong("Treatment"), " \u2014 treatment group."),
+                tags$li(strong("ID"), " \u2014 individual animal identifier."),
+                tags$li(strong("Cage"), " \u2014 cage identifier."),
+                tags$li(strong("growth_rate (log/day)"), " \u2014 slope of the log\u2081\u209a(volume)\u2013time regression. Represents the instantaneous exponential growth constant: a value of 0.10 means ~10% volume increase per day on a continuous compounding basis."),
+                tags$li(strong("growth_rate lower/upper 95% CI (log/day)"), " \u2014 95% confidence interval for the log-scale growth rate from the per-animal linear model."),
+                tags$li(strong("fold_change (\u00d7/day)"), " \u2014 exp(growth_rate): the multiplicative volume change per day. Values above 1.0 indicate growth (e.g. 1.10 = 10% larger each day); values below 1.0 indicate regression."),
+                tags$li(strong("fold_change lower/upper 95% CI"), " \u2014 exp(growth_rate CI): back-transformed confidence interval for the fold change per day."),
+                tags$li(strong("% change/day"), " \u2014 (fold_change \u2212 1) \u00d7 100: daily volume change as a percentage (e.g. +10.5% or \u22123.2%)."),
+                tags$li(strong("% change/day lower/upper 95% CI"), " \u2014 (exp(CI) \u2212 1) \u00d7 100: back-transformed percentage-change confidence interval."),
+                tags$li(strong("R\u00b2 (fit quality)"), " \u2014 coefficient of determination from the per-animal log-linear regression. Values close to 1.0 indicate the exponential model fits well; lower values suggest irregular growth or too few time points.")
               ),
               em("These are descriptive per-animal values used to visualise within-group spread and for sample size estimation. For group-level inference, use the Treatment Effects tab.")
             ),

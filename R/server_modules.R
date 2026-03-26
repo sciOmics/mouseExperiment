@@ -1210,25 +1210,51 @@ tumor_growth_server <- function(input, output, session, rv) {
     
     rates_df <- as.data.frame(rv$tg_results$growth_rates)
     if ("growth_rate" %in% colnames(rates_df)) {
+      # Back-transformed point estimates
       rates_df$daily_fold_change  <- exp(rates_df$growth_rate)
       rates_df$pct_change_per_day <- (exp(rates_df$growth_rate) - 1) * 100
-      # Reorder: growth_rate, R_squared (if present), then derived columns, then rest
-      gr_idx    <- which(colnames(rates_df) == "growth_rate")
-      r2_idx    <- match("R_squared", colnames(rates_df))
-      new_idxs  <- match(c("daily_fold_change", "pct_change_per_day"), colnames(rates_df))
-      fixed     <- c(gr_idx, r2_idx[!is.na(r2_idx)], new_idxs)
-      other     <- setdiff(seq_len(ncol(rates_df)), fixed)
-      rates_df  <- rates_df[, c(other[other < gr_idx], fixed, other[other > max(fixed)])]
+
+      # Back-transformed 95% CIs (from per-animal lm confint)
+      if ("growth_rate_lower" %in% colnames(rates_df)) {
+        rates_df$fold_change_lower    <- exp(rates_df$growth_rate_lower)
+        rates_df$fold_change_upper    <- exp(rates_df$growth_rate_upper)
+        rates_df$pct_change_lower     <- (exp(rates_df$growth_rate_lower) - 1) * 100
+        rates_df$pct_change_upper     <- (exp(rates_df$growth_rate_upper) - 1) * 100
+      }
+
+      # Enforce column order:
+      # growth_rate, growth_rate_lower, growth_rate_upper,
+      # daily_fold_change, fold_change_lower, fold_change_upper,
+      # pct_change_per_day, pct_change_lower, pct_change_upper,
+      # R_squared, then ID/Treatment/Cage
+      preferred <- c("growth_rate", "growth_rate_lower", "growth_rate_upper",
+                     "daily_fold_change", "fold_change_lower", "fold_change_upper",
+                     "pct_change_per_day", "pct_change_lower", "pct_change_upper",
+                     "R_squared")
+      ordered_cols <- intersect(preferred, colnames(rates_df))
+      rest_cols    <- setdiff(colnames(rates_df), ordered_cols)
+      rates_df     <- rates_df[, c(rest_cols, ordered_cols), drop = FALSE]
     }
     rates_df <- format_df_for_display(rates_df)
+    # Human-readable column headers
+    rename_map <- c(
+      growth_rate        = "growth_rate (log/day)",
+      growth_rate_lower  = "growth_rate lower 95% CI (log/day)",
+      growth_rate_upper  = "growth_rate upper 95% CI (log/day)",
+      daily_fold_change  = "fold_change (\u00d7/day)",
+      fold_change_lower  = "fold_change lower 95% CI",
+      fold_change_upper  = "fold_change upper 95% CI",
+      pct_change_per_day = "% change/day",
+      pct_change_lower   = "% change/day lower 95% CI",
+      pct_change_upper   = "% change/day upper 95% CI",
+      R_squared          = "R\u00b2 (fit quality)"
+    )
+    new_names <- colnames(rates_df)
+    for (old in names(rename_map)) new_names[new_names == old] <- rename_map[[old]]
     datatable(rates_df,
-      options  = list(scrollX = TRUE, paging = FALSE, scrollY = "500px", scrollCollapse = TRUE),
-      colnames = setNames(colnames(rates_df),
-        ifelse(colnames(rates_df) == "growth_rate",          "growth_rate (log-scale/day)",
-        ifelse(colnames(rates_df) == "R_squared",            "R\u00b2 (fit quality)",
-        ifelse(colnames(rates_df) == "daily_fold_change",    "daily_fold_change (\u00d7/day)",
-        ifelse(colnames(rates_df) == "pct_change_per_day",   "% change/day",
-        colnames(rates_df)))))))
+      colnames = new_names,
+      options  = list(scrollX = TRUE, paging = FALSE, scrollY = "500px", scrollCollapse = TRUE)
+    )
   })
   
   # ---- Group order drag-and-drop for Plots tab ----
