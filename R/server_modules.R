@@ -1655,7 +1655,7 @@ tumor_growth_server <- function(input, output, session, rv) {
              ggplot2::aes(x = .data[[grp_col_a]], y = .data[["AUC"]],
                           colour = .data[[grp_col_a]])) +
         ggplot2::theme_classic() +
-        ggplot2::labs(x = "Treatment", y = "AUC", title = "AUC Comparison") +
+        ggplot2::labs(x = "Treatment", y = "AUC", title = "Area Under the Curve") +
         ggplot2::theme(legend.title = ggplot2::element_blank())
 
       if (err_type != "none")
@@ -1677,6 +1677,43 @@ tumor_growth_server <- function(input, output, session, rv) {
         size = pt_size, alpha = 0.85)
 
       ylims <- y_limits(auc_ind[["AUC"]], summ$lo, summ$hi)
+      p <- p + ggplot2::coord_cartesian(ylim = ylims)
+      return(finish_plot(p))
+    }
+
+    # ── Path B: LME4 model ── show emmeans treatment effects with 95% CI ──
+    if (!is.null(rv$tg_results$treatment_effects)) {
+      te        <- as.data.frame(rv$tg_results$treatment_effects)
+      grp_col_b <- intersect(c("Group", "Treatment"), colnames(te))[1]
+      req(!is.na(grp_col_b),
+          "Adjusted_Mean" %in% colnames(te),
+          "Lower_CL"      %in% colnames(te),
+          "Upper_CL"      %in% colnames(te))
+
+      # Factor ordering
+      if (length(ordered_grps) > 0) {
+        te_levels <- unique(sub(" - Dose: .*$", "", ordered_grps))
+        te_levels <- te_levels[te_levels %in% as.character(unique(te[[grp_col_b]]))]
+        if (length(te_levels) > 0)
+          te[[grp_col_b]] <- factor(te[[grp_col_b]], levels = te_levels)
+      }
+
+      p <- ggplot2::ggplot(
+             te,
+             ggplot2::aes(x = .data[[grp_col_b]],
+                          y = .data[["Adjusted_Mean"]],
+                          colour = .data[[grp_col_b]])) +
+        ggplot2::geom_errorbar(
+          ggplot2::aes(ymin = .data[["Lower_CL"]], ymax = .data[["Upper_CL"]]),
+          width = 0.15, linewidth = 0.9, colour = "black") +
+        ggplot2::geom_point(size = pt_size + 1) +
+        ggplot2::theme_classic() +
+        ggplot2::labs(x = "Treatment",
+                      y = "Estimated Marginal Mean (log-volume)",
+                      title = "Model-Estimated Treatment Effects") +
+        ggplot2::theme(legend.title = ggplot2::element_blank())
+
+      ylims <- y_limits(te[["Adjusted_Mean"]], te[["Lower_CL"]], te[["Upper_CL"]])
       p <- p + ggplot2::coord_cartesian(ylim = ylims)
       return(finish_plot(p))
     }

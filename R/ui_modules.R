@@ -446,7 +446,7 @@ tumorGrowthUI <- function() {
                     choices = c(
                       "Tumor Growth Curves"      = "growth_curves",
                       "Growth Rates Plot"        = "growth_rate",
-                      "AUC Comparison"           = "auc",
+                      "Area Under the Curve Plot" = "auc",
                       "Waterfall Plot"           = "waterfall",
                       "Effect Size Forest Plot"  = "effect_forest"
                     )
@@ -547,9 +547,9 @@ tumorGrowthUI <- function() {
                   )
                 ),
                 conditionalPanel("input.tg_plot_selector == 'auc'",
-                  h4("AUC Comparison"),
-                  tab_info(strong("AUC Comparison: "), "model-estimated area under the curve, one point per subject. ",
-                    "Only available when the AUC model type is selected."),
+                  h4("Area Under the Curve Plot"),
+                  tab_info(strong("AUC mode: "), "model-estimated area under the curve, one point per subject. ",
+                    strong("LME4 mode: "), "emmeans-estimated marginal means per treatment group with 95% confidence intervals."),
                   shinycssloaders::withSpinner(
                     plotOutput("tg_plot_auc", width = "auto", height = "auto")
                   )
