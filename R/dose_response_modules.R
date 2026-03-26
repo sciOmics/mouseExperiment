@@ -110,12 +110,28 @@ doseResponseUI <- function() {
                   ),
                   hr(),
                   h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
+                     icon("sliders-h"), " Options"),
+                  sliderInput("dr_opt_text_size", "Text size (pt)",
+                              min = 8, max = 20, value = 12, step = 1),
+                  hr(),
+                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
+                     icon("heading"), " Title & Subtitle"),
+                  textInput("dr_plot_title", "Title",
+                            placeholder = "Leave blank for default"),
+                  selectInput("dr_plot_title_align", "Title alignment",
+                    choices = c("Left" = "left", "Center" = "center", "Right" = "right"),
+                    selected = "center"),
+                  textInput("dr_plot_subtitle", "Subtitle",
+                            placeholder = "Optional subtitle"),
+                  hr(),
+                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
                      icon("arrows-alt"), " Plot Size / Export"),
                   fluidRow(
                     column(6, numericInput("dr_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
                     column(6, numericInput("dr_plot_height", "Height (px)", 600, min = 200, max = 5000, step = 50))
                   ),
-                  numericInput("dr_plot_dpi", "Resolution (DPI)", 100, min = 72, max = 600, step = 10)
+                  numericInput("dr_plot_dpi", "Resolution (DPI)", 100, min = 72, max = 600, step = 10),
+                  tags$div(style = "margin-top: 10px;", uiOutput("dr_download_plot_btn"))
                 )
               ),
               column(9,
@@ -129,8 +145,7 @@ doseResponseUI <- function() {
                   ),
                   shinycssloaders::withSpinner(
                     plotOutput("dr_plot_scatter", width = "auto", height = "auto")
-                  ),
-                  downloadButton("download_dr_scatter", "Download Plot")
+                  )
                 ),
                 conditionalPanel("input.dr_plot_selector == 'boxplot'",
                   h4("Boxplot by Dose"),
@@ -141,8 +156,7 @@ doseResponseUI <- function() {
                   ),
                   shinycssloaders::withSpinner(
                     plotOutput("dr_plot_boxplot", width = "auto", height = "auto")
-                  ),
-                  downloadButton("download_dr_boxplot", "Download Plot")
+                  )
                 ),
                 conditionalPanel("input.dr_plot_selector == 'barplot'",
                   h4("Mean by Dose"),
@@ -154,8 +168,7 @@ doseResponseUI <- function() {
                   ),
                   shinycssloaders::withSpinner(
                     plotOutput("dr_plot_barplot", width = "auto", height = "auto")
-                  ),
-                  downloadButton("download_dr_barplot", "Download Plot")
+                  )
                 )
               )
             )
@@ -381,6 +394,16 @@ dose_response_server <- function(input, output, session, rv) {
     datatable(tbl, options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE)
   })
 
+  output$dr_download_plot_btn <- renderUI({
+    btn_id <- switch(input$dr_plot_selector %||% "scatter",
+      scatter = "download_dr_scatter",
+      boxplot = "download_dr_boxplot",
+      barplot = "download_dr_barplot",
+      "download_dr_scatter"
+    )
+    downloadButton(btn_id, "Download Plot")
+  })
+
   # ---- Plots (rebuilt reactively so colour options take effect immediately) ----
   output$dr_plot_scatter <- renderPlot({
 
@@ -392,12 +415,15 @@ dose_response_server <- function(input, output, session, rv) {
     vol_col  <- rv$vol_col  %||% "Volume"
     pt_col   <- input$dr_scatter_pt_color   %||% "#555555"
     ln_col   <- input$dr_scatter_line_color %||% "#2166AC"
-    ggplot2::ggplot(ad, ggplot2::aes_string(x = dose_col, y = vol_col)) +
+    text_sz  <- input$dr_opt_text_size %||% 12
+    p <- ggplot2::ggplot(ad, ggplot2::aes_string(x = dose_col, y = vol_col)) +
       ggplot2::geom_point(alpha = 0.7, color = pt_col) +
       ggplot2::geom_smooth(method = "lm", formula = y ~ x, color = ln_col) +
       ggplot2::labs(title = "Linear Dose-Response Relationship",
                    x = "Dose", y = "Tumor Volume") +
       ggplot2::theme_classic()
+    apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
+                      input$dr_plot_title_align %||% "center", text_sz)
   }, width = function() input$dr_plot_width %||% 800,
      height = function() input$dr_plot_height %||% 600)
 
@@ -409,13 +435,16 @@ dose_response_server <- function(input, output, session, rv) {
     dose_col    <- rv$dose_col %||% "Dose"
     vol_col     <- rv$vol_col  %||% "Volume"
     box_color   <- input$dr_box_fill_color %||% "#4292C6"
+    text_sz     <- input$dr_opt_text_size %||% 12
     dose_factor <- paste0("factor(", dose_col, ")")
-    ggplot2::ggplot(ad, ggplot2::aes_string(x = dose_factor, y = vol_col)) +
+    p <- ggplot2::ggplot(ad, ggplot2::aes_string(x = dose_factor, y = vol_col)) +
       ggplot2::geom_boxplot(outlier.shape = NA, fill = box_color, alpha = 0.7) +
       ggplot2::geom_jitter(width = 0.2, alpha = 0.5) +
       ggplot2::labs(title = "Tumor Volume by Dose Level",
                    x = "Dose", y = "Tumor Volume") +
       ggplot2::theme_classic()
+    apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
+                      input$dr_plot_title_align %||% "center", text_sz)
   }, width = function() input$dr_plot_width %||% 800,
      height = function() input$dr_plot_height %||% 600)
 
@@ -426,13 +455,16 @@ dose_response_server <- function(input, output, session, rv) {
     req(ss)
     dose_col  <- rv$dose_col %||% "Dose"
     bar_color <- input$dr_bar_fill_color %||% "#4292C6"
-    ggplot2::ggplot(ss, ggplot2::aes_string(x = dose_col, y = "mean_volume")) +
+    text_sz   <- input$dr_opt_text_size %||% 12
+    p <- ggplot2::ggplot(ss, ggplot2::aes_string(x = dose_col, y = "mean_volume")) +
       ggplot2::geom_bar(stat = "identity", fill = bar_color, alpha = 0.8) +
       ggplot2::geom_errorbar(
         ggplot2::aes(ymin = ci95_lower, ymax = ci95_upper), width = 0.2) +
       ggplot2::labs(title = "Mean Tumor Volume by Dose Level (with 95% CI)",
                    x = "Dose", y = "Mean Tumor Volume") +
       ggplot2::theme_classic()
+    apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
+                      input$dr_plot_title_align %||% "center", text_sz)
   }, width = function() input$dr_plot_width %||% 800,
      height = function() input$dr_plot_height %||% 600)
 

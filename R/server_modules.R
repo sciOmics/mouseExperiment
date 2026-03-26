@@ -1332,10 +1332,11 @@ tumor_growth_server <- function(input, output, session, rv) {
     if (!is.null(colors)) {
       p <- p + ggplot2::scale_color_manual(values = colors)
     }
-    # Apply text size and legend position
+    # Apply text size, title/subtitle, and legend position
     text_size  <- input$tg_opt_text_size %||% 12
     legend_pos <- input$tg_opt_legend_pos %||% "auto"
-    p <- p + ggplot2::theme(text = ggplot2::element_text(size = text_size))
+    p <- apply_plot_labels(p, input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
+                           input$tg_plot_title_align %||% "center", text_size)
     p <- apply_legend_pos(p, legend_pos)
     # Apply y-axis scale
     yscale <- input$tg_opt_yscale %||% "linear"
@@ -1418,7 +1419,8 @@ tumor_growth_server <- function(input, output, session, rv) {
         geom = "crossbar", width = 0.4, linewidth = 0.8
       )
     }
-    p <- p + ggplot2::theme(text = ggplot2::element_text(size = text_size))
+    p <- apply_plot_labels(p, input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
+                           input$tg_plot_title_align %||% "center", text_size)
     p <- apply_legend_pos(p, legend_pos)
     p
   }, width = function() input$tg_plot_width %||% 800,
@@ -1434,7 +1436,8 @@ tumor_growth_server <- function(input, output, session, rv) {
       p <- rv$tg_results$auc_plot
       req(!is.null(p))
       text_size <- input$tg_opt_text_size %||% 12
-      return(p + ggplot2::theme(text = ggplot2::element_text(size = text_size)))
+      return(apply_plot_labels(p, input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
+                               input$tg_plot_title_align %||% "center", text_size))
     }
     ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
     colors     <- build_color_vector(input, "tg_color", ordered_grps)
@@ -1502,7 +1505,8 @@ tumor_growth_server <- function(input, output, session, rv) {
       p_b
     }, error = function(e) rv$tg_results$auc_plot)
     req(!is.null(p))
-    p <- p + ggplot2::theme(text = ggplot2::element_text(size = text_size))
+    p <- apply_plot_labels(p, input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
+                           input$tg_plot_title_align %||% "center", text_size)
     p <- apply_legend_pos(p, legend_pos)
     p
   }, width = function() input$tg_plot_width %||% 800,
@@ -1527,8 +1531,9 @@ tumor_growth_server <- function(input, output, session, rv) {
     text_size <- input$tg_opt_text_size %||% 12
 
     if (!is.null(rv$tg_results$effect_forest_plot)) {
-      return(rv$tg_results$effect_forest_plot +
-               ggplot2::theme(text = ggplot2::element_text(size = text_size)))
+      return(apply_plot_labels(rv$tg_results$effect_forest_plot,
+                               input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
+                               input$tg_plot_title_align %||% "center", text_size))
     } else {
       plot(1, 1, type="n", main="Effect size forest plot not available\n(requires pairwise comparison data)", xlab="", ylab="")
     }

@@ -100,12 +100,28 @@ survivalUI <- function() {
                   ),
                   hr(),
                   h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
+                     icon("sliders-h"), " Options"),
+                  sliderInput("surv_opt_text_size", "Text size (pt)",
+                              min = 8, max = 20, value = 12, step = 1),
+                  hr(),
+                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
+                     icon("heading"), " Title & Subtitle"),
+                  textInput("surv_plot_title", "Title",
+                            placeholder = "Leave blank for default"),
+                  selectInput("surv_plot_title_align", "Title alignment",
+                    choices = c("Left" = "left", "Center" = "center", "Right" = "right"),
+                    selected = "center"),
+                  textInput("surv_plot_subtitle", "Subtitle",
+                            placeholder = "Optional subtitle"),
+                  hr(),
+                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
                      icon("arrows-alt"), " Plot Size / Export"),
                   fluidRow(
                     column(6, numericInput("surv_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
                     column(6, numericInput("surv_plot_height", "Height (px)", 600, min = 200, max = 5000, step = 50))
                   ),
-                  numericInput("surv_plot_dpi", "Resolution (DPI)", 100, min = 72, max = 600, step = 10)
+                  numericInput("surv_plot_dpi", "Resolution (DPI)", 100, min = 72, max = 600, step = 10),
+                  tags$div(style = "margin-top: 10px;", uiOutput("surv_download_plot_btn"))
                 )
               ),
               column(9,
@@ -120,8 +136,7 @@ survivalUI <- function() {
                   ),
                   shinycssloaders::withSpinner(
                     plotOutput("surv_plot_km", width = "auto", height = "auto")
-                  ),
-                  downloadButton("download_surv_plot_km", "Download Plot")
+                  )
                 ),
                 conditionalPanel("input.surv_plot_selector == 'forest'",
                   h4("Hazard Ratio Forest Plot"),
@@ -134,8 +149,7 @@ survivalUI <- function() {
                   ),
                   shinycssloaders::withSpinner(
                     plotOutput("surv_forest_plot", width = "auto", height = "auto")
-                  ),
-                  downloadButton("download_surv_forest_plot", "Download Plot")
+                  )
                 )
               )
             )
@@ -545,6 +559,15 @@ survival_server <- function(input, output, session, rv) {
     group_color_pickers_ui("surv_color", ordered_grps)
   })
 
+  output$surv_download_plot_btn <- renderUI({
+    btn_id <- switch(input$surv_plot_selector %||% "km",
+      km     = "download_surv_plot_km",
+      forest = "download_surv_forest_plot",
+      "download_surv_plot_km"
+    )
+    downloadButton(btn_id, "Download Plot")
+  })
+
   # Kaplan-Meier plot — re-renders live when colour pickers, order, or conf.int option change
   output$surv_plot_km <- renderPlot({
     req(rv$surv_results)
@@ -573,6 +596,12 @@ survival_server <- function(input, output, session, rv) {
     # X-axis start
     x_start <- if (!is.null(input$surv_km_xstart) && !is.na(input$surv_km_xstart))
                   as.numeric(input$surv_km_xstart) else 0
+    text_size   <- input$surv_opt_text_size %||% 12
+    plot_title  <- if (nzchar(trimws(input$surv_plot_title %||% "")))
+                     input$surv_plot_title else "Kaplan-Meier Survival Curves by Treatment"
+    plot_sub    <- input$surv_plot_subtitle %||% ""
+    title_hjust <- switch(input$surv_plot_title_align %||% "center",
+                          left = 0, center = 0.5, right = 1, 0.5)
 
     tryCatch({
       km_obj <- survminer::ggsurvplot(
@@ -585,8 +614,17 @@ survival_server <- function(input, output, session, rv) {
         xlim                  = c(x_start, NA),
         xlab                  = "Time (Days)",
         ylab                  = "Survival Probability",
-        title                 = "Kaplan-Meier Survival Curves by Treatment"
+        title                 = plot_title,
+        ggtheme               = ggplot2::theme_classic(base_size = text_size)
       )
+      # Apply title alignment and optional subtitle
+      km_obj$plot <- km_obj$plot +
+        ggplot2::theme(plot.title = ggplot2::element_text(hjust = title_hjust))
+      if (nzchar(trimws(plot_sub))) {
+        km_obj$plot <- km_obj$plot +
+          ggplot2::labs(subtitle = plot_sub) +
+          ggplot2::theme(plot.subtitle = ggplot2::element_text(hjust = title_hjust))
+      }
       print(km_obj)
     }, error = function(e) {
       # Fallback: print pre-generated stored KM plot
@@ -785,7 +823,12 @@ survival_server <- function(input, output, session, rv) {
 
     p <- build_surv_forest_plot(res, ref_grp, pt_color, show_hr, show_ci, show_p)
     req(!is.null(p))
-    p
+    text_size <- input$surv_opt_text_size %||% 12
+    apply_plot_labels(p,
+                      input$surv_plot_title       %||% "",
+                      input$surv_plot_subtitle    %||% "",
+                      input$surv_plot_title_align %||% "center",
+                      text_size)
   }, width = function() input$surv_plot_width %||% 800,
      height = function() input$surv_plot_height %||% 600)
   

@@ -105,12 +105,23 @@ synergyUI <- function() {
                   ),
                   hr(),
                   h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
+                     icon("heading"), " Title & Subtitle"),
+                  textInput("syn_plot_title", "Title",
+                            placeholder = "Leave blank for default"),
+                  selectInput("syn_plot_title_align", "Title alignment",
+                    choices = c("Left" = "left", "Center" = "center", "Right" = "right"),
+                    selected = "center"),
+                  textInput("syn_plot_subtitle", "Subtitle",
+                            placeholder = "Optional subtitle"),
+                  hr(),
+                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
                      icon("arrows-alt"), " Plot Size / Export"),
                   fluidRow(
                     column(6, numericInput("syn_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
                     column(6, numericInput("syn_plot_height", "Height (px)", 600, min = 200, max = 5000, step = 50))
                   ),
-                  numericInput("syn_plot_dpi", "Resolution (DPI)", 100, min = 72, max = 600, step = 10)
+                  numericInput("syn_plot_dpi", "Resolution (DPI)", 100, min = 72, max = 600, step = 10),
+                  tags$div(style = "margin-top: 10px;", uiOutput("syn_download_plot_btn"))
                 )
               ),
               column(9,
@@ -122,8 +133,7 @@ synergyUI <- function() {
                     "taller than the expected bar indicates synergy at the evaluation timepoint."),
                   shinycssloaders::withSpinner(
                     plotOutput("syn_plot_main", width = "auto", height = "auto")
-                  ),
-                  downloadButton("download_syn_plot_main", "Download Plot")
+                  )
                 ),
                 conditionalPanel("input.syn_plot_selector == 'trend'",
                   h4("Synergy Plot"),
@@ -133,8 +143,7 @@ synergyUI <- function() {
                     "exceeds or falls short of the expected Bliss-independent effect."),
                   shinycssloaders::withSpinner(
                     plotOutput("syn_plot_trend", width = "auto", height = "auto")
-                  ),
-                  downloadButton("download_syn_plot_trend", "Download Plot")
+                  )
                 ),
                 conditionalPanel("input.syn_plot_selector == 'ci'",
                   h4("Combination Index"),
@@ -144,8 +153,7 @@ synergyUI <- function() {
                     "points above 1 indicate antagonism."),
                   shinycssloaders::withSpinner(
                     plotOutput("syn_plot_ci", width = "auto", height = "auto")
-                  ),
-                  downloadButton("download_syn_plot_ci", "Download Plot")
+                  )
                 )
               )
             )
@@ -487,7 +495,17 @@ synergy_server <- function(input, output, session, rv) {
   })
   
   # TGI Table removed (duplicate of Synergy Metrics)
-  
+
+  output$syn_download_plot_btn <- renderUI({
+    btn_id <- switch(input$syn_plot_selector %||% "main",
+      main   = "download_syn_plot_main",
+      trend  = "download_syn_plot_trend",
+      ci     = "download_syn_plot_ci",
+      "download_syn_plot_main"
+    )
+    downloadButton(btn_id, "Download Plot")
+  })
+
   output$syn_plot_main <- renderPlot({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error)) return(NULL)
@@ -497,14 +515,15 @@ synergy_server <- function(input, output, session, rv) {
     col_B     <- input$syn_color_B     %||% "#D6604D"
     col_combo <- input$syn_color_combo %||% "#762A83"
     col_ctrl  <- input$syn_color_ctrl  %||% "#999999"
+    text_sz   <- input$syn_opt_text_size %||% 12
 
-    if (isTRUE(rv$syn_over_time)) {
+    final_p <- if (isTRUE(rv$syn_over_time)) {
       # Over-time Bliss plot stored in rv uses "Drug A" / "Drug B" etc. as colour labels
       p <- rv$syn_results$plot_main
       req(p)
-      print(p + ggplot2::scale_color_manual(
+      p + ggplot2::scale_color_manual(
         values = c("Drug A" = col_A, "Drug B" = col_B,
-                   "Combination" = col_combo, "Bliss Value" = col_ctrl)))
+                   "Combination" = col_combo, "Bliss Value" = col_ctrl))
     } else {
       # Single timepoint - re-call plot_drug_synergy with custom_colors mapped to actual group names
       grps <- rv$syn_plot_inputs
@@ -518,16 +537,18 @@ synergy_server <- function(input, output, session, rv) {
       } else {
         custom_colors <- NULL
       }
-      tryCatch({
-        p <- mouseExperiment::plot_drug_synergy(rv$syn_results,
-                                                custom_colors = custom_colors)
-        print(p)
-      }, error = function(e) {
-        if (!is.null(rv$syn_results$plot_main)) print(rv$syn_results$plot_main)
-        else plot(1, 1, type = "n", main = "Synergy plot not available",
-                  xlab = "", ylab = "")
-      })
+      tryCatch(
+        mouseExperiment::plot_drug_synergy(rv$syn_results, custom_colors = custom_colors),
+        error = function(e) rv$syn_results$plot_main
+      )
     }
+    req(!is.null(final_p))
+    final_p <- apply_plot_labels(final_p,
+                                 input$syn_plot_title       %||% "",
+                                 input$syn_plot_subtitle    %||% "",
+                                 input$syn_plot_title_align %||% "center",
+                                 text_sz)
+    print(final_p)
   }, width = function() input$syn_plot_width %||% 800,
      height = function() input$syn_plot_height %||% 600)
 
@@ -597,6 +618,11 @@ synergy_server <- function(input, output, session, rv) {
       ggplot2::theme(text = ggplot2::element_text(size = text_sz))
 
     p <- apply_legend_pos(p, leg_pos)
+    p <- apply_plot_labels(p,
+                           input$syn_plot_title       %||% "",
+                           input$syn_plot_subtitle    %||% "",
+                           input$syn_plot_title_align %||% "center",
+                           text_sz)
     print(p)
   }, width = function() input$syn_plot_width %||% 800,
      height = function() input$syn_plot_height %||% 600)
@@ -604,8 +630,17 @@ synergy_server <- function(input, output, session, rv) {
   output$syn_plot_ci <- renderPlot({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error) || !isTRUE(rv$syn_over_time)) return(NULL)
-    if (!is.null(rv$syn_results$plot_ci)) print(rv$syn_results$plot_ci)
-    else plot(1, 1, type = "n", main = "CI plot not available", xlab = "", ylab = "")
+    text_sz <- input$syn_opt_text_size %||% 12
+    if (!is.null(rv$syn_results$plot_ci)) {
+      p <- apply_plot_labels(rv$syn_results$plot_ci,
+                             input$syn_plot_title       %||% "",
+                             input$syn_plot_subtitle    %||% "",
+                             input$syn_plot_title_align %||% "center",
+                             text_sz)
+      print(p)
+    } else {
+      plot(1, 1, type = "n", main = "CI plot not available", xlab = "", ylab = "")
+    }
   }, width = function() input$syn_plot_width %||% 800,
      height = function() input$syn_plot_height %||% 600)
   

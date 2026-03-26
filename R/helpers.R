@@ -184,6 +184,30 @@ back_transform <- function(x, transform) {
   )
 }
 
+#' Apply custom title, subtitle, text size, and alignment to a ggplot
+#'
+#' When title/subtitle are empty strings the existing labs() are preserved
+#' (i.e. the hardcoded plot title is not removed).
+#'
+#' @param p A ggplot2 object.
+#' @param title Character; if non-empty overrides the plot title.
+#' @param subtitle Character; if non-empty adds a subtitle.
+#' @param align One of "left", "center", "right" — alignment for title/subtitle.
+#' @param text_size Numeric; base font size in pt.
+#' @return A ggplot2 object with the theme layers applied.
+#' @keywords internal
+apply_plot_labels <- function(p, title = "", subtitle = "", align = "center",
+                              text_size = 12) {
+  hjust <- switch(align, left = 0, center = 0.5, right = 1, 0.5)
+  if (nzchar(trimws(title)))    p <- p + ggplot2::labs(title = title)
+  if (nzchar(trimws(subtitle))) p <- p + ggplot2::labs(subtitle = subtitle)
+  p + ggplot2::theme(
+    text          = ggplot2::element_text(size = text_size),
+    plot.title    = ggplot2::element_text(hjust = hjust),
+    plot.subtitle = ggplot2::element_text(hjust = hjust)
+  )
+}
+
 #' Format a p-value for display
 #'
 #' Very small p-values are shown in scientific notation rather than being
