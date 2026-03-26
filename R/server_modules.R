@@ -1686,13 +1686,12 @@ tumor_growth_server <- function(input, output, session, rv) {
     id_col      <- col_names$id_column
     cage_col    <- col_names$cage_column
 
-    # Build a unique animal key: if cage info is present use "CageX / AnimalY"
-    # to avoid ID collisions across cages (IDs are only unique within a cage)
+    # Build a unique animal key: cage+ID when cage is present, else treatment+ID
     animal_key <- ".wf_animal_id"
     if (!is.null(cage_col) && cage_col %in% colnames(data)) {
       data[[animal_key]] <- paste0(data[[cage_col]], "/", data[[id_col]])
     } else {
-      data[[animal_key]] <- as.character(data[[id_col]])
+      data[[animal_key]] <- paste0(data[[trt_col]], "/", data[[id_col]])
     }
 
     cat("DEBUG WF: time_col=", time_col, " vol_col=", vol_col,
@@ -1707,7 +1706,7 @@ tumor_growth_server <- function(input, output, session, rv) {
         dplyr::group_by(.data[[animal_key]]) |>
         dplyr::slice_min(.data[[time_col]], n = 1, with_ties = FALSE) |>
         dplyr::ungroup() |>
-        dplyr::select(dplyr::all_of(c(animal_key, trt_col, vol_col))) |>
+        dplyr::select(dplyr::all_of(c(animal_key, id_col, trt_col, vol_col))) |>
         dplyr::rename_with(~ "baseline_vol", .cols = dplyr::all_of(vol_col))
 
       # Endpoint: latest timepoint <= selected day, per animal
@@ -1737,8 +1736,9 @@ tumor_growth_server <- function(input, output, session, rv) {
           pct_change = (.data$endpoint_vol - .data$baseline_vol) /
                         .data$baseline_vol * 100
         ) |>
-        dplyr::arrange(.data$pct_change) |>
-        dplyr::mutate(rank = dplyr::row_number())
+        dplyr::arrange(dplyr::desc(.data$pct_change)) |>
+        dplyr::mutate(rank = dplyr::row_number(),
+                      display_label = as.character(.data[[id_col]]))
 
       cat("DEBUG WF: nrow(wf_data)=", nrow(wf_data), "\n")
       req(nrow(wf_data) > 0)
@@ -1760,7 +1760,7 @@ tumor_growth_server <- function(input, output, session, rv) {
         ggplot2::scale_fill_manual(values = colors, name = trt_col) +
         ggplot2::scale_x_continuous(
           breaks = wf_data$rank,
-          labels = wf_data[[animal_key]],
+          labels = wf_data$display_label,
           expand = c(0.01, 0)) +
         ggplot2::labs(
           x = "Animal ID",
