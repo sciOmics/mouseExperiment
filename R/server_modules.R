@@ -1382,15 +1382,15 @@ tumor_growth_server <- function(input, output, session, rv) {
     rates_df <- format_df_for_display(rates_df)
     # Human-readable column headers
     rename_map <- c(
-      growth_rate        = "Growth Rate (log/day)",
-      growth_rate_lower  = "GR 95% CI Lower Bound (log/day)",
-      growth_rate_upper  = "GR 95% CI Upper Bound (log/day)",
-      daily_fold_change  = "Fold Change (×/day)",
-      fold_change_lower  = "FC 95% CI Lower Bound (×/day)",
-      fold_change_upper  = "FC 95% CI Upper Bound (×/day)",
-      pct_change_per_day = "Percent Change (%/day)",
-      pct_change_lower   = "PC 95% CI Lower Bound (%/day)",
-      pct_change_upper   = "PC 95% CI Upper Bound (%/day)",
+      growth_rate        = "Growth Rate",
+      growth_rate_lower  = "GR 95% CI Lower Bound",
+      growth_rate_upper  = "GR 95% CI Upper Bound",
+      daily_fold_change  = "Fold Change",
+      fold_change_lower  = "FC 95% CI Lower Bound",
+      fold_change_upper  = "FC 95% CI Upper Bound",
+      pct_change_per_day = "Percent Change",
+      pct_change_lower   = "PC 95% CI Lower Bound",
+      pct_change_upper   = "PC 95% CI Upper Bound",
       R_squared          = "R²"
     )
     new_names <- colnames(rates_df)
