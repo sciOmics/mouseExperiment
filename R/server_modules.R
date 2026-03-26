@@ -1174,7 +1174,30 @@ tumor_growth_server <- function(input, output, session, rv) {
     
     paste(summary_lines, collapse = "\n")
   })
-  
+
+  # Update plot selector choices based on model type (AUC plot only in AUC mode)
+  observeEvent(input$tg_model_type, {
+    base_choices <- c(
+      "Tumor Growth Curves"       = "growth_curves",
+      "Growth Rates Plot"         = "growth_rate",
+      "Waterfall Plot"            = "waterfall",
+      "Effect Size Forest Plot"   = "effect_forest"
+    )
+    if (isTRUE(input$tg_model_type == "auc")) {
+      base_choices <- append(
+        base_choices,
+        c("Area Under the Curve Plot" = "auc"),
+        after = 2L  # insert after "Growth Rates Plot"
+      )
+    }
+    current <- isolate(input$tg_plot_selector) %||% "growth_curves"
+    selected <- if (current %in% base_choices) current else "growth_curves"
+    updateSelectInput(session, "tg_plot_selector",
+      choices  = base_choices,
+      selected = selected
+    )
+  }, ignoreNULL = FALSE)
+
   # ANOVA table
   output$tg_download_plot_btn <- renderUI({
     btn_id <- switch(input$tg_plot_selector %||% "growth_curves",
