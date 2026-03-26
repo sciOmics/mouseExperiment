@@ -445,13 +445,16 @@ tumorGrowthUI <- function() {
                     )
                   ),
                   hr(),
-                  h6(icon("sort"), " Group Order"),
+                  h6(style = "font-size: 1rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
+                     icon("sort"), " Group Order"),
                   uiOutput("tg_group_order_ui"),
                   hr(),
-                  h6(icon("palette"), " Appearance"),
+                  h6(style = "font-size: 1rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
+                     icon("palette"), " Appearance"),
                   uiOutput("tg_color_pickers_ui"),
                   hr(),
-                  h6(icon("sliders-h"), " Options"),
+                  h6(style = "font-size: 1rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
+                     icon("sliders-h"), " Options"),
                   sliderInput("tg_opt_text_size", "Text size (pt)",
                               min = 8, max = 20, value = 12, step = 1),
                   selectInput("tg_opt_legend_pos", "Legend position",
@@ -497,7 +500,8 @@ tumorGrowthUI <- function() {
                                 0, 1, 0.2, step = 0.05)
                   ),
                   hr(),
-                  h6(icon("arrows-alt"), " Plot Size / Export"),
+                  h6(style = "font-size: 1rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
+                     icon("arrows-alt"), " Plot Size / Export"),
                   fluidRow(
                     column(6, numericInput("tg_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
                     column(6, numericInput("tg_plot_height", "Height (px)", 550, min = 200, max = 5000, step = 50))
