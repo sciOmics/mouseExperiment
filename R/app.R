@@ -116,6 +116,10 @@ $(document).ready(function() {
     tabPanel("Data",          dataUploadUI()),
     tabPanel("Tumor Growth",  tumorGrowthUI()),
     tabPanel("Survival",      survivalUI()),
+    tags$li(class = "disabled",
+      tags$a(href = "#", onclick = "return false;",
+             "Toxicity", tags$small(" (coming soon)"))
+    ),
     tabPanel("Dose Response", doseResponseUI()),
     tabPanel("Drug Synergy",  synergyUI()),
     tabPanel("Power Analysis",powerAnalysisUI()),

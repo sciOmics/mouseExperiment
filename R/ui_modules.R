@@ -207,7 +207,13 @@ column_mapping_ui <- function(col_names, detected_cols) {
         selectInput("col_survival_event", "Event/Censor Status Column",
                    choices = c("None" = "", col_names),
                    selected = detected_cols$survival_event),
-        tags$p(tags$small("Required for Survival Analysis. Time will use the same Day/Date settings as above. Coding: ", tags$strong("1 = event (e.g. death)"), ", ", tags$strong("0 = censored"), "."))
+        tags$p(tags$small("Required for Survival Analysis. Time will use the same Day/Date settings as above. Coding: ", tags$strong("1 = event (e.g. death)"), ", ", tags$strong("0 = censored"), ".")),
+        
+        br(),
+        selectInput("col_weight", "Weight / Mass",
+                   choices = c("None" = "", col_names),
+                   selected = ""),
+        tags$p(tags$small("Required for Toxicity Analysis. Should contain body weight or mass measurements."))
       )
     )
   )
