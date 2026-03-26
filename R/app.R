@@ -90,13 +90,15 @@ window.enableNavTab  = enableNavTab;
                         id    = "nav-brand-icon",
                         title = "Toggle dark mode",
                         alt   = "Toggle dark mode")),
-    id    = "main_nav",
+    id       = "main_nav",
+    position = "fixed-top",
     header = tagList(
       shinyjs::useShinyjs(),
       tags$head(
         tags$link(rel = "stylesheet", href = "css/custom.css"),
         tags$link(rel = "stylesheet", href = "css/dark.css"),
         tags$style(HTML("
+          body { padding-top: 70px; }
           .navbar-nav li a[data-value='__toxicity_disabled__'],
           .navbar-nav li a[data-value='__dose_response_disabled__'],
           .navbar-nav li a[data-value='__drug_synergy_disabled__'],
