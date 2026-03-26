@@ -351,7 +351,7 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
     ggplot2::xlab("Day") +
     ggplot2::ggtitle(title) +
     ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0, 0.05)), limits = c(0, NA)) + # Start at 0, 5% right padding
-    ggplot2::scale_y_continuous(expand = c(0, 0.05), limits = c(0, NA)) + # Set y-axis to start at 0
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0.10)), limits = c(0, NA)) + # Start at 0, 10% top buffer
     ggplot2::theme_classic() +
     # Move legend to top-left with proper spacing from title
     ggplot2::theme(
