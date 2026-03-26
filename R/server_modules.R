@@ -1250,40 +1250,30 @@ tumor_growth_server <- function(input, output, session, rv) {
     if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$treatment_effects)) {
       return(datatable(data.frame(Message = "Treatment effects not available")))
     }
-    
+
     effects_df <- as.data.frame(rv$tg_results$treatment_effects)
+    transform_used   <- rv$tg_results$transform_used  %||% "none"
+    model_type_used  <- rv$tg_results$model_type_used %||% "lme4"
 
-    # Drop any _orig columns already present in the backend result — the
-    # renderDT back-transform block below will recreate them correctly.
-    effects_df <- effects_df[, !grepl("_orig(\\.\\d+)?$", colnames(effects_df)), drop = FALSE]
+    if (model_type_used == "lme4") {
+      # Keep only the columns the user needs; drop any extras / _orig columns
+      keep <- c("Group", "DF", "Adjusted_Mean", "Lower_CL", "Upper_CL", "SE", "Note")
+      effects_df <- effects_df[, intersect(keep, colnames(effects_df)), drop = FALSE]
 
-    # Add back-transformed columns when LME4 model used a transformation
-    transform_used <- rv$tg_results$transform_used %||% "none"
-    bt_cols <- intersect(c("Adjusted_Mean", "Lower_CL", "Upper_CL"), colnames(effects_df))
-    if (transform_used %in% c("log", "sqrt") && length(bt_cols) > 0) {
-      for (col in bt_cols) {
-        effects_df[[paste0(col, "_orig")]] <- round(back_transform(effects_df[[col]], transform_used), 3)
-      }
-      # Interleave _orig columns immediately after their source
-      col_order <- character(0)
-      for (col in colnames(effects_df)) {
-        col_order <- c(col_order, col)
-        orig <- paste0(col, "_orig")
-        if (orig %in% colnames(effects_df)) col_order <- c(col_order, orig)
-      }
-      effects_df <- effects_df[, col_order]
+      # Enforce display order
+      effects_df <- effects_df[, intersect(keep, colnames(effects_df)), drop = FALSE]
+
+      effects_df <- format_df_for_display(effects_df)
+
+      scale_note <- switch(transform_used, "log" = " (log scale)", "sqrt" = " (sqrt scale)", "")
+      colnames(effects_df) <- gsub("^Adjusted_Mean$", paste0("Adj Mean", scale_note), colnames(effects_df))
+      colnames(effects_df) <- gsub("^Lower_CL$",      paste0("Lower CI", scale_note), colnames(effects_df))
+      colnames(effects_df) <- gsub("^Upper_CL$",      paste0("Upper CI", scale_note), colnames(effects_df))
+    } else {
+      # Non-lme4 models: show all available columns, formatted
+      effects_df <- format_df_for_display(effects_df)
     }
 
-    effects_df <- format_df_for_display(effects_df)
-    # Improve column headers
-    scale_note <- switch(transform_used, "log" = " (log scale)", "sqrt" = " (sqrt scale)", "")
-    orig_note  <- " (original units)"
-    colnames(effects_df) <- gsub("Adjusted_Mean$",       paste0("Adj_Mean", scale_note), colnames(effects_df))
-    colnames(effects_df) <- gsub("Adjusted_Mean_orig$",  paste0("Adj_Mean", orig_note),  colnames(effects_df))
-    colnames(effects_df) <- gsub("Lower_CL$",            paste0("Lower_CL", scale_note), colnames(effects_df))
-    colnames(effects_df) <- gsub("Lower_CL_orig$",       paste0("Lower_CL", orig_note),  colnames(effects_df))
-    colnames(effects_df) <- gsub("Upper_CL$",            paste0("Upper_CL", scale_note), colnames(effects_df))
-    colnames(effects_df) <- gsub("Upper_CL_orig$",       paste0("Upper_CL", orig_note),  colnames(effects_df))
     datatable(effects_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
