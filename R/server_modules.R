@@ -813,36 +813,35 @@ tumor_growth_server <- function(input, output, session, rv) {
               val_col_gr <- if (!is.null(gr_df)) intersect(c("growth_rate","GrowthRate"), colnames(gr_df))[1] else NA
 
               if (!is.null(gr_df) && !is.na(grp_col_gr) && !is.na(val_col_gr)) {
-                # Individual data beeswarm + mean-CI overlay from LME
+                # Individual growth-rate beeswarm + group mean±CI overlay,
+                # all computed from the growth_rates data so units are consistent.
                 gr_df$plot_group <- as.character(gr_df[[grp_col_gr]])
                 gr_df$plot_val   <- as.numeric(gr_df[[val_col_gr]])
-                # Keep group ordering consistent with treatment_effects
+                # Preserve group ordering consistent with treatment_effects
                 grp_levels <- as.character(plot_df$Treatment)
                 gr_df$plot_group <- factor(gr_df$plot_group, levels = grp_levels)
-                plot_df$Treatment_f <- factor(plot_df$Treatment, levels = grp_levels)
+
+                ci_half_fn <- function(x) {
+                  n <- sum(!is.na(x))
+                  qt(0.975, df = max(n - 1L, 1L)) * sd(x, na.rm = TRUE) / sqrt(n)
+                }
 
                 p_fallback <- ggplot2::ggplot(gr_df,
-                                              ggplot2::aes(x = plot_group, y = plot_val, colour = plot_group)) +
+                                              ggplot2::aes(x = plot_group, y = plot_val,
+                                                           colour = plot_group)) +
                   ggbeeswarm::geom_beeswarm(size = 2.5, alpha = 0.8, cex = 2.5) +
-                  ggplot2::labs(title = "Individual Growth Rates by Treatment Group",
-                               x = "Treatment", y = "Growth Rate") +
+                  ggplot2::stat_summary(
+                    ggplot2::aes(group = plot_group),
+                    fun.min = function(x) mean(x, na.rm = TRUE) - ci_half_fn(x),
+                    fun     = function(x) mean(x, na.rm = TRUE),
+                    fun.max = function(x) mean(x, na.rm = TRUE) + ci_half_fn(x),
+                    geom = "pointrange", colour = "black", size = 0.8, linewidth = 1.1
+                  ) +
+                  ggplot2::labs(title = "Growth Rate Comparison by Treatment",
+                               x = "Treatment", y = "Growth Rate (log-volume / day)") +
                   ggplot2::theme_classic() +
                   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5),
                                 legend.position = "none")
-
-                if ("Lower" %in% colnames(plot_df)) {
-                  p_fallback <- p_fallback +
-                    ggplot2::geom_pointrange(
-                      data = plot_df,
-                      ggplot2::aes(x = Treatment_f, y = Effect, ymin = Lower, ymax = Upper),
-                      inherit.aes = FALSE,
-                      colour = "black", size = 0.8, linewidth = 1.1
-                    )
-                } else {
-                  p_fallback <- p_fallback +
-                    ggplot2::stat_summary(fun = mean, geom = "crossbar",
-                                         width = 0.45, colour = "black", linewidth = 0.7)
-                }
               } else {
                 # No individual data — point + errorbar (still not a bar chart)
                 p_fallback <- ggplot2::ggplot(plot_df,
