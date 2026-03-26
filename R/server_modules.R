@@ -813,11 +813,8 @@ tumor_growth_server <- function(input, output, session, rv) {
               val_col_gr <- if (!is.null(gr_df)) intersect(c("growth_rate","GrowthRate"), colnames(gr_df))[1] else NA
 
               if (!is.null(gr_df) && !is.na(grp_col_gr) && !is.na(val_col_gr)) {
-                # Individual growth-rate beeswarm + group mean±CI overlay,
-                # all computed from the growth_rates data so units are consistent.
                 gr_df$plot_group <- as.character(gr_df[[grp_col_gr]])
                 gr_df$plot_val   <- as.numeric(gr_df[[val_col_gr]])
-                # Preserve group ordering consistent with treatment_effects
                 grp_levels <- as.character(plot_df$Treatment)
                 gr_df$plot_group <- factor(gr_df$plot_group, levels = grp_levels)
 
@@ -827,21 +824,29 @@ tumor_growth_server <- function(input, output, session, rv) {
                 }
 
                 p_fallback <- ggplot2::ggplot(gr_df,
-                                              ggplot2::aes(x = plot_group, y = plot_val,
-                                                           colour = plot_group)) +
-                  ggbeeswarm::geom_beeswarm(size = 2.5, alpha = 0.8, cex = 2.5) +
+                    ggplot2::aes(x = plot_group, y = plot_val, colour = plot_group)) +
+                  # Layer 1: 95% CI error bars with horizontal end caps
                   ggplot2::stat_summary(
-                    ggplot2::aes(group = plot_group),
                     fun.min = function(x) mean(x, na.rm = TRUE) - ci_half_fn(x),
-                    fun     = function(x) mean(x, na.rm = TRUE),
                     fun.max = function(x) mean(x, na.rm = TRUE) + ci_half_fn(x),
-                    geom = "pointrange", colour = "black", size = 0.8, linewidth = 1.1
+                    geom = "errorbar", colour = "black", width = 0.25, linewidth = 0.9
                   ) +
-                  ggplot2::labs(title = "Growth Rate Comparison by Treatment",
+                  # Layer 2: Mean marker as horizontal bar (degenerate crossbar)
+                  ggplot2::stat_summary(
+                    fun = function(x) mean(x, na.rm = TRUE),
+                    fun.min = function(x) mean(x, na.rm = TRUE),
+                    fun.max = function(x) mean(x, na.rm = TRUE),
+                    geom = "crossbar", colour = "black", width = 0.25, linewidth = 0.9
+                  ) +
+                  # Layer 3: Individual points with horizontal jitter only
+                  ggplot2::geom_point(
+                    position = ggplot2::position_jitter(width = 0.08, height = 0, seed = 42),
+                    size = 2.5, alpha = 0.85
+                  ) +
+                  ggplot2::labs(title = "Growth Rate Comparison",
                                x = "Treatment", y = "Growth Rate (log-volume / day)") +
                   ggplot2::theme_classic() +
-                  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5),
-                                legend.position = "none")
+                  ggplot2::theme(legend.position = "none")
               } else {
                 # No individual data — point + errorbar (still not a bar chart)
                 p_fallback <- ggplot2::ggplot(plot_df,
@@ -1534,50 +1539,53 @@ tumor_growth_server <- function(input, output, session, rv) {
         auc_ind[[grp_col_a]] <- factor(auc_ind[[grp_col_a]], levels = auc_levels)
     }
     p <- tryCatch({
+      # Helper: half-width of error bar given type
+      eb_half <- switch(err_type,
+        SEM = function(x) sd(x, na.rm=TRUE) / sqrt(sum(!is.na(x))),
+        SD  = function(x) sd(x, na.rm=TRUE),
+        CI  = function(x) qt(0.975, df=max(sum(!is.na(x))-1L,1L)) * sd(x,na.rm=TRUE) / sqrt(sum(!is.na(x))),
+              function(x) sd(x, na.rm=TRUE) / sqrt(sum(!is.na(x)))   # default SEM
+      )
+      cfun <- switch(center_bar,
+        mean           = function(x) mean(x, na.rm=TRUE),
+        median         = function(x) median(x, na.rm=TRUE),
+        geometric_mean = function(x) exp(mean(log(pmax(x, 1e-9)))),
+                         function(x) mean(x, na.rm=TRUE)
+      )
+
       p_b <- ggplot2::ggplot(auc_ind,
                ggplot2::aes(x = .data[[grp_col_a]], y = .data[["AUC"]],
-                            color = .data[[grp_col_a]])) +
+                            colour = .data[[grp_col_a]])) +
         ggplot2::theme_classic() +
-        ggplot2::labs(x = NULL, y = "AUC", title = "AUC Comparison") +
+        ggplot2::labs(x = "Treatment", y = "AUC", title = "AUC Comparison") +
         ggplot2::theme(legend.title = ggplot2::element_blank())
-      # Error bars — drawn first so individual points render on top
+
+      # Layer 1: Error bars with horizontal end caps
       if (err_type != "none") {
-        sem_fn  <- function(x) mean(x, na.rm=TRUE) + c(-1,1) * sd(x, na.rm=TRUE)/sqrt(sum(!is.na(x)))
-        sd_fn   <- function(x) mean(x, na.rm=TRUE) + c(-1,1) * sd(x, na.rm=TRUE)
-        ci_fn   <- function(x) mean(x, na.rm=TRUE) + c(-1,1) * qt(0.975, df=max(sum(!is.na(x))-1,1)) * sd(x, na.rm=TRUE)/sqrt(sum(!is.na(x)))
-        eb_fn   <- switch(err_type, SEM=sem_fn, SD=sd_fn, CI=ci_fn, sem_fn)
         p_b <- p_b + ggplot2::stat_summary(
-          ggplot2::aes(group = .data[[grp_col_a]]),
-          fun.min = function(x) eb_fn(x)[1],
-          fun     = function(x) mean(x, na.rm=TRUE),
-          fun.max = function(x) eb_fn(x)[2],
-          geom = "errorbar", width = 0.4, linewidth = 0.8, color = "black"
+          fun.min = function(x) mean(x, na.rm=TRUE) - eb_half(x),
+          fun.max = function(x) mean(x, na.rm=TRUE) + eb_half(x),
+          geom = "errorbar", colour = "black", width = 0.25, linewidth = 0.9
         )
       }
-      # Center bar — degenerate crossbar (ymin = y = ymax) renders as a
-      # horizontal bar at the centre value; drawn before points so it stays
-      # under the individual data cloud.
+
+      # Layer 2: Mean/median marker as horizontal bar (degenerate crossbar)
       if (center_bar != "none") {
-        cfun <- switch(center_bar,
-          mean           = function(x) mean(x, na.rm=TRUE),
-          median         = function(x) median(x, na.rm=TRUE),
-          geometric_mean = function(x) exp(mean(log(pmax(x, 1e-9, na.rm=TRUE)))),
-          function(x) mean(x, na.rm=TRUE)
-        )
         p_b <- p_b + ggplot2::stat_summary(
-          fun.min = cfun, fun = cfun, fun.max = cfun,
-          geom = "crossbar", width = 0.5, linewidth = 0.8,
-          ggplot2::aes(group = .data[[grp_col_a]], color = .data[[grp_col_a]])
+          fun     = cfun,
+          fun.min = cfun,
+          fun.max = cfun,
+          geom = "crossbar", colour = "black", width = 0.25, linewidth = 0.9
         )
       }
-      # Individual points — use geom_jitter (matches plot_auc() backend) so
-      # the y aesthetic is never affected by beeswarm position computation.
-      # height = 0 keeps all points at their true AUC values.
-      p_b <- p_b + ggplot2::geom_jitter(
-        position = ggplot2::position_jitter(width = 0.15, height = 0, seed = 123),
+
+      # Layer 3: Individual points on top with horizontal jitter only
+      p_b <- p_b + ggplot2::geom_point(
+        position = ggplot2::position_jitter(width = 0.08, height = 0, seed = 42),
         size = pt_size, alpha = 0.85
       )
-      if (!is.null(colors)) p_b <- p_b + ggplot2::scale_color_manual(values = colors)
+
+      if (!is.null(colors)) p_b <- p_b + ggplot2::scale_colour_manual(values = colors)
       p_b
     }, error = function(e) rv$tg_results$auc_plot)
     req(!is.null(p))
