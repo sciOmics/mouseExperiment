@@ -1119,6 +1119,7 @@ tumor_growth_server <- function(input, output, session, rv) {
       growth_curves  = "download_tg_plot_growth",
       growth_rate    = "download_tg_plot_rates",
       auc            = "download_tg_plot_auc",
+      waterfall      = "download_tg_plot_waterfall",
       effect_forest  = "download_tg_plot_effect_forest",
       "download_tg_plot_growth"
     )
@@ -1665,6 +1666,106 @@ tumor_growth_server <- function(input, output, session, rv) {
   }, width = function() input$tg_plot_width %||% 800,
      height = function() input$tg_plot_height %||% 550)
   
+  # ── Waterfall Plot ────────────────────────────────────────────────────────
+  output$tg_wf_endpoint_ui <- renderUI({
+    req(rv$tg_plot_data, rv$tg_col_names)
+    time_col <- rv$tg_col_names$time_column
+    days     <- sort(unique(rv$tg_plot_data[[time_col]]))
+    selectInput("tg_wf_endpoint_day", "Endpoint day",
+                choices = days, selected = days[length(days)])
+  })
+
+  tg_wf_plot <- reactive({
+    req(rv$tg_plot_data, rv$tg_col_names)
+
+    data        <- rv$tg_plot_data
+    col_names   <- rv$tg_col_names
+    time_col    <- col_names$time_column
+    vol_col     <- col_names$volume_column
+    trt_col     <- col_names$treatment_column
+    id_col      <- col_names$id_column
+
+    # Baseline: earliest timepoint per animal
+    baseline <- data |>
+      dplyr::group_by(.data[[id_col]]) |>
+      dplyr::slice_min(.data[[time_col]], n = 1, with_ties = FALSE) |>
+      dplyr::ungroup() |>
+      dplyr::select(dplyr::all_of(c(id_col, trt_col, vol_col))) |>
+      dplyr::rename(baseline_vol = dplyr::all_of(vol_col))
+
+    # Endpoint: user-selected day (or last available per animal)
+    endpoint_day <- as.numeric(input$tg_wf_endpoint_day %||%
+                                max(data[[time_col]], na.rm = TRUE))
+    endpoint <- data |>
+      dplyr::group_by(.data[[id_col]]) |>
+      dplyr::filter(.data[[time_col]] ==
+                      max(.data[[time_col]][.data[[time_col]] <= endpoint_day],
+                          na.rm = TRUE)) |>
+      dplyr::slice(1) |>
+      dplyr::ungroup() |>
+      dplyr::select(dplyr::all_of(c(id_col, vol_col))) |>
+      dplyr::rename(endpoint_vol = dplyr::all_of(vol_col))
+
+    wf_data <- dplyr::left_join(baseline, endpoint, by = id_col) |>
+      dplyr::filter(!is.na(.data$baseline_vol), .data$baseline_vol > 0,
+                    !is.na(.data$endpoint_vol)) |>
+      dplyr::mutate(
+        pct_change = (.data$endpoint_vol - .data$baseline_vol) /
+                      .data$baseline_vol * 100
+      ) |>
+      dplyr::arrange(.data$pct_change) |>
+      dplyr::mutate(rank = dplyr::row_number())
+
+    req(nrow(wf_data) > 0)
+
+    groups     <- get_ordered_groups(wf_data, trt_col)
+    colors     <- build_color_vector(groups, input$tg_color_palette %||% "Set1")
+    text_size  <- input$tg_opt_text_size %||% 12
+    show_thr   <- isTRUE(input$tg_wf_show_thresholds)
+    thr_low    <- input$tg_wf_threshold_low  %||% -30
+    thr_high   <- input$tg_wf_threshold_high %||%  20
+
+    p <- ggplot2::ggplot(
+           wf_data,
+           ggplot2::aes(x = .data$rank,
+                        y = .data$pct_change,
+                        fill = .data[[trt_col]])) +
+      ggplot2::geom_col(width = 0.8, colour = "grey30", linewidth = 0.2) +
+      ggplot2::geom_hline(yintercept = 0, linewidth = 0.6) +
+      ggplot2::scale_fill_manual(values = colors, name = trt_col) +
+      ggplot2::scale_x_continuous(
+        breaks = wf_data$rank,
+        labels = wf_data[[id_col]],
+        expand = c(0.01, 0)) +
+      ggplot2::labs(
+        x = "Animal ID",
+        y = "Tumor volume change from baseline (%)") +
+      ggplot2::theme_bw(base_size = text_size) +
+      ggplot2::theme(
+        axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5))
+
+    if (show_thr) {
+      p <- p +
+        ggplot2::geom_hline(yintercept = thr_low,  linetype = "dashed",
+                            colour = "steelblue",  linewidth = 0.7) +
+        ggplot2::geom_hline(yintercept = thr_high, linetype = "dashed",
+                            colour = "firebrick",  linewidth = 0.7)
+    }
+
+    p <- apply_legend_pos(p, input$tg_legend_position %||% "right")
+    apply_plot_labels(p,
+      input$tg_plot_title    %||% "",
+      input$tg_plot_subtitle %||% "",
+      input$tg_plot_title_align %||% "center",
+      text_size)
+  })
+
+  output$tg_plot_waterfall <- renderPlot({
+    req(tg_wf_plot())
+    tg_wf_plot()
+  }, width  = function() input$tg_plot_width  %||% 800,
+     height = function() input$tg_plot_height %||% 550)
+
   # Diagnostics/QQ plot
   output$tg_plot_caterpillar <- renderPlot({
     req(rv$tg_results)
@@ -1821,5 +1922,16 @@ tumor_growth_server <- function(input, output, session, rv) {
       }
     }
   )
-  
+
+  output$download_tg_plot_waterfall <- downloadHandler(
+    filename = "waterfall_plot.png",
+    content = function(file) {
+      p <- tg_wf_plot()
+      png(file, width  = input$tg_plot_width  %||% 800,
+                height = input$tg_plot_height %||% 550,
+                units  = "px", res = input$tg_plot_dpi %||% 100)
+      tryCatch(print(p), finally = dev.off())
+    }
+  )
+
 }

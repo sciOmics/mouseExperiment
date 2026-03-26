@@ -446,6 +446,7 @@ tumorGrowthUI <- function() {
                       "Tumor Growth Curves"      = "growth_curves",
                       "Growth Rate Distribution" = "growth_rate",
                       "AUC Comparison"           = "auc",
+                      "Waterfall Plot"           = "waterfall",
                       "Effect Size Forest Plot"  = "effect_forest"
                     )
                   ),
@@ -485,6 +486,18 @@ tumorGrowthUI <- function() {
                                 min = 0.5, max = 8, value = 2, step = 0.5),
                     numericInput("tg_opt_xstart", "X-axis start (Day)",
                                  value = 0, min = 0, step = 1)
+                  ),
+                  conditionalPanel(
+                    "input.tg_plot_selector == 'waterfall'",
+                    uiOutput("tg_wf_endpoint_ui"),
+                    checkboxInput("tg_wf_show_thresholds",
+                                  "Show response thresholds", value = TRUE),
+                    numericInput("tg_wf_threshold_low",
+                                 "Partial response threshold (%)",
+                                 value = -30, step = 5),
+                    numericInput("tg_wf_threshold_high",
+                                 "Progression threshold (%)",
+                                 value = 20, step = 5)
                   ),
                   conditionalPanel(
                     "['growth_rate','auc'].indexOf(input.tg_plot_selector) >= 0",
@@ -550,6 +563,15 @@ tumorGrowthUI <- function() {
                     "model-estimated area under the curve, one point per subject."),
                   shinycssloaders::withSpinner(
                     plotOutput("tg_plot_auc", width = "auto", height = "auto")
+                  )
+                ),
+                conditionalPanel("input.tg_plot_selector == 'waterfall'",
+                  h4("Waterfall Plot"),
+                  tab_info(strong("Waterfall Plot: "),
+                    "percent change in tumor volume from baseline to the selected endpoint, ",
+                    "one bar per animal, sorted from greatest decrease to greatest increase."),
+                  shinycssloaders::withSpinner(
+                    plotOutput("tg_plot_waterfall", width = "auto", height = "auto")
                   )
                 ),
                 conditionalPanel("input.tg_plot_selector == 'effect_forest'",
