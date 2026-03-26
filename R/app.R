@@ -96,6 +96,12 @@ window.enableNavTab  = enableNavTab;
       tags$head(
         tags$link(rel = "stylesheet", href = "css/custom.css"),
         tags$link(rel = "stylesheet", href = "css/dark.css"),
+        tags$style(HTML("
+          .navbar-nav li a[data-value='__toxicity_disabled__'] {
+            pointer-events: none;
+            opacity: 0.45;
+          }
+        ")),
         tags$script(nav_js),
         tags$script(src = "js/sidebar.js"),
         tags$script(src = "js/darkmode.js"),
@@ -116,9 +122,12 @@ $(document).ready(function() {
     tabPanel("Data",          dataUploadUI()),
     tabPanel("Tumor Growth",  tumorGrowthUI()),
     tabPanel("Survival",      survivalUI()),
-    tags$li(class = "disabled",
-      tags$a(href = "#", onclick = "return false;",
-             "Toxicity", tags$small(" (coming soon)"))
+    tabPanel(
+      title = tags$span("Toxicity",
+                        style = "color: #999; cursor: not-allowed;",
+                        title = "Coming soon"),
+      value = "__toxicity_disabled__",
+      ""
     ),
     tabPanel("Dose Response", doseResponseUI()),
     tabPanel("Drug Synergy",  synergyUI()),
@@ -162,6 +171,12 @@ $(document).ready(function() {
     synergy_server(input, output, session, rv)
     power_server(input, output, session, rv)
     dose_response_server(input, output, session, rv)
+
+    # Guard: redirect away from the placeholder Toxicity tab if reached via keyboard
+    observeEvent(input$main_nav, {
+      if (identical(input$main_nav, "__toxicity_disabled__"))
+        updateNavbarPage(session, "main_nav", selected = "Survival")
+    }, ignoreInit = TRUE)
 
     # Analysis tabs that require data to be uploaded first
     analysis_tabs <- c("Tumor Growth", "Survival", "Dose Response",
