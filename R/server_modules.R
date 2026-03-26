@@ -143,14 +143,37 @@ data_upload_server <- function(input, output, session, rv) {
     if (!is.null(input$time_method) && input$time_method == "from_date" &&
         !is.null(input$col_date_for_day) && input$col_date_for_day != "") {
       tryCatch({
-        first_val  <- as.character(data[1, input$col_date_for_day])
-        fmt <- if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_val)) "%m/%d/%Y"
-               else if (grepl("^\\d{4}-\\d{1,2}-\\d{1,2}$", first_val)) "%Y-%m-%d"
-               else if (grepl("^\\d{1,2}-[A-Za-z]{3}$", first_val)) "%d-%b"
-               else NULL
+        first_val    <- as.character(data[1, input$col_date_for_day])
+        ref_date_str <- input$reference_date %||% ""
+
+        # Detect format and normalise both data dates and start_date
+        if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_val)) {
+          fmt <- "%m/%d/%Y"
+        } else if (grepl("^\\d{4}-\\d{1,2}-\\d{1,2}$", first_val)) {
+          fmt <- "%Y-%m-%d"
+        } else if (grepl("^\\d{1,2}-[A-Za-z]{3}$", first_val)) {
+          fmt <- "%d-%b"
+        } else if (grepl("^[A-Za-z]+\\s+\\d{1,2}$", first_val)) {
+          # "Month Day" (e.g. "March 1") — inject year from reference date
+          ref_parsed <- tryCatch(
+            as.Date(ref_date_str,
+                    tryFormats = c("%Y-%m-%d", "%m/%d/%Y", "%d-%b-%Y",
+                                   "%B %d %Y", "%B %d, %Y")),
+            error = function(e) Sys.Date()
+          )
+          if (is.na(ref_parsed)) ref_parsed <- Sys.Date()
+          ref_year <- as.integer(format(ref_parsed, "%Y"))
+          data[[input$col_date_for_day]] <-
+            paste(data[[input$col_date_for_day]], ref_year)
+          ref_date_str <- format(ref_parsed, "%B %d %Y")
+          fmt <- "%B %d %Y"
+        } else {
+          fmt <- NULL
+        }
+
         data <- mouseExperiment::calculate_dates(
           data,
-          start_date  = input$reference_date,
+          start_date  = ref_date_str,
           date_column = input$col_date_for_day,
           date_format = fmt
         )
