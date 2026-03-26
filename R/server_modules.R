@@ -950,6 +950,11 @@ tumor_growth_server <- function(input, output, session, rv) {
       })
     }
 
+    # Persist the settings used so renderDTs can condition on them correctly
+    # (the backend result$methods list is not reliably populated for all paths)
+    result$transform_used  <- input$tg_transform   %||% "none"
+    result$model_type_used <- input$tg_model_type  %||% "lme4"
+
     rv$tg_results <- result
     rv$tg_running <- FALSE
 
@@ -1123,8 +1128,8 @@ tumor_growth_server <- function(input, output, session, rv) {
     }
 
     # Add fold-change back-transform for LME4 log-scale models
-    transform_used   <- rv$tg_results$methods$volume_transformation %||% "none"
-    model_type_used  <- input$tg_model_type %||% "lme4"
+    transform_used   <- rv$tg_results$transform_used  %||% "none"
+    model_type_used  <- rv$tg_results$model_type_used %||% "lme4"
     if (model_type_used == "lme4" && transform_used == "log") {
       est_col <- intersect(c("estimate", "Estimate"), colnames(comp_df))[1]
       lo_col  <- intersect(c("lower.CL", "lower_CL", "Lower"), colnames(comp_df))[1]
@@ -1157,7 +1162,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     effects_df <- as.data.frame(rv$tg_results$treatment_effects)
 
     # Add back-transformed columns when LME4 model used a transformation
-    transform_used <- rv$tg_results$methods$volume_transformation %||% "none"
+    transform_used <- rv$tg_results$transform_used %||% "none"
     bt_cols <- intersect(c("Adjusted_Mean", "Lower_CL", "Upper_CL"), colnames(effects_df))
     if (transform_used %in% c("log", "sqrt") && length(bt_cols) > 0) {
       for (col in bt_cols) {
