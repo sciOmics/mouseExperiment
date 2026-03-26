@@ -930,9 +930,10 @@ tumor_growth_server <- function(input, output, session, rv) {
         emm <- emmeans::emmeans(result$model, as.formula(paste("~", treatment_col_name)))
         emm_levels <- levels(emm)[[1]]   # character vector of factor levels
         
-        # Type 1: All pairwise comparisons with Tukey adjustment (confint adds lower.CL/upper.CL)
+        # Type 1: All pairwise comparisons with Tukey adjustment
+        # infer=c(TRUE,TRUE) returns both CIs and test statistics (t.ratio, p.value)
         result$all_pairwise_comparisons <- as.data.frame(
-          confint(pairs(emm, adjust = "tukey"))
+          summary(pairs(emm, adjust = "tukey"), infer = c(TRUE, TRUE))
         )
         
         # Type 2: vs Reference Group with Dunnett correction
@@ -941,7 +942,8 @@ tumor_growth_server <- function(input, output, session, rv) {
         ref_idx <- which(emm_levels == ref_group)
         if (length(ref_idx) == 1) {
           result$reference_comparisons_dunnett <- as.data.frame(
-            confint(emmeans::contrast(emm, method = "trt.vs.ctrl", ref = ref_idx, adjust = "dunnett"))
+            summary(emmeans::contrast(emm, method = "trt.vs.ctrl", ref = ref_idx, adjust = "dunnett"),
+                    infer = c(TRUE, TRUE))
           )
         }
 
@@ -1224,13 +1226,15 @@ tumor_growth_server <- function(input, output, session, rv) {
     }
 
     # Enforce column order: contrast, df, estimate, lower.CL, upper.CL, SE,
-    # Fold_Change, Fold_Change_Lower, Fold_Change_Upper, then any remaining cols
+    # t.ratio, p.value, Fold_Change, Fold_Change_Lower, Fold_Change_Upper, then any remaining cols
     preferred_order <- c("contrast", "Contrast",
                          "df",
                          "estimate", "Estimate",
                          "lower.CL", "lower_CL",
                          "upper.CL", "upper_CL",
                          "SE",
+                         "t.ratio", "z.ratio",
+                         "p.value",
                          "Fold_Change", "Fold_Change_Lower", "Fold_Change_Upper")
     ordered_cols <- intersect(preferred_order, colnames(comp_df))
     rest_cols    <- setdiff(colnames(comp_df), ordered_cols)
