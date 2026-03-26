@@ -1734,7 +1734,7 @@ tumor_growth_server <- function(input, output, session, rv) {
         ggplot2::theme(
           axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5))
 
-      p <- apply_legend_pos(p, input$tg_legend_position %||% "right")
+      p <- apply_legend_pos(p, input$tg_opt_legend_pos %||% "right")
       apply_plot_labels(p,
         input$tg_plot_title    %||% "",
         input$tg_plot_subtitle %||% "",
