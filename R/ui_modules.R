@@ -78,13 +78,13 @@ dataUploadUI <- function() {
               )
             ),
             column(8,
-              fileInput("data_file",
-                       "Choose File (CSV)",
-                       accept = c(".csv", ".rda", ".RData")),
+              tags$label("Choose file (csv)"),
               tags$p(tags$small(
                 icon("info-circle"), " Data must be in ",
                 tags$strong("long format"), " — one row per observation/measurement."
               )),
+              fileInput("data_file", NULL,
+                       accept = c(".csv", ".rda", ".RData")),
               uiOutput("file_validation_msg")
             )
           )
