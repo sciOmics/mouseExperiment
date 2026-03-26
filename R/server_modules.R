@@ -1673,50 +1673,39 @@ tumor_growth_server <- function(input, output, session, rv) {
       return(finish_plot(p))
     }
 
-    # ── Path B: LME4 model ── rebuild from growth_rates reactively ────────
-    if (!is.null(rv$tg_results$growth_rates)) {
-      rates     <- as.data.frame(rv$tg_results$growth_rates)
-      grp_col_r <- intersect(c("Treatment", "Group"), colnames(rates))[1]
-      req(!is.na(grp_col_r))
+    # ── Path B: LME4 model ── show emmeans treatment effects with 95% CI ──
+    if (!is.null(rv$tg_results$treatment_effects)) {
+      te        <- as.data.frame(rv$tg_results$treatment_effects)
+      grp_col_b <- intersect(c("Group", "Treatment"), colnames(te))[1]
+      req(!is.na(grp_col_b),
+          "Adjusted_Mean" %in% colnames(te),
+          "Lower_CL"      %in% colnames(te),
+          "Upper_CL"      %in% colnames(te))
 
       # Factor ordering
       if (length(ordered_grps) > 0) {
-        gr_levels <- unique(sub(" - Dose: .*$", "", ordered_grps))
-        gr_levels <- gr_levels[gr_levels %in% as.character(unique(rates[[grp_col_r]]))]
-        if (length(gr_levels) > 0)
-          rates[[grp_col_r]] <- factor(rates[[grp_col_r]], levels = gr_levels)
+        te_levels <- unique(sub(" - Dose: .*$", "", ordered_grps))
+        te_levels <- te_levels[te_levels %in% as.character(unique(te[[grp_col_b]]))]
+        if (length(te_levels) > 0)
+          te[[grp_col_b]] <- factor(te[[grp_col_b]], levels = te_levels)
       }
 
-      summ <- make_summary(rates, grp_col_r, "growth_rate")
-      summ$grp <- factor(summ$grp, levels = levels(factor(rates[[grp_col_r]])))
-
-      p <- ggplot2::ggplot(rates,
-             ggplot2::aes(x = .data[[grp_col_r]], y = growth_rate,
-                          colour = .data[[grp_col_r]])) +
+      p <- ggplot2::ggplot(
+             te,
+             ggplot2::aes(x = .data[[grp_col_b]],
+                          y = .data[["Adjusted_Mean"]],
+                          colour = .data[[grp_col_b]])) +
+        ggplot2::geom_errorbar(
+          ggplot2::aes(ymin = .data[["Lower_CL"]], ymax = .data[["Upper_CL"]]),
+          width = 0.15, linewidth = 0.9, colour = "black") +
+        ggplot2::geom_point(size = pt_size + 1) +
         ggplot2::theme_classic() +
-        ggplot2::labs(x = "Treatment", y = "Growth Rate (log-volume / day)",
-                      title = "Growth Rate Comparison") +
+        ggplot2::labs(x = "Treatment",
+                      y = "Estimated Marginal Mean (log-volume)",
+                      title = "Model-Estimated Treatment Effects") +
         ggplot2::theme(legend.title = ggplot2::element_blank())
 
-      if (err_type != "none")
-        p <- p + ggplot2::geom_errorbar(
-          data = summ,
-          ggplot2::aes(x = grp, ymin = lo, ymax = hi),
-          inherit.aes = FALSE,
-          colour = "black", width = 0.25, linewidth = 0.9)
-
-      if (center_bar != "none")
-        p <- p + ggplot2::geom_crossbar(
-          data = summ,
-          ggplot2::aes(x = grp, y = ctr, ymin = ctr, ymax = ctr),
-          inherit.aes = FALSE,
-          colour = "black", width = 0.25, linewidth = 0.9)
-
-      p <- p + ggplot2::geom_point(
-        position = ggplot2::position_jitter(width = jit_width, height = 0, seed = 42),
-        size = pt_size, alpha = 0.85)
-
-      ylims <- y_limits(rates[["growth_rate"]], summ$lo, summ$hi)
+      ylims <- y_limits(te[["Adjusted_Mean"]], te[["Lower_CL"]], te[["Upper_CL"]])
       p <- p + ggplot2::coord_cartesian(ylim = ylims)
       return(finish_plot(p))
     }

@@ -546,9 +546,10 @@ tumorGrowthUI <- function() {
                   )
                 ),
                 conditionalPanel("input.tg_plot_selector == 'auc'",
-                  h4("AUC Comparison"),
-                  tab_info(strong("AUC / Treatment Effects: "),
-                    "model-estimated area under the curve, one point per subject."),
+                  h4("AUC / Treatment Effects"),
+                  tab_info(strong("AUC mode: "), "model-estimated area under the curve, one point per subject. ",
+                    strong("LME4 mode: "), "emmeans-estimated marginal means per treatment group ",
+                    "with 95% confidence intervals from the mixed-effects model."),
                   shinycssloaders::withSpinner(
                     plotOutput("tg_plot_auc", width = "auto", height = "auto")
                   )
