@@ -565,43 +565,30 @@ tumorGrowthUI <- function() {
               column(9,
                 conditionalPanel("input.tg_plot_selector == 'growth_curves'",
                   h4("Tumor Growth Curves"),
-                  tab_info(strong("Tumor Growth Curves: "),
-                    "individual mouse trajectories with optional group mean overlay."),
                   shinycssloaders::withSpinner(
                     plotOutput("tg_plot_growth", width = "auto", height = "auto")
                   )
                 ),
                 conditionalPanel("input.tg_plot_selector == 'growth_rate'",
                   h4("Growth Rates Plot"),
-                  tab_info(strong("Growth Rates Plot: "),
-                    "spread of per-animal growth rates within each group."),
                   shinycssloaders::withSpinner(
                     plotOutput("tg_plot_rates", width = "auto", height = "auto")
                   )
                 ),
                 conditionalPanel("input.tg_plot_selector == 'auc'",
                   h4("Area Under the Curve Plot"),
-                  tab_info(strong("AUC mode: "), "model-estimated area under the curve, one point per subject. ",
-                    strong("LME4 mode: "), "per-animal growth rates with group mean and error bars (same plot style as AUC mode)."),
                   shinycssloaders::withSpinner(
                     plotOutput("tg_plot_auc", width = "auto", height = "auto")
                   )
                 ),
                 conditionalPanel("input.tg_plot_selector == 'waterfall'",
                   h4("Waterfall Plot"),
-                  tab_info(strong("Waterfall Plot: "),
-                    "per-animal tumor growth rate (% change per day) derived from the log-linear slope, ",
-                    "sorted from fastest to slowest growth, colored by treatment group."),
                   shinycssloaders::withSpinner(
                     plotOutput("tg_plot_waterfall", width = "auto", height = "auto")
                   )
                 ),
                 conditionalPanel("input.tg_plot_selector == 'effect_forest'",
                   h4("Effect Size Forest Plot"),
-                  tab_info(strong("Pairwise effect sizes: "),
-                    "mean differences between treatment groups with 95% CIs. ",
-                    "Points left of zero indicate lower volume vs. reference; ",
-                    "points to the right indicate higher volume."),
                   shinycssloaders::withSpinner(
                     plotOutput("tg_plot_effect_forest", width = "auto", height = "auto")
                   )
