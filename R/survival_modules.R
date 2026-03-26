@@ -20,9 +20,7 @@ survivalUI <- function() {
                       "Run Analysis",
                       class = "btn-lg btn-primary btn-block"),
           
-          uiOutput("surv_status_msg"),
-
-          plot_export_ui("surv")
+          uiOutput("surv_status_msg")
         )
       ),
       
@@ -99,7 +97,15 @@ survivalUI <- function() {
                     checkboxInput("surv_forest_show_hr", "Show HR",      value = TRUE),
                     checkboxInput("surv_forest_show_ci", "Show 95% CI",  value = TRUE),
                     checkboxInput("surv_forest_show_p",  "Show p-value", value = TRUE)
-                  )
+                  ),
+                  hr(),
+                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
+                     icon("arrows-alt"), " Plot Size / Export"),
+                  fluidRow(
+                    column(6, numericInput("surv_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
+                    column(6, numericInput("surv_plot_height", "Height (px)", 600, min = 200, max = 5000, step = 50))
+                  ),
+                  numericInput("surv_plot_dpi", "Resolution (DPI)", 100, min = 72, max = 600, step = 10)
                 )
               ),
               column(9,
@@ -113,7 +119,7 @@ survivalUI <- function() {
                     "observation. Groups that remain higher on the y-axis have better survival."
                   ),
                   shinycssloaders::withSpinner(
-                    plotOutput("surv_plot_km", height = "500px")
+                    plotOutput("surv_plot_km", width = "auto", height = "auto")
                   ),
                   downloadButton("download_surv_plot_km", "Download Plot")
                 ),
@@ -127,7 +133,7 @@ survivalUI <- function() {
                     "indicate increased hazard relative to the reference group."
                   ),
                   shinycssloaders::withSpinner(
-                    plotOutput("surv_forest_plot", height = "500px")
+                    plotOutput("surv_forest_plot", width = "auto", height = "auto")
                   ),
                   downloadButton("download_surv_forest_plot", "Download Plot")
                 )
@@ -580,8 +586,9 @@ survival_server <- function(input, output, session, rv) {
       } else {
         plot(1, 1, type = "n", main = "KM plot not available", xlab = "", ylab = "")
       }
-    })
-  })
+    })  
+  }, width = function() input$surv_plot_width %||% 800,
+     height = function() input$surv_plot_height %||% 600)
   
   # Cox model summary
   output$surv_cox_summary <- renderText({
@@ -770,7 +777,8 @@ survival_server <- function(input, output, session, rv) {
     p <- build_surv_forest_plot(res, ref_grp, pt_color, show_hr, show_ci, show_p)
     req(!is.null(p))
     p
-  })
+  }, width = function() input$surv_plot_width %||% 800,
+     height = function() input$surv_plot_height %||% 600)
   
   # Download handlers
   output$download_surv_plot_km <- downloadHandler(

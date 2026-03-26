@@ -33,9 +33,7 @@ doseResponseUI <- function() {
           ),
 
           br(),
-          uiOutput("dr_status_msg"),
-
-          plot_export_ui("dr")
+          uiOutput("dr_status_msg")
         )
       ),
 
@@ -109,7 +107,15 @@ doseResponseUI <- function() {
                     colourpicker::colourInput("dr_bar_fill_color",
                                              "Bar fill colour",
                                              value = "#4292C6")
-                  )
+                  ),
+                  hr(),
+                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
+                     icon("arrows-alt"), " Plot Size / Export"),
+                  fluidRow(
+                    column(6, numericInput("dr_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
+                    column(6, numericInput("dr_plot_height", "Height (px)", 600, min = 200, max = 5000, step = 50))
+                  ),
+                  numericInput("dr_plot_dpi", "Resolution (DPI)", 100, min = 72, max = 600, step = 10)
                 )
               ),
               column(9,
@@ -122,7 +128,7 @@ doseResponseUI <- function() {
                     "dose-response relationship."
                   ),
                   shinycssloaders::withSpinner(
-                    plotOutput("dr_plot_scatter", height = "500px")
+                    plotOutput("dr_plot_scatter", width = "auto", height = "auto")
                   ),
                   downloadButton("download_dr_scatter", "Download Plot")
                 ),
@@ -134,7 +140,7 @@ doseResponseUI <- function() {
                     "Useful for assessing variance across dose levels and identifying outliers."
                   ),
                   shinycssloaders::withSpinner(
-                    plotOutput("dr_plot_boxplot", height = "500px")
+                    plotOutput("dr_plot_boxplot", width = "auto", height = "auto")
                   ),
                   downloadButton("download_dr_boxplot", "Download Plot")
                 ),
@@ -147,7 +153,7 @@ doseResponseUI <- function() {
                     "indicator of significance."
                   ),
                   shinycssloaders::withSpinner(
-                    plotOutput("dr_plot_barplot", height = "500px")
+                    plotOutput("dr_plot_barplot", width = "auto", height = "auto")
                   ),
                   downloadButton("download_dr_barplot", "Download Plot")
                 )
@@ -377,6 +383,7 @@ dose_response_server <- function(input, output, session, rv) {
 
   # ---- Plots (rebuilt reactively so colour options take effect immediately) ----
   output$dr_plot_scatter <- renderPlot({
+
     req(rv$dr_results)
     if (isTRUE(rv$dr_results$error)) return(NULL)
     ad <- rv$dr_results$analysis_data
@@ -391,7 +398,8 @@ dose_response_server <- function(input, output, session, rv) {
       ggplot2::labs(title = "Linear Dose-Response Relationship",
                    x = "Dose", y = "Tumor Volume") +
       ggplot2::theme_classic()
-  })
+  }, width = function() input$dr_plot_width %||% 800,
+     height = function() input$dr_plot_height %||% 600)
 
   output$dr_plot_boxplot <- renderPlot({
     req(rv$dr_results)
@@ -408,7 +416,8 @@ dose_response_server <- function(input, output, session, rv) {
       ggplot2::labs(title = "Tumor Volume by Dose Level",
                    x = "Dose", y = "Tumor Volume") +
       ggplot2::theme_classic()
-  })
+  }, width = function() input$dr_plot_width %||% 800,
+     height = function() input$dr_plot_height %||% 600)
 
   output$dr_plot_barplot <- renderPlot({
     req(rv$dr_results)
@@ -424,7 +433,8 @@ dose_response_server <- function(input, output, session, rv) {
       ggplot2::labs(title = "Mean Tumor Volume by Dose Level (with 95% CI)",
                    x = "Dose", y = "Mean Tumor Volume") +
       ggplot2::theme_classic()
-  })
+  }, width = function() input$dr_plot_width %||% 800,
+     height = function() input$dr_plot_height %||% 600)
 
   # ---- Statistical Tests ----
   output$dr_stat_tests <- renderText({

@@ -29,9 +29,7 @@ synergyUI <- function() {
                       "Run Analysis",
                       class = "btn-lg btn-primary btn-block"),
           
-          uiOutput("syn_status_msg"),
-
-          plot_export_ui("syn")
+          uiOutput("syn_status_msg")
         )
       ),
       
@@ -104,7 +102,15 @@ synergyUI <- function() {
                     checkboxInput("syn_opt_show_shading",
                                   "Show Synergy / Antagonism shading",
                                   value = TRUE)
-                  )
+                  ),
+                  hr(),
+                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
+                     icon("arrows-alt"), " Plot Size / Export"),
+                  fluidRow(
+                    column(6, numericInput("syn_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
+                    column(6, numericInput("syn_plot_height", "Height (px)", 600, min = 200, max = 5000, step = 50))
+                  ),
+                  numericInput("syn_plot_dpi", "Resolution (DPI)", 100, min = 72, max = 600, step = 10)
                 )
               ),
               column(9,
@@ -115,7 +121,7 @@ synergyUI <- function() {
                     "if the two drugs acted independently (Bliss model). A combination bar ",
                     "taller than the expected bar indicates synergy at the evaluation timepoint."),
                   shinycssloaders::withSpinner(
-                    plotOutput("syn_plot_main", height = "500px")
+                    plotOutput("syn_plot_main", width = "auto", height = "auto")
                   ),
                   downloadButton("download_syn_plot_main", "Download Plot")
                 ),
@@ -126,7 +132,7 @@ synergyUI <- function() {
                     "Synergy and antagonism annotations are shown where the combination significantly ",
                     "exceeds or falls short of the expected Bliss-independent effect."),
                   shinycssloaders::withSpinner(
-                    plotOutput("syn_plot_trend", height = "500px")
+                    plotOutput("syn_plot_trend", width = "auto", height = "auto")
                   ),
                   downloadButton("download_syn_plot_trend", "Download Plot")
                 ),
@@ -137,7 +143,7 @@ synergyUI <- function() {
                     "CI\u202f=\u202f1 represents additivity. Points below 1 indicate synergism; ",
                     "points above 1 indicate antagonism."),
                   shinycssloaders::withSpinner(
-                    plotOutput("syn_plot_ci", height = "500px")
+                    plotOutput("syn_plot_ci", width = "auto", height = "auto")
                   ),
                   downloadButton("download_syn_plot_ci", "Download Plot")
                 )
@@ -522,7 +528,8 @@ synergy_server <- function(input, output, session, rv) {
                   xlab = "", ylab = "")
       })
     }
-  })
+  }, width = function() input$syn_plot_width %||% 800,
+     height = function() input$syn_plot_height %||% 600)
 
   output$syn_plot_trend <- renderPlot({
     req(rv$syn_results)
@@ -591,14 +598,16 @@ synergy_server <- function(input, output, session, rv) {
 
     p <- apply_legend_pos(p, leg_pos)
     print(p)
-  })
+  }, width = function() input$syn_plot_width %||% 800,
+     height = function() input$syn_plot_height %||% 600)
   
   output$syn_plot_ci <- renderPlot({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error) || !isTRUE(rv$syn_over_time)) return(NULL)
     if (!is.null(rv$syn_results$plot_ci)) print(rv$syn_results$plot_ci)
     else plot(1, 1, type = "n", main = "CI plot not available", xlab = "", ylab = "")
-  })
+  }, width = function() input$syn_plot_width %||% 800,
+     height = function() input$syn_plot_height %||% 600)
   
   output$download_syn_metrics <- downloadHandler(
     filename = "synergy_metrics.csv",
