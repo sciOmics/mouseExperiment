@@ -173,7 +173,23 @@ data_upload_server <- function(input, output, session, rv) {
     
     data
   })
-  
+
+  # Detect rows where the user has width > length before auto-correction.
+  # Returns a named integer vector: names are the 1-based row indices, values
+  # are those same indices (for easy display and DT highlighting).
+  transposed_rows <- reactive({
+    req(rv$uploaded_data, rv$data_valid)
+    if (!isTRUE(input$volume_method == "calculate")) return(integer(0))
+    len_col <- input$col_length %||% ""
+    wid_col <- input$col_width  %||% ""
+    if (!nzchar(len_col) || !nzchar(wid_col)) return(integer(0))
+    d <- rv$uploaded_data
+    if (!len_col %in% colnames(d) || !wid_col %in% colnames(d)) return(integer(0))
+    len_vals <- suppressWarnings(as.numeric(d[[len_col]]))
+    wid_vals <- suppressWarnings(as.numeric(d[[wid_col]]))
+    which(!is.na(len_vals) & !is.na(wid_vals) & wid_vals > len_vals)
+  })
+
   # ---------------------------------------------------------------------------
   # Dataset Summary
   # ---------------------------------------------------------------------------
@@ -327,10 +343,65 @@ data_upload_server <- function(input, output, session, rv) {
       )
     } else NULL
     
+    # --- Transposed measurement warning ---
+    tr           <- transposed_rows()
+    raw_data     <- rv$uploaded_data
+    len_col_raw  <- if (!is.null(input$col_length) && input$col_length != "") input$col_length else NULL
+    wid_col_raw  <- if (!is.null(input$col_width)  && input$col_width  != "") input$col_width  else NULL
+    id_col_disp  <- if (!is.null(input$col_id)     && input$col_id     != "") input$col_id     else NULL
+    time_col_disp <- if (!is.null(time_col) && !is.null(time_col) && time_col %in% colnames(raw_data)) time_col else NULL
+
+    transposed_box <- if (length(tr) > 0 && !is.null(len_col_raw) && !is.null(wid_col_raw)) {
+      tbl_rows <- lapply(tr, function(i) {
+        len_v <- raw_data[[len_col_raw]][i]
+        wid_v <- raw_data[[wid_col_raw]][i]
+        id_v  <- if (!is.null(id_col_disp)   && id_col_disp   %in% colnames(raw_data)) raw_data[[id_col_disp]][i]   else ""
+        day_v <- if (!is.null(time_col_disp) && time_col_disp %in% colnames(raw_data)) raw_data[[time_col_disp]][i] else ""
+        tags$tr(
+          tags$td(i),
+          tags$td(if (nzchar(trimws(as.character(id_v))))  as.character(id_v)  else tags$em("\u2014")),
+          tags$td(if (nzchar(trimws(as.character(day_v)))) as.character(day_v) else tags$em("\u2014")),
+          tags$td(style = "color:#c0392b; font-weight:bold;", round(as.numeric(wid_v), 3)),
+          tags$td(round(as.numeric(len_v), 3)),
+          tags$td(style = "color:#27ae60;",
+                  paste(round(as.numeric(len_v), 3), "/", round(as.numeric(wid_v), 3)))
+        )
+      })
+      div(class = "alert alert-warning", style = "margin-top: 10px;",
+        icon("exclamation-triangle"), " ",
+        strong(paste(length(tr), "measurement row(s) auto-corrected: width value exceeded length")),
+        tags$br(),
+        tags$small(
+          "The dimensions were automatically swapped so length \u2265 width before calculating volume. ",
+          "These rows are highlighted in yellow in the Data Preview below."
+        ),
+        tags$br(), tags$br(),
+        div(style = "overflow-x:auto;",
+          tags$table(
+            class = "table table-condensed table-bordered",
+            style = "width:auto; background:#fff;",
+            tags$thead(
+              tags$tr(
+                tags$th("Row #"),
+                tags$th(if (!is.null(id_col_disp))   id_col_disp   else "ID"),
+                tags$th(if (!is.null(time_col_disp)) time_col_disp else "Day"),
+                tags$th(style = "color:#c0392b;",
+                        paste0(wid_col_raw, " (was larger — swapped to width)")),
+                tags$th(paste0(len_col_raw, " (was smaller — swapped to length)")),
+                tags$th("Corrected: Length / Width")
+              )
+            ),
+            tags$tbody(tbl_rows)
+          )
+        )
+      )
+    } else NULL
+
     tagList(
       wellPanel(
         h4("Dataset Summary"),
-        p(strong(paste(nrow(data), "rows ×", ncol(data), "columns"))),
+        p(strong(paste(nrow(data), "rows \u00d7", ncol(data), "columns"))),
+        transposed_box,
         fluidRow(
           column(4, tx_box),
           column(4, time_box),
@@ -354,8 +425,20 @@ data_upload_server <- function(input, output, session, rv) {
   
   output$data_table <- renderDT({
     req(rv$data_valid)
-    datatable(preview_data(),
-             options = list(scrollX = TRUE, scrollY = "600px", paging = FALSE, dom = "ti"))
+    tr   <- transposed_rows()
+    opts <- list(scrollX = TRUE, scrollY = "600px", paging = FALSE, dom = "ti")
+    if (length(tr) > 0) {
+      js_idx <- paste(tr - 1L, collapse = ",")
+      opts$rowCallback <- DT::JS(sprintf(
+        "function(row, data, displayNum, displayIndex, dataIndex) {
+           if ([%s].indexOf(dataIndex) >= 0) {
+             $(row).css({'background-color': '#fff3cd', 'font-weight': 'bold'});
+             $(row).attr('title',
+               'Auto-corrected: width exceeded length \\u2014 dimensions were swapped before volume calculation');
+           }
+         }", js_idx))
+    }
+    datatable(preview_data(), options = opts)
   })
   
   output$download_preview_data <- downloadHandler(
