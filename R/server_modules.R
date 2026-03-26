@@ -584,6 +584,24 @@ tumor_growth_server <- function(input, output, session, rv) {
         date_format <- "%Y-%m-%d"  # YYYY-MM-DD format
       } else if (grepl("^\\d{1,2}-[A-Za-z]{3}$", first_date)) {
         date_format <- "%d-%b"     # DD-Mon format
+      } else if (grepl("^[A-Za-z]+\\s+\\d{1,2}$", first_date)) {
+        # "Month Day" format (e.g. "March 1", "January 15") – no year in data.
+        # Extract year from the reference date so we can build complete timestamps.
+        ref_date_parsed <- tryCatch(
+          as.Date(start_date,
+                  tryFormats = c("%Y-%m-%d", "%m/%d/%Y", "%d-%b-%Y",
+                                 "%B %d %Y", "%B %d, %Y")),
+          error = function(e) Sys.Date()
+        )
+        if (is.na(ref_date_parsed)) ref_date_parsed <- Sys.Date()
+        ref_year <- as.integer(format(ref_date_parsed, "%Y"))
+        # Append year to every data date:  "March 1" -> "March 1 2025"
+        data[[input$col_date_for_day]] <-
+          paste(data[[input$col_date_for_day]], ref_year)
+        # Reformat start_date to the same pattern so calculate_dates
+        # parses both sides identically
+        start_date  <- format(ref_date_parsed, "%B %d %Y")
+        date_format <- "%B %d %Y"
       }
       
       data <- mouseExperiment::calculate_dates(
