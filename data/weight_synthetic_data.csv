@@ -1,0 +1,101 @@
+Date,Ear Tag,Treatment,Tumor Volume,Mouse Weight
+March 1,N,DMSO,0.8,19.8
+March 1,L,DMSO,0.6,21.1
+March 1,R,DMSO,1.2,19.5
+March 1,LR,DMSO,1.4,22.6
+March 1,LL,DMSO,0.9,20.2
+March 1,N,Drug A,0.7,19.5
+March 1,L,Drug A,0.9,20.8
+March 1,R,Drug A,1.2,21.8
+March 1,LR,Drug A,1.1,21.3
+March 1,LL,Drug A,0.6,20.6
+March 1,N,Drug B,0.2,19.0
+March 1,L,Drug B,0.6,22.7
+March 1,R,Drug B,0.4,21.9
+March 1,LR,Drug B,0.8,22.2
+March 1,LL,Drug B,0.65,19.5
+March 1,N,Drug A + B,0.4,22.9
+March 1,L,Drug A + B,0.2,21.9
+March 1,R,Drug A + B,0.3,22.0
+March 1,LR,Drug A + B,0.1,19.3
+March 1,LL,Drug A + B,0.25,20.2
+March 4,N,DMSO,4.27,19.7
+March 4,L,DMSO,3.13,21.0
+March 4,R,DMSO,6.56,19.3
+March 4,LR,DMSO,7.39,22.5
+March 4,LL,DMSO,4.89,20.2
+March 4,N,Drug A,3.8,19.3
+March 4,L,Drug A,4.82,20.8
+March 4,R,Drug A,6.51,21.7
+March 4,LR,Drug A,5.94,21.1
+March 4,LL,Drug A,3.13,20.5
+March 4,N,Drug B,0.8,18.3
+March 4,L,Drug B,2.43,22.2
+March 4,R,Drug B,1.68,21.4
+March 4,LR,Drug B,3.25,21.8
+March 4,LL,Drug B,2.71,18.8
+March 4,N,Drug A + B,0.95,21.7
+March 4,L,Drug A + B,0.43,20.8
+March 4,R,Drug A + B,0.67,21.0
+March 4,LR,Drug A + B,0.22,18.4
+March 4,LL,Drug A + B,0.57,19.4
+March 8,N,DMSO,22.47,19.5
+March 8,L,DMSO,16.52,20.9
+March 8,R,DMSO,35.88,19.3
+March 8,LR,DMSO,38.96,22.3
+March 8,LL,DMSO,25.48,20.2
+March 8,N,Drug A,20.55,19.2
+March 8,L,Drug A,26.44,20.7
+March 8,R,Drug A,35.77,21.6
+March 8,LR,Drug A,32.55,20.9
+March 8,LL,Drug A,16.96,20.3
+March 8,N,Drug B,3.33,17.7
+March 8,L,Drug B,9.69,21.5
+March 8,R,Drug B,6.64,20.6
+March 8,LR,Drug B,13.14,21.0
+March 8,LL,Drug B,11.3,18.2
+March 8,N,Drug A + B,2.02,20.4
+March 8,L,Drug A + B,0.91,19.8
+March 8,R,Drug A + B,1.57,20.1
+March 8,LR,Drug A + B,0.48,17.3
+March 8,LL,Drug A + B,1.37,18.5
+March 11,N,DMSO,120.13,19.5
+March 11,L,DMSO,87.46,20.9
+March 11,R,DMSO,189.93,19.1
+March 11,LR,DMSO,202.77,22.3
+March 11,LL,DMSO,135.78,20.0
+March 11,N,Drug A,108.32,19.1
+March 11,L,Drug A,144.26,20.6
+March 11,R,Drug A,194.05,21.4
+March 11,LR,Drug A,171.08,20.8
+March 11,LL,Drug A,92.83,20.2
+March 11,N,Drug B,13.09,17.0
+March 11,L,Drug B,39.29,20.7
+March 11,R,Drug B,27.04,19.9
+March 11,LR,Drug B,54.13,20.6
+March 11,LL,Drug B,44.27,17.8
+March 11,N,Drug A + B,4.27,19.6
+March 11,L,Drug A + B,2.12,19.0
+March 11,R,Drug A + B,3.56,18.9
+March 11,LR,Drug A + B,1.07,16.4
+March 11,LL,Drug A + B,3.05,17.5
+March 15,N,DMSO,642.78,19.5
+March 15,L,DMSO,473.21,20.7
+March 15,R,DMSO,1014.03,19.1
+March 15,LR,DMSO,1092.63,22.2
+March 15,LL,DMSO,716.31,19.8
+March 15,N,Drug A,563.34,19.0
+March 15,L,Drug A,785.8,20.5
+March 15,R,Drug A,1030.56,21.3
+March 15,LR,Drug A,916.25,20.6
+March 15,LL,Drug A,499.67,20.1
+March 15,N,Drug B,51.52,16.6
+March 15,L,Drug B,155.78,20.1
+March 15,R,Drug B,108.7,19.0
+March 15,LR,Drug B,226.38,19.9
+March 15,LL,Drug B,185.68,16.9
+March 15,N,Drug A + B,9.45,18.7
+March 15,L,Drug A + B,4.7,18.0
+March 15,R,Drug A + B,7.59,17.7
+March 15,LR,Drug A + B,2.31,15.5
+March 15,LL,Drug A + B,6.47,16.4
