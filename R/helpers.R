@@ -318,6 +318,26 @@ build_color_vector <- function(input, prefix, groups) {
   if (length(colors) == 0L) NULL else colors
 }
 
+#' Build a named integer vector of per-group point shapes from Shiny inputs
+#'
+#' Reads \code{input[[paste0(prefix, "_", make.names(group))]]} for each group.
+#' Expected values are pch integers as character strings ("16", "15", etc.).
+#'
+#' @param input  Shiny \code{input} object.
+#' @param prefix Input ID prefix, e.g. \code{"tg_shape"}.
+#' @param groups Character vector of group names.
+#' @return Named integer vector of pch codes, or NULL if none set.
+#' @keywords internal
+build_shape_vector <- function(input, prefix, groups) {
+  if (is.null(groups) || length(groups) == 0L) return(NULL)
+  shapes <- vapply(groups, function(g) {
+    val <- input[[paste0(prefix, "_", make.names(g))]]
+    if (is.null(val) || !nzchar(val)) NA_integer_ else as.integer(val)
+  }, integer(1L))
+  shapes <- shapes[!is.na(shapes)]
+  if (length(shapes) == 0L) NULL else shapes
+}
+
 #' Generate n evenly-spaced ggplot2-style default colours for n groups
 #'
 #' @param n Integer number of colours.
@@ -502,16 +522,29 @@ group_order_and_color_ui <- function(prefix, groups) {
   list_id  <- paste0(prefix, "_drag_list")
   input_id <- paste0(prefix, "_order")
 
-  # Each row: drag handle + group label + colour picker
+  # Closed pch shapes available for per-group selection.
+  # Open shapes (0, 1, 2, ...) are reserved for extrapolated points.
+  shape_choices <- c(
+    "\u25cf Circle"        = "16",
+    "\u25a0 Square"        = "15",
+    "\u25b2 Triangle \u2191" = "17",
+    "\u25bc Triangle \u2193" = "25",
+    "\u25c6 Diamond"       = "18"
+  )
+  default_shapes <- c(16L, 15L, 17L, 25L, 18L)
+
+  # Each row: drag handle + group label + colour picker + shape selector
   # data-value holds the exact group name string — read directly by JS,
   # no innerText parsing, no custom Shiny input type.
   items <- lapply(seq_along(groups), function(i) {
     g        <- groups[i]
     color_id <- paste0(prefix, "_color_", make.names(g))
+    shape_id <- paste0(prefix, "_shape_", make.names(g))
+    def_shape <- as.character(default_shapes[((i - 1L) %% length(default_shapes)) + 1L])
     shiny::tags$li(
       `data-value` = g,
       style = paste0(
-        "display:flex; align-items:center; gap:8px;",
+        "display:flex; align-items:center; gap:6px;",
         "padding:5px 8px; margin-bottom:4px;",
         "background:#f8f9fa; border:1px solid #dee2e6;",
         "border-radius:4px; cursor:default;"
@@ -522,7 +555,7 @@ group_order_and_color_ui <- function(prefix, groups) {
         "\u2630"   # grip / hamburger icon
       ),
       shiny::tags$span(
-        style = "flex:1; font-size:13px; min-width:60px;",
+        style = "flex:1; font-size:13px; min-width:55px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;",
         g
       ),
       colourpicker::colourInput(
@@ -532,6 +565,16 @@ group_order_and_color_ui <- function(prefix, groups) {
         showColour       = "background",
         palette          = "square",
         allowTransparent = FALSE
+      ),
+      shiny::tags$div(
+        style = "flex-shrink:0;",
+        shiny::selectInput(
+          inputId  = shape_id,
+          label    = NULL,
+          choices  = shape_choices,
+          selected = def_shape,
+          width    = "125px"
+        )
       )
     )
   })
@@ -554,10 +597,6 @@ group_order_and_color_ui <- function(prefix, groups) {
   ))
 
   shiny::tagList(
-    shiny::tags$h6(
-      style = "font-size:14px; font-weight:700; text-decoration:underline; margin-top:10px; margin-bottom:8px;",
-      shiny::icon("arrows-alt"), " Group Order & Colors"
-    ),
     shiny::tags$p(
       style = "font-size:11px; color:#6c757d; margin-bottom:6px;",
       shiny::icon("grip-vertical"), " Drag the \u2630 handle to reorder"
