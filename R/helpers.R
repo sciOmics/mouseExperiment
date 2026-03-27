@@ -518,7 +518,7 @@ group_order_and_color_ui <- function(prefix, groups) {
         label = NULL,
         value = defaults[i],
         showColour = "background",
-        palette = "spectrum",
+        palette = "square",
         allowTransparent = FALSE
       )
     )
