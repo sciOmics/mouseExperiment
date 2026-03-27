@@ -198,7 +198,8 @@ plot_growth_rate <- function(growth_data,
   p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Treatment, y = growth_rate, color = Treatment))
   
   # Add points
-  p <- p + ggplot2::geom_jitter(width = jitter_width, height = 0, 
+  p <- p + ggplot2::geom_jitter(ggplot2::aes(shape = Treatment),
+                             width = jitter_width, height = 0,
                              size = point_size, alpha = 0.7)
   
   # Add mean line if requested
