@@ -1642,6 +1642,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     req(rv$tg_results$growth_rates)
     ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
     colors     <- build_color_vector(input, "tg_color", ordered_grps)
+    shapes     <- build_shape_vector(input, "tg_shape", ordered_grps)
     center_bar <- input$tg_opt_center_bar %||% "mean"
     show_mean  <- center_bar == "mean"
     err_type   <- input$tg_opt_error_bar  %||% "SEM"
@@ -1683,6 +1684,7 @@ tumor_growth_server <- function(input, output, session, rv) {
         geom = "crossbar", width = 0.4, linewidth = 0.8
       )
     }
+    if (!is.null(shapes)) p <- p + ggplot2::scale_shape_manual(values = shapes)
     p <- apply_plot_labels(p, input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
                            input$tg_plot_title_align %||% "center", text_size,
                            input$tg_plot_xaxis_label %||% "", input$tg_plot_yaxis_label %||% "",
@@ -1704,6 +1706,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     # Shared controls
     ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
     colors     <- build_color_vector(input, "tg_color", ordered_grps)
+    shapes     <- build_shape_vector(input, "tg_shape", ordered_grps)
     center_bar <- input$tg_opt_center_bar %||% "mean"
     err_type   <- input$tg_opt_error_bar  %||% "SEM"
     pt_size    <- input$tg_opt_point_size %||% 2.5
@@ -1745,6 +1748,8 @@ tumor_growth_server <- function(input, output, session, rv) {
     # Helper: apply colours + labels + legend
     finish_plot <- function(p) {
       if (!is.null(colors)) p <- p + ggplot2::scale_colour_manual(values = colors)
+      if (!is.null(colors)) p <- p + ggplot2::scale_fill_manual(values = colors)
+      if (!is.null(shapes)) p <- p + ggplot2::scale_shape_manual(values = shapes)
       p <- apply_plot_labels(p, input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
                              input$tg_plot_title_align %||% "center", text_size = text_size,
                              xlab = input$tg_plot_xaxis_label %||% "",
@@ -1774,7 +1779,7 @@ tumor_growth_server <- function(input, output, session, rv) {
 
       p <- ggplot2::ggplot(auc_ind,
              ggplot2::aes(x = .data[[grp_col_a]], y = .data[["AUC"]],
-                          colour = .data[[grp_col_a]])) +
+                          colour = .data[[grp_col_a]], shape = .data[[grp_col_a]])) +
         ggplot2::theme_classic() +
         ggplot2::labs(x = "Treatment", y = "AUC", title = "Area Under the Curve") +
         ggplot2::theme(legend.title = ggplot2::element_blank())
@@ -1820,7 +1825,7 @@ tumor_growth_server <- function(input, output, session, rv) {
 
         p <- ggplot2::ggplot(rates,
                ggplot2::aes(x = .data[[grp_col_b]], y = .data[[val_col_b]],
-                            colour = .data[[grp_col_b]])) +
+                            colour = .data[[grp_col_b]], shape = .data[[grp_col_b]])) +
           ggplot2::theme_classic() +
           ggplot2::labs(x = "Treatment", y = "Growth Rate (log-volume / day)",
                         title = "Growth Rate Comparison") +
@@ -1958,6 +1963,8 @@ tumor_growth_server <- function(input, output, session, rv) {
     text_size    <- input$tg_opt_text_size %||% 12
     ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
     grps_clean   <- unique(sub(" - Dose: .*$", "", ordered_grps))
+    colors       <- build_color_vector(input, "tg_color", ordered_grps)
+    shapes       <- build_shape_vector(input, "tg_shape", ordered_grps)
 
     pc_df     <- as.data.frame(pc)
     label_col <- intersect(c("contrast", "Contrast", "comparison", "pair"), colnames(pc_df))[1]
@@ -2038,6 +2045,18 @@ tumor_growth_server <- function(input, output, session, rv) {
       paste(parts, collapse = "\n")
     }, character(1L))
 
+    # Build per-contrast colour/shape maps (contrast labels correspond to group names)
+    contrast_lvls <- setdiff(as.character(levels(forest_df$Contrast)),
+                             as.character(ref_row$Contrast))
+    forest_colours <- if (!is.null(colors)) {
+      vals <- ifelse(contrast_lvls %in% names(colors), unname(colors[contrast_lvls]), "steelblue")
+      setNames(vals, contrast_lvls)
+    } else setNames(rep("steelblue", length(contrast_lvls)), contrast_lvls)
+    forest_shapes <- if (!is.null(shapes)) {
+      vals <- ifelse(contrast_lvls %in% names(shapes), unname(shapes[contrast_lvls]), 16L)
+      setNames(as.integer(vals), contrast_lvls)
+    } else setNames(rep(16L, length(contrast_lvls)), contrast_lvls)
+
     all_vals <- c(non_ref$Estimate, non_ref$Lower, non_ref$Upper)
     max_abs  <- ceiling(max(abs(all_vals), na.rm = TRUE))
     # Widen right margin when annotations are shown so text is not clipped
@@ -2050,14 +2069,17 @@ tumor_growth_server <- function(input, output, session, rv) {
       ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "red", linewidth = 0.6) +
       ggplot2::geom_errorbarh(
         data = ~ subset(., !is_ref),
-        ggplot2::aes(xmin = Lower, xmax = Upper),
-        height = 0.25, colour = "steelblue") +
-      ggplot2::geom_point(data = ~ subset(., !is_ref), size = 3, colour = "steelblue") +
+        ggplot2::aes(xmin = Lower, xmax = Upper, colour = Contrast),
+        height = 0.25) +
+      ggplot2::geom_point(data = ~ subset(., !is_ref),
+        ggplot2::aes(colour = Contrast, shape = Contrast), size = 3) +
       ggplot2::geom_point(data = ~ subset(., is_ref),  size = 4, colour = "grey50", shape = 18) +
       ggplot2::geom_text(
         data = ~ subset(., !is_ref & nzchar(Ann_Label) & !is.na(Upper)),
         ggplot2::aes(label = Ann_Label, x = Upper),
         hjust = -0.15, vjust = 0.5, size = text_size * 0.22, lineheight = 0.9) +
+      ggplot2::scale_colour_manual(values = forest_colours, guide = "none") +
+      ggplot2::scale_shape_manual(values = forest_shapes, guide = "none") +
       ggplot2::scale_x_continuous(limits = x_lim, breaks = x_breaks) +
       ggplot2::labs(x = x_lab, y = NULL, title = "Effect Size Forest Plot") +
       ggplot2::theme_classic() +
