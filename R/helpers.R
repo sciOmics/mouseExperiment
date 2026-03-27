@@ -85,30 +85,53 @@ validate_uploaded_file <- function(file_path, file_ext) {
 #' @keywords internal
 detect_columns <- function(col_names) {
   col_names_lower <- tolower(col_names)
-  
+
   detected <- list(
-    id = detect_column(col_names, col_names_lower, c("id", "mouse_id", "animal_id", "subject")),
-    day = detect_column(col_names, col_names_lower, c("day", "time", "timepoint", "day_number")),
-    volume = detect_column(col_names, col_names_lower, c("volume", "tumor_volume", "tv")),
-    length = detect_column(col_names, col_names_lower, c("length", "tumor_length")),
-    width = detect_column(col_names, col_names_lower, c("width", "tumor_width")),
-    treatment = detect_column(col_names, col_names_lower, c("treatment", "group", "treatment_group")),
-    cage = detect_column(col_names, col_names_lower, c("cage", "cage_id")),
-    date = detect_column(col_names, col_names_lower, c("date", "measurement_date")),
-    dose = detect_column(col_names, col_names_lower, c("dose", "dose_level", "concentration", "conc")),
-    survival_time = detect_column(col_names, col_names_lower, c("survival_time", "time_to_event", "days_to_event")),
-    survival_event = detect_column(col_names, col_names_lower, c("survival_event", "event", "survival_censor", "censor"))
+    # "mouse tag" / "ear tag" / "tag" cover non-standard ID column names
+    id = detect_column(col_names, col_names_lower,
+                       c("id", "mouse_id", "animal_id", "subject",
+                         "mouse tag", "ear tag", "tag")),
+    day = detect_column(col_names, col_names_lower,
+                        c("day", "time", "timepoint", "day_number")),
+    # "tumor volume" (space) covers columns named without underscore
+    volume = detect_column(col_names, col_names_lower,
+                           c("volume", "tumor_volume", "tumor volume", "tv")),
+    # "tumor length" prefix catches "Tumor Length (mm)" via startsWith fallback
+    length = detect_column(col_names, col_names_lower,
+                           c("length", "tumor_length", "tumor length")),
+    # "tumor width" prefix catches "Tumor Width (mm)" via startsWith fallback
+    width  = detect_column(col_names, col_names_lower,
+                           c("width", "tumor_width", "tumor width")),
+    treatment = detect_column(col_names, col_names_lower,
+                              c("treatment", "group", "treatment_group")),
+    cage = detect_column(col_names, col_names_lower,
+                         c("cage", "cage_id")),
+    date = detect_column(col_names, col_names_lower,
+                         c("date", "measurement_date")),
+    dose = detect_column(col_names, col_names_lower,
+                         c("dose", "dose_level", "concentration", "conc")),
+    survival_time  = detect_column(col_names, col_names_lower,
+                                   c("survival_time", "time_to_event", "days_to_event")),
+    survival_event = detect_column(col_names, col_names_lower,
+                                   c("survival_event", "event", "survival_censor", "censor"))
   )
-  
+
   detected
 }
 
 #' Helper to find column in names
 #' @keywords internal
 detect_column <- function(col_names, col_names_lower, patterns) {
+  # 1. Exact match (case-insensitive)
   for (pattern in patterns) {
     match_idx <- which(col_names_lower == pattern)
-    if (length(match_idx) > 0) return(col_names[match_idx[1]])  # Return actual column name
+    if (length(match_idx) > 0) return(col_names[match_idx[1]])
+  }
+  # 2. startsWith match — handles columns with appended units, e.g.
+  #    "Tumor Length (mm)" matches pattern "tumor length"
+  for (pattern in patterns) {
+    match_idx <- which(startsWith(col_names_lower, pattern))
+    if (length(match_idx) > 0) return(col_names[match_idx[1]])
   }
   NULL
 }

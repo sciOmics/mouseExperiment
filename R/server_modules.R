@@ -23,6 +23,16 @@ data_upload_server <- function(input, output, session, rv) {
         data     = "dose_levels_synthetic_data.csv",
         ref_date = "2025-03-24",
         label    = "Dose Levels demo"
+      ),
+      necrotic = list(
+        data     = "necrotic_synthetic_data.csv",
+        ref_date = "",
+        label    = "Necrotic Data demo"
+      ),
+      weight = list(
+        data     = "weight_synthetic_data.csv",
+        ref_date = "2025-03-01",
+        label    = "Weight Data demo"
       )
     )
 

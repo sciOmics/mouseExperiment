@@ -92,7 +92,9 @@ dataUploadUI <- function() {
                 choices = c(
                   "-- Select a demo dataset --" = "",
                   "Combo Treatment (Control / HDACi / aPD1 / HDACi+PD1, survival data)" = "combo",
-                  "Dose Levels (dose-response data with survival)" = "dose_levels"
+                  "Dose Levels (dose-response data with survival)" = "dose_levels",
+                  "Necrotic Data (None / Drug, length & width columns)" = "necrotic",
+                  "Weight Data (DMSO / Drug A / Drug B / Drug A+B, pre-calculated volume)" = "weight"
                 ),
                 selected = ""
               ),
