@@ -535,6 +535,15 @@ tumorGrowthUI <- function() {
                       checkboxInput("tg_opt_show_extrap",
                                     "Show extrapolated curves/points", value = FALSE)
                     ),
+                    conditionalPanel(
+                      "input.tg_plot_selector == 'effect_forest'",
+                      checkboxInput("tg_opt_forest_show_pval",
+                                    "Show p-value",     value = TRUE),
+                      checkboxInput("tg_opt_forest_show_effect",
+                                    "Show effect size", value = FALSE),
+                      checkboxInput("tg_opt_forest_show_ci",
+                                    "Show 95% CI",      value = FALSE)
+                    ),
                     selectInput("tg_opt_legend_pos", "Legend position",
                       choices = c("None" = "none",
                                   "Top" = "top", "Bottom" = "bottom",

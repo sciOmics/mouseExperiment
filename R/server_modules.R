@@ -1570,8 +1570,15 @@ tumor_growth_server <- function(input, output, session, rv) {
       NULL
     })
     req(!is.null(p))
+    shapes <- build_shape_vector(input, "tg_shape", ordered_grps)
     if (!is.null(colors)) {
       p <- p + ggplot2::scale_color_manual(values = colors)
+      # scale_fill_manual keeps dual-fill shapes (e.g. pch 25, down-triangle)
+      # rendered with the correct group colour interior
+      p <- p + ggplot2::scale_fill_manual(values = colors)
+    }
+    if (!is.null(shapes)) {
+      p <- p + ggplot2::scale_shape_manual(values = shapes)
     }
     # Apply text size, title/subtitle, and legend position
     text_size  <- input$tg_opt_text_size %||% 16
@@ -2002,9 +2009,29 @@ tumor_growth_server <- function(input, output, session, rv) {
       levels = c(as.character(ref_row$Contrast), rev(as.character(non_ref$Contrast)))
     )
 
+    show_pval   <- isTRUE(input$tg_opt_forest_show_pval   %||% TRUE)
+    show_effect <- isTRUE(input$tg_opt_forest_show_effect %||% FALSE)
+    show_ci     <- isTRUE(input$tg_opt_forest_show_ci     %||% FALSE)
+    any_ann     <- show_pval || show_effect || show_ci
+
+    # Build per-row annotation label from whichever elements are enabled
+    forest_df$Ann_Label <- vapply(seq_len(nrow(forest_df)), function(j) {
+      if (forest_df$is_ref[j]) return("")
+      parts <- character(0)
+      if (show_effect)
+        parts <- c(parts, paste0("est: ", signif(forest_df$Estimate[j], 3)))
+      if (show_ci && !is.na(forest_df$Lower[j]))
+        parts <- c(parts,
+          paste0("[", signif(forest_df$Lower[j], 3), ", ", signif(forest_df$Upper[j], 3), "]"))
+      if (show_pval && nzchar(forest_df$P_Label[j]))
+        parts <- c(parts, forest_df$P_Label[j])
+      paste(parts, collapse = "\n")
+    }, character(1L))
+
     all_vals <- c(non_ref$Estimate, non_ref$Lower, non_ref$Upper)
     max_abs  <- ceiling(max(abs(all_vals), na.rm = TRUE))
-    x_lim    <- c(-max_abs, max_abs * 1.20)
+    # Widen right margin when annotations are shown so text is not clipped
+    x_lim    <- c(-max_abs, max_abs * if (any_ann) 1.55 else 1.20)
     x_breaks <- pretty(c(-max_abs, max_abs), n = 6)
     x_breaks <- x_breaks[x_breaks >= -max_abs & x_breaks <= max_abs]
 
@@ -2018,9 +2045,9 @@ tumor_growth_server <- function(input, output, session, rv) {
       ggplot2::geom_point(data = ~ subset(., !is_ref), size = 3, colour = "steelblue") +
       ggplot2::geom_point(data = ~ subset(., is_ref),  size = 4, colour = "grey50", shape = 18) +
       ggplot2::geom_text(
-        data = ~ subset(., !is_ref & nzchar(P_Label) & !is.na(Upper)),
-        ggplot2::aes(label = P_Label, x = Upper),
-        hjust = -0.2, size = 3.2) +
+        data = ~ subset(., !is_ref & nzchar(Ann_Label) & !is.na(Upper)),
+        ggplot2::aes(label = Ann_Label, x = Upper),
+        hjust = -0.15, vjust = 0.5, size = text_size * 0.22, lineheight = 0.9) +
       ggplot2::scale_x_continuous(limits = x_lim, breaks = x_breaks) +
       ggplot2::labs(x = x_lab, y = NULL, title = "Effect Size Forest Plot") +
       ggplot2::theme_classic() +
