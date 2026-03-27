@@ -1,6 +1,6 @@
 # mouseExperimentDashboard
 
-An interactive web-based dashboard for analyzing mouse tumor growth experiments. Provides a user-friendly, point-and-click interface to the `mouseExperiment` R package — no programming required.
+An interactive web-based dashboard for analyzing mouse tumor growth experiments. Provides a user-friendly, point-and-click interface to the `mouseExperiment` R package.
 
 ## Overview
 
@@ -11,9 +11,8 @@ An interactive web-based dashboard for analyzing mouse tumor growth experiments.
 - Generate customizable publication-quality plots
 - Download results in multiple formats
 - Analyze survival time-to-event data
-- Evaluate drug synergy using Bliss independence and Loewe additivity models
 
-## Installation
+## Local Installation
 
 ### Prerequisites
 
@@ -46,53 +45,12 @@ The app will open at `http://localhost:3838` (or another available port).
 
 ### Basic Workflow
 
-1. **Data Upload** — Select a CSV or RDA file containing tumor growth data in long format (one row per observation)
-2. **Column Mapping** — Ensure the dashboard identifies your ID, time, volume, treatment, and optional columns correctly
-3. **Analysis Setup** — Choose statistical model (LME4 or AUC), data transformation, and polynomial degree
+1. **Data Upload** — Select a CSV or RDA file containing tumor growth data in long format (one row per observation). 
+2. **Column Mapping** — Map the ID, time, volume, treatment, and optional columns to columns in the data
+3. **Tumor Growth Analysis Setup** — Choose statistical model (LME4 or AUC), data transformation, and additional parameters
 4. **Run Analysis** — Click "Run Analysis" to fit the model
 5. **Explore Results** — View summary statistics, ANOVA, pairwise comparisons, growth rates, and plots
-6. **Download** — Export plots and tables in PNG, PDF, or CSV format
-
-## Features
-
-### Implemented
-
-- ✅ **Data Upload & Mapping**: CSV/RDA file import with automatic column detection
-- ✅ **Tumor Growth Analysis**
-  - LME4 (linear mixed-effects) models with random cage/animal effects
-  - AUC (area under the curve) method for per-animal summary statistics
-  - Data transformations: linear, log, or square-root scale
-  - Polynomial terms for non-linear growth trajectories
-- ✅ **Statistical Outputs**
-  - Type III ANOVA (LME4) or one-way ANOVA (AUC)
-  - Pairwise contrasts via emmeans (Dunnett's test or Tukey HSD)
-  - Estimated marginal means (treatment effects)
-  - Per-animal growth rates with confidence intervals
-- ✅ **Visualization**
-  - Tumor growth curves with optional group average overlay
-  - Growth rates plot (spread of per-animal rates by group)
-  - Waterfall plot (per-animal growth rates sorted by magnitude)
-  - Effect size forest plot (pairwise comparisons with 95% CIs)
-- ✅ **Survival Analysis**
-  - Kaplan-Meier survival curves
-  - Cox proportional hazards model with Hazard Ratios
-  - Numbers-at-risk tables
-- ✅ **Plot Customization**
-  - Collapsible control panels (Tumor Growth, Survival, Synergy)
-  - Group ordering and color scheme selection
-  - Legend positioning (auto, none, top, bottom, left, right, in-plot)
-  - Text size, title, subtitle, and export resolution (DPI)
-  - Width/height and download buttons (PNG, PDF)
-- ✅ **Model Diagnostics**
-  - Q-Q plots of residuals for normality checking
-  - Residuals vs. fitted values for heteroscedasticity assessment
-
-### Planned (Disabled)
-
-- 🔲 **Toxicity Analysis** — Assessment of organ toxicity endpoints; placeholder tab
-- 🔲 **Dose-Response Analysis** — Relationship between dose level and tumor volume
-- 🔲 **Drug Synergy Analysis** — Bliss independence and Combination Index (CI) evaluation; disabled pending UI/server completion
-- 🔲 **Power Analysis** — Sample size and power calculations for future experiments
+6. **Download** — Customize and export plots and tables in PNG, PDF, or CSV format
 
 ## Data Format
 
@@ -101,18 +59,18 @@ The dashboard expects data in **long format**: one row per observation/measureme
 ### Required Columns
 
 - **ID / Mouse ID / Animal ID / Subject** — Unique identifier for each animal
-- **Day / Time / Timepoint** — Study day or timepoint (numeric)
-- **Volume / Tumor_Volume** — Tumor volume measurement (numeric, mm³ or other units)
-- **Treatment / Group** — Treatment group assignment (character/factor)
+- **Day / Time / Timepoint** — Study day or date 
+- **Tumor Measurement(s)** — Tumor volume measurement or tumor length and width measurements
+- **Treatment / Group** — Treatment group assignment 
 
 ### Optional Columns
 
 - **Cage / Cage_ID** — Cage identifier (for random effects in LME4)
-- **Dose / DoseLevel** — Dose level (for dose-response analysis)
 - **Survival_Censor / Censor / Event** — Event indicator (numeric: 1 = event, 0 = censored) for survival analysis
+- **Dose / Dose Level** — Dose level (for dose-response analysis)
 - **Weight / Mass** — Animal weight/mass (for toxicity analysis)
 
-### Example Structure
+### Example Data Structure
 
 ```
 ID,Day,Volume,Treatment,Cage
@@ -126,6 +84,46 @@ Mouse_003,0,41,Drug_A,A2
 Mouse_003,3,42,Drug_A,A2
 Mouse_003,7,45,Drug_A,A2
 ...
+```
+
+### Tumor Volume Calculation from Length & Width
+
+The dashboard can calculate tumor volume from length and width measurements using several formulas common in preclinical oncology research.
+
+#### Available Methods
+
+The following volume formulas are supported (all assume perpendicular measurements):
+
+| Formula | Equation | Notes |
+|---------|----------|--------|----------|
+| **Ellipsoid** (default) | V = (L × W² × π) / 6 | Standard for 2D measurements | 
+| **Modified Ellipsoid** | V = (L × W²) / 2 | Simplified formula used in older literature |
+| **Cylinder** | V = (π × W² × L) / 4 | Used for more elongated/cylindrical tumors, narrow or needle-like |
+| **Sphere** | V = (π × W³) / 6 | Spherical tumors; uses only diameter (width) |
+
+#### Automatic Detection & Correction
+
+The dashboard automatically:
+
+1. **Detects** Length and Width columns by name pattern matching (e.g., "Length", "length", "L", "Width", "width", "W")
+2. **Corrects dimensions**: Ensures the longer measurement is used as **Length** and the shorter as **Width**, regardless of how they were labeled in your data
+   - If your data has Length=5 and Width=10, the system internally swaps them to L=10, W=5
+   - This prevents incorrect volume calculations due to mis-labeled dimensions
+   - Rows with swapped values are highlighted
+3. **Selects an appropriate formula** based on available columns (defaults to Ellipsoid if 3D height unavailable)
+
+#### Example
+
+```
+# Input data (width column larger than length column)
+ID,Day,Length,Width,Treatment
+M001,0,8,12,Control
+
+# Dashboard correction
+# → Internally uses: L=12, W=8
+
+# Ellipsoid calculation:
+# V = (12 × 8² × π) / 6 ≈ 201.1 mm³
 ```
 
 ## Requirements
@@ -180,28 +178,15 @@ devtools::check()
 - `www/css/` — Custom styles (light and dark modes)
 - `inst/sample_data/` — Example datasets
 
-## Troubleshooting
+## Planned Features for Future Releases
+- **Bayesian Statistial Models**
+- **Toxicity Analysis** — Assessment of toxicity using mouse weight
+- **Handling of Necrotic Tumors** — Model tumor necrois in statistical analysis
+- **Dose-Response Analysis** — Relationship between dose level and tumor volume
+- **Drug Synergy Analysis** — Bliss independence and Combination Index (CI) evaluation; disabled pending UI/server completion
+- **Power Analysis** — Sample size and power calculations for future experiments
 
-### File won't upload
-- Ensure the file is a valid CSV or RDA
-- Check file permissions
-
-### Analysis tab is disabled/greyed out
-- Upload a data file first
-- Ensure all required columns are mapped in the Data Upload tab
-- For Survival analysis, ensure you have a censor/event column
-- For specific analyses (Dose Response, Synergy), ensure you have the required columns (Dose, multiple treatment groups)
-
-### Columns not detected
-- The dashboard looks for common column names. If your columns have non-standard names, use the Data Upload tab's column selector to map them manually
-- Expected patterns: ID, Mouse_ID, Animal_ID, Subject; Day, Time, Timepoint; Volume, Tumor_Volume; Treatment, Group
-
-### Analysis fails or shows errors
-- Check that the data contains valid numeric values for volume and time
-- Ensure you have at least 3 timepoints per animal for growth rate estimation
-- For LME4 models, check that cage and animal levels are not perfectly confounded
-
-## Citation
+# Citation
 
 If you use `mouseExperimentDashboard` or `mouseExperiment` in your research, please cite:
 
@@ -216,6 +201,5 @@ MIT License — See [LICENSE](LICENSE) for details.
 
 ## Support
 
-For issues, feature requests, or questions:
-- 📤 [Report an issue on GitHub](https://github.com/sciOmics/mouseExperiment/issues)
-- 📖 [View the mouseExperiment documentation](https://github.com/sciOmics/mouseExperiment)
+[Report an issue or suggest an improvement](https://github.com/sciOmics/mouseExperiment/issues)
+
