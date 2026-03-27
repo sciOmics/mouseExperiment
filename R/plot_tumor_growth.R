@@ -289,6 +289,8 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
   }
   
   # Base plot with individual growth curves — non-extrapolated points only
+  # fill = Group is included so that dual-fill shapes (e.g. pch 25, down-triangle)
+  # render correctly when scale_fill_manual is added externally.
   plot <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data[[day_column]], y = .data[[volume_column]], group = Mouse_ID)) +
     ggplot2::geom_line(
       data = ~ subset(., !Extrapolated),
@@ -296,7 +298,7 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
     ) +
     ggplot2::geom_point(
       data = ~ subset(., !Extrapolated),
-      ggplot2::aes(color = Group), alpha = 0.5, shape = 16, size = point_size
+      ggplot2::aes(color = Group, fill = Group, shape = Group), alpha = 0.5, size = point_size
     )
   
   # If extrapolation was done, mark extrapolated points differently
