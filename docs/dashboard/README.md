@@ -8,9 +8,10 @@ An interactive web-based dashboard for analyzing mouse tumor growth experiments.
 
 - Upload tumor growth data (CSV or RDA format)
 - Perform statistical analyses using linear mixed-effects models (LME4) or area-under-the-curve (AUC) methods
-- Generate customizable publication-quality plots
-- Download results in multiple formats
 - Analyze survival time-to-event data
+- Generate customizable plots
+- Download results in multiple formats
+
 
 ## Local Installation
 
@@ -72,30 +73,29 @@ The dashboard expects data in **long format**: one row per observation/measureme
 
 ### Example Data Structure
 
-```
-ID,Day,Volume,Treatment,Cage
-Mouse_001,0,45,Control,A1
-Mouse_001,3,52,Control,A1
-Mouse_001,7,63,Control,A1
-Mouse_002,0,48,Control,A1
-Mouse_002,3,55,Control,A1
-Mouse_002,7,68,Control,A1
-Mouse_003,0,41,Drug_A,A2
-Mouse_003,3,42,Drug_A,A2
-Mouse_003,7,45,Drug_A,A2
-...
-```
+| ID | Day | Volume | Treatment | Cage |  
+|-------|--------|------|------|------|    
+Mouse_001|0|45|Control|A1|  
+Mouse_001|3|52|Control|A1|
+Mouse_001|7|63|Control|A1|
+Mouse_002|0|48|Control|A1|
+Mouse_002|3|55|Control|A1|
+Mouse_002|7|68|Control|A1|
+Mouse_003|0|41|Drug_A|A2|
+Mouse_003|3|42|Drug_A|A2|
+Mouse_003|7|45|Drug_A|A2|
+
 
 ### Tumor Volume Calculation from Length & Width
 
-The dashboard can calculate tumor volume from length and width measurements using several formulas common in preclinical oncology research.
+The dashboard can calculate tumor volume from length and width measurements using several formulas.
 
 #### Available Methods
 
 The following volume formulas are supported (all assume perpendicular measurements):
 
 | Formula | Equation | Notes |
-|---------|----------|--------|----------|
+|---------|----------|--------|
 | **Ellipsoid** (default) | V = (L × W² × π) / 6 | Standard for 2D measurements | 
 | **Modified Ellipsoid** | V = (L × W²) / 2 | Simplified formula used in older literature |
 | **Cylinder** | V = (π × W² × L) / 4 | Used for more elongated/cylindrical tumors, narrow or needle-like |
