@@ -194,13 +194,19 @@ back_transform <- function(x, transform) {
 #' @param subtitle Character; if non-empty adds a subtitle.
 #' @param align One of "left", "center", "right" — alignment for title/subtitle.
 #' @param text_size Numeric; base font size in pt.
+#' @param xlab Character; if non-empty overrides the X-axis label.
+#' @param ylab Character; if non-empty overrides the Y-axis label.
+#' @param legend_lab Character; if non-empty overrides the legend title.
 #' @return A ggplot2 object with the theme layers applied.
 #' @keywords internal
 apply_plot_labels <- function(p, title = "", subtitle = "", align = "center",
-                              text_size = 12) {
+                              text_size = 12, xlab = "", ylab = "", legend_lab = "") {
   hjust <- switch(align, left = 0, center = 0.5, right = 1, 0.5)
   if (nzchar(trimws(title)))    p <- p + ggplot2::labs(title = title)
   if (nzchar(trimws(subtitle))) p <- p + ggplot2::labs(subtitle = subtitle)
+  if (nzchar(trimws(xlab)))     p <- p + ggplot2::labs(x = xlab)
+  if (nzchar(trimws(ylab)))     p <- p + ggplot2::labs(y = ylab)
+  if (nzchar(trimws(legend_lab))) p <- p + ggplot2::labs(fill = legend_lab, color = legend_lab, shape = legend_lab)
   p + ggplot2::theme(
     text          = ggplot2::element_text(size = text_size),
     plot.title    = ggplot2::element_text(hjust = hjust),
@@ -494,23 +500,14 @@ group_order_and_color_ui <- function(prefix, groups) {
   
   defaults <- default_group_colors(length(groups))
   
-  # Create a wrapper div for each group with drag handle, name, and color picker
+  # Create items with custom styling that includes color picker
   items <- lapply(seq_along(groups), function(i) {
     group <- groups[i]
     color_id <- paste0(prefix, "_color_", make.names(group))
-    item_id <- paste0(prefix, "_order_item_", make.names(group))
     shiny::tags$div(
-      id = item_id,
-      class = "group-order-color-item",
-      `data-group` = group,
-      style = "display: flex; align-items: center; gap: 8px; padding: 8px; margin: 4px 0; border: 1px solid #ddd; border-radius: 4px; background-color: #fafafa; cursor: grab; touch-action: none;",
+      style = "display: flex; align-items: center; gap: 8px; padding: 6px 4px;",
       shiny::tags$span(
-        class = "drag-handle",
-        style = "flex-shrink: 0; color: #999; cursor: grab; display: flex; align-items: center;",
-        shiny::icon("grip-vertical")
-      ),
-      shiny::tags$span(
-        style = "flex: 1; font-weight: 500; min-width: 100px; pointer-events: none;",
+        style = "flex: 1; font-weight: 500; min-width: 80px;",
         group
       ),
       colourpicker::colourInput(
@@ -524,56 +521,17 @@ group_order_and_color_ui <- function(prefix, groups) {
     )
   })
   
-  # Wrap in a sortable container that reads the order
-  container_id <- paste0(prefix, "_order_color_container")
   shiny::tagList(
     shiny::tags$h6(
       style = "font-size: 14px; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 8px;",
       shiny::icon("arrows-alt"), " ", "Group Order & Colors"
     ),
-    shiny::tags$div(
-      id = container_id,
-      class = "sortable-group-order-color",
-      style = "user-select: none;",
-      items
-    ),
-    # JavaScript to handle drag-and-drop and sync order to Shiny input
-    shiny::tags$script(HTML(sprintf("
-      $(function() {
-        var containerId = '%s';
-        var orderInputId = '%s_order';
-        var container = document.getElementById(containerId);
-        
-        // Function to update the order input based on current DOM
-        function updateOrder() {
-          var order = [];
-          container.querySelectorAll('.group-order-color-item').forEach(function(item) {
-            var grp = item.getAttribute('data-group');
-            if (grp) order.push(grp);
-          });
-          Shiny.setInputValue(orderInputId, order, {priority: 'event'});
-        }
-        
-        // Initialize Sortable.js for the container
-        if (typeof Sortable !== 'undefined') {
-          Sortable.create(container, {
-            handle: '.drag-handle',
-            animation: 150,
-            ghostClass: 'sortable-ghost',
-            forceFallback: false,
-            onEnd: function(evt) {
-              updateOrder();
-            }
-          });
-        }
-        
-        // Send initial order
-        updateOrder();
-      });
-    ", 
-      container_id,
-      prefix
-    )))
+    sortable::rank_list(
+      text = "Drag to reorder",
+      labels = items,
+      input_id = paste0(prefix, "_order"),
+      class = "default-sortable"
+    )
   )
 }
 

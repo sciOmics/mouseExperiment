@@ -551,7 +551,13 @@ tumorGrowthUI <- function() {
                       choices = c("Left" = "left", "Center" = "center", "Right" = "right"),
                       selected = "center"),
                     textInput("tg_plot_subtitle", "Subtitle",
-                              placeholder = "Optional subtitle")
+                              placeholder = "Optional subtitle"),
+                    textInput("tg_plot_xaxis_label", "X-axis label",
+                              placeholder = "Leave blank for default"),
+                    textInput("tg_plot_yaxis_label", "Y-axis label",
+                              placeholder = "Leave blank for default"),
+                    textInput("tg_plot_legend_label", "Legend label",
+                              placeholder = "Leave blank for default")
                   ),
                   ctrl_section("scaling", "expand", "Scaling",
                     conditionalPanel(

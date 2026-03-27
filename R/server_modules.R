@@ -1577,7 +1577,9 @@ tumor_growth_server <- function(input, output, session, rv) {
     text_size  <- input$tg_opt_text_size %||% 16
     legend_pos <- input$tg_opt_legend_pos %||% "right"
     p <- apply_plot_labels(p, input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
-                           input$tg_plot_title_align %||% "center", text_size)
+                           input$tg_plot_title_align %||% "center", text_size,
+                           input$tg_plot_xaxis_label %||% "", input$tg_plot_yaxis_label %||% "",
+                           input$tg_plot_legend_label %||% "")
     p <- apply_legend_pos(p, legend_pos)
     # Apply y-axis scale
     yscale <- input$tg_opt_yscale %||% "linear"
@@ -1665,7 +1667,9 @@ tumor_growth_server <- function(input, output, session, rv) {
       )
     }
     p <- apply_plot_labels(p, input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
-                           input$tg_plot_title_align %||% "center", text_size)
+                           input$tg_plot_title_align %||% "center", text_size,
+                           input$tg_plot_xaxis_label %||% "", input$tg_plot_yaxis_label %||% "",
+                           input$tg_plot_legend_label %||% "")
     p <- apply_legend_pos(p, legend_pos)
     p
   })
@@ -1725,7 +1729,10 @@ tumor_growth_server <- function(input, output, session, rv) {
     finish_plot <- function(p) {
       if (!is.null(colors)) p <- p + ggplot2::scale_colour_manual(values = colors)
       p <- apply_plot_labels(p, input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
-                             input$tg_plot_title_align %||% "center", text_size)
+                             input$tg_plot_title_align %||% "center", text_size = text_size,
+                             xlab = input$tg_plot_xaxis_label %||% "",
+                             ylab = input$tg_plot_yaxis_label %||% "",
+                             legend_lab = input$tg_plot_legend_label %||% "")
       apply_legend_pos(p, legend_pos)
     }
 
@@ -1889,7 +1896,10 @@ tumor_growth_server <- function(input, output, session, rv) {
         input$tg_plot_title    %||% "",
         input$tg_plot_subtitle %||% "",
         input$tg_plot_title_align %||% "center",
-        text_size)
+        text_size,
+        input$tg_plot_xaxis_label %||% "",
+        input$tg_plot_yaxis_label %||% "",
+        input$tg_plot_legend_label %||% "")
 
     }, error = function(e) {
       cat("ERROR in tg_wf_plot:", conditionMessage(e), "\n")
