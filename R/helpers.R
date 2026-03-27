@@ -497,52 +497,85 @@ apply_legend_pos <- function(p, pos) {
 #' @keywords internal
 group_order_and_color_ui <- function(prefix, groups) {
   if (is.null(groups) || length(groups) < 2L) return(NULL)
-  
+
   defaults <- default_group_colors(length(groups))
-  
-  # Color pickers: keyed by group name (stable regardless of drag order).
-  # Rendered separately below the rank_list so rank_list can use plain text
-  # labels — which is required for get_ordered_groups() to match them via
-  # setequal(ord, groups).
-  color_pickers <- lapply(seq_along(groups), function(i) {
-    group    <- groups[i]
-    color_id <- paste0(prefix, "_color_", make.names(group))
-    shiny::tags$div(
-      style = "display: flex; align-items: center; gap: 8px; padding: 4px 2px;",
+  list_id  <- paste0(prefix, "_drag_list")
+  input_id <- paste0(prefix, "_order")
+
+  # Each row: drag handle + group label + colour picker
+  # data-value holds the exact group name string — read directly by JS,
+  # no innerText parsing, no custom Shiny input type.
+  items <- lapply(seq_along(groups), function(i) {
+    g        <- groups[i]
+    color_id <- paste0(prefix, "_color_", make.names(g))
+    shiny::tags$li(
+      `data-value` = g,
+      style = paste0(
+        "display:flex; align-items:center; gap:8px;",
+        "padding:5px 8px; margin-bottom:4px;",
+        "background:#f8f9fa; border:1px solid #dee2e6;",
+        "border-radius:4px; cursor:default;"
+      ),
       shiny::tags$span(
-        style = "flex: 1; font-size: 13px; min-width: 80px;",
-        group
+        class = "drag-handle",
+        style = "cursor:grab; color:#adb5bd; font-size:14px; user-select:none; flex-shrink:0;",
+        "\u2630"   # grip / hamburger icon
+      ),
+      shiny::tags$span(
+        style = "flex:1; font-size:13px; min-width:60px;",
+        g
       ),
       colourpicker::colourInput(
-        inputId = color_id,
-        label = NULL,
-        value = defaults[i],
-        showColour = "background",
-        palette = "square",
+        inputId          = color_id,
+        label            = NULL,
+        value            = defaults[i],
+        showColour       = "background",
+        palette          = "square",
         allowTransparent = FALSE
       )
     )
   })
-  
+
+  # JS: on sort / load, read data-value from each <li> and push to Shiny as
+  # a plain character vector — no ":type" suffix so no custom handler is needed.
+  capture_js <- htmlwidgets::JS(sprintf(
+    "function(evt) {
+       var self = this;
+       if (typeof Shiny !== 'undefined') {
+         Shiny.initializedPromise.then(function() {
+           var order = Array.prototype.slice.call(self.el.children).map(
+             function(li) { return li.getAttribute('data-value'); }
+           );
+           Shiny.setInputValue('%s', order, {priority: 'event'});
+         });
+       }
+     }",
+    input_id
+  ))
+
   shiny::tagList(
     shiny::tags$h6(
-      style = "font-size: 14px; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 8px;",
-      shiny::icon("arrows-alt"), " ", "Group Order & Colors"
+      style = "font-size:14px; font-weight:700; text-decoration:underline; margin-top:10px; margin-bottom:8px;",
+      shiny::icon("arrows-alt"), " Group Order & Colors"
     ),
-    # Plain text labels so input_id returns group name strings that
-    # setequal() can match against rv$tg_plot_groups.
-    sortable::rank_list(
-      text = "Drag to reorder",
-      labels = groups,
-      input_id = paste0(prefix, "_order"),
-      class = "default-sortable"
-    ),
-    shiny::tags$hr(style = "margin: 8px 0;"),
     shiny::tags$p(
-      style = "font-size: 12px; color: #666; margin-bottom: 4px;",
-      "Group colors:"
+      style = "font-size:11px; color:#6c757d; margin-bottom:6px;",
+      shiny::icon("grip-vertical"), " Drag the \u2630 handle to reorder"
     ),
-    shiny::tagList(color_pickers)
+    shiny::tags$ul(
+      id    = list_id,
+      style = "padding:0; margin:0; list-style:none;",
+      items
+    ),
+    sortable::sortable_js(
+      css_id  = list_id,
+      options = sortable::sortable_options(
+        handle    = ".drag-handle",
+        animation = 150L,
+        onSort    = capture_js,
+        onLoad    = capture_js
+      )
+    )
   )
 }
 
