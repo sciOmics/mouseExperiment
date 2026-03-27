@@ -7,7 +7,7 @@ author: "Insight BioAnalytics"
 
 ```{r libraries}
 
-#devtools::install_github("https://github.com/SciOmicsLab/mouseExperiment", ref = "claude")
+#devtools::install_github("https://github.com/SciOmicsLab/mouseExperiment", ref = "develop")
 install.packages('/Users/david/Library/Mobile Documents/com~apple~CloudDocs/Programming/mouseExperiment', repos = NULL, type = "Source")
 
 library(mouseExperiment)
