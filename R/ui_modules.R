@@ -501,7 +501,7 @@ tumorGrowthUI <- function() {
             fluidRow(
               column(3,
                 wellPanel(
-                  selectInput("tg_plot_selector", "Select Plot",
+                  selectInput("tg_plot_selector", "Plot Type",
                     choices = c(
                       "Tumor Growth Curves"      = "growth_curves",
                       "Growth Rates Plot"        = "growth_rate",
@@ -513,35 +513,7 @@ tumorGrowthUI <- function() {
                   ctrl_section("group-order", "sort", "Group Order & Colors",
                     uiOutput("tg_group_order_color_ui")
                   ),
-                  ctrl_section("options", "sliders-h", "Options",
-                    sliderInput("tg_opt_text_size", "Text size (pt)",
-                                min = 10, max = 24, value = 16, step = 1),
-                    selectInput("tg_opt_legend_pos", "Legend position",
-                      choices = c("None" = "none",
-                                  "Top" = "top", "Bottom" = "bottom",
-                                  "Left" = "left", "Right" = "right",
-                                  "In plot - top left"  = "inplot_tl",
-                                  "In plot - top right" = "inplot_tr",
-                                  "In plot - bottom left" = "inplot_bl",
-                                  "In plot - bottom right" = "inplot_br"),
-                      selected = "right"
-                    ),
-                    conditionalPanel(
-                      "input.tg_plot_selector == 'growth_curves'",
-                      checkboxInput("tg_opt_group_line",
-                                    "Show group average line", value = TRUE),
-                      checkboxInput("tg_opt_show_extrap",
-                                    "Show extrapolated curves/points", value = FALSE),
-                      selectInput("tg_opt_yscale", "Y-axis scale",
-                        choices = c("Linear" = "linear",
-                                    "Log10"  = "log10"),
-                        selected = "linear"
-                      ),
-                      sliderInput("tg_opt_growth_pt_size", "Point size",
-                                  min = 0.5, max = 10, value = 4, step = 0.5),
-                      numericInput("tg_opt_xstart", "X-axis start (Day)",
-                                   value = 0, min = 0, step = 1)
-                    ),
+                  ctrl_section("elements", "layer-group", "Elements",
                     conditionalPanel(
                       "['growth_rate','auc'].indexOf(input.tg_plot_selector) >= 0",
                       selectInput("tg_opt_center_bar", "Center line / bar",
@@ -554,14 +526,25 @@ tumorGrowthUI <- function() {
                         choices  = c("None" = "none", "SEM" = "SEM",
                                      "SD" = "SD", "95% CI" = "CI"),
                         selected = "SEM"
-                      ),
-                      sliderInput("tg_opt_point_size",   "Point size",
-                                  0.5, 10, 4, step = 0.5),
-                      sliderInput("tg_opt_jitter_width", "Jitter width",
-                                  0, 0.5, 0.1, step = 0.02)
-                    )
-                  ),
-                  ctrl_section("title", "heading", "Title & Subtitle",
+                      )
+                    ),
+                    conditionalPanel(
+                      "input.tg_plot_selector == 'growth_curves'",
+                      checkboxInput("tg_opt_group_line",
+                                    "Show group average line", value = TRUE),
+                      checkboxInput("tg_opt_show_extrap",
+                                    "Show extrapolated curves/points", value = FALSE)
+                    ),
+                    selectInput("tg_opt_legend_pos", "Legend position",
+                      choices = c("None" = "none",
+                                  "Top" = "top", "Bottom" = "bottom",
+                                  "Left" = "left", "Right" = "right",
+                                  "In plot - top left"  = "inplot_tl",
+                                  "In plot - top right" = "inplot_tr",
+                                  "In plot - bottom left" = "inplot_bl",
+                                  "In plot - bottom right" = "inplot_br"),
+                      selected = "right"
+                    ),
                     textInput("tg_plot_title", "Title",
                               placeholder = "Leave blank for default"),
                     selectInput("tg_plot_title_align", "Title alignment",
@@ -569,6 +552,32 @@ tumorGrowthUI <- function() {
                       selected = "center"),
                     textInput("tg_plot_subtitle", "Subtitle",
                               placeholder = "Optional subtitle")
+                  ),
+                  ctrl_section("scaling", "expand", "Scaling",
+                    conditionalPanel(
+                      "input.tg_plot_selector == 'growth_curves'",
+                      selectInput("tg_opt_yscale", "Y-axis scale",
+                        choices = c("Linear" = "linear",
+                                    "Log10"  = "log10"),
+                        selected = "linear"
+                      ),
+                      numericInput("tg_opt_xstart", "X-axis start (Day)",
+                                   value = 0, min = 0, step = 1)
+                    ),
+                    sliderInput("tg_opt_text_size", "Text size (pt)",
+                                min = 10, max = 24, value = 16, step = 1),
+                    conditionalPanel(
+                      "input.tg_plot_selector == 'growth_curves'",
+                      sliderInput("tg_opt_growth_pt_size", "Point size",
+                                  min = 0.5, max = 10, value = 4, step = 0.5)
+                    ),
+                    conditionalPanel(
+                      "['growth_rate','auc'].indexOf(input.tg_plot_selector) >= 0",
+                      sliderInput("tg_opt_point_size",   "Point size",
+                                  0.5, 10, 4, step = 0.5),
+                      sliderInput("tg_opt_jitter_width", "Jitter width",
+                                  0, 0.5, 0.1, step = 0.02)
+                    )
                   ),
                   ctrl_section("export", "arrows-alt", "Plot Size / Export",
                     fluidRow(
