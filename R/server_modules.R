@@ -1424,6 +1424,42 @@ tumor_growth_server <- function(input, output, session, rv) {
     )
   })
   
+  # AUC individual data table
+  output$tg_auc_individual_table <- renderDT({
+    req(rv$tg_results)
+    if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$auc_analysis$individual)) {
+      return(datatable(data.frame(Message = "AUC individual data not available")))
+    }
+    
+    auc_ind_df <- as.data.frame(rv$tg_results$auc_analysis$individual)
+    auc_ind_df <- format_df_for_display(auc_ind_df)
+    datatable(auc_ind_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+  })
+  
+  # AUC summary table
+  output$tg_auc_summary_table <- renderDT({
+    req(rv$tg_results)
+    if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$auc_analysis$summary)) {
+      return(datatable(data.frame(Message = "AUC summary not available")))
+    }
+    
+    auc_sum_df <- as.data.frame(rv$tg_results$auc_analysis$summary)
+    auc_sum_df <- format_df_for_display(auc_sum_df)
+    datatable(auc_sum_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+  })
+  
+  # Data summary table
+  output$tg_data_summary_table <- renderDT({
+    req(rv$tg_results)
+    if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$data_summary)) {
+      return(datatable(data.frame(Message = "Data summary not available")))
+    }
+    
+    data_sum_df <- as.data.frame(rv$tg_results$data_summary)
+    data_sum_df <- format_df_for_display(data_sum_df)
+    datatable(data_sum_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+  })
+  
   # ---- Group order drag-and-drop for Plots tab ----
   output$tg_group_order_ui <- renderUI({
     req(rv$tg_plot_groups)
@@ -2017,6 +2053,33 @@ tumor_growth_server <- function(input, output, session, rv) {
           df$pct_change_per_day <- (exp(df$growth_rate) - 1) * 100
         }
         write.csv(df, file, row.names = FALSE)
+      }
+    }
+  )
+  
+  output$download_tg_auc_individual <- downloadHandler(
+    filename = "auc_individual_data.csv",
+    content = function(file) {
+      if (!is.null(rv$tg_results$auc_analysis$individual)) {
+        write.csv(as.data.frame(rv$tg_results$auc_analysis$individual), file, row.names = FALSE)
+      }
+    }
+  )
+  
+  output$download_tg_auc_summary <- downloadHandler(
+    filename = "auc_summary.csv",
+    content = function(file) {
+      if (!is.null(rv$tg_results$auc_analysis$summary)) {
+        write.csv(as.data.frame(rv$tg_results$auc_analysis$summary), file, row.names = FALSE)
+      }
+    }
+  )
+  
+  output$download_tg_data_summary <- downloadHandler(
+    filename = "data_summary.csv",
+    content = function(file) {
+      if (!is.null(rv$tg_results$data_summary)) {
+        write.csv(as.data.frame(rv$tg_results$data_summary), file, row.names = FALSE)
       }
     }
   )
