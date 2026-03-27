@@ -460,3 +460,99 @@ apply_legend_pos <- function(p, pos) {
     p + ggplot2::theme(legend.position = pos)
   }
 }
+
+#' Render a drag-and-drop rank list with embedded color pickers
+#'
+#' Combines group ordering (drag-and-drop) with color selection in a single
+#' control. Groups can be reordered by dragging, and colors are adjusted via
+#' inline colour pickers. The order is stored in \code{input[[paste0(prefix, "_order")]]}
+#' and colors are read from \code{input[[paste0(prefix, "_color_", make.names(group))]]}
+#' for each group.
+#'
+#' @param prefix    Input-ID prefix (e.g. \code{"tg"}).
+#' @param groups    Character vector of group names in their default order.
+#' @return A \code{tagList} containing HTML structure and colour inputs, or
+#'   \code{NULL} when fewer than 2 groups.
+#' @keywords internal
+group_order_and_color_ui <- function(prefix, groups) {
+  if (is.null(groups) || length(groups) < 2L) return(NULL)
+  
+  defaults <- default_group_colors(length(groups))
+  
+  # Create a wrapper div for each group with drag handle, name, and color picker
+  items <- lapply(seq_along(groups), function(i) {
+    group <- groups[i]
+    color_id <- paste0(prefix, "_color_", make.names(group))
+    shiny::tags$div(
+      class = "group-order-color-item",
+      `data-group` = group,
+      style = "display: flex; align-items: center; gap: 8px; padding: 8px; margin: 4px 0; border: 1px solid #ddd; border-radius: 4px; background-color: #fafafa; cursor: grab;",
+      shiny::tags$span(
+        class = "drag-handle",
+        style = "flex-shrink: 0; color: #999;",
+        shiny::icon("grip-vertical")
+      ),
+      shiny::tags$span(
+        style = "flex: 1; font-weight: 500; min-width: 100px;",
+        group
+      ),
+      colourpicker::colourInput(
+        inputId = color_id,
+        label = NULL,
+        value = defaults[i],
+        showColour = "background",
+        palette = "limited",
+        allowTransparent = FALSE
+      )
+    )
+  })
+  
+  # Wrap in a sortable container that reads the order
+  container_id <- paste0(prefix, "_order_color_container")
+  shiny::tagList(
+    shiny::tags$h6(
+      style = "font-size: 14px; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 8px;",
+      shiny::icon("arrows-alt"), " ", "Group Order & Colors"
+    ),
+    shiny::tags$div(
+      id = container_id,
+      class = "sortable-group-order-color",
+      items
+    ),
+    # JavaScript to handle drag-and-drop and sync order to Shiny input
+    shiny::tags$script(HTML(sprintf("
+      $(function() {
+        var containerId = '%s';
+        var orderInputId = '%s_order';
+        var container = $('#' + containerId);
+        
+        // Function to update the order input based on current DOM
+        function updateOrder() {
+          var order = container.find('.group-order-color-item').map(function() {
+            return $(this).data('group');
+          }).get();
+          Shiny.setInputValue(orderInputId, order, {priority: 'event'});
+        }
+        
+        // Initialize Sortable.js for the container
+        if (typeof Sortable !== 'undefined') {
+          Sortable.create(container[0], {
+            handle: '.drag-handle',
+            animation: 150,
+            ghostClass: 'sortable-ghost',
+            onEnd: function() {
+              updateOrder();
+            }
+          });
+        }
+        
+        // Send initial order
+        updateOrder();
+      });
+    ", 
+      container_id,
+      prefix
+    )))
+  )
+}
+

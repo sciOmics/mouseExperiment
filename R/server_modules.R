@@ -1505,17 +1505,10 @@ tumor_growth_server <- function(input, output, session, rv) {
     datatable(data_sum_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
-  # ---- Group order drag-and-drop for Plots tab ----
-  output$tg_group_order_ui <- renderUI({
+  # Group order and color combined control for Plots tab
+  output$tg_group_order_color_ui <- renderUI({
     req(rv$tg_plot_groups)
-    group_order_ui("tg", rv$tg_plot_groups)
-  })
-
-  # ---- Colour picker UI for Plots tab ----
-  output$tg_color_pickers_ui <- renderUI({
-    req(rv$tg_plot_groups)
-    ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
-    group_color_pickers_ui("tg_color", ordered_grps)
+    group_order_and_color_ui("tg", rv$tg_plot_groups)
   })
 
   # Growth curves plot  — reactive: re-renders on colour/option changes

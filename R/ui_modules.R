@@ -510,11 +510,8 @@ tumorGrowthUI <- function() {
                       "Effect Size Forest Plot"  = "effect_forest"
                     )
                   ),
-                  ctrl_section("group-order", "sort", "Group Order",
-                    uiOutput("tg_group_order_ui")
-                  ),
-                  ctrl_section("appearance", "palette", "Appearance",
-                    uiOutput("tg_color_pickers_ui")
+                  ctrl_section("group-order", "sort", "Group Order & Colors",
+                    uiOutput("tg_group_order_color_ui")
                   ),
                   ctrl_section("options", "sliders-h", "Options",
                     sliderInput("tg_opt_text_size", "Text size (pt)",

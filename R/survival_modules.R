@@ -78,8 +78,7 @@ survivalUI <- function() {
                   ),
                   ctrl_section("surv-appearance", "palette", "Appearance",
                     conditionalPanel("input.surv_plot_selector == 'km'",
-                      uiOutput("surv_group_order_ui"),
-                      uiOutput("surv_color_pickers_ui"),
+                      uiOutput("surv_group_order_color_ui"),
                       checkboxInput("surv_opt_conf_int",
                                     "Show confidence interval", value = FALSE),
                       checkboxInput("surv_opt_risk_table",
@@ -542,17 +541,10 @@ survival_server <- function(input, output, session, rv) {
     paste(summary_text, collapse = "\n")
   })
   
-  # Dynamic group order drag-and-drop for KM/Survival plots
-  output$surv_group_order_ui <- renderUI({
+  # Group order and color combined control for KM/Survival plots
+  output$surv_group_order_color_ui <- renderUI({
     req(rv$surv_plot_groups)
-    group_order_ui("surv", rv$surv_plot_groups)
-  })
-
-  # Dynamic colour pickers for KM groups (shown in user-specified order)
-  output$surv_color_pickers_ui <- renderUI({
-    req(rv$surv_plot_groups)
-    ordered_grps <- get_ordered_groups(input, "surv", rv$surv_plot_groups)
-    group_color_pickers_ui("surv_color", ordered_grps)
+    group_order_and_color_ui("surv", rv$surv_plot_groups)
   })
 
   output$surv_download_plot_btn <- renderUI({
