@@ -76,52 +76,48 @@ survivalUI <- function() {
                       "Hazard Ratio Forest Plot" = "forest"
                     )
                   ),
-                  hr(),
-                  h6(icon("palette"), " Appearance"),
-                  conditionalPanel("input.surv_plot_selector == 'km'",
-                    uiOutput("surv_group_order_ui"),
-                    uiOutput("surv_color_pickers_ui"),
-                    checkboxInput("surv_opt_conf_int",
-                                  "Show confidence interval", value = FALSE),
-                    checkboxInput("surv_opt_risk_table",
-                                  "Show risk table on plot", value = TRUE),
-                    numericInput("surv_km_xstart",
-                                 "X-axis start (Day)",
-                                 value = 0, min = 0, step = 1)
+                  ctrl_section("surv-appearance", "palette", "Appearance",
+                    conditionalPanel("input.surv_plot_selector == 'km'",
+                      uiOutput("surv_group_order_ui"),
+                      uiOutput("surv_color_pickers_ui"),
+                      checkboxInput("surv_opt_conf_int",
+                                    "Show confidence interval", value = FALSE),
+                      checkboxInput("surv_opt_risk_table",
+                                    "Show risk table on plot", value = TRUE),
+                      numericInput("surv_km_xstart",
+                                   "X-axis start (Day)",
+                                   value = 0, min = 0, step = 1)
+                    ),
+                    conditionalPanel("input.surv_plot_selector == 'forest'",
+                      colourpicker::colourInput("surv_forest_pt_color",
+                                               "Point colour", value = "steelblue"),
+                      h6("Annotation"),
+                      checkboxInput("surv_forest_show_hr", "Show HR",      value = TRUE),
+                      checkboxInput("surv_forest_show_ci", "Show 95% CI",  value = TRUE),
+                      checkboxInput("surv_forest_show_p",  "Show p-value", value = TRUE)
+                    )
                   ),
-                  conditionalPanel("input.surv_plot_selector == 'forest'",
-                    colourpicker::colourInput("surv_forest_pt_color",
-                                             "Point colour", value = "steelblue"),
-                    hr(),
-                    h6("Annotation"),
-                    checkboxInput("surv_forest_show_hr", "Show HR",      value = TRUE),
-                    checkboxInput("surv_forest_show_ci", "Show 95% CI",  value = TRUE),
-                    checkboxInput("surv_forest_show_p",  "Show p-value", value = TRUE)
+                  ctrl_section("surv-options", "sliders-h", "Options",
+                    sliderInput("surv_opt_text_size", "Text size (pt)",
+                                min = 8, max = 20, value = 12, step = 1)
                   ),
-                  hr(),
-                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
-                     icon("sliders-h"), " Options"),
-                  sliderInput("surv_opt_text_size", "Text size (pt)",
-                              min = 8, max = 20, value = 12, step = 1),
-                  hr(),
-                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
-                     icon("heading"), " Title & Subtitle"),
-                  textInput("surv_plot_title", "Title",
-                            placeholder = "Leave blank for default"),
-                  selectInput("surv_plot_title_align", "Title alignment",
-                    choices = c("Left" = "left", "Center" = "center", "Right" = "right"),
-                    selected = "center"),
-                  textInput("surv_plot_subtitle", "Subtitle",
-                            placeholder = "Optional subtitle"),
-                  hr(),
-                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
-                     icon("arrows-alt"), " Plot Size / Export"),
-                  fluidRow(
-                    column(6, numericInput("surv_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
-                    column(6, numericInput("surv_plot_height", "Height (px)", 600, min = 200, max = 5000, step = 50))
+                  ctrl_section("surv-title", "heading", "Title & Subtitle",
+                    textInput("surv_plot_title", "Title",
+                              placeholder = "Leave blank for default"),
+                    selectInput("surv_plot_title_align", "Title alignment",
+                      choices = c("Left" = "left", "Center" = "center", "Right" = "right"),
+                      selected = "center"),
+                    textInput("surv_plot_subtitle", "Subtitle",
+                              placeholder = "Optional subtitle")
                   ),
-                  numericInput("surv_plot_dpi", "Resolution (DPI)", 100, min = 72, max = 600, step = 10),
-                  tags$div(style = "margin-top: 10px;", uiOutput("surv_download_plot_btn"))
+                  ctrl_section("surv-export", "arrows-alt", "Plot Size / Export",
+                    fluidRow(
+                      column(6, numericInput("surv_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
+                      column(6, numericInput("surv_plot_height", "Height (px)", 600, min = 200, max = 5000, step = 50))
+                    ),
+                    numericInput("surv_plot_dpi", "Resolution (DPI)", 100, min = 72, max = 600, step = 10),
+                    tags$div(style = "margin-top: 10px;", uiOutput("surv_download_plot_btn"))
+                  )
                 )
               ),
               column(9,

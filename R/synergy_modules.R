@@ -83,45 +83,44 @@ synergyUI <- function() {
               column(3,
                 wellPanel(
                   uiOutput("syn_plot_selector_ui"),
-                  hr(),
-                  uiOutput("syn_color_pickers_ui"),
-                  hr(),
-                  h6(icon("sliders-h"), " Options"),
-                  sliderInput("syn_opt_text_size", "Text size (pt)",
-                              min = 8, max = 20, value = 12, step = 1),
-                  selectInput("syn_opt_legend_pos", "Legend position",
-                    choices = c("Auto" = "auto", "None" = "none",
-                                "Top" = "top", "Bottom" = "bottom",
-                                "Left" = "left", "Right" = "right",
-                                "In plot - top left"  = "inplot_tl",
-                                "In plot - top right" = "inplot_tr"),
-                    selected = "inplot_tr"
+                  ctrl_section("syn-appearance", "palette", "Appearance",
+                    uiOutput("syn_color_pickers_ui")
                   ),
-                  conditionalPanel(
-                    "input.syn_plot_selector == 'trend'",
-                    checkboxInput("syn_opt_show_shading",
-                                  "Show Synergy / Antagonism shading",
-                                  value = TRUE)
+                  ctrl_section("syn-options", "sliders-h", "Options",
+                    sliderInput("syn_opt_text_size", "Text size (pt)",
+                                min = 8, max = 20, value = 12, step = 1),
+                    selectInput("syn_opt_legend_pos", "Legend position",
+                      choices = c("Auto" = "auto", "None" = "none",
+                                  "Top" = "top", "Bottom" = "bottom",
+                                  "Left" = "left", "Right" = "right",
+                                  "In plot - top left"  = "inplot_tl",
+                                  "In plot - top right" = "inplot_tr"),
+                      selected = "inplot_tr"
+                    ),
+                    conditionalPanel(
+                      "input.syn_plot_selector == 'trend'",
+                      checkboxInput("syn_opt_show_shading",
+                                    "Show Synergy / Antagonism shading",
+                                    value = TRUE)
+                    )
                   ),
-                  hr(),
-                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
-                     icon("heading"), " Title & Subtitle"),
-                  textInput("syn_plot_title", "Title",
-                            placeholder = "Leave blank for default"),
-                  selectInput("syn_plot_title_align", "Title alignment",
-                    choices = c("Left" = "left", "Center" = "center", "Right" = "right"),
-                    selected = "center"),
-                  textInput("syn_plot_subtitle", "Subtitle",
-                            placeholder = "Optional subtitle"),
-                  hr(),
-                  h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
-                     icon("arrows-alt"), " Plot Size / Export"),
-                  fluidRow(
-                    column(6, numericInput("syn_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
-                    column(6, numericInput("syn_plot_height", "Height (px)", 600, min = 200, max = 5000, step = 50))
+                  ctrl_section("syn-title", "heading", "Title & Subtitle",
+                    textInput("syn_plot_title", "Title",
+                              placeholder = "Leave blank for default"),
+                    selectInput("syn_plot_title_align", "Title alignment",
+                      choices = c("Left" = "left", "Center" = "center", "Right" = "right"),
+                      selected = "center"),
+                    textInput("syn_plot_subtitle", "Subtitle",
+                              placeholder = "Optional subtitle")
                   ),
-                  numericInput("syn_plot_dpi", "Resolution (DPI)", 100, min = 72, max = 600, step = 10),
-                  tags$div(style = "margin-top: 10px;", uiOutput("syn_download_plot_btn"))
+                  ctrl_section("syn-export", "arrows-alt", "Plot Size / Export",
+                    fluidRow(
+                      column(6, numericInput("syn_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
+                      column(6, numericInput("syn_plot_height", "Height (px)", 600, min = 200, max = 5000, step = 50))
+                    ),
+                    numericInput("syn_plot_dpi", "Resolution (DPI)", 100, min = 72, max = 600, step = 10),
+                    tags$div(style = "margin-top: 10px;", uiOutput("syn_download_plot_btn"))
+                  )
                 )
               ),
               column(9,
