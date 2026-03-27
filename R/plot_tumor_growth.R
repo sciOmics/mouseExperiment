@@ -334,7 +334,8 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
   if (group_summary_line) {
     plot <- plot + ggplot2::stat_summary(
       ggplot2::aes(group = Group, color = Group),
-      fun = mean, geom = "line", size = 1.4
+      fun = function(x) { x <- x[is.finite(x)]; if (length(x) == 0L) NA_real_ else mean(x) },
+      na.rm = TRUE, geom = "line", size = 1.4
     )
   }
   
