@@ -1266,6 +1266,87 @@ tumor_growth_server <- function(input, output, session, rv) {
     downloadButton(btn_id, "Download")
   })
 
+  output$tg_summary_tab_info <- renderUI({
+    model_type <- input$tg_model_type %||% "lme4"
+    if (model_type == "auc") {
+      tab_info(
+        strong("AUC analysis summary: "), "Reports the analysis type (AUC), number of subjects and treatment groups, reference group, and the per-animal AUC computation method (trapezoidal integration of the volume\u2013time curve)."
+      )
+    } else {
+      tab_info(
+        strong("LME4 model summary: "), "Reports the fitted linear mixed-effects model including model type (LME4), data transformation applied, polynomial degree, random effects structure (subject and cage), number of subjects and treatment groups, reference group, and any convergence warnings or singular-fit notes."
+      )
+    }
+  })
+
+  output$tg_comparisons_tab_info <- renderUI({
+    model_type <- input$tg_model_type %||% "lme4"
+    if (model_type == "auc") {
+      tab_info(
+        strong("Pairwise Welch\u2019s t-tests "), "on per-animal AUC values between all treatment group pairs, with Bonferroni correction for multiple comparisons.",
+        tags$ul(
+          tags$li(strong("comparison"), " \u2014 the two groups being compared (\u2018Group A \u2212 Group B\u2019)."),
+          tags$li(strong("estimate"), " \u2014 mean difference in AUC between the two groups (mm\u00b3 \u00d7 days). Negative values indicate the first group has lower total tumour burden."),
+          tags$li(strong("t_value"), " \u2014 Welch t-statistic. Large absolute values indicate a larger difference relative to within-group variability."),
+          tags$li(strong("df"), " \u2014 Welch\u2013Satterthwaite approximate degrees of freedom."),
+          tags$li(strong("ci_lower / ci_upper"), " \u2014 95% confidence interval bounds for the mean AUC difference."),
+          tags$li(strong("p_value"), " \u2014 unadjusted p-value from the t-test."),
+          tags$li(strong("p_adjusted"), " \u2014 Bonferroni-corrected p-value. Values below 0.05 indicate a significant difference after correction for the number of comparisons.")
+        )
+      )
+    } else {
+      tab_info(
+        strong("Post-hoc pairwise contrasts "), "between treatment groups, computed from estimated marginal means (emmeans). Use the Analysis Parameters dropdown to switch between comparison types.",
+        tags$p(
+          strong("What is being compared:"), " these contrasts compare model-predicted ",
+          strong("tumor volume"), " between groups \u2014 not growth rate. Each group\u2019s marginal mean is evaluated at the ",
+          em("average study day"), ", so ", strong("estimate"), " answers: \u201cAt the typical timepoint, how much larger or smaller is one group\u2019s predicted volume relative to another?\u201d",
+          " To test whether ", em("growth trajectories diverge"), " across groups, see the ", strong("Treatment:Time"), " interaction row in the ANOVA tab. Per-animal growth rates are in the Growth Rates tab."
+        ),
+        tags$ul(
+          tags$li(strong("contrast"), " \u2014 the two groups being compared (\u2018Treatment \u2212 Reference\u2019 for Dunnett, \u2018A \u2212 B\u2019 for Tukey)."),
+          tags$li(strong("df"), " \u2014 Satterthwaite or Kenward\u2013Roger approximate degrees of freedom used for the t-test."),
+          tags$li(strong("estimate"), " \u2014 mean difference in tumor volume between the two groups on the analysis scale (log or sqrt if a transformation was applied). Negative values mean the first group has lower volume."),
+          tags$li(strong("lower.CL / upper.CL"), " (if shown) \u2014 95% confidence interval bounds for the mean difference on the analysis scale."),
+          tags$li(strong("SE"), " \u2014 standard error of the estimated difference."),
+          tags$li(strong("Fold_Change"), " (if shown; log-transform models only) \u2014 exp(estimate): the multiplicative ratio of group geometric means on the original volume scale. Values below 1.0 indicate the treatment group has lower volume than reference. Fold_Change_Lower / Fold_Change_Upper give the back-transformed CI bounds."),
+          tags$li(strong("t.ratio"), " \u2014 t-statistic (estimate \u00f7 SE). Large absolute values indicate a larger difference relative to its uncertainty."),
+          tags$li(strong("p.value"), " \u2014 adjusted p-value (Dunnett correction for \u2018vs Reference\u2019; Tukey HSD for \u2018All Comparisons\u2019). Values below 0.05 indicate a significant difference.")
+        )
+      )
+    }
+  })
+
+  output$tg_treatment_effects_tab_info <- renderUI({
+    model_type <- input$tg_model_type %||% "lme4"
+    if (model_type == "auc") {
+      tab_info(
+        strong("Group-level AUC means "), "showing the raw mean area under the growth curve for each treatment group, its variability, and sample size.",
+        tags$ul(
+          tags$li(strong("Treatment"), " \u2014 treatment group name."),
+          tags$li(strong("Mean_AUC"), " \u2014 group mean area under the volume\u2013time curve (mm\u00b3 \u00d7 days). Higher values indicate greater total tumour burden over the study."),
+          tags$li(strong("SD"), " \u2014 standard deviation of per-animal AUC within the group."),
+          tags$li(strong("N"), " \u2014 number of animals with valid AUC data."),
+          tags$li(strong("Reference"), " \u2014 TRUE for the reference group, FALSE for all others.")
+        ),
+        em("These are descriptive group summaries. For statistical comparisons between groups see the Comparisons tab; for individual animal values see the AUC Individual Data tab.")
+      )
+    } else {
+      tab_info(
+        strong("Estimated marginal means "), "(EMMs, also called least-squares means) from the mixed-effects model, averaged over the time course. These are model-adjusted group means that control for random animal effects and cage structure.",
+        tags$ul(
+          tags$li(strong("Group"), " \u2014 treatment group name."),
+          tags$li(strong("Adj Mean"), " \u2014 model-estimated marginal mean tumor volume for the group. If a transformation was applied, the header will read \u2018Adj Mean (log scale)\u2019 or \u2018Adj Mean (sqrt scale)\u2019."),
+          tags$li(strong("SE"), " \u2014 standard error of the estimated marginal mean."),
+          tags$li(strong("DF"), " \u2014 Kenward\u2013Roger approximate degrees of freedom for the confidence interval."),
+          tags$li(strong("Lower CI / Upper CI"), " \u2014 95% confidence interval bounds on the analysis scale."),
+          tags$li(strong("Note"), " \u2014 flags the reference group row.")
+        ),
+        em("For pairwise statistical comparisons between groups use the Comparisons tab.")
+      )
+    }
+  })
+
   output$tg_anova_tab_info <- renderUI({
     model_type <- input$tg_model_type %||% "lme4"
     if (model_type == "auc") {

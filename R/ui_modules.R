@@ -393,7 +393,7 @@ tumorGrowthUI <- function() {
           id = "tg_results_tabs",
           
           tabPanel("Summary",
-            tab_info(strong("Model summary: "), "Reports the model type (LME4 or AUC), data transformation applied, polynomial degree, random effects structure, number of subjects and treatment groups, reference group, and any convergence warnings."),
+            uiOutput("tg_summary_tab_info"),
             shinycssloaders::withSpinner(
               verbatimTextOutput("tg_summary")
             )
@@ -408,26 +408,7 @@ tumorGrowthUI <- function() {
           ),
           
           tabPanel("Comparisons",
-            tab_info(
-              strong("Post-hoc pairwise contrasts "), "between treatment groups, computed from estimated marginal means (emmeans). Use the Analysis Parameters dropdown to switch between comparison types.",
-              tags$p(
-                strong("What is being compared:"), " these contrasts compare model-predicted ",
-                strong("tumor volume"), " between groups — not growth rate. Each group\u2019s marginal mean is evaluated at the ",
-                em("average study day"), ", so ", strong("estimate"), " answers: \u201cAt the typical timepoint, how much larger or smaller is one group\u2019s predicted volume relative to another?\u201d",
-                " To test whether ", em("growth trajectories diverge"), " across groups, see the ", strong("Treatment:Time"), " interaction row in the ANOVA tab. Per-animal growth rates are in the Growth Rates tab."
-              ),
-              tags$ul(
-                tags$li(strong("contrast"), " — the two groups being compared (\u2018Treatment \u2212 Reference\u2019 for Dunnett, \u2018A \u2212 B\u2019 for Tukey)."),
-                tags$li(strong("df"), " — Satterthwaite or Kenward\u2013Roger approximate degrees of freedom used for the t-test."),
-                tags$li(strong("estimate"), " — mean difference in tumor volume between the two groups on the analysis scale (log or sqrt if a transformation was applied). Negative values mean the first group has lower volume."),
-                tags$li(strong("lower.CL / upper.CL"), " (if shown) — 95% confidence interval bounds for the mean difference on the analysis scale."),
-                tags$li(strong("SE"), " — standard error of the estimated difference."),
-                tags$li(strong("Fold_Change"), " (if shown; log-transform models only) — exp(estimate): the multiplicative ratio of group geometric means on the original volume scale. Values below 1.0 indicate the treatment group has lower volume than reference. Fold_Change_Lower / Fold_Change_Upper give the back-transformed CI bounds."),
-                tags$li(strong("t.ratio"), " — t-statistic (estimate \u00f7 SE). Large absolute values indicate a larger difference relative to its uncertainty."),
-                tags$li(strong("p.value"), " — adjusted p-value (Dunnett correction for \u2018vs Reference\u2019; Tukey HSD for \u2018All Comparisons\u2019). Values below 0.05 indicate a significant difference.")
-              )
-            ),
-            uiOutput("tg_comparisons_title"),
+            uiOutput("tg_comparisons_tab_info"),
             shinycssloaders::withSpinner(
               DTOutput("tg_comparisons_table")
             ),
@@ -435,19 +416,7 @@ tumorGrowthUI <- function() {
           ),
           
           tabPanel("Treatment Effects",
-            tab_info(
-              strong("Estimated marginal means "), "(EMMs, also called least-squares means) from the mixed-effects model, averaged over the time course. These are the model-adjusted group means that control for random animal effects and cage structure.",
-              tags$p("For ", strong("LME4 models"), " the columns are:"),
-              tags$ul(
-                tags$li(strong("Group"), " — treatment group name."),
-                tags$li(strong("Adj_Mean"), " — model-estimated marginal mean tumor volume for the group. If a transformation was applied, the header will read \'Adj_Mean (log scale)\' or \'Adj_Mean (sqrt scale)\'. A paired \'Adj_Mean (original units)\' column gives the back-transformed value on the mm\u00b3 scale."),
-                tags$li(strong("SE"), " — standard error of the estimated marginal mean."),
-                tags$li(strong("DF"), " — Kenward\u2013Roger approximate degrees of freedom for the confidence interval."),
-                tags$li(strong("Lower_CL / Upper_CL"), " — 95% confidence interval bounds (on the analysis scale; back-transformed \'original units\' versions shown alongside if a transformation was used)."),
-                tags$li(strong("Note"), " — flags the reference group row.")
-              ),
-              "For ", strong("AUC models"), " the columns are ", strong("Mean_AUC"), ", ", strong("SD"), ", ", strong("N"), ", and ", strong("Reference"), ": the raw mean area under the growth curve per subject, its standard deviation, sample size, and the reference group label."
-            ),
+            uiOutput("tg_treatment_effects_tab_info"),
             shinycssloaders::withSpinner(
               DTOutput("tg_effects_table")
             ),
