@@ -88,14 +88,16 @@ synergyUI <- function() {
                   ),
                   ctrl_section("syn-options", "sliders-h", "Options",
                     sliderInput("syn_opt_text_size", "Text size (pt)",
-                                min = 8, max = 20, value = 12, step = 1),
+                                min = 10, max = 24, value = 16, step = 1),
                     selectInput("syn_opt_legend_pos", "Legend position",
-                      choices = c("Auto" = "auto", "None" = "none",
+                      choices = c("None" = "none",
                                   "Top" = "top", "Bottom" = "bottom",
                                   "Left" = "left", "Right" = "right",
                                   "In plot - top left"  = "inplot_tl",
-                                  "In plot - top right" = "inplot_tr"),
-                      selected = "inplot_tr"
+                                  "In plot - top right" = "inplot_tr",
+                                  "In plot - bottom left" = "inplot_bl",
+                                  "In plot - bottom right" = "inplot_br"),
+                      selected = "right"
                     ),
                     conditionalPanel(
                       "input.syn_plot_selector == 'trend'",
@@ -502,7 +504,7 @@ synergy_server <- function(input, output, session, rv) {
     col_B     <- input$syn_color_B     %||% "#D6604D"
     col_combo <- input$syn_color_combo %||% "#762A83"
     col_ctrl  <- input$syn_color_ctrl  %||% "#999999"
-    text_sz   <- input$syn_opt_text_size %||% 12
+    text_sz   <- input$syn_opt_text_size %||% 16
 
     final_p <- if (isTRUE(rv$syn_over_time)) {
       # Over-time Bliss plot stored in rv uses "Drug A" / "Drug B" etc. as colour labels
@@ -552,8 +554,8 @@ synergy_server <- function(input, output, session, rv) {
     col_B       <- input$syn_color_B     %||% "#D6604D"
     col_combo   <- input$syn_color_combo %||% "#762A83"
     col_ctrl    <- input$syn_color_ctrl  %||% "#999999"
-    text_sz     <- input$syn_opt_text_size  %||% 12
-    leg_pos     <- input$syn_opt_legend_pos %||% "inplot_tr"
+    text_sz     <- input$syn_opt_text_size  %||% 16
+    leg_pos     <- input$syn_opt_legend_pos %||% "right"
     show_shade  <- isTRUE(input$syn_opt_show_shading)
 
     # Map internal color keys -> real drug name labels for the legend
@@ -617,7 +619,7 @@ synergy_server <- function(input, output, session, rv) {
   output$syn_plot_ci <- renderPlot({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error) || !isTRUE(rv$syn_over_time)) return(NULL)
-    text_sz <- input$syn_opt_text_size %||% 12
+    text_sz <- input$syn_opt_text_size %||% 16
     if (!is.null(rv$syn_results$plot_ci)) {
       p <- apply_plot_labels(rv$syn_results$plot_ci,
                              input$syn_plot_title       %||% "",

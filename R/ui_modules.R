@@ -515,14 +515,16 @@ tumorGrowthUI <- function() {
                   ),
                   ctrl_section("options", "sliders-h", "Options",
                     sliderInput("tg_opt_text_size", "Text size (pt)",
-                                min = 8, max = 20, value = 12, step = 1),
+                                min = 10, max = 24, value = 16, step = 1),
                     selectInput("tg_opt_legend_pos", "Legend position",
-                      choices = c("Auto" = "auto", "None" = "none",
+                      choices = c("None" = "none",
                                   "Top" = "top", "Bottom" = "bottom",
                                   "Left" = "left", "Right" = "right",
                                   "In plot - top left"  = "inplot_tl",
-                                  "In plot - top right" = "inplot_tr"),
-                      selected = "auto"
+                                  "In plot - top right" = "inplot_tr",
+                                  "In plot - bottom left" = "inplot_bl",
+                                  "In plot - bottom right" = "inplot_br"),
+                      selected = "right"
                     ),
                     conditionalPanel(
                       "input.tg_plot_selector == 'growth_curves'",
@@ -536,7 +538,7 @@ tumorGrowthUI <- function() {
                         selected = "linear"
                       ),
                       sliderInput("tg_opt_growth_pt_size", "Point size",
-                                  min = 0.5, max = 8, value = 2, step = 0.5),
+                                  min = 0.5, max = 10, value = 4, step = 0.5),
                       numericInput("tg_opt_xstart", "X-axis start (Day)",
                                    value = 0, min = 0, step = 1)
                     ),
@@ -554,9 +556,9 @@ tumorGrowthUI <- function() {
                         selected = "SEM"
                       ),
                       sliderInput("tg_opt_point_size",   "Point size",
-                                  0.5, 8, 2.5, step = 0.5),
+                                  0.5, 10, 4, step = 0.5),
                       sliderInput("tg_opt_jitter_width", "Jitter width",
-                                  0, 1, 0.2, step = 0.05)
+                                  0, 0.5, 0.1, step = 0.02)
                     )
                   ),
                   ctrl_section("title", "heading", "Title & Subtitle",

@@ -436,12 +436,13 @@ get_ordered_groups <- function(input, prefix, groups) {
 #' ggplot2 theme settings, including the coordinate-based in-plot options.
 #'
 #' @param p   A ggplot2 object.
-#' @param pos Character; one of "auto", "none", "top", "bottom", "left",
-#'   "right", "inplot_tl" (top-left), or "inplot_tr" (top-right).
+#' @param pos Character; one of "none", "top", "bottom", "left",
+#'   "right", "inplot_tl" (top-left), "inplot_tr" (top-right),
+#'   "inplot_bl" (bottom-left), or "inplot_br" (bottom-right).
 #' @return The modified ggplot2 object.
 #' @keywords internal
 apply_legend_pos <- function(p, pos) {
-  if (is.null(pos) || pos == "auto") return(p)
+  if (is.null(pos)) return(p)
   if (pos == "inplot_tl") {
     p + ggplot2::theme(
       legend.position    = c(0.02, 0.98),
@@ -453,6 +454,20 @@ apply_legend_pos <- function(p, pos) {
     p + ggplot2::theme(
       legend.position    = c(0.98, 0.98),
       legend.justification = c("right", "top"),
+      legend.background  = ggplot2::element_rect(
+        fill = scales::alpha("white", 0.8), colour = NA)
+    )
+  } else if (pos == "inplot_bl") {
+    p + ggplot2::theme(
+      legend.position    = c(0.02, 0.02),
+      legend.justification = c("left", "bottom"),
+      legend.background  = ggplot2::element_rect(
+        fill = scales::alpha("white", 0.8), colour = NA)
+    )
+  } else if (pos == "inplot_br") {
+    p + ggplot2::theme(
+      legend.position    = c(0.98, 0.02),
+      legend.justification = c("right", "bottom"),
       legend.background  = ggplot2::element_rect(
         fill = scales::alpha("white", 0.8), colour = NA)
     )

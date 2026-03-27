@@ -1574,8 +1574,8 @@ tumor_growth_server <- function(input, output, session, rv) {
       p <- p + ggplot2::scale_color_manual(values = colors)
     }
     # Apply text size, title/subtitle, and legend position
-    text_size  <- input$tg_opt_text_size %||% 12
-    legend_pos <- input$tg_opt_legend_pos %||% "auto"
+    text_size  <- input$tg_opt_text_size %||% 16
+    legend_pos <- input$tg_opt_legend_pos %||% "right"
     p <- apply_plot_labels(p, input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
                            input$tg_plot_title_align %||% "center", text_size)
     p <- apply_legend_pos(p, legend_pos)
@@ -1686,9 +1686,9 @@ tumor_growth_server <- function(input, output, session, rv) {
     center_bar <- input$tg_opt_center_bar %||% "mean"
     err_type   <- input$tg_opt_error_bar  %||% "SEM"
     pt_size    <- input$tg_opt_point_size %||% 2.5
-    jit_width  <- input$tg_opt_jitter_width %||% 0.2
-    text_size  <- input$tg_opt_text_size %||% 12
-    legend_pos <- input$tg_opt_legend_pos %||% "auto"
+    jit_width  <- input$tg_opt_jitter_width %||% 0.1
+    text_size  <- input$tg_opt_text_size %||% 16
+    legend_pos <- input$tg_opt_legend_pos %||% "right"
 
     # Helper: build a summary df (per group: center, lower, upper)
     make_summary <- function(df, grp_col, val_col) {
@@ -1863,7 +1863,7 @@ tumor_growth_server <- function(input, output, session, rv) {
       trt_col      <- "Treatment"
       ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
       colors       <- build_color_vector(input, "tg_color", ordered_grps)
-      text_size    <- input$tg_opt_text_size %||% 12
+      text_size    <- input$tg_opt_text_size %||% 16
 
       p <- ggplot2::ggplot(
              wf_data,

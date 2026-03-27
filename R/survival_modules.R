@@ -98,7 +98,7 @@ survivalUI <- function() {
                   ),
                   ctrl_section("surv-options", "sliders-h", "Options",
                     sliderInput("surv_opt_text_size", "Text size (pt)",
-                                min = 8, max = 20, value = 12, step = 1)
+                                min = 10, max = 24, value = 16, step = 1)
                   ),
                   ctrl_section("surv-title", "heading", "Title & Subtitle",
                     textInput("surv_plot_title", "Title",
@@ -584,7 +584,7 @@ survival_server <- function(input, output, session, rv) {
     # X-axis start
     x_start <- if (!is.null(input$surv_km_xstart) && !is.na(input$surv_km_xstart))
                   as.numeric(input$surv_km_xstart) else 0
-    text_size   <- input$surv_opt_text_size %||% 12
+    text_size   <- input$surv_opt_text_size %||% 16
     plot_title  <- if (nzchar(trimws(input$surv_plot_title %||% "")))
                      input$surv_plot_title else "Kaplan-Meier Survival Curves by Treatment"
     plot_sub    <- input$surv_plot_subtitle %||% ""
@@ -811,7 +811,7 @@ survival_server <- function(input, output, session, rv) {
 
     p <- build_surv_forest_plot(res, ref_grp, pt_color, show_hr, show_ci, show_p)
     req(!is.null(p))
-    text_size <- input$surv_opt_text_size %||% 12
+    text_size <- input$surv_opt_text_size %||% 16
     apply_plot_labels(p,
                       input$surv_plot_title       %||% "",
                       input$surv_plot_subtitle    %||% "",

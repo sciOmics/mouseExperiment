@@ -112,7 +112,7 @@ doseResponseUI <- function() {
                   h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
                      icon("sliders-h"), " Options"),
                   sliderInput("dr_opt_text_size", "Text size (pt)",
-                              min = 8, max = 20, value = 12, step = 1),
+                              min = 10, max = 24, value = 16, step = 1),
                   hr(),
                   h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
                      icon("heading"), " Title & Subtitle"),
@@ -398,7 +398,7 @@ dose_response_server <- function(input, output, session, rv) {
     vol_col  <- rv$vol_col  %||% "Volume"
     pt_col   <- input$dr_scatter_pt_color   %||% "#555555"
     ln_col   <- input$dr_scatter_line_color %||% "#2166AC"
-    text_sz  <- input$dr_opt_text_size %||% 12
+    text_sz  <- input$dr_opt_text_size %||% 16
     p <- ggplot2::ggplot(ad, ggplot2::aes_string(x = dose_col, y = vol_col)) +
       ggplot2::geom_point(alpha = 0.7, color = pt_col) +
       ggplot2::geom_smooth(method = "lm", formula = y ~ x, color = ln_col) +
@@ -418,7 +418,7 @@ dose_response_server <- function(input, output, session, rv) {
     dose_col    <- rv$dose_col %||% "Dose"
     vol_col     <- rv$vol_col  %||% "Volume"
     box_color   <- input$dr_box_fill_color %||% "#4292C6"
-    text_sz     <- input$dr_opt_text_size %||% 12
+    text_sz     <- input$dr_opt_text_size %||% 16
     dose_factor <- paste0("factor(", dose_col, ")")
     p <- ggplot2::ggplot(ad, ggplot2::aes_string(x = dose_factor, y = vol_col)) +
       ggplot2::geom_boxplot(outlier.shape = NA, fill = box_color, alpha = 0.7) +
@@ -438,7 +438,7 @@ dose_response_server <- function(input, output, session, rv) {
     req(ss)
     dose_col  <- rv$dose_col %||% "Dose"
     bar_color <- input$dr_bar_fill_color %||% "#4292C6"
-    text_sz   <- input$dr_opt_text_size %||% 12
+    text_sz   <- input$dr_opt_text_size %||% 16
     p <- ggplot2::ggplot(ss, ggplot2::aes_string(x = dose_col, y = "mean_volume")) +
       ggplot2::geom_bar(stat = "identity", fill = bar_color, alpha = 0.8) +
       ggplot2::geom_errorbar(
