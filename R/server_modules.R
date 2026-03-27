@@ -2029,7 +2029,10 @@ tumor_growth_server <- function(input, output, session, rv) {
       input$tg_plot_title    %||% "",
       input$tg_plot_subtitle %||% "",
       input$tg_plot_title_align %||% "center",
-      text_size)
+      text_size,
+      input$tg_plot_xaxis_label  %||% "",
+      input$tg_plot_yaxis_label  %||% "",
+      input$tg_plot_legend_label %||% "")
   })
 
   output$tg_plot_effect_forest <- renderPlot({

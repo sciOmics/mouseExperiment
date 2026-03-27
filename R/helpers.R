@@ -500,14 +500,17 @@ group_order_and_color_ui <- function(prefix, groups) {
   
   defaults <- default_group_colors(length(groups))
   
-  # Create items with custom styling that includes color picker
-  items <- lapply(seq_along(groups), function(i) {
-    group <- groups[i]
+  # Color pickers: keyed by group name (stable regardless of drag order).
+  # Rendered separately below the rank_list so rank_list can use plain text
+  # labels — which is required for get_ordered_groups() to match them via
+  # setequal(ord, groups).
+  color_pickers <- lapply(seq_along(groups), function(i) {
+    group    <- groups[i]
     color_id <- paste0(prefix, "_color_", make.names(group))
     shiny::tags$div(
-      style = "display: flex; align-items: center; gap: 8px; padding: 6px 4px;",
+      style = "display: flex; align-items: center; gap: 8px; padding: 4px 2px;",
       shiny::tags$span(
-        style = "flex: 1; font-weight: 500; min-width: 80px;",
+        style = "flex: 1; font-size: 13px; min-width: 80px;",
         group
       ),
       colourpicker::colourInput(
@@ -526,12 +529,20 @@ group_order_and_color_ui <- function(prefix, groups) {
       style = "font-size: 14px; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 8px;",
       shiny::icon("arrows-alt"), " ", "Group Order & Colors"
     ),
+    # Plain text labels so input_id returns group name strings that
+    # setequal() can match against rv$tg_plot_groups.
     sortable::rank_list(
       text = "Drag to reorder",
-      labels = items,
+      labels = groups,
       input_id = paste0(prefix, "_order"),
       class = "default-sortable"
-    )
+    ),
+    shiny::tags$hr(style = "margin: 8px 0;"),
+    shiny::tags$p(
+      style = "font-size: 12px; color: #666; margin-bottom: 4px;",
+      "Group colors:"
+    ),
+    shiny::tagList(color_pickers)
   )
 }
 
