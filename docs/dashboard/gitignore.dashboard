@@ -56,3 +56,6 @@ shinytest/
 
 # Coverage
 coverage/
+
+# R default plot output
+Rplots.pdf
