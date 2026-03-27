@@ -498,17 +498,19 @@ group_order_and_color_ui <- function(prefix, groups) {
   items <- lapply(seq_along(groups), function(i) {
     group <- groups[i]
     color_id <- paste0(prefix, "_color_", make.names(group))
+    item_id <- paste0(prefix, "_order_item_", make.names(group))
     shiny::tags$div(
+      id = item_id,
       class = "group-order-color-item",
       `data-group` = group,
-      style = "display: flex; align-items: center; gap: 8px; padding: 8px; margin: 4px 0; border: 1px solid #ddd; border-radius: 4px; background-color: #fafafa; cursor: grab;",
+      style = "display: flex; align-items: center; gap: 8px; padding: 8px; margin: 4px 0; border: 1px solid #ddd; border-radius: 4px; background-color: #fafafa; cursor: grab; touch-action: none;",
       shiny::tags$span(
         class = "drag-handle",
-        style = "flex-shrink: 0; color: #999;",
+        style = "flex-shrink: 0; color: #999; cursor: grab; display: flex; align-items: center;",
         shiny::icon("grip-vertical")
       ),
       shiny::tags$span(
-        style = "flex: 1; font-weight: 500; min-width: 100px;",
+        style = "flex: 1; font-weight: 500; min-width: 100px; pointer-events: none;",
         group
       ),
       colourpicker::colourInput(
@@ -516,7 +518,7 @@ group_order_and_color_ui <- function(prefix, groups) {
         label = NULL,
         value = defaults[i],
         showColour = "background",
-        palette = "limited",
+        palette = "spectrum",
         allowTransparent = FALSE
       )
     )
@@ -532,6 +534,7 @@ group_order_and_color_ui <- function(prefix, groups) {
     shiny::tags$div(
       id = container_id,
       class = "sortable-group-order-color",
+      style = "user-select: none;",
       items
     ),
     # JavaScript to handle drag-and-drop and sync order to Shiny input
@@ -539,23 +542,26 @@ group_order_and_color_ui <- function(prefix, groups) {
       $(function() {
         var containerId = '%s';
         var orderInputId = '%s_order';
-        var container = $('#' + containerId);
+        var container = document.getElementById(containerId);
         
         // Function to update the order input based on current DOM
         function updateOrder() {
-          var order = container.find('.group-order-color-item').map(function() {
-            return $(this).data('group');
-          }).get();
+          var order = [];
+          container.querySelectorAll('.group-order-color-item').forEach(function(item) {
+            var grp = item.getAttribute('data-group');
+            if (grp) order.push(grp);
+          });
           Shiny.setInputValue(orderInputId, order, {priority: 'event'});
         }
         
         // Initialize Sortable.js for the container
         if (typeof Sortable !== 'undefined') {
-          Sortable.create(container[0], {
+          Sortable.create(container, {
             handle: '.drag-handle',
             animation: 150,
             ghostClass: 'sortable-ghost',
-            onEnd: function() {
+            forceFallback: false,
+            onEnd: function(evt) {
               updateOrder();
             }
           });
