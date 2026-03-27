@@ -1002,26 +1002,63 @@ tumor_growth_server <- function(input, output, session, rv) {
       tryCatch({
         # Extract fixed effects terms and treatment comparisons from emmeans
         treatment_col_name <- col_names$treatment_column
-        
-        # Get emmeans object for treatment
-        emm <- emmeans::emmeans(result$model, as.formula(paste("~", treatment_col_name)))
-        emm_levels <- levels(emm)[[1]]   # character vector of factor levels
-        
-        # Type 1: All pairwise comparisons with Tukey adjustment
-        # infer=c(TRUE,TRUE) returns both CIs and test statistics (t.ratio, p.value)
-        result$all_pairwise_comparisons <- as.data.frame(
-          summary(pairs(emm, adjust = "tukey"), infer = c(TRUE, TRUE))
-        )
-        
-        # Type 2: vs Reference Group with Dunnett correction
-        ref_group <- if (!is.null(input$tg_reference) && nzchar(input$tg_reference))
-          input$tg_reference else emm_levels[1]
-        ref_idx <- which(emm_levels == ref_group)
-        if (length(ref_idx) == 1) {
-          result$reference_comparisons_dunnett <- as.data.frame(
-            summary(emmeans::contrast(emm, method = "trt.vs.ctrl", ref = ref_idx, adjust = "dunnett"),
-                    infer = c(TRUE, TRUE))
+
+        if (!is.null(result$posthoc) && !is.null(result$posthoc$pairwise)) {
+          # --- AUC mode: use pre-computed Welch t-tests (avoids pooled-error bias) ---
+          pw <- result$posthoc$pairwise
+          # Reformat to emmeans-compatible column names for downstream display/plot code
+          pw_df <- data.frame(
+            contrast = pw$comparison,
+            estimate = pw$estimate,
+            SE       = abs(pw$estimate / pw$t_value),
+            df       = pw$df,
+            lower.CL = pw$ci_lower,
+            upper.CL = pw$ci_upper,
+            t.ratio  = pw$t_value,
+            p.value  = pw$p_adjusted,   # Bonferroni-adjusted, all-pairs
+            stringsAsFactors = FALSE
           )
+          result$all_pairwise_comparisons <- pw_df
+
+          ref_group <- if (!is.null(input$tg_reference) && nzchar(input$tg_reference))
+            input$tg_reference else {
+              lvls <- sort(unique(as.character(
+                if (!is.null(result$treatment_effects$Treatment))
+                  result$treatment_effects$Treatment
+                else
+                  data[[col_names$treatment_column]]
+              )))
+              if (length(lvls) > 0) lvls[1] else NULL
+            }
+
+          if (!is.null(ref_group)) {
+            is_ref <- grepl(ref_group, pw_df$contrast, fixed = TRUE)
+            result$reference_comparisons_dunnett <- if (any(is_ref)) pw_df[is_ref, ] else pw_df
+          } else {
+            result$reference_comparisons_dunnett <- pw_df
+          }
+
+        } else {
+          # --- LME4 / other modes: derive comparisons via emmeans ---
+          emm <- emmeans::emmeans(result$model, as.formula(paste("~", treatment_col_name)))
+          emm_levels <- levels(emm)[[1]]   # character vector of factor levels
+
+          # Type 1: All pairwise comparisons with Tukey adjustment
+          # infer=c(TRUE,TRUE) returns both CIs and test statistics (t.ratio, p.value)
+          result$all_pairwise_comparisons <- as.data.frame(
+            summary(pairs(emm, adjust = "tukey"), infer = c(TRUE, TRUE))
+          )
+
+          # Type 2: vs Reference Group with Dunnett correction
+          ref_group <- if (!is.null(input$tg_reference) && nzchar(input$tg_reference))
+            input$tg_reference else emm_levels[1]
+          ref_idx <- which(emm_levels == ref_group)
+          if (length(ref_idx) == 1) {
+            result$reference_comparisons_dunnett <- as.data.frame(
+              summary(emmeans::contrast(emm, method = "trt.vs.ctrl", ref = ref_idx, adjust = "dunnett"),
+                      infer = c(TRUE, TRUE))
+            )
+          }
         }
 
         # Plot 5: Effect size forest plot — built here so reference_comparisons_dunnett exists
@@ -1285,13 +1322,13 @@ tumor_growth_server <- function(input, output, session, rv) {
       tab_info(
         strong("Pairwise Welch\u2019s t-tests "), "on per-animal AUC values between all treatment group pairs, with Bonferroni correction for multiple comparisons.",
         tags$ul(
-          tags$li(strong("comparison"), " \u2014 the two groups being compared (\u2018Group A \u2212 Group B\u2019)."),
+          tags$li(strong("contrast"), " \u2014 the two groups being compared (\u2018Group A \u2212 Group B\u2019)."),
           tags$li(strong("estimate"), " \u2014 mean difference in AUC between the two groups (mm\u00b3 \u00d7 days). Negative values indicate the first group has lower total tumour burden."),
-          tags$li(strong("t_value"), " \u2014 Welch t-statistic. Large absolute values indicate a larger difference relative to within-group variability."),
+          tags$li(strong("SE"), " \u2014 standard error of the estimated AUC difference."),
           tags$li(strong("df"), " \u2014 Welch\u2013Satterthwaite approximate degrees of freedom."),
-          tags$li(strong("ci_lower / ci_upper"), " \u2014 95% confidence interval bounds for the mean AUC difference."),
-          tags$li(strong("p_value"), " \u2014 unadjusted p-value from the t-test."),
-          tags$li(strong("p_adjusted"), " \u2014 Bonferroni-corrected p-value. Values below 0.05 indicate a significant difference after correction for the number of comparisons.")
+          tags$li(strong("lower.CL / upper.CL"), " \u2014 95% confidence interval bounds for the mean AUC difference."),
+          tags$li(strong("t.ratio"), " \u2014 Welch t-statistic. Large absolute values indicate a larger difference relative to within-group variability."),
+          tags$li(strong("p.value"), " \u2014 Bonferroni-corrected p-value across all pairwise comparisons. Values below 0.05 indicate a significant difference after correction for multiple testing.")
         )
       )
     } else {
