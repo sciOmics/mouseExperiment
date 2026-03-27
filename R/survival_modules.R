@@ -76,9 +76,17 @@ survivalUI <- function() {
                       "Hazard Ratio Forest Plot" = "forest"
                     )
                   ),
-                  ctrl_section("surv-appearance", "palette", "Appearance",
+                  ctrl_section("surv-groups", "sort", "Groups",
                     conditionalPanel("input.surv_plot_selector == 'km'",
-                      uiOutput("surv_group_order_color_ui"),
+                      uiOutput("surv_group_order_color_ui")
+                    ),
+                    conditionalPanel("input.surv_plot_selector == 'forest'",
+                      tags$p(class = "text-muted", style = "font-size:12px; margin:4px 0;",
+                             "Group colours are mapped automatically from the analysis groups.")
+                    )
+                  ),
+                  ctrl_section("surv-elements", "layer-group", "Elements",
+                    conditionalPanel("input.surv_plot_selector == 'km'",
                       checkboxInput("surv_opt_conf_int",
                                     "Show confidence interval", value = FALSE),
                       checkboxInput("surv_opt_risk_table",
@@ -94,20 +102,34 @@ survivalUI <- function() {
                       checkboxInput("surv_forest_show_hr", "Show HR",      value = TRUE),
                       checkboxInput("surv_forest_show_ci", "Show 95% CI",  value = TRUE),
                       checkboxInput("surv_forest_show_p",  "Show p-value", value = TRUE)
-                    )
-                  ),
-                  ctrl_section("surv-options", "sliders-h", "Options",
-                    sliderInput("surv_opt_text_size", "Text size (pt)",
-                                min = 10, max = 24, value = 16, step = 1)
-                  ),
-                  ctrl_section("surv-title", "heading", "Title & Subtitle",
+                    ),
+                    selectInput("surv_opt_legend_pos", "Legend position",
+                      choices = c("None"   = "none",
+                                  "Top"    = "top",    "Bottom" = "bottom",
+                                  "Left"   = "left",   "Right"  = "right",
+                                  "In plot \u2013 top left"     = "inplot_tl",
+                                  "In plot \u2013 top right"    = "inplot_tr",
+                                  "In plot \u2013 bottom left"  = "inplot_bl",
+                                  "In plot \u2013 bottom right" = "inplot_br"),
+                      selected = "right"
+                    ),
                     textInput("surv_plot_title", "Title",
                               placeholder = "Leave blank for default"),
                     selectInput("surv_plot_title_align", "Title alignment",
                       choices = c("Left" = "left", "Center" = "center", "Right" = "right"),
                       selected = "center"),
                     textInput("surv_plot_subtitle", "Subtitle",
-                              placeholder = "Optional subtitle")
+                              placeholder = "Optional subtitle"),
+                    textInput("surv_plot_xaxis_label", "X-axis label",
+                              placeholder = "Leave blank for default"),
+                    textInput("surv_plot_yaxis_label", "Y-axis label",
+                              placeholder = "Leave blank for default"),
+                    textInput("surv_plot_legend_label", "Legend label",
+                              placeholder = "Leave blank for default")
+                  ),
+                  ctrl_section("surv-scaling", "expand", "Scaling",
+                    sliderInput("surv_opt_text_size", "Text size (pt)",
+                                min = 10, max = 24, value = 16, step = 1)
                   ),
                   ctrl_section("surv-export", "arrows-alt", "Plot Size / Export",
                     fluidRow(
@@ -590,6 +612,10 @@ survival_server <- function(input, output, session, rv) {
     plot_sub    <- input$surv_plot_subtitle %||% ""
     title_hjust <- switch(input$surv_plot_title_align %||% "center",
                           left = 0, center = 0.5, right = 1, 0.5)
+    xlab_custom <- trimws(input$surv_plot_xaxis_label  %||% "")
+    ylab_custom <- trimws(input$surv_plot_yaxis_label  %||% "")
+    leg_label   <- trimws(input$surv_plot_legend_label %||% "")
+    legend_pos  <- input$surv_opt_legend_pos %||% "right"
 
     tryCatch({
       km_obj <- survminer::ggsurvplot(
@@ -600,8 +626,9 @@ survival_server <- function(input, output, session, rv) {
         risk.table.y.text.col = TRUE,
         conf.int              = isTRUE(input$surv_opt_conf_int),
         xlim                  = c(x_start, NA),
-        xlab                  = "Time (Days)",
-        ylab                  = "Survival Probability",
+        xlab                  = if (nzchar(xlab_custom)) xlab_custom else "Time (Days)",
+        ylab                  = if (nzchar(ylab_custom)) ylab_custom else "Survival Probability",
+        legend.title          = if (nzchar(leg_label)) leg_label else "Treatment",
         title                 = plot_title,
         ggtheme               = ggplot2::theme_classic(base_size = text_size)
       )
@@ -612,6 +639,24 @@ survival_server <- function(input, output, session, rv) {
         km_obj$plot <- km_obj$plot +
           ggplot2::labs(subtitle = plot_sub) +
           ggplot2::theme(plot.subtitle = ggplot2::element_text(hjust = title_hjust))
+      }
+      # Apply legend position (ggsurvplot returns a list; position touches the plot component)
+      lp <- if (startsWith(legend_pos, "inplot_")) {
+        coord <- switch(legend_pos,
+          inplot_tl = c(0.02, 0.98), inplot_tr = c(0.98, 0.98),
+          inplot_bl = c(0.02, 0.02), inplot_br = c(0.98, 0.02), c(0.5, 0.5))
+        just <- switch(legend_pos,
+          inplot_tl = c("left","top"),  inplot_tr = c("right","top"),
+          inplot_bl = c("left","bottom"), inplot_br = c("right","bottom"),
+          c("center","center"))
+        km_obj$plot <- km_obj$plot +
+          ggplot2::theme(
+            legend.position    = coord,
+            legend.justification = just,
+            legend.background  = ggplot2::element_rect(
+              fill = scales::alpha("white", 0.8), colour = NA))
+      } else {
+        km_obj$plot <- km_obj$plot + ggplot2::theme(legend.position = legend_pos)
       }
       print(km_obj)
     }, error = function(e) {
@@ -811,12 +856,17 @@ survival_server <- function(input, output, session, rv) {
 
     p <- build_surv_forest_plot(res, ref_grp, pt_color, show_hr, show_ci, show_p)
     req(!is.null(p))
-    text_size <- input$surv_opt_text_size %||% 16
-    apply_plot_labels(p,
-                      input$surv_plot_title       %||% "",
-                      input$surv_plot_subtitle    %||% "",
-                      input$surv_plot_title_align %||% "center",
-                      text_size)
+    text_size   <- input$surv_opt_text_size %||% 16
+    legend_pos  <- input$surv_opt_legend_pos %||% "right"
+    p <- apply_plot_labels(p,
+                           input$surv_plot_title        %||% "",
+                           input$surv_plot_subtitle     %||% "",
+                           input$surv_plot_title_align  %||% "center",
+                           text_size,
+                           xlab       = input$surv_plot_xaxis_label  %||% "",
+                           ylab       = input$surv_plot_yaxis_label  %||% "",
+                           legend_lab = input$surv_plot_legend_label %||% "")
+    apply_legend_pos(p, legend_pos)
   }, width = function() input$surv_plot_width %||% 800,
      height = function() input$surv_plot_height %||% 600)
   
@@ -837,8 +887,17 @@ survival_server <- function(input, output, session, rv) {
       pal <- build_color_vector(input, "surv_color", groups)
       if (!is.null(pal)) pal <- unname(pal)
       if (is.null(pal)) pal <- "hue"
-      x_start <- if (!is.null(input$surv_km_xstart) && !is.na(input$surv_km_xstart))
-                   as.numeric(input$surv_km_xstart) else 0
+      x_start     <- if (!is.null(input$surv_km_xstart) && !is.na(input$surv_km_xstart))
+                       as.numeric(input$surv_km_xstart) else 0
+      xlab_custom <- trimws(input$surv_plot_xaxis_label  %||% "")
+      ylab_custom <- trimws(input$surv_plot_yaxis_label  %||% "")
+      leg_label   <- trimws(input$surv_plot_legend_label %||% "")
+      legend_pos  <- input$surv_opt_legend_pos %||% "right"
+      plot_title  <- if (nzchar(trimws(input$surv_plot_title %||% "")))
+                       input$surv_plot_title else "Kaplan-Meier Survival Curves by Treatment"
+      plot_sub    <- input$surv_plot_subtitle %||% ""
+      title_hjust <- switch(input$surv_plot_title_align %||% "center",
+                            left = 0, center = 0.5, right = 1, 0.5)
       km_obj <- tryCatch(
         survminer::ggsurvplot(
           km_fit,
@@ -848,13 +907,40 @@ survival_server <- function(input, output, session, rv) {
           risk.table.y.text.col = TRUE,
           conf.int              = isTRUE(input$surv_opt_conf_int),
           xlim                  = c(x_start, NA),
-          xlab                  = "Time (Days)",
-          ylab                  = "Survival Probability",
-          title                 = "Kaplan-Meier Survival Curves by Treatment"
+          xlab                  = if (nzchar(xlab_custom)) xlab_custom else "Time (Days)",
+          ylab                  = if (nzchar(ylab_custom)) ylab_custom else "Survival Probability",
+          legend.title          = if (nzchar(leg_label)) leg_label else "Treatment",
+          title                 = plot_title
         ),
         error = function(e) rv$surv_results$km_plot
       )
       req(!is.null(km_obj))
+      if (inherits(km_obj, "ggsurvplot")) {
+        km_obj$plot <- km_obj$plot +
+          ggplot2::theme(plot.title = ggplot2::element_text(hjust = title_hjust))
+        if (nzchar(trimws(plot_sub))) {
+          km_obj$plot <- km_obj$plot +
+            ggplot2::labs(subtitle = plot_sub) +
+            ggplot2::theme(plot.subtitle = ggplot2::element_text(hjust = title_hjust))
+        }
+        if (startsWith(legend_pos, "inplot_")) {
+          coord <- switch(legend_pos,
+            inplot_tl = c(0.02, 0.98), inplot_tr = c(0.98, 0.98),
+            inplot_bl = c(0.02, 0.02), inplot_br = c(0.98, 0.02), c(0.5, 0.5))
+          just <- switch(legend_pos,
+            inplot_tl = c("left","top"),  inplot_tr = c("right","top"),
+            inplot_bl = c("left","bottom"), inplot_br = c("right","bottom"),
+            c("center","center"))
+          km_obj$plot <- km_obj$plot +
+            ggplot2::theme(
+              legend.position    = coord,
+              legend.justification = just,
+              legend.background  = ggplot2::element_rect(
+                fill = scales::alpha("white", 0.8), colour = NA))
+        } else {
+          km_obj$plot <- km_obj$plot + ggplot2::theme(legend.position = legend_pos)
+        }
+      }
       png(file, width  = input$surv_plot_width  %||% 800,
                 height = input$surv_plot_height %||% 600,
                 units  = "px", res = input$surv_plot_dpi %||% 100)
@@ -902,6 +988,15 @@ survival_server <- function(input, output, session, rv) {
         show_p   = isTRUE(input$surv_forest_show_p  %||% TRUE)
       )
       req(!is.null(p))
+      p <- apply_plot_labels(p,
+                             input$surv_plot_title        %||% "",
+                             input$surv_plot_subtitle     %||% "",
+                             input$surv_plot_title_align  %||% "center",
+                             input$surv_opt_text_size     %||% 16,
+                             xlab       = input$surv_plot_xaxis_label  %||% "",
+                             ylab       = input$surv_plot_yaxis_label  %||% "",
+                             legend_lab = input$surv_plot_legend_label %||% "")
+      p <- apply_legend_pos(p, input$surv_opt_legend_pos %||% "right")
       png(file, width = input$surv_plot_width %||% 900,
                 height = input$surv_plot_height %||% 600,
                 units = "px", res = input$surv_plot_dpi %||% 100)

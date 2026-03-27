@@ -481,7 +481,7 @@ tumorGrowthUI <- function() {
                       "Effect Size Forest Plot"  = "effect_forest"
                     )
                   ),
-                  ctrl_section("group-order", "sort", "Group Order & Colors",
+                  ctrl_section("group-order", "sort", "Groups",
                     uiOutput("tg_group_order_color_ui")
                   ),
                   ctrl_section("elements", "layer-group", "Elements",
