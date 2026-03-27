@@ -123,26 +123,12 @@ survivalUI <- function() {
               column(9,
                 conditionalPanel("input.surv_plot_selector == 'km'",
                   h4("Kaplan-Meier Survival Curves"),
-                  tab_info(
-                    strong("Kaplan-Meier survival curve: "),
-                    "non-parametric step-function estimating the probability of ",
-                    "surviving past each timepoint. Each drop represents one or more ",
-                    "events; tick marks represent censored animals still alive at last ",
-                    "observation. Groups that remain higher on the y-axis have better survival."
-                  ),
                   shinycssloaders::withSpinner(
                     plotOutput("surv_plot_km", width = "auto", height = "auto")
                   )
                 ),
                 conditionalPanel("input.surv_plot_selector == 'forest'",
                   h4("Hazard Ratio Forest Plot"),
-                  tab_info(
-                    strong("Hazard ratio forest plot: "),
-                    "each row is a treatment group vs the reference. ",
-                    "The x-axis uses a log\u2081\u2080 scale, symmetric around HR\u202f=\u202f1. ",
-                    "Points to the left indicate a protective effect; points to the right ",
-                    "indicate increased hazard relative to the reference group."
-                  ),
                   shinycssloaders::withSpinner(
                     plotOutput("surv_forest_plot", width = "auto", height = "auto")
                   )

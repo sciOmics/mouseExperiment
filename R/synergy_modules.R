@@ -126,30 +126,18 @@ synergyUI <- function() {
               column(9,
                 conditionalPanel("input.syn_plot_selector == 'main'",
                   h4("Synergy Plot"),
-                  tab_info(strong("Visual synergy comparison: "),
-                    "bars showing observed combination effect alongside the expected effect ",
-                    "if the two drugs acted independently (Bliss model). A combination bar ",
-                    "taller than the expected bar indicates synergy at the evaluation timepoint."),
                   shinycssloaders::withSpinner(
                     plotOutput("syn_plot_main", width = "auto", height = "auto")
                   )
                 ),
                 conditionalPanel("input.syn_plot_selector == 'trend'",
                   h4("Synergy Plot"),
-                  tab_info(strong("Tumor Growth Inhibition over time: "),
-                    "percent tumor growth inhibition for each treatment group at every measured timepoint. ",
-                    "Synergy and antagonism annotations are shown where the combination significantly ",
-                    "exceeds or falls short of the expected Bliss-independent effect."),
                   shinycssloaders::withSpinner(
                     plotOutput("syn_plot_trend", width = "auto", height = "auto")
                   )
                 ),
                 conditionalPanel("input.syn_plot_selector == 'ci'",
                   h4("Combination Index"),
-                  tab_info(strong("Combination Index (CI) over time: "),
-                    "CI values at each measured timepoint. The dashed reference line at ",
-                    "CI\u202f=\u202f1 represents additivity. Points below 1 indicate synergism; ",
-                    "points above 1 indicate antagonism."),
                   shinycssloaders::withSpinner(
                     plotOutput("syn_plot_ci", width = "auto", height = "auto")
                   )

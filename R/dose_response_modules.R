@@ -137,35 +137,18 @@ doseResponseUI <- function() {
               column(9,
                 conditionalPanel("input.dr_plot_selector == 'scatter'",
                   h4("Scatter Plot"),
-                  tab_info(
-                    strong("Dose vs tumor volume scatter plot: "),
-                    "each point is one animal. The line is the linear regression fit. ",
-                    "A steep slope with a narrow confidence band suggests a strong ",
-                    "dose-response relationship."
-                  ),
                   shinycssloaders::withSpinner(
                     plotOutput("dr_plot_scatter", width = "auto", height = "auto")
                   )
                 ),
                 conditionalPanel("input.dr_plot_selector == 'boxplot'",
                   h4("Boxplot by Dose"),
-                  tab_info(
-                    strong("Tumor volume distribution by dose level: "),
-                    "each box shows the median, IQR, and individual data points per dose group. ",
-                    "Useful for assessing variance across dose levels and identifying outliers."
-                  ),
                   shinycssloaders::withSpinner(
                     plotOutput("dr_plot_boxplot", width = "auto", height = "auto")
                   )
                 ),
                 conditionalPanel("input.dr_plot_selector == 'barplot'",
                   h4("Mean by Dose"),
-                  tab_info(
-                    strong("Mean tumor volume with 95\u00a0% confidence intervals: "),
-                    "bar heights represent group means; error bars are 95\u00a0% CIs. ",
-                    "Non-overlapping error bars between adjacent dose groups are a rough ",
-                    "indicator of significance."
-                  ),
                   shinycssloaders::withSpinner(
                     plotOutput("dr_plot_barplot", width = "auto", height = "auto")
                   )

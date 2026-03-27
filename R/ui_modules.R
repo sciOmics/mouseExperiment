@@ -599,10 +599,6 @@ tumorGrowthUI <- function() {
           ),
           
           tabPanel("Diagnostics",
-            tab_info(
-              strong("Q\u2011Q Plot: "), "residuals should follow the diagonal for valid inference. ",
-              strong("Residuals vs Fitted: "), "random scatter around zero indicates a good model fit; patterns suggest model misspecification or heteroscedasticity."
-            ),
             fluidRow(
               column(6,
                 h4("Q-Q Plot of Residuals"),
