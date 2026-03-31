@@ -735,39 +735,44 @@ tumor_growth_server <- function(id, rv) {
     )
   }, ignoreNULL = FALSE)
 
-  # Conditionally render AUC tabs only in AUC mode
-  output$tg_auc_tabs <- renderUI({
-    if (isTRUE(input$tg_model_type == "auc")) {
-      list(
+  # Dynamically insert / remove AUC tabs based on model type
+  auc_tabs_inserted <- reactiveVal(FALSE)
+
+  observeEvent(input$tg_model_type, {
+    tabs_id <- "tg_results_tabs"
+    if (isTRUE(input$tg_model_type == "auc") && !isTRUE(auc_tabs_inserted())) {
+      insertTab(inputId = tabs_id, target = "Growth Rates", position = "after",
         tabPanel("AUC Individual Data",
           tab_info(
             strong("Per-animal area under the growth curve (AUC) "), "computed for each subject across their observed measurement timepoints. Only displayed in AUC analysis mode.",
             tags$ul(
-              tags$li(strong("ID"), " — individual animal identifier."),
-              tags$li(strong("Treatment"), " — treatment group."),
-              tags$li(strong("Cage"), " — cage identifier."),
-              tags$li(strong("Group"), " — group assignment."),
-              tags$li(strong("AUC"), " — area under the volume-time curve (mm³ × days)."),
-              tags$li(strong("Last_Day"), " — final measurement timepoint for this animal."),
-              tags$li(strong("First_Day"), " — initial measurement timepoint for this animal."),
-              tags$li(strong("Extrapolated"), " — logical flag indicating if AUC was extended beyond observed data."),
-              tags$li(strong("NumPoints"), " — number of observed volume measurements used to compute AUC.")
+              tags$li(strong("ID"), " \u2014 individual animal identifier."),
+              tags$li(strong("Treatment"), " \u2014 treatment group."),
+              tags$li(strong("Cage"), " \u2014 cage identifier."),
+              tags$li(strong("Group"), " \u2014 group assignment."),
+              tags$li(strong("AUC"), " \u2014 area under the volume-time curve (mm\u00b3 \u00d7 days)."),
+              tags$li(strong("Last_Day"), " \u2014 final measurement timepoint for this animal."),
+              tags$li(strong("First_Day"), " \u2014 initial measurement timepoint for this animal."),
+              tags$li(strong("Extrapolated"), " \u2014 logical flag indicating if AUC was extended beyond observed data."),
+              tags$li(strong("NumPoints"), " \u2014 number of observed volume measurements used to compute AUC.")
             )
           ),
           shinycssloaders::withSpinner(
             DTOutput(session$ns("tg_auc_individual_table"))
           ),
           downloadButton(session$ns("download_tg_auc_individual"), "Download AUC Individual Data")
-        ),
+        )
+      )
+      insertTab(inputId = tabs_id, target = "AUC Individual Data", position = "after",
         tabPanel("AUC Summary",
           tab_info(
             strong("Group-level AUC summary statistics"), " showing mean area under the growth curve, standard deviation, sample size, and standard error for each treatment group. Only displayed in AUC analysis mode.",
             tags$ul(
-              tags$li(strong("Treatment"), " — treatment group name."),
-              tags$li(strong("Mean_AUC"), " — group mean area under curve (mm³ × days)."),
-              tags$li(strong("SD_AUC"), " — standard deviation of AUC within the group."),
-              tags$li(strong("N"), " — number of animals in the group with valid AUC data."),
-              tags$li(strong("SEM_AUC"), " — standard error of the mean AUC (SD / √N).")
+              tags$li(strong("Treatment"), " \u2014 treatment group name."),
+              tags$li(strong("Mean_AUC"), " \u2014 group mean area under curve (mm\u00b3 \u00d7 days)."),
+              tags$li(strong("SD_AUC"), " \u2014 standard deviation of AUC within the group."),
+              tags$li(strong("N"), " \u2014 number of animals in the group with valid AUC data."),
+              tags$li(strong("SEM_AUC"), " \u2014 standard error of the mean AUC (SD / \u221aN).")
             ),
             em("Use these summaries for descriptive group comparisons and to verify sample sizes and variability before statistical testing.")
           ),
@@ -777,8 +782,13 @@ tumor_growth_server <- function(id, rv) {
           downloadButton(session$ns("download_tg_auc_summary"), "Download AUC Summary")
         )
       )
+      auc_tabs_inserted(TRUE)
+    } else if (!isTRUE(input$tg_model_type == "auc") && isTRUE(auc_tabs_inserted())) {
+      removeTab(inputId = tabs_id, target = "AUC Individual Data")
+      removeTab(inputId = tabs_id, target = "AUC Summary")
+      auc_tabs_inserted(FALSE)
     }
-  })
+  }, ignoreNULL = FALSE)
 
   # ANOVA table
   output$tg_download_plot_btn <- renderUI({

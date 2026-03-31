@@ -449,11 +449,6 @@ tumorGrowthUI <- function(id) {
             downloadButton(ns("download_tg_rates"), "Download Growth Rates")
           ),
           
-          conditionalPanel(ns = ns,
-            "input.tg_model_type == 'auc'",
-            uiOutput(ns("tg_auc_tabs"))
-          ),
-          
           tabPanel("Data Summary",
             tab_info(
               strong("Descriptive statistics for tumor volume "), "by treatment group and timepoint. Shows mean, standard deviation, and standard error across subjects measured at each study day.",
