@@ -33,56 +33,7 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     shiny::addResourcePath("js",     file.path(www_dir, "js"))
   }
 
-  # JS injected on page load:
-  #  1. Moves Help + Citation to a right-aligned nav
-  #  2. Adds "navbar-center" class to the main nav for CSS centering
-  #  3. Exposes disableNavTab / enableNavTab helpers for server-side use
-  nav_js <- HTML("
-$(document).ready(function() {
-  // Move Help and Citation to a right-aligned nav list
-  var $mainNav = $('.navbar-nav:first');
-  var helpLi     = $mainNav.find('a[data-value=\"Help\"]').closest('li').detach();
-  var citationLi = $mainNav.find('a[data-value=\"About\"]').closest('li').detach();
-  var $rightNav  = $('<ul class=\"nav navbar-nav navbar-right\" id=\"nav-right\"></ul>');
-  $rightNav.append(helpLi).append(citationLi);
-  // Bootstrap 5: no .navbar-collapse wrapper — append directly to .container-fluid
-  var $container = $mainNav.closest('.container-fluid, .navbar-collapse');
-  if ($container.length === 0) $container = $mainNav.parent();
-  $container.append($rightNav);
-
-
-  // Mark main nav for centering via CSS
-  $mainNav.addClass('navbar-center');
-
-  // Cross-nav active-state sync:
-  // Bootstrap only clears 'active' within the same <ul>. Because Help/Citation
-  // live in #nav-right (a separate <ul>), clicking a main-nav tab leaves them
-  // visually active, causing a double-click requirement.
-  // Solution: clear active from the *other* nav whenever a tab is clicked.
-  $(document).on('click', '#nav-right a[data-value]', function() {
-    $mainNav.find('li.active').removeClass('active');
-  });
-  $(document).on('click', '.navbar-center a[data-value]', function() {
-    $('#nav-right li.active').removeClass('active');
-  });
-});
-
-// Prevent clicks on disabled tabs
-$(document).on('click', '.nav-tab-disabled > a, .nav-tab-disabled > .nav-link', function(e) {
-  e.preventDefault(); e.stopPropagation(); return false;
-});
-
-function disableNavTab(val) {
-  $('.navbar-nav li a[data-value=\"' + val + '\"]').closest('li').addClass('nav-tab-disabled');
-  $('#nav-right li a[data-value=\"' + val + '\"]').closest('li').addClass('nav-tab-disabled');
-}
-function enableNavTab(val) {
-  $('.navbar-nav li a[data-value=\"' + val + '\"]').closest('li').removeClass('nav-tab-disabled');
-  $('#nav-right li a[data-value=\"' + val + '\"]').closest('li').removeClass('nav-tab-disabled');
-}
-window.disableNavTab = disableNavTab;
-window.enableNavTab  = enableNavTab;
-")
+  # JS files are loaded from www/js/ via tags$script(src = ...) in the UI header
 
   ui <- navbarPage(
     title = tags$span(id = "nav-brand", "mouseExperiment",
@@ -107,32 +58,10 @@ window.enableNavTab  = enableNavTab;
             opacity: 0.45;
           }
         ")),
-        tags$script(nav_js),
+        tags$script(src = "js/navbar.js"),
         tags$script(src = "js/sidebar.js"),
         tags$script(src = "js/darkmode.js"),
-        # Inject mouse overlay as a direct child of <body> to avoid
-        # z-index conflicts with the Bootstrap navbar.
-        tags$script(HTML("
-$(document).ready(function() {
-  var layer = $('<div id=\"mouse-bg-layer\">' +
-    '<img id=\"mouse-bg-img1\" class=\"mouse-bg-img\" src=\"images/mouse_outline1.png\" alt=\"\">' +
-    '<img id=\"mouse-bg-img2\" class=\"mouse-bg-img\" src=\"images/mouse_outline2.png\" alt=\"\">' +
-    '</div>');
-  $('body').append(layer);
-
-  // Disable Diagnostics tab — pending re-implementation
-  function disableDiagnosticsTab() {
-    var $diagLi = $('#tg_results_tabs li').filter(function() {
-      return $(this).find('a[data-value=\"Diagnostics\"]').length > 0;
-    });
-    if ($diagLi.length) {
-      $diagLi.addClass('disabled').attr('title', 'Diagnostics — coming in a future release');
-      $diagLi.find('a').css({'pointer-events': 'none', 'cursor': 'not-allowed'});
-    }
-  }
-  $(document).one('shiny:sessioninitialized', disableDiagnosticsTab);
-});
-"))
+        tags$script(src = "js/overlay.js")
       )
     ),
 

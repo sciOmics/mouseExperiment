@@ -57,5 +57,4 @@ SAMPLE_DATASETS <- list(
 # Numeric precision for display
 DECIMAL_PLACES <- 3
 
-# Enable shinyjs
-shinyjs::useShinyjs()
+# shinyjs is enabled via useShinyjs() in the app UI (app.R)

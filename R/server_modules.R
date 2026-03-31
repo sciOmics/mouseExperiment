@@ -113,7 +113,6 @@ data_upload_server <- function(input, output, session, rv) {
       })
       
     } else {
-      cat("DEBUG: Validation failed - ", result$message, "\n")
       rv$data_valid <- FALSE
       rv$uploaded_data <- NULL
       output$file_validation_msg <- renderUI({
@@ -153,41 +152,17 @@ data_upload_server <- function(input, output, session, rv) {
     if (!is.null(input$time_method) && input$time_method == "from_date" &&
         !is.null(input$col_date_for_day) && input$col_date_for_day != "") {
       tryCatch({
-        first_val    <- as.character(data[1, input$col_date_for_day])
-        ref_date_str <- input$reference_date %||% ""
-
-        # Detect format and normalise both data dates and start_date
-        if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_val)) {
-          fmt <- "%m/%d/%Y"
-        } else if (grepl("^\\d{4}-\\d{1,2}-\\d{1,2}$", first_val)) {
-          fmt <- "%Y-%m-%d"
-        } else if (grepl("^\\d{1,2}-[A-Za-z]{3}$", first_val)) {
-          fmt <- "%d-%b"
-        } else if (grepl("^[A-Za-z]+\\s+\\d{1,2}$", first_val)) {
-          # "Month Day" (e.g. "March 1") — inject year from reference date
-          ref_parsed <- tryCatch(
-            as.Date(ref_date_str,
-                    tryFormats = c("%Y-%m-%d", "%m/%d/%Y", "%d-%b-%Y",
-                                   "%B %d %Y", "%B %d, %Y")),
-            error = function(e) Sys.Date()
-          )
-          if (is.na(ref_parsed)) ref_parsed <- Sys.Date()
-          ref_year <- as.integer(format(ref_parsed, "%Y"))
-          data[[input$col_date_for_day]] <-
-            paste(data[[input$col_date_for_day]], ref_year)
-          ref_date_str <- format(ref_parsed, "%B %d %Y")
-          fmt <- "%B %d %Y"
-        } else {
-          fmt <- NULL
-        }
-
+        date_info <- detect_date_format(data, input$col_date_for_day,
+                                        input$reference_date %||% "")
         data <- mouseExperiment::calculate_dates(
-          data,
-          start_date  = ref_date_str,
+          date_info$data,
+          start_date  = date_info$start_date,
           date_column = input$col_date_for_day,
-          date_format = fmt
+          date_format = date_info$date_format
         )
-      }, error = function(e) NULL)
+      }, error = function(e) {
+        message("[TG Preview] Date calculation failed: ", conditionMessage(e))
+      })
     }
     
     # Apply volume calculation if selected
@@ -201,7 +176,9 @@ data_upload_server <- function(input, output, session, rv) {
           width_column  = input$col_width,
           formula       = input$volume_formula
         )
-      }, error = function(e) NULL)
+      }, error = function(e) {
+        message("[TG Preview] Volume calculation failed: ", conditionMessage(e))
+      })
     }
     
     data
@@ -245,8 +222,8 @@ data_upload_server <- function(input, output, session, rv) {
                else NULL
     
     # --- Treatment groups ---
-    tx_box <- if (!is.null(tx_col) && tx_col %in% colnames(data)) {
-      if (!is.null(dose_col) && dose_col %in% colnames(data)) {
+    tx_box <- if (has_col(data, tx_col)) {
+      if (has_col(data, dose_col)) {
         # Show treatment × dose breakdown as a table
         td <- unique(data[, c(tx_col, dose_col)])
         td[[tx_col]]   <- as.character(td[[tx_col]])
@@ -283,7 +260,7 @@ data_upload_server <- function(input, output, session, rv) {
     # --- Cage IDs removed --- #
 
     # --- Day / date range ---
-    time_box <- if (!is.null(time_col) && time_col %in% colnames(data)) {
+    time_box <- if (has_col(data, time_col)) {
       vals <- suppressWarnings(as.numeric(data[[time_col]]))
       vals <- vals[!is.na(vals)]
       if (length(vals) > 0) {
@@ -298,12 +275,11 @@ data_upload_server <- function(input, output, session, rv) {
     } else NULL
     
     # --- Mice per group ---
-    mice_box <- if (!is.null(tx_col) && tx_col %in% colnames(data) &&
-                    !is.null(id_col)  && id_col  %in% colnames(data)) {
+    mice_box <- if (has_col(data, tx_col) && has_col(data, id_col)) {
 
-      has_dose <- !is.null(dose_col) && dose_col %in% colnames(data)
+      has_dose <- has_col(data, dose_col)
 
-      inner <- if (!is.null(cage_col) && cage_col %in% colnames(data)) {
+      inner <- if (has_col(data, cage_col)) {
         # Cage × treatment (× dose) table
         key_cols <- c(id_col, cage_col, tx_col, if (has_dose) dose_col)
         ct <- unique(data[, key_cols])
@@ -382,14 +358,14 @@ data_upload_server <- function(input, output, session, rv) {
     len_col_raw  <- if (!is.null(input$col_length) && input$col_length != "") input$col_length else NULL
     wid_col_raw  <- if (!is.null(input$col_width)  && input$col_width  != "") input$col_width  else NULL
     id_col_disp  <- if (!is.null(input$col_id)     && input$col_id     != "") input$col_id     else NULL
-    time_col_disp <- if (!is.null(time_col) && !is.null(time_col) && time_col %in% colnames(raw_data)) time_col else NULL
+    time_col_disp <- if (has_col(raw_data, time_col)) time_col else NULL
 
     transposed_box <- if (length(tr) > 0 && !is.null(len_col_raw) && !is.null(wid_col_raw)) {
       tbl_rows <- lapply(tr, function(i) {
         len_v <- raw_data[[len_col_raw]][i]
         wid_v <- raw_data[[wid_col_raw]][i]
-        id_v  <- if (!is.null(id_col_disp)   && id_col_disp   %in% colnames(raw_data)) raw_data[[id_col_disp]][i]   else ""
-        day_v <- if (!is.null(time_col_disp) && time_col_disp %in% colnames(raw_data)) raw_data[[time_col_disp]][i] else ""
+        id_v  <- if (has_col(raw_data, id_col_disp))   raw_data[[id_col_disp]][i]   else ""
+        day_v <- if (has_col(raw_data, time_col_disp)) raw_data[[time_col_disp]][i] else ""
         tags$tr(
           tags$td(i),
           tags$td(if (nzchar(trimws(as.character(id_v))))  as.character(id_v)  else tags$em("\u2014")),
@@ -525,6 +501,30 @@ data_upload_server <- function(input, output, session, rv) {
   
   # Proceed button is always clickable - validation enforced at analysis time
   # No need to disable/enable the button
+
+  # ---------------------------------------------------------------------------
+  # Sync column mapping inputs into rv$settings for cross-module access.
+  # Other modules (TG, survival, synergy, etc.) read rv$settings$* instead of
+  # input$col_* so they work correctly under moduleServer() namespacing.
+  # ---------------------------------------------------------------------------
+  observe({
+    rv$settings <- list(
+      col_treatment     = input$col_treatment %||% "",
+      col_id            = input$col_id %||% "",
+      col_day           = input$col_day %||% "",
+      col_date_for_day  = input$col_date_for_day %||% "",
+      col_volume        = input$col_volume %||% "",
+      col_length        = input$col_length %||% "",
+      col_width         = input$col_width %||% "",
+      col_cage          = input$col_cage %||% "",
+      col_dose          = input$col_dose %||% "",
+      col_survival_event = input$col_survival_event %||% "",
+      time_method       = input$time_method %||% "direct_day",
+      volume_method     = input$volume_method %||% "direct",
+      volume_formula    = input$volume_formula %||% "ellipsoid",
+      reference_date    = input$reference_date %||% ""
+    )
+  })
 }
 
 #' Tumor Growth Analysis Server Logic
@@ -548,9 +548,6 @@ tumor_growth_server <- function(input, output, session, rv) {
                     input$col_dose
                   else NULL
 
-      cat("DEBUG: Updating reference group choices. treatment_col=", treatment_col,
-          " dose_col=", if (is.null(dose_col)) "NULL" else dose_col, "\n")
-
       if (!is.null(treatment_col) && nzchar(treatment_col)) {
         df <- rv$uploaded_data
 
@@ -570,7 +567,6 @@ tumor_growth_server <- function(input, output, session, rv) {
           default_ref <- pick_reference_group(treatment_values)
           updateSelectInput(session, "tg_reference", choices = new_choices,
                             selected = default_ref)
-          cat("  Reference group choices updated. Default:", default_ref, "\n")
         }
       }
     }
@@ -578,9 +574,7 @@ tumor_growth_server <- function(input, output, session, rv) {
   
   # Run analysis button handler
   observeEvent(input$run_tg_analysis, {
-    cat("DEBUG: Run Analysis button clicked\n")
     req(rv$uploaded_data, rv$data_valid)
-    cat("DEBUG: Data requirements met, starting analysis\n")
     
     # Validate reference group selection
     if (input$tg_reference == "" || is.null(input$tg_reference)) {
@@ -603,45 +597,13 @@ tumor_growth_server <- function(input, output, session, rv) {
     
     # Handle time column - either use direct day or calculate from date
     if (input$time_method == "from_date") {
-      # Calculate days from start date
-      start_date <- input$reference_date
-      
-      # Detect date format from the actual data in the date column
-      first_date <- as.character(data[1, input$col_date_for_day])
-      
-      # Determine date format by checking the pattern
-      date_format <- NULL
-      if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_date)) {
-        date_format <- "%m/%d/%Y"  # MM/DD/YYYY format
-      } else if (grepl("^\\d{4}-\\d{1,2}-\\d{1,2}$", first_date)) {
-        date_format <- "%Y-%m-%d"  # YYYY-MM-DD format
-      } else if (grepl("^\\d{1,2}-[A-Za-z]{3}$", first_date)) {
-        date_format <- "%d-%b"     # DD-Mon format
-      } else if (grepl("^[A-Za-z]+\\s+\\d{1,2}$", first_date)) {
-        # "Month Day" format (e.g. "March 1", "January 15") – no year in data.
-        # Extract year from the reference date so we can build complete timestamps.
-        ref_date_parsed <- tryCatch(
-          as.Date(start_date,
-                  tryFormats = c("%Y-%m-%d", "%m/%d/%Y", "%d-%b-%Y",
-                                 "%B %d %Y", "%B %d, %Y")),
-          error = function(e) Sys.Date()
-        )
-        if (is.na(ref_date_parsed)) ref_date_parsed <- Sys.Date()
-        ref_year <- as.integer(format(ref_date_parsed, "%Y"))
-        # Append year to every data date:  "March 1" -> "March 1 2025"
-        data[[input$col_date_for_day]] <-
-          paste(data[[input$col_date_for_day]], ref_year)
-        # Reformat start_date to the same pattern so calculate_dates
-        # parses both sides identically
-        start_date  <- format(ref_date_parsed, "%B %d %Y")
-        date_format <- "%B %d %Y"
-      }
-      
+      date_info <- detect_date_format(data, input$col_date_for_day,
+                                      input$reference_date)
       data <- mouseExperiment::calculate_dates(
-        data,
-        start_date = start_date,
+        date_info$data,
+        start_date  = date_info$start_date,
         date_column = input$col_date_for_day,
-        date_format = date_format
+        date_format = date_info$date_format
       )
       time_col <- "Day"  # calculate_dates produces a "Day" column
     } else {
@@ -708,10 +670,32 @@ tumor_growth_server <- function(input, output, session, rv) {
       treatment_column = rv$tx_col,
       cage_column = if (input$col_cage != "") input$col_cage else NULL
     )
+
+    # Validate all required columns exist in data
+    required <- c(Treatment = col_names$treatment_column,
+                  ID        = col_names$id_column,
+                  Time      = col_names$time_column,
+                  Volume    = col_names$volume_column)
+    missing_cols <- check_required_cols(data, required)
+    if (length(missing_cols) > 0) {
+      output$tg_status_msg <- renderUI({
+        div(class = "alert alert-danger",
+            icon("exclamation-circle"),
+            paste0("Required column(s) not found in data: ",
+                   paste(names(missing_cols), "=", sQuote(missing_cols), collapse = ", ")))
+      })
+      rv$tg_running <- FALSE
+      return()
+    }
     
-    # Run analysis
+    # Run analysis with progress indicator
+    progress <- shiny::Progress$new(session, min = 0, max = 1)
+    progress$set(message = "Running tumor growth analysis...", value = 0.1)
+    on.exit(progress$close(), add = TRUE)
+
     result <- safe_analysis({
-      mouseExperiment::tumor_growth_statistics(
+      progress$set(value = 0.3, detail = "Fitting model")
+      res <- mouseExperiment::tumor_growth_statistics(
         df = data,
         time_column = col_names$time_column,
         volume_column = col_names$volume_column,
@@ -732,6 +716,8 @@ tumor_growth_server <- function(input, output, session, rv) {
         include_diagnostics = TRUE,
         plots = FALSE
       )
+      progress$set(value = 0.7, detail = "Generating plots")
+      res
     })
     
     # Generate plots from the results
@@ -767,8 +753,6 @@ tumor_growth_server <- function(input, output, session, rv) {
               if (syn$n_flagged > 0L) {
                 plot_data <- syn$data
                 surv_col  <- syn$col
-                cat(sprintf("INFO: Auto-detected %d early-dropout mice; synthesized censor column '%s'\n",
-                            syn$n_flagged, syn$col))
               } else {
                 # All mice survived to study end — nothing to extrapolate
                 do_extrapolate <- FALSE
@@ -835,9 +819,7 @@ tumor_growth_server <- function(input, output, session, rv) {
                                        "Extrapolated" %in% colnames(result$auc_analysis$individual))
                                       "Extrapolated" else NULL
             ) + ggplot2::theme_classic()
-          }, error = function(e) {
-            cat("WARNING: plot_auc() failed:", e$message, "\n")
-          })
+          }, error = function(e) NULL)
         }
         if (is.null(result$auc_plot) && !is.null(result$treatment_effects)) {
           effects_df <- as.data.frame(result$treatment_effects)
@@ -874,8 +856,10 @@ tumor_growth_server <- function(input, output, session, rv) {
                 plot_df$Upper <- as.numeric(effects_df[[upper_col]])
               } else if (has_se) {
                 se_vals <- as.numeric(effects_df[[se_col]])
-                plot_df$Lower <- plot_df$Effect - 1.96 * se_vals
-                plot_df$Upper <- plot_df$Effect + 1.96 * se_vals
+                df_col  <- intersect(c("df", "DF"), colnames(effects_df))[1]
+                t_mult  <- if (!is.na(df_col)) qt(0.975, pmax(as.numeric(effects_df[[df_col]]), 1)) else qnorm(0.975)
+                plot_df$Lower <- plot_df$Effect - t_mult * se_vals
+                plot_df$Upper <- plot_df$Effect + t_mult * se_vals
               }
 
               # Build beeswarm using per-subject growth rates when available,
@@ -956,7 +940,6 @@ tumor_growth_server <- function(input, output, session, rv) {
             ggplot2::theme_classic() +
             ggplot2::labs(title = "Q-Q Plot of Residuals",
                          x = "Theoretical Quantiles", y = "Sample Quantiles")
-          result$caterpillar_plot <- qq_p  # keep for Plots tab
           result$diag_qq_plot     <- qq_p
         } else if (!is.null(result$model)) {
           tryCatch({
@@ -969,9 +952,8 @@ tumor_growth_server <- function(input, output, session, rv) {
               ggplot2::theme_classic() +
               ggplot2::labs(title = "Q-Q Plot of Residuals",
                            x = "Theoretical Quantiles", y = "Sample Quantiles")
-            result$caterpillar_plot <- qq_p
             result$diag_qq_plot     <- qq_p
-          }, error = function(e) cat("WARNING: QQ plot from model failed:", e$message, "\n"))
+          }, error = function(e) NULL)
         }
         # Residuals vs Fitted
         if (!is.null(result$model)) {
@@ -989,11 +971,11 @@ tumor_growth_server <- function(input, output, session, rv) {
               ggplot2::theme_classic() +
               ggplot2::labs(title = "Residuals vs Fitted",
                            x = "Fitted Values", y = "Residuals")
-          }, error = function(e) cat("WARNING: resid-vs-fitted plot failed:", e$message, "\n"))
+          }, error = function(e) NULL)
         }
         
       }, error = function(e) {
-        cat("WARNING: Error generating plots:", e$message, "\n")
+        message("[TG] Plot generation failed: ", conditionMessage(e))
       })
     }
     
@@ -1076,8 +1058,10 @@ tumor_growth_server <- function(input, output, session, rv) {
             p_col       <- intersect(c("p.value", "p_value", "p.adj", "adj.p.value", "P_Value"), colnames(pc_df))[1]
             if (!is.na(label_col) && !is.na(est_col)) {
               if (is.na(lower_col) && !is.na(se_col)) {
-                pc_df$lower.CL <- pc_df[[est_col]] - 1.96 * pc_df[[se_col]]
-                pc_df$upper.CL <- pc_df[[est_col]] + 1.96 * pc_df[[se_col]]
+                df_col <- intersect(c("df", "DF"), colnames(pc_df))[1]
+                t_mult <- if (!is.na(df_col)) qt(0.975, pmax(as.numeric(pc_df[[df_col]]), 1)) else qnorm(0.975)
+                pc_df$lower.CL <- pc_df[[est_col]] - t_mult * pc_df[[se_col]]
+                pc_df$upper.CL <- pc_df[[est_col]] + t_mult * pc_df[[se_col]]
                 lower_col <- "lower.CL"; upper_col <- "upper.CL"
               }
               p_label <- if (!is.na(p_col)) vapply(pc_df[[p_col]], format_pval, character(1)) else NULL
@@ -1140,11 +1124,13 @@ tumor_growth_server <- function(input, output, session, rv) {
                 ggplot2::theme_classic() +
                 ggplot2::theme(axis.text.y = ggplot2::element_text(size = 10))
             }
-          }, error = function(e) cat("WARNING: effect forest plot failed:", e$message, "\n"))
+          }, error = function(e) {
+            message("[TG] Forest plot generation failed: ", conditionMessage(e))
+          })
         }
 
       }, error = function(e) {
-        cat("WARNING: Error generating comparison types:", e$message, "\n")
+        message("[TG] Comparison generation failed: ", conditionMessage(e))
       })
     }
 
@@ -1168,8 +1154,6 @@ tumor_growth_server <- function(input, output, session, rv) {
                 col_names$treatment_column %in% colnames(data)) {
       unique(as.character(data[[col_names$treatment_column]]))
     } else NULL
-    
-    cat("DEBUG: Analysis complete. Plots and comparisons generated.\n")
     
     # Update status
     if (isTRUE(result$error)) {
@@ -1208,12 +1192,21 @@ tumor_growth_server <- function(input, output, session, rv) {
       paste("  Subjects:", summary_list$data_description$subjects),
       paste("  Treatment Groups:", summary_list$data_description$treatment_groups),
       paste("  Time Points:", summary_list$data_description$time_points),
-      paste("  Reference Group:", summary_list$data_description$reference_group),
-      "",
-      "MODEL DETAILS:",
-      paste("  Fixed Effects:", summary_list$model_specification$fixed_effects),
-      paste("  Random Effects:", summary_list$model_specification$random_effects),
-      paste("  Polynomial Degree:", summary_list$model_specification$polynomial_degree %||% 1L),
+      paste("  Reference Group:", summary_list$data_description$reference_group)
+    )
+
+    # Model specification details only available for LME4
+    if (!is.null(summary_list$model_specification)) {
+      summary_lines <- c(summary_lines,
+        "",
+        "MODEL DETAILS:",
+        paste("  Fixed Effects:", summary_list$model_specification$fixed_effects),
+        paste("  Random Effects:", summary_list$model_specification$random_effects),
+        paste("  Polynomial Degree:", summary_list$model_specification$polynomial_degree %||% 1L)
+      )
+    }
+
+    summary_lines <- c(summary_lines,
       "",
       "NOTES:",
       paste("  ", paste(summary_list$notes, collapse="\n  "))
@@ -1739,8 +1732,6 @@ tumor_growth_server <- function(input, output, session, rv) {
     p
     }, error = function(e) {
       msg <- conditionMessage(e)
-      calls <- paste(sapply(sys.calls(), deparse), collapse = " -> ")
-      cat("ERROR in tg_plot_growth:", msg, "\nCALLS:", calls, "\n")
       ggplot2::ggplot() +
         ggplot2::annotate("text", x = 0.5, y = 0.5,
           label = paste0("Plot error:\n", msg),
@@ -2042,7 +2033,6 @@ tumor_growth_server <- function(input, output, session, rv) {
         input$tg_plot_legend_label %||% "")
 
     }, error = function(e) {
-      cat("ERROR in tg_wf_plot:", conditionMessage(e), "\n")
       NULL
     })
   })
@@ -2053,18 +2043,6 @@ tumor_growth_server <- function(input, output, session, rv) {
     p
   }, width  = function() input$tg_plot_width  %||% 800,
      height = function() input$tg_plot_height %||% 550)
-
-  # Diagnostics/QQ plot
-  output$tg_plot_caterpillar <- renderPlot({
-    req(rv$tg_results)
-    if (isTRUE(rv$tg_results$error)) return(NULL)
-    
-    if (!is.null(rv$tg_results$caterpillar_plot)) {
-      return(rv$tg_results$caterpillar_plot)
-    } else {
-      plot(1, 1, type="n", main="QQ plot generating...", xlab="", ylab="")
-    }
-  })
 
   # Effect size forest plot — rebuilt from raw comparison data each render
   # so group order changes take effect without re-running analysis
@@ -2094,8 +2072,10 @@ tumor_growth_server <- function(input, output, session, rv) {
     if (is.na(label_col) || is.na(est_col)) return(NULL)
 
     if (is.na(lower_col) && !is.na(se_col)) {
-      pc_df$lower.CL <- pc_df[[est_col]] - 1.96 * pc_df[[se_col]]
-      pc_df$upper.CL <- pc_df[[est_col]] + 1.96 * pc_df[[se_col]]
+      df_col <- intersect(c("df", "DF"), colnames(pc_df))[1]
+      t_mult <- if (!is.na(df_col)) qt(0.975, pmax(as.numeric(pc_df[[df_col]]), 1)) else qnorm(0.975)
+      pc_df$lower.CL <- pc_df[[est_col]] - t_mult * pc_df[[se_col]]
+      pc_df$upper.CL <- pc_df[[est_col]] + t_mult * pc_df[[se_col]]
       lower_col <- "lower.CL"; upper_col <- "upper.CL"
     }
 
@@ -2355,19 +2335,6 @@ tumor_growth_server <- function(input, output, session, rv) {
     }
   )
   
-  output$download_tg_plot_caterpillar <- downloadHandler(
-    filename = "qq_plot.png",
-    content = function(file) {
-      if (!is.null(rv$tg_results$caterpillar_plot)) {
-        png(file, width = input$tg_plot_width %||% 800,
-                  height = input$tg_plot_height %||% 600,
-                  units = "px", res = input$tg_plot_dpi %||% 100)
-        print(rv$tg_results$caterpillar_plot)
-        dev.off()
-      }
-    }
-  )
-
   output$download_tg_plot_effect_forest <- downloadHandler(
     filename = "effect_size_forest_plot.png",
     content = function(file) {
@@ -2386,10 +2353,12 @@ tumor_growth_server <- function(input, output, session, rv) {
     filename = "waterfall_plot.png",
     content = function(file) {
       p <- tg_wf_plot()
-      png(file, width  = input$tg_plot_width  %||% 800,
-                height = input$tg_plot_height %||% 550,
-                units  = "px", res = input$tg_plot_dpi %||% 100)
-      tryCatch(print(p), finally = dev.off())
+      if (!is.null(p)) {
+        png(file, width  = input$tg_plot_width  %||% 800,
+                  height = input$tg_plot_height %||% 550,
+                  units  = "px", res = input$tg_plot_dpi %||% 100)
+        tryCatch(print(p), finally = dev.off())
+      }
     }
   )
 

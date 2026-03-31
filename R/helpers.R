@@ -3,6 +3,54 @@
 #' Utility functions for data validation, formatting, and processing
 #'
 
+# ---- Date Preprocessing (consolidated — Issue 2.3) ---------------------------
+
+#' Detect the date format of a column and normalise data for calculate_dates()
+#'
+#' Supports four patterns:
+#'   MM/DD/YYYY, YYYY-MM-DD, DD-Mon, and "Month Day" (e.g. "January 5").
+#' For the "Month Day" pattern the year is inferred from \code{reference_date}
+#' and both the data column and \code{reference_date} are reformatted so that
+#' \code{mouseExperiment::calculate_dates()} can parse them.
+#'
+#' @param data          Data frame containing the date column.
+#' @param date_column   Name of the date column.
+#' @param reference_date Character string of the reference / start date.
+#' @return A list with components \code{data} (possibly modified data frame),
+#'   \code{date_format} (format string or \code{NULL}), and
+#'   \code{start_date} (possibly modified reference date string).
+#' @keywords internal
+detect_date_format <- function(data, date_column, reference_date) {
+  first_val <- as.character(data[1, date_column])
+  start_date <- reference_date
+
+  if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_val)) {
+    fmt <- "%m/%d/%Y"
+  } else if (grepl("^\\d{4}-\\d{1,2}-\\d{1,2}$", first_val)) {
+    fmt <- "%Y-%m-%d"
+  } else if (grepl("^\\d{1,2}-[A-Za-z]{3}$", first_val)) {
+    fmt <- "%d-%b"
+  } else if (grepl("^[A-Za-z]+\\s+\\d{1,2}$", first_val)) {
+    ref_parsed <- tryCatch(
+      as.Date(start_date,
+              tryFormats = c("%Y-%m-%d", "%m/%d/%Y", "%d-%b-%Y",
+                             "%B %d %Y", "%B %d, %Y")),
+      error = function(e) Sys.Date()
+    )
+    if (is.na(ref_parsed)) ref_parsed <- Sys.Date()
+    ref_year <- as.integer(format(ref_parsed, "%Y"))
+    data[[date_column]] <- paste(data[[date_column]], ref_year)
+    start_date <- format(ref_parsed, "%B %d %Y")
+    fmt <- "%B %d %Y"
+  } else {
+    fmt <- NULL
+  }
+
+  list(data = data, date_format = fmt, start_date = start_date)
+}
+
+# ---- End Date Preprocessing -------------------------------------------------
+
 #' Pick the best default reference group
 #'
 #' Returns the first group whose name matches common control-group terms
@@ -159,6 +207,66 @@ safe_analysis <- function(expr) {
     expr,
     error = function(e) {
       list(error = TRUE, message = conditionMessage(e))
+    }
+  )
+}
+
+# ---------------------------------------------------------------------------
+# Validation helpers (3.4 / 3.5)
+# ---------------------------------------------------------------------------
+
+#' Check whether a column exists in a data frame
+#'
+#' Convenience guard used throughout dashboards before accessing columns
+#' by name. Returns \code{FALSE} when \code{col} is NULL, empty string,
+#' or not present in \code{colnames(data)}.
+#'
+#' @param data A data frame (or anything with \code{colnames}).
+#' @param col  Column name (character scalar).
+#' @return Logical scalar.
+#' @keywords internal
+has_col <- function(data, col) {
+  !is.null(col) && nzchar(col) && col %in% colnames(data)
+}
+
+#' Validate that required columns exist in a data frame
+#'
+#' Returns a character vector of missing column names (empty if all present).
+#' Designed for use with \code{validate(need(length(missing) == 0, ...))}.
+#'
+#' @param data A data frame.
+#' @param cols Named list or character vector of column names.
+#'   Names (if any) are used in the error message.
+#' @return Character vector of missing column names.
+#' @keywords internal
+check_required_cols <- function(data, cols) {
+  cn <- colnames(data)
+  missing <- vapply(cols, function(col) {
+    is.null(col) || !nzchar(col) || !(col %in% cn)
+  }, logical(1))
+  cols[missing]
+}
+
+#' Safely generate a plot, returning an error placeholder on failure
+#'
+#' Wraps a plot expression in tryCatch. On success returns the plot object.
+#' On failure logs via \code{message()} and returns a simple ggplot with the
+#' error text, so users see a message instead of a blank panel.
+#'
+#' @param expr    Expression that produces a ggplot / base plot grob.
+#' @param label   Short label for the plot (used in the error message).
+#' @return A plot object.
+#' @keywords internal
+safe_plot <- function(expr, label = "Plot") {
+  tryCatch(
+    expr,
+    error = function(e) {
+      msg <- paste0(label, " generation failed: ", conditionMessage(e))
+      message(msg)
+      ggplot2::ggplot() +
+        ggplot2::annotate("text", x = 0.5, y = 0.5, label = msg,
+                          size = 5, hjust = 0.5) +
+        ggplot2::theme_void()
     }
   )
 }

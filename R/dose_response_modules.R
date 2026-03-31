@@ -272,6 +272,10 @@ dose_response_server <- function(input, output, session, rv) {
       NULL
     }
 
+    progress <- shiny::Progress$new(session, min = 0, max = 1)
+    progress$set(message = "Running dose-response analysis...", value = 0.2)
+    on.exit(progress$close(), add = TRUE)
+
     result <- safe_analysis({
       mouseExperiment::dose_response_statistics(
         df                 = data,
@@ -289,7 +293,7 @@ dose_response_server <- function(input, output, session, rv) {
     if (!isTRUE(result$error)) {
       tryCatch({
         # Re-prepare the analysis_data subset used by plots
-        ad <- mouseExperiment:::prepare_dose_data(
+        ad <- mouseExperiment::prepare_dose_data(
           data,
           dose_column      = dose_col,
           treatment_column = tx_col,
@@ -298,13 +302,11 @@ dose_response_server <- function(input, output, session, rv) {
           id_column        = id_col,
           time_point       = time_point_val
         )
-        ss <- mouseExperiment:::generate_summary_statistics(ad,
+        ss <- mouseExperiment::generate_summary_statistics(ad,
           dose_column = dose_col, volume_column = vol_col)
         result$analysis_data <- ad
         result$summary_stats <- ss
-      }, error = function(e) {
-        cat("WARNING: Could not cache analysis_data for reactive DR plots:", e$message, "\n")
-      })
+      }, error = function(e) {\n        message(\"[DoseResponse] Data preparation failed: \", conditionMessage(e))\n        result$dr_prep_error <<- conditionMessage(e)\n      })
     }
 
     rv$dr_results <- result
@@ -399,7 +401,7 @@ dose_response_server <- function(input, output, session, rv) {
     pt_col   <- input$dr_scatter_pt_color   %||% "#555555"
     ln_col   <- input$dr_scatter_line_color %||% "#2166AC"
     text_sz  <- input$dr_opt_text_size %||% 16
-    p <- ggplot2::ggplot(ad, ggplot2::aes_string(x = dose_col, y = vol_col)) +
+    p <- ggplot2::ggplot(ad, ggplot2::aes(x = .data[[dose_col]], y = .data[[vol_col]])) +
       ggplot2::geom_point(alpha = 0.7, color = pt_col) +
       ggplot2::geom_smooth(method = "lm", formula = y ~ x, color = ln_col) +
       ggplot2::labs(title = "Linear Dose-Response Relationship",
@@ -419,8 +421,7 @@ dose_response_server <- function(input, output, session, rv) {
     vol_col     <- rv$vol_col  %||% "Volume"
     box_color   <- input$dr_box_fill_color %||% "#4292C6"
     text_sz     <- input$dr_opt_text_size %||% 16
-    dose_factor <- paste0("factor(", dose_col, ")")
-    p <- ggplot2::ggplot(ad, ggplot2::aes_string(x = dose_factor, y = vol_col)) +
+    p <- ggplot2::ggplot(ad, ggplot2::aes(x = factor(.data[[dose_col]]), y = .data[[vol_col]])) +
       ggplot2::geom_boxplot(outlier.shape = NA, fill = box_color, alpha = 0.7) +
       ggplot2::geom_jitter(width = 0.2, alpha = 0.5) +
       ggplot2::labs(title = "Tumor Volume by Dose Level",
@@ -439,10 +440,10 @@ dose_response_server <- function(input, output, session, rv) {
     dose_col  <- rv$dose_col %||% "Dose"
     bar_color <- input$dr_bar_fill_color %||% "#4292C6"
     text_sz   <- input$dr_opt_text_size %||% 16
-    p <- ggplot2::ggplot(ss, ggplot2::aes_string(x = dose_col, y = "mean_volume")) +
+    p <- ggplot2::ggplot(ss, ggplot2::aes(x = .data[[dose_col]], y = .data[["mean_volume"]])) +
       ggplot2::geom_bar(stat = "identity", fill = bar_color, alpha = 0.8) +
       ggplot2::geom_errorbar(
-        ggplot2::aes(ymin = ci95_lower, ymax = ci95_upper), width = 0.2) +
+        ggplot2::aes(ymin = .data[["ci95_lower"]], ymax = .data[["ci95_upper"]]), width = 0.2) +
       ggplot2::labs(title = "Mean Tumor Volume by Dose Level (with 95% CI)",
                    x = "Dose", y = "Mean Tumor Volume") +
       ggplot2::theme_classic()
@@ -504,7 +505,7 @@ dose_response_server <- function(input, output, session, rv) {
       pt_col   <- input$dr_scatter_pt_color   %||% "#555555"
       ln_col   <- input$dr_scatter_line_color %||% "#2166AC"
       p <- if (!is.null(ad)) {
-        ggplot2::ggplot(ad, ggplot2::aes_string(x = dose_col, y = vol_col)) +
+        ggplot2::ggplot(ad, ggplot2::aes(x = .data[[dose_col]], y = .data[[vol_col]])) +
           ggplot2::geom_point(alpha = 0.7, color = pt_col) +
           ggplot2::geom_smooth(method = "lm", formula = y ~ x, color = ln_col) +
           ggplot2::labs(title = "Linear Dose-Response Relationship",
@@ -528,8 +529,8 @@ dose_response_server <- function(input, output, session, rv) {
       vol_col  <- rv$vol_col  %||% "Volume"
       bc       <- input$dr_box_fill_color %||% "#4292C6"
       p <- if (!is.null(ad)) {
-        ggplot2::ggplot(ad, ggplot2::aes_string(x = paste0("factor(", dose_col, ")"),
-                                                y = vol_col)) +
+        ggplot2::ggplot(ad, ggplot2::aes(x = factor(.data[[dose_col]]),
+                                         y = .data[[vol_col]])) +
           ggplot2::geom_boxplot(outlier.shape = NA, fill = bc, alpha = 0.7) +
           ggplot2::geom_jitter(width = 0.2, alpha = 0.5) +
           ggplot2::labs(title = "Tumor Volume by Dose Level",
@@ -552,10 +553,10 @@ dose_response_server <- function(input, output, session, rv) {
       dose_col <- rv$dose_col %||% "Dose"
       bc       <- input$dr_bar_fill_color %||% "#4292C6"
       p <- if (!is.null(ss)) {
-        ggplot2::ggplot(ss, ggplot2::aes_string(x = dose_col, y = "mean_volume")) +
+        ggplot2::ggplot(ss, ggplot2::aes(x = .data[[dose_col]], y = .data[["mean_volume"]])) +
           ggplot2::geom_bar(stat = "identity", fill = bc, alpha = 0.8) +
           ggplot2::geom_errorbar(
-            ggplot2::aes(ymin = ci95_lower, ymax = ci95_upper), width = 0.2) +
+            ggplot2::aes(ymin = .data[["ci95_lower"]], ymax = .data[["ci95_upper"]]), width = 0.2) +
           ggplot2::labs(title = "Mean Tumor Volume by Dose Level (with 95% CI)",
                         x = "Dose", y = "Mean Tumor Volume") +
           ggplot2::theme_classic()
@@ -598,6 +599,3 @@ dose_response_server <- function(input, output, session, rv) {
     }
   )
 }
-
-# Null-coalescing helper for safe field access
-`%||%` <- function(a, b) if (!is.null(a)) a else b

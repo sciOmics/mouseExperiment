@@ -159,6 +159,11 @@ synergy_server <- function(input, output, session, rv) {
   
   rv$syn_results <- NULL
   rv$syn_over_time <- FALSE
+
+  # ReactiveVals to hold the current rendered plot (for download fidelity — D4, D5)
+  current_syn_main_plot  <- reactiveVal(NULL)
+  current_syn_trend_plot <- reactiveVal(NULL)
+  current_syn_ci_plot    <- reactiveVal(NULL)
   
   # Dynamically render group selector dropdowns from treatment column
   output$syn_group_selectors_ui <- renderUI({
@@ -250,23 +255,23 @@ synergy_server <- function(input, output, session, rv) {
       time_col <- rv$time_col
       tx_col   <- rv$tx_col
     } else {
-      # Inline preprocessing mirroring the tumor_growth_server logic
+      # Inline preprocessing (fallback when TG analysis hasn't run)
       analysis_data <- rv$uploaded_data
       tx_col   <- if (!is.null(input$col_treatment) && input$col_treatment != "") input$col_treatment else "Treatment"
       id_col   <- if (!is.null(input$col_id)        && input$col_id        != "") input$col_id        else "ID"
       
       if (!is.null(input$time_method) && input$time_method == "from_date" &&
           !is.null(input$col_date_for_day) && input$col_date_for_day != "") {
-        first_val <- as.character(analysis_data[1, input$col_date_for_day])
-        fmt <- if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_val)) "%m/%d/%Y" else
-               if (grepl("^\\d{4}-\\d{1,2}-\\d{1,2}$", first_val)) "%Y-%m-%d" else
-               if (grepl("^\\d{1,2}-[A-Za-z]{3}$", first_val)) "%d-%b" else NULL
         tryCatch({
-          analysis_data <- mouseExperiment::calculate_dates(analysis_data,
-            start_date = input$reference_date,
+          date_info <- detect_date_format(analysis_data, input$col_date_for_day,
+                                          input$reference_date %||% "")
+          analysis_data <- mouseExperiment::calculate_dates(date_info$data,
+            start_date  = date_info$start_date,
             date_column = input$col_date_for_day,
-            date_format = fmt)
-        }, error = function(e) NULL)
+            date_format = date_info$date_format)
+        }, error = function(e) {
+          message("[Synergy] Date calculation failed: ", conditionMessage(e))
+        })
         time_col <- "Day"
       } else {
         time_col <- if (!is.null(input$col_day) && input$col_day != "") input$col_day else "Day"
@@ -279,7 +284,9 @@ synergy_server <- function(input, output, session, rv) {
           analysis_data <- mouseExperiment::calculate_volume(analysis_data,
             length_column = input$col_length, width_column = input$col_width,
             formula = input$volume_formula)
-        }, error = function(e) NULL)
+        }, error = function(e) {
+          message("[Synergy] Volume calculation failed: ", conditionMessage(e))
+        })
         vol_col <- "Volume"
       } else {
         vol_col <- if (!is.null(input$col_volume) && input$col_volume != "") input$col_volume else "Volume"
@@ -299,6 +306,10 @@ synergy_server <- function(input, output, session, rv) {
     }
 
     rv$syn_over_time <- is.null(eval_tp)
+
+    progress <- shiny::Progress$new(session, min = 0, max = 1)
+    progress$set(message = "Running synergy analysis...", value = 0.2)
+    on.exit(progress$close(), add = TRUE)
     
     if (rv$syn_over_time) {
       result <- safe_analysis({
@@ -346,8 +357,7 @@ synergy_server <- function(input, output, session, rv) {
                          "Combination" = "purple", "Bliss Value" = "grey")) +
             ggplot2::labs(x = "Days", y = "Percent Tumor Growth Inhibition", color = NULL) +
             ggplot2::ylim(0, 100) +
-            ggplot2::theme_classic() +
-            ggplot2::theme(legend.position = c(0.85, 0.2))
+            ggplot2::theme_classic()
 
           # Combination Index plot — matches demo Fig 5 style with shaded regions
           mid_x <- mean(syn_df$Time_Point)
@@ -366,11 +376,15 @@ synergy_server <- function(input, output, session, rv) {
             ggplot2::ylim(0, 2) +
             ggplot2::theme_classic()
 
-        }, error = function(e) cat("WARNING: Synergy over-time plot error:", e$message, "\n"))
+        }, error = function(e) {
+          message("[Synergy] Trend plot generation failed: ", conditionMessage(e))
+        })
       } else {
         tryCatch({
           result$plot_main  <- mouseExperiment::plot_drug_synergy(result)
-        }, error = function(e) cat("WARNING: Synergy plot error:", e$message, "\n"))
+        }, error = function(e) {
+          message("[Synergy] Main plot generation failed: ", conditionMessage(e))
+        })
       }
     }
     
@@ -537,6 +551,7 @@ synergy_server <- function(input, output, session, rv) {
                                  input$syn_plot_subtitle    %||% "",
                                  input$syn_plot_title_align %||% "center",
                                  text_sz)
+    current_syn_main_plot(final_p)
     print(final_p)
   }, width = function() input$syn_plot_width %||% 800,
      height = function() input$syn_plot_height %||% 600)
@@ -612,6 +627,7 @@ synergy_server <- function(input, output, session, rv) {
                            input$syn_plot_subtitle    %||% "",
                            input$syn_plot_title_align %||% "center",
                            text_sz)
+    current_syn_trend_plot(p)
     print(p)
   }, width = function() input$syn_plot_width %||% 800,
      height = function() input$syn_plot_height %||% 600)
@@ -620,12 +636,15 @@ synergy_server <- function(input, output, session, rv) {
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error) || !isTRUE(rv$syn_over_time)) return(NULL)
     text_sz <- input$syn_opt_text_size %||% 16
+    leg_pos <- input$syn_opt_legend_pos %||% "right"
     if (!is.null(rv$syn_results$plot_ci)) {
       p <- apply_plot_labels(rv$syn_results$plot_ci,
                              input$syn_plot_title       %||% "",
                              input$syn_plot_subtitle    %||% "",
                              input$syn_plot_title_align %||% "center",
                              text_sz)
+      p <- apply_legend_pos(p, leg_pos)
+      current_syn_ci_plot(p)
       print(p)
     } else {
       plot(1, 1, type = "n", main = "CI plot not available", xlab = "", ylab = "")
@@ -648,11 +667,12 @@ synergy_server <- function(input, output, session, rv) {
   output$download_syn_plot_main <- downloadHandler(
     filename = "synergy_plot.png",
     content = function(file) {
-      if (!is.null(rv$syn_results$plot_main)) {
+      p <- current_syn_main_plot()
+      if (!is.null(p)) {
         png(file, width = input$syn_plot_width %||% 900,
                   height = input$syn_plot_height %||% 600,
                   units = "px", res = input$syn_plot_dpi %||% 100)
-        print(rv$syn_results$plot_main); dev.off()
+        print(p); dev.off()
       }
     }
   )
@@ -660,11 +680,12 @@ synergy_server <- function(input, output, session, rv) {
   output$download_syn_plot_trend <- downloadHandler(
     filename = "synergy_trend.png",
     content = function(file) {
-      if (!is.null(rv$syn_results$plot_trend)) {
+      p <- current_syn_trend_plot()
+      if (!is.null(p)) {
         png(file, width = input$syn_plot_width %||% 900,
                   height = input$syn_plot_height %||% 600,
                   units = "px", res = input$syn_plot_dpi %||% 100)
-        print(rv$syn_results$plot_trend); dev.off()
+        print(p); dev.off()
       }
     }
   )
@@ -672,11 +693,12 @@ synergy_server <- function(input, output, session, rv) {
   output$download_syn_plot_ci <- downloadHandler(
     filename = "combination_index.png",
     content = function(file) {
-      if (!is.null(rv$syn_results$plot_ci)) {
+      p <- current_syn_ci_plot()
+      if (!is.null(p)) {
         png(file, width = input$syn_plot_width %||% 900,
                   height = input$syn_plot_height %||% 600,
                   units = "px", res = input$syn_plot_dpi %||% 100)
-        print(rv$syn_results$plot_ci); dev.off()
+        print(p); dev.off()
       }
     }
   )

@@ -204,15 +204,15 @@ survival_server <- function(input, output, session, rv) {
       # requires TG analysis to have run first.
       dose_col_input <- if (!is.null(input$col_dose) && nzchar(input$col_dose) &&
                             input$col_dose != "None") input$col_dose else NULL
-      has_dose <- !is.null(dose_col_input) && dose_col_input %in% colnames(d)
+      has_dose <- has_col(d, dose_col_input)
       if (has_dose &&
           !is.null(input$col_treatment) && nzchar(input$col_treatment) &&
-          input$col_treatment %in% colnames(d)) {
+          has_col(d, input$col_treatment)) {
         combined <- paste(d[[input$col_treatment]], d[[dose_col_input]], sep = " ")
         return(sort(unique(as.character(na.omit(combined)))))
       }
       if (!is.null(input$col_treatment) && nzchar(input$col_treatment) &&
-          input$col_treatment %in% colnames(d)) {
+          has_col(d, input$col_treatment)) {
         return(sort(unique(as.character(na.omit(d[[input$col_treatment]])))))
       }
       character(0)
@@ -278,55 +278,23 @@ survival_server <- function(input, output, session, rv) {
 
     # When a dose column is mapped, build a combined "Treatment Dose" group label
     # so each dose level is treated as its own group.
-    has_dose_surv <- !is.null(dose_col_surv) &&
-                     dose_col_surv %in% colnames(data) &&
-                     !is.null(input$col_treatment) && nzchar(input$col_treatment) &&
-                     input$col_treatment %in% colnames(data)
+    has_dose_surv <- has_col(data, dose_col_surv) && has_col(data, input$col_treatment)
     if (has_dose_surv) {
       data[["TreatmentGroup"]] <- paste(data[[input$col_treatment]],
                                         data[[dose_col_surv]], sep = " ")
     }
 
     # Handle time column - either use direct day or calculate from date
-    # This mirrors the tumor growth analysis logic
     if (input$time_method == "from_date") {
-      # Calculate days from reference date
-      start_date <- input$reference_date
-      
-      # Detect date format from the actual data in the date column
-      first_date <- as.character(data[1, input$col_date_for_day])
-      
-      # Determine date format by checking the pattern
-      date_format <- NULL
-      if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_date)) {
-        date_format <- "%m/%d/%Y"  # MM/DD/YYYY format
-      } else if (grepl("^\\d{4}-\\d{1,2}-\\d{1,2}$", first_date)) {
-        date_format <- "%Y-%m-%d"  # YYYY-MM-DD format
-      } else if (grepl("^\\d{1,2}-[A-Za-z]{3}$", first_date)) {
-        date_format <- "%d-%b"     # DD-Mon format
-      } else if (grepl("^[A-Za-z]+\\s+\\d{1,2}$", first_date)) {
-        # "Month Day" format (e.g. "March 1", "January 15") – no year in data.
-        ref_date_parsed <- tryCatch(
-          as.Date(start_date,
-                  tryFormats = c("%Y-%m-%d", "%m/%d/%Y", "%d-%b-%Y",
-                                 "%B %d %Y", "%B %d, %Y")),
-          error = function(e) Sys.Date()
-        )
-        if (is.na(ref_date_parsed)) ref_date_parsed <- Sys.Date()
-        ref_year <- as.integer(format(ref_date_parsed, "%Y"))
-        data[[input$col_date_for_day]] <-
-          paste(data[[input$col_date_for_day]], ref_year)
-        start_date  <- format(ref_date_parsed, "%B %d %Y")
-        date_format <- "%B %d %Y"
-      }
-      
+      date_info <- detect_date_format(data, input$col_date_for_day,
+                                      input$reference_date)
       data <- mouseExperiment::calculate_dates(
-        data,
-        start_date = start_date,
+        date_info$data,
+        start_date  = date_info$start_date,
         date_column = input$col_date_for_day,
-        date_format = date_format
+        date_format = date_info$date_format
       )
-      time_col <- "Day"  # calculate_dates produces a "Day" column
+      time_col <- "Day"
     } else {
       time_col <- input$col_day
     }
@@ -337,8 +305,8 @@ survival_server <- function(input, output, session, rv) {
     cage_col_surv <- if (!is.null(input$col_cage) && nzchar(input$col_cage) &&
                          input$col_cage != "None") input$col_cage else NULL
 
-    has_id   <- !is.null(id_col_surv)   && id_col_surv   %in% colnames(data)
-    has_cage <- !is.null(cage_col_surv) && cage_col_surv %in% colnames(data)
+    has_id   <- has_col(data, id_col_surv)
+    has_cage <- has_col(data, cage_col_surv)
 
     if (has_id) {
       # Build key columns for deduplication
@@ -389,29 +357,27 @@ survival_server <- function(input, output, session, rv) {
     }
     
     # Run analysis with processed data and calculated/selected time column
-    # Add diagnostic output
-    cat("\n=== SURVIVAL ANALYSIS DIAGNOSTICS ===\n")
-    cat("Data rows:", nrow(data), "\n")
-    cat("Data columns:", paste(colnames(data), collapse = ", "), "\n")
-    cat("Time column specified:", time_col, "\n")
-    cat("Time column exists:", time_col %in% colnames(data), "\n")
-    cat("Censor column specified:", input$col_survival_event, "\n")
-    cat("Censor column exists:", input$col_survival_event %in% colnames(data), "\n")
-    cat("Treatment column specified:", input$col_treatment, "\n")
-    cat("Treatment column exists:", input$col_treatment %in% colnames(data), "\n")
-    
-    if (time_col %in% colnames(data)) {
-      cat("Time values sample:", paste(head(data[[time_col]], 5), collapse = ", "), "\n")
-      cat("Time NAs:", sum(is.na(data[[time_col]])), "\n")
-    }
-    
-    if (input$col_survival_event %in% colnames(data)) {
-      cat("Censor values sample:", paste(head(data[[input$col_survival_event]], 5), collapse = ", "), "\n")
-      cat("Censor NAs:", sum(is.na(data[[input$col_survival_event]])), "\n")
-    }
-    cat("====================================\n\n")
-    
     tx_col_surv <- if (has_dose_surv) "TreatmentGroup" else input$col_treatment
+
+    # Validate all required columns exist before analysis
+    required <- c(Treatment = tx_col_surv,
+                  Time      = time_col,
+                  Event     = input$col_survival_event)
+    missing_cols <- check_required_cols(data, required)
+    if (length(missing_cols) > 0) {
+      output$surv_status_msg <- renderUI({
+        div(class = "alert alert-danger",
+            icon("exclamation-circle"),
+            paste0("Required column(s) not found: ",
+                   paste(names(missing_cols), "=", sQuote(missing_cols), collapse = ", ")))
+      })
+      rv$surv_running <- FALSE
+      return()
+    }
+
+    progress <- shiny::Progress$new(session, min = 0, max = 1)
+    progress$set(message = "Running survival analysis...", value = 0.2)
+    on.exit(progress$close(), add = TRUE)
 
     result <- safe_analysis({
       mouseExperiment::survival_statistics(
@@ -425,6 +391,7 @@ survival_server <- function(input, output, session, rv) {
         firth_correction = TRUE
       )
     })
+    progress$set(value = 0.9, detail = "Preparing results")
     
     # Store time calculation info for later display
     result$time_method <- input$time_method
@@ -456,9 +423,7 @@ survival_server <- function(input, output, session, rv) {
           title             = "Kaplan-Meier Survival Curves by Treatment"
         )
 
-        cat("KM plot generated successfully via plot_survival()\n")
       }, error = function(e) {
-        cat("ERROR generating KM plot via plot_survival():", e$message, "\n")
         # Fallback to manual ggsurvplot if plot_survival() fails
         tryCatch({
           surv_df <- result$survival_data
@@ -467,7 +432,6 @@ survival_server <- function(input, output, session, rv) {
           km_plot_obj <- survminer::ggsurvplot(
             km_fit,
             data = surv_df,
-            palette = input$surv_palette,
             risk.table = TRUE,
             risk.table.y.text.col = TRUE,
             conf.int = FALSE,
@@ -476,10 +440,7 @@ survival_server <- function(input, output, session, rv) {
             title = "Kaplan-Meier Survival Curves by Treatment"
           )
           result$km_plot <<- km_plot_obj
-          cat("KM plot generated via fallback ggsurvplot\n")
-        }, error = function(e2) {
-          cat("ERROR in KM fallback:", e2$message, "\n")
-        })
+        }, error = function(e2) NULL)
       })
     }
     
@@ -487,24 +448,9 @@ survival_server <- function(input, output, session, rv) {
     rv$surv_running <- FALSE
 
     # Store treatment group names for the per-group colour pickers in the Plots tab
-    rv$surv_plot_groups <- if (!is.null(result$survival_data) && "Treatment" %in% colnames(result$survival_data)) {
+    rv$surv_plot_groups <- if (!is.null(result$survival_data) && has_col(result$survival_data, "Treatment")) {
       unique(as.character(result$survival_data$Treatment))
     } else NULL
-    
-    # Debug: Log the structure of the result
-    cat("\n=== RESULT OBJECT STRUCTURE ===\n")
-    cat("Class:", class(result), "\n")
-    cat("Fields:", paste(names(result), collapse = ", "), "\n")
-    cat("Has 'error' field:", "error" %in% names(result), "\n")
-    cat("Has 'results' field:", "results" %in% names(result), "\n")
-    cat("Has 'model' field:", "model" %in% names(result), "\n")
-    cat("Has 'km_plot' field:", "km_plot" %in% names(result), "\n")
-    if ("results" %in% names(result) && !is.null(result$results)) {
-      cat("Results class:", class(result$results), "\n")
-      cat("Results dimensions:", nrow(result$results), "rows x", ncol(result$results), "cols\n")
-      cat("Results columns:", paste(colnames(result$results), collapse = ", "), "\n")
-    }
-    cat("====================================\n\n")
     
     if (isTRUE(result$error)) {
       output$surv_status_msg <- renderUI({
@@ -523,9 +469,6 @@ survival_server <- function(input, output, session, rv) {
   # Summary output
   output$surv_summary <- renderText({
     req(rv$surv_results)
-    cat("\n[surv_summary] Output function called\n")
-    cat("[surv_summary] Result class:", class(rv$surv_results), "\n")
-    cat("[surv_summary] Result fields:", paste(names(rv$surv_results), collapse = ", "), "\n")
     if (isTRUE(rv$surv_results$error)) {
       return(paste("Error:", rv$surv_results$message))
     }
@@ -588,7 +531,7 @@ survival_server <- function(input, output, session, rv) {
 
     # Apply user group order as factor levels and refit KM so strata follow that order
     ordered_grps <- get_ordered_groups(input, "surv", rv$surv_plot_groups)
-    if (!is.null(ordered_grps) && "Treatment" %in% colnames(surv_df)) {
+    if (!is.null(ordered_grps) && has_col(surv_df, "Treatment")) {
       surv_df$Treatment <- factor(surv_df$Treatment, levels = ordered_grps)
     }
     km_fit <- tryCatch(
@@ -813,42 +756,11 @@ survival_server <- function(input, output, session, rv) {
     
     ref_grp <- rv$surv_results$reference_group
     
-    # Exclude reference group row from the main data, then re-add as reference anchor
+    # Verify at least one non-reference group with valid HR
     plot_df <- res[!is.na(res$HR), ]
-    if (!is.null(ref_grp)) {
-      plot_df <- plot_df[plot_df$Group != ref_grp, ]
-    }
+    if (!is.null(ref_grp)) plot_df <- plot_df[plot_df$Group != ref_grp, ]
     req(nrow(plot_df) > 0)
-    # Add reference group row at HR = 1 (no CI)
-    ref_row_cols <- colnames(plot_df)
-    ref_row <- as.data.frame(lapply(ref_row_cols, function(cn) {
-      if      (cn == "Group")    paste0(ref_grp, "\n(Reference)")
-      else if (cn == "HR")       1
-      else if (cn %in% c("CI_Lower", "CI_Upper")) NA_real_
-      else NA
-    }), stringsAsFactors = FALSE)
-    colnames(ref_row) <- ref_row_cols
-    ref_row$HR       <- 1
-    ref_row$CI_Lower <- NA_real_
-    ref_row$CI_Upper <- NA_real_
-    plot_df <- rbind(plot_df, ref_row)
-    plot_df$is_ref <- plot_df$Group == paste0(ref_grp, "\n(Reference)")
 
-    # Compute symmetric log10 axis limits (exclude reference row)
-    all_hr_vals <- c(plot_df$HR[!plot_df$is_ref],
-                     plot_df$CI_Lower[!plot_df$is_ref],
-                     plot_df$CI_Upper[!plot_df$is_ref])
-    all_hr_vals <- all_hr_vals[!is.na(all_hr_vals) & all_hr_vals > 0]
-    max_log10 <- max(abs(log10(all_hr_vals)), na.rm = TRUE)
-    max_log10 <- ceiling(max_log10)
-    max_log10 <- max(max_log10, 1L)  # at least one decade each side
-    x_lim    <- c(10^(-max_log10), 10^max_log10)
-    x_breaks <- 10^seq(-max_log10, max_log10, by = 1)
-    x_labels <- ifelse(x_breaks >= 1,
-                       as.character(round(x_breaks, 0)),
-                       as.character(x_breaks))
-
-    # Build annotation label from checkbox selections
     pt_color <- input$surv_forest_pt_color %||% "steelblue"
     show_hr  <- isTRUE(input$surv_forest_show_hr)
     show_ci  <- isTRUE(input$surv_forest_show_ci)
@@ -877,7 +789,7 @@ survival_server <- function(input, output, session, rv) {
       req(rv$surv_results)
       surv_df <- rv$surv_results$survival_data
       ordered_grps <- get_ordered_groups(input, "surv", rv$surv_plot_groups)
-      if (!is.null(ordered_grps) && "Treatment" %in% colnames(surv_df))
+      if (!is.null(ordered_grps) && has_col(surv_df, "Treatment"))
         surv_df$Treatment <- factor(surv_df$Treatment, levels = ordered_grps)
       km_fit <- tryCatch(
         survival::survfit(survival::Surv(Time, Event) ~ Treatment, data = surv_df),

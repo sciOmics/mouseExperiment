@@ -203,6 +203,10 @@ power_server <- function(input, output, session, rv) {
       if (length(parsed) > 0) custom_effect_sizes <- parsed
     }
 
+    progress <- shiny::Progress$new(session, min = 0, max = 1)
+    progress$set(message = "Running power analysis...", value = 0.2)
+    on.exit(progress$close(), add = TRUE)
+
     result <- safe_analysis({
       mouseExperiment::post_power_analysis(
         data             = rv$processed_data,
@@ -319,7 +323,7 @@ power_server <- function(input, output, session, rv) {
 
     # Build power-vs-N curves from observed effect sizes
     es_df <- rv$pw_results$effect_sizes
-    if (!is.null(es_df) && "Standardized_Effect" %in% colnames(es_df)) {
+    if (!is.null(es_df) && has_col(es_df, \"Standardized_Effect\")) {
       unique_effects <- sort(unique(round(
         abs(es_df$Standardized_Effect[!is.na(es_df$Standardized_Effect)]), 2
       )))
@@ -328,6 +332,9 @@ power_server <- function(input, output, session, rv) {
       unique_effects <- c(0.2, 0.5, 0.8, 1.0, 1.5)
     }
 
+    # Use the smallest user-selected alpha for the power curve visualization
+    alpha_for_curve <- min(as.numeric(input$pw_alpha %||% 0.05))
+
     if (length(unique_effects) > 0) {
       n_seq <- seq(2, 60, by = 1)
       rows <- lapply(unique_effects, function(es) {
@@ -335,7 +342,7 @@ power_server <- function(input, output, session, rv) {
           N            = n_seq,
           Power        = vapply(n_seq, function(n)
             tryCatch(
-              stats::power.t.test(n = n, delta = es, sd = 1, sig.level = 0.05)$power,
+              stats::power.t.test(n = n, delta = es, sd = 1, sig.level = alpha_for_curve)$power,
               error = function(e) NA_real_
             ), numeric(1)),
           Effect_Size  = paste0("d\u202f=\u202f", round(es, 2)),
@@ -360,7 +367,8 @@ power_server <- function(input, output, session, rv) {
           ggplot2::scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
           ggplot2::labs(
             title  = "Power vs N per Group",
-            subtitle = "Horizontal dashed lines: 0.80 and 0.90 power thresholds",
+            subtitle = paste0("\u03b1 = ", alpha_for_curve,
+                              ";  dashed lines: 0.80 and 0.90 power thresholds"),
             x      = "N per Group",
             y      = "Power",
             colour = "Effect Size\n(Cohen\u2019s d)"
