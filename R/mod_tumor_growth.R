@@ -488,7 +488,31 @@ tumor_growth_server <- function(id, rv) {
 
           if (!is.null(ref_group)) {
             is_ref <- grepl(ref_group, pw_df$contrast, fixed = TRUE)
-            result$reference_comparisons_dunnett <- if (any(is_ref)) pw_df[is_ref, ] else pw_df
+            ref_comp_df <- if (any(is_ref)) pw_df[is_ref, ] else pw_df
+            
+            # Standardize contrast ordering: ensure reference is always on the RIGHT side
+            # If contrast is "Control - Treatment", swap to "Treatment - Control" and negate estimate
+            for (i in seq_len(nrow(ref_comp_df))) {
+              parts <- strsplit(ref_comp_df$contrast[i], " - ", fixed = TRUE)[[1]]
+              if (length(parts) == 2) {
+                left_part <- trimws(parts[1])
+                right_part <- trimws(parts[2])
+                
+                # If reference is on the left, swap and negate
+                if (identical(left_part, ref_group) && !identical(right_part, ref_group)) {
+                  ref_comp_df$contrast[i] <- paste0(right_part, " - ", left_part)
+                  ref_comp_df$estimate[i] <- -ref_comp_df$estimate[i]
+                  # Swap CI bounds and negate
+                  temp_lower <- ref_comp_df$lower.CL[i]
+                  ref_comp_df$lower.CL[i] <- -ref_comp_df$upper.CL[i]
+                  ref_comp_df$upper.CL[i] <- -temp_lower
+                  if (!is.na(ref_comp_df$t.ratio[i])) {
+                    ref_comp_df$t.ratio[i] <- -ref_comp_df$t.ratio[i]
+                  }
+                }
+              }
+            }
+            result$reference_comparisons_dunnett <- ref_comp_df
           } else {
             result$reference_comparisons_dunnett <- pw_df
           }

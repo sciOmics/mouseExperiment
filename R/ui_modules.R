@@ -449,7 +449,10 @@ tumorGrowthUI <- function(id) {
             downloadButton(ns("download_tg_rates"), "Download Growth Rates")
           ),
           
-          uiOutput(ns("tg_auc_tabs")),
+          conditionalPanel(ns = ns,
+            "input.tg_model_type == 'auc'",
+            uiOutput(ns("tg_auc_tabs"))
+          ),
           
           tabPanel("Data Summary",
             tab_info(

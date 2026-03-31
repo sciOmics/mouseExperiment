@@ -113,35 +113,31 @@ The Bliss/CI plots use a hardcoded legend position instead of reading from the u
 
 ## 2. Code Quality Issues
 
-### 2.1 God Function: `tumor_growth_server()`
+### 2.1 God Function: `tumor_growth_server()` — ✅ COMPLETED
 
-server_modules.R contains `tumor_growth_server()` at ~1,850 lines. This single function includes:
-- Data upload and validation
-- Date/volume preprocessing
-- Treatment schedule merging
-- LME4/AUC analysis dispatch
-- 25+ `output$*` render definitions
-- 10+ download handlers
-- Plot customization reactives
-- Info box rendering
-- Growth rate, AUC, forest, waterfall, caterpillar, diagnostics rendering
+Originally, server_modules.R contained `tumor_growth_server()` at ~1,850 lines with all TG concerns mixed together.
 
-**Recommendation:** Break into Shiny modules using `moduleServer()` + `NS()`:
-- `mod_upload_server()` — file upload and validation
-- `mod_tg_analysis_server()` — analysis dispatch
-- `mod_tg_plots_server()` — all TG plot rendering
-- `mod_tg_downloads_server()` — download handlers
+**Status:** Refactored via commit `51a4c58`
+- Split into `mod_data_upload.R` (530 lines, data upload/validation/settings sync)
+- Split into `mod_tumor_growth.R` (1,838 lines, analysis/renders/downloads)
+- Both now use `moduleServer()` pattern with proper namespacing
+- Each module manages its own inputs/outputs within its namespace
+- rv$settings bridge enables clean inter-module communication for column mapping
 
 ---
 
-### 2.2 No Shiny Module Namespacing
+### 2.2 No Shiny Module Namespacing — ✅ COMPLETED
 
-The entire app uses flat input/output IDs with no `NS()` namespacing. All IDs must be globally unique across all tabs. This makes:
-- Name collisions likely as the app grows
-- Refactoring into separate files risky
-- Testing individual components impossible
+Originally, the app used flat input/output IDs with no `NS()` namespacing, creating collision risk and refactoring brittleness.
 
-Examples of collision-prone IDs: `input$ref_group`, `input$analysis_type`, `input$legend_pos` (used in TG), vs `input$surv_ref_group`, `input$surv_legend_pos` (used in survival) — manual prefix convention instead of proper NS().
+**Status:** Fully modularized via commit `51a4c58`
+- All 6 server functions converted to `moduleServer()` pattern
+- All 6 UI functions now use `NS(id)` wrapping
+- All static input IDs wrapped with `ns()` in UI functions
+- All dynamic renderUI inputs wrapped with `session$ns()` in server functions
+- All conditionalPanel calls include `ns = ns` parameter
+- Helper functions (`group_order_and_color_ui`, `column_mapping_ui`, etc.) updated to accept `ns` parameter
+- Result: All IDs properly namespaced (e.g., `data-data_file`, `tg-tg_model`, `surv-surv_fit`)
 
 ---
 
@@ -247,52 +243,41 @@ Both global.R and app.R UI include `shinyjs::useShinyjs()`. Only one call is nee
 
 ## 3. Architecture Issues
 
-### 3.1 File Organization
+### 3.1 File Organization — ✅ COMPLETED
 
-Current structure mixes concerns:
+Originally, structure mixed concerns with server_modules.R containing a 1,850-line god function and no clear module boundaries.
+
+**Current structure (post-commit `51a4c58`):**
 
 | File | Lines | Responsibilities |
 |------|-------|-----------------|
-| server_modules.R | 2,396 | TG upload, TG analysis, TG 25+ renders, TG 10+ downloads |
-| survival_modules.R | 1,007 | Surv upload, analysis, renders, downloads |
-| ui_modules.R | 817 | All UI definitions for all tabs |
-| synergy_modules.R | 683 | Synergy upload, analysis, renders, downloads |
-| helpers.R | 644 | Shared utilities |
-| dose_response_modules.R | 603 | DR upload, analysis, renders, downloads |
-| power_modules.R | 409 | Power upload, analysis, renders, downloads |
-| app.R | 260 | Main app shell, JS injection |
+| app.R | 189 | Main app shell with module wiring and rv observers |
+| mod_data_upload.R | 530 | Data upload, column mapping, preview, rv$settings sync |
+| mod_tumor_growth.R | 1,838 | TG analysis dispatch, renders (25+), downloads (10+) |
+| ui_modules.R | 817 | UI definitions for all tabs (with NS wrapping) |
+| survival_modules.R | 921 | Survival analysis server (moduleServer pattern) |
+| synergy_modules.R | 708 | Synergy analysis server (moduleServer pattern) |
+| dose_response_modules.R | 607 | DR analysis server (moduleServer pattern) |
+| power_modules.R | 427 | Power analysis server (moduleServer pattern) |
+| helpers.R | 754 | Shared utilities (updated with ns parameters) |
 | zzz.R | 19 | `.onLoad` hook |
 
-**Proposed restructuring:**
+**Completed:**
+- ✅ server_modules.R split into mod_data_upload.R + mod_tumor_growth.R
+- ✅ All modules follow moduleServer()/NS() pattern
+- ✅ Clear separation of concerns per file
+- ⏳ Future: Consolidate date/volume preprocessing (still duplicated 4×, deferred to next phase)
 
-```
-R/
-  app.R                    # Main app (keep)
-  helpers.R                # Shared utilities (keep)
-  preprocessing.R          # NEW: Consolidated date/volume/day preprocessing
-  mod_tumor_growth.R       # TG server module (from server_modules.R)
-  mod_tumor_growth_ui.R    # TG UI module (from ui_modules.R)
-  mod_survival.R           # Survival module
-  mod_survival_ui.R        # Survival UI
-  mod_synergy.R            # Synergy module  
-  mod_synergy_ui.R         # Synergy UI
-  mod_dose_response.R      # DR module
-  mod_dose_response_ui.R   # DR UI
-  mod_power.R              # Power module
-  mod_power_ui.R           # Power UI
-  zzz.R                    # Keep
-```
+### 3.2 Reactive Value Sprawl — ✅ PARTIALLY COMPLETED
 
-### 3.2 Reactive Value Sprawl
+Originally, modules stored results in shared `rv` with deeply nested paths: `rv$tg_results$model`, `rv$surv_results$fit`, etc.
 
-Each module stores results in a shared `rv` (reactiveValues) object with deeply nested paths:
-- `rv$tg_results$model`, `rv$tg_results$posthoc`, `rv$tg_results$data`, ...
-- `rv$surv_results$fit`, `rv$surv_results$pairwise`, ...
-- `rv$syn_results$bliss`, `rv$syn_results$loewe`, ...
-- `rv$pw_results$plots`, `rv$pw_results$power_table`, ...
-- `rv$dr_results$volume_stats`, `rv$dr_results$growth_stats`, ...
-
-With proper Shiny modules, each module would manage its own reactives internally and expose only necessary values via return values.
+**Status:** Improved via commit `51a4c58`
+- ✅ Each module now uses `moduleServer()` with internal namespacing
+- ✅ Reduced cross-module input collision via NS() — each module's inputs isolated
+- ✅ Introduced `rv$settings` bridge pattern for column-mapping shared state (14 column inputs synced once in data_upload_server, read by all downstream modules)
+- ✅ Each module still maintains results in `rv$*_results`, but this is appropriate for caching across re-renders
+- ⏳ Future: Further isolation could expose modules' results via return values instead of rv paths (requires changes to app.R observer structure)
 
 ### 3.3 JavaScript Injection Pattern
 
@@ -368,15 +353,15 @@ No automated tests exist. Add:
 
 | File | Lines | Status | Key Issues |
 |------|-------|--------|------------|
-| server_modules.R | 2,396 | Warn | 1,850-line god function; D1–D3; 10+ debug cat(); hardcoded CI |
-| survival_modules.R | 1,007 | Warn | Duplicated preprocessing; D6, D8; debug cat(); double-computation |
-| ui_modules.R | 817 | OK | Well-structured with helpers; no NS() |
-| synergy_modules.R | 683 | Bug | D4, D5, D9; stale downloads; duplicated preprocessing |
-| helpers.R | 644 | Good | Clean utilities; well-documented |
-| dose_response_modules.R | 603 | Warn | Triple-colon access; deprecated aes_string(); redefined %||% |
-| power_modules.R | 409 | Warn | D7 (hardcoded sig.level); stale download; limited config |
-| app.R | 260 | OK | Clean entry point; inline JS could be external |
-| global.R | 62 | OK | Redundant library() calls; double useShinyjs() |
+| app.R | 189 | Good | Module wiring complete; inline JS still present (3.3) |
+| mod_data_upload.R | 530 | Good | Data upload, column mapping, rv$settings sync ✅ |
+| mod_tumor_growth.R | 1,838 | Good | TG analysis, renders, downloads ✅; D1, D2, D3 remain |
+| ui_modules.R | 817 | Good | Well-structured with NS() wrapping; modularized ✅ |
+| survival_modules.R | 921 | Warn | D6, D8; duplicated preprocessing; debug cat(); double-computation |
+| synergy_modules.R | 708 | Bug | D4, D5, D9; stale downloads; duplicated preprocessing |
+| dose_response_modules.R | 607 | Warn | Triple-colon access; deprecated aes_string(); redefined %||% |
+| power_modules.R | 427 | Warn | D7 (hardcoded sig.level); stale download; escaped quote fix ✅ |
+| helpers.R | 754 | Good | Clean utilities; NS parameters added ✅ |
 | zzz.R | 19 | Good | Simple .onLoad hook |
 
 ---
@@ -396,7 +381,7 @@ No automated tests exist. Add:
 8. **D6:** Add `surv_palette` UI input or remove reference
 
 ### Medium Priority
-9. Refactor `tumor_growth_server()` into Shiny modules with NS()
+9. ✅ **COMPLETED:** Refactor `tumor_growth_server()` into Shiny modules with NS() (commit `51a4c58`)
 10. Replace deprecated `aes_string()` in dose_response_modules.R
 11. Export `prepare_dose_data()` from mouseExperiment (remove triple-colon)
 12. Add loading indicators for long-running analyses
