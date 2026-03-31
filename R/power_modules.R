@@ -1,6 +1,7 @@
 #' Power Analysis UI
 #' @keywords internal
-powerAnalysisUI <- function() {
+powerAnalysisUI <- function(id) {
+  ns <- NS(id)
   fluidPage(
     h2("Post-hoc Power Analysis"),
     
@@ -12,7 +13,7 @@ powerAnalysisUI <- function() {
         wellPanel(
           h4("Analysis Method"),
           
-          selectInput("pw_method",
+          selectInput(ns("pw_method"),
                      "Method",
                      choices = c(
                        "Parametric"  = "parametric",
@@ -21,9 +22,9 @@ powerAnalysisUI <- function() {
                      ),
                      selected = "parametric"),
           
-          conditionalPanel(
+          conditionalPanel(ns = ns,
             condition = "input.pw_method == 'simulation'",
-            numericInput("pw_n_simulations",
+            numericInput(ns("pw_n_simulations"),
                         "Number of Simulations",
                         value = 1000, min = 100, max = 10000, step = 100)
           ),
@@ -31,7 +32,7 @@ powerAnalysisUI <- function() {
           hr(),
           
           h4("Alpha Levels"),
-          checkboxGroupInput("pw_alpha",
+          checkboxGroupInput(ns("pw_alpha"),
                             "Significance Levels",
                             choices  = c("0.05" = "0.05",
                                         "0.01" = "0.01",
@@ -41,7 +42,7 @@ powerAnalysisUI <- function() {
           hr(),
           
           h4("Target Power"),
-          checkboxGroupInput("pw_power",
+          checkboxGroupInput(ns("pw_power"),
                             "Power Targets",
                             choices  = c("0.80" = "0.80",
                                         "0.85" = "0.85",
@@ -52,7 +53,7 @@ powerAnalysisUI <- function() {
           hr(),
 
           h4("Custom Effect Sizes"),
-          textInput("pw_custom_effect_sizes",
+          textInput(ns("pw_custom_effect_sizes"),
                    "Effect Sizes (comma-separated, optional)",
                    value = "",
                    placeholder = "e.g. 0.2, 0.5, 0.8, 1.0"),
@@ -60,22 +61,22 @@ powerAnalysisUI <- function() {
 
           br(),
           
-          actionButton("run_pw_analysis",
+          actionButton(ns("run_pw_analysis"),
                       "Run Power Analysis",
                       class = "btn-lg btn-primary btn-block"),
           
-          uiOutput("pw_status_msg")
+          uiOutput(ns("pw_status_msg"))
         )
       ),
       
       column(9,
         tabsetPanel(
-          id = "pw_results_tabs",
+          id = ns("pw_results_tabs"),
           
           tabPanel("Summary",
             tab_info(strong("Power analysis summary: "), "overall observed power for the current sample size and key recommendations. Post-hoc power is calculated from the effect sizes observed in your data \u2014 interpret cautiously as the same data is used to both estimate effects and compute power."),
             shinycssloaders::withSpinner(
-              verbatimTextOutput("pw_summary")
+              verbatimTextOutput(ns("pw_summary"))
             )
           ),
           
@@ -94,9 +95,9 @@ powerAnalysisUI <- function() {
               )
             ),
             shinycssloaders::withSpinner(
-              DTOutput("pw_effect_sizes_table")
+              DTOutput(ns("pw_effect_sizes_table"))
             ),
-            downloadButton("download_pw_effect_sizes", "Download")
+            downloadButton(ns("download_pw_effect_sizes"), "Download")
           ),
           
           tabPanel("Power Analysis",
@@ -111,9 +112,9 @@ powerAnalysisUI <- function() {
               em("Post-hoc power should be interpreted cautiously: the same data used to fit the model is used to estimate the effect size, which inflates apparent power.")
             ),
             shinycssloaders::withSpinner(
-              DTOutput("pw_power_table")
+              DTOutput(ns("pw_power_table"))
             ),
-            downloadButton("download_pw_power_table", "Download")
+            downloadButton(ns("download_pw_power_table"), "Download")
           ),
           
           tabPanel("Sample Size Recommendations",
@@ -128,17 +129,17 @@ powerAnalysisUI <- function() {
               )
             ),
             shinycssloaders::withSpinner(
-              DTOutput("pw_sample_sizes_table")
+              DTOutput(ns("pw_sample_sizes_table"))
             ),
-            downloadButton("download_pw_sample_sizes", "Download")
+            downloadButton(ns("download_pw_sample_sizes"), "Download")
           ),
           
           tabPanel("Power Curves",
             tab_info(strong("Power vs N per group: "), "shows how power increases with sample size for each detected effect size. Horizontal dashed lines mark conventional power thresholds (0.80, 0.90). Use these curves to identify the minimum N that achieves adequate power for your effect of interest."),
             shinycssloaders::withSpinner(
-              plotOutput("pw_plot_curves", height = "500px")
+              plotOutput(ns("pw_plot_curves"), height = "500px")
             ),
-            downloadButton("download_pw_plot", "Download Plot")
+            downloadButton(ns("download_pw_plot"), "Download Plot")
           )
         )
       )
@@ -148,7 +149,8 @@ powerAnalysisUI <- function() {
 
 #' Power Analysis Server Logic
 #' @keywords internal
-power_server <- function(input, output, session, rv) {
+power_server <- function(id, rv) {
+  moduleServer(id, function(input, output, session) {
   
   rv$pw_results <- NULL
   
@@ -323,7 +325,7 @@ power_server <- function(input, output, session, rv) {
 
     # Build power-vs-N curves from observed effect sizes
     es_df <- rv$pw_results$effect_sizes
-    if (!is.null(es_df) && has_col(es_df, \"Standardized_Effect\")) {
+    if (!is.null(es_df) && has_col(es_df, "Standardized_Effect")) {
       unique_effects <- sort(unique(round(
         abs(es_df$Standardized_Effect[!is.na(es_df$Standardized_Effect)]), 2
       )))
@@ -421,4 +423,5 @@ power_server <- function(input, output, session, rv) {
       }
     }
   )
+  })
 }

@@ -1,6 +1,7 @@
 #' Survival Analysis UI
 #' @keywords internal
-survivalUI <- function() {
+survivalUI <- function(id) {
+  ns <- NS(id)
   fluidPage(
     h2("Survival Analysis"),
     
@@ -12,15 +13,15 @@ survivalUI <- function() {
         wellPanel(
           h4("Analysis Parameters"),
           
-          uiOutput("surv_reference_group_ui"),
+          uiOutput(ns("surv_reference_group_ui")),
           
           br(),
           
-          actionButton("run_surv_analysis", 
+          actionButton(ns("run_surv_analysis"), 
                       "Run Analysis",
                       class = "btn-lg btn-primary btn-block"),
           
-          uiOutput("surv_status_msg")
+          uiOutput(ns("surv_status_msg"))
         )
       ),
       
@@ -32,12 +33,12 @@ survivalUI <- function() {
           tags$i(class = "fa fa-chevron-left fa-fw"), " Collapse"
         ),
         tabsetPanel(
-          id = "surv_results_tabs",
+          id = ns("surv_results_tabs"),
           
           tabPanel("Summary",
             tab_info(strong("Survival summary: "), "Per-group event counts, total subjects, event rate, and median survival time (the day by which 50\u202f% of animals have reached the endpoint). \u2018Not reached\u2019 means fewer than half the group experienced an event by the end of the study."),
             shinycssloaders::withSpinner(
-              verbatimTextOutput("surv_summary")
+              verbatimTextOutput(ns("surv_summary"))
             )
           ),
           
@@ -58,52 +59,52 @@ survivalUI <- function() {
               )
             ),
             shinycssloaders::withSpinner(
-              verbatimTextOutput("surv_cox_summary")
+              verbatimTextOutput(ns("surv_cox_summary"))
             ),
             shinycssloaders::withSpinner(
-              DTOutput("surv_cox_table")
+              DTOutput(ns("surv_cox_table"))
             ),
-            downloadButton("download_surv_cox", "Download Results")
+            downloadButton(ns("download_surv_cox"), "Download Results")
           ),
           
           tabPanel("Plots",
             fluidRow(
               column(3,
                 wellPanel(
-                  selectInput("surv_plot_selector", "Select Plot",
+                  selectInput(ns("surv_plot_selector"), "Select Plot",
                     choices = c(
                       "Kaplan-Meier Curve"       = "km",
                       "Hazard Ratio Forest Plot" = "forest"
                     )
                   ),
                   ctrl_section("surv-groups", "sort", "Groups",
-                    conditionalPanel("input.surv_plot_selector == 'km'",
-                      uiOutput("surv_group_order_color_ui")
+                    conditionalPanel(ns = ns,"input.surv_plot_selector == 'km'",
+                      uiOutput(ns("surv_group_order_color_ui"))
                     ),
-                    conditionalPanel("input.surv_plot_selector == 'forest'",
+                    conditionalPanel(ns = ns,"input.surv_plot_selector == 'forest'",
                       tags$p(class = "text-muted", style = "font-size:12px; margin:4px 0;",
                              "Group colours are mapped automatically from the analysis groups.")
                     )
                   ),
                   ctrl_section("surv-elements", "layer-group", "Elements",
-                    conditionalPanel("input.surv_plot_selector == 'km'",
-                      checkboxInput("surv_opt_conf_int",
+                    conditionalPanel(ns = ns,"input.surv_plot_selector == 'km'",
+                      checkboxInput(ns("surv_opt_conf_int"),
                                     "Show confidence interval", value = FALSE),
-                      checkboxInput("surv_opt_risk_table",
+                      checkboxInput(ns("surv_opt_risk_table"),
                                     "Show risk table on plot", value = TRUE),
-                      numericInput("surv_km_xstart",
+                      numericInput(ns("surv_km_xstart"),
                                    "X-axis start (Day)",
                                    value = 0, min = 0, step = 1)
                     ),
-                    conditionalPanel("input.surv_plot_selector == 'forest'",
-                      colourpicker::colourInput("surv_forest_pt_color",
+                    conditionalPanel(ns = ns,"input.surv_plot_selector == 'forest'",
+                      colourpicker::colourInput(ns("surv_forest_pt_color"),
                                                "Point colour", value = "steelblue"),
                       h6("Annotation"),
-                      checkboxInput("surv_forest_show_hr", "Show HR",      value = TRUE),
-                      checkboxInput("surv_forest_show_ci", "Show 95% CI",  value = TRUE),
-                      checkboxInput("surv_forest_show_p",  "Show p-value", value = TRUE)
+                      checkboxInput(ns("surv_forest_show_hr"), "Show HR",      value = TRUE),
+                      checkboxInput(ns("surv_forest_show_ci"), "Show 95% CI",  value = TRUE),
+                      checkboxInput(ns("surv_forest_show_p"),  "Show p-value", value = TRUE)
                     ),
-                    selectInput("surv_opt_legend_pos", "Legend position",
+                    selectInput(ns("surv_opt_legend_pos"), "Legend position",
                       choices = c("None"   = "none",
                                   "Top"    = "top",    "Bottom" = "bottom",
                                   "Left"   = "left",   "Right"  = "right",
@@ -113,45 +114,45 @@ survivalUI <- function() {
                                   "In plot \u2013 bottom right" = "inplot_br"),
                       selected = "right"
                     ),
-                    textInput("surv_plot_title", "Title",
+                    textInput(ns("surv_plot_title"), "Title",
                               placeholder = "Leave blank for default"),
-                    selectInput("surv_plot_title_align", "Title alignment",
+                    selectInput(ns("surv_plot_title_align"), "Title alignment",
                       choices = c("Left" = "left", "Center" = "center", "Right" = "right"),
                       selected = "center"),
-                    textInput("surv_plot_subtitle", "Subtitle",
+                    textInput(ns("surv_plot_subtitle"), "Subtitle",
                               placeholder = "Optional subtitle"),
-                    textInput("surv_plot_xaxis_label", "X-axis label",
+                    textInput(ns("surv_plot_xaxis_label"), "X-axis label",
                               placeholder = "Leave blank for default"),
-                    textInput("surv_plot_yaxis_label", "Y-axis label",
+                    textInput(ns("surv_plot_yaxis_label"), "Y-axis label",
                               placeholder = "Leave blank for default"),
-                    textInput("surv_plot_legend_label", "Legend label",
+                    textInput(ns("surv_plot_legend_label"), "Legend label",
                               placeholder = "Leave blank for default")
                   ),
                   ctrl_section("surv-scaling", "expand", "Scaling",
-                    sliderInput("surv_opt_text_size", "Text size (pt)",
+                    sliderInput(ns("surv_opt_text_size"), "Text size (pt)",
                                 min = 10, max = 24, value = 16, step = 1)
                   ),
                   ctrl_section("surv-export", "arrows-alt", "Plot Size / Export",
                     fluidRow(
-                      column(6, numericInput("surv_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
-                      column(6, numericInput("surv_plot_height", "Height (px)", 600, min = 200, max = 5000, step = 50))
+                      column(6, numericInput(ns("surv_plot_width"),  "Width (px)",  800, min = 200, max = 5000, step = 50)),
+                      column(6, numericInput(ns("surv_plot_height"), "Height (px)", 600, min = 200, max = 5000, step = 50))
                     ),
-                    numericInput("surv_plot_dpi", "Resolution (DPI)", 100, min = 72, max = 600, step = 10),
-                    tags$div(style = "margin-top: 10px;", uiOutput("surv_download_plot_btn"))
+                    numericInput(ns("surv_plot_dpi"), "Resolution (DPI)", 100, min = 72, max = 600, step = 10),
+                    tags$div(style = "margin-top: 10px;", uiOutput(ns("surv_download_plot_btn")))
                   )
                 )
               ),
               column(9,
-                conditionalPanel("input.surv_plot_selector == 'km'",
+                conditionalPanel(ns = ns,"input.surv_plot_selector == 'km'",
                   h4("Kaplan-Meier Survival Curves"),
                   shinycssloaders::withSpinner(
-                    plotOutput("surv_plot_km", width = "auto", height = "auto")
+                    plotOutput(ns("surv_plot_km"), width = "auto", height = "auto")
                   )
                 ),
-                conditionalPanel("input.surv_plot_selector == 'forest'",
+                conditionalPanel(ns = ns,"input.surv_plot_selector == 'forest'",
                   h4("Hazard Ratio Forest Plot"),
                   shinycssloaders::withSpinner(
-                    plotOutput("surv_forest_plot", width = "auto", height = "auto")
+                    plotOutput(ns("surv_forest_plot"), width = "auto", height = "auto")
                   )
                 )
               )
@@ -172,9 +173,9 @@ survivalUI <- function() {
               "N_Risk decreases over time as events and censoring accumulate; a rapid drop indicates many events in a short window."
             ),
             shinycssloaders::withSpinner(
-              DTOutput("surv_risk_table")
+              DTOutput(ns("surv_risk_table"))
             ),
-            downloadButton("download_surv_risk_table", "Download Table")
+            downloadButton(ns("download_surv_risk_table"), "Download Table")
           )
         )
       )
@@ -184,7 +185,8 @@ survivalUI <- function() {
 
 #' Survival Analysis Server Logic
 #' @keywords internal
-survival_server <- function(input, output, session, rv) {
+survival_server <- function(id, rv) {
+  moduleServer(id, function(input, output, session) {
   
   rv$surv_results <- NULL
   rv$surv_running <- FALSE
@@ -202,18 +204,18 @@ survival_server <- function(input, output, session, rv) {
       d <- rv$uploaded_data
       # Resolve dose column directly from the UI input, not rv$dose_col which
       # requires TG analysis to have run first.
-      dose_col_input <- if (!is.null(input$col_dose) && nzchar(input$col_dose) &&
-                            input$col_dose != "None") input$col_dose else NULL
+      dose_col_input <- if (!is.null(rv$settings$col_dose) && nzchar(rv$settings$col_dose) &&
+                            rv$settings$col_dose != "None") rv$settings$col_dose else NULL
       has_dose <- has_col(d, dose_col_input)
       if (has_dose &&
-          !is.null(input$col_treatment) && nzchar(input$col_treatment) &&
-          has_col(d, input$col_treatment)) {
-        combined <- paste(d[[input$col_treatment]], d[[dose_col_input]], sep = " ")
+          !is.null(rv$settings$col_treatment) && nzchar(rv$settings$col_treatment) &&
+          has_col(d, rv$settings$col_treatment)) {
+        combined <- paste(d[[rv$settings$col_treatment]], d[[dose_col_input]], sep = " ")
         return(sort(unique(as.character(na.omit(combined)))))
       }
-      if (!is.null(input$col_treatment) && nzchar(input$col_treatment) &&
-          has_col(d, input$col_treatment)) {
-        return(sort(unique(as.character(na.omit(d[[input$col_treatment]])))))
+      if (!is.null(rv$settings$col_treatment) && nzchar(rv$settings$col_treatment) &&
+          has_col(d, rv$settings$col_treatment)) {
+        return(sort(unique(as.character(na.omit(d[[rv$settings$col_treatment]])))))
       }
       character(0)
     }
@@ -223,7 +225,7 @@ survival_server <- function(input, output, session, rv) {
     if (length(treatment_groups) > 0) {
       default_ref <- pick_reference_group(treatment_groups)
       return(
-        selectInput("surv_reference_group",
+        selectInput(session$ns("surv_reference_group"),
                    "Reference Group",
                    choices = treatment_groups,
                    selected = default_ref)
@@ -231,7 +233,7 @@ survival_server <- function(input, output, session, rv) {
     }
 
     # Fallback if no data
-    selectInput("surv_reference_group",
+    selectInput(session$ns("surv_reference_group"),
                "Reference Group",
                choices = "",
                selected = "")
@@ -242,7 +244,7 @@ survival_server <- function(input, output, session, rv) {
     req(rv$uploaded_data, rv$data_valid)
     
     # Validate that required columns are configured from data upload
-    if (input$col_treatment == "" || input$col_treatment == "-- Select a reference group --") {
+    if (rv$settings$col_treatment == "" || rv$settings$col_treatment == "-- Select a reference group --") {
       output$surv_status_msg <- renderUI({
         div(class = "alert alert-danger",
             icon("exclamation-circle"), 
@@ -252,7 +254,7 @@ survival_server <- function(input, output, session, rv) {
     }
     
 
-    if (is.null(input$col_survival_event) || input$col_survival_event == "" || input$col_survival_event == "None") {
+    if (is.null(rv$settings$col_survival_event) || rv$settings$col_survival_event == "" || rv$settings$col_survival_event == "None") {
       output$surv_status_msg <- renderUI({
         div(class = "alert alert-danger",
             icon("exclamation-circle"), 
@@ -271,39 +273,39 @@ survival_server <- function(input, output, session, rv) {
     data <- rv$uploaded_data
 
     # Resolve dose column from UI input directly — do NOT use rv$dose_col which
-    # is only set after TG analysis runs. input$col_dose always reflects the
+    # is only set after TG analysis runs. rv$settings$col_dose always reflects the
     # current column mapping regardless of analysis order.
-    dose_col_surv <- if (!is.null(input$col_dose) && nzchar(input$col_dose) &&
-                         input$col_dose != "None") input$col_dose else NULL
+    dose_col_surv <- if (!is.null(rv$settings$col_dose) && nzchar(rv$settings$col_dose) &&
+                         rv$settings$col_dose != "None") rv$settings$col_dose else NULL
 
     # When a dose column is mapped, build a combined "Treatment Dose" group label
     # so each dose level is treated as its own group.
-    has_dose_surv <- has_col(data, dose_col_surv) && has_col(data, input$col_treatment)
+    has_dose_surv <- has_col(data, dose_col_surv) && has_col(data, rv$settings$col_treatment)
     if (has_dose_surv) {
-      data[["TreatmentGroup"]] <- paste(data[[input$col_treatment]],
+      data[["TreatmentGroup"]] <- paste(data[[rv$settings$col_treatment]],
                                         data[[dose_col_surv]], sep = " ")
     }
 
     # Handle time column - either use direct day or calculate from date
-    if (input$time_method == "from_date") {
-      date_info <- detect_date_format(data, input$col_date_for_day,
-                                      input$reference_date)
+    if (rv$settings$time_method == "from_date") {
+      date_info <- detect_date_format(data, rv$settings$col_date_for_day,
+                                      rv$settings$reference_date)
       data <- mouseExperiment::calculate_dates(
         date_info$data,
         start_date  = date_info$start_date,
-        date_column = input$col_date_for_day,
+        date_column = rv$settings$col_date_for_day,
         date_format = date_info$date_format
       )
       time_col <- "Day"
     } else {
-      time_col <- input$col_day
+      time_col <- rv$settings$col_day
     }
     
     # For survival analysis, reduce data to one row per animal
     # Use the user-selected ID and Cage columns (not hardcoded names)
-    id_col_surv   <- if (!is.null(input$col_id)   && nzchar(input$col_id))   input$col_id   else "ID"
-    cage_col_surv <- if (!is.null(input$col_cage) && nzchar(input$col_cage) &&
-                         input$col_cage != "None") input$col_cage else NULL
+    id_col_surv   <- if (!is.null(rv$settings$col_id)   && nzchar(rv$settings$col_id))   rv$settings$col_id   else "ID"
+    cage_col_surv <- if (!is.null(rv$settings$col_cage) && nzchar(rv$settings$col_cage) &&
+                         rv$settings$col_cage != "None") rv$settings$col_cage else NULL
 
     has_id   <- has_col(data, id_col_surv)
     has_cage <- has_col(data, cage_col_surv)
@@ -357,12 +359,12 @@ survival_server <- function(input, output, session, rv) {
     }
     
     # Run analysis with processed data and calculated/selected time column
-    tx_col_surv <- if (has_dose_surv) "TreatmentGroup" else input$col_treatment
+    tx_col_surv <- if (has_dose_surv) "TreatmentGroup" else rv$settings$col_treatment
 
     # Validate all required columns exist before analysis
     required <- c(Treatment = tx_col_surv,
                   Time      = time_col,
-                  Event     = input$col_survival_event)
+                  Event     = rv$settings$col_survival_event)
     missing_cols <- check_required_cols(data, required)
     if (length(missing_cols) > 0) {
       output$surv_status_msg <- renderUI({
@@ -383,9 +385,9 @@ survival_server <- function(input, output, session, rv) {
       mouseExperiment::survival_statistics(
         df = data,
         time_column = time_col,
-        censor_column = input$col_survival_event,
+        censor_column = rv$settings$col_survival_event,
         treatment_column = tx_col_surv,
-        cage_column = if (!is.null(input$col_cage) && nzchar(input$col_cage)) input$col_cage else "Cage",
+        cage_column = if (!is.null(rv$settings$col_cage) && nzchar(rv$settings$col_cage)) rv$settings$col_cage else "Cage",
         dose_column = dose_col_surv,
         reference_group = input$surv_reference_group,
         firth_correction = TRUE
@@ -394,9 +396,9 @@ survival_server <- function(input, output, session, rv) {
     progress$set(value = 0.9, detail = "Preparing results")
     
     # Store time calculation info for later display
-    result$time_method <- input$time_method
+    result$time_method <- rv$settings$time_method
     result$time_column_used <- time_col
-    result$reference_date <- input$reference_date
+    result$reference_date <- rv$settings$reference_date
     
     # Generate Kaplan-Meier plot if analysis succeeded
     if (!isTRUE(result$error) && !is.null(result$survival_data)) {
@@ -413,10 +415,10 @@ survival_server <- function(input, output, session, rv) {
         result$km_plot <- mouseExperiment::plot_survival(
           data              = data,
           time_column       = time_col,
-          censor_column     = input$col_survival_event,
+          censor_column     = rv$settings$col_survival_event,
           treatment_column  = tx_col_surv,
-          id_column         = input$col_id,
-          cage_column       = if (!is.null(input$col_cage) && nzchar(input$col_cage)) input$col_cage else NULL,
+          id_column         = rv$settings$col_id,
+          cage_column       = if (!is.null(rv$settings$col_cage) && nzchar(rv$settings$col_cage)) rv$settings$col_cage else NULL,
           dose_column       = dose_col_surv,
           colors            = NULL,
           show_risk_table   = TRUE,
@@ -479,15 +481,15 @@ survival_server <- function(input, output, session, rv) {
       # Show time specification method
       if (rv$surv_results$time_method == "from_date") {
         cat("Time Method: Calculated from Date Column\n")
-        cat("Date Column:", input$col_date_for_day, "\n")
-        cat("Reference Date:", input$reference_date, "\n")
+        cat("Date Column:", rv$settings$col_date_for_day, "\n")
+        cat("Reference Date:", rv$settings$reference_date, "\n")
       } else {
         cat("Time Method: Direct Day Column\n")
-        cat("Day Column:", input$col_day, "\n")
+        cat("Day Column:", rv$settings$col_day, "\n")
       }
       
-      cat("Event Column:", input$col_survival_event, "\n")
-      cat("Treatment Column:", input$col_treatment, "\n")
+      cat("Event Column:", rv$settings$col_survival_event, "\n")
+      cat("Treatment Column:", rv$settings$col_treatment, "\n")
       cat("Statistical Method:", rv$surv_results$method_used, "\n")
       
       if (!is.null(rv$surv_results$results)) {
@@ -509,7 +511,7 @@ survival_server <- function(input, output, session, rv) {
   # Group order and color combined control for KM/Survival plots
   output$surv_group_order_color_ui <- renderUI({
     req(rv$surv_plot_groups)
-    group_order_and_color_ui("surv", rv$surv_plot_groups)
+    group_order_and_color_ui("surv", rv$surv_plot_groups, ns = session$ns)
   })
 
   output$surv_download_plot_btn <- renderUI({
@@ -518,7 +520,7 @@ survival_server <- function(input, output, session, rv) {
       forest = "download_surv_forest_plot",
       "download_surv_plot_km"
     )
-    downloadButton(btn_id, "Download Plot")
+    downloadButton(session$ns(btn_id), "Download Plot")
   })
 
   # Kaplan-Meier plot — re-renders live when colour pickers, order, or conf.int option change
@@ -916,4 +918,5 @@ survival_server <- function(input, output, session, rv) {
     }
   )
   
+  })
 }

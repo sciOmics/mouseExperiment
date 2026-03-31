@@ -1,535 +1,8 @@
-#' Server Modules for mouseExperimentDashboard
-
-#' Data Upload Server Logic
-#' @keywords internal
-data_upload_server <- function(input, output, session, rv) {
-  
-  # Reactive value to store uploaded data
-  rv$uploaded_data <- NULL
-  rv$data_valid <- FALSE
-  rv$detected_cols <- NULL
-  
-  # Demo data loader
-  observeEvent(input$load_demo_data, {
-    req(nzchar(input$demo_dataset))
-
-    demo_files <- list(
-      combo = list(
-        data     = "combo_treatment_synthetic_data.csv",
-        ref_date = "2025-03-24",
-        label    = "Combo Treatment demo"
-      ),
-      dose_levels = list(
-        data     = "dose_levels_synthetic_data.csv",
-        ref_date = "2025-03-24",
-        label    = "Dose Levels demo"
-      ),
-      necrotic = list(
-        data     = "necrotic_synthetic_data.csv",
-        ref_date = "",
-        label    = "Necrotic Data demo"
-      ),
-      weight = list(
-        data     = "weight_synthetic_data.csv",
-        ref_date = "2025-03-01",
-        label    = "Weight Data demo"
-      )
-    )
-
-    chosen   <- demo_files[[input$demo_dataset]]
-    pkg_name <- "mouseExperimentDashboard"
-
-    # Locate files: installed package first, then development source tree
-    find_demo <- function(filename) {
-      p <- system.file("sample_data", filename, package = pkg_name)
-      if (nzchar(p)) return(p)
-      # fallback for devtools::load_all() / running from source
-      local_p <- file.path("inst", "sample_data", filename)
-      if (file.exists(local_p)) return(local_p)
-      NULL
-    }
-
-    data_path <- find_demo(chosen$data)
-    if (is.null(data_path)) {
-      output$demo_load_msg <- renderUI({
-        div(class="alert alert-danger", icon("exclamation-circle"),
-            "Demo file not found. Please reinstall the package.")
-      })
-      return()
-    }
-
-    # Load main data file
-    result <- validate_uploaded_file(data_path, "csv")
-    if (!result$valid) {
-      output$demo_load_msg <- renderUI({
-        div(class="alert alert-danger", icon("exclamation-circle"), result$message)
-      })
-      return()
-    }
-
-    rv$uploaded_data  <- result$data
-    rv$data_valid     <- TRUE
-    rv$detected_cols  <- detect_columns(colnames(result$data))
-
-    # Set reference date for this dataset
-    updateTextInput(session, "reference_date", value = chosen$ref_date)
-
-    output$file_validation_msg <- renderUI({
-      div(class="alert alert-success",
-          icon("check"),
-          paste(chosen$label, "loaded:",
-                nrow(result$data), "rows,",
-                ncol(result$data), "cols."))
-    })
-
-    output$demo_load_msg <- renderUI({
-      div(class="alert alert-success", style="margin:0;",
-          icon("check"), " Loaded!")
-    })
-
-  })
-
-  # File upload handler
-  observeEvent(input$data_file, {
-    req(input$data_file)
-    file_info <- input$data_file
-    file_path <- file_info$datapath
-    # Extract file extension manually
-    file_parts <- strsplit(file_info$name, "\\.")[[1]]
-    file_ext <- tolower(file_parts[length(file_parts)])
-    
-    # Validate and load file
-    result <- validate_uploaded_file(file_path, file_ext)
-    
-    if (result$valid) {
-      rv$uploaded_data <- result$data
-      rv$data_valid <- TRUE
-      rv$detected_cols <- detect_columns(colnames(result$data))
-      
-      # Display validation message
-      output$file_validation_msg <- renderUI({
-        div(class = "alert alert-success",
-            icon("check"), result$message)
-      })
-      
-    } else {
-      rv$data_valid <- FALSE
-      rv$uploaded_data <- NULL
-      output$file_validation_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"), result$message)
-      })
-    }
-  })
-  
-  # File info output
-  output$file_info <- renderText({
-    if (is.null(rv$uploaded_data)) {
-      "No file loaded yet"
-    } else {
-      paste("Rows:", nrow(rv$uploaded_data), "\n",
-            "Columns:", ncol(rv$uploaded_data), "\n",
-            "Column names:", paste(colnames(rv$uploaded_data), collapse = ", "))
-    }
-  })
-  
-  # Column mapping UI
-  output$column_mapping_ui <- renderUI({
-    if (!rv$data_valid) return(NULL)
-    column_mapping_ui(colnames(rv$uploaded_data), rv$detected_cols)
-  })
-  
-  # ---------------------------------------------------------------------------
-  # Reactive: compute preview data with calculated columns applied
-  # Mirrors the same transformations used in tumor_growth_server so the preview
-  # shows Volume and Day exactly as analysis will see them.
-  # ---------------------------------------------------------------------------
-  preview_data <- reactive({
-    req(rv$uploaded_data, rv$data_valid)
-    data <- rv$uploaded_data
-    
-    # Apply date -> Day calculation if selected
-    if (!is.null(input$time_method) && input$time_method == "from_date" &&
-        !is.null(input$col_date_for_day) && input$col_date_for_day != "") {
-      tryCatch({
-        date_info <- detect_date_format(data, input$col_date_for_day,
-                                        input$reference_date %||% "")
-        data <- mouseExperiment::calculate_dates(
-          date_info$data,
-          start_date  = date_info$start_date,
-          date_column = input$col_date_for_day,
-          date_format = date_info$date_format
-        )
-      }, error = function(e) {
-        message("[TG Preview] Date calculation failed: ", conditionMessage(e))
-      })
-    }
-    
-    # Apply volume calculation if selected
-    if (!is.null(input$volume_method) && input$volume_method == "calculate" &&
-        !is.null(input$col_length) && input$col_length != "" &&
-        !is.null(input$col_width)  && input$col_width  != "") {
-      tryCatch({
-        data <- mouseExperiment::calculate_volume(
-          data,
-          length_column = input$col_length,
-          width_column  = input$col_width,
-          formula       = input$volume_formula
-        )
-      }, error = function(e) {
-        message("[TG Preview] Volume calculation failed: ", conditionMessage(e))
-      })
-    }
-    
-    data
-  })
-
-  # Detect rows where the user has width > length before auto-correction.
-  # Returns a named integer vector: names are the 1-based row indices, values
-  # are those same indices (for easy display and DT highlighting).
-  transposed_rows <- reactive({
-    req(rv$uploaded_data, rv$data_valid)
-    if (!isTRUE(input$volume_method == "calculate")) return(integer(0))
-    len_col <- input$col_length %||% ""
-    wid_col <- input$col_width  %||% ""
-    if (!nzchar(len_col) || !nzchar(wid_col)) return(integer(0))
-    d <- rv$uploaded_data
-    if (!len_col %in% colnames(d) || !wid_col %in% colnames(d)) return(integer(0))
-    len_vals <- suppressWarnings(as.numeric(d[[len_col]]))
-    wid_vals <- suppressWarnings(as.numeric(d[[wid_col]]))
-    which(!is.na(len_vals) & !is.na(wid_vals) & wid_vals > len_vals)
-  })
-
-  # ---------------------------------------------------------------------------
-  # Dataset Summary
-  # ---------------------------------------------------------------------------
-  output$data_summary_ui <- renderUI({
-    if (!rv$data_valid) return(NULL)
-    
-    data    <- preview_data()
-    tx_col  <- if (!is.null(input$col_treatment) && input$col_treatment != "") input$col_treatment else NULL
-    dose_col <- if (!is.null(input$col_dose) && input$col_dose != "" && input$col_dose != "None") input$col_dose else NULL
-    cage_col <- if (!is.null(input$col_cage) && input$col_cage != "") input$col_cage else NULL
-    id_col  <- if (!is.null(input$col_id) && input$col_id != "") input$col_id else NULL
-    
-    # Determine the time column used in the preview
-    time_col <- if (!is.null(input$time_method) && input$time_method == "from_date") "Day"
-                else if (!is.null(input$col_day) && input$col_day != "") input$col_day
-                else NULL
-    
-    vol_col <- if (!is.null(input$volume_method) && input$volume_method == "calculate") "Volume"
-               else if (!is.null(input$col_volume) && input$col_volume != "") input$col_volume
-               else NULL
-    
-    # --- Treatment groups ---
-    tx_box <- if (has_col(data, tx_col)) {
-      if (has_col(data, dose_col)) {
-        # Show treatment × dose breakdown as a table
-        td <- unique(data[, c(tx_col, dose_col)])
-        td[[tx_col]]   <- as.character(td[[tx_col]])
-        td[[dose_col]] <- as.character(td[[dose_col]])
-        td <- td[order(td[[tx_col]], td[[dose_col]]), ]
-        # Collapse doses per treatment into a single row
-        dose_per_tx <- tapply(td[[dose_col]], td[[tx_col]], function(d)
-          paste(sort(unique(d)), collapse = ", "))
-        tx_rows <- lapply(sort(names(dose_per_tx)), function(g)
-          tags$tr(tags$td(g), tags$td(dose_per_tx[[g]]))
-        )
-        div(class = "panel panel-default",
-          div(class = "panel-heading", tags$b("Treatment Groups")),
-          div(class = "panel-body",
-            tags$table(
-              class = "table table-condensed table-bordered",
-              style = "width:auto;",
-              tags$thead(tags$tr(tags$th("Treatment"), tags$th("Dose(s)"))),
-              tags$tbody(tx_rows)
-            )
-          )
-        )
-      } else {
-        groups <- sort(unique(na.omit(as.character(data[[tx_col]]))))
-        div(class = "panel panel-default",
-          div(class = "panel-heading", tags$b("Treatment Groups")),
-          div(class = "panel-body",
-            tags$ul(lapply(groups, tags$li))
-          )
-        )
-      }
-    } else div(class = "text-muted", "(Treatment column not configured)")
-    
-    # --- Cage IDs removed --- #
-
-    # --- Day / date range ---
-    time_box <- if (has_col(data, time_col)) {
-      vals <- suppressWarnings(as.numeric(data[[time_col]]))
-      vals <- vals[!is.na(vals)]
-      if (length(vals) > 0) {
-        div(class = "panel panel-default",
-          div(class = "panel-heading", tags$b("Day Range")),
-          div(class = "panel-body",
-            p(paste0("Min: ", min(vals), " \u2014 Max: ", max(vals),
-                    " (", length(unique(vals)), " unique timepoints)"))
-          )
-        )
-      } else NULL
-    } else NULL
-    
-    # --- Mice per group ---
-    mice_box <- if (has_col(data, tx_col) && has_col(data, id_col)) {
-
-      has_dose <- has_col(data, dose_col)
-
-      inner <- if (has_col(data, cage_col)) {
-        # Cage × treatment (× dose) table
-        key_cols <- c(id_col, cage_col, tx_col, if (has_dose) dose_col)
-        ct <- unique(data[, key_cols])
-        group_cols <- c("Cage", "Treatment", if (has_dose) "Dose")
-        ct_renamed <- data.frame(
-          Cage      = as.character(ct[[cage_col]]),
-          Treatment = as.character(ct[[tx_col]]),
-          stringsAsFactors = FALSE
-        )
-        if (has_dose) ct_renamed$Dose <- as.character(ct[[dose_col]])
-        ct_counts <- as.data.frame(table(ct_renamed[, group_cols, drop = FALSE]))
-        ct_counts <- ct_counts[ct_counts$Freq > 0, ]
-        ct_counts <- ct_counts[do.call(order, ct_counts[, group_cols, drop = FALSE]), ]
-        ct_rows <- lapply(seq_len(nrow(ct_counts)), function(i) {
-          cells <- lapply(group_cols, function(col) tags$td(as.character(ct_counts[[col]][i])))
-          do.call(tags$tr, c(cells, list(tags$td(ct_counts$Freq[i]))))
-        })
-        header_cells <- lapply(c(group_cols, "Mice"), tags$th)
-        tags$table(
-          class = "table table-condensed table-bordered",
-          style = "width:auto;",
-          tags$thead(do.call(tags$tr, header_cells)),
-          tags$tbody(ct_rows)
-        )
-      } else {
-        # Per-treatment (+ dose) when no cage column configured
-        key_cols <- c(id_col, tx_col, if (has_dose) dose_col)
-        ct <- unique(data[, key_cols])
-        if (has_dose) {
-          group_df <- data.frame(
-            Treatment = as.character(ct[[tx_col]]),
-            Dose      = as.character(ct[[dose_col]]),
-            stringsAsFactors = FALSE
-          )
-          counts <- as.data.frame(table(group_df))
-          counts <- counts[counts$Freq > 0, ]
-          counts <- counts[order(counts$Treatment, counts$Dose), ]
-          tx_rows <- lapply(seq_len(nrow(counts)), function(i)
-            tags$tr(tags$td(counts$Treatment[i]),
-                    tags$td(counts$Dose[i]),
-                    tags$td(counts$Freq[i]))
-          )
-          tags$table(
-            class = "table table-condensed table-bordered",
-            style = "width:auto;",
-            tags$thead(tags$tr(tags$th("Treatment"), tags$th("Dose"), tags$th("Mice"))),
-            tags$tbody(tx_rows)
-          )
-        } else {
-          tx_counts <- tapply(
-            as.character(data[[id_col]]),
-            as.character(data[[tx_col]]),
-            function(x) length(unique(x))
-          )
-          tx_rows <- lapply(sort(names(tx_counts)), function(g)
-            tags$tr(tags$td(g), tags$td(tx_counts[[g]]))
-          )
-          tags$table(
-            class = "table table-condensed table-bordered",
-            style = "width:auto;",
-            tags$thead(tags$tr(tags$th("Treatment"), tags$th("Unique Mice"))),
-            tags$tbody(tx_rows)
-          )
-        }
-      }
-
-      div(class = "panel panel-default",
-        div(class = "panel-heading", tags$b("Cage Info")),
-        div(class = "panel-body", inner)
-      )
-    } else NULL
-    
-    # --- Transposed measurement warning ---
-    tr           <- transposed_rows()
-    raw_data     <- rv$uploaded_data
-    len_col_raw  <- if (!is.null(input$col_length) && input$col_length != "") input$col_length else NULL
-    wid_col_raw  <- if (!is.null(input$col_width)  && input$col_width  != "") input$col_width  else NULL
-    id_col_disp  <- if (!is.null(input$col_id)     && input$col_id     != "") input$col_id     else NULL
-    time_col_disp <- if (has_col(raw_data, time_col)) time_col else NULL
-
-    transposed_box <- if (length(tr) > 0 && !is.null(len_col_raw) && !is.null(wid_col_raw)) {
-      tbl_rows <- lapply(tr, function(i) {
-        len_v <- raw_data[[len_col_raw]][i]
-        wid_v <- raw_data[[wid_col_raw]][i]
-        id_v  <- if (has_col(raw_data, id_col_disp))   raw_data[[id_col_disp]][i]   else ""
-        day_v <- if (has_col(raw_data, time_col_disp)) raw_data[[time_col_disp]][i] else ""
-        tags$tr(
-          tags$td(i),
-          tags$td(if (nzchar(trimws(as.character(id_v))))  as.character(id_v)  else tags$em("\u2014")),
-          tags$td(if (nzchar(trimws(as.character(day_v)))) as.character(day_v) else tags$em("\u2014")),
-          tags$td(style = "color:#c0392b; font-weight:bold;", round(as.numeric(wid_v), 3)),
-          tags$td(round(as.numeric(len_v), 3)),
-          tags$td(style = "color:#27ae60;",
-                  paste(round(as.numeric(len_v), 3), "/", round(as.numeric(wid_v), 3)))
-        )
-      })
-      div(class = "alert alert-warning", style = "margin-top: 10px;",
-        icon("exclamation-triangle"), " ",
-        strong(paste(length(tr), "measurement row(s) auto-corrected: width value exceeded length")),
-        tags$br(),
-        tags$small(
-          "The dimensions were automatically swapped so length \u2265 width before calculating volume. ",
-          "These rows are highlighted in yellow in the Data Preview below."
-        ),
-        tags$br(), tags$br(),
-        div(style = "overflow-x:auto;",
-          tags$table(
-            class = "table table-condensed table-bordered",
-            style = "width:auto; background:#fff;",
-            tags$thead(
-              tags$tr(
-                tags$th("Row #"),
-                tags$th(if (!is.null(id_col_disp))   id_col_disp   else "ID"),
-                tags$th(if (!is.null(time_col_disp)) time_col_disp else "Day"),
-                tags$th(style = "color:#c0392b;",
-                        paste0(wid_col_raw, " (was larger — swapped to width)")),
-                tags$th(paste0(len_col_raw, " (was smaller — swapped to length)")),
-                tags$th("Corrected: Length / Width")
-              )
-            ),
-            tags$tbody(tbl_rows)
-          )
-        )
-      )
-    } else NULL
-
-    tagList(
-      wellPanel(
-        h4("Dataset Summary"),
-        p(strong(paste(nrow(data), "rows \u00d7", ncol(data), "columns"))),
-        transposed_box,
-        fluidRow(
-          column(4, tx_box),
-          column(4, time_box),
-          column(4, mice_box)
-        )
-      )
-    )
-  })
-  
-  # Data preview
-  output$data_preview_ui <- renderUI({
-    if (!rv$data_valid) return(NULL)
-    data_preview_ui()
-  })
-  
-  output$preview_summary <- renderText({
-    if (!rv$data_valid) return("")
-    data <- preview_data()
-    paste("Dataset:", nrow(data), "rows ×", ncol(data), "columns")
-  })
-  
-  output$data_table <- renderDT({
-    req(rv$data_valid)
-    tr   <- transposed_rows()
-    opts <- list(scrollX = TRUE, scrollY = "600px", paging = FALSE, dom = "ti")
-    if (length(tr) > 0) {
-      js_idx <- paste(tr - 1L, collapse = ",")
-      opts$rowCallback <- DT::JS(sprintf(
-        "function(row, data, displayNum, displayIndex, dataIndex) {
-           if ([%s].indexOf(dataIndex) >= 0) {
-             $(row).css({'background-color': '#fff3cd', 'font-weight': 'bold'});
-             $(row).attr('title',
-               'Auto-corrected: width exceeded length \\u2014 dimensions were swapped before volume calculation');
-           }
-         }", js_idx))
-    }
-    datatable(preview_data(), options = opts)
-  })
-  
-  output$download_preview_data <- downloadHandler(
-    filename = function() paste0("processed_data_", format(Sys.Date(), "%Y%m%d"), ".csv"),
-    content  = function(file) write.csv(preview_data(), file, row.names = FALSE)
-  )
-  
-  # Reset button
-  observeEvent(input$reset_data, {
-    # Clear reactive values
-    rv$uploaded_data <- NULL
-    rv$data_valid <- FALSE
-    rv$detected_cols <- NULL
-    
-    # Clear all outputs by rendering empty content
-    output$file_validation_msg <- renderUI({
-      div(class = "alert alert-info",
-          icon("info-circle"), "Ready to upload a new file")
-    })
-    
-    output$file_info <- renderText({
-      "No file loaded yet"
-    })
-    
-    output$column_mapping_ui <- renderUI({
-      NULL
-    })
-    
-    output$data_preview_ui <- renderUI({
-      NULL
-    })
-    
-    output$data_summary_ui <- renderUI({
-      NULL
-    })
-    
-    output$preview_summary <- renderText({
-      ""
-    })
-    
-    output$data_table <- renderDT({
-      datatable(data.frame(Message = "No data loaded"), 
-                options = list(scrollX = TRUE))
-    })
-    
-    # Reset the file input widget
-    shinyjs::reset("data_file")
-  })
-  
-
-  
-  # Proceed button is always clickable - validation enforced at analysis time
-  # No need to disable/enable the button
-
-  # ---------------------------------------------------------------------------
-  # Sync column mapping inputs into rv$settings for cross-module access.
-  # Other modules (TG, survival, synergy, etc.) read rv$settings$* instead of
-  # input$col_* so they work correctly under moduleServer() namespacing.
-  # ---------------------------------------------------------------------------
-  observe({
-    rv$settings <- list(
-      col_treatment     = input$col_treatment %||% "",
-      col_id            = input$col_id %||% "",
-      col_day           = input$col_day %||% "",
-      col_date_for_day  = input$col_date_for_day %||% "",
-      col_volume        = input$col_volume %||% "",
-      col_length        = input$col_length %||% "",
-      col_width         = input$col_width %||% "",
-      col_cage          = input$col_cage %||% "",
-      col_dose          = input$col_dose %||% "",
-      col_survival_event = input$col_survival_event %||% "",
-      time_method       = input$time_method %||% "direct_day",
-      volume_method     = input$volume_method %||% "direct",
-      volume_formula    = input$volume_formula %||% "ellipsoid",
-      reference_date    = input$reference_date %||% ""
-    )
-  })
-}
 
 #' Tumor Growth Analysis Server Logic
 #' @keywords internal
-tumor_growth_server <- function(input, output, session, rv) {
+tumor_growth_server <- function(id, rv) {
+  moduleServer(id, function(input, output, session) {
   
   rv$tg_results <- NULL
   rv$tg_running <- FALSE
@@ -540,12 +13,12 @@ tumor_growth_server <- function(input, output, session, rv) {
   observe({
     if (!is.null(rv$uploaded_data) && rv$data_valid) {
       # Prefer the user-selected treatment column; fall back to auto-detected one
-      treatment_col <- if (!is.null(input$col_treatment) && nzchar(input$col_treatment))
-                         input$col_treatment
+      treatment_col <- if (!is.null(rv$settings$col_treatment) && nzchar(rv$settings$col_treatment))
+                         rv$settings$col_treatment
                        else
                          rv$detected_cols$treatment
-      dose_col <- if (!is.null(input$col_dose) && nzchar(input$col_dose))
-                    input$col_dose
+      dose_col <- if (!is.null(rv$settings$col_dose) && nzchar(rv$settings$col_dose))
+                    rv$settings$col_dose
                   else NULL
 
       if (!is.null(treatment_col) && nzchar(treatment_col)) {
@@ -596,24 +69,24 @@ tumor_growth_server <- function(input, output, session, rv) {
     data <- rv$uploaded_data
     
     # Handle time column - either use direct day or calculate from date
-    if (input$time_method == "from_date") {
-      date_info <- detect_date_format(data, input$col_date_for_day,
-                                      input$reference_date)
+    if (rv$settings$time_method == "from_date") {
+      date_info <- detect_date_format(data, rv$settings$col_date_for_day,
+                                      rv$settings$reference_date)
       data <- mouseExperiment::calculate_dates(
         date_info$data,
         start_date  = date_info$start_date,
-        date_column = input$col_date_for_day,
+        date_column = rv$settings$col_date_for_day,
         date_format = date_info$date_format
       )
       time_col <- "Day"  # calculate_dates produces a "Day" column
     } else {
-      time_col <- input$col_day
+      time_col <- rv$settings$col_day
     }
     
     # Apply volume calculation if needed
-    if (input$volume_method == "calculate") {
-      len_col <- input$col_length %||% ""
-      wid_col <- input$col_width  %||% ""
+    if (rv$settings$volume_method == "calculate") {
+      len_col <- rv$settings$col_length %||% ""
+      wid_col <- rv$settings$col_width  %||% ""
       if (!nzchar(len_col) || !nzchar(wid_col)) {
         output$tg_status_msg <- renderUI({
           div(class = "alert alert-danger",
@@ -637,26 +110,26 @@ tumor_growth_server <- function(input, output, session, rv) {
         data,
         length_column = len_col,
         width_column  = wid_col,
-        formula       = input$volume_formula
+        formula       = rv$settings$volume_formula
       )
       vol_col <- "Volume"
     } else {
-      vol_col <- input$col_volume
+      vol_col <- rv$settings$col_volume
     }
     
     # Store preprocessed data and resolved column names for reuse by other modules
     rv$processed_data <- data
     rv$time_col       <- time_col
     rv$vol_col        <- vol_col
-    rv$tx_col         <- input$col_treatment
-    rv$id_col         <- input$col_id
-    rv$cage_col       <- if (!is.null(input$col_cage) && input$col_cage != "") input$col_cage else NULL
-    rv$dose_col       <- if (!is.null(input$col_dose) && input$col_dose != "") input$col_dose else NULL
+    rv$tx_col         <- rv$settings$col_treatment
+    rv$id_col         <- rv$settings$col_id
+    rv$cage_col       <- if (!is.null(rv$settings$col_cage) && rv$settings$col_cage != "") rv$settings$col_cage else NULL
+    rv$dose_col       <- if (!is.null(rv$settings$col_dose) && rv$settings$col_dose != "") rv$settings$col_dose else NULL
 
     # When a dose column is mapped, combine treatment + dose into a single
     # group label so each dose level is treated as its own group by all analyses.
     if (!is.null(rv$dose_col)) {
-      data[["TreatmentGroup"]] <- paste(data[[input$col_treatment]],
+      data[["TreatmentGroup"]] <- paste(data[[rv$settings$col_treatment]],
                                         data[[rv$dose_col]], sep = " ")
       rv$processed_data <- data
       rv$tx_col         <- "TreatmentGroup"
@@ -666,9 +139,9 @@ tumor_growth_server <- function(input, output, session, rv) {
     col_names <- list(
       time_column = time_col,
       volume_column = vol_col,
-      id_column = input$col_id,
+      id_column = rv$settings$col_id,
       treatment_column = rv$tx_col,
-      cage_column = if (input$col_cage != "") input$col_cage else NULL
+      cage_column = if (rv$settings$col_cage != "") rv$settings$col_cage else NULL
     )
 
     # Validate all required columns exist in data
@@ -729,10 +202,10 @@ tumor_growth_server <- function(input, output, session, rv) {
         # Otherwise synthesize one by flagging mice that disappear before
         # the study's final timepoint.
         if (!is.null(result$growth_rates)) {
-          surv_col_mapped <- !is.null(input$col_survival_event) &&
-                             input$col_survival_event != "" &&
-                             input$col_survival_event != "None" &&
-                             input$col_survival_event %in% colnames(data)
+          surv_col_mapped <- !is.null(rv$settings$col_survival_event) &&
+                             rv$settings$col_survival_event != "" &&
+                             rv$settings$col_survival_event != "None" &&
+                             rv$settings$col_survival_event %in% colnames(data)
           extra_pts <- if (!is.null(input$tg_extrapolation_points) &&
                            !is.na(input$tg_extrapolation_points))
                          as.integer(input$tg_extrapolation_points) else 0L
@@ -743,7 +216,7 @@ tumor_growth_server <- function(input, output, session, rv) {
           surv_col   <- NULL
           if (do_extrapolate) {
             if (surv_col_mapped) {
-              surv_col <- input$col_survival_event
+              surv_col <- rv$settings$col_survival_event
             } else {
               syn <- synthesize_censor_column(
                 data     = data,
@@ -764,7 +237,7 @@ tumor_growth_server <- function(input, output, session, rv) {
             df = plot_data,
             volume_column = col_names$volume_column,
             day_column = col_names$time_column,
-            treatment_column = if (!is.null(rv$dose_col)) input$col_treatment else col_names$treatment_column,
+            treatment_column = if (!is.null(rv$dose_col)) rv$settings$col_treatment else col_names$treatment_column,
             dose_column = rv$dose_col,
             ID_column = col_names$id_column,
             cage_column = col_names$cage_column,
@@ -1146,10 +619,10 @@ tumor_growth_server <- function(input, output, session, rv) {
     rv$tg_plot_data   <- data
     rv$tg_col_names   <- col_names
     rv$tg_plot_groups <- if (!is.null(rv$dose_col) && rv$dose_col %in% colnames(data) &&
-                              !is.null(input$col_treatment) && input$col_treatment %in% colnames(data)) {
+                              !is.null(rv$settings$col_treatment) && rv$settings$col_treatment %in% colnames(data)) {
       # plot_tumor_growth builds Group as paste(treatment, dose, sep = " - Dose: ")
       # so colour-picker names must match that format exactly
-      unique(paste(data[[input$col_treatment]], data[[rv$dose_col]], sep = " - Dose: "))
+      unique(paste(data[[rv$settings$col_treatment]], data[[rv$dose_col]], sep = " - Dose: "))
     } else if (!is.null(data) && !is.null(col_names$treatment_column) &&
                 col_names$treatment_column %in% colnames(data)) {
       unique(as.character(data[[col_names$treatment_column]]))
@@ -1258,9 +731,9 @@ tumor_growth_server <- function(input, output, session, rv) {
             )
           ),
           shinycssloaders::withSpinner(
-            DTOutput("tg_auc_individual_table")
+            DTOutput(session$ns("tg_auc_individual_table"))
           ),
-          downloadButton("download_tg_auc_individual", "Download AUC Individual Data")
+          downloadButton(session$ns("download_tg_auc_individual"), "Download AUC Individual Data")
         ),
         tabPanel("AUC Summary",
           tab_info(
@@ -1275,9 +748,9 @@ tumor_growth_server <- function(input, output, session, rv) {
             em("Use these summaries for descriptive group comparisons and to verify sample sizes and variability before statistical testing.")
           ),
           shinycssloaders::withSpinner(
-            DTOutput("tg_auc_summary_table")
+            DTOutput(session$ns("tg_auc_summary_table"))
           ),
-          downloadButton("download_tg_auc_summary", "Download AUC Summary")
+          downloadButton(session$ns("download_tg_auc_summary"), "Download AUC Summary")
         )
       )
     }
@@ -1293,7 +766,7 @@ tumor_growth_server <- function(input, output, session, rv) {
       effect_forest  = "download_tg_plot_effect_forest",
       "download_tg_plot_growth"
     )
-    downloadButton(btn_id, "Download")
+    downloadButton(session$ns(btn_id), "Download")
   })
 
   output$tg_summary_tab_info <- renderUI({
@@ -1629,7 +1102,7 @@ tumor_growth_server <- function(input, output, session, rv) {
   # Group order and color combined control for Plots tab
   output$tg_group_order_color_ui <- renderUI({
     req(rv$tg_plot_groups)
-    group_order_and_color_ui("tg", rv$tg_plot_groups)
+    group_order_and_color_ui("tg", rv$tg_plot_groups, ns = session$ns)
   })
 
   # Growth curves plot  — reactive: re-renders on colour/option changes
@@ -1647,10 +1120,10 @@ tumor_growth_server <- function(input, output, session, rv) {
     # For non-dose data, apply order on the treatment column directly.
     if (isTRUE(length(ordered_grps) > 0)) {
       if (!is.null(rv$dose_col) && rv$dose_col %in% colnames(data) &&
-          !is.null(input$col_treatment) && input$col_treatment %in% colnames(data)) {
+          !is.null(rv$settings$col_treatment) && rv$settings$col_treatment %in% colnames(data)) {
         # Derive treatment-level order from the combined group order
         tx_order <- unique(sub(" - Dose: .*$", "", ordered_grps))
-        data[[input$col_treatment]] <- factor(data[[input$col_treatment]], levels = tx_order)
+        data[[rv$settings$col_treatment]] <- factor(data[[rv$settings$col_treatment]], levels = tx_order)
       } else if (isTRUE(col_names$treatment_column %in% colnames(data))) {
         data[[col_names$treatment_column]] <- factor(data[[col_names$treatment_column]],
                                                      levels = ordered_grps)
@@ -1658,7 +1131,7 @@ tumor_growth_server <- function(input, output, session, rv) {
     }
 
     surv_col_mapped <- local({
-      col <- input$col_survival_event
+      col <- rv$settings$col_survival_event
       is.character(col) && length(col) == 1L &&
         nzchar(col) && col != "None" && isTRUE(col %in% colnames(data))
     })
@@ -1676,11 +1149,11 @@ tumor_growth_server <- function(input, output, session, rv) {
         # When a dose column is present, pass the original treatment column so
         # plot_tumor_growth can build 'Group = Treatment - Dose: X' itself,
         # matching the names used in rv$tg_plot_groups and the colour pickers.
-        treatment_column    = if (!is.null(rv$dose_col)) input$col_treatment else col_names$treatment_column,
+        treatment_column    = if (!is.null(rv$dose_col)) rv$settings$col_treatment else col_names$treatment_column,
         dose_column         = rv$dose_col,
         ID_column           = col_names$id_column,
         cage_column         = col_names$cage_column,
-        survival_column     = if (isTRUE(surv_col_mapped)) input$col_survival_event else NULL,
+        survival_column     = if (isTRUE(surv_col_mapped)) rv$settings$col_survival_event else NULL,
         extrapolate_volumes = do_extrapolate,
         extrapolation_points = if (extra_pts > 0L) extra_pts else "all",
         group_summary_line  = isTRUE(input$tg_opt_group_line),
@@ -2362,4 +1835,5 @@ tumor_growth_server <- function(input, output, session, rv) {
     }
   )
 
+  })
 }

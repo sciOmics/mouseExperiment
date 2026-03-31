@@ -646,12 +646,12 @@ apply_legend_pos <- function(p, pos) {
 #' @return A \code{tagList} containing HTML structure and colour inputs, or
 #'   \code{NULL} when fewer than 2 groups.
 #' @keywords internal
-group_order_and_color_ui <- function(prefix, groups) {
+group_order_and_color_ui <- function(prefix, groups, ns = NS(NULL)) {
   if (is.null(groups) || length(groups) < 2L) return(NULL)
 
   defaults <- default_group_colors(length(groups))
-  list_id  <- paste0(prefix, "_drag_list")
-  input_id <- paste0(prefix, "_order")
+  list_id  <- ns(paste0(prefix, "_drag_list"))
+  input_id <- ns(paste0(prefix, "_order"))
 
   # Closed pch shapes available for per-group selection.
   # Open shapes (0, 1, 2, ...) are reserved for extrapolated points.
@@ -669,8 +669,8 @@ group_order_and_color_ui <- function(prefix, groups) {
   # no innerText parsing, no custom Shiny input type.
   items <- lapply(seq_along(groups), function(i) {
     g        <- groups[i]
-    color_id <- paste0(prefix, "_color_", make.names(g))
-    shape_id <- paste0(prefix, "_shape_", make.names(g))
+    color_id <- ns(paste0(prefix, "_color_", make.names(g)))
+    shape_id <- ns(paste0(prefix, "_shape_", make.names(g)))
     def_shape <- as.character(default_shapes[((i - 1L) %% length(default_shapes)) + 1L])
     shiny::tags$li(
       `data-value` = g,

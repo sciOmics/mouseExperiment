@@ -65,9 +65,9 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
       )
     ),
 
-    tabPanel("Data",          dataUploadUI()),
-    tabPanel("Tumor Growth",  tumorGrowthUI()),
-    tabPanel("Survival",      survivalUI()),
+    tabPanel("Data",          dataUploadUI("data")),
+    tabPanel("Tumor Growth",  tumorGrowthUI("tg")),
+    tabPanel("Survival",      survivalUI("surv")),
     tabPanel(
       title = tags$span("Toxicity",
                         style = "color: #999; cursor: not-allowed;",
@@ -129,12 +129,12 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
       )
     )
 
-    data_upload_server(input, output, session, rv)
-    tumor_growth_server(input, output, session, rv)
-    survival_server(input, output, session, rv)
-    synergy_server(input, output, session, rv)
-    power_server(input, output, session, rv)
-    dose_response_server(input, output, session, rv)
+    data_upload_server("data", rv)
+    tumor_growth_server("tg", rv)
+    survival_server("surv", rv)
+    synergy_server("syn", rv)
+    power_server("pw", rv)
+    dose_response_server("dr", rv)
 
     # Guard: redirect away from placeholder tabs if reached via keyboard
     observeEvent(input$main_nav, {
@@ -160,9 +160,9 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
         shinyjs::runjs("window.enableNavTab('Tumor Growth');")
 
         # Survival: only when a censor/event column is mapped
-        surv_mapped <- !is.null(input$col_survival_event) &&
-                       nzchar(input$col_survival_event) &&
-                       input$col_survival_event != "None"
+        surv_mapped <- !is.null(rv$settings$col_survival_event) &&
+                       nzchar(rv$settings$col_survival_event) &&
+                       rv$settings$col_survival_event != "None"
         if (surv_mapped) {
           shinyjs::runjs("window.enableNavTab('Survival');")
         } else {
@@ -178,8 +178,10 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     })
 
     # Navigate to Tumor Growth after data configuration
-    observeEvent(input$proceed_analysis, {
-      updateNavbarPage(session, "main_nav", selected = "Tumor Growth")
+    observeEvent(rv$proceed_to_analysis, {
+      if (isTRUE(rv$proceed_to_analysis))
+        updateNavbarPage(session, "main_nav", selected = "Tumor Growth")
+      rv$proceed_to_analysis <- FALSE
     })
   }
 

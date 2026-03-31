@@ -1,6 +1,7 @@
 #' Dose Response Analysis UI
 #' @keywords internal
-doseResponseUI <- function() {
+doseResponseUI <- function(id) {
+  ns <- NS(id)
   fluidPage(
     h2("Dose-Response Analysis"),
 
@@ -14,26 +15,26 @@ doseResponseUI <- function() {
         wellPanel(
           h4("Analysis Parameters"),
 
-          uiOutput("dr_dose_status"),
+          uiOutput(ns("dr_dose_status")),
 
-          conditionalPanel(
+          conditionalPanel(ns = ns,
             condition = "output.dr_dose_available == true",
 
-            selectInput("dr_control_group",
+            selectInput(ns("dr_control_group"),
                        "Control Group Name",
                        choices = "",
                        selected = ""),
 
-            uiOutput("dr_time_point_ui"),
+            uiOutput(ns("dr_time_point_ui")),
 
             br(),
-            actionButton("run_dr_analysis",
+            actionButton(ns("run_dr_analysis"),
                         "Run Dose-Response Analysis",
                         class = "btn-lg btn-primary btn-block")
           ),
 
           br(),
-          uiOutput("dr_status_msg")
+          uiOutput(ns("dr_status_msg"))
         )
       ),
 
@@ -45,7 +46,7 @@ doseResponseUI <- function() {
           tags$i(class = "fa fa-chevron-left fa-fw"), " Collapse"
         ),
         tabsetPanel(
-          id = "dr_results_tabs",
+          id = ns("dr_results_tabs"),
 
           tabPanel("Summary",
             tab_info(
@@ -55,7 +56,7 @@ doseResponseUI <- function() {
               "A significant ANOVA F-test indicates that at least one dose group differs from the others."
             ),
             shinycssloaders::withSpinner(
-              verbatimTextOutput("dr_summary")
+              verbatimTextOutput(ns("dr_summary"))
             )
           ),
 
@@ -72,16 +73,16 @@ doseResponseUI <- function() {
               )
             ),
             shinycssloaders::withSpinner(
-              DTOutput("dr_summary_table")
+              DTOutput(ns("dr_summary_table"))
             ),
-            downloadButton("download_dr_table", "Download CSV")
+            downloadButton(ns("download_dr_table"), "Download CSV")
           ),
 
           tabPanel("Plots",
             fluidRow(
               column(3,
                 wellPanel(
-                  selectInput("dr_plot_selector", "Select Plot",
+                  selectInput(ns("dr_plot_selector"), "Select Plot",
                     choices = c(
                       "Scatter Plot"       = "scatter",
                       "Boxplot by Dose"    = "boxplot",
@@ -90,67 +91,67 @@ doseResponseUI <- function() {
                   ),
                   hr(),
                   h6(icon("palette"), " Appearance"),
-                  conditionalPanel("input.dr_plot_selector == 'scatter'",
-                    colourpicker::colourInput("dr_scatter_pt_color",
+                  conditionalPanel(ns = ns,"input.dr_plot_selector == 'scatter'",
+                    colourpicker::colourInput(ns("dr_scatter_pt_color"),
                                              "Point colour",
                                              value = "#555555"),
-                    colourpicker::colourInput("dr_scatter_line_color",
+                    colourpicker::colourInput(ns("dr_scatter_line_color"),
                                              "Regression line colour",
                                              value = "#2166AC")
                   ),
-                  conditionalPanel("input.dr_plot_selector == 'boxplot'",
-                    colourpicker::colourInput("dr_box_fill_color",
+                  conditionalPanel(ns = ns,"input.dr_plot_selector == 'boxplot'",
+                    colourpicker::colourInput(ns("dr_box_fill_color"),
                                              "Box fill colour",
                                              value = "#4292C6")
                   ),
-                  conditionalPanel("input.dr_plot_selector == 'barplot'",
-                    colourpicker::colourInput("dr_bar_fill_color",
+                  conditionalPanel(ns = ns,"input.dr_plot_selector == 'barplot'",
+                    colourpicker::colourInput(ns("dr_bar_fill_color"),
                                              "Bar fill colour",
                                              value = "#4292C6")
                   ),
                   hr(),
                   h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
                      icon("sliders-h"), " Options"),
-                  sliderInput("dr_opt_text_size", "Text size (pt)",
+                  sliderInput(ns("dr_opt_text_size"), "Text size (pt)",
                               min = 10, max = 24, value = 16, step = 1),
                   hr(),
                   h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
                      icon("heading"), " Title & Subtitle"),
-                  textInput("dr_plot_title", "Title",
+                  textInput(ns("dr_plot_title"), "Title",
                             placeholder = "Leave blank for default"),
-                  selectInput("dr_plot_title_align", "Title alignment",
+                  selectInput(ns("dr_plot_title_align"), "Title alignment",
                     choices = c("Left" = "left", "Center" = "center", "Right" = "right"),
                     selected = "center"),
-                  textInput("dr_plot_subtitle", "Subtitle",
+                  textInput(ns("dr_plot_subtitle"), "Subtitle",
                             placeholder = "Optional subtitle"),
                   hr(),
                   h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
                      icon("arrows-alt"), " Plot Size / Export"),
                   fluidRow(
-                    column(6, numericInput("dr_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
-                    column(6, numericInput("dr_plot_height", "Height (px)", 600, min = 200, max = 5000, step = 50))
+                    column(6, numericInput(ns("dr_plot_width"),  "Width (px)",  800, min = 200, max = 5000, step = 50)),
+                    column(6, numericInput(ns("dr_plot_height"), "Height (px)", 600, min = 200, max = 5000, step = 50))
                   ),
-                  numericInput("dr_plot_dpi", "Resolution (DPI)", 100, min = 72, max = 600, step = 10),
-                  tags$div(style = "margin-top: 10px;", uiOutput("dr_download_plot_btn"))
+                  numericInput(ns("dr_plot_dpi"), "Resolution (DPI)", 100, min = 72, max = 600, step = 10),
+                  tags$div(style = "margin-top: 10px;", uiOutput(ns("dr_download_plot_btn")))
                 )
               ),
               column(9,
-                conditionalPanel("input.dr_plot_selector == 'scatter'",
+                conditionalPanel(ns = ns,"input.dr_plot_selector == 'scatter'",
                   h4("Scatter Plot"),
                   shinycssloaders::withSpinner(
-                    plotOutput("dr_plot_scatter", width = "auto", height = "auto")
+                    plotOutput(ns("dr_plot_scatter"), width = "auto", height = "auto")
                   )
                 ),
-                conditionalPanel("input.dr_plot_selector == 'boxplot'",
+                conditionalPanel(ns = ns,"input.dr_plot_selector == 'boxplot'",
                   h4("Boxplot by Dose"),
                   shinycssloaders::withSpinner(
-                    plotOutput("dr_plot_boxplot", width = "auto", height = "auto")
+                    plotOutput(ns("dr_plot_boxplot"), width = "auto", height = "auto")
                   )
                 ),
-                conditionalPanel("input.dr_plot_selector == 'barplot'",
+                conditionalPanel(ns = ns,"input.dr_plot_selector == 'barplot'",
                   h4("Mean by Dose"),
                   shinycssloaders::withSpinner(
-                    plotOutput("dr_plot_barplot", width = "auto", height = "auto")
+                    plotOutput(ns("dr_plot_barplot"), width = "auto", height = "auto")
                   )
                 )
               )
@@ -170,12 +171,12 @@ doseResponseUI <- function() {
               )
             ),
             shinycssloaders::withSpinner(
-              verbatimTextOutput("dr_stat_tests")
+              verbatimTextOutput(ns("dr_stat_tests"))
             ),
             shinycssloaders::withSpinner(
-              DTOutput("dr_tukey_table")
+              DTOutput(ns("dr_tukey_table"))
             ),
-            downloadButton("download_dr_stats", "Download Results CSV")
+            downloadButton(ns("download_dr_stats"), "Download Results CSV")
           )
         )
       )
@@ -185,7 +186,8 @@ doseResponseUI <- function() {
 
 #' Dose Response Server
 #' @keywords internal
-dose_response_server <- function(input, output, session, rv) {
+dose_response_server <- function(id, rv) {
+  moduleServer(id, function(input, output, session) {
 
   rv$dr_results <- NULL
 
@@ -232,7 +234,7 @@ dose_response_server <- function(input, output, session, rv) {
     days <- sort(unique(na.omit(rv$processed_data[[rv$time_col]])))
     day_choices <- c("All dates" = "all",
                      setNames(as.character(days), paste("Day", days)))
-    selectInput("dr_time_point",
+    selectInput(session$ns("dr_time_point"),
                 "Time Point for Analysis",
                 choices  = day_choices,
                 selected = "all")
@@ -306,7 +308,10 @@ dose_response_server <- function(input, output, session, rv) {
           dose_column = dose_col, volume_column = vol_col)
         result$analysis_data <- ad
         result$summary_stats <- ss
-      }, error = function(e) {\n        message(\"[DoseResponse] Data preparation failed: \", conditionMessage(e))\n        result$dr_prep_error <<- conditionMessage(e)\n      })
+      }, error = function(e) {
+        message("[DoseResponse] Data preparation failed: ", conditionMessage(e))
+        result$dr_prep_error <<- conditionMessage(e)
+      })
     }
 
     rv$dr_results <- result
@@ -386,7 +391,7 @@ dose_response_server <- function(input, output, session, rv) {
       barplot = "download_dr_barplot",
       "download_dr_scatter"
     )
-    downloadButton(btn_id, "Download Plot")
+    downloadButton(session$ns(btn_id), "Download Plot")
   })
 
   # ---- Plots (rebuilt reactively so colour options take effect immediately) ----
@@ -598,4 +603,5 @@ dose_response_server <- function(input, output, session, rv) {
       write.csv(out, file, row.names = FALSE)
     }
   )
+  })
 }
