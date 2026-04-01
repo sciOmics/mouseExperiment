@@ -48,7 +48,8 @@ dose_response_statistics <- function(df,
                                    day_column = "Day", 
                                    id_column = "ID",
                                    time_point = NULL,
-                                   control_group_name = "Control") {
+                                   control_group_name = "Control",
+                                   verbose = TRUE) {
   
   # Validate input
   required_columns <- c(dose_column, treatment_column, volume_column, day_column, id_column)
@@ -70,10 +71,11 @@ dose_response_statistics <- function(df,
   
   # Perform statistical analyses
   stats_results <- perform_statistical_analyses(analysis_data, dose_column = dose_column, volume_column = volume_column, 
-                                              day_column = day_column, id_column = id_column, original_df = df)
+                                              day_column = day_column, id_column = id_column, original_df = df,
+                                              verbose = verbose)
   
   # Generate user-friendly report
-  generate_user_report(stats_results, plots)
+  if (verbose) generate_user_report(stats_results, plots)
   
   # Return all results
   return(list(
@@ -218,15 +220,18 @@ create_dose_plots <- function(analysis_data, summary_stats, dose_column = "Dose"
 #' @return List of statistical analysis results
 #' @keywords internal
 perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", volume_column = "Volume", 
-                                        day_column = "Day", id_column = "ID", original_df = NULL) {
+                                        day_column = "Day", id_column = "ID", original_df = NULL,
+                                        verbose = TRUE) {
   statistics <- list()
   
   # 1. Linear regression model
   linear_model <- stats::lm(paste(volume_column, "~", dose_column), data = analysis_data)
   linear_summary <- summary(linear_model)
   
-  print("Linear regression model:")
-  print(linear_summary)
+  if (verbose) {
+    message("Linear regression model:")
+    message(paste(utils::capture.output(print(linear_summary)), collapse = "\n"))
+  }
   
   # Store key statistics
   statistics$linear_p_value <- linear_summary$coefficients[2, 4]
@@ -238,8 +243,10 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
                            data = analysis_data)
   anova_summary <- summary(anova_model)
   
-  print("ANOVA model:")
-  print(anova_summary)
+  if (verbose) {
+    message("ANOVA model:")
+    message(paste(utils::capture.output(print(anova_summary)), collapse = "\n"))
+  }
   
   # Store ANOVA p-value
   if (length(anova_summary) > 0 && nrow(anova_summary[[1]]) > 0) {
@@ -251,8 +258,10 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
   # 3. Post-hoc Tukey test
   if (!is.na(statistics$anova_p_value) && statistics$anova_p_value < 0.05) {
     tukey_results <- stats::TukeyHSD(anova_model)
-    print("Tukey HSD test:")
-    print(tukey_results)
+    if (verbose) {
+      message("Tukey HSD test:")
+      message(paste(utils::capture.output(print(tukey_results)), collapse = "\n"))
+    }
     statistics$tukey_results <- tukey_results
   }
   
@@ -329,9 +338,11 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose", volume_col
       # Get model summary
       dr_summary <- summary(dr_model)
       
-      print(paste("Selected dose-response model type:", model_type))
-      print("Non-linear dose-response model:")
-      print(dr_summary)
+      if (verbose) {
+        message("Selected dose-response model type: ", model_type)
+        message("Non-linear dose-response model:")
+        message(paste(utils::capture.output(print(dr_summary)), collapse = "\n"))
+      }
       
       # Extract parameters
       params <- dr_model$coefficients
@@ -438,9 +449,11 @@ analyze_polynomial_trends <- function(analysis_data, dose_column = "Dose", volum
       poly_summary <- summary(poly_model)
       poly_anova <- stats::anova(poly_model)
       
-      print("Polynomial contrasts for dose-response trends:")
-      print(summary(poly_model))
-      print(poly_anova)
+      if (verbose) {
+        message("Polynomial contrasts for dose-response trends:")
+        message(paste(utils::capture.output(print(summary(poly_model))), collapse = "\n"))
+        message(paste(utils::capture.output(print(poly_anova)), collapse = "\n"))
+      }
       
       # Extract p-values
       coef_table <- coef(summary(poly_model))
@@ -482,9 +495,9 @@ generate_user_report <- function(stats_results, plots) {
   jt_result <- stats_results$jt_result
   
   if (length(statistics) > 0) {
-    cat("\n========== DOSE-RESPONSE RELATIONSHIP ANALYSIS ==========\n\n")
+    message("\n========== DOSE-RESPONSE RELATIONSHIP ANALYSIS ==========\n")
     
-    cat("QUESTION: Is there a dose-response relationship?\n\n")
+    message("QUESTION: Is there a dose-response relationship?\n")
     
     # Summarize key findings
     dose_effect_detected <- FALSE
@@ -529,81 +542,81 @@ generate_user_report <- function(stats_results, plots) {
     }
     
     # Report conclusion
-    cat("CONCLUSION: ", evidence_strength, " of a dose-response relationship.\n\n")
+    message("CONCLUSION: ", evidence_strength, " of a dose-response relationship.\n")
     
-    cat("TEST RESULTS:\n\n")
+    message("TEST RESULTS:\n")
     
     # Linear dose effect
-    cat("1. Linear Dose Effect Test:\n")
-    cat("   Slope =", round(statistics$linear_slope, 4), "\n")
-    cat("   R^2 =", round(statistics$linear_r_squared, 4), "\n")
-    cat("   p-value =", format.pval(statistics$linear_p_value, digits = 3), "\n")
+    message("1. Linear Dose Effect Test:")
+    message("   Slope = ", round(statistics$linear_slope, 4))
+    message("   R^2 = ", round(statistics$linear_r_squared, 4))
+    message("   p-value = ", format.pval(statistics$linear_p_value, digits = 3))
     if (statistics$linear_p_value < 0.05) {
-      cat("   INTERPRETATION: Significant linear relationship between dose and tumor volume.\n")
+      message("   INTERPRETATION: Significant linear relationship between dose and tumor volume.")
       direction <- ifelse(statistics$linear_slope < 0, "decreasing", "increasing")
-      cat("   As dose increases, tumor volume tends to be", direction, "\n")
+      message("   As dose increases, tumor volume tends to be ", direction)
     } else {
-      cat("   INTERPRETATION: No significant linear relationship detected.\n")
+      message("   INTERPRETATION: No significant linear relationship detected.")
     }
     
     # Trend tests
-    cat("\n2. Trend Tests (for ordered dose-response):\n")
+    message("\n2. Trend Tests (for ordered dose-response):")
     if (!is.null(jt_result) && !is.null(jt_result$p.value)) {
-      cat("   Jonckheere-Terpstra test p-value =", format.pval(jt_result$p.value, digits = 3), "\n")
+      message("   Jonckheere-Terpstra test p-value = ", format.pval(jt_result$p.value, digits = 3))
       if (jt_result$p.value < 0.05) {
-        cat("   INTERPRETATION: Significant monotonic trend across dose levels detected.\n")
+        message("   INTERPRETATION: Significant monotonic trend across dose levels detected.")
       } else {
-        cat("   INTERPRETATION: No significant monotonic trend across dose levels.\n")
+        message("   INTERPRETATION: No significant monotonic trend across dose levels.")
       }
     }
     
     if (!is.null(statistics$linear_trend_pvalue)) {
-      cat("\n   Polynomial trend test results:\n")
-      cat("   - Linear trend p-value =", format.pval(statistics$linear_trend_pvalue, digits = 3), "\n")
+      message("\n   Polynomial trend test results:")
+      message("   - Linear trend p-value = ", format.pval(statistics$linear_trend_pvalue, digits = 3))
       
       if (!is.null(statistics$quadratic_trend_pvalue)) {
-        cat("   - Quadratic trend p-value =", format.pval(statistics$quadratic_trend_pvalue, digits = 3), "\n")
+        message("   - Quadratic trend p-value = ", format.pval(statistics$quadratic_trend_pvalue, digits = 3))
       }
       
       if (!is.null(statistics$cubic_trend_pvalue)) {
-        cat("   - Cubic trend p-value =", format.pval(statistics$cubic_trend_pvalue, digits = 3), "\n")
+        message("   - Cubic trend p-value = ", format.pval(statistics$cubic_trend_pvalue, digits = 3))
       }
       
       if (statistics$linear_trend_pvalue < 0.05) {
-        cat("   INTERPRETATION: Significant linear trend component detected.\n")
+        message("   INTERPRETATION: Significant linear trend component detected.")
       }
       
       if (!is.null(statistics$quadratic_trend_pvalue) && statistics$quadratic_trend_pvalue < 0.05) {
-        cat("   INTERPRETATION: Significant quadratic (curved) component in the dose-response relationship.\n")
+        message("   INTERPRETATION: Significant quadratic (curved) component in the dose-response relationship.")
       }
     }
     
     # ANOVA results
-    cat("\n3. Group Differences (ANOVA):\n")
-    cat("   p-value =", format.pval(statistics$anova_p_value, digits = 3), "\n")
+    message("\n3. Group Differences (ANOVA):")
+    message("   p-value = ", format.pval(statistics$anova_p_value, digits = 3))
     if (!is.na(statistics$anova_p_value) && statistics$anova_p_value < 0.05) {
-      cat("   INTERPRETATION: Significant differences detected between dose groups.\n")
+      message("   INTERPRETATION: Significant differences detected between dose groups.")
     } else {
-      cat("   INTERPRETATION: No significant differences detected between dose groups.\n")
+      message("   INTERPRETATION: No significant differences detected between dose groups.")
     }
     
     # Growth rate analysis
     if (!is.null(statistics$growth_dose_p_value)) {
-      cat("\n4. Growth Rate Analysis:\n")
-      cat("   p-value =", format.pval(statistics$growth_dose_p_value, digits = 3), "\n")
+      message("\n4. Growth Rate Analysis:")
+      message("   p-value = ", format.pval(statistics$growth_dose_p_value, digits = 3))
       if (statistics$growth_dose_p_value < 0.05) {
-        cat("   INTERPRETATION: Dose significantly affects tumor growth rate.\n")
+        message("   INTERPRETATION: Dose significantly affects tumor growth rate.")
         direction <- ifelse(coef(statistics$growth_model)[2] < 0, "decreases", "increases")
-        cat("   Higher doses", direction, "tumor growth rate.\n")
+        message("   Higher doses ", direction, " tumor growth rate.")
       } else {
-        cat("   INTERPRETATION: No significant effect of dose on tumor growth rate detected.\n")
+        message("   INTERPRETATION: No significant effect of dose on tumor growth rate detected.")
       }
     }
     
-    cat("\n=====================================================\n")
+    message("\n=====================================================")
     
     # Plot guide
-    cat("\nPlease check the returned plots to visualize the dose-response relationship.\n")
+    message("\nPlease check the returned plots to visualize the dose-response relationship.")
   }
   
   invisible(NULL)

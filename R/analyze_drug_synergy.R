@@ -23,7 +23,8 @@
 #' \describe{
 #'   \item{summary}{A data frame summarizing the tumor growth inhibition (TGI) for each treatment and synergy metrics.}
 #'   \item{bliss_independence}{Results of the Bliss independence model, including expected vs. observed effects.}
-#'   \item{loewe_additivity}{Results of the Loewe additivity model.}
+#'   \item{additive_model}{Results of the additive (mean) model.}
+#'   \item{loewe_additivity}{Deprecated alias for \code{additive_model}. Will be removed in a future version.}
 #'   \item{combination_index}{The combination index (CI), where CI < 1 indicates synergy, CI = 1 indicates additivity, and CI > 1 indicates antagonism.}
 #'   \item{statistical_test}{Results of statistical tests comparing observed vs. expected effects.}
 #'   \item{plot_data}{Data prepared for plotting, to be used with plot_drug_synergy function.}
@@ -231,33 +232,33 @@ analyze_drug_synergy <- function(df,
   
   # Print results (only when verbose)
   if (isTRUE(verbose)) {
-    cat("\n=== Drug Combination Synergy Analysis ===\n")
-    cat("Evaluation time point:", eval_time_point, "\n\n")
+    message("\n=== Drug Combination Synergy Analysis ===")
+    message("Evaluation time point: ", eval_time_point, "\n")
     
-    cat("Treatment Mean Volumes:\n")
-    cat(paste0("Control (", control_name, "): ", round(control_mean, 2), "\n"))
-    cat(paste0(drug_a_name, ": ", round(drug_a_mean, 2), " (TGI: ", round(tgi_a, 1), "%)\n"))
-    cat(paste0(drug_b_name, ": ", round(drug_b_mean, 2), " (TGI: ", round(tgi_b, 1), "%)\n"))
-    cat(paste0(combo_name, ": ", round(combo_mean, 2), " (TGI: ", round(tgi_combo, 1), "%)\n\n"))
+    message("Treatment Mean Volumes:")
+    message("Control (", control_name, "): ", round(control_mean, 2))
+    message(drug_a_name, ": ", round(drug_a_mean, 2), " (TGI: ", round(tgi_a, 1), "%)")
+    message(drug_b_name, ": ", round(drug_b_mean, 2), " (TGI: ", round(tgi_b, 1), "%)")
+    message(combo_name, ": ", round(combo_mean, 2), " (TGI: ", round(tgi_combo, 1), "%)\n")
     
-    cat("Expected Effects:\n")
-    cat(paste0("Bliss Independence: TGI = ", round(bliss_expected_tgi, 1), "%\n"))
-    cat(paste0("Additive (Mean): TGI = ", round(additive_mean_tgi, 1), "%\n\n"))
+    message("Expected Effects:")
+    message("Bliss Independence: TGI = ", round(bliss_expected_tgi, 1), "%")
+    message("Additive (Mean): TGI = ", round(additive_mean_tgi, 1), "%\n")
     
-    cat("Synergy Assessment:\n")
-    cat(paste0("Bliss Difference: ", round(bliss_difference * 100, 1), "% (", 
-               ifelse(bliss_difference > 0, "Synergy", "No Synergy"), ")\n"))
-    cat(paste0("Additive (Mean) Difference: ", round(additive_mean_difference * 100, 1), "% (", 
-               ifelse(additive_mean_difference > 0, "Synergy", "No Synergy"), ")\n"))
-    cat(paste0("Combination Index: ", round(ci_value, 2), " (", synergy_interpretation, ")\n\n"))
+    message("Synergy Assessment:")
+    message("Bliss Difference: ", round(bliss_difference * 100, 1), "% (", 
+               ifelse(bliss_difference > 0, "Synergy", "No Synergy"), ")")
+    message("Additive (Mean) Difference: ", round(additive_mean_difference * 100, 1), "% (", 
+               ifelse(additive_mean_difference > 0, "Synergy", "No Synergy"), ")")
+    message("Combination Index: ", round(ci_value, 2), " (", synergy_interpretation, ")\n")
     
-    cat("Statistical Tests:\n")
-    cat(paste0("Combo vs ", drug_a_name, ": p = ", round(t_test_a_combo$p.value, 4), 
-               ifelse(t_test_a_combo$p.value < 0.05, " (Significant)", " (Not Significant)"), "\n"))
-    cat(paste0("Combo vs ", drug_b_name, ": p = ", round(t_test_b_combo$p.value, 4), 
-               ifelse(t_test_b_combo$p.value < 0.05, " (Significant)", " (Not Significant)"), "\n\n"))
+    message("Statistical Tests:")
+    message("Combo vs ", drug_a_name, ": p = ", round(t_test_a_combo$p.value, 4), 
+               ifelse(t_test_a_combo$p.value < 0.05, " (Significant)", " (Not Significant)"))
+    message("Combo vs ", drug_b_name, ": p = ", round(t_test_b_combo$p.value, 4), 
+               ifelse(t_test_b_combo$p.value < 0.05, " (Significant)", " (Not Significant)"), "\n")
     
-    cat("Overall Assessment:", synergy_label, "\n\n")
+    message("Overall Assessment: ", synergy_label, "\n")
   }
   
   # Return a list with all results
@@ -270,6 +271,13 @@ analyze_drug_synergy <- function(df,
       difference = bliss_difference,
       synergy = bliss_difference > 0
     ),
+    additive_model = list(
+      expected_effect = additive_mean_fe,
+      observed_effect = fe_combo,
+      difference = additive_mean_difference,
+      synergy = additive_mean_difference > 0
+    ),
+    # Deprecated alias — preserved for backward compatibility
     loewe_additivity = list(
       expected_effect = additive_mean_fe,
       observed_effect = fe_combo,

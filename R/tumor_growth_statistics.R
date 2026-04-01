@@ -1,6 +1,483 @@
 # Copyright (c) 2026 mouseExperiment Contributors
 # Licensed under the MIT License - see LICENSE file
 
+#' Extrapolate missing data points for subjects
+#'
+#' @param df Data frame with tumor growth data
+#' @param id_column Column name for subject IDs
+#' @param treatment_column Column name for treatment groups
+#' @param cage_column Column name for cage identifiers
+#' @param time_column Column name for time points
+#' @param volume_column Column name for tumor volume
+#' @param verbose Print progress messages
+#' @return Modified data frame with extrapolated points
+#' @noRd
+#' @keywords internal
+tgs_extrapolate <- function(df, id_column, treatment_column, cage_column,
+                            time_column, volume_column, verbose) {
+  if (verbose) message("Extrapolating points for subjects with missing data at the last timepoint")
+  
+  # Find the true maximum day across all subjects (global maximum day of the study)
+  true_max_day <- max(df[[time_column]], na.rm = TRUE)
+  if (verbose) message("True maximum day of the study: ", true_max_day)
+  
+  # Make sure all data has the Extrapolated column
+  if (!"Extrapolated" %in% colnames(df)) {
+    df$Extrapolated <- FALSE
+  }
+  
+  # Create a list to store results for each subject
+  subjects_with_extrapolation <- list()
+  
+  # Process each unique subject
+  unique_subjects <- unique(paste(df[[id_column]], df[[treatment_column]], df[[cage_column]], sep="|||"))
+  
+  for (subject_id in unique_subjects) {
+    # Parse the composite ID
+    id_parts <- strsplit(subject_id, "|||", fixed = TRUE)[[1]]
+    id <- id_parts[1]
+    treatment <- id_parts[2]
+    cage <- id_parts[3]
+    
+    # Get data for this subject
+    subject_data <- df[df[[id_column]] == id & 
+                      df[[treatment_column]] == treatment & 
+                      df[[cage_column]] == cage, ]
+    
+    # Get the max day for this subject
+    max_subj_day <- max(subject_data[[time_column]])
+    
+    # Only extrapolate if the subject doesn't have data on the true max day
+    if (max_subj_day < true_max_day) {
+      # Need at least 2 points for extrapolation
+      if (nrow(subject_data) >= 2) {
+        # Use the last 3 points (or all if less than 3) to fit a linear model
+        n_points <- min(3, nrow(subject_data))
+        subject_data <- subject_data[order(subject_data[[time_column]]), ]
+        last_points <- tail(subject_data, n_points)
+        
+        # Try to fit model
+        tryCatch({
+          lm_fit <- stats::lm(paste(volume_column, "~", time_column), data = last_points)
+          
+          # Predict at true_max_day
+          new_data <- data.frame(time = true_max_day)
+          names(new_data) <- time_column
+          predicted_volume <- max(0, as.numeric(predict(lm_fit, newdata = new_data)))
+          
+          # Create a new row for the extrapolated point
+          new_row <- subject_data[1, ]
+          new_row[[time_column]] <- true_max_day
+          new_row[[volume_column]] <- predicted_volume
+          new_row$Extrapolated <- TRUE
+          
+          # Add the new extrapolated point to the subject data
+          subject_data <- rbind(subject_data, new_row)
+          
+          if (verbose) {
+            message("Extrapolated subject ", id, " from day ", max_subj_day, " to day ", true_max_day)
+          }
+        }, error = function(e) {
+          if (verbose) {
+            message("Failed to extrapolate subject ", id, ": ", conditionMessage(e))
+          }
+        })
+      }
+    }
+    
+    # Store the processed subject data
+    subjects_with_extrapolation[[subject_id]] <- subject_data
+  }
+  
+  # Combine all subject data
+  df <- do.call(rbind, subjects_with_extrapolation)
+  
+  # Count extrapolated subjects for verbose output
+  if (verbose) {
+    extrapolated_subjects <- unique(df$Extrapolated[df$Extrapolated])
+    n_extrapolated <- length(extrapolated_subjects)
+    if (n_extrapolated > 0) {
+      message("Successfully extrapolated ", n_extrapolated, " subjects to day ", true_max_day)
+    } else {
+      message("No subjects needed or qualified for extrapolation to day ", true_max_day)
+    }
+  }
+  df
+}
+
+#' Compute per-subject growth rates
+#'
+#' @param auc_df Untransformed data frame
+#' @param treatment_column Column name for treatment groups
+#' @param id_column Column name for subject IDs
+#' @param cage_column Column name for cage identifiers
+#' @param time_column Column name for time points
+#' @param volume_column Column name for tumor volume
+#' @return Data frame of growth rates or NULL on error
+#' @noRd
+#' @keywords internal
+tgs_compute_growth_rates <- function(auc_df, treatment_column, id_column,
+                                     cage_column, time_column, volume_column) {
+  tryCatch({
+    # Calculate growth rates for each subject
+    # Use auc_df (untransformed volumes) so growth rates are not double-transformed
+    split_auc <- split(auc_df, list(auc_df[[treatment_column]],
+                                    auc_df[[id_column]],
+                                    auc_df[[cage_column]]))
+    growth_rates_list <- lapply(split_auc, function(subject_data) {
+      if (nrow(subject_data) >= 3) {
+        # Sort by time
+        subject_data <- subject_data[order(subject_data[[time_column]]), ]
+        
+        # Calculate log volume from original (untransformed) data
+        raw_vol <- subject_data[[volume_column]]
+        raw_vol[raw_vol <= 0] <- min(raw_vol[raw_vol > 0], na.rm = TRUE) / 2
+        log_volume <- log(raw_vol)
+        
+        # Fit linear model
+        model <- stats::lm(log_volume ~ subject_data[[time_column]])
+        growth_rate <- stats::coef(model)[2]
+        ci <- tryCatch(stats::confint(model, level = 0.95)[2, ], error = function(e) c(NA_real_, NA_real_))
+
+        # Return data frame with results including cage information
+        data.frame(
+          Treatment          = unique(subject_data[[treatment_column]]),
+          ID                 = unique(subject_data[[id_column]]),
+          Cage               = unique(subject_data[[cage_column]]),
+          growth_rate        = growth_rate,
+          growth_rate_lower  = ci[1],
+          growth_rate_upper  = ci[2],
+          R_squared          = round(summary(model)$r.squared, 4)
+        )
+      } else {
+        NULL
+      }
+    })
+    
+    # Combine results
+    do.call(rbind, growth_rates_list)
+  }, error = function(e) {
+    warning("Error calculating growth rates: ", e$message)
+    NULL
+  })
+}
+
+#' Analyse cage effects and collinearity with treatment
+#'
+#' @param analysis_df Transformed analysis data frame
+#' @param cage_column Column name for cage identifiers
+#' @param treatment_column Column name for treatment groups
+#' @param volume_column Column name for tumor volume
+#' @return List with collinearity_test and effects components
+#' @noRd
+#' @keywords internal
+tgs_compute_cage_effects <- function(analysis_df, cage_column, treatment_column,
+                                     volume_column) {
+  # Cage effect analysis
+  cage_analysis <- list()
+  
+  # Test for collinearity between cage and treatment
+  cage_treatment_table <- table(analysis_df[[cage_column]], analysis_df[[treatment_column]])
+  cage_analysis$collinearity_test <- tryCatch({
+    stats::chisq.test(cage_treatment_table)
+  }, error = function(e) {
+    warning("Error in chi-square test: ", e$message)
+    NULL
+  })
+  
+  # Calculate cage-level effects
+  cage_effects <- tryCatch({
+    # Split data by cage and treatment
+    split_data <- split(analysis_df, list(analysis_df[[cage_column]], analysis_df[[treatment_column]]))
+    
+    # Calculate statistics for each group
+    cage_effects_list <- lapply(split_data, function(group_data) {
+      if (nrow(group_data) > 0) {
+        # Only create entries for non-empty groups
+        data.frame(
+          Cage = unique(group_data[[cage_column]]),
+          Treatment = unique(group_data[[treatment_column]]),
+          mean_volume = mean(group_data[[volume_column]], na.rm = TRUE),
+          sd_volume = stats::sd(group_data[[volume_column]], na.rm = TRUE),
+          n = nrow(group_data)
+        )
+      } else {
+        # Skip empty groups
+        NULL
+      }
+    })
+    
+    # Filter out NULL results and combine
+    cage_effects_list <- cage_effects_list[!sapply(cage_effects_list, is.null)]
+    if (length(cage_effects_list) > 0) {
+      do.call(rbind, cage_effects_list)
+    } else {
+      NULL
+    }
+  }, error = function(e) {
+    warning("Error calculating cage effects: ", e$message)
+    NULL
+  })
+  
+  cage_analysis$effects <- cage_effects
+  cage_analysis
+}
+
+#' Fit and select lme4 mixed-effects models
+#'
+#' @param analysis_df Transformed analysis data frame
+#' @param volume_column Column name for tumor volume
+#' @param time_column Column name for time points
+#' @param treatment_column Column name for treatment groups
+#' @param id_column Column name for subject IDs
+#' @param verbose Print progress messages
+#' @return List with model, model_selection, and best_model
+#' @noRd
+#' @keywords internal
+tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
+                                treatment_column, id_column, verbose) {
+  # Helper: wrap a column name in backticks for use inside formula strings
+  bt <- function(x) paste0("`", x, "`")
+
+  # Model selection
+  model_selection <- list()
+  
+  # Fit different random effects specifications
+  models <- list()
+  model_fit_errors <- list()
+  
+  # Base model (intercept only)
+  # Use withCallingHandlers so boundary (singular) fit warnings don't discard
+  # valid models — the model is still usable even when a random-effect variance
+  # is estimated near zero.
+  models$intercept_only <- tryCatch({
+    withCallingHandlers(
+      lme4::lmer(
+        stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (1|", bt(id_column), ")")),
+        data = analysis_df,
+        control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
+                                  check.nobs.vs.nRE = "ignore")
+      ),
+      warning = function(w) {
+        if (grepl("boundary|singular", w$message))
+          message("Note: intercept-only model has singular fit (random-effect variance near zero)")
+        invokeRestart("muffleWarning")
+      }
+    )
+  }, error = function(e) {
+    model_fit_errors[["intercept_only"]] <<- conditionMessage(e)
+    NULL
+  })
+  
+  # Random slope model
+  models$random_slope <- tryCatch({
+    withCallingHandlers(
+      lme4::lmer(
+        stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (", bt(time_column), "|", bt(id_column), ")")),
+        data = analysis_df,
+        control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
+                                  check.nobs.vs.nRE = "ignore")
+      ),
+      warning = function(w) {
+        if (grepl("boundary|singular", w$message))
+          message("Note: random-slope model has singular fit (random-effect variance near zero)")
+        invokeRestart("muffleWarning")
+      }
+    )
+  }, error = function(e) {
+    model_fit_errors[["random_slope"]] <<- conditionMessage(e)
+    NULL
+  })
+  
+  # Remove any NULL models
+  models <- models[!sapply(models, is.null)]
+  
+  if (length(models) > 0) {
+    # Compare models using AIC and BIC
+    model_selection$aic <- sapply(models, stats::AIC)
+    model_selection$bic <- sapply(models, stats::BIC)
+    
+    # Select best model based on BIC (more conservative)
+    best_model <- names(which.min(model_selection$bic))
+    model <- models[[best_model]]
+    
+    if (verbose) {
+      message("Model selection results:")
+      message("AIC: ", paste(names(model_selection$aic), "=", round(model_selection$aic, 2), collapse = ", "))
+      message("BIC: ", paste(names(model_selection$bic), "=", round(model_selection$bic, 2), collapse = ", "))
+      message("Selected model: ", best_model)
+    }
+  } else {
+    warning("No valid models could be fitted. Using intercept-only model as fallback. ",
+            "Errors: ", paste(names(model_fit_errors), "=", model_fit_errors, collapse = "; "))
+    model <- lme4::lmer(
+      stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (1|", bt(id_column), ")")),
+      data = analysis_df,
+      control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
+                                check.nobs.vs.nRE = "ignore")
+    )
+    model_selection$aic <- stats::AIC(model)
+    model_selection$bic <- stats::BIC(model)
+    model_selection$selected_model <- "intercept_only"
+    best_model <- "intercept_only"
+  }
+  list(model = model, model_selection = model_selection, best_model = best_model)
+}
+
+#' Compute descriptive summary statistics by treatment and time
+#'
+#' @param analysis_df Transformed analysis data frame
+#' @param treatment_column Column name for treatment groups
+#' @param time_column Column name for time points
+#' @param volume_column Column name for tumor volume
+#' @return Data frame of summary statistics or NULL on error
+#' @noRd
+#' @keywords internal
+tgs_compute_summary <- function(analysis_df, treatment_column, time_column,
+                                volume_column) {
+  # Create a basic summary of the data
+  tryCatch({
+    # Split data by treatment and time
+    split_data <- split(analysis_df, list(analysis_df[[treatment_column]], analysis_df[[time_column]]))
+    
+    # Calculate summary statistics for each group
+    summary_list <- lapply(split_data, function(group_data) {
+      if (nrow(group_data) > 0) {
+        # Only create entries for non-empty groups
+        data.frame(
+          Treatment = unique(group_data[[treatment_column]]),
+          Day = unique(group_data[[time_column]]),
+          mean_volume = mean(group_data[[volume_column]], na.rm = TRUE),
+          sd_volume = stats::sd(group_data[[volume_column]], na.rm = TRUE),
+          n = nrow(group_data)
+        )
+      } else {
+        # Skip empty groups
+        NULL
+      }
+    })
+    
+    # Filter out NULL results and combine
+    summary_list <- summary_list[!sapply(summary_list, is.null)]
+    if (length(summary_list) > 0) {
+      # Combine results and calculate standard error
+      summary_df <- do.call(rbind, summary_list)
+      summary_df$sem_volume <- summary_df$sd_volume / sqrt(summary_df$n)
+      summary_df
+    } else {
+      NULL
+    }
+  }, error = function(e) {
+    warning("Error calculating data summary: ", e$message)
+    NULL
+  })
+}
+
+#' Calculate area under the curve for each subject
+#'
+#' @param auc_df Untransformed data frame
+#' @param id_column Column name for subject IDs
+#' @param treatment_column Column name for treatment groups
+#' @param cage_column Column name for cage identifiers
+#' @param time_column Column name for time points
+#' @param volume_column Column name for tumor volume
+#' @param verbose Print progress messages
+#' @return List with individual and summary AUC results
+#' @noRd
+#' @keywords internal
+tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
+                            time_column, volume_column, verbose) {
+  # Calculate AUC for each subject
+  if (verbose) message("Calculating AUC for each subject")
+  
+  # Uses exported calculate_auc() utility from utils_auc.R
+  
+  # For each unique ID-Treatment-Cage combination, create a unique identifier
+  # This ensures proper distinction of mice even when they share the same ID but are in different cages
+  # First find all unique combinations
+  unique_combinations <- unique(auc_df[, c(id_column, treatment_column, cage_column)])
+  # Create a mapping of these combinations to sequential numbers
+  unique_combinations$unique_id <- 1:nrow(unique_combinations)
+  # Merge back with the original data to assign the correct unique ID to each row
+  auc_df_with_id <- merge(auc_df, unique_combinations, by=c(id_column, treatment_column, cage_column))
+  # Use this unique_id for processing
+  composite_id <- paste(auc_df_with_id[[id_column]], auc_df_with_id[[treatment_column]], auc_df_with_id[[cage_column]], sep = "|||")
+  auc_rows <- vector("list", length(unique(composite_id)))
+  auc_row_idx <- 0L
+  
+  # Get max experiment time to determine if extrapolation is needed
+  max_experiment_time <- max(auc_df[[time_column]])
+  
+  for (unique_id in unique(composite_id)) {
+    # Extract data for this unique ID
+    id_parts <- strsplit(unique_id, "|||", fixed = TRUE)[[1]]
+    actual_id <- id_parts[1]
+    treatment <- id_parts[2]
+    cage <- id_parts[3]
+    
+    subject_data <- auc_df_with_id[composite_id == unique_id, ]
+    subject_data <- subject_data[order(subject_data[[time_column]]), ]
+    
+    # Calculate AUC using trapezoidal method
+    auc_value <- calculate_auc(subject_data[[time_column]], subject_data[[volume_column]])
+    
+    # Check if this subject's data contains any extrapolated points
+    has_extrapolated <- FALSE
+    if ("Extrapolated" %in% colnames(subject_data)) {
+      has_extrapolated <- any(subject_data$Extrapolated, na.rm = TRUE)
+    }
+    
+    # Get the true last observation time (excluding extrapolated points)
+    if (has_extrapolated && any(subject_data$Extrapolated, na.rm = TRUE)) {
+      # If there are extrapolated points, get the max day from non-extrapolated points
+      non_extrapolated_data <- subject_data[!subject_data$Extrapolated, ]
+      true_last_observation <- max(non_extrapolated_data[[time_column]])
+    } else {
+      # If no extrapolated points, just use the max day
+      true_last_observation <- max(subject_data[[time_column]])
+    }
+    
+    # Make sure we have NumPoints data
+    if (!"Extrapolated" %in% colnames(subject_data)) {
+      n_points <- nrow(subject_data)
+    } else {
+      n_points <- nrow(subject_data[!subject_data$Extrapolated, ])
+    }
+    
+    # Add to results
+    auc_row_idx <- auc_row_idx + 1L
+    auc_rows[[auc_row_idx]] <- data.frame(
+      ID = actual_id,
+      Treatment = treatment,
+      Cage = cage,
+      Group = treatment, # Added Group column for compatibility with plot_auc
+      AUC = auc_value,
+      Last_Day = true_last_observation,
+      First_Day = min(subject_data[[time_column]]),
+      Extrapolated = has_extrapolated,
+      NumPoints = n_points # Count only non-extrapolated points
+    )
+  }
+  
+  # Bind all rows at once
+  auc_data <- do.call(rbind, auc_rows[seq_len(auc_row_idx)])
+  
+  # Calculate summary statistics
+  auc_summary <- stats::aggregate(AUC ~ Treatment, data = auc_data, 
+                                FUN = function(x) c(Mean = mean(x), 
+                                                  SD = stats::sd(x), 
+                                                  N = length(x),
+                                                  SEM = stats::sd(x)/sqrt(length(x))))
+  auc_summary <- do.call(data.frame, auc_summary)
+  
+  # Create the AUC analysis list
+  auc_analysis <- list(
+    individual = auc_data,
+    summary = auc_summary
+  )
+}
+
+
 #' Analyze Tumor Growth Using Various Statistical Methods
 #'
 #' @importFrom utils head tail
@@ -163,9 +640,9 @@ tumor_growth_statistics <- function(df,
   p_adjust_method <- match.arg(p_adjust_method)
   
   if (verbose) {
-    cat("Analyzing tumor growth data...\n")
-    cat("Model type:", model_type, "\n")
-    cat("Transform:", transform, "\n")
+    message("Analyzing tumor growth data...")
+    message("Model type: ", model_type)
+    message("Transform: ", transform)
   }
   
   # Check if required columns exist (cage_column is optional — NULL means no cage data)
@@ -182,7 +659,7 @@ tumor_growth_statistics <- function(df,
   if (no_cage_mode) {
     cage_column <- ".cage_placeholder"
     df[[cage_column]] <- "1"
-    if (verbose) cat("No cage column provided — cage effects will not be analysed.\n")
+    if (verbose) message("No cage column provided 2014 cage effects will not be analysed.")
   }
   
   # Set reference group if not specified
@@ -193,98 +670,13 @@ tumor_growth_statistics <- function(df,
     stop("Reference group '", reference_group, "' is not present in the data.")
   }
   if (verbose) {
-    cat("Using", reference_group, "as reference group for statistical comparisons\n")
+    message("Using ", reference_group, " as reference group for statistical comparisons")
   }
   
   # Extrapolate data points if requested
   if (extrapolation_points > 0) {
-    if (verbose) cat("Extrapolating points for subjects with missing data at the last timepoint\n")
-    
-    # Find the true maximum day across all subjects (global maximum day of the study)
-    true_max_day <- max(df[[time_column]], na.rm = TRUE)
-    if (verbose) cat("True maximum day of the study:", true_max_day, "\n")
-    
-    # Make sure all data has the Extrapolated column
-    if (!"Extrapolated" %in% colnames(df)) {
-      df$Extrapolated <- FALSE
-    }
-    
-    # Create a list to store results for each subject
-    subjects_with_extrapolation <- list()
-    
-    # Process each unique subject
-    unique_subjects <- unique(paste(df[[id_column]], df[[treatment_column]], df[[cage_column]], sep="|||"))
-    
-    for (subject_id in unique_subjects) {
-      # Parse the composite ID
-      id_parts <- strsplit(subject_id, "|||", fixed = TRUE)[[1]]
-      id <- id_parts[1]
-      treatment <- id_parts[2]
-      cage <- id_parts[3]
-      
-      # Get data for this subject
-      subject_data <- df[df[[id_column]] == id & 
-                        df[[treatment_column]] == treatment & 
-                        df[[cage_column]] == cage, ]
-      
-      # Get the max day for this subject
-      max_subj_day <- max(subject_data[[time_column]])
-      
-      # Only extrapolate if the subject doesn't have data on the true max day
-      if (max_subj_day < true_max_day) {
-        # Need at least 2 points for extrapolation
-        if (nrow(subject_data) >= 2) {
-          # Use the last 3 points (or all if less than 3) to fit a linear model
-          n_points <- min(3, nrow(subject_data))
-          subject_data <- subject_data[order(subject_data[[time_column]]), ]
-          last_points <- tail(subject_data, n_points)
-          
-          # Try to fit model
-          tryCatch({
-            lm_fit <- stats::lm(paste(volume_column, "~", time_column), data = last_points)
-            
-            # Predict at true_max_day
-            new_data <- data.frame(time = true_max_day)
-            names(new_data) <- time_column
-            predicted_volume <- max(0, as.numeric(predict(lm_fit, newdata = new_data)))
-            
-            # Create a new row for the extrapolated point
-            new_row <- subject_data[1, ]
-            new_row[[time_column]] <- true_max_day
-            new_row[[volume_column]] <- predicted_volume
-            new_row$Extrapolated <- TRUE
-            
-            # Add the new extrapolated point to the subject data
-            subject_data <- rbind(subject_data, new_row)
-            
-            if (verbose) {
-              cat("Extrapolated subject", id, "from day", max_subj_day, "to day", true_max_day, "\n")
-            }
-          }, error = function(e) {
-            if (verbose) {
-              cat("Failed to extrapolate subject", id, ":", conditionMessage(e), "\n")
-            }
-          })
-        }
-      }
-      
-      # Store the processed subject data
-      subjects_with_extrapolation[[subject_id]] <- subject_data
-    }
-    
-    # Combine all subject data
-    df <- do.call(rbind, subjects_with_extrapolation)
-    
-    # Count extrapolated subjects for verbose output
-    if (verbose) {
-      extrapolated_subjects <- unique(df$Extrapolated[df$Extrapolated])
-      n_extrapolated <- length(extrapolated_subjects)
-      if (n_extrapolated > 0) {
-        cat("Successfully extrapolated", n_extrapolated, "subjects to day", true_max_day, "\n")
-      } else {
-        cat("No subjects needed or qualified for extrapolation to day", true_max_day, "\n")
-      }
-    }
+    df <- tgs_extrapolate(df, id_column, treatment_column, cage_column,
+                          time_column, volume_column, verbose)
   }
   
   # Create a copy of the data for analysis
@@ -299,189 +691,26 @@ tumor_growth_statistics <- function(df,
     vol <- analysis_df[[volume_column]]
     vol[vol <= 0] <- min(vol[vol > 0], na.rm = TRUE) / 2
     analysis_df[[volume_column]] <- log(vol)
-    if (verbose) cat("Applied log transformation to volume data\n")
+    if (verbose) message("Applied log transformation to volume data")
   } else if (transform == "sqrt") {
     analysis_df[[volume_column]] <- sqrt(analysis_df[[volume_column]])
-    if (verbose) cat("Applied square root transformation to volume data\n")
+    if (verbose) message("Applied square root transformation to volume data")
   }
   
   # Growth rate analysis
-  growth_rates <- tryCatch({
-    # Calculate growth rates for each subject
-    # Use auc_df (untransformed volumes) so growth rates are not double-transformed
-    split_auc <- split(auc_df, list(auc_df[[treatment_column]],
-                                    auc_df[[id_column]],
-                                    auc_df[[cage_column]]))
-    growth_rates_list <- lapply(split_auc, function(subject_data) {
-      if (nrow(subject_data) >= 3) {
-        # Sort by time
-        subject_data <- subject_data[order(subject_data[[time_column]]), ]
-        
-        # Calculate log volume from original (untransformed) data
-        raw_vol <- subject_data[[volume_column]]
-        raw_vol[raw_vol <= 0] <- min(raw_vol[raw_vol > 0], na.rm = TRUE) / 2
-        log_volume <- log(raw_vol)
-        
-        # Fit linear model
-        model <- stats::lm(log_volume ~ subject_data[[time_column]])
-        growth_rate <- stats::coef(model)[2]
-        ci <- tryCatch(stats::confint(model, level = 0.95)[2, ], error = function(e) c(NA_real_, NA_real_))
-
-        # Return data frame with results including cage information
-        data.frame(
-          Treatment          = unique(subject_data[[treatment_column]]),
-          ID                 = unique(subject_data[[id_column]]),
-          Cage               = unique(subject_data[[cage_column]]),
-          growth_rate        = growth_rate,
-          growth_rate_lower  = ci[1],
-          growth_rate_upper  = ci[2],
-          R_squared          = round(summary(model)$r.squared, 4)
-        )
-      } else {
-        NULL
-      }
-    })
-    
-    # Combine results
-    do.call(rbind, growth_rates_list)
-  }, error = function(e) {
-    warning("Error calculating growth rates: ", e$message)
-    NULL
-  })
+  growth_rates <- tgs_compute_growth_rates(auc_df, treatment_column, id_column,
+                                           cage_column, time_column, volume_column)
 
   # Cage effect analysis
-  cage_analysis <- list()
-  
-  # Test for collinearity between cage and treatment
-  cage_treatment_table <- table(analysis_df[[cage_column]], analysis_df[[treatment_column]])
-  cage_analysis$collinearity_test <- tryCatch({
-    stats::chisq.test(cage_treatment_table)
-  }, error = function(e) {
-    warning("Error in chi-square test: ", e$message)
-    NULL
-  })
-  
-  # Calculate cage-level effects
-  cage_effects <- tryCatch({
-    # Split data by cage and treatment
-    split_data <- split(analysis_df, list(analysis_df[[cage_column]], analysis_df[[treatment_column]]))
-    
-    # Calculate statistics for each group
-    cage_effects_list <- lapply(split_data, function(group_data) {
-      if (nrow(group_data) > 0) {
-        # Only create entries for non-empty groups
-        data.frame(
-          Cage = unique(group_data[[cage_column]]),
-          Treatment = unique(group_data[[treatment_column]]),
-          mean_volume = mean(group_data[[volume_column]], na.rm = TRUE),
-          sd_volume = stats::sd(group_data[[volume_column]], na.rm = TRUE),
-          n = nrow(group_data)
-        )
-      } else {
-        # Skip empty groups
-        NULL
-      }
-    })
-    
-    # Filter out NULL results and combine
-    cage_effects_list <- cage_effects_list[!sapply(cage_effects_list, is.null)]
-    if (length(cage_effects_list) > 0) {
-      do.call(rbind, cage_effects_list)
-    } else {
-      NULL
-    }
-  }, error = function(e) {
-    warning("Error calculating cage effects: ", e$message)
-    NULL
-  })
-  
-  cage_analysis$effects <- cage_effects
+  cage_analysis <- tgs_compute_cage_effects(analysis_df, cage_column, treatment_column, volume_column)
+  cage_effects <- cage_analysis$effects
 
-  # Helper: wrap a column name in backticks for use inside formula strings
-  bt <- function(x) paste0("`", x, "`")
-
-  # Model selection
-  model_selection <- list()
-  
-  # Fit different random effects specifications
-  models <- list()
-  model_fit_errors <- list()
-  
-  # Base model (intercept only)
-  # Use withCallingHandlers so boundary (singular) fit warnings don't discard
-  # valid models — the model is still usable even when a random-effect variance
-  # is estimated near zero.
-  models$intercept_only <- tryCatch({
-    withCallingHandlers(
-      lme4::lmer(
-        stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (1|", bt(id_column), ")")),
-        data = analysis_df,
-        control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
-                                  check.nobs.vs.nRE = "ignore")
-      ),
-      warning = function(w) {
-        if (grepl("boundary|singular", w$message))
-          message("Note: intercept-only model has singular fit (random-effect variance near zero)")
-        invokeRestart("muffleWarning")
-      }
-    )
-  }, error = function(e) {
-    model_fit_errors[["intercept_only"]] <<- conditionMessage(e)
-    NULL
-  })
-  
-  # Random slope model
-  models$random_slope <- tryCatch({
-    withCallingHandlers(
-      lme4::lmer(
-        stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (", bt(time_column), "|", bt(id_column), ")")),
-        data = analysis_df,
-        control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
-                                  check.nobs.vs.nRE = "ignore")
-      ),
-      warning = function(w) {
-        if (grepl("boundary|singular", w$message))
-          message("Note: random-slope model has singular fit (random-effect variance near zero)")
-        invokeRestart("muffleWarning")
-      }
-    )
-  }, error = function(e) {
-    model_fit_errors[["random_slope"]] <<- conditionMessage(e)
-    NULL
-  })
-  
-  # Remove any NULL models
-  models <- models[!sapply(models, is.null)]
-  
-  if (length(models) > 0) {
-    # Compare models using AIC and BIC
-    model_selection$aic <- sapply(models, stats::AIC)
-    model_selection$bic <- sapply(models, stats::BIC)
-    
-    # Select best model based on BIC (more conservative)
-    best_model <- names(which.min(model_selection$bic))
-    model <- models[[best_model]]
-    
-    if (verbose) {
-      cat("Model selection results:\n")
-      cat("AIC:", paste(names(model_selection$aic), "=", round(model_selection$aic, 2), collapse = ", "), "\n")
-      cat("BIC:", paste(names(model_selection$bic), "=", round(model_selection$bic, 2), collapse = ", "), "\n")
-      cat("Selected model:", best_model, "\n")
-    }
-  } else {
-    warning("No valid models could be fitted. Using intercept-only model as fallback. ",
-            "Errors: ", paste(names(model_fit_errors), "=", model_fit_errors, collapse = "; "))
-    model <- lme4::lmer(
-      stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (1|", bt(id_column), ")")),
-      data = analysis_df,
-      control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
-                                check.nobs.vs.nRE = "ignore")
-    )
-    model_selection$aic <- stats::AIC(model)
-    model_selection$bic <- stats::BIC(model)
-    model_selection$selected_model <- "intercept_only"
-    best_model <- "intercept_only"
-  }
+  # Model fitting and selection
+  lme4_result <- tgs_fit_lme4_models(analysis_df, volume_column, time_column,
+                                     treatment_column, id_column, verbose)
+  model <- lme4_result$model
+  model_selection <- lme4_result$model_selection
+  best_model <- lme4_result$best_model
 
   # Diagnostic plots
   diagnostics <- list()
@@ -507,132 +736,12 @@ tumor_growth_statistics <- function(df,
   }
 
   # Create a basic summary of the data
-  data_summary <- tryCatch({
-    # Split data by treatment and time
-    split_data <- split(analysis_df, list(analysis_df[[treatment_column]], analysis_df[[time_column]]))
-    
-    # Calculate summary statistics for each group
-    summary_list <- lapply(split_data, function(group_data) {
-      if (nrow(group_data) > 0) {
-        # Only create entries for non-empty groups
-        data.frame(
-          Treatment = unique(group_data[[treatment_column]]),
-          Day = unique(group_data[[time_column]]),
-          mean_volume = mean(group_data[[volume_column]], na.rm = TRUE),
-          sd_volume = stats::sd(group_data[[volume_column]], na.rm = TRUE),
-          n = nrow(group_data)
-        )
-      } else {
-        # Skip empty groups
-        NULL
-      }
-    })
-    
-    # Filter out NULL results and combine
-    summary_list <- summary_list[!sapply(summary_list, is.null)]
-    if (length(summary_list) > 0) {
-      # Combine results and calculate standard error
-      summary_df <- do.call(rbind, summary_list)
-      summary_df$sem_volume <- summary_df$sd_volume / sqrt(summary_df$n)
-      summary_df
-    } else {
-      NULL
-    }
-  }, error = function(e) {
-    warning("Error calculating data summary: ", e$message)
-    NULL
-  })
+  data_summary <- tgs_compute_summary(analysis_df, treatment_column, time_column, volume_column)
 
   # Only for auc model type or when additional AUC analysis is requested
   if (model_type == "auc" || (model_type == "lme4" && include_diagnostics)) {
-    # Calculate AUC for each subject
-    if (verbose) cat("Calculating AUC for each subject\n")
-    
-    # Uses exported calculate_auc() utility from utils_auc.R
-    
-    # For each unique ID-Treatment-Cage combination, create a unique identifier
-    # This ensures proper distinction of mice even when they share the same ID but are in different cages
-    # First find all unique combinations
-    unique_combinations <- unique(auc_df[, c(id_column, treatment_column, cage_column)])
-    # Create a mapping of these combinations to sequential numbers
-    unique_combinations$unique_id <- 1:nrow(unique_combinations)
-    # Merge back with the original data to assign the correct unique ID to each row
-    auc_df_with_id <- merge(auc_df, unique_combinations, by=c(id_column, treatment_column, cage_column))
-    # Use this unique_id for processing
-    composite_id <- paste(auc_df_with_id[[id_column]], auc_df_with_id[[treatment_column]], auc_df_with_id[[cage_column]], sep = "|||")
-    auc_rows <- vector("list", length(unique(composite_id)))
-    auc_row_idx <- 0L
-    
-    # Get max experiment time to determine if extrapolation is needed
-    max_experiment_time <- max(auc_df[[time_column]])
-    
-    for (unique_id in unique(composite_id)) {
-      # Extract data for this unique ID
-      id_parts <- strsplit(unique_id, "|||", fixed = TRUE)[[1]]
-      actual_id <- id_parts[1]
-      treatment <- id_parts[2]
-      cage <- id_parts[3]
-      
-      subject_data <- auc_df_with_id[composite_id == unique_id, ]
-      subject_data <- subject_data[order(subject_data[[time_column]]), ]
-      
-      # Calculate AUC using trapezoidal method
-      auc_value <- calculate_auc(subject_data[[time_column]], subject_data[[volume_column]])
-      
-      # Check if this subject's data contains any extrapolated points
-      has_extrapolated <- FALSE
-      if ("Extrapolated" %in% colnames(subject_data)) {
-        has_extrapolated <- any(subject_data$Extrapolated, na.rm = TRUE)
-      }
-      
-      # Get the true last observation time (excluding extrapolated points)
-      if (has_extrapolated && any(subject_data$Extrapolated, na.rm = TRUE)) {
-        # If there are extrapolated points, get the max day from non-extrapolated points
-        non_extrapolated_data <- subject_data[!subject_data$Extrapolated, ]
-        true_last_observation <- max(non_extrapolated_data[[time_column]])
-      } else {
-        # If no extrapolated points, just use the max day
-        true_last_observation <- max(subject_data[[time_column]])
-      }
-      
-      # Make sure we have NumPoints data
-      if (!"Extrapolated" %in% colnames(subject_data)) {
-        n_points <- nrow(subject_data)
-      } else {
-        n_points <- nrow(subject_data[!subject_data$Extrapolated, ])
-      }
-      
-      # Add to results
-      auc_row_idx <- auc_row_idx + 1L
-      auc_rows[[auc_row_idx]] <- data.frame(
-        ID = actual_id,
-        Treatment = treatment,
-        Cage = cage,
-        Group = treatment, # Added Group column for compatibility with plot_auc
-        AUC = auc_value,
-        Last_Day = true_last_observation,
-        First_Day = min(subject_data[[time_column]]),
-        Extrapolated = has_extrapolated,
-        NumPoints = n_points # Count only non-extrapolated points
-      )
-    }
-    
-    # Bind all rows at once
-    auc_data <- do.call(rbind, auc_rows[seq_len(auc_row_idx)])
-    
-    # Calculate summary statistics
-    auc_summary <- stats::aggregate(AUC ~ Treatment, data = auc_data, 
-                                  FUN = function(x) c(Mean = mean(x), 
-                                                    SD = stats::sd(x), 
-                                                    N = length(x),
-                                                    SEM = stats::sd(x)/sqrt(length(x))))
-    auc_summary <- do.call(data.frame, auc_summary)
-    
-    # Create the AUC analysis list
-    auc_analysis <- list(
-      individual = auc_data,
-      summary = auc_summary
-    )
+    auc_analysis <- tgs_compute_auc(auc_df, id_column, treatment_column, cage_column,
+                                    time_column, volume_column, verbose)
   }
 
   # Return the results for AUC model

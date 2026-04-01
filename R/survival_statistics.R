@@ -18,6 +18,7 @@
 #' @param dose_column Optional name of column containing dose information. Default: NULL
 #' @param reference_group Treatment group to use as reference. Default: NULL (uses first alphabetically)
 #' @param firth_correction Whether to apply Firth's correction for separation issues. Default: TRUE
+#' @param verbose Whether to print analysis details to the console. Default: TRUE
 #'
 #' @return A list containing:
 #' \describe{
@@ -65,7 +66,8 @@ survival_statistics <- function(df,
                               id_column = "ID",
                               dose_column = NULL,
                               reference_group = NULL,
-                              firth_correction = TRUE) {
+                              firth_correction = TRUE,
+                              verbose = TRUE) {
   
   # Validate inputs
   validate_inputs(df, time_column, censor_column, treatment_column)
@@ -115,7 +117,7 @@ survival_statistics <- function(df,
   km_fit <- survival::survfit(surv_formula, data = df)
   
   # Display median survival information
-  print(km_fit)
+  if (verbose) message(paste(utils::capture.output(print(km_fit)), collapse = "\n"))
   
   # Calculate and add median survival times
   median_survival <- NULL
@@ -236,7 +238,7 @@ survival_statistics <- function(df,
   results$Note <- ifelse(results$Group == reference_group, "Reference group", "")
   
   # Print formatted results
-  print_results(results, df, treatment_column, time_column, censor_column)
+  if (verbose) print_results(results, df, treatment_column, time_column, censor_column)
   
   # Build our result list
   result_list <- list(
@@ -275,7 +277,7 @@ check_cage_distribution <- function(df, treatment_column, cage_column) {
   if (cage_column %in% colnames(df)) {
     cage_treatment_table <- table(df[[cage_column]], df[[treatment_column]])
     message("Cage distribution across treatment groups:")
-    print(cage_treatment_table)
+    message(paste(utils::capture.output(print(cage_treatment_table)), collapse = "\n"))
     
     # Check for collinearity between cage and treatment
     cage_treatment_df <- data.frame(
@@ -449,7 +451,7 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     
     # Fit Log-Rank test
     surv_diff <- survival::survdiff(cox_formula, data = df)
-    print(surv_diff)
+    if (verbose) message(paste(utils::capture.output(print(surv_diff)), collapse = "\n"))
     
     # Calculate p-value
     chisq <- surv_diff$chisq
@@ -703,7 +705,7 @@ print_results <- function(results, df = NULL, treatment_column = NULL, time_colu
     })
   }
   
-  print(formatted_table)
+  message(paste(utils::capture.output(print(formatted_table)), collapse = "\n"))
   
   # Return the formatted table invisibly for further use if needed
   invisible(formatted_table)

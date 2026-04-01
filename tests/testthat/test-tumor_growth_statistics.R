@@ -257,9 +257,9 @@ test_that("auc model: mean AUC of TreatmentA > Control", {
 # Input validation
 # ---------------------------------------------------------------------------
 test_that("errors when required columns are missing", {
-  df <- data.frame(ID = "M1", Treatment = "Control", Day = 0, Volume = 200)
+  df <- data.frame(ID = "M1", Treatment = "Control", Day = 0)
   expect_error(
-    tumor_growth_statistics(df, cage_column = "Cage", plots = FALSE),
-    regexp = "Cage|column"
+    tumor_growth_statistics(df, volume_column = "Volume", plots = FALSE),
+    regexp = "Missing required columns"
   )
 })

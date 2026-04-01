@@ -167,7 +167,7 @@ analyze_drug_synergy_over_time <- function(df,
       
       # Extract key metrics for summary
       bliss_result <- synergy_results$bliss_independence
-      loewe_result <- synergy_results$loewe_additivity
+      loewe_result <- synergy_results$additive_model
       ci_result <- synergy_results$combination_index
       stat_tests <- synergy_results$statistical_tests
       
@@ -248,26 +248,28 @@ analyze_drug_synergy_over_time <- function(df,
   
   # Print summary of findings (only when verbose)
   if (isTRUE(verbose)) {
-    cat("\n=== Drug Combination Synergy Analysis Over Time ===\n")
-    cat("Analysis performed across", nrow(synergy_summary), "time points from", 
-        min(synergy_summary$Time_Point), "to", max(synergy_summary$Time_Point), "\n\n")
+    message("\n=== Drug Combination Synergy Analysis Over Time ===")
+    message("Analysis performed across ", nrow(synergy_summary), " time points from ", 
+        min(synergy_summary$Time_Point), " to ", max(synergy_summary$Time_Point), "\n")
     
-    cat("Peak Synergy Findings:\n")
-    cat(paste0("Strongest CI Synergy at Day ", peak_ci_synergy$Time_Point, 
-               " (CI = ", round(peak_ci_synergy$Combination_Index, 2), ")\n"))
-    cat(paste0("Strongest Bliss Synergy at Day ", peak_bliss_synergy$Time_Point, 
-               " (Difference = ", round(peak_bliss_synergy$Bliss_Difference, 1), "%)\n\n"))
+    message("Peak Synergy Findings:")
+    message("Strongest CI Synergy at Day ", peak_ci_synergy$Time_Point, 
+               " (CI = ", round(peak_ci_synergy$Combination_Index, 2), ")")
+    message("Strongest Bliss Synergy at Day ", peak_bliss_synergy$Time_Point, 
+               " (Difference = ", round(peak_bliss_synergy$Bliss_Difference, 1), "%)\n")
     
-    cat("Synergy Summary by Time Point:\n")
-    print(synergy_summary[, c("Time_Point", "TGI_Combo", "Bliss_Expected_TGI", 
+    message("Synergy Summary by Time Point:")
+    message(paste(utils::capture.output(
+      print(synergy_summary[, c("Time_Point", "TGI_Combo", "Bliss_Expected_TGI", 
                              "Bliss_Difference", "Combination_Index", "Synergy_Assessment", "Validation_Check")])
+    ), collapse = "\n"))
     
     # Check for validation issues
     validation_issues <- synergy_summary$Validation_Check != "All calculations verified"
     if (any(validation_issues)) {
-      cat("\nWARNING: Some validation checks failed. Please review calculations.\n")
+      message("\nWARNING: Some validation checks failed. Please review calculations.")
     } else {
-      cat("\nAll calculations verified as consistent.\n")
+      message("\nAll calculations verified as consistent.")
     }
   }
   
