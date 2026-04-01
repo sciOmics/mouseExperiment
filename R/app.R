@@ -87,8 +87,8 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
       value = "__power_analysis_disabled__",
       ""
     ),
-    tabPanel("Help",          helpUI()),
     tabPanel("Log",           analysisLogUI("log")),
+    tabPanel("Help",          helpUI()),
     tabPanel("About",          citationUI())
   )
 

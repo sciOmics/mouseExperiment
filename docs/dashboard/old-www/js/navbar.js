@@ -2,12 +2,13 @@
 // Extracted from inline JS in app.R (issue 3.3)
 
 $(document).ready(function() {
-  // Move Help and Citation to a right-aligned nav list
+  // Move Log, Help and About to a right-aligned nav list
   var $mainNav = $('.navbar-nav:first');
+  var logLi      = $mainNav.find('a[data-value="Log"]').closest('li').detach();
   var helpLi     = $mainNav.find('a[data-value="Help"]').closest('li').detach();
   var citationLi = $mainNav.find('a[data-value="About"]').closest('li').detach();
   var $rightNav  = $('<ul class="nav navbar-nav navbar-right" id="nav-right"></ul>');
-  $rightNav.append(helpLi).append(citationLi);
+  $rightNav.append(logLi).append(helpLi).append(citationLi);
   // Bootstrap 5: no .navbar-collapse wrapper — append directly to .container-fluid
   var $container = $mainNav.closest('.container-fluid, .navbar-collapse');
   if ($container.length === 0) $container = $mainNav.parent();
