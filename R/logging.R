@@ -151,3 +151,60 @@ log_navigation <- function(session, tab) {
   log_debug(sprintf("navigation | session=%s | tab=%s",
                     session$token, tab))
 }
+
+# ---------------------------------------------------------------------------
+# In-process log buffer for the Analysis Log UI panel
+# ---------------------------------------------------------------------------
+
+# Private environment holding the circular buffer.
+# Shared across all Shiny sessions within a single R process
+# (suitable for single-user / Docker deployments).
+.log_buf <- new.env(parent = emptyenv())
+.log_buf$entries  <- character(0L)
+.log_buf$max_size <- 500L
+
+#' Custom logger appender that also writes to the in-process buffer
+#'
+#' Wraps \code{logger::appender_stdout} and additionally stores every
+#' formatted log line in \code{.log_buf$entries}.
+#' @param lines Character vector of log lines.
+#' @keywords internal
+appender_buffer <- function(lines) {
+  # Write to stdout (Docker log driver)
+  logger::appender_stdout(lines)
+  # Also store in ring buffer
+  .log_buf$entries <- c(.log_buf$entries, lines)
+  if (length(.log_buf$entries) > .log_buf$max_size) {
+    .log_buf$entries <- tail(.log_buf$entries, .log_buf$max_size)
+  }
+}
+
+#' Set up logging with the buffer appender
+#'
+#' Like \code{setup_logging()} but uses the tee-to-buffer appender so log
+#' messages are available for the Analysis Log UI panel.
+#'
+#' @param level Log threshold (default \code{logger::INFO}).
+#' @keywords internal
+setup_logging_with_buffer <- function(level = logger::INFO) {
+  logger::log_threshold(level, namespace = "dashboard")
+  logger::log_layout(logger::layout_json(), namespace = "dashboard")
+  logger::log_appender(appender_buffer, namespace = "dashboard")
+}
+
+#' Retrieve buffered log entries
+#'
+#' Returns the current contents of the in-process log buffer as a character
+#' vector (newest last).  Used by the Analysis Log panel.
+#'
+#' @return Character vector of log lines (may be empty).
+#' @keywords internal
+get_log_entries <- function() {
+  .log_buf$entries
+}
+
+#' Clear the in-process log buffer
+#' @keywords internal
+clear_log_buffer <- function() {
+  .log_buf$entries <- character(0L)
+}

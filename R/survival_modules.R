@@ -89,9 +89,13 @@ survivalUI <- function(id) {
                   ctrl_section("surv-elements", "layer-group", "Elements",
                     conditionalPanel(ns = ns,"input.surv_plot_selector == 'km'",
                       checkboxInput(ns("surv_opt_conf_int"),
-                                    "Show confidence interval", value = FALSE),
+                                    tagList("Show confidence interval",
+                                            help_tip("Displays 95% confidence bands around the Kaplan-Meier survival curves.")),
+                                    value = FALSE),
                       checkboxInput(ns("surv_opt_risk_table"),
-                                    "Show risk table on plot", value = TRUE),
+                                    tagList("Show risk table on plot",
+                                            help_tip("Number of subjects still at risk at each timepoint, displayed beneath the KM curve.")),
+                                    value = TRUE),
                       numericInput(ns("surv_km_xstart"),
                                    "X-axis start (Day)",
                                    value = 0, min = 0, step = 1)
@@ -269,8 +273,9 @@ survival_server <- function(id, rv) {
           icon("spinner", class = "fa-spin"), "Running survival analysis...")
     })
     
-    # Prepare data - apply same time processing as tumor growth analysis
-    data <- rv$uploaded_data
+    # Prepare data — reuse canonical preprocessing if available
+    pp <- ensure_preprocessed(rv)
+    data <- pp$data
 
     # Resolve dose column from UI input directly — do NOT use rv$dose_col which
     # is only set after TG analysis runs. rv$settings$col_dose always reflects the
@@ -286,20 +291,8 @@ survival_server <- function(id, rv) {
                                         data[[dose_col_surv]], sep = " ")
     }
 
-    # Handle time column - either use direct day or calculate from date
-    if (rv$settings$time_method == "from_date") {
-      date_info <- detect_date_format(data, rv$settings$col_date_for_day,
-                                      rv$settings$reference_date)
-      data <- mouseExperiment::calculate_dates(
-        date_info$data,
-        start_date  = date_info$start_date,
-        date_column = rv$settings$col_date_for_day,
-        date_format = date_info$date_format
-      )
-      time_col <- "Day"
-    } else {
-      time_col <- rv$settings$col_day
-    }
+    # Handle time column — reuse from preprocessed data
+    time_col <- pp$time_col
     
     # For survival analysis, reduce data to one row per animal
     # Use the user-selected ID and Cage columns (not hardcoded names)
@@ -517,6 +510,9 @@ survival_server <- function(id, rv) {
     req(rv$surv_plot_groups)
     group_order_and_color_ui("surv", rv$surv_plot_groups, ns = session$ns)
   })
+
+  # Apply colorblind-friendly palette presets when selector changes
+  observe_palette_preset(input, session, "surv", reactive(rv$surv_plot_groups))
 
   output$surv_download_plot_btn <- renderUI({
     btn_id <- switch(input$surv_plot_selector %||% "km",

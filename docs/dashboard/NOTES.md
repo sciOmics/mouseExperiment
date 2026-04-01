@@ -25,4 +25,6 @@
 ## Future Improvements
 
 - Add CHANGELOG.md (once initial version is published)
-- Versioning  
+- Versioning
+
+Assess the mouseExperimentDashboard CODE_REVIEW.md and mouseExperiment CODE_REVIEW.md and determine what has been addressed and what remains to be addressed. Update the document accordingly and report back.  

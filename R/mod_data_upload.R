@@ -503,9 +503,51 @@ data_upload_server <- function(id, rv) {
   })
   
 
-  
   # Proceed button is always clickable - validation enforced at analysis time
   # No need to disable/enable the button
+
+  # ---------------------------------------------------------------------------
+  # Live validation feedback on column mapping inputs (shinyFeedback)
+  # ---------------------------------------------------------------------------
+
+  # Helper: show success/warning on a selectInput depending on whether a
+  # non-empty value is selected.
+  validate_col_input <- function(input_id) {
+    val <- input[[input_id]]
+    if (!is.null(val) && nzchar(val)) {
+      shinyFeedback::hideFeedback(input_id)
+      shinyFeedback::showFeedbackSuccess(input_id, text = "")
+    } else {
+      shinyFeedback::hideFeedback(input_id)
+      shinyFeedback::showFeedbackWarning(input_id, text = "Required")
+    }
+  }
+
+  # Watch required column selectors (only after data is uploaded)
+  observe({
+    req(rv$data_valid)
+    validate_col_input("col_id")
+    validate_col_input("col_treatment")
+  })
+
+  observe({
+    req(rv$data_valid)
+    if ((input$time_method %||% "") == "direct_day") {
+      validate_col_input("col_day")
+    } else {
+      validate_col_input("col_date_for_day")
+    }
+  })
+
+  observe({
+    req(rv$data_valid)
+    if ((input$volume_method %||% "") == "direct") {
+      validate_col_input("col_volume")
+    } else {
+      validate_col_input("col_length")
+      validate_col_input("col_width")
+    }
+  })
 
   # ---------------------------------------------------------------------------
   # Sync column mapping inputs into rv$settings for cross-module access.
@@ -530,5 +572,9 @@ data_upload_server <- function(id, rv) {
       reference_date    = input$reference_date %||% ""
     )
   })
+
+  # Session save / restore handlers
+  setup_session_save_restore(input, output, session, rv)
+
   })
 }

@@ -9,6 +9,16 @@ tab_info <- function(...) {
   )
 }
 
+# Shared helper: inline help tooltip (question-circle icon with title hint)
+help_tip <- function(text) {
+  tags$span(
+    class = "text-muted",
+    style = "cursor:help; margin-left:4px;",
+    title = text,
+    icon("circle-question", class = "fa-sm")
+  )
+}
+
 # Helper: collapsible section for the plot control panel.
 # Starts collapsed; click the header to expand.
 ctrl_section <- function(id, icon_nm, title, ...) {
@@ -131,7 +141,9 @@ dataUploadUI <- function(id) {
     
     # Data preview (shown after successful upload)
     uiOutput(ns("data_preview_ui")),
-    
+
+    # Session save / restore
+    session_save_restore_ui(ns)
   )
 }
 
@@ -170,11 +182,13 @@ column_mapping_ui <- function(col_names, detected_cols, ns = NS(NULL)) {
                    placeholder = "First measurement date")
         ),
 
-        selectInput(ns("col_id"), "Mouse/Subject ID",
+        selectInput(ns("col_id"),
+                   tagList("Mouse/Subject ID", help_tip("Unique identifier for each mouse/subject. Each ID should have multiple rows (one per timepoint).")),
                    choices = c("Select..." = "", col_names),
                    selected = detected_cols$id),
         
-        selectInput(ns("col_treatment"), "Treatment Group",
+        selectInput(ns("col_treatment"),
+                   tagList("Treatment Group", help_tip("Column indicating which treatment/group each subject belongs to (e.g. Control, Drug A, Drug B).")),
                    choices = c("Select..." = "", col_names),
                    selected = detected_cols$treatment)
       ),
@@ -226,20 +240,23 @@ column_mapping_ui <- function(col_names, detected_cols, ns = NS(NULL)) {
       
       column(4,
         h4(strong("Optional Columns")),
-        selectInput(ns("col_cage"), "Cage ID",
+        selectInput(ns("col_cage"),
+                   tagList("Cage ID", help_tip("Optional grouping variable. Used as a random effect in mixed models to account for cage-to-cage variability.")),
                    choices = c("None" = "", col_names),
                    selected = detected_cols$cage),
         tags$p(tags$small("Cage ID is used to distinguish mice with same ID in different cages.")),
         
         br(),
         
-        selectInput(ns("col_dose"), "Dose Level",
+        selectInput(ns("col_dose"),
+                   tagList("Dose Level", help_tip("Numeric dose values. Groups are split into Treatment+Dose combinations for dose-response modelling.")),
                    choices = c("None" = "", col_names),
                    selected = detected_cols$dose),
         tags$p(tags$small("Required for Dose-Response Analysis. Should contain numeric dose concentrations or levels.")),
         
         br(),
-        selectInput(ns("col_survival_event"), "Event/Censor Status Column",
+        selectInput(ns("col_survival_event"),
+                   tagList("Event/Censor Status", help_tip("Binary column: 1 = event occurred (death/sacrifice), 0 = censored (alive at end of study). Enables Kaplan-Meier and Cox regression.")),
                    choices = c("None" = "", col_names),
                    selected = detected_cols$survival_event),
         tags$p(tags$small("Required for Survival Analysis. Time will use the same Day/Date settings as above. Coding: ", tags$strong("1 = event (e.g. death)"), ", ", tags$strong("0 = censored"), ".")),
@@ -393,6 +410,20 @@ tumorGrowthUI <- function(id) {
         ),
         tabsetPanel(
           id = ns("tg_results_tabs"),
+
+          tabPanel(
+            title = tags$span(icon("file-zipper"), " Download All"),
+            value = "__download_all__",
+            wellPanel(
+              style = "text-align:center; padding:30px;",
+              h4("Export All Results"),
+              p("Download every available result table (CSV) and plot (PNG) ",
+                "as a single ZIP file."),
+              downloadButton(ns("download_tg_all"), "Download All Results",
+                             class = "btn-lg btn-primary",
+                             icon = icon("download"))
+            )
+          ),
           
           tabPanel("Summary",
             uiOutput(ns("tg_summary_tab_info")),
@@ -818,6 +849,40 @@ citationUI <- function() {
       p("mouseExperiment is released under the ",
         tags$a("MIT License", href = "https://github.com/sciOmics/mouseExperiment/blob/main/LICENSE",
                target = "_blank"), ".")
+    )
+  )
+}
+
+#' Analysis Log UI
+#'
+#' Displays a live panel of analysis log entries emitted during the session.
+#' @param id Shiny module id.
+#' @keywords internal
+analysisLogUI <- function(id) {
+  ns <- NS(id)
+  fluidPage(
+    h2(icon("clipboard-list"), " Analysis Log"),
+    tab_info(
+      "Events logged during your session (data uploads, analysis runs, errors).",
+      " Logs are stored in memory and cleared when the session ends."
+    ),
+
+    fluidRow(
+      column(12,
+        wellPanel(
+          fluidRow(
+            column(3, actionButton(ns("refresh_log"), "Refresh",
+                                   icon = icon("arrows-rotate"),
+                                   class = "btn-sm btn-default")),
+            column(3, actionButton(ns("clear_log"), "Clear log",
+                                   icon = icon("trash"),
+                                   class = "btn-sm btn-danger")),
+            column(6, downloadButton(ns("download_log"), "Download log",
+                                     class = "btn-sm btn-info"))
+          )
+        ),
+        verbatimTextOutput(ns("log_output"))
+      )
     )
   )
 }

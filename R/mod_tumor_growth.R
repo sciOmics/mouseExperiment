@@ -1154,6 +1154,9 @@ tumor_growth_server <- function(id, rv) {
     group_order_and_color_ui("tg", rv$tg_plot_groups, ns = session$ns)
   })
 
+  # Apply colorblind-friendly palette presets when selector changes
+  observe_palette_preset(input, session, "tg", reactive(rv$tg_plot_groups))
+
   # Growth curves plot  — reactive: re-renders on colour/option changes
   tg_growth_plot <- reactive({
     tryCatch({
@@ -1922,6 +1925,58 @@ tumor_growth_server <- function(id, rv) {
         tryCatch(print(p), finally = dev.off())
       }
     }
+  )
+
+  # ---- "Download All Results" — ZIP of all available CSV tables + plots ------
+  output$download_tg_all <- downloadHandler(
+    filename = function() {
+      paste0("mouseExperiment_results_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".zip")
+    },
+    content = function(file) {
+      tmpdir <- tempdir()
+      outdir <- file.path(tmpdir, "mouseExperiment_results")
+      dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
+
+      # Helper: write a CSV if the data exists
+      write_if <- function(data, name) {
+        if (!is.null(data)) {
+          write.csv(as.data.frame(data), file.path(outdir, name), row.names = FALSE)
+        }
+      }
+
+      res <- rv$tg_results
+      if (!is.null(res)) {
+        write_if(res$anova,                "anova_results.csv")
+        write_if(res$pairwise_comparisons, "pairwise_comparisons.csv")
+        write_if(res$treatment_effects,    "treatment_effects.csv")
+        write_if(res$growth_rates,         "growth_rates.csv")
+        write_if(res$data_summary,         "data_summary.csv")
+        write_if(res$auc_analysis$individual, "auc_individual.csv")
+        write_if(res$auc_analysis$summary,    "auc_summary.csv")
+      }
+
+      # Save available plots as PNG
+      save_plot <- function(plot_fn, name, w = 800, h = 600) {
+        p <- tryCatch(plot_fn(), error = function(e) NULL)
+        if (!is.null(p)) {
+          png(file.path(outdir, name), width = w, height = h, units = "px", res = 100)
+          tryCatch(print(p), finally = dev.off())
+        }
+      }
+      save_plot(tg_growth_plot, "growth_curves.png")
+      save_plot(tg_rates_plot,  "growth_rates.png")
+      save_plot(tg_auc_plot,    "treatment_effects.png")
+      save_plot(tg_forest_plot, "effect_forest.png", w = 900)
+      save_plot(tg_wf_plot,     "waterfall.png")
+
+      # Create ZIP
+      files <- list.files(outdir, full.names = TRUE)
+      zip(file, files, flags = "-j")   # -j: junk directory paths
+      unlink(outdir, recursive = TRUE)
+
+      log_info("download_all | module=tumor_growth")
+    },
+    contentType = "application/zip"
   )
 
   })

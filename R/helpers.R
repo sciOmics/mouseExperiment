@@ -55,6 +55,76 @@ detect_date_format <- function(data, date_column, reference_date) {
 
 # ---- End Date Preprocessing -------------------------------------------------
 
+#' Ensure data has been preprocessed (dates and volumes computed)
+#'
+#' If the canonical preprocessing from the Tumor Growth module has already run
+#' (i.e. \code{rv$processed_data} is non-NULL), returns it along with the
+#' stored column names. Otherwise performs inline preprocessing using
+#' \code{rv$settings} and stores the result in \code{rv} for future callers.
+#'
+#' @param rv The shared reactiveValues list.
+#' @return A list with \code{data}, \code{time_col}, \code{vol_col}, \code{tx_col}.
+#' @keywords internal
+ensure_preprocessed <- function(rv) {
+  # Reuse canonical result if available
+
+  if (!is.null(rv$processed_data)) {
+    return(list(
+      data     = rv$processed_data,
+      time_col = rv$time_col,
+      vol_col  = rv$vol_col,
+      tx_col   = rv$tx_col
+    ))
+  }
+
+  # Otherwise preprocess from scratch
+  data <- rv$uploaded_data
+  settings <- rv$settings
+
+  # Date → Day
+  if (!is.null(settings$time_method) && settings$time_method == "from_date") {
+    date_info <- detect_date_format(data, settings$col_date_for_day,
+                                    settings$reference_date)
+    data <- mouseExperiment::calculate_dates(
+      date_info$data,
+      start_date  = date_info$start_date,
+      date_column = settings$col_date_for_day,
+      date_format = date_info$date_format
+    )
+    time_col <- "Day"
+  } else {
+    time_col <- settings$col_day
+  }
+
+  # Volume calculation
+  if (!is.null(settings$volume_method) && settings$volume_method == "calculate") {
+    len_col <- settings$col_length %||% "Length"
+    wid_col <- settings$col_width  %||% "Width"
+    vol_formula <- settings$volume_formula %||% "modified_ellipsoid"
+    if (has_col(data, len_col) && has_col(data, wid_col)) {
+      data <- mouseExperiment::calculate_volume(
+        data,
+        length_column = len_col,
+        width_column  = wid_col,
+        formula       = vol_formula
+      )
+    }
+    vol_col <- "Volume"
+  } else {
+    vol_col <- settings$col_volume %||% "Volume"
+  }
+
+  tx_col <- settings$col_treatment
+
+  # Cache for future callers
+  rv$processed_data <- data
+  rv$time_col       <- time_col
+  rv$vol_col        <- vol_col
+  rv$tx_col         <- tx_col
+
+  list(data = data, time_col = time_col, vol_col = vol_col, tx_col = tx_col)
+}
+
 #' Pick the best default reference group
 #'
 #' Returns the first group whose name matches common control-group terms
@@ -534,6 +604,62 @@ default_group_colors <- function(n) {
   scales::hue_pal()(n)
 }
 
+#' Named palette presets (colorblind-friendly options)
+#'
+#' Returns a named character vector of hex colours for the requested palette.
+#' Falls back to the ggplot2 default hue palette when \code{name} is
+#' \code{"default"} or unrecognised.
+#'
+#' @param name Character palette name: \code{"default"}, \code{"viridis"},
+#'   \code{"okabe_ito"}, or \code{"set2"}.
+#' @param n    Number of colours required.
+#' @return Character vector of hex colour strings of length \code{n}.
+#' @keywords internal
+palette_colors <- function(name, n) {
+  if (n <= 0L) return(character(0L))
+  switch(name,
+    viridis  = substring(scales::viridis_pal(option = "D")(n), 1L, 7L),
+    okabe_ito = {
+      oi <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442",
+              "#0072B2", "#D55E00", "#CC79A7", "#999999")
+      rep_len(oi, n)
+    },
+    set2 = {
+      s2 <- c("#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3",
+              "#A6D854", "#FFD92F", "#E5C494", "#B3B3B3")
+      rep_len(s2, n)
+    },
+    default_group_colors(n)
+  )
+}
+
+#' Set up an observer that applies palette presets to group colour pickers
+#'
+#' Call this once inside a module server.
+#' When the user selects a non-custom preset, every per-group \code{colourInput}
+#' is updated to the preset colour.  Selecting \code{"custom"} is a no-op so
+#' the user can freely pick colours after choosing a starting palette.
+#'
+#' @param input   Shiny \code{input} object (module-scoped).
+#' @param session Shiny \code{session} object (module-scoped).
+#' @param prefix  Same \code{prefix} passed to \code{group_order_and_color_ui}.
+#' @param groups_rv A reactive expression returning the current group names.
+#' @keywords internal
+observe_palette_preset <- function(input, session, prefix, groups_rv) {
+  pal_id <- paste0(prefix, "_palette")
+  observeEvent(input[[pal_id]], {
+    pal_name <- input[[pal_id]]
+    if (is.null(pal_name) || pal_name == "custom") return()
+    groups <- groups_rv()
+    if (is.null(groups) || length(groups) == 0L) return()
+    cols <- palette_colors(pal_name, length(groups))
+    for (i in seq_along(groups)) {
+      color_id <- paste0(prefix, "_color_", make.names(groups[i]))
+      colourpicker::updateColourInput(session, color_id, value = cols[i])
+    }
+  }, ignoreInit = TRUE)
+}
+
 #' Render colourInput widgets for a set of treatment groups
 #'
 #' Returns a \code{tagList} of \code{colourpicker::colourInput} widgets,
@@ -707,6 +833,7 @@ group_order_and_color_ui <- function(prefix, groups, ns = NS(NULL)) {
   defaults <- default_group_colors(length(groups))
   list_id  <- ns(paste0(prefix, "_drag_list"))
   input_id <- ns(paste0(prefix, "_order"))
+  pal_id   <- ns(paste0(prefix, "_palette"))
 
   # Closed pch shapes available for per-group selection.
   # Open shapes (0, 1, 2, ...) are reserved for extrapolated points.
@@ -797,6 +924,15 @@ group_order_and_color_ui <- function(prefix, groups, ns = NS(NULL)) {
   )
 
   shiny::tagList(
+    shiny::selectInput(
+      pal_id, shiny::tags$span(shiny::icon("eye"), " Color palette"),
+      choices  = c("Default (ggplot2)" = "custom",
+                   "Viridis (colorblind)" = "viridis",
+                   "Okabe-Ito (colorblind)" = "okabe_ito",
+                   "Set2 (ColorBrewer)" = "set2"),
+      selected = "custom",
+      width    = "100%"
+    ),
     shiny::tags$p(
       style = "font-size:11px; color:#6c757d; margin-bottom:6px;",
       shiny::icon("grip-vertical"), " Drag the \u2630 handle to reorder"

@@ -45,19 +45,10 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     position = "fixed-top",
     header = tagList(
       shinyjs::useShinyjs(),
+      shinyFeedback::useShinyFeedback(),
       tags$head(
         tags$link(rel = "stylesheet", href = "css/custom.css"),
         tags$link(rel = "stylesheet", href = "css/dark.css"),
-        tags$style(HTML("
-          body { padding-top: 70px; }
-          .navbar-nav li a[data-value='__toxicity_disabled__'],
-          .navbar-nav li a[data-value='__dose_response_disabled__'],
-          .navbar-nav li a[data-value='__drug_synergy_disabled__'],
-          .navbar-nav li a[data-value='__power_analysis_disabled__'] {
-            pointer-events: none;
-            opacity: 0.45;
-          }
-        ")),
         tags$script(src = "js/navbar.js"),
         tags$script(src = "js/sidebar.js"),
         tags$script(src = "js/darkmode.js"),
@@ -97,13 +88,14 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
       ""
     ),
     tabPanel("Help",          helpUI()),
+    tabPanel("Log",           analysisLogUI("log")),
     tabPanel("About",          citationUI())
   )
 
   server <- function(input, output, session) {
 
-    # Initialise structured logging (JSON to stdout for Docker)
-    setup_logging()
+    # Initialise structured logging (JSON to stdout + in-process buffer)
+    setup_logging_with_buffer()
     log_session(session, "start")
     session$onSessionEnded(function() {
       log_session(session, "end")
@@ -142,6 +134,7 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     synergy_server("syn", rv)
     power_server("pw", rv)
     dose_response_server("dr", rv)
+    analysis_log_server("log", rv)
 
     # Guard: redirect away from placeholder tabs if reached via keyboard
     observeEvent(input$main_nav, {
