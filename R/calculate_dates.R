@@ -29,6 +29,12 @@
 #' }
 calculate_dates <- function(df, start_date, date_column = "Date", 
                             date_format = NULL, year = NULL, in_place = FALSE) {
+  # Deprecation warning for in_place parameter
+  if (in_place) {
+    warning("The 'in_place' parameter is deprecated and will be removed in a future version. ",
+            "Use 'df <- calculate_dates(df, ...)' instead.", call. = FALSE)
+  }
+  
   # Input validation
   if(!date_column %in% colnames(df)) {
     stop(paste("Column", date_column, "not found in data frame"))
@@ -105,6 +111,10 @@ calculate_dates <- function(df, start_date, date_column = "Date",
     }
   } else {
     # Use anytime for automatic parsing (original behavior)
+    if (!requireNamespace("anytime", quietly = TRUE)) {
+      stop("Package 'anytime' is required for automatic date parsing. ",
+           "Install it or specify 'date_format' explicitly.", call. = FALSE)
+    }
     message("Using automatic date parsing. For more reliable results, specify date_format.")
     start_date_parsed <- anytime::anytime(start_date)
     dates_parsed <- anytime::anytime(df[,date_column])
@@ -138,7 +148,11 @@ calculate_dates <- function(df, start_date, date_column = "Date",
         }
       } else {
         # Fall back to anytime as last resort
-        start_date_parsed <- anytime::anytime(start_date)
+        if (requireNamespace("anytime", quietly = TRUE)) {
+          start_date_parsed <- anytime::anytime(start_date)
+        } else {
+          stop("Package 'anytime' not available. Please specify 'date_format'.", call. = FALSE)
+        }
       }
       
       # Check if successful now

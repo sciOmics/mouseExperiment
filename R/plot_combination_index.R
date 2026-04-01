@@ -89,7 +89,7 @@ plot_combination_index <- function(synergy_summary,
     ggplot2::geom_line(
       data = synergy_summary,
       ggplot2::aes(x = Time_Point, y = Combination_Index),
-      color = line_color, size = 1.5
+      color = line_color, linewidth = 1.5
     ) +
     
     # Add labels for regions in the background

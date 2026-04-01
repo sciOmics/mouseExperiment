@@ -41,7 +41,8 @@ A list containing the following components:
 \describe{
 \item{summary}{A data frame summarizing the tumor growth inhibition (TGI) for each treatment and synergy metrics.}
 \item{bliss_independence}{Results of the Bliss independence model, including expected vs. observed effects.}
-\item{loewe_additivity}{Results of the Loewe additivity model.}
+\item{additive_model}{Results of the additive (mean) model.}
+\item{loewe_additivity}{Deprecated alias for \code{additive_model}. Will be removed in a future version.}
 \item{combination_index}{The combination index (CI), where CI < 1 indicates synergy, CI = 1 indicates additivity, and CI > 1 indicates antagonism.}
 \item{statistical_test}{Results of statistical tests comparing observed vs. expected effects.}
 \item{plot_data}{Data prepared for plotting, to be used with plot_drug_synergy function.}

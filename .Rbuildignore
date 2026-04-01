@@ -1,2 +1,14 @@
 ^mouseExperiment\.Rproj$
 ^\.Rproj\.user$
+^\.github$
+^\.gitignore$
+^\.Rhistory$
+^temp$
+^\.git$
+^plan\.md$
+^update_namespace\.R$
+^CODE_REVIEW\.md$
+^NOTES\.md$
+^CHANGELOG\.md$
+^DASHBOARD_PLAN\.md$
+^build\.R$

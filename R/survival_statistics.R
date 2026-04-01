@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Insight BioAnalytics. All rights reserved.
-# Proprietary and confidential.
+# Copyright (c) 2026 mouseExperiment Contributors
+# Licensed under the MIT License - see LICENSE file
 
 #' Perform Survival Analysis for Mouse Tumor Experiments
 #'
@@ -18,6 +18,7 @@
 #' @param dose_column Optional name of column containing dose information. Default: NULL
 #' @param reference_group Treatment group to use as reference. Default: NULL (uses first alphabetically)
 #' @param firth_correction Whether to apply Firth's correction for separation issues. Default: TRUE
+#' @param verbose Whether to print analysis details to the console. Default: TRUE
 #'
 #' @return A list containing:
 #' \describe{
@@ -65,7 +66,8 @@ survival_statistics <- function(df,
                               id_column = "ID",
                               dose_column = NULL,
                               reference_group = NULL,
-                              firth_correction = TRUE) {
+                              firth_correction = TRUE,
+                              verbose = TRUE) {
   
   # Validate inputs
   validate_inputs(df, time_column, censor_column, treatment_column)
@@ -115,7 +117,7 @@ survival_statistics <- function(df,
   km_fit <- survival::survfit(surv_formula, data = df)
   
   # Display median survival information
-  print(km_fit)
+  if (verbose) message(paste(utils::capture.output(print(km_fit)), collapse = "\n"))
   
   # Calculate and add median survival times
   median_survival <- NULL
@@ -236,7 +238,7 @@ survival_statistics <- function(df,
   results$Note <- ifelse(results$Group == reference_group, "Reference group", "")
   
   # Print formatted results
-  print_results(results, df, treatment_column, time_column, censor_column)
+  if (verbose) print_results(results, df, treatment_column, time_column, censor_column)
   
   # Build our result list
   result_list <- list(
@@ -275,7 +277,7 @@ check_cage_distribution <- function(df, treatment_column, cage_column) {
   if (cage_column %in% colnames(df)) {
     cage_treatment_table <- table(df[[cage_column]], df[[treatment_column]])
     message("Cage distribution across treatment groups:")
-    print(cage_treatment_table)
+    message(paste(utils::capture.output(print(cage_treatment_table)), collapse = "\n"))
     
     # Check for collinearity between cage and treatment
     cage_treatment_df <- data.frame(
@@ -398,6 +400,26 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
             results$P_Value[idx] <- p_values[i]
           }
         }
+
+        # Fallback: for non-reference groups where coxphf failed to converge
+        # (p_value is NA), compute a pairwise log-rank p-value instead.
+        non_ref_na <- which(results$Group != reference_group & is.na(results$P_Value))
+        for (idx in non_ref_na) {
+          grp <- results$Group[idx]
+          pair_df <- df[df[[treatment_column]] %in% c(reference_group, grp), , drop = FALSE]
+          pair_df[[treatment_column]] <- factor(pair_df[[treatment_column]])
+          tryCatch({
+            pair_formula <- stats::as.formula(
+              paste0("survival::Surv(", time_column, ", ", censor_column, ") ~ ", treatment_column)
+            )
+            lr <- survival::survdiff(pair_formula, data = pair_df)
+            results$P_Value[idx] <- round(1 - stats::pchisq(lr$chisq, df = 1), 4)
+            message(sprintf("  Pairwise log-rank p-value used for %s (coxphf did not converge): %.4f",
+                            grp, results$P_Value[idx]))
+          }, error = function(e) {
+            message(sprintf("  Could not compute fallback p-value for %s: %s", grp, e$message))
+          })
+        }
         
         return(list(
           model = model,
@@ -429,7 +451,7 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     
     # Fit Log-Rank test
     surv_diff <- survival::survdiff(cox_formula, data = df)
-    print(surv_diff)
+    if (verbose) message(paste(utils::capture.output(print(surv_diff)), collapse = "\n"))
     
     # Calculate p-value
     chisq <- surv_diff$chisq
@@ -616,7 +638,14 @@ print_results <- function(results, df = NULL, treatment_column = NULL, time_colu
       }
     }),
     "P-value" = sapply(1:nrow(results), function(i) {
-      ifelse(is.na(results$P_Value[i]), "Ref", sprintf("%.4f", results$P_Value[i]))
+      is_ref <- !is.na(results$Note[i]) && results$Note[i] == "Reference group"
+      if (is_ref) {
+        "Ref"
+      } else if (is.na(results$P_Value[i])) {
+        "NC"  # Not Converged
+      } else {
+        sprintf("%.4f", results$P_Value[i])
+      }
     }),
     "Events/Total" = sapply(1:nrow(results), function(i) {
       if (!is.na(results$Events[i]) && !is.na(results$Total[i])) {
@@ -676,7 +705,7 @@ print_results <- function(results, df = NULL, treatment_column = NULL, time_colu
     })
   }
   
-  print(formatted_table)
+  message(paste(utils::capture.output(print(formatted_table)), collapse = "\n"))
   
   # Return the formatted table invisibly for further use if needed
   invisible(formatted_table)

@@ -36,3 +36,5 @@ po/*~
 # R package artifacts
 *.tar.gz
 ..Rcheck/
+tests/testthat/Rplots.pdf
+Rplots.pdf

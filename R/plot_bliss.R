@@ -43,7 +43,11 @@ plot_bliss <- function(synergy_summary,
                       add_legend = TRUE,
                       x_label = "Days",
                       y_label = "Percent Tumor Growth Inhibition",
-                      y_limits = NULL) {
+                      y_limits = NULL,
+                      drug_a_label = "Drug A",
+                      drug_b_label = "Drug B",
+                      combo_label = "Combination",
+                      expected_label = "Bliss Value") {
   
   # Input validation
   if (!is.data.frame(synergy_summary)) {
@@ -59,30 +63,38 @@ plot_bliss <- function(synergy_summary,
   }
   
   # Create a tidy format data frame for plotting
+  group_levels <- c(drug_a_label, drug_b_label, combo_label, expected_label)
   plot_data <- data.frame(
     Time = rep(synergy_summary$Time_Point, 4),
     TGI = c(synergy_summary$TGI_Drug_A,
             synergy_summary$TGI_Drug_B,
             synergy_summary$TGI_Combo,
             synergy_summary$Bliss_Expected_TGI),
-    Group = factor(c(rep("Drug A", nrow(synergy_summary)),
-                     rep("Drug B", nrow(synergy_summary)),
-                     rep("Combination", nrow(synergy_summary)),
-                     rep("Bliss Value", nrow(synergy_summary))),
-                   levels = c("Drug A", "Drug B", "Combination", "Bliss Value"))
+    Group = factor(c(rep(drug_a_label, nrow(synergy_summary)),
+                     rep(drug_b_label, nrow(synergy_summary)),
+                     rep(combo_label, nrow(synergy_summary)),
+                     rep(expected_label, nrow(synergy_summary))),
+                   levels = group_levels)
   )
   
   # Set default colors if not provided
   if (is.null(colors)) {
-    colors <- c("Drug A" = "blue", "Drug B" = "red", "Combination" = "purple", "Bliss Value" = "grey")
+    colors <- stats::setNames(
+      c("blue", "red", "purple", "grey"),
+      group_levels
+    )
   }
+  
+  # Create line style values using group labels
+  lw_vals <- stats::setNames(c(1, 1, 1, 2), group_levels)
+  alpha_vals <- stats::setNames(c(1, 1, 1, 0.5), group_levels)
   
   # Create the line plot
   p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Time, y = TGI, color = Group, group = Group)) +
     # Add lines with appropriate styling
-    ggplot2::geom_line(ggplot2::aes(size = Group, alpha = Group)) +
-    ggplot2::scale_size_manual(values = c("Drug A" = 1, "Drug B" = 1, "Combination" = 1, "Bliss Value" = 2)) +
-    ggplot2::scale_alpha_manual(values = c("Drug A" = 1, "Drug B" = 1, "Combination" = 1, "Bliss Value" = 0.5)) +
+    ggplot2::geom_line(ggplot2::aes(linewidth = Group, alpha = Group)) +
+    ggplot2::scale_linewidth_manual(values = lw_vals) +
+    ggplot2::scale_alpha_manual(values = alpha_vals) +
     ggplot2::scale_color_manual(values = colors) +
     
     # Add labels and styling
@@ -101,7 +113,7 @@ plot_bliss <- function(synergy_summary,
       axis.text = ggplot2::element_text(size = 10),
       panel.grid.major = ggplot2::element_blank(),
       panel.grid.minor = ggplot2::element_blank(),
-      axis.line = ggplot2::element_line(size = 0.5),
+      axis.line = ggplot2::element_line(linewidth = 0.5),
       plot.margin = ggplot2::margin(10, 10, 10, 10)
     )
   

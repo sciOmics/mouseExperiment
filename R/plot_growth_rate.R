@@ -114,8 +114,8 @@ plot_growth_rate <- function(growth_data,
     n_composite_ids <- length(unique(growth_data$composite_id))
     
     if (n_composite_ids > n_ids) {
-      cat("Note: Detected", n_composite_ids, "unique mice when accounting for cage information vs", 
-          n_ids, "when using ID alone.\n")
+      message("Note: Detected ", n_composite_ids, " unique mice when accounting for cage information vs ", 
+              n_ids, " when using ID alone.")
     }
   }
   
@@ -188,23 +188,24 @@ plot_growth_rate <- function(growth_data,
   summary_stats <- do.call(data.frame, summary_stats)
   
   # Print summary of mice per treatment group
-  cat("Mice per treatment group in plot_growth_rate:\n")
+  message("Mice per treatment group in plot_growth_rate:")
   for (treatment in levels(plot_data$Treatment)) {
     n_mice <- length(unique(plot_data$Subject[plot_data$Treatment == treatment]))
-    cat("  ", treatment, ": ", n_mice, " mice\n", sep="")
+    message("  ", treatment, ": ", n_mice, " mice")
   }
   
   # Create the base plot
   p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Treatment, y = growth_rate, color = Treatment))
   
   # Add points
-  p <- p + ggplot2::geom_jitter(width = jitter_width, height = 0, 
+  p <- p + ggplot2::geom_jitter(ggplot2::aes(shape = Treatment),
+                             width = jitter_width, height = 0,
                              size = point_size, alpha = 0.7)
   
   # Add mean line if requested
   if (show_mean) {
     p <- p + ggplot2::stat_summary(fun = mean, geom = "crossbar", 
-                                 width = 0.5, size = 0.5, color = "black")
+                                 width = 0.5, linewidth = 0.5, color = "black")
   }
   
   # Add error bars if requested
@@ -237,7 +238,7 @@ plot_growth_rate <- function(growth_data,
   }
   
   # Add a horizontal line at y = 0 to indicate the boundary between tumor growth and shrinkage
-  p <- p + ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "red", size = 0.5)
+  p <- p + ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "red", linewidth = 0.5)
   
   # Add labels and theme
   p <- p + ggplot2::labs(

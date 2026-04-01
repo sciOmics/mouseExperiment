@@ -1,6 +1,7 @@
 Package: mouseExperiment
 Title: Analysis of Mouse Tumor Growth Experiments
 Version: 0.1.0
+Date: 2026-03-25
 Authors@R: 
     person("Insight", "BioAnalytics", , "info@insightbioanalytics.com", role = c("aut", "cre", "cph"))
 Author: Insight BioAnalytics [aut, cre, cph]
@@ -9,25 +10,28 @@ Description: Provides tools for analyzing and visualizing mouse tumor growth exp
     including calculating tumor volume, survival statistics, and tumor growth kinetics.
     The package offers functions for dose-response analysis, drug synergy evaluation,
     and comprehensive visualization of experimental results.
-License: file LICENSE
+License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Suggests:
-    knitr,
-    rmarkdown
-VignetteBuilder: knitr
-Imports: 
     anytime,
-    car,
     clinfun,
+    ggpubr,
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0),
+    withr
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+Imports: 
+    car,
     coxphf,
     cowplot,
     dplyr,
     drc,
     emmeans,
     ggplot2,
-    ggpubr,
     lme4,
     lmerTest,
     MASS,

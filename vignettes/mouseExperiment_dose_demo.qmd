@@ -1,0 +1,244 @@
+---
+title: "Demo Analysis of Synthetic Mouse Tumor Growth Experiment"
+author: "Insight BioAnalytics"
+---
+
+
+
+```{r libraries}
+
+#devtools::install_github("https://github.com/SciOmicsLab/mouseExperiment", ref = "develop")
+install.packages('/Users/david/Library/Mobile Documents/com~apple~CloudDocs/Programming/mouseExperiment', repos = NULL, type = "Source")
+
+library(mouseExperiment)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(gt)
+library(wesanderson)
+
+```
+
+```{r color-palette}
+
+palette = wes_palettes$Darjeeling1
+
+```
+
+```{r load-data}
+
+dose_experiment = read.csv("./data/dose_levels_synthetic_data.csv")
+
+treatment_schedule = read.csv("./data/dose_levels_treatment_schedule.csv")
+
+```
+
+```{r add-day-volume}
+
+dose_experiment = dose_experiment |> 
+  calculate_dates(start_date = "17-Mar") |> 
+  calculate_volume()
+
+treatment_schedule = treatment_schedule |> 
+  calculate_dates(start_date = "17-Mar")
+
+```
+
+# Summary Data
+
+## Table 1. Sample Size Summary
+```{r sample-size-summary}
+
+dose_experiment |> 
+  dplyr::group_by(Treatment, Dose) |> 
+  summarise(`Sample Size` = n_distinct(ID)) |> 
+  ungroup() |> 
+  gt() |> 
+  cols_label(Dose = "Dose (mg/kg)") |>
+  tab_header(title = md("**Sample Size Summary**"),
+             subtitle = md("**Mice Per Treatment Group**")) |> 
+  tab_style(
+    style = list(cell_fill(color = "lightgrey")), 
+    locations = cells_body(rows = seq(1, 4, by = 2)) 
+  )
+  
+
+```
+Four mice per group were treated with vehicle control or an HDAC inhibitor at doses of 10mg/kg, 50mg/kg, or 100mg/kg. Each treatment group was caged separately (i.e. all control mice in Cage 1, all HDACi 10mg/kg in Cage 2), so cage effects cannot be estimated in statistical models. 
+
+## Figure 1. Tumor Growth Plots
+```{r tumor-growth-plots}
+#| fig-dpi: 200
+#| fig-height: 10
+#| fig-width: 8
+
+p1 = plot_treatments(treatment_data = treatment_schedule,
+                tumor_growth_data = dose_experiment,
+                day_column = "Day",
+                treatment_column = "Treatment",
+                treatment_order = c("HDACi", "Control"),
+                color_palette = palette[c(1,2)])
+
+p2 = dose_experiment |>
+  plot_tumor_growth(volume_column = "Volume", 
+                    day_column = "Day", 
+                    treatment_column = "Treatment", 
+                    cage_column = "Cage", 
+                    ID_column = "ID", 
+                    dose_column = "Dose",
+                    survival_column = "Survival_Censor", 
+                    extrapolate_volumes = FALSE,
+                    group_summary_line = TRUE) +
+    scale_color_manual(values = palette[c(2,5,1,3)])
+
+p3 = dose_experiment |>
+  plot_tumor_growth(volume_column = "Volume", 
+                    day_column = "Day", 
+                    treatment_column = "Treatment", 
+                    cage_column = "Cage", 
+                    ID_column = "ID", 
+                    dose_column = "Dose",
+                    survival_column = "Survival_Censor", 
+                    extrapolate_volumes = TRUE,
+                    group_summary_line = TRUE) +
+    scale_color_manual(values = palette[c(2,5,1,3)]) +
+    ggtitle("Tumor Growth by Treatment and Dose\nwith Data Extrapolation")
+
+ggarrange(p1,
+          p2,
+          p3,
+          labels = "AUTO",
+          nrow = 3,
+          ncol = 1)
+
+#clean up
+rm(list = c("p1", "p2", "p3"))
+
+```
+Tumor volumes were estimated by the formula V = (length × width² × π) / 6. Tumor volume over time is plotted. Thin lines represent individual mice, colored by the treatment group. Thick lines are treatment group means. Plot A only includes data for surviving mice. Plot B extrapolates tumor growth curves for deceased mice. 
+
+```{r statistics}
+
+growth_statistics = tumor_growth_statistics(dose_experiment,
+                                     time_column = "Day",
+                                     volume_column = "Volume",
+                                     treatment_column = "Treatment",
+                                     cage_column = "Cage",
+                                     id_column = "ID",
+                                     dose_column = "Dose",
+                                     model_type = "lme",
+                                     extrapolation_points = 3,
+                                     reference_group = "Control")
+
+
+
+forest_plot(growth_statistics$effect_size,
+             group_order = c("Control", "HDACi"))
+
+#weird results for forest_plot
+
+```
+
+```{r}
+
+growth_statistics$model
+growth_statistics$anova
+growth_statistics$summary
+growth_statistics$posthoc #not working
+growth_statistics$treatment_effects
+growth_statistics$growth_rates
+growth_statistics$cage_analysis
+growth_statistics$data_summary
+growth_statistics$diagnostics
+
+```
+
+```{r}
+
+plot_growth_rate(growth_statistics$growth_rates,
+         colors = palette[c(5,1,2,3)],
+         group_order = c("Control", "HDACi", "aPD1", "HDACi + PD1")
+         ) +
+  theme_classic()
+
+
+```
+
+
+```{r}
+
+post_power_analysis(dose_experiment,
+                    alpha = 0.05,
+                    effect_sizes = c(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0))
+
+#can I specify the effect size to generate a power vs sample size plot?
+#how can I get the effect size for a treatment group?
+
+#the post_power_analysis function should take the results of tumor_growth_statistics as an argument to obtain the effect sizes for each group. These should generate an output of the power that the test has given that effect size for each group. It should also generate the power vs. sample size plot for each of the groups effect sizes in order to determine the proper sample size needed  for future experiments.
+
+```
+
+
+```{r dose-response}
+
+dose_statistics = dose_response_statistics(dose_experiment,
+                         dose_column = "Dose",
+                         treatment_column = "Treatment",
+                         volume_column = "Volume",
+                         day_column = "Day",
+                         id_column = "ID", 
+                         control_group_name = "Control")
+
+dose_statistics$summary_table
+dose_statistics$dose_effect_test
+dose_statistics$trend_test
+dose_statistics$linear_model
+dose_statistics$anova_model
+dose_statistics$plots
+dose_statistics$statistics
+
+#how to interpret the outputs
+
+#move plots outside the function
+
+```
+
+```{r survival-plot}
+
+plot_survival(dose_experiment,
+              time_column = "Day",
+              censor_column = "Survival_Censor",
+              treatment_column = "Treatment",
+              cage_column = "Cage",
+              id_column = "ID",
+              dose_column = "Dose")
+
+
+  
+#Fix the legend location
+#Add risk table
+
+```
+
+```{r survival-statistics}
+
+survival_stats = survival_statistics(dose_experiment,
+                                     time_column = "Day",
+                                     censor_column = "Survival_Censor",
+                                     treatment_column = "Treatment",
+                                     cage_column = "Cage",
+                                     id_column = "ID",
+                                     dose_column = "Dose",
+                                     reference_group = "Control")
+
+
+survival_stats$results
+survival_stats$model
+
+forest_plot(survival_stats$results,
+            group_order = c("Control", "HDACi"))
+
+
+```
+
+

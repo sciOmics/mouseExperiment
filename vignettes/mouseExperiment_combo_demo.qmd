@@ -1,0 +1,535 @@
+---
+title: "Demo Analysis of Synthetic Combination Treatment Mouse Data"
+author: "Insight BioAnalytics"
+format: 
+  html:
+    output-dir: "../outputs/reports"
+    toc: true
+    toc-location: left
+    number-sections: true
+    embed-resources: true
+    theme: lux
+    logo: "/Users/david/Library/Mobile Documents/com~apple~CloudDocs/InsightBioAnalytics/logos/lightbulb/Color.png"
+---
+
+<u>Goals:</u>  
+-Primary: Contrast the impact of treatments (HDAC inhibitor, PD1 blocking antibody) on tumor growth in a longitudinal murine experiment.   
+-Secondary: Determine if the combination of the two treatments, an HDAC inhibitor (HDACi) and PD1 blocking antibody, is synergistic.  
+  
+<u>Data:</u>    
+-Longitudinal tumor measurements (length and width) of mice
+  
+<u>Hypothesis to Test:</u>  
+-The Combination of HDACi and PD1 antgaonist will have superior anti-tumor efficacy to single agents.  
+
+```{r}
+#| echo: false
+#| warning: false
+#| error: false
+#| output: false
+
+remove.packages("mouseExperiment")
+devtools::install_github("https://github.com/SciOmicsLab/mouseExperiment")
+#install.packages('/Users/david/Library/Mobile Documents/com~apple~CloudDocs/Programming/mouseExperiment', repos = NULL, type = "Source")
+
+```
+
+
+```{r libraries}
+#| echo: false
+#| warning: false
+#| error: false
+
+library(mouseExperiment)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(gt)
+library(wesanderson)
+
+```
+
+```{r color-palette}
+#| echo: false
+#| warning: false
+#| error: false
+
+palette = wes_palettes$Darjeeling1
+
+```
+
+```{r load-data}
+#| echo: false
+#| warning: false
+#| error: false
+
+combo_experiment = read.csv("./data/combo_treatment_synthetic_data.csv")
+
+treatment_data = read.csv("./data/combo_treatment_schedule.csv")
+
+```
+
+```{r add-day-volume}
+#| echo: false
+#| warning: false
+#| error: false
+
+combo_experiment = combo_experiment |> 
+  calculate_dates(start_date = "03/17/2025") |> 
+  calculate_volume()
+
+treatment_data = treatment_data |> 
+  calculate_dates(start_date = "03/17/2025")
+
+```
+
+# Summary Data
+
+## Table 1. Sample Size Summary
+```{r sample-size-summary}
+#| echo: false
+
+combo_experiment |> 
+  dplyr::group_by(Treatment) |> 
+  summarise(
+    `Mice per Cage` = n_distinct(ID), 
+    `Number of Cages` = n_distinct(Cage),
+    `Total Sample Size` = `Mice per Cage` * `Number of Cages`
+  ) |> 
+  ungroup() |> 
+  gt() |> 
+  tab_header(title = md("**Sample Size Summary**"),
+             subtitle = md("**Mice Per Group**")) |> 
+  tab_style(
+    style = cell_text(weight = "bold"),  # Make column names bold
+    locations = cells_column_labels()  # Apply to column headers
+  ) |> 
+  tab_style(
+    style = list(cell_fill(color = "lightgrey")), 
+    locations = cells_body(rows = seq(1, 4, by = 2)) 
+  ) |> 
+  tab_style(
+    style = cell_text(align = "center"),  # Center-align all text
+    locations = cells_body()  # Apply to the entire body of the table
+  )
+
+
+
+```
+Eight mice per treatment group, with four mice per cage were treated.
+
+
+## Figure 1. Tumor Growth Plots
+```{r tumor-growth-plots}
+#| echo: false
+#| fig-dpi: 200
+#| fig-height: 10
+#| fig-width: 7
+
+p1 = plot_treatments(treatment_data = treatment_data,
+                tumor_growth_data = combo_experiment,
+                day_column = "Day",
+                treatment_column = "Treatment",
+                treatment_order = c("aPD1", "HDACi", "Control"),
+                color_palette = palette[c(1,2,5)])
+
+p2 = combo_experiment |>
+  plot_tumor_growth(volume_column = "Volume", 
+                    day_column = "Day", 
+                    treatment_column = "Treatment", 
+                    cage_column = "Cage", 
+                    ID_column = "ID", 
+                    survival_column = "Survival_Censor", 
+                    extrapolate_volumes = FALSE,
+                    group_summary_line = FALSE) +
+    scale_color_manual(values = palette[c(5,1,2,3)])
+
+p3 = combo_experiment |>
+  plot_tumor_growth(volume_column = "Volume", 
+                    day_column = "Day", 
+                    treatment_column = "Treatment", 
+                    cage_column = "Cage", 
+                    ID_column = "ID", 
+                    survival_column = "Survival_Censor", 
+                    extrapolate_volumes = TRUE,
+                    extrapolation_points = 3,
+                    group_summary_line = TRUE) +
+    scale_color_manual(values = palette[c(5,1,2,3)]) +
+    ggtitle("Tumor Growth by Treatment and Dose\nwith Data Extrapolation")
+
+ggarrange(p1,
+          p2,
+          p3,
+          labels = "AUTO",
+          nrow = 3,
+          ncol = 1)
+
+#clean up
+rm(list = c("p1", "p2", "p3"))
+
+
+```
+Panel A: The treatment schedule of the indicated drugs is shown. Days of treatment for the corresponding treatment are indicated with a triangle. Panels B & C: Tumor volumes were estimated by the formula V = (length × width² × π) / 6. Tumor volume over time is plotted. Thin lines represent individual mice, colored by the treatment group as indicated in the legends. Thick lines are treatment group means (panel C). Panel B only includes data for surviving mice. Plot C extrapolates tumor growth curves for deceased mice using the last three available time-points/tumor measurements. 
+
+# Tumor Growth Statistical Analysis
+
+The "HDACi + PD1" group does not follow an exponential growth, so an area under the curve (auc) analysis was performed. 
+
+```{r tumor-statistics}
+#| echo: false
+#| output: false
+
+growth_statistics = tumor_growth_statistics(combo_experiment,
+                                     time_column = "Day",
+                                     volume_column = "Volume",
+                                     treatment_column = "Treatment",
+                                     cage_column = "Cage",
+                                     id_column = "ID",
+                                     model_type = "auc",
+                                     extrapolation_points = 3,
+                                     reference_group = "Control",
+                                     handle_cage_effects = "as_random_effect")
+
+
+```
+
+```{r}
+#| output: false
+#| echo: false
+
+growth_statistics$model
+growth_statistics$anova
+growth_statistics$summary
+growth_statistics$posthoc
+growth_statistics$treatment_effects
+growth_statistics$growth_rates
+growth_statistics$cage_analysis
+growth_statistics$auc_analysis
+growth_statistics$data_summary
+growth_statistics$diagnostics
+
+
+```
+
+
+## Tumor Growth Rates
+```{r growth-rates-plot}
+#| echo: false
+#| output: false
+#| fig-dpi: 200
+#| fig-height: 5
+#| fig-width: 7
+
+plot_growth_rate(growth_statistics$growth_rates,
+         colors = palette[c(1,2,5,3)],
+         group_order = c("Control", "HDACi", "aPD1", "HDACi + PD1")
+         ) +
+  theme_classic()
+
+
+```
+
+## Figure 2. Area Under the Curve.
+```{r auc-plot}
+#| echo: false
+#| fig-dpi: 200
+#| fig-height: 5
+#| fig-width: 7
+
+plot_auc(growth_statistics$auc_analysis$individual,
+         show_mean = TRUE,
+         error_bar_type = "CI",
+         colors = palette[c(1,2,5,3)],
+         group_order = c("Control", "HDACi", "aPD1", "HDACi + PD1"),
+         extrapolated_column = "Extrapolated"
+         ) +
+  theme_classic()
+
+```
+
+Area under the curve for tumor volumes over time was calculated using the trapezoidal method for each mouse. Missing tumor measurements from deceased mice were calculated by extrapolation using a exponential growth model fitted with the three final measurement points. 
+
+## Table 2. ANOVA Results 
+```{r anova-results}
+#| echo: false
+
+growth_statistics$anova
+
+```
+
+## Table 3. Posthoc Comparisons 
+```{r posthoc-results}
+#| echo: false
+#| warning: false
+
+growth_statistics$posthoc$pairwise |>
+  gt() |>
+  cols_label(comparison = "Comparison",
+             estimate = "Estimate",
+             t_value = "t-Value",
+             df = "Degrees of Freedom",
+             ci_lower = "Lower 95% Confidence Interval",
+             ci_upper = "Upper 95% Confidence Interval",
+             p_value = "p-Value",
+             p_adjusted = "Adjusted p-Value") |> 
+  fmt_number(columns = c(p_value, p_adjusted), decimals = 4) |> 
+  fmt_number(columns = c(estimate, ci_lower, ci_upper), decimals = 0) |> 
+  fmt_number(columns = c(t_value, df), decimals = 2) |> 
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(columns = vars(p_adjusted),rows = p_adjusted < 0.05)) |> 
+  tab_header(title = md("**Posthoc Pair-Wise Comparisons**"),
+             subtitle = md("**Welch's t-test with Bonferroni Correction**")) |>
+  tab_style(
+    style = cell_text(weight = "bold"),  # Make column names bold
+    locations = cells_column_labels()  # Apply to column headers
+  ) |>
+  tab_style(
+    style = cell_text(align = "center"),  # Center-align all text
+    locations = cells_body()  # Apply to the entire body of the table
+  ) |> 
+  tab_style(
+    style = list(cell_fill(color = "lightgrey")),
+    locations = cells_body(rows = seq(1, 6, by = 2))
+  )
+
+
+```
+Statistical comparisons of area under the curve values were made by a type I ANOVA and Welch's t-tests with Bonferroni correction for multiple comparisons to account for the unequal variance between groups.
+
+```{r power-analysis}
+#| output: false
+#| echo: false
+
+power_analysis = post_power_analysis(combo_experiment,
+                                     method = "auc")
+
+power_analysis$effect_sizes
+power_analysis$post_power_analysis
+power_analysis$sample_size_estimates
+power_analysis$summary
+power_analysis$plots
+
+#The post_power_analysis function returns the effect_sizes object with comparisons of some of the treatment groups, but not all possible group comparisons. It appears the reference column is only using one of the treatment groups. 
+
+#The function should return a details object that includes information on how...
+
+#make plotting functions?
+
+```
+
+
+# Drug Synergy
+
+```{r synergy}
+#| echo: false
+#| output: false
+
+synergy_stats = analyze_drug_synergy_over_time(combo_experiment,
+                                               treatment_column = "Treatment",
+                                               volume_column = "Volume",
+                                               time_column = "Day",
+                                               drug_a_name = "HDACi",
+                                               drug_b_name = "aPD1",
+                                               combo_name = "HDACi + PD1",
+                                               control_name = "Control")
+
+```
+
+## Figure 4. Bliss Independence
+```{r bliss-plot}
+#| echo: false
+#| fig-dpi: 200
+#| fig-height: 5
+#| fig-width: 8
+#| warning: false
+
+synergy_stats$synergy_summary |> 
+  ggplot(aes(x = Time_Point)) +
+    geom_line(aes(y = TGI_Drug_A, color = "Drug A")) +
+    geom_line(aes(y = TGI_Drug_B, color = "Drug B")) +
+    geom_line(aes(y = TGI_Combo, color = "Combination")) +
+    geom_line(aes(y = Bliss_Expected_TGI, color = "Bliss Value"), alpha = 0.5, linewidth = 3) +
+    scale_color_manual(values = c("Drug A" = "blue", 
+                                  "Drug B" = "red", 
+                                  "Combination" = "purple", 
+                                  "Bliss Value" = "grey")) +
+    labs(x = "Days", y = "Percent Tumor Growth Inhibition", color = NULL) +
+    ylim(0,100) +
+    theme_classic() +
+    theme(legend.position = c(0.85,0.2))
+
+#what is Drug A and Drug B? 
+
+```
+The percent tumor growth inhibition was calculated by the formula (1 - mean tumor volume of treatment group/mean tumor volume of control group) * 100 at each time point. The expected Bliss value, the percent tumor growth inhibition expected when two drugs act independently, is represented by the grey line. Percent tumor growth inhibition values for the drug combination above this curve indicate synergy; values within this curve represent additive effects, and values below this curve indicate antagonistic effects. 
+
+## Figure 5. Combination Index
+```{r combination-index-plot}
+#| echo: false
+#| fig-dpi: 200
+#| fig-height: 4
+#| fig-width: 6
+
+synergy_stats$synergy_summary |> 
+  ggplot(aes(x = Time_Point, y = Combination_Index))  +
+    geom_line(color = "purple", linewidth = 1.5) +
+    geom_ribbon(aes(ymin = 0, ymax = 0.85), fill = "blue", alpha = 0.2) +
+    geom_ribbon(aes(ymin = 1.15, ymax = 2), fill = "red", alpha = 0.2) +
+    geom_ribbon(aes(ymin = 0.85, ymax = 1.15), fill = "grey", alpha = 0.4) +
+    annotate("text", x = mean(synergy_stats$synergy_summary$Time_Point), y = 0.2, label = "Synergistic", color = "blue", size = 5) +
+    annotate("text", x = mean(synergy_stats$synergy_summary$Time_Point), y = 1.05, label = "Additive", size = 5) +
+    annotate("text", x = mean(synergy_stats$synergy_summary$Time_Point), y = 1.8, label = "Antagonistic", color = "red", size = 5) + 
+    labs(x = "Days", y = "Combination Index", title = "") +
+    ylim(0,2) +
+    theme_classic()
+
+
+```
+The combination index for the HDACi + anti-PD1 treatment group was calculated by dividing the tumor growth inhibition (TGI) of each drug by the tumor growth inhibition of the combination group and summing the values (TGI of HDACi/TGI of combo + TGI of anti-PD1/TGI of combo) at each time point. The plotted line represents the combination index over time. Values of less than 0.85 are considered synergistic, values between 0.85 to 1.15 are considered additive, and values above 1.15 are considered antagonistic. 
+
+
+# Survival Analysis
+
+## Figure 6. Survival Plot
+```{r survival-plot}
+#| echo: false
+#| fig-dpi: 200
+#| fig-height: 4
+#| fig-width: 6
+
+# plot_survival(combo_experiment,
+#               time_column = "Day",
+#               censor_column = "Survival_Censor",
+#               treatment_column = "Treatment",
+#               cage_column = "Cage",
+#               id_column = "ID",
+#               show_risk_table = TRUE,
+#               title = "Survival Plot")
+
+#Not working, remove for now
+
+# Plot manually
+combo_experiment |> 
+  group_by(Treatment, Cage, ID) |> 
+  slice_max(order_by = Day, n = 1, with_ties = FALSE) |> 
+  ungroup() |> 
+  survival::survfit(Surv(Day, Survival_Censor) ~ Treatment, data = _) |> 
+  survminer::ggsurvplot(xlim = c(20,40), 
+                        xlab = "Days",
+                        risk.table = FALSE,
+                        #risk.table.height = 0.4,
+                        #risk.table.col = "black",
+                        #risk.table.fontsize = 4,
+                        legend = c(0.2, 0.25), 
+                        legend.title = "", 
+                        legend.labs = levels(combo_experiment$Treatment),
+                        title = "Survival Plot",
+                        palette = palette[c(5,1,2,3)], 
+                        #theme = theme(strip.text = element_text(size = 4), risk.table.title = element_text(size = 4))
+                      )
+  
+```
+Kaplan-Meier curves for survival are shown. Lines are colored according to treatment groups. 
+
+
+```{r survival-stats}
+#| echo: false
+#| output: false
+
+survival_stats = survival_statistics(combo_experiment,
+                                     time_column = "Day",
+                                     censor_column = "Survival_Censor",
+                                     treatment_column = "Treatment",
+                                     cage_column = "Cage",
+                                     id_column = "ID",
+                                     reference_group = "Control")
+
+```
+
+## Table 4. Survival Statistics
+```{r survival-table}
+#| echo: false
+#| warning: false
+
+
+survival_stats$results |> 
+  dplyr::select(-c("Median_Survival", "Event_Rate")) |> 
+  gt() |> 
+  cols_label(HR = "Hazard Ratio",
+             CI_Lower = "Lower 95% Confidence Interval",
+             CI_Upper = "Upper 95% Confidence Interval",
+             P_Value = "p-Value",
+             Total = "Sample Size") |> 
+  fmt_number(columns = c(P_Value), decimals = 4) |> 
+  fmt_number(columns = c(HR, CI_Lower, CI_Upper), decimals = 3) |> 
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(columns = vars(P_Value),rows = P_Value < 0.05)) |> 
+  tab_header(title = md("**Cox Regression with Firth's Penalized Likelihood**")) |> 
+  tab_style(
+    style = cell_text(weight = "bold"),  # Make column names bold
+    locations = cells_column_labels()  # Apply to column headers
+  ) |>
+  tab_style(
+    style = cell_text(align = "center"),  # Center-align all text
+    locations = cells_body()  # Apply to the entire body of the table
+  ) |> 
+  tab_style(
+    style = list(cell_fill(color = "lightgrey")),
+    locations = cells_body(rows = seq(1, 4, by = 2))
+  )
+
+```
+Due to the low sample numbers, a Cox regression with Firth's penalized likelihood test was performed contrasting each treatment group against the "Control" group. 
+
+
+```{r survival-results}
+#| output: false
+#| echo: false
+
+survival_stats$results
+survival_stats$reference_group
+survival_stats$survival_data
+survival_stats$method_used
+survival_stats$model
+survival_stats$km_plot
+
+#km_plot isn't functioning properly. Remove? 
+
+```
+
+## Figure 7. Hazard Ratios
+```{r forest-plot}
+#| echo: false
+#| fig-dpi: 200
+#| fig-height: 4
+#| fig-width: 8
+
+# plot_forest(survival_stats$results,
+#             group_order = c("Control", "HDACi", "aPD1", "HDACi + PD1"))
+
+#The plot_forest function is not plotting correctly. Remove for now. 
+
+#plot manually
+ggplot(survival_stats$results, aes(y = factor(Group, levels = c("Control", "HDACi", "aPD1", "HDACi + PD1")), x = HR)) +
+  geom_point(size = 5) +
+  geom_errorbar(aes(xmin = CI_Lower, xmax = CI_Upper), width = 0.2) +
+  geom_text(aes(label = paste0("HR: ", round(HR, 2), ", p = ", round(P_Value, 4))), vjust = 3, hjust = -0.2, size = 4) +
+  geom_vline(xintercept = 1, linetype = "dashed") +
+  xlim(0, 2) +
+  labs(x = "Hazard Ratio", y = "Treatment Group", title = "Survival Hazard Ratios") +
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 11))
+
+#remove plot_forest? 
+
+```
+The hazard ratios and 95% confidence intervals are plotted for each treatment group relative to the Control group. Hazard ratios less than 1 indicate a reduced risk of death (i.e. greater survival). 
+
+# Conclusions
+- Both the HDACi and anti-PD1 treatment groups had statistically significant reduced tumor burden relative to the control group. 
+- The combination of HDACi and anti-PD1 had statistically significant reduced tumor burden relative to both single treatment groups.
+- Bliss Independence and Combination Index modeling showed that the combination of HDACi and anti-PD1 had synergestic effects in tumor growth inhibition.
+- HDACi, anti-PD1, and the combination treatment groups had significantly increased overall survival relative to the control group. Comparisons between the treatment groups were not made as too few events (deaths) occurred. If these comparisons are of interest, a longer study design is needed.
+- **Overall, these data support the hypothesis that the Combination of HDACi and PD1 antgaonist will have superior anti-tumor efficacy to single agents.**

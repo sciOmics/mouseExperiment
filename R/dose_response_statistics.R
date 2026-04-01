@@ -1,6 +1,7 @@
 #' Test for Dose-Response Relationship in Tumor Growth Data
 #' 
 #' @importFrom dplyr %>%
+#' @importFrom rlang .data
 #'
 #' @description
 #' Performs statistical tests to determine if there is a significant dose-response 
@@ -25,8 +26,8 @@
 #'   \item{summary_table}{Data frame summarizing results for each dose level}
 #'
 #' @import drc ggplot2 dplyr stats
-#' @importFrom rlang sym !!
-#' @importFrom clinfun jonckheere.test
+#' @importFrom stats coef
+#' @importFrom stats lm
 #' @export
 #'
 #' @examples
@@ -47,7 +48,8 @@ dose_response_statistics <- function(df,
                                    day_column = "Day", 
                                    id_column = "ID",
                                    time_point = NULL,
-                                   control_group_name = "Control") {
+                                   control_group_name = "Control",
+                                   verbose = TRUE) {
   
   # Validate input
   required_columns <- c(dose_column, treatment_column, volume_column, day_column, id_column)
@@ -69,10 +71,11 @@ dose_response_statistics <- function(df,
   
   # Perform statistical analyses
   stats_results <- perform_statistical_analyses(analysis_data, dose_column = dose_column, volume_column = volume_column, 
-                                              day_column = day_column, id_column = id_column, original_df = df)
+                                              day_column = day_column, id_column = id_column, original_df = df,
+                                              verbose = verbose)
   
   # Generate user-friendly report
-  generate_user_report(stats_results, plots)
+  if (verbose) generate_user_report(stats_results, plots)
   
   # Return all results
   return(list(
@@ -107,7 +110,7 @@ dose_response_statistics <- function(df,
 #' @param time_point Specific time point to analyze
 #' 
 #' @return Prepared data frame
-#' @keywords internal
+#' @export
 prepare_dose_data <- function(df, dose_column = "Dose", treatment_column = "Treatment", 
                              volume_column = "Volume", day_column = "Day", 
                              id_column = "ID", time_point = NULL) {
@@ -126,8 +129,8 @@ prepare_dose_data <- function(df, dose_column = "Dose", treatment_column = "Trea
   } else {
     # Get last measurement for each mouse
     analysis_data <- analysis_data %>%
-      dplyr::group_by_at(vars(treatment_column, dose_column, id_column)) %>%
-      dplyr::filter(get(day_column) == max(get(day_column))) %>%
+      dplyr::group_by(.data[[treatment_column]], .data[[dose_column]], .data[[id_column]]) %>%
+      dplyr::filter(.data[[day_column]] == max(.data[[day_column]])) %>%
       dplyr::ungroup()
   }
   
@@ -141,23 +144,23 @@ prepare_dose_data <- function(df, dose_column = "Dose", treatment_column = "Trea
 #' @param volume_column Volume column name
 #' 
 #' @return Summary statistics table
-#' @keywords internal
+#' @export
 generate_summary_statistics <- function(analysis_data, dose_column = "Dose", volume_column = "Volume") {
   summary_stats <- analysis_data %>%
-    dplyr::group_by_at(vars(dose_column)) %>%
+    dplyr::group_by(.data[[dose_column]]) %>%
     dplyr::summarize(
-      mean_volume = mean(get(volume_column), na.rm = TRUE),
-      median_volume = median(get(volume_column), na.rm = TRUE),
-      sd_volume = sd(get(volume_column), na.rm = TRUE),
-      n = n(),
+      mean_volume = mean(.data[[volume_column]], na.rm = TRUE),
+      median_volume = median(.data[[volume_column]], na.rm = TRUE),
+      sd_volume = sd(.data[[volume_column]], na.rm = TRUE),
+      n = dplyr::n(),
       sem_volume = sd_volume / sqrt(n),
       ci95_lower = mean_volume - qt(0.975, n-1) * sem_volume,
       ci95_upper = mean_volume + qt(0.975, n-1) * sem_volume,
       .groups = "drop"
     )
   
-  print("Summary statistics by dose level:")
-  print(summary_stats)
+  message("Summary statistics by dose level:")
+  message(paste(utils::capture.output(print(summary_stats)), collapse = "\n"))
   
   return(summary_stats)
 }
@@ -176,7 +179,7 @@ create_dose_plots <- function(analysis_data, summary_stats, dose_column = "Dose"
   
   # Scatter plot with regression line
   plots$scatter <- ggplot2::ggplot(analysis_data, 
-                                 ggplot2::aes_string(x = dose_column, y = volume_column)) +
+                                 ggplot2::aes(x = .data[[dose_column]], y = .data[[volume_column]])) +
     ggplot2::geom_point(alpha = 0.7) +
     ggplot2::geom_smooth(method = "lm", formula = y ~ x, color = "blue") +
     ggplot2::labs(title = "Linear Dose-Response Relationship",
@@ -185,8 +188,8 @@ create_dose_plots <- function(analysis_data, summary_stats, dose_column = "Dose"
   
   # Box plot by dose level
   plots$boxplot <- ggplot2::ggplot(analysis_data, 
-                                 ggplot2::aes_string(x = paste0("factor(", dose_column, ")"), 
-                                                    y = volume_column)) +
+                                 ggplot2::aes(x = factor(.data[[dose_column]]),
+                                              y = .data[[volume_column]])) +
     ggplot2::geom_boxplot(outlier.shape = NA) +
     ggplot2::geom_jitter(width = 0.2, alpha = 0.6) +
     ggplot2::labs(title = "Tumor Volume by Dose Level",
@@ -195,7 +198,7 @@ create_dose_plots <- function(analysis_data, summary_stats, dose_column = "Dose"
   
   # Bar plot with error bars
   plots$barplot <- ggplot2::ggplot(summary_stats, 
-                                 ggplot2::aes_string(x = dose_column, y = "mean_volume")) +
+                                 ggplot2::aes(x = .data[[dose_column]], y = .data[["mean_volume"]])) +
     ggplot2::geom_bar(stat = "identity", fill = "steelblue", alpha = 0.7) +
     ggplot2::geom_errorbar(ggplot2::aes(ymin = ci95_lower, ymax = ci95_upper), width = 0.2) +
     ggplot2::labs(title = "Mean Tumor Volume by Dose Level (with 95% CI)",
@@ -217,15 +220,18 @@ create_dose_plots <- function(analysis_data, summary_stats, dose_column = "Dose"
 #' @return List of statistical analysis results
 #' @keywords internal
 perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", volume_column = "Volume", 
-                                        day_column = "Day", id_column = "ID", original_df = NULL) {
+                                        day_column = "Day", id_column = "ID", original_df = NULL,
+                                        verbose = TRUE) {
   statistics <- list()
   
   # 1. Linear regression model
   linear_model <- stats::lm(paste(volume_column, "~", dose_column), data = analysis_data)
   linear_summary <- summary(linear_model)
   
-  print("Linear regression model:")
-  print(linear_summary)
+  if (verbose) {
+    message("Linear regression model:")
+    message(paste(utils::capture.output(print(linear_summary)), collapse = "\n"))
+  }
   
   # Store key statistics
   statistics$linear_p_value <- linear_summary$coefficients[2, 4]
@@ -237,8 +243,10 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
                            data = analysis_data)
   anova_summary <- summary(anova_model)
   
-  print("ANOVA model:")
-  print(anova_summary)
+  if (verbose) {
+    message("ANOVA model:")
+    message(paste(utils::capture.output(print(anova_summary)), collapse = "\n"))
+  }
   
   # Store ANOVA p-value
   if (length(anova_summary) > 0 && nrow(anova_summary[[1]]) > 0) {
@@ -250,8 +258,10 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
   # 3. Post-hoc Tukey test
   if (!is.na(statistics$anova_p_value) && statistics$anova_p_value < 0.05) {
     tukey_results <- stats::TukeyHSD(anova_model)
-    print("Tukey HSD test:")
-    print(tukey_results)
+    if (verbose) {
+      message("Tukey HSD test:")
+      message(paste(utils::capture.output(print(tukey_results)), collapse = "\n"))
+    }
     statistics$tukey_results <- tukey_results
   }
   
@@ -303,14 +313,14 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose", volume_col
                                        drc_data[[dose_column]])
       }
       
-      # Fit models
+      # Fit models — decreasing (LL.4) vs increasing (LL.5, 5-param log-logistic)
       dr_model_decr <- drc::drm(as.formula(paste(volume_column, "~", dose_column)), 
                               data = drc_data, 
                               fct = drc::LL.4(names = c("Slope", "Lower Limit", "Upper Limit", "EC50")))
       
       dr_model_incr <- drc::drm(as.formula(paste(volume_column, "~", dose_column)), 
                               data = drc_data, 
-                              fct = drc::LL.4(names = c("Slope", "Lower Limit", "Upper Limit", "EC50")))
+                              fct = drc::LL.5(names = c("Slope", "Lower Limit", "Upper Limit", "EC50", "Asymmetry")))
       
       # Compare models
       model_aic_decr <- AIC(dr_model_decr)
@@ -328,9 +338,11 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose", volume_col
       # Get model summary
       dr_summary <- summary(dr_model)
       
-      print(paste("Selected dose-response model type:", model_type))
-      print("Non-linear dose-response model:")
-      print(dr_summary)
+      if (verbose) {
+        message("Selected dose-response model type: ", model_type)
+        message("Non-linear dose-response model:")
+        message(paste(utils::capture.output(print(dr_summary)), collapse = "\n"))
+      }
       
       # Extract parameters
       params <- dr_model$coefficients
@@ -378,13 +390,14 @@ analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_
   if (length(unique(df[[day_column]])) > 1) {
     # Calculate growth rate for each mouse
     growth_rates <- df %>%
-      dplyr::group_by_at(vars(dose_column, id_column)) %>%
-      dplyr::mutate(log_volume = log1p(get(volume_column))) %>%
-      dplyr::arrange_at(vars(day_column)) %>%
+      dplyr::group_by(.data[[dose_column]], .data[[id_column]]) %>%
+      dplyr::mutate(log_volume = log1p(.data[[volume_column]])) %>%
+      dplyr::arrange(.data[[day_column]]) %>%
       dplyr::summarize(
-        growth_rate = if(n() >= 3) {
+        growth_rate = if(dplyr::n() >= 3) {
           # Linear regression to estimate growth rate
-          model <- stats::lm(log_volume ~ get(day_column))
+          tmp_df <- data.frame(lv = log_volume, dv = .data[[day_column]])
+          model <- stats::lm(lv ~ dv, data = tmp_df)
           coef(model)[2] # Slope coefficient = growth rate
         } else {
           NA
@@ -398,8 +411,8 @@ analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_
       growth_model <- stats::lm(paste("growth_rate ~", dose_column), data = growth_rates)
       growth_summary <- summary(growth_model)
       
-      print("Growth rate vs dose model:")
-      print(growth_summary)
+      message("Growth rate vs dose model:")
+      message(paste(utils::capture.output(print(growth_summary)), collapse = "\n"))
       
       statistics$growth_dose_p_value <- growth_summary$coefficients[2, 4]
       statistics$growth_dose_r_squared <- growth_summary$r.squared
@@ -436,9 +449,11 @@ analyze_polynomial_trends <- function(analysis_data, dose_column = "Dose", volum
       poly_summary <- summary(poly_model)
       poly_anova <- stats::anova(poly_model)
       
-      print("Polynomial contrasts for dose-response trends:")
-      print(summary(poly_model))
-      print(poly_anova)
+      if (verbose) {
+        message("Polynomial contrasts for dose-response trends:")
+        message(paste(utils::capture.output(print(summary(poly_model))), collapse = "\n"))
+        message(paste(utils::capture.output(print(poly_anova)), collapse = "\n"))
+      }
       
       # Extract p-values
       coef_table <- coef(summary(poly_model))
@@ -480,9 +495,9 @@ generate_user_report <- function(stats_results, plots) {
   jt_result <- stats_results$jt_result
   
   if (length(statistics) > 0) {
-    cat("\n========== DOSE-RESPONSE RELATIONSHIP ANALYSIS ==========\n\n")
+    message("\n========== DOSE-RESPONSE RELATIONSHIP ANALYSIS ==========\n")
     
-    cat("QUESTION: Is there a dose-response relationship?\n\n")
+    message("QUESTION: Is there a dose-response relationship?\n")
     
     # Summarize key findings
     dose_effect_detected <- FALSE
@@ -527,81 +542,81 @@ generate_user_report <- function(stats_results, plots) {
     }
     
     # Report conclusion
-    cat("CONCLUSION: ", evidence_strength, " of a dose-response relationship.\n\n")
+    message("CONCLUSION: ", evidence_strength, " of a dose-response relationship.\n")
     
-    cat("TEST RESULTS:\n\n")
+    message("TEST RESULTS:\n")
     
     # Linear dose effect
-    cat("1. Linear Dose Effect Test:\n")
-    cat("   Slope =", round(statistics$linear_slope, 4), "\n")
-    cat("   R^2 =", round(statistics$linear_r_squared, 4), "\n")
-    cat("   p-value =", format.pval(statistics$linear_p_value, digits = 3), "\n")
+    message("1. Linear Dose Effect Test:")
+    message("   Slope = ", round(statistics$linear_slope, 4))
+    message("   R^2 = ", round(statistics$linear_r_squared, 4))
+    message("   p-value = ", format.pval(statistics$linear_p_value, digits = 3))
     if (statistics$linear_p_value < 0.05) {
-      cat("   INTERPRETATION: Significant linear relationship between dose and tumor volume.\n")
+      message("   INTERPRETATION: Significant linear relationship between dose and tumor volume.")
       direction <- ifelse(statistics$linear_slope < 0, "decreasing", "increasing")
-      cat("   As dose increases, tumor volume tends to be", direction, "\n")
+      message("   As dose increases, tumor volume tends to be ", direction)
     } else {
-      cat("   INTERPRETATION: No significant linear relationship detected.\n")
+      message("   INTERPRETATION: No significant linear relationship detected.")
     }
     
     # Trend tests
-    cat("\n2. Trend Tests (for ordered dose-response):\n")
+    message("\n2. Trend Tests (for ordered dose-response):")
     if (!is.null(jt_result) && !is.null(jt_result$p.value)) {
-      cat("   Jonckheere-Terpstra test p-value =", format.pval(jt_result$p.value, digits = 3), "\n")
+      message("   Jonckheere-Terpstra test p-value = ", format.pval(jt_result$p.value, digits = 3))
       if (jt_result$p.value < 0.05) {
-        cat("   INTERPRETATION: Significant monotonic trend across dose levels detected.\n")
+        message("   INTERPRETATION: Significant monotonic trend across dose levels detected.")
       } else {
-        cat("   INTERPRETATION: No significant monotonic trend across dose levels.\n")
+        message("   INTERPRETATION: No significant monotonic trend across dose levels.")
       }
     }
     
     if (!is.null(statistics$linear_trend_pvalue)) {
-      cat("\n   Polynomial trend test results:\n")
-      cat("   - Linear trend p-value =", format.pval(statistics$linear_trend_pvalue, digits = 3), "\n")
+      message("\n   Polynomial trend test results:")
+      message("   - Linear trend p-value = ", format.pval(statistics$linear_trend_pvalue, digits = 3))
       
       if (!is.null(statistics$quadratic_trend_pvalue)) {
-        cat("   - Quadratic trend p-value =", format.pval(statistics$quadratic_trend_pvalue, digits = 3), "\n")
+        message("   - Quadratic trend p-value = ", format.pval(statistics$quadratic_trend_pvalue, digits = 3))
       }
       
       if (!is.null(statistics$cubic_trend_pvalue)) {
-        cat("   - Cubic trend p-value =", format.pval(statistics$cubic_trend_pvalue, digits = 3), "\n")
+        message("   - Cubic trend p-value = ", format.pval(statistics$cubic_trend_pvalue, digits = 3))
       }
       
       if (statistics$linear_trend_pvalue < 0.05) {
-        cat("   INTERPRETATION: Significant linear trend component detected.\n")
+        message("   INTERPRETATION: Significant linear trend component detected.")
       }
       
       if (!is.null(statistics$quadratic_trend_pvalue) && statistics$quadratic_trend_pvalue < 0.05) {
-        cat("   INTERPRETATION: Significant quadratic (curved) component in the dose-response relationship.\n")
+        message("   INTERPRETATION: Significant quadratic (curved) component in the dose-response relationship.")
       }
     }
     
     # ANOVA results
-    cat("\n3. Group Differences (ANOVA):\n")
-    cat("   p-value =", format.pval(statistics$anova_p_value, digits = 3), "\n")
+    message("\n3. Group Differences (ANOVA):")
+    message("   p-value = ", format.pval(statistics$anova_p_value, digits = 3))
     if (!is.na(statistics$anova_p_value) && statistics$anova_p_value < 0.05) {
-      cat("   INTERPRETATION: Significant differences detected between dose groups.\n")
+      message("   INTERPRETATION: Significant differences detected between dose groups.")
     } else {
-      cat("   INTERPRETATION: No significant differences detected between dose groups.\n")
+      message("   INTERPRETATION: No significant differences detected between dose groups.")
     }
     
     # Growth rate analysis
     if (!is.null(statistics$growth_dose_p_value)) {
-      cat("\n4. Growth Rate Analysis:\n")
-      cat("   p-value =", format.pval(statistics$growth_dose_p_value, digits = 3), "\n")
+      message("\n4. Growth Rate Analysis:")
+      message("   p-value = ", format.pval(statistics$growth_dose_p_value, digits = 3))
       if (statistics$growth_dose_p_value < 0.05) {
-        cat("   INTERPRETATION: Dose significantly affects tumor growth rate.\n")
+        message("   INTERPRETATION: Dose significantly affects tumor growth rate.")
         direction <- ifelse(coef(statistics$growth_model)[2] < 0, "decreases", "increases")
-        cat("   Higher doses", direction, "tumor growth rate.\n")
+        message("   Higher doses ", direction, " tumor growth rate.")
       } else {
-        cat("   INTERPRETATION: No significant effect of dose on tumor growth rate detected.\n")
+        message("   INTERPRETATION: No significant effect of dose on tumor growth rate detected.")
       }
     }
     
-    cat("\n=====================================================\n")
+    message("\n=====================================================")
     
     # Plot guide
-    cat("\nPlease check the returned plots to visualize the dose-response relationship.\n")
+    message("\nPlease check the returned plots to visualize the dose-response relationship.")
   }
   
   invisible(NULL)

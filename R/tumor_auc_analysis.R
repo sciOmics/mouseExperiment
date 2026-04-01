@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Insight BioAnalytics. All rights reserved.
-# Proprietary and confidential.
+# Copyright (c) 2026 mouseExperiment Contributors
+# Licensed under the MIT License - see LICENSE file
 
 #' Perform Area Under the Curve (AUC) Analysis for Tumor Growth Data
 #'
@@ -157,12 +157,8 @@ tumor_auc_analysis <- function(df,
         return(list(auc = NA, extrapolated = NA)) # Need at least 2 points for AUC
       }
       
-      # Calculate AUC using trapezoidal rule for the measured data
-      auc <- 0
-      for (i in 2:length(times)) {
-        dt <- times[i] - times[i-1]
-        auc <- auc + dt * (volumes[i] + volumes[i-1]) / 2
-      }
+      # Calculate AUC using consolidated trapezoidal utility
+      auc <- calculate_auc(times, volumes)
       
       # If extrapolation is needed and possible
       if (can_extrapolate) {
