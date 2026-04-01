@@ -213,11 +213,11 @@ tumor_growth_statistics <- function(df,
     subjects_with_extrapolation <- list()
     
     # Process each unique subject
-    unique_subjects <- unique(paste(df[[id_column]], df[[treatment_column]], df[[cage_column]], sep="__"))
+    unique_subjects <- unique(paste(df[[id_column]], df[[treatment_column]], df[[cage_column]], sep="|||"))
     
     for (subject_id in unique_subjects) {
       # Parse the composite ID
-      id_parts <- strsplit(subject_id, "__")[[1]]
+      id_parts <- strsplit(subject_id, "|||", fixed = TRUE)[[1]]
       id <- id_parts[1]
       treatment <- id_parts[2]
       cage <- id_parts[3]

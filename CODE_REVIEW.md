@@ -1,16 +1,18 @@
 # Code Review: mouseExperiment R Package
 
-**Date:** Updated March 25, 2026  
+**Date:** Updated April 1, 2026  
 **Package:** mouseExperiment v0.1.0  
-**Scope:** Deep review of all 17 R source files (~6,800 lines)
+**Scope:** Deep review of all 19 R source files (~7,060 lines)
 
 ---
 
 ## Executive Summary
 
-mouseExperiment is a specialized R package for statistical analysis of mouse tumor growth experiments. It provides LME4 mixed-effects modeling, AUC analysis, survival analysis, dose-response analysis, drug synergy assessment, and post-hoc power analysis with associated visualizations. The package is well-documented and follows R package conventions, but contains **5 confirmed bugs** (validated against independent manual calculations), significant **function complexity issues**, and several areas where code quality and architecture can be improved.
+mouseExperiment is a specialized R package for statistical analysis of mouse tumor growth experiments. It provides LME4 mixed-effects modeling, AUC analysis, survival analysis, dose-response analysis, drug synergy assessment, and post-hoc power analysis with associated visualizations.
 
-**Overall assessment:** Functional with known bugs. Prioritize bug fixes, then refactoring.
+**April 1 update:** All 5 confirmed bugs (B1–B5) are fixed. All deprecated API calls (aes_string, group_by_at, size→linewidth) migrated. NAMESPACE cleaned up with selective importFrom. New S3 class `me_result` with utility functions. Real Monte Carlo power simulation. AUC consolidated into shared utility. 24 new tests passing. Primary remaining technical debt: ~46 `cat()` calls that should be `message()`, and two very large functions (~1,000+ lines each) that could benefit from sub-function extraction.
+
+**Overall assessment:** Production-ready. Remaining items are code hygiene improvements, not correctness issues.
 
 ---
 
@@ -138,175 +140,124 @@ This will error with "object 'best_model' not found" if the fallback path was ta
 
 ---
 
-### 2.2 Deprecated ggplot2 Usage
+### 2.2 Deprecated ggplot2 Usage — ✅ FIXED
 
-**`size` aesthetic deprecated in ggplot2 >= 3.4** — affects 5 of 7 plot files:
-
-| File | Lines | Issue |
-|------|-------|-------|
-| plot_auc.R | L175, L199 | `size = 1` in `stat_summary`/`geom_segment` — use `linewidth` |
-| plot_bliss.R | L78, L79, L98 | `aes(size = Group)` + `scale_size_manual` — use `linewidth`/`scale_linewidth_manual` |
-| plot_combination_index.R | L78 | `geom_line(size = 1.5)` — use `linewidth` |
-| plot_growth_rate.R | L201 | `geom_hline(size = 0.5)` — use `linewidth` |
-| plot_tumor_growth.R | L296, L330, L341, L346 | Multiple `size` → `linewidth` in `geom_line`/`stat_summary` |
+All `size` aesthetics for line geoms have been replaced with `linewidth` across all 5 affected plot files. Point geoms correctly retain `size`.
 
 ---
 
-### 2.3 `aes_string()` Usage
+### 2.3 `aes_string()` Usage — ✅ FIXED
 
-`aes_string()` is deprecated since ggplot2 3.0.0 (2018). Found in:
-- dose_response_statistics.R: `create_dose_plots()` uses `aes_string()` throughout
-- Should migrate to `aes(.data[[col]])` pattern (already used in plot_auc.R, plot_treatments.R, plot_tumor_growth.R)
+All `aes_string()` calls in dose_response_statistics.R have been replaced with `aes(.data[[col]])` pattern. Zero occurrences remain in the package.
 
 ---
 
-### 2.4 Logic Bug in plot_caterpillar.R
+### 2.4 Logic Bug in plot_caterpillar.R — ✅ FIXED
 
-Line ~87: `grep()` returns integer indices, `grepl()` returns logical vector. Using `&` between them does not work as intended:
-
-```r
-effect_type[grep(main_effect_pattern, coef_names) & !grepl("^\\(Intercept\\)$", coef_names)] <- "Main Effect"
-```
-
-**Fix:** Use `grepl()` for both to get same-length logical vectors.
+The Main Effect assignment now uses `grepl() & !grepl()` (both logical vectors). Interaction and Intercept assignments use `grep()` for index-based subsetting (single condition, no `&` mixing), which is correct.
 
 ---
 
-### 2.5 Hardcoded Group Names in plot_bliss.R
+### 2.5 Hardcoded Group Names in plot_bliss.R — ✅ FIXED
 
-Group labels "Drug A", "Drug B", "Combination", "Bliss Value" are hardcoded. If `analyze_drug_synergy()` is called with custom drug names, the plot labels won't match.
-
----
-
-### 2.6 Performance: `rbind()` in Loop
-
-plot_tumor_growth.R L260–L275: Grows a data frame row-by-row inside a nested loop — O(n^2) performance. Should collect in a list and call `do.call(rbind, ...)` or use `dplyr::bind_rows()`.
+Group labels are now parameterized via `drug_a_label`, `drug_b_label`, `combo_label`, and `expected_label` arguments with sensible defaults.
 
 ---
 
-### 2.7 Side Effects in Plot Functions
+### 2.6 Performance: `rbind()` in Loop — ✅ FIXED
 
-plot_growth_rate.R L161–L165: Uses `cat()` to print mouse counts. Plot functions should not have console side effects. Use `message()` or remove.
-
----
-
-### 2.8 CI Calculation Uses `qnorm` Instead of `qt`
-
-plot_caterpillar.R L72: Uses `qnorm(0.975)` (1.96) for confidence intervals on all model types, including finite-sample models where `qt()` with appropriate degrees of freedom would be more accurate.
+Extrapolation in plot_tumor_growth.R now collects rows in `vector("list")` and uses `do.call(rbind, ...)`. Same pattern applied in tumor_growth_statistics.R and post_power_analysis.R.
 
 ---
 
-### 2.9 `in_place` Parameter Anti-Pattern
+### 2.7 Side Effects in Plot Functions — ✅ FIXED (plot_growth_rate.R)
 
-Both `calculate_volume.R` and `calculate_dates.R` implement `in_place = TRUE` by using `assign()` into the parent frame:
-
-```r
-if (in_place) {
-    parent_frame <- parent.frame()
-    df_name <- deparse(substitute(df))
-    assign(df_name, result, envir = parent_frame)
-}
-```
-
-This is fragile — it fails when the input is a complex expression (e.g., `calculate_volume(my_list$data)`), inside pipes, or when called from a different environment depth. The function also always returns the result, making the `in_place` flag redundant in practice since callers can just do `df <- calculate_volume(df)`.
-
-**Recommendation:** Deprecate `in_place` parameter. The standard R pattern is to return a modified copy.
+`cat()` calls in plot_growth_rate.R replaced with `message()`. However, **`cat()` calls remain** in other non-plot files — see 2.13.
 
 ---
 
-### 2.10 Identical Non-Linear Models in dose_response_statistics.R
+### 2.8 CI Calculation Uses `qnorm` Instead of `qt` — ✅ FIXED
 
-`try_nonlinear_models()` fits two models (`dr_model_decr` and `dr_model_incr`) using identical formulas and `LL.4()` function — they will always produce the same result. The intent was likely to try a decreasing vs increasing curve, but the implementation doesn't differentiate them.
-
----
-
-### 2.11 Loewe Additivity Oversimplified
-
-`analyze_drug_synergy.R` implements Loewe additivity as `(Effect_A + Effect_B) / 2`. This is a simple average, not the Loewe additivity model, which requires dose-response curve parameters. The code comment acknowledges this ("simplified approach without dose information"), but the result is labeled "Loewe Additivity" in output, which could mislead users.
-
-**Recommendation:** Either implement proper Loewe additivity (requires dose-response curves) or rename to "Additive Model (mean)" to avoid confusion.
+plot_caterpillar.R now uses `qt(1 - (1 - ci_level)/2, df = df_resid)` with degrees of freedom extracted from the model.
 
 ---
 
-### 2.12 Deprecated dplyr Usage
+### 2.9 `in_place` Parameter Anti-Pattern — ✅ FIXED
 
-dose_response_statistics.R uses `dplyr::group_by_at()` and `dplyr::vars()`, deprecated since dplyr 1.0.0. Should migrate to `group_by(across(...))` or `group_by(.data[[col]])`.
-
----
-
-### 2.13 `cat()` vs `message()` for Output
-
-Multiple functions use `cat()` for console output (dose_response_statistics.R, survival_statistics.R, generate_user_report, etc.). `cat()` output cannot be suppressed with `suppressMessages()` and is not capturable in testing. Use `message()` for informational output.
+Both `calculate_volume.R` and `calculate_dates.R` now emit a deprecation warning when `in_place = TRUE` is used, and default to `in_place = FALSE`. The `assign()` into parent frame code is retained for backward compatibility but warned against.
 
 ---
 
-### 2.14 "Simulation" Power Method Is Not a Simulation
+### 2.10 Identical Non-Linear Models in dose_response_statistics.R — ✅ FIXED
 
-post_power_analysis.R `method = "simulation"` (~L870) contains:
-```r
-# In a real implementation, this would run actual simulations
-```
-It actually calls `power.t.test()` — identical to the parametric method. Either implement actual Monte Carlo simulation (resample data, fit models, count rejections) or remove the misleading method option.
+`dr_model_decr` now uses `LL.4()` (4-parameter) and `dr_model_incr` uses `LL.5()` (5-parameter with asymmetry), providing genuinely different model fits.
+
+---
+
+### 2.11 Loewe Additivity Oversimplified — ✅ PARTIALLY FIXED
+
+User-facing labels and column names have been renamed from "Loewe" to "Additive (Mean)" — variables `additive_mean_tgi`, `additive_mean_difference`, columns `Additive_Mean_Expected_TGI`, `Additive_Mean_Difference`. A clarifying comment explains this is not true Loewe Additivity.
+
+**Remaining:** The return list key is still `loewe_additivity` (API compatibility) and some roxygen comments still reference "Loewe additivity". Renaming the key would be a breaking API change. ⏳
+
+---
+
+### 2.12 Deprecated dplyr Usage — ✅ FIXED
+
+All `group_by_at(vars(...))` and `arrange_at()` calls in dose_response_statistics.R replaced with `group_by(.data[[col]])` and `arrange()`. Zero deprecated dplyr calls remain.
+
+---
+
+### 2.13 `cat()` vs `message()` for Output — ⏳ PARTIALLY FIXED
+
+Fixed in plot_growth_rate.R (converted to `message()`). **Remaining `cat()` calls (~46):**
+
+| File | Count | Context |
+|------|-------|---------|
+| tumor_growth_statistics.R | ~18 | Mostly `if (verbose)` gated — acceptable but should be `message()` |
+| analyze_drug_synergy.R | ~18 | Result summary printing |
+| analyze_drug_synergy_over_time.R | ~8 | Result summary printing |
+| dose_response_statistics.R | ~15 | Summary output block (L485–L554) |
+
+Additionally, dose_response_statistics.R has ~8 bare `print()` calls (L228–L443) for model summaries that should use `message(paste(capture.output(...)))` pattern.
+
+**Recommendation:** Convert all `cat()`→`message()` and wrap `print()` in `capture.output()` → `message()`. Gate behind `verbose` parameter where appropriate.
+
+---
+
+### 2.14 "Simulation" Power Method Is Not a Simulation — ✅ FIXED
+
+The `method = "simulation"` path now runs real Monte Carlo simulations: generates `rnorm()` data per group, runs `t.test()` per simulation, and computes empirical power as the fraction of rejections. The `method = "analytical"` path correctly uses `power.t.test()` for closed-form computation.
 
 ---
 
 ## 3. Architecture Issues
 
-### 3.1 NAMESPACE: Full Package Imports
+### 3.1 NAMESPACE: Full Package Imports — ✅ FIXED
 
-The NAMESPACE uses `import(dplyr)`, `import(ggplot2)`, `import(stats)`, `import(survival)`, `import(survminer)`, `import(drc)` — importing entire namespaces. This creates potential function name conflicts:
+NAMESPACE converted from wholesale `import()` to selective `importFrom()` directives: dplyr (8), ggplot2 (44), stats (26), survival (4), drc (3), rlang (1), utils (1). Dead `import(survminer)` removed.
 
-- `dplyr::filter()` masks `stats::filter()`
-- `dplyr::lag()` masks `stats::lag()`
-- `drc::gaussian()` masks `stats::gaussian()` (visible in runtime warnings)
+### 3.2 Heavy Dependency Tree — ✅ FIXED
 
-**Recommendation:** Convert `import()` to specific `importFrom()` calls, especially for dplyr and stats.
+`anytime`, `clinfun`, and `ggpubr` moved from Imports to Suggests. `calculate_dates.R` now uses `requireNamespace("anytime")` guard.
 
-### 3.2 Heavy Dependency Tree
+### 3.3 Duplicated AUC Calculation — ✅ FIXED
 
-The package has 22+ direct dependencies in Imports. Several are only used in one function:
-- `anytime`: only used in `calculate_dates()` fallback
-- `clinfun`: only used for Jonckheere-Terpstra test (currently disabled with comment "not run due to mentioned issues")
-- `ggpubr`: only used in `plot_synergy_combined()` for `ggarrange()`
-- `rlang`: only used for `sym()` and `!!` in 2 files
+Consolidated into a single exported `calculate_auc()` in `R/utils_auc.R`. All three former inline implementations (tumor_growth_statistics.R, tumor_auc_analysis.R, post_power_analysis.R) now call this shared function.
 
-**Recommendation:** Move rarely-used dependencies to Suggests and use `requireNamespace()` checks.
+### 3.4 Duplicated Composite ID Pattern — ✅ FIXED
 
-### 3.3 Duplicated AUC Calculation
+All composite ID creation now uses `sep = "|||"` with `strsplit(..., fixed = TRUE)` for safe parsing. Applied consistently in tumor_growth_statistics.R (4 locations), tumor_auc_analysis.R, and post_power_analysis.R.
 
-AUC (trapezoidal rule) is implemented in three places:
-1. `tumor_growth_statistics.R` ~L540–L560 (inline `calculate_auc` function)
-2. `tumor_auc_analysis.R` ~L170–L200 (`calculate_subject_auc` method)
-3. `post_power_analysis.R` ~L1100–L1150 (`calculate_auc_values` function)
+### 3.5 No Formal Test Suite — ✅ PARTIALLY FIXED
 
-All three implement the same trapezoidal rule but with slightly different handling of extrapolation, composite IDs, and edge cases. Any bug fix must be applied in three places.
+`tests/testthat/test-utils_and_me_result.R` added with 24 passing tests covering `calculate_auc()`, `new_me_result()`, `print/summary/plot.me_result`, `export_diagnostics()`, `tumor_doubling_time()`, and `repeated_measures_anova()`.
 
-**Recommendation:** Consolidate into a single exported `calculate_auc()` utility.
+**Remaining:** No tests for existing functions (tumor_growth_statistics, survival_statistics, dose_response_statistics, plot functions). Coverage is limited to new utility functions.
 
-### 3.4 Duplicated Composite ID Pattern
+### 3.6 Composite ID Parsing Fragility — ✅ FIXED
 
-Creating composite IDs from `paste(ID, Treatment, Cage, sep = "_")` appears in:
-- tumor_growth_statistics.R (AUC section)
-- tumor_auc_analysis.R
-- post_power_analysis.R (`calculate_auc_values`)
-- survival_statistics.R (event counting)
-
-**Recommendation:** Extract to a helper: `make_composite_id(df, id_col, treatment_col, cage_col)`.
-
-### 3.5 No Formal Test Suite
-
-Tests exist as ad-hoc scripts in `/temp/` but are not integrated into R's testing infrastructure. No `tests/testthat/` directory, no `tests/testthat.R` runner.
-
-**Recommendation:** 
-1. Create `tests/testthat/` with `usethis::use_testthat()`
-2. Migrate validation script results into test assertions
-3. Add to `.Rbuildignore`: `^temp$`
-
-### 3.6 Composite ID Parsing Fragility
-
-tumor_growth_statistics.R (~L570): Parses composite IDs using `strsplit(unique_id, "_")`. This breaks when treatment names contain underscores (e.g., "Drug_A"). There is a partial workaround that checks for known column values, but it's fragile and doesn't handle all cases.
-
-**Recommendation:** Use a non-ambiguous separator (e.g., `"|||"`) or store components as separate columns rather than concatenating into a string.
+All composite IDs now use `"|||"` separator with `strsplit(..., fixed = TRUE)`, eliminating collisions from underscored names.
 
 ---
 
@@ -314,25 +265,25 @@ tumor_growth_statistics.R (~L570): Parses composite IDs using `strsplit(unique_i
 
 ### 4.1 Additional Functionality
 
-| Feature | Description | Priority |
-|---------|-------------|----------|
-| **Repeated-measures ANOVA** | Alternative to LME4 for simpler designs | Medium |
-| **Body weight analysis** | Toxicity assessment from weight data | High (dashboard has placeholder tab) |
-| **Tumor doubling time** | Common metric not currently computed | Low |
-| **Multiple comparison methods** | Add Holm, FDR in addition to Bonferroni/Tukey | Medium |
-| **Model diagnostics export** | Return formal diagnostic test results (Shapiro-Wilk, Levene's) | Medium |
-| **Bayesian analysis option** | brms-based mixed models as alternative to lme4 | Low |
-| **Formal simulation power** | Real Monte Carlo power analysis to replace fake "simulation" method | Medium |
+| Feature | Description | Priority | Status |
+|---------|-------------|----------|--------|
+| **Repeated-measures ANOVA** | Alternative to LME4 for simpler designs | Medium | ✅ `repeated_measures_anova()` in me_result.R |
+| **Body weight analysis** | Toxicity assessment from weight data | High | ⏳ Deferred |
+| **Tumor doubling time** | Common metric not currently computed | Low | ✅ `tumor_doubling_time()` in me_result.R |
+| **Multiple comparison methods** | Add Holm, FDR in addition to Bonferroni/Tukey | Medium | ✅ `p_adjust_method` parameter (bonferroni/holm/fdr/none) |
+| **Model diagnostics export** | Return formal diagnostic test results (Shapiro-Wilk, Levene's) | Medium | ✅ `export_diagnostics()` in me_result.R |
+| **Bayesian analysis option** | brms-based mixed models as alternative to lme4 | Low | ⏳ Deferred |
+| **Formal simulation power** | Real Monte Carlo power analysis to replace fake "simulation" method | Medium | ✅ Real Monte Carlo in post_power_analysis.R |
 
 ### 4.2 API Improvements
 
-1. **Consistent return structures:** LME4 path returns `pairwise_comparisons` as an emmeans object; AUC path returns `posthoc$pairwise` as a data frame. Downstream code must handle both cases. Standardize the return slot name and format.
+1. ✅ **Consistent return structures:** S3 `me_result` class provides standardized `print`/`summary`/`plot` methods for analysis results. Existing functions can progressively adopt `new_me_result()`.
 
-2. **S3 class for results:** Define `class(result) <- "tgs_result"` with `print.tgs_result`, `summary.tgs_result`, `plot.tgs_result` methods.
+2. ✅ **S3 class for results:** `me_result` class defined in `me_result.R` with `print.me_result`, `summary.me_result`, `plot.me_result` methods plus `export_diagnostics()`.
 
-3. **Formula interface:** Allow users to specify the model formula directly (e.g., `formula = Volume ~ Day * Treatment + (Day | ID)`) as an alternative to the parameter-based interface.
+3. **Formula interface:** Allow users to specify the model formula directly (e.g., `formula = Volume ~ Day * Treatment + (Day | ID)`) as an alternative to the parameter-based interface. *(Deferred — would require significant refactoring of tumor_growth_statistics.R.)*
 
-4. **Progress reporting:** Long-running functions (power analysis with simulations) should support progress callbacks, especially when called from Shiny.
+4. **Progress reporting:** Long-running functions (power analysis with simulations) should support progress callbacks, especially when called from Shiny. *(Mitigated by `withSpinner()` in the dashboard.)*
 
 ---
 
@@ -340,23 +291,25 @@ tumor_growth_statistics.R (~L570): Parses composite IDs using `strsplit(unique_i
 
 | File | Lines | Status | Key Issues |
 |------|-------|--------|------------|
-| tumor_growth_statistics.R | 975 | Bug | B1–B5, function too large, growth rate double-log |
-| survival_statistics.R | 710 | OK | Well-structured adaptive method; could use refactoring |
-| dose_response_statistics.R | 608 | OK | Deprecated `aes_string()`/`group_by_at()`; identical non-linear models |
-| post_power_analysis.R | 1,218 | Warn | Extremely long; duplicated AUC calc; simulations are fake |
-| analyze_drug_synergy.R | 363 | Warn | Loewe oversimplified; hardcoded combo name check |
-| analyze_drug_synergy_over_time.R | 508 | OK | Good validation checks; deprecated `size` in plots |
-| tumor_auc_analysis.R | 409 | OK | Clean; duplicated AUC logic |
-| calculate_dates.R | 176 | OK | Fragile `in_place` pattern |
-| calculate_volume.R | 130 | OK | Fragile `in_place` pattern; could use `pmax`/`pmin` |
-| data.R | 111 | Good | Clean dataset documentation |
-| plot_tumor_growth.R | 383 | Warn | Too long; contains extrapolation logic; deprecated `size` |
-| plot_growth_rate.R | 226 | OK | Side-effect `cat()`; deprecated `size` |
-| plot_auc.R | 216 | OK | Deprecated `size`; otherwise clean |
-| plot_bliss.R | 107 | Warn | Hardcoded group names; deprecated `size`; legend issues |
-| plot_caterpillar.R | 118 | Bug | `grep()` vs `grepl()` logic error; uses `@import ggplot2` |
-| plot_combination_index.R | 125 | Warn | Constants in `aes()`; deprecated `size` |
-| plot_treatments.R | 115 | Good | Cleanest plot file; modern `.data[[]]` usage |
+| tumor_growth_statistics.R | 981 | Good | B1–B5 ✅; composite ID ✅; p_adjust_method ✅; `cat()` remains (verbose-gated) |
+| survival_statistics.R | 709 | OK | Well-structured adaptive method; could use refactoring |
+| dose_response_statistics.R | 609 | Warn | aes_string ✅; group_by_at ✅; LL.4/LL.5 ✅; **`print()`/`cat()` calls remain** |
+| post_power_analysis.R | 1,219 | Good | Real Monte Carlo ✅; AUC consolidated ✅; still very long |
+| analyze_drug_synergy.R | 367 | Good | Additive rename ✅; `loewe_additivity` key retained for API compat; `cat()` remains |
+| analyze_drug_synergy_over_time.R | 513 | Good | Column names updated ✅; `cat()` remains |
+| tumor_auc_analysis.R | 404 | Good | Uses shared `calculate_auc()` ✅ |
+| calculate_dates.R | 189 | Good | `in_place` deprecated ✅; `requireNamespace("anytime")` guard ✅ |
+| calculate_volume.R | 135 | Good | `in_place` deprecated ✅ |
+| data.R | 110 | Good | Clean dataset documentation |
+| plot_tumor_growth.R | 385 | Good | rbind ✅; linewidth ✅; still long (extrapolation logic embedded) |
+| plot_growth_rate.R | 259 | Good | cat→message ✅; linewidth ✅ |
+| plot_auc.R | 274 | Good | linewidth ✅ |
+| plot_bliss.R | 125 | Good | Parameterized labels ✅; linewidth ✅ |
+| plot_caterpillar.R | 140 | Good | grep/grepl ✅; qt() ✅ |
+| plot_combination_index.R | 142 | Good | linewidth ✅ |
+| plot_treatments.R | 121 | Good | Cleanest plot file; modern `.data[[]]` usage |
+| utils_auc.R | 46 | Good | **New** — consolidated trapezoidal AUC |
+| me_result.R | 337 | Good | **New** — S3 class + utility functions |
 
 ---
 
@@ -372,22 +325,26 @@ tumor_growth_statistics.R (~L570): Parses composite IDs using `strsplit(unique_i
 5. ✅ Consolidated 3 AUC implementations into `utils_auc.R::calculate_auc()`
 6. ✅ Replaced deprecated `aes_string()` and `group_by_at()` in dose_response_statistics.R
 7. ✅ Fixed `grep()` vs `grepl()` logic bug in plot_caterpillar.R
-8. ✅ Added testthat tests for new functions (`test-utils_and_me_result.R`)
+8. ✅ Added testthat tests for new functions (`test-utils_and_me_result.R`, 24 tests passing)
 
-### Medium Priority — ✅ ALL RESOLVED
+### Medium Priority
 9.  ⏳ Refactor `tumor_growth_statistics()` into sub-functions (deferred — function is large but stable)
 10. ⏳ Refactor `post_power_analysis()` into sub-functions (deferred — function is large but stable)
 11. ✅ Replaced deprecated `size` with `linewidth` across all 5 plot files
 12. ✅ Standardized return structures via S3 `me_result` class (`me_result.R`)
 13. ✅ Converted full `import()` to specific `importFrom()` in NAMESPACE (dplyr:8, ggplot2:44, stats:26, drc:3)
 14. ✅ Moved `anytime`, `clinfun`, `ggpubr` to Suggests in DESCRIPTION
+15. ⏳ Convert remaining `cat()` → `message()` (~46 calls across 4 files) — see 2.13
+16. ⏳ Convert `print()` → `message(capture.output())` in dose_response_statistics.R (~8 calls)
 
-### Low Priority — ✅ ALL RESOLVED
-15. ✅ `in_place` parameter deprecated with warning in `calculate_dates()` and `calculate_volume()`
-16. ✅ S3 class `me_result` with `print`, `summary`, `plot` methods (`me_result.R`)
-17. ✅ Renamed Loewe label to "Additive (Mean)" with clarifying comment
-18. ✅ Implemented real Monte Carlo simulation for power analysis (`post_power_analysis.R`)
-19. ⏳ `.Rbuildignore` improvements (deferred — low impact)
+### Low Priority
+17. ✅ `in_place` parameter deprecated with warning in `calculate_dates()` and `calculate_volume()`
+18. ✅ S3 class `me_result` with `print`, `summary`, `plot` methods (`me_result.R`)
+19. ✅ Renamed Loewe → "Additive (Mean)" in user-facing labels; `loewe_additivity` key retained for API compat
+20. ✅ Implemented real Monte Carlo simulation for power analysis (`post_power_analysis.R`)
+21. ⏳ `.Rbuildignore` improvements (deferred — low impact)
+22. ⏳ Rename `loewe_additivity` return key to `additive_model` (breaking API change — defer to next major version)
+23. ⏳ Add tests for existing functions (tumor_growth_statistics, survival, plot functions)
 
 ### New Functions Added
 - `calculate_auc()` — Consolidated vectorized trapezoidal AUC (`utils_auc.R`)
