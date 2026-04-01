@@ -1,6 +1,7 @@
 #' Power Analysis UI
 #' @keywords internal
-powerAnalysisUI <- function() {
+powerAnalysisUI <- function(id) {
+  ns <- NS(id)
   fluidPage(
     h2("Post-hoc Power Analysis"),
     
@@ -12,7 +13,7 @@ powerAnalysisUI <- function() {
         wellPanel(
           h4("Analysis Method"),
           
-          selectInput("pw_method",
+          selectInput(ns("pw_method"),
                      "Method",
                      choices = c(
                        "Parametric"  = "parametric",
@@ -21,9 +22,9 @@ powerAnalysisUI <- function() {
                      ),
                      selected = "parametric"),
           
-          conditionalPanel(
+          conditionalPanel(ns = ns,
             condition = "input.pw_method == 'simulation'",
-            numericInput("pw_n_simulations",
+            numericInput(ns("pw_n_simulations"),
                         "Number of Simulations",
                         value = 1000, min = 100, max = 10000, step = 100)
           ),
@@ -31,7 +32,7 @@ powerAnalysisUI <- function() {
           hr(),
           
           h4("Alpha Levels"),
-          checkboxGroupInput("pw_alpha",
+          checkboxGroupInput(ns("pw_alpha"),
                             "Significance Levels",
                             choices  = c("0.05" = "0.05",
                                         "0.01" = "0.01",
@@ -41,7 +42,7 @@ powerAnalysisUI <- function() {
           hr(),
           
           h4("Target Power"),
-          checkboxGroupInput("pw_power",
+          checkboxGroupInput(ns("pw_power"),
                             "Power Targets",
                             choices  = c("0.80" = "0.80",
                                         "0.85" = "0.85",
@@ -52,7 +53,7 @@ powerAnalysisUI <- function() {
           hr(),
 
           h4("Custom Effect Sizes"),
-          textInput("pw_custom_effect_sizes",
+          textInput(ns("pw_custom_effect_sizes"),
                    "Effect Sizes (comma-separated, optional)",
                    value = "",
                    placeholder = "e.g. 0.2, 0.5, 0.8, 1.0"),
@@ -60,22 +61,22 @@ powerAnalysisUI <- function() {
 
           br(),
           
-          actionButton("run_pw_analysis",
+          actionButton(ns("run_pw_analysis"),
                       "Run Power Analysis",
                       class = "btn-lg btn-primary btn-block"),
           
-          uiOutput("pw_status_msg")
+          uiOutput(ns("pw_status_msg"))
         )
       ),
       
       column(9,
         tabsetPanel(
-          id = "pw_results_tabs",
+          id = ns("pw_results_tabs"),
           
           tabPanel("Summary",
             tab_info(strong("Power analysis summary: "), "overall observed power for the current sample size and key recommendations. Post-hoc power is calculated from the effect sizes observed in your data \u2014 interpret cautiously as the same data is used to both estimate effects and compute power."),
             shinycssloaders::withSpinner(
-              verbatimTextOutput("pw_summary")
+              verbatimTextOutput(ns("pw_summary"))
             )
           ),
           
@@ -94,9 +95,9 @@ powerAnalysisUI <- function() {
               )
             ),
             shinycssloaders::withSpinner(
-              DTOutput("pw_effect_sizes_table")
+              DTOutput(ns("pw_effect_sizes_table"))
             ),
-            downloadButton("download_pw_effect_sizes", "Download")
+            downloadButton(ns("download_pw_effect_sizes"), "Download")
           ),
           
           tabPanel("Power Analysis",
@@ -111,9 +112,9 @@ powerAnalysisUI <- function() {
               em("Post-hoc power should be interpreted cautiously: the same data used to fit the model is used to estimate the effect size, which inflates apparent power.")
             ),
             shinycssloaders::withSpinner(
-              DTOutput("pw_power_table")
+              DTOutput(ns("pw_power_table"))
             ),
-            downloadButton("download_pw_power_table", "Download")
+            downloadButton(ns("download_pw_power_table"), "Download")
           ),
           
           tabPanel("Sample Size Recommendations",
@@ -128,17 +129,17 @@ powerAnalysisUI <- function() {
               )
             ),
             shinycssloaders::withSpinner(
-              DTOutput("pw_sample_sizes_table")
+              DTOutput(ns("pw_sample_sizes_table"))
             ),
-            downloadButton("download_pw_sample_sizes", "Download")
+            downloadButton(ns("download_pw_sample_sizes"), "Download")
           ),
           
           tabPanel("Power Curves",
             tab_info(strong("Power vs N per group: "), "shows how power increases with sample size for each detected effect size. Horizontal dashed lines mark conventional power thresholds (0.80, 0.90). Use these curves to identify the minimum N that achieves adequate power for your effect of interest."),
             shinycssloaders::withSpinner(
-              plotOutput("pw_plot_curves", height = "500px")
+              plotOutput(ns("pw_plot_curves"), height = "500px")
             ),
-            downloadButton("download_pw_plot", "Download Plot")
+            downloadButton(ns("download_pw_plot"), "Download Plot")
           )
         )
       )
@@ -148,8 +149,11 @@ powerAnalysisUI <- function() {
 
 #' Power Analysis Server Logic
 #' @keywords internal
-power_server <- function(input, output, session, rv) {
+power_server <- function(id, rv) {
+  moduleServer(id, function(input, output, session) {
   
+  current_pw_plot <- reactiveVal(NULL)
+
   rv$pw_results <- NULL
   
   observeEvent(input$run_pw_analysis, {
@@ -157,31 +161,26 @@ power_server <- function(input, output, session, rv) {
     
     if (length(input$pw_alpha) == 0) {
       output$pw_status_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"), "Please select at least one alpha level.")
+        status_alert("Please select at least one alpha level.", "danger")
       })
       return()
     }
     
     if (length(input$pw_power) == 0) {
       output$pw_status_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"), "Please select at least one power target.")
+        status_alert("Please select at least one power target.", "danger")
       })
       return()
     }
     
     output$pw_status_msg <- renderUI({
-      div(class = "alert alert-info",
-          icon("spinner", class = "fa-spin"), "Running power analysis...")
+      status_alert("Running power analysis...", "info")
     })
     
     # Prefer preprocessed data (Volume + Day already resolved); fall back to raw
     if (is.null(rv$processed_data)) {
       output$pw_status_msg <- renderUI({
-        div(class = "alert alert-warning",
-            icon("exclamation-triangle"),
-            "Please run the Tumor Growth Analysis first so that Volume and Day columns are resolved.")
+        status_alert("Please run the Tumor Growth Analysis first so that Volume and Day columns are resolved.", "warning")
       })
       return()
     }
@@ -203,7 +202,11 @@ power_server <- function(input, output, session, rv) {
       if (length(parsed) > 0) custom_effect_sizes <- parsed
     }
 
-    result <- safe_analysis({
+    progress <- shiny::Progress$new(session, min = 0, max = 1)
+    progress$set(message = "Running power analysis...", value = 0.2)
+    on.exit(progress$close(), add = TRUE)
+
+    result <- safe_analysis(module = "power", {
       mouseExperiment::post_power_analysis(
         data             = rv$processed_data,
         alpha            = alpha_vals,
@@ -230,14 +233,11 @@ power_server <- function(input, output, session, rv) {
     
     if (isTRUE(result$error)) {
       output$pw_status_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"),
-            "Error:", result$message)
+        status_alert(paste("Error:", result$message), "danger")
       })
     } else {
       output$pw_status_msg <- renderUI({
-        div(class = "alert alert-success",
-            icon("check"), "Power analysis completed successfully!")
+        status_alert("Power analysis completed successfully!", "success")
       })
     }
   })
@@ -319,7 +319,7 @@ power_server <- function(input, output, session, rv) {
 
     # Build power-vs-N curves from observed effect sizes
     es_df <- rv$pw_results$effect_sizes
-    if (!is.null(es_df) && "Standardized_Effect" %in% colnames(es_df)) {
+    if (!is.null(es_df) && has_col(es_df, "Standardized_Effect")) {
       unique_effects <- sort(unique(round(
         abs(es_df$Standardized_Effect[!is.na(es_df$Standardized_Effect)]), 2
       )))
@@ -328,6 +328,9 @@ power_server <- function(input, output, session, rv) {
       unique_effects <- c(0.2, 0.5, 0.8, 1.0, 1.5)
     }
 
+    # Use the smallest user-selected alpha for the power curve visualization
+    alpha_for_curve <- min(as.numeric(input$pw_alpha %||% 0.05))
+
     if (length(unique_effects) > 0) {
       n_seq <- seq(2, 60, by = 1)
       rows <- lapply(unique_effects, function(es) {
@@ -335,7 +338,7 @@ power_server <- function(input, output, session, rv) {
           N            = n_seq,
           Power        = vapply(n_seq, function(n)
             tryCatch(
-              stats::power.t.test(n = n, delta = es, sd = 1, sig.level = 0.05)$power,
+              stats::power.t.test(n = n, delta = es, sd = 1, sig.level = alpha_for_curve)$power,
               error = function(e) NA_real_
             ), numeric(1)),
           Effect_Size  = paste0("d\u202f=\u202f", round(es, 2)),
@@ -344,8 +347,7 @@ power_server <- function(input, output, session, rv) {
       })
       pw_df <- do.call(rbind, rows)
 
-      print(
-        ggplot2::ggplot(pw_df,
+      p <- ggplot2::ggplot(pw_df,
           ggplot2::aes(x = N, y = Power,
                        color = Effect_Size, group = Effect_Size)) +
           ggplot2::geom_line(linewidth = 0.9) +
@@ -360,18 +362,22 @@ power_server <- function(input, output, session, rv) {
           ggplot2::scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
           ggplot2::labs(
             title  = "Power vs N per Group",
-            subtitle = "Horizontal dashed lines: 0.80 and 0.90 power thresholds",
+            subtitle = paste0("\u03b1 = ", alpha_for_curve,
+                              ";  dashed lines: 0.80 and 0.90 power thresholds"),
             x      = "N per Group",
             y      = "Power",
             colour = "Effect Size\n(Cohen\u2019s d)"
           ) +
           ggplot2::theme_classic() +
           ggplot2::theme(legend.position = "right")
-      )
+      current_pw_plot(p)
+      p
     } else {
       plots <- rv$pw_results$plots
       if (!is.null(plots$power_curves)) {
-        print(plots$power_curves)
+        p <- plots$power_curves
+        current_pw_plot(p)
+        p
       } else {
         plot(1, 1, type = "n", main = "Power curves not available", xlab = "", ylab = "")
       }
@@ -406,11 +412,11 @@ power_server <- function(input, output, session, rv) {
   output$download_pw_plot <- downloadHandler(
     filename = "power_curves.png",
     content = function(file) {
-      if (!is.null(rv$pw_results$plots$power_curves)) {
-        png(file, width = 900, height = 600)
-        print(rv$pw_results$plots$power_curves)
-        dev.off()
-      }
+      p <- current_pw_plot()
+      req(!is.null(p))
+      png(file, width = 900, height = 600)
+      print(p); dev.off()
     }
   )
+  })
 }

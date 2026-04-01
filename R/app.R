@@ -33,56 +33,7 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     shiny::addResourcePath("js",     file.path(www_dir, "js"))
   }
 
-  # JS injected on page load:
-  #  1. Moves Help + Citation to a right-aligned nav
-  #  2. Adds "navbar-center" class to the main nav for CSS centering
-  #  3. Exposes disableNavTab / enableNavTab helpers for server-side use
-  nav_js <- HTML("
-$(document).ready(function() {
-  // Move Help and Citation to a right-aligned nav list
-  var $mainNav = $('.navbar-nav:first');
-  var helpLi     = $mainNav.find('a[data-value=\"Help\"]').closest('li').detach();
-  var citationLi = $mainNav.find('a[data-value=\"About\"]').closest('li').detach();
-  var $rightNav  = $('<ul class=\"nav navbar-nav navbar-right\" id=\"nav-right\"></ul>');
-  $rightNav.append(helpLi).append(citationLi);
-  // Bootstrap 5: no .navbar-collapse wrapper — append directly to .container-fluid
-  var $container = $mainNav.closest('.container-fluid, .navbar-collapse');
-  if ($container.length === 0) $container = $mainNav.parent();
-  $container.append($rightNav);
-
-
-  // Mark main nav for centering via CSS
-  $mainNav.addClass('navbar-center');
-
-  // Cross-nav active-state sync:
-  // Bootstrap only clears 'active' within the same <ul>. Because Help/Citation
-  // live in #nav-right (a separate <ul>), clicking a main-nav tab leaves them
-  // visually active, causing a double-click requirement.
-  // Solution: clear active from the *other* nav whenever a tab is clicked.
-  $(document).on('click', '#nav-right a[data-value]', function() {
-    $mainNav.find('li.active').removeClass('active');
-  });
-  $(document).on('click', '.navbar-center a[data-value]', function() {
-    $('#nav-right li.active').removeClass('active');
-  });
-});
-
-// Prevent clicks on disabled tabs
-$(document).on('click', '.nav-tab-disabled > a, .nav-tab-disabled > .nav-link', function(e) {
-  e.preventDefault(); e.stopPropagation(); return false;
-});
-
-function disableNavTab(val) {
-  $('.navbar-nav li a[data-value=\"' + val + '\"]').closest('li').addClass('nav-tab-disabled');
-  $('#nav-right li a[data-value=\"' + val + '\"]').closest('li').addClass('nav-tab-disabled');
-}
-function enableNavTab(val) {
-  $('.navbar-nav li a[data-value=\"' + val + '\"]').closest('li').removeClass('nav-tab-disabled');
-  $('#nav-right li a[data-value=\"' + val + '\"]').closest('li').removeClass('nav-tab-disabled');
-}
-window.disableNavTab = disableNavTab;
-window.enableNavTab  = enableNavTab;
-")
+  # JS files are loaded from www/js/ via tags$script(src = ...) in the UI header
 
   ui <- navbarPage(
     title = tags$span(id = "nav-brand", "mouseExperiment",
@@ -94,51 +45,20 @@ window.enableNavTab  = enableNavTab;
     position = "fixed-top",
     header = tagList(
       shinyjs::useShinyjs(),
+      shinyFeedback::useShinyFeedback(),
       tags$head(
         tags$link(rel = "stylesheet", href = "css/custom.css"),
         tags$link(rel = "stylesheet", href = "css/dark.css"),
-        tags$style(HTML("
-          body { padding-top: 70px; }
-          .navbar-nav li a[data-value='__toxicity_disabled__'],
-          .navbar-nav li a[data-value='__dose_response_disabled__'],
-          .navbar-nav li a[data-value='__drug_synergy_disabled__'],
-          .navbar-nav li a[data-value='__power_analysis_disabled__'] {
-            pointer-events: none;
-            opacity: 0.45;
-          }
-        ")),
-        tags$script(nav_js),
+        tags$script(src = "js/navbar.js"),
         tags$script(src = "js/sidebar.js"),
         tags$script(src = "js/darkmode.js"),
-        # Inject mouse overlay as a direct child of <body> to avoid
-        # z-index conflicts with the Bootstrap navbar.
-        tags$script(HTML("
-$(document).ready(function() {
-  var layer = $('<div id=\"mouse-bg-layer\">' +
-    '<img id=\"mouse-bg-img1\" class=\"mouse-bg-img\" src=\"images/mouse_outline1.png\" alt=\"\">' +
-    '<img id=\"mouse-bg-img2\" class=\"mouse-bg-img\" src=\"images/mouse_outline2.png\" alt=\"\">' +
-    '</div>');
-  $('body').append(layer);
-
-  // Disable Diagnostics tab — pending re-implementation
-  function disableDiagnosticsTab() {
-    var $diagLi = $('#tg_results_tabs li').filter(function() {
-      return $(this).find('a[data-value=\"Diagnostics\"]').length > 0;
-    });
-    if ($diagLi.length) {
-      $diagLi.addClass('disabled').attr('title', 'Diagnostics — coming in a future release');
-      $diagLi.find('a').css({'pointer-events': 'none', 'cursor': 'not-allowed'});
-    }
-  }
-  $(document).one('shiny:sessioninitialized', disableDiagnosticsTab);
-});
-"))
+        tags$script(src = "js/overlay.js")
       )
     ),
 
-    tabPanel("Data",          dataUploadUI()),
-    tabPanel("Tumor Growth",  tumorGrowthUI()),
-    tabPanel("Survival",      survivalUI()),
+    tabPanel("Data",          dataUploadUI("data")),
+    tabPanel("Tumor Growth",  tumorGrowthUI("tg")),
+    tabPanel("Survival",      survivalUI("surv")),
     tabPanel(
       title = tags$span("Toxicity",
                         style = "color: #999; cursor: not-allowed;",
@@ -167,11 +87,19 @@ $(document).ready(function() {
       value = "__power_analysis_disabled__",
       ""
     ),
+    tabPanel("Log",           analysisLogUI("log")),
     tabPanel("Help",          helpUI()),
     tabPanel("About",          citationUI())
   )
 
   server <- function(input, output, session) {
+
+    # Initialise structured logging (JSON to stdout + in-process buffer)
+    setup_logging_with_buffer()
+    log_session(session, "start")
+    session$onSessionEnded(function() {
+      log_session(session, "end")
+    })
 
     rv <- reactiveValues()
 
@@ -200,15 +128,17 @@ $(document).ready(function() {
       )
     )
 
-    data_upload_server(input, output, session, rv)
-    tumor_growth_server(input, output, session, rv)
-    survival_server(input, output, session, rv)
-    synergy_server(input, output, session, rv)
-    power_server(input, output, session, rv)
-    dose_response_server(input, output, session, rv)
+    data_upload_server("data", rv)
+    tumor_growth_server("tg", rv)
+    survival_server("surv", rv)
+    synergy_server("syn", rv)
+    power_server("pw", rv)
+    dose_response_server("dr", rv)
+    analysis_log_server("log", rv)
 
     # Guard: redirect away from placeholder tabs if reached via keyboard
     observeEvent(input$main_nav, {
+      log_navigation(session, input$main_nav)
       disabled_vals <- c("__toxicity_disabled__", "__dose_response_disabled__",
                          "__drug_synergy_disabled__", "__power_analysis_disabled__")
       if (input$main_nav %in% disabled_vals)
@@ -231,9 +161,9 @@ $(document).ready(function() {
         shinyjs::runjs("window.enableNavTab('Tumor Growth');")
 
         # Survival: only when a censor/event column is mapped
-        surv_mapped <- !is.null(input$col_survival_event) &&
-                       nzchar(input$col_survival_event) &&
-                       input$col_survival_event != "None"
+        surv_mapped <- !is.null(rv$settings$col_survival_event) &&
+                       nzchar(rv$settings$col_survival_event) &&
+                       rv$settings$col_survival_event != "None"
         if (surv_mapped) {
           shinyjs::runjs("window.enableNavTab('Survival');")
         } else {
@@ -249,8 +179,10 @@ $(document).ready(function() {
     })
 
     # Navigate to Tumor Growth after data configuration
-    observeEvent(input$proceed_analysis, {
-      updateNavbarPage(session, "main_nav", selected = "Tumor Growth")
+    observeEvent(rv$proceed_to_analysis, {
+      if (isTRUE(rv$proceed_to_analysis))
+        updateNavbarPage(session, "main_nav", selected = "Tumor Growth")
+      rv$proceed_to_analysis <- FALSE
     })
   }
 

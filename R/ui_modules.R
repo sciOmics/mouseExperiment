@@ -9,6 +9,16 @@ tab_info <- function(...) {
   )
 }
 
+# Shared helper: inline help tooltip (question-circle icon with title hint)
+help_tip <- function(text) {
+  tags$span(
+    class = "text-muted",
+    style = "cursor:help; margin-left:4px;",
+    title = text,
+    icon("circle-question", class = "fa-sm")
+  )
+}
+
 # Helper: collapsible section for the plot control panel.
 # Starts collapsed; click the header to expand.
 ctrl_section <- function(id, icon_nm, title, ...) {
@@ -77,7 +87,8 @@ homeUI <- function() {
 
 #' Data Upload UI
 #' @keywords internal
-dataUploadUI <- function() {
+dataUploadUI <- function(id) {
+  ns <- NS(id)
   fluidPage(
     h2("Data Upload & Configuration"),
 
@@ -88,7 +99,7 @@ dataUploadUI <- function() {
             column(4,
               h5(strong("Try Demo Data")),
               p("Load a built-in demo dataset to explore the dashboard's features."),
-              selectInput("demo_dataset", NULL,
+              selectInput(ns("demo_dataset"), NULL,
                 choices = c(
                   "-- Select a demo dataset --" = "",
                   "Combo Treatment (Control / HDACi / aPD1 / HDACi+PD1, survival data)" = "combo",
@@ -100,11 +111,11 @@ dataUploadUI <- function() {
               ),
               fluidRow(
                 column(6,
-                  actionButton("load_demo_data", "Load Demo Data",
+                  actionButton(ns("load_demo_data"), "Load Demo Data",
                                icon = icon("play-circle"),
                                class = "btn-default btn-block")
                 ),
-                column(6, uiOutput("demo_load_msg"))
+                column(6, uiOutput(ns("demo_load_msg")))
               )
             ),
             column(8,
@@ -113,9 +124,9 @@ dataUploadUI <- function() {
                 icon("info-circle"), " Data must be in ",
                 tags$strong("long format"), " — one row per observation/measurement."
               )),
-              fileInput("data_file", NULL,
+              fileInput(ns("data_file"), NULL,
                        accept = c(".csv", ".rda", ".RData")),
-              uiOutput("file_validation_msg")
+              uiOutput(ns("file_validation_msg"))
             )
           )
         )
@@ -123,20 +134,22 @@ dataUploadUI <- function() {
     ),
     
     # Column mapping section (shown after file upload)
-    uiOutput("column_mapping_ui"),
+    uiOutput(ns("column_mapping_ui")),
     
     # Dataset summary (shown after successful upload + column config)
-    uiOutput("data_summary_ui"),
+    uiOutput(ns("data_summary_ui")),
     
     # Data preview (shown after successful upload)
-    uiOutput("data_preview_ui"),
-    
+    uiOutput(ns("data_preview_ui")),
+
+    # Session save / restore
+    session_save_restore_ui(ns)
   )
 }
 
 #' Column Mapping UI
 #' @keywords internal
-column_mapping_ui <- function(col_names, detected_cols) {
+column_mapping_ui <- function(col_names, detected_cols, ns = NS(NULL)) {
   wellPanel(
     h4(strong("Configure Column Mapping")),
     tags$p("Select which columns contain your data. ", 
@@ -145,79 +158,81 @@ column_mapping_ui <- function(col_names, detected_cols) {
     fluidRow(
       column(4,
         h4(strong("Required Columns")),
-        radioButtons("time_method", "How to specify time?",
+        radioButtons(ns("time_method"), "How to specify time?",
                     choices = c(
                       "Direct Day column" = "direct_day",
                       "Calculate from Date column" = "from_date"
                     ),
                     selected = if (!is.null(detected_cols$day) && detected_cols$day != "") "direct_day" else "from_date"),
         
-        conditionalPanel(
+        conditionalPanel(ns = ns,
           condition = "input.time_method == 'direct_day'",
-          selectInput("col_day", "Day Column",
+          selectInput(ns("col_day"), "Day Column",
                      choices = c("Select..." = "", col_names),
                      selected = detected_cols$day)
         ),
         
-        conditionalPanel(
+        conditionalPanel(ns = ns,
           condition = "input.time_method == 'from_date'",
-          selectInput("col_date_for_day", "Date Column",
+          selectInput(ns("col_date_for_day"), "Date Column",
                      choices = c("Select..." = "", col_names),
                      selected = detected_cols$date),
-          textInput("reference_date", "Reference Date (YYYY-MM-DD)",
+          textInput(ns("reference_date"), "Reference Date (YYYY-MM-DD)",
                    value = "2025-03-24",
                    placeholder = "First measurement date")
         ),
 
-        selectInput("col_id", "Mouse/Subject ID",
+        selectInput(ns("col_id"),
+                   tagList("Mouse/Subject ID", help_tip("Unique identifier for each mouse/subject. Each ID should have multiple rows (one per timepoint).")),
                    choices = c("Select..." = "", col_names),
                    selected = detected_cols$id),
         
-        selectInput("col_treatment", "Treatment Group",
+        selectInput(ns("col_treatment"),
+                   tagList("Treatment Group", help_tip("Column indicating which treatment/group each subject belongs to (e.g. Control, Drug A, Drug B).")),
                    choices = c("Select..." = "", col_names),
                    selected = detected_cols$treatment)
       ),
       
       column(4,
         h4(strong("Volume Measurement")),
-        radioButtons("volume_method", "How to specify volume?",
+        radioButtons(ns("volume_method"), "How to specify volume?",
                     choices = c(
                       "Direct volume column" = "direct",
                       "Calculate from Length & Width" = "calculate"
                     ),
                     selected = if (!is.null(detected_cols$volume)) "direct" else "calculate"),
         
-        conditionalPanel(
+        conditionalPanel(ns = ns,
           condition = "input.volume_method == 'direct'",
-          selectInput("col_volume", "Volume Column",
+          selectInput(ns("col_volume"), "Volume Column",
                      choices = c("Select..." = "", col_names),
                      selected = detected_cols$volume)
         ),
         
-        conditionalPanel(
+        conditionalPanel(ns = ns,
           condition = "input.volume_method == 'calculate'",
-          selectInput("col_length", "Length Column",
+          selectInput(ns("col_length"), "Length Column",
                      choices = c("Select..." = "", col_names),
                      selected = detected_cols$length),
-          selectInput("col_width", "Width Column",
+          selectInput(ns("col_width"), "Width Column",
                      choices = c("Select..." = "", col_names),
                      selected = detected_cols$width),
-          selectInput("volume_formula", "Volume Formula",
+          selectInput(ns("volume_formula"), "Volume Formula",
                      choices = c("Ellipsoid (default)" = "ellipsoid",
                                 "Modified Ellipsoid" = "modified_ellipsoid",
                                 "Cylinder" = "cylinder",
                                 "Sphere" = "sphere"),
                      selected = "ellipsoid"),
-          conditionalPanel("input.volume_formula == 'ellipsoid'",
+          conditionalPanel(ns = ns,"input.volume_formula == 'ellipsoid'",
             tags$p(tags$small(HTML("V = (&pi;/6) &times; L &times; W&sup2;")))
           ),
-          conditionalPanel("input.volume_formula == 'modified_ellipsoid'",
+          conditionalPanel(ns = ns,"input.volume_formula == 'modified_ellipsoid'",
             tags$p(tags$small(HTML("V = (L &times; W&sup2;) / 2")))
           ),
-          conditionalPanel("input.volume_formula == 'cylinder'",
+          conditionalPanel(ns = ns,"input.volume_formula == 'cylinder'",
             tags$p(tags$small(HTML("V = &pi; &times; (W/2)&sup2; &times; L")))
           ),
-          conditionalPanel("input.volume_formula == 'sphere'",
+          conditionalPanel(ns = ns,"input.volume_formula == 'sphere'",
             tags$p(tags$small(HTML("V = (&pi;/6) &times; ((L + W) / 2)&sup3;")))
           )
         )
@@ -225,26 +240,29 @@ column_mapping_ui <- function(col_names, detected_cols) {
       
       column(4,
         h4(strong("Optional Columns")),
-        selectInput("col_cage", "Cage ID",
+        selectInput(ns("col_cage"),
+                   tagList("Cage ID", help_tip("Optional grouping variable. Used as a random effect in mixed models to account for cage-to-cage variability.")),
                    choices = c("None" = "", col_names),
                    selected = detected_cols$cage),
         tags$p(tags$small("Cage ID is used to distinguish mice with same ID in different cages.")),
         
         br(),
         
-        selectInput("col_dose", "Dose Level",
+        selectInput(ns("col_dose"),
+                   tagList("Dose Level", help_tip("Numeric dose values. Groups are split into Treatment+Dose combinations for dose-response modelling.")),
                    choices = c("None" = "", col_names),
                    selected = detected_cols$dose),
         tags$p(tags$small("Required for Dose-Response Analysis. Should contain numeric dose concentrations or levels.")),
         
         br(),
-        selectInput("col_survival_event", "Event/Censor Status Column",
+        selectInput(ns("col_survival_event"),
+                   tagList("Event/Censor Status", help_tip("Binary column: 1 = event occurred (death/sacrifice), 0 = censored (alive at end of study). Enables Kaplan-Meier and Cox regression.")),
                    choices = c("None" = "", col_names),
                    selected = detected_cols$survival_event),
         tags$p(tags$small("Required for Survival Analysis. Time will use the same Day/Date settings as above. Coding: ", tags$strong("1 = event (e.g. death)"), ", ", tags$strong("0 = censored"), ".")),
         
         br(),
-        selectInput("col_weight", "Weight / Mass",
+        selectInput(ns("col_weight"), "Weight / Mass",
                    choices = c("None" = "", col_names),
                    selected = ""),
         tags$p(tags$small("Required for Toxicity Analysis. Should contain body weight or mass measurements."))
@@ -255,16 +273,16 @@ column_mapping_ui <- function(col_names, detected_cols) {
 
 #' Data Preview UI
 #' @keywords internal
-data_preview_ui <- function() {
+data_preview_ui <- function(ns = NS(NULL)) {
   wellPanel(
     h4(strong("Data Preview")),
     p(tags$small("Shows calculated columns (Volume, Day from start date) where applicable.")),
     fluidRow(
       column(12,
-        p(strong(textOutput("preview_summary"))),
-        DTOutput("data_table"),
+        p(strong(textOutput(ns("preview_summary")))),
+        DTOutput(ns("data_table")),
         br(),
-        downloadButton("download_preview_data", "Download Processed Data as CSV",
+        downloadButton(ns("download_preview_data"), "Download Processed Data as CSV",
                       class = "btn-sm btn-default")
       )
     )
@@ -273,7 +291,8 @@ data_preview_ui <- function() {
 
 #' Tumor Growth Analysis UI
 #' @keywords internal
-tumorGrowthUI <- function() {
+tumorGrowthUI <- function(id) {
+  ns <- NS(id)
   fluidPage(
     h2("Tumor Growth Analysis"),
     
@@ -286,7 +305,7 @@ tumorGrowthUI <- function() {
           h4("Analysis Parameters"),
 
           # 1. Statistical Model
-          selectInput("tg_model_type",
+          selectInput(ns("tg_model_type"),
                      "Statistical Model",
                      choices = c("Linear Mixed-Effects (LME4)" = "lme4",
                                 "Area Under Curve (AUC)" = "auc"),
@@ -297,7 +316,7 @@ tumorGrowthUI <- function() {
                    "each animal's growth curve."),
 
           # 2. Reference Group
-          selectInput("tg_reference",
+          selectInput(ns("tg_reference"),
                      "Reference Group (Required)",
                      choices = c("-- Select a reference group --" = "")),
           helpText("The group all comparisons are made against (typically a vehicle or ",
@@ -305,7 +324,7 @@ tumorGrowthUI <- function() {
                    "when data is uploaded."),
 
           # 3. Post-hoc Comparisons
-          selectInput("tg_comparison_type",
+          selectInput(ns("tg_comparison_type"),
                      "Post-hoc Comparisons",
                      choices = c("vs Reference Group" = "reference",
                                 "All Comparisons" = "tukey"),
@@ -318,9 +337,9 @@ tumorGrowthUI <- function() {
                    "correction."),
 
           # 4. Data Transformation (LME4 only)
-          conditionalPanel(
+          conditionalPanel(ns = ns,
             condition = "input.tg_model_type == 'lme4'",
-            selectInput("tg_transform",
+            selectInput(ns("tg_transform"),
                        "Data Transformation",
                        choices = c("Log" = "log",
                                   "Square Root" = "sqrt",
@@ -333,7 +352,7 @@ tumorGrowthUI <- function() {
           ),
 
           # 5. Extrapolation Points (always visible)
-          numericInput("tg_extrapolation_points",
+          numericInput(ns("tg_extrapolation_points"),
                       "Extrapolation Points",
                       value = 3, min = 0, max = 10, step = 1),
           helpText("Number of recent timepoints used to estimate the growth slope for ",
@@ -343,9 +362,9 @@ tumorGrowthUI <- function() {
                    "final timepoint are automatically detected."),
 
           # 6. Cage Effect Handling (LME4 only)
-          conditionalPanel(
+          conditionalPanel(ns = ns,
             condition = "input.tg_model_type == 'lme4'",
-            selectInput("tg_cage_effect",
+            selectInput(ns("tg_cage_effect"),
                        "Cage Effect Handling",
                        choices = c("Include if not collinear" = "include_if_not_collinear",
                                   "Always include" = "always_include",
@@ -358,9 +377,9 @@ tumorGrowthUI <- function() {
           ),
 
           # 7. Random Effects (LME4 only)
-          conditionalPanel(
+          conditionalPanel(ns = ns,
             condition = "input.tg_model_type == 'lme4'",
-            selectInput("tg_random_effects",
+            selectInput(ns("tg_random_effects"),
                        "Random Effects",
                        choices = c("Intercept only" = "intercept_only",
                                   "Intercept + Slope" = "slope",
@@ -374,11 +393,11 @@ tumorGrowthUI <- function() {
 
           br(),
 
-          actionButton("run_tg_analysis",
+          actionButton(ns("run_tg_analysis"),
                       "Run Analysis",
                       class = "btn-lg btn-primary btn-block"),
 
-          uiOutput("tg_status_msg")
+          uiOutput(ns("tg_status_msg"))
         )
       ),
       
@@ -390,37 +409,51 @@ tumorGrowthUI <- function() {
           tags$i(class = "fa fa-chevron-left fa-fw"), " Collapse"
         ),
         tabsetPanel(
-          id = "tg_results_tabs",
+          id = ns("tg_results_tabs"),
+
+          tabPanel(
+            title = tags$span(icon("file-zipper"), " Download All"),
+            value = "__download_all__",
+            wellPanel(
+              style = "text-align:center; padding:30px;",
+              h4("Export All Results"),
+              p("Download every available result table (CSV) and plot (PNG) ",
+                "as a single ZIP file."),
+              downloadButton(ns("download_tg_all"), "Download All Results",
+                             class = "btn-lg btn-primary",
+                             icon = icon("download"))
+            )
+          ),
           
           tabPanel("Summary",
-            uiOutput("tg_summary_tab_info"),
+            uiOutput(ns("tg_summary_tab_info")),
             shinycssloaders::withSpinner(
-              verbatimTextOutput("tg_summary")
+              verbatimTextOutput(ns("tg_summary"))
             )
           ),
           
           tabPanel("ANOVA",
-            uiOutput("tg_anova_tab_info"),
+            uiOutput(ns("tg_anova_tab_info")),
             shinycssloaders::withSpinner(
-              DTOutput("tg_anova_table")
+              DTOutput(ns("tg_anova_table"))
             ),
-            downloadButton("download_tg_anova", "Download ANOVA")
+            downloadButton(ns("download_tg_anova"), "Download ANOVA")
           ),
           
           tabPanel("Comparisons",
-            uiOutput("tg_comparisons_tab_info"),
+            uiOutput(ns("tg_comparisons_tab_info")),
             shinycssloaders::withSpinner(
-              DTOutput("tg_comparisons_table")
+              DTOutput(ns("tg_comparisons_table"))
             ),
-            downloadButton("download_tg_comparisons", "Download Comparisons")
+            downloadButton(ns("download_tg_comparisons"), "Download Comparisons")
           ),
           
           tabPanel("Treatment Effects",
-            uiOutput("tg_treatment_effects_tab_info"),
+            uiOutput(ns("tg_treatment_effects_tab_info")),
             shinycssloaders::withSpinner(
-              DTOutput("tg_effects_table")
+              DTOutput(ns("tg_effects_table"))
             ),
-            downloadButton("download_tg_effects", "Download Effects")
+            downloadButton(ns("download_tg_effects"), "Download Effects")
           ),
           
           tabPanel("Growth Rates",
@@ -442,12 +475,10 @@ tumorGrowthUI <- function() {
               em("These are descriptive per-animal values used to visualise within-group spread and for sample size estimation. For group-level inference, use the Treatment Effects tab.")
             ),
             shinycssloaders::withSpinner(
-              DTOutput("tg_growth_rates_table")
+              DTOutput(ns("tg_growth_rates_table"))
             ),
-            downloadButton("download_tg_rates", "Download Growth Rates")
+            downloadButton(ns("download_tg_rates"), "Download Growth Rates")
           ),
-          
-          uiOutput("tg_auc_tabs"),
           
           tabPanel("Data Summary",
             tab_info(
@@ -463,16 +494,16 @@ tumorGrowthUI <- function() {
               em("Useful for inspecting raw descriptive trends across time and confirming data entry. Statistical comparisons should use the ANOVA, Comparisons, or AUC Summary tabs as appropriate.")
             ),
             shinycssloaders::withSpinner(
-              DTOutput("tg_data_summary_table")
+              DTOutput(ns("tg_data_summary_table"))
             ),
-            downloadButton("download_tg_data_summary", "Download Data Summary")
+            downloadButton(ns("download_tg_data_summary"), "Download Data Summary")
           ),
           
           tabPanel("Plots",
             fluidRow(
               column(3,
                 wellPanel(
-                  selectInput("tg_plot_selector", "Plot Type",
+                  selectInput(ns("tg_plot_selector"), "Plot Type",
                     choices = c(
                       "Tumor Growth Curves"      = "growth_curves",
                       "Growth Rates Plot"        = "growth_rate",
@@ -482,40 +513,40 @@ tumorGrowthUI <- function() {
                     )
                   ),
                   ctrl_section("group-order", "sort", "Groups",
-                    uiOutput("tg_group_order_color_ui")
+                    uiOutput(ns("tg_group_order_color_ui"))
                   ),
                   ctrl_section("elements", "layer-group", "Elements",
-                    conditionalPanel(
+                    conditionalPanel(ns = ns,
                       "['growth_rate','auc'].indexOf(input.tg_plot_selector) >= 0",
-                      selectInput("tg_opt_center_bar", "Center line / bar",
+                      selectInput(ns("tg_opt_center_bar"), "Center line / bar",
                         choices = c("Mean" = "mean", "Median" = "median",
                                     "Geometric Mean" = "geometric_mean",
                                     "None" = "none"),
                         selected = "mean"
                       ),
-                      selectInput("tg_opt_error_bar", "Error bars",
+                      selectInput(ns("tg_opt_error_bar"), "Error bars",
                         choices  = c("None" = "none", "SEM" = "SEM",
                                      "SD" = "SD", "95% CI" = "CI"),
                         selected = "SEM"
                       )
                     ),
-                    conditionalPanel(
+                    conditionalPanel(ns = ns,
                       "input.tg_plot_selector == 'growth_curves'",
-                      checkboxInput("tg_opt_group_line",
+                      checkboxInput(ns("tg_opt_group_line"),
                                     "Show group average line", value = TRUE),
-                      checkboxInput("tg_opt_show_extrap",
-                                    "Show extrapolated curves/points", value = FALSE)
+                      checkboxInput(ns("tg_opt_show_extrap"),
+                                    "Show extrapolated curves/points", value = TRUE)
                     ),
-                    conditionalPanel(
+                    conditionalPanel(ns = ns,
                       "input.tg_plot_selector == 'effect_forest'",
-                      checkboxInput("tg_opt_forest_show_pval",
+                      checkboxInput(ns("tg_opt_forest_show_pval"),
                                     "Show p-value",     value = TRUE),
-                      checkboxInput("tg_opt_forest_show_effect",
+                      checkboxInput(ns("tg_opt_forest_show_effect"),
                                     "Show effect size", value = FALSE),
-                      checkboxInput("tg_opt_forest_show_ci",
+                      checkboxInput(ns("tg_opt_forest_show_ci"),
                                     "Show 95% CI",      value = FALSE)
                     ),
-                    selectInput("tg_opt_legend_pos", "Legend position",
+                    selectInput(ns("tg_opt_legend_pos"), "Legend position",
                       choices = c("None" = "none",
                                   "Top" = "top", "Bottom" = "bottom",
                                   "Left" = "left", "Right" = "right",
@@ -525,87 +556,94 @@ tumorGrowthUI <- function() {
                                   "In plot - bottom right" = "inplot_br"),
                       selected = "right"
                     ),
-                    textInput("tg_plot_title", "Title",
+                    textInput(ns("tg_plot_title"), "Title",
                               placeholder = "Leave blank for default"),
-                    selectInput("tg_plot_title_align", "Title alignment",
+                    selectInput(ns("tg_plot_title_align"), "Title alignment",
                       choices = c("Left" = "left", "Center" = "center", "Right" = "right"),
                       selected = "center"),
-                    textInput("tg_plot_subtitle", "Subtitle",
+                    textInput(ns("tg_plot_subtitle"), "Subtitle",
                               placeholder = "Optional subtitle"),
-                    textInput("tg_plot_xaxis_label", "X-axis label",
+                    textInput(ns("tg_plot_xaxis_label"), "X-axis label",
                               placeholder = "Leave blank for default"),
-                    textInput("tg_plot_yaxis_label", "Y-axis label",
+                    textInput(ns("tg_plot_yaxis_label"), "Y-axis label",
                               placeholder = "Leave blank for default"),
-                    textInput("tg_plot_legend_label", "Legend label",
+                    textInput(ns("tg_plot_legend_label"), "Legend label",
                               placeholder = "Leave blank for default")
                   ),
                   ctrl_section("scaling", "expand", "Scaling",
-                    conditionalPanel(
+                    conditionalPanel(ns = ns,
                       "input.tg_plot_selector == 'growth_curves'",
-                      selectInput("tg_opt_yscale", "Y-axis scale",
+                      selectInput(ns("tg_opt_yscale"), "Y-axis scale",
                         choices = c("Linear" = "linear",
                                     "Log10"  = "log10"),
                         selected = "linear"
                       ),
-                      numericInput("tg_opt_xstart", "X-axis start (Day)",
+                      numericInput(ns("tg_opt_xstart"), "X-axis start (Day)",
                                    value = 0, min = 0, step = 1)
                     ),
-                    sliderInput("tg_opt_text_size", "Text size (pt)",
+                    sliderInput(ns("tg_opt_text_size"), "Text size (pt)",
                                 min = 10, max = 24, value = 16, step = 1),
-                    conditionalPanel(
+                    conditionalPanel(ns = ns,
                       "input.tg_plot_selector == 'growth_curves'",
-                      sliderInput("tg_opt_growth_pt_size", "Point size",
+                      sliderInput(ns("tg_opt_growth_pt_size"), "Point size",
                                   min = 0.5, max = 10, value = 4, step = 0.5)
                     ),
-                    conditionalPanel(
+                    conditionalPanel(ns = ns,
                       "['growth_rate','auc'].indexOf(input.tg_plot_selector) >= 0",
-                      sliderInput("tg_opt_point_size",   "Point size",
+                      sliderInput(ns("tg_opt_point_size"),   "Point size",
                                   0.5, 10, 4, step = 0.5),
-                      sliderInput("tg_opt_jitter_width", "Jitter width",
+                      sliderInput(ns("tg_opt_jitter_width"), "Jitter width",
                                   0, 0.5, 0.1, step = 0.02)
+                    ),
+                    conditionalPanel(ns = ns,
+                      "input.tg_plot_selector == 'effect_forest'",
+                      sliderInput(ns("tg_opt_forest_pt_size"), "Point size",
+                                  min = 1, max = 10, value = 3, step = 0.5),
+                      sliderInput(ns("tg_opt_forest_ann_size"), "Annotation text size",
+                                  min = 8, max = 22, value = 12, step = 1)
                     )
                   ),
                   ctrl_section("export", "arrows-alt", "Plot Size / Export",
                     fluidRow(
-                      column(6, numericInput("tg_plot_width",  "Width (px)",  800, min = 200, max = 5000, step = 50)),
-                      column(6, numericInput("tg_plot_height", "Height (px)", 550, min = 200, max = 5000, step = 50))
+                      column(6, numericInput(ns("tg_plot_width"),  "Width (px)",  800, min = 200, max = 5000, step = 50)),
+                      column(6, numericInput(ns("tg_plot_height"), "Height (px)", 550, min = 200, max = 5000, step = 50))
                     ),
                     fluidRow(
-                      column(6, numericInput("tg_plot_dpi", "DPI", 100, min = 72, max = 300, step = 1)),
-                      column(6, tags$div(style = "margin-top: 25px;", uiOutput("tg_download_plot_btn")))
+                      column(6, numericInput(ns("tg_plot_dpi"), "DPI", 100, min = 72, max = 300, step = 1)),
+                      column(6, tags$div(style = "margin-top: 25px;", uiOutput(ns("tg_download_plot_btn"))))
                     )
                   )
                 )
               ),
               column(9,
-                conditionalPanel("input.tg_plot_selector == 'growth_curves'",
+                conditionalPanel(ns = ns,"input.tg_plot_selector == 'growth_curves'",
                   h4("Tumor Growth Curves"),
                   shinycssloaders::withSpinner(
-                    plotOutput("tg_plot_growth", width = "auto", height = "auto")
+                    plotOutput(ns("tg_plot_growth"), width = "auto", height = "auto")
                   )
                 ),
-                conditionalPanel("input.tg_plot_selector == 'growth_rate'",
+                conditionalPanel(ns = ns,"input.tg_plot_selector == 'growth_rate'",
                   h4("Growth Rates Plot"),
                   shinycssloaders::withSpinner(
-                    plotOutput("tg_plot_rates", width = "auto", height = "auto")
+                    plotOutput(ns("tg_plot_rates"), width = "auto", height = "auto")
                   )
                 ),
-                conditionalPanel("input.tg_plot_selector == 'auc'",
+                conditionalPanel(ns = ns,"input.tg_plot_selector == 'auc'",
                   h4("Area Under the Curve Plot"),
                   shinycssloaders::withSpinner(
-                    plotOutput("tg_plot_auc", width = "auto", height = "auto")
+                    plotOutput(ns("tg_plot_auc"), width = "auto", height = "auto")
                   )
                 ),
-                conditionalPanel("input.tg_plot_selector == 'waterfall'",
+                conditionalPanel(ns = ns,"input.tg_plot_selector == 'waterfall'",
                   h4("Waterfall Plot"),
                   shinycssloaders::withSpinner(
-                    plotOutput("tg_plot_waterfall", width = "auto", height = "auto")
+                    plotOutput(ns("tg_plot_waterfall"), width = "auto", height = "auto")
                   )
                 ),
-                conditionalPanel("input.tg_plot_selector == 'effect_forest'",
+                conditionalPanel(ns = ns,"input.tg_plot_selector == 'effect_forest'",
                   h4("Effect Size Forest Plot"),
                   shinycssloaders::withSpinner(
-                    plotOutput("tg_plot_effect_forest", width = "auto", height = "auto")
+                    plotOutput(ns("tg_plot_effect_forest"), width = "auto", height = "auto")
                   )
                 ),
 
@@ -618,13 +656,13 @@ tumorGrowthUI <- function() {
               column(6,
                 h4("Q-Q Plot of Residuals"),
                 shinycssloaders::withSpinner(
-                  plotOutput("tg_diag_qq", height = "400px")
+                  plotOutput(ns("tg_diag_qq"), height = "400px")
                 )
               ),
               column(6,
                 h4("Residuals vs Fitted"),
                 shinycssloaders::withSpinner(
-                  plotOutput("tg_diag_resid_fitted", height = "400px")
+                  plotOutput(ns("tg_diag_resid_fitted"), height = "400px")
                 )
               )
             )
@@ -811,6 +849,40 @@ citationUI <- function() {
       p("mouseExperiment is released under the ",
         tags$a("MIT License", href = "https://github.com/sciOmics/mouseExperiment/blob/main/LICENSE",
                target = "_blank"), ".")
+    )
+  )
+}
+
+#' Analysis Log UI
+#'
+#' Displays a live panel of analysis log entries emitted during the session.
+#' @param id Shiny module id.
+#' @keywords internal
+analysisLogUI <- function(id) {
+  ns <- NS(id)
+  fluidPage(
+    h2(icon("clipboard-list"), " Analysis Log"),
+    tab_info(
+      "Events logged during your session (data uploads, analysis runs, errors).",
+      " Logs are stored in memory and cleared when the session ends."
+    ),
+
+    fluidRow(
+      column(12,
+        wellPanel(
+          fluidRow(
+            column(3, actionButton(ns("refresh_log"), "Refresh",
+                                   icon = icon("arrows-rotate"),
+                                   class = "btn-sm btn-default")),
+            column(3, actionButton(ns("clear_log"), "Clear log",
+                                   icon = icon("trash"),
+                                   class = "btn-sm btn-danger")),
+            column(6, downloadButton(ns("download_log"), "Download log",
+                                     class = "btn-sm btn-info"))
+          )
+        ),
+        verbatimTextOutput(ns("log_output"))
+      )
     )
   )
 }

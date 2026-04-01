@@ -6,7 +6,13 @@
 .onLoad <- function(libname, pkgname) {
   # Load shiny and other required packages silently
   requireNamespace("shiny", quietly = TRUE)
-  requireNamespace("mouseExperiment", quietly = TRUE)
+  if (!requireNamespace("mouseExperiment", quietly = TRUE)) {
+    warning("mouseExperiment package not found. ",
+            "Core analysis functions will not be available. ",
+            "Install with: remotes::install_local('path/to/mouseExperiment')",
+            call. = FALSE)
+  }
+  requireNamespace("logger", quietly = TRUE)
 }
 
 #' Null-coalescing operator

@@ -3,6 +3,149 @@
 #' Utility functions for data validation, formatting, and processing
 #'
 
+# ---- Alert helpers (consolidated validate/need pattern) ----------------------
+
+#' Create a Bootstrap alert div for module status messages
+#'
+#' @param msg  Character message to display.
+#' @param type One of "danger", "warning", "info", "success".
+#' @return A \code{shiny::div} tag.
+#' @keywords internal
+status_alert <- function(msg, type = "danger") {
+  icon_name <- switch(type,
+    danger  = "exclamation-circle",
+    warning = "exclamation-triangle",
+    info    = "spinner",
+    success = "check",
+    "info-circle"
+  )
+  icon_cls <- if (type == "info") paste(icon_name, "fa-spin") else icon_name
+  shiny::div(class = paste0("alert alert-", type),
+             shiny::icon(icon_cls), msg)
+}
+
+# ---- Date Preprocessing (consolidated — Issue 2.3) ---------------------------
+
+#' Detect the date format of a column and normalise data for calculate_dates()
+#'
+#' Supports four patterns:
+#'   MM/DD/YYYY, YYYY-MM-DD, DD-Mon, and "Month Day" (e.g. "January 5").
+#' For the "Month Day" pattern the year is inferred from \code{reference_date}
+#' and both the data column and \code{reference_date} are reformatted so that
+#' \code{mouseExperiment::calculate_dates()} can parse them.
+#'
+#' @param data          Data frame containing the date column.
+#' @param date_column   Name of the date column.
+#' @param reference_date Character string of the reference / start date.
+#' @return A list with components \code{data} (possibly modified data frame),
+#'   \code{date_format} (format string or \code{NULL}), and
+#'   \code{start_date} (possibly modified reference date string).
+#' @keywords internal
+detect_date_format <- function(data, date_column, reference_date) {
+  first_val <- as.character(data[1, date_column])
+  start_date <- reference_date
+
+  if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_val)) {
+    fmt <- "%m/%d/%Y"
+  } else if (grepl("^\\d{4}-\\d{1,2}-\\d{1,2}$", first_val)) {
+    fmt <- "%Y-%m-%d"
+  } else if (grepl("^\\d{1,2}-[A-Za-z]{3}$", first_val)) {
+    fmt <- "%d-%b"
+  } else if (grepl("^[A-Za-z]+\\s+\\d{1,2}$", first_val)) {
+    ref_parsed <- tryCatch(
+      as.Date(start_date,
+              tryFormats = c("%Y-%m-%d", "%m/%d/%Y", "%d-%b-%Y",
+                             "%B %d %Y", "%B %d, %Y")),
+      error = function(e) {
+        log_warn(sprintf("detect_date_format: could not parse reference_date=%s, falling back to Sys.Date() | error=%s",
+                        start_date, conditionMessage(e)))
+        Sys.Date()
+      }
+    )
+    if (is.na(ref_parsed)) ref_parsed <- Sys.Date()
+    ref_year <- as.integer(format(ref_parsed, "%Y"))
+    data[[date_column]] <- paste(data[[date_column]], ref_year)
+    start_date <- format(ref_parsed, "%B %d %Y")
+    fmt <- "%B %d %Y"
+  } else {
+    fmt <- NULL
+  }
+
+  list(data = data, date_format = fmt, start_date = start_date)
+}
+
+# ---- End Date Preprocessing -------------------------------------------------
+
+#' Ensure data has been preprocessed (dates and volumes computed)
+#'
+#' If the canonical preprocessing from the Tumor Growth module has already run
+#' (i.e. \code{rv$processed_data} is non-NULL), returns it along with the
+#' stored column names. Otherwise performs inline preprocessing using
+#' \code{rv$settings} and stores the result in \code{rv} for future callers.
+#'
+#' @param rv The shared reactiveValues list.
+#' @return A list with \code{data}, \code{time_col}, \code{vol_col}, \code{tx_col}.
+#' @keywords internal
+ensure_preprocessed <- function(rv) {
+  # Reuse canonical result if available
+
+  if (!is.null(rv$processed_data)) {
+    return(list(
+      data     = rv$processed_data,
+      time_col = rv$time_col,
+      vol_col  = rv$vol_col,
+      tx_col   = rv$tx_col
+    ))
+  }
+
+  # Otherwise preprocess from scratch
+  data <- rv$uploaded_data
+  settings <- rv$settings
+
+  # Date → Day
+  if (!is.null(settings$time_method) && settings$time_method == "from_date") {
+    date_info <- detect_date_format(data, settings$col_date_for_day,
+                                    settings$reference_date)
+    data <- mouseExperiment::calculate_dates(
+      date_info$data,
+      start_date  = date_info$start_date,
+      date_column = settings$col_date_for_day,
+      date_format = date_info$date_format
+    )
+    time_col <- "Day"
+  } else {
+    time_col <- settings$col_day
+  }
+
+  # Volume calculation
+  if (!is.null(settings$volume_method) && settings$volume_method == "calculate") {
+    len_col <- settings$col_length %||% "Length"
+    wid_col <- settings$col_width  %||% "Width"
+    vol_formula <- settings$volume_formula %||% "modified_ellipsoid"
+    if (has_col(data, len_col) && has_col(data, wid_col)) {
+      data <- mouseExperiment::calculate_volume(
+        data,
+        length_column = len_col,
+        width_column  = wid_col,
+        formula       = vol_formula
+      )
+    }
+    vol_col <- "Volume"
+  } else {
+    vol_col <- settings$col_volume %||% "Volume"
+  }
+
+  tx_col <- settings$col_treatment
+
+  # Cache for future callers
+  rv$processed_data <- data
+  rv$time_col       <- time_col
+  rv$vol_col        <- vol_col
+  rv$tx_col         <- tx_col
+
+  list(data = data, time_col = time_col, vol_col = vol_col, tx_col = tx_col)
+}
+
 #' Pick the best default reference group
 #'
 #' Returns the first group whose name matches common control-group terms
@@ -151,14 +294,84 @@ format_number <- function(x, digits = 3) {
 #' Safely execute analysis function with error handling
 #'
 #' @param expr Expression to execute
+#' @param module Optional module name for structured logging.
 #'
 #' @return Result or error message
 #' @keywords internal
-safe_analysis <- function(expr) {
+safe_analysis <- function(expr, module = "unknown") {
+  t0 <- proc.time()[["elapsed"]]
+  tryCatch(
+    {
+      result <- expr
+      elapsed <- proc.time()[["elapsed"]] - t0
+      log_info(sprintf("analysis_complete | module=%s | elapsed_s=%.2f", module, round(elapsed, 2)))
+      result
+    },
+    error = function(e) {
+      elapsed <- proc.time()[["elapsed"]] - t0
+      log_error(sprintf("analysis_failed | module=%s | elapsed_s=%.2f | error=%s",
+                        module, round(elapsed, 2), conditionMessage(e)))
+      list(error = TRUE, message = conditionMessage(e))
+    }
+  )
+}
+
+# ---------------------------------------------------------------------------
+# Validation helpers (3.4 / 3.5)
+# ---------------------------------------------------------------------------
+
+#' Check whether a column exists in a data frame
+#'
+#' Convenience guard used throughout dashboards before accessing columns
+#' by name. Returns \code{FALSE} when \code{col} is NULL, empty string,
+#' or not present in \code{colnames(data)}.
+#'
+#' @param data A data frame (or anything with \code{colnames}).
+#' @param col  Column name (character scalar).
+#' @return Logical scalar.
+#' @keywords internal
+has_col <- function(data, col) {
+  !is.null(col) && nzchar(col) && col %in% colnames(data)
+}
+
+#' Validate that required columns exist in a data frame
+#'
+#' Returns a character vector of missing column names (empty if all present).
+#' Designed for use with \code{validate(need(length(missing) == 0, ...))}.
+#'
+#' @param data A data frame.
+#' @param cols Named list or character vector of column names.
+#'   Names (if any) are used in the error message.
+#' @return Character vector of missing column names.
+#' @keywords internal
+check_required_cols <- function(data, cols) {
+  cn <- colnames(data)
+  missing <- vapply(cols, function(col) {
+    is.null(col) || !nzchar(col) || !(col %in% cn)
+  }, logical(1))
+  cols[missing]
+}
+
+#' Safely generate a plot, returning an error placeholder on failure
+#'
+#' Wraps a plot expression in tryCatch. On success returns the plot object.
+#' On failure logs via structured logger and returns a simple ggplot with the
+#' error text, so users see a message instead of a blank panel.
+#'
+#' @param expr    Expression that produces a ggplot / base plot grob.
+#' @param label   Short label for the plot (used in the error message).
+#' @return A plot object.
+#' @keywords internal
+safe_plot <- function(expr, label = "Plot") {
   tryCatch(
     expr,
     error = function(e) {
-      list(error = TRUE, message = conditionMessage(e))
+      msg <- paste0(label, " generation failed: ", conditionMessage(e))
+      log_caught_error("plot", label, e)
+      ggplot2::ggplot() +
+        ggplot2::annotate("text", x = 0.5, y = 0.5, label = msg,
+                          size = 5, hjust = 0.5) +
+        ggplot2::theme_void()
     }
   )
 }
@@ -293,7 +506,8 @@ format_df_for_display <- function(df, digits = 4) {
         df[[col]] <- round(df[[col]], digits)
       }
     }, error = function(e) {
-      # Leave the column as-is if formatting fails
+      # Log and leave column as-is if formatting fails
+      log_caught_error("format", paste0("format_df_for_display col '", col, "'"), e)
     })
   }
   df
@@ -337,8 +551,46 @@ build_color_vector <- function(input, prefix, groups) {
     val <- input[[paste0(prefix, "_", make.names(g))]]
     if (is.null(val) || !nzchar(val)) NA_character_ else val
   }, character(1L))
-  colors <- colors[!is.na(colors)]
-  if (length(colors) == 0L) NULL else colors
+  # Return NULL unless ALL groups have values — partial coverage causes
+  # ggplot2 scale_colour_manual to map missing groups as grey/invisible.
+  if (any(is.na(colors))) return(NULL)
+  colors
+}
+
+#' Remap colour vector names from dose-composite to treatment-group names
+#'
+#' When groups are stored as \code{"Treatment - Dose: X"}, colour names
+#' include the \code{" - Dose: "} separator.  Plot data (growth_rates, AUC) uses
+#' the \code{TreatmentGroup} column which pastes treatment and dose with a
+#' single space (e.g. \code{"Control 0"}).  This function converts
+#' \code{" - Dose: "} to \code{" "} and deduplicates (keeping first).
+#'
+#' @param colors Named character vector (or NULL).
+#' @return Named character vector with treatment-group names, or NULL.
+#' @keywords internal
+remap_colors_to_treatment <- function(colors) {
+  if (is.null(colors)) return(NULL)
+  nms <- gsub(" - Dose: ", " ", names(colors))
+  dups <- duplicated(nms)
+  out <- colors[!dups]
+  names(out) <- nms[!dups]
+  out
+}
+
+#' Remap shape vector names from dose-composite to treatment-group names
+#'
+#' Same logic as \code{remap_colors_to_treatment} but for the integer shape vector.
+#'
+#' @param shapes Named integer vector (or NULL).
+#' @return Named integer vector with treatment-level names, or NULL.
+#' @keywords internal
+remap_shapes_to_treatment <- function(shapes) {
+  if (is.null(shapes)) return(NULL)
+  nms <- gsub(" - Dose: ", " ", names(shapes))
+  dups <- duplicated(nms)
+  out <- shapes[!dups]
+  names(out) <- nms[!dups]
+  out
 }
 
 #' Build a named integer vector of per-group point shapes from Shiny inputs
@@ -357,8 +609,10 @@ build_shape_vector <- function(input, prefix, groups) {
     val <- input[[paste0(prefix, "_", make.names(g))]]
     if (is.null(val) || !nzchar(val)) NA_integer_ else as.integer(val)
   }, integer(1L))
-  shapes <- shapes[!is.na(shapes)]
-  if (length(shapes) == 0L) NULL else shapes
+  # Return NULL unless ALL groups have values — partial coverage causes
+  # ggplot2 scale_shape_manual to map missing groups as NA shape (invisible).
+  if (any(is.na(shapes))) return(NULL)
+  shapes
 }
 
 #' Generate n evenly-spaced ggplot2-style default colours for n groups
@@ -369,6 +623,62 @@ build_shape_vector <- function(input, prefix, groups) {
 default_group_colors <- function(n) {
   if (n <= 0L) return(character(0L))
   scales::hue_pal()(n)
+}
+
+#' Named palette presets (colorblind-friendly options)
+#'
+#' Returns a named character vector of hex colours for the requested palette.
+#' Falls back to the ggplot2 default hue palette when \code{name} is
+#' \code{"default"} or unrecognised.
+#'
+#' @param name Character palette name: \code{"default"}, \code{"viridis"},
+#'   \code{"okabe_ito"}, or \code{"set2"}.
+#' @param n    Number of colours required.
+#' @return Character vector of hex colour strings of length \code{n}.
+#' @keywords internal
+palette_colors <- function(name, n) {
+  if (n <= 0L) return(character(0L))
+  switch(name,
+    viridis  = substring(scales::viridis_pal(option = "D")(n), 1L, 7L),
+    okabe_ito = {
+      oi <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442",
+              "#0072B2", "#D55E00", "#CC79A7", "#999999")
+      rep_len(oi, n)
+    },
+    set2 = {
+      s2 <- c("#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3",
+              "#A6D854", "#FFD92F", "#E5C494", "#B3B3B3")
+      rep_len(s2, n)
+    },
+    default_group_colors(n)
+  )
+}
+
+#' Set up an observer that applies palette presets to group colour pickers
+#'
+#' Call this once inside a module server.
+#' When the user selects a non-custom preset, every per-group \code{colourInput}
+#' is updated to the preset colour.  Selecting \code{"custom"} is a no-op so
+#' the user can freely pick colours after choosing a starting palette.
+#'
+#' @param input   Shiny \code{input} object (module-scoped).
+#' @param session Shiny \code{session} object (module-scoped).
+#' @param prefix  Same \code{prefix} passed to \code{group_order_and_color_ui}.
+#' @param groups_rv A reactive expression returning the current group names.
+#' @keywords internal
+observe_palette_preset <- function(input, session, prefix, groups_rv) {
+  pal_id <- paste0(prefix, "_palette")
+  observeEvent(input[[pal_id]], {
+    pal_name <- input[[pal_id]]
+    if (is.null(pal_name) || pal_name == "custom") return()
+    groups <- groups_rv()
+    if (is.null(groups) || length(groups) == 0L) return()
+    cols <- palette_colors(pal_name, length(groups))
+    for (i in seq_along(groups)) {
+      color_id <- paste0(prefix, "_color_", make.names(groups[i]))
+      colourpicker::updateColourInput(session, color_id, value = cols[i])
+    }
+  }, ignoreInit = TRUE)
 }
 
 #' Render colourInput widgets for a set of treatment groups
@@ -538,12 +848,13 @@ apply_legend_pos <- function(p, pos) {
 #' @return A \code{tagList} containing HTML structure and colour inputs, or
 #'   \code{NULL} when fewer than 2 groups.
 #' @keywords internal
-group_order_and_color_ui <- function(prefix, groups) {
+group_order_and_color_ui <- function(prefix, groups, ns = NS(NULL)) {
   if (is.null(groups) || length(groups) < 2L) return(NULL)
 
   defaults <- default_group_colors(length(groups))
-  list_id  <- paste0(prefix, "_drag_list")
-  input_id <- paste0(prefix, "_order")
+  list_id  <- ns(paste0(prefix, "_drag_list"))
+  input_id <- ns(paste0(prefix, "_order"))
+  pal_id   <- ns(paste0(prefix, "_palette"))
 
   # Closed pch shapes available for per-group selection.
   # Open shapes (0, 1, 2, ...) are reserved for extrapolated points.
@@ -561,8 +872,8 @@ group_order_and_color_ui <- function(prefix, groups) {
   # no innerText parsing, no custom Shiny input type.
   items <- lapply(seq_along(groups), function(i) {
     g        <- groups[i]
-    color_id <- paste0(prefix, "_color_", make.names(g))
-    shape_id <- paste0(prefix, "_shape_", make.names(g))
+    color_id <- ns(paste0(prefix, "_color_", make.names(g)))
+    shape_id <- ns(paste0(prefix, "_shape_", make.names(g)))
     def_shape <- as.character(default_shapes[((i - 1L) %% length(default_shapes)) + 1L])
     shiny::tags$li(
       `data-value` = g,
@@ -602,24 +913,47 @@ group_order_and_color_ui <- function(prefix, groups) {
     )
   })
 
-  # JS: on sort / load, read data-value from each <li> and push to Shiny as
-  # a plain character vector — no ":type" suffix so no custom handler is needed.
-  capture_js <- htmlwidgets::JS(sprintf(
+  # JS helper: read data-value attributes from the sortable <li> elements
+  # and push the current order to Shiny.  Uses getElementById for reliability
+  # (avoids depending on SortableJS `this.el` inside async callbacks).
+  send_order_js <- htmlwidgets::JS(sprintf(
     "function(evt) {
-       var self = this;
-       if (typeof Shiny !== 'undefined') {
-         Shiny.initializedPromise.then(function() {
-           var order = Array.prototype.slice.call(self.el.children).map(
-             function(li) { return li.getAttribute('data-value'); }
-           );
-           Shiny.setInputValue('%s', order, {priority: 'event'});
-         });
+       var el = document.getElementById('%s');
+       if (el && typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+         var order = Array.prototype.slice.call(el.children).map(
+           function(li) { return li.getAttribute('data-value'); }
+         );
+         Shiny.setInputValue('%s', order, {priority: 'event'});
        }
      }",
-    input_id
+    list_id, input_id
   ))
 
+  # Fire once after the sortable is rendered so the initial order reaches Shiny
+  # (onLoad is NOT a standard SortableJS event and is silently ignored).
+  init_js <- sprintf(
+    "$(function(){
+       var el = document.getElementById('%s');
+       if (el && typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+         var order = Array.prototype.slice.call(el.children).map(
+           function(li) { return li.getAttribute('data-value'); }
+         );
+         Shiny.setInputValue('%s', order, {priority: 'event'});
+       }
+     });",
+    list_id, input_id
+  )
+
   shiny::tagList(
+    shiny::selectInput(
+      pal_id, shiny::tags$span(shiny::icon("eye"), " Color palette"),
+      choices  = c("Default (ggplot2)" = "custom",
+                   "Viridis (colorblind)" = "viridis",
+                   "Okabe-Ito (colorblind)" = "okabe_ito",
+                   "Set2 (ColorBrewer)" = "set2"),
+      selected = "custom",
+      width    = "100%"
+    ),
     shiny::tags$p(
       style = "font-size:11px; color:#6c757d; margin-bottom:6px;",
       shiny::icon("grip-vertical"), " Drag the \u2630 handle to reorder"
@@ -634,10 +968,10 @@ group_order_and_color_ui <- function(prefix, groups) {
       options = sortable::sortable_options(
         handle    = ".drag-handle",
         animation = 150L,
-        onSort    = capture_js,
-        onLoad    = capture_js
+        onSort    = send_order_js
       )
-    )
+    ),
+    shiny::tags$script(shiny::HTML(init_js))
   )
 }
 

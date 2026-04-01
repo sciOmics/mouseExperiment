@@ -13,6 +13,9 @@ if (!requireNamespace("mouseExperiment", quietly = TRUE)) {
 }
 
 # Load required libraries
+# These are declared in DESCRIPTION under Imports. library() is used here because
+# the dashboard is launched via runApp() / shinyAppDir() rather than installed as
+# a normal package, so NAMESPACE import directives are not active at runtime.
 library(shiny)
 library(shinycssloaders)
 library(shinyFeedback)
@@ -25,6 +28,8 @@ library(mouseExperiment)
 
 # Source helper functions
 source("R/helpers.R")
+source("R/logging.R")
+source("R/log_session_modules.R")
 
 # Application constants
 APP_VERSION <- "0.1.0 (Development)"
@@ -57,5 +62,4 @@ SAMPLE_DATASETS <- list(
 # Numeric precision for display
 DECIMAL_PLACES <- 3
 
-# Enable shinyjs
-shinyjs::useShinyjs()
+# shinyjs is enabled via useShinyjs() in the app UI (app.R)
