@@ -63,6 +63,12 @@
 #' }
 calculate_volume <- function(df, length_column = "Length", width_column = "Width", 
                             height_column = NULL, formula = "ellipsoid", in_place = FALSE) {
+  # Deprecation warning for in_place parameter
+  if (in_place) {
+    warning("The 'in_place' parameter is deprecated and will be removed in a future version. ",
+            "Use 'df <- calculate_volume(df, ...)' instead.", call. = FALSE)
+  }
+  
   # Input validation
   if(!length_column %in% colnames(df)) {
     stop(paste("Column", length_column, "not found in data frame"))

@@ -261,8 +261,10 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
         future_days <- all_days[all_days > death_day]
         
         if (length(future_days) > 0) {
-          # Create template row for extrapolation (using the death row as template)
-          for (future_day in future_days) {
+          # Collect extrapolated rows in a list, then bind once
+          extrap_rows <- vector("list", length(future_days))
+          for (i in seq_along(future_days)) {
+            future_day <- future_days[i]
             # Copy the row from death day as template
             new_row <- death_row
             
@@ -277,9 +279,10 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
             new_row[[volume_column]] <- extrapolated_volume
             new_row$Extrapolated <- TRUE
             
-            # Add to the plot dataframe
-            plot_with_extrap <- rbind(plot_with_extrap, new_row)
+            extrap_rows[[i]] <- new_row
           }
+          # Bind all extrapolated rows at once
+          plot_with_extrap <- rbind(plot_with_extrap, do.call(rbind, extrap_rows))
         }
       }
     }
@@ -294,7 +297,7 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
   plot <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data[[day_column]], y = .data[[volume_column]], group = Mouse_ID)) +
     ggplot2::geom_line(
       data = ~ subset(., !Extrapolated),
-      ggplot2::aes(color = Group), alpha = 0.5, size = 0.5
+      ggplot2::aes(color = Group), alpha = 0.5, linewidth = 0.5
     ) +
     ggplot2::geom_point(
       data = ~ subset(., !Extrapolated),
@@ -327,7 +330,7 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
           ggplot2::aes(x = .data[[day_column]], y = .data[[volume_column]], color = Group, group = Mouse_ID),
           linetype = "dashed",
           alpha = 0.5,
-          size = 0.5
+          linewidth = 0.5
         )
     }
   }
@@ -337,7 +340,7 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
     plot <- plot + ggplot2::stat_summary(
       ggplot2::aes(group = Group, color = Group),
       fun = function(x) { x <- x[is.finite(x)]; if (length(x) == 0L) NA_real_ else mean(x) },
-      na.rm = TRUE, geom = "line", size = 1.4
+      na.rm = TRUE, geom = "line", linewidth = 1.4
     )
   }
   

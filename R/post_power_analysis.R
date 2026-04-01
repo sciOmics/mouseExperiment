@@ -838,7 +838,8 @@ post_power_analysis <- function(data,
        }
      }
    } else if (method == "simulation") {
-     message("Performing simulation-based power analysis...")
+     message("Performing Monte Carlo simulation-based power analysis (",
+             n_simulations, " simulations)...")
      
      # Get treatment groups
      if (exists("treatment_groups")) {
@@ -849,64 +850,63 @@ post_power_analysis <- function(data,
        stop("Cannot determine treatment groups for simulation")
      }
      
-     # Generate all pairwise combinations instead of just using first group as reference
+     # Estimate pooled SD from data if available
+     pooled_sd <- tryCatch({
+       if (!is.null(raw_data) && !is.null(volume_column) && volume_column %in% colnames(raw_data)) {
+         sds <- tapply(raw_data[[volume_column]], raw_data[[treatment_column]], stats::sd, na.rm = TRUE)
+         sqrt(mean(sds^2, na.rm = TRUE))
+       } else {
+         1
+       }
+     }, error = function(e) 1)
+     
+     # Generate all pairwise combinations
      treatment_pairs <- utils::combn(treatment_groups, 2, simplify = FALSE)
      
-     # Generate power estimates for each treatment pair, effect size, and alpha
+     # Collect results in list to avoid rbind-in-loop
+     sim_results <- vector("list", length(treatment_pairs) * length(effect_sizes) * length(alpha))
+     sim_idx <- 0L
+     
      for (pair in treatment_pairs) {
        group1 <- pair[1]
        group2 <- pair[2]
        
        for (es in effect_sizes) {
          for (a in alpha) {
-           # In a real implementation, this would run actual simulations
-           # Here we approximate with a parametric approach for illustration
-           
            # Get sample sizes
            if (!is.null(sample_sizes_by_group)) {
              group1_n <- sample_sizes_by_group[group1]
              group2_n <- sample_sizes_by_group[group2]
            } else {
-             # Use default if we can't determine
              group1_n <- 8
              group2_n <- 8
            }
            
-           # Calculate approximate power (in real implementation, this would
-           # be based on simulation results)
-           power_value <- stats::power.t.test(
-             n = min(group1_n, group2_n),
-             delta = es,
-             sd = 1,
-             sig.level = a,
-             type = "two.sample"
-           )$power
+           # Monte Carlo simulation: generate data & run t-test n_simulations times
+           significant_count <- 0L
+           for (sim_i in seq_len(n_simulations)) {
+             sim_group1 <- stats::rnorm(group1_n, mean = 0, sd = pooled_sd)
+             sim_group2 <- stats::rnorm(group2_n, mean = es * pooled_sd, sd = pooled_sd)
+             p_val <- stats::t.test(sim_group1, sim_group2)$p.value
+             if (p_val < a) significant_count <- significant_count + 1L
+           }
+           power_value <- significant_count / n_simulations
            
-           # Add to power results (both directions)
-           power_results <- rbind(
-             power_results,
-             # group2 vs group1
-             data.frame(
-               Treatment = group2,
-               Reference = group1,
-               Effect_Size = es,
-               Alpha = a,
-               Power = power_value,
-               stringsAsFactors = FALSE
-             ),
-             # group1 vs group2
-             data.frame(
-               Treatment = group1,
-               Reference = group2,
-               Effect_Size = es,
-               Alpha = a,
-               Power = power_value,
-               stringsAsFactors = FALSE
-             )
+           # Store both directions
+           sim_idx <- sim_idx + 1L
+           sim_results[[sim_idx]] <- data.frame(
+             Treatment = c(group2, group1),
+             Reference = c(group1, group2),
+             Effect_Size = es,
+             Alpha = a,
+             Power = power_value,
+             stringsAsFactors = FALSE
            )
          }
        }
      }
+     
+     power_results <- rbind(power_results, do.call(rbind, sim_results[seq_len(sim_idx)]))
    }
    
    # Store power analysis results
@@ -1076,7 +1076,7 @@ calculate_auc_values <- function(data, time_column, volume_column, treatment_col
     
     # Create composite subject identifiers that include cage information if available
     if (use_cage_info) {
-      composite_ids <- paste(data[[id_column]], data[[treatment_column]], data[[cage_column]], sep = "_")
+      composite_ids <- paste(data[[id_column]], data[[treatment_column]], data[[cage_column]], sep = "|||")
       data$composite_id <- composite_ids
       # Get unique composite IDs
       unique_ids <- unique(composite_ids)
@@ -1086,12 +1086,14 @@ calculate_auc_values <- function(data, time_column, volume_column, treatment_col
     }
     
     # Calculate AUC for each unique subject identifier
+    auc_rows <- vector("list", length(unique_ids))
+    auc_row_idx <- 0L
     for (unique_id in unique_ids) {
       # Get data for this unique subject
       if (use_cage_info) {
         subject_data <- data[data$composite_id == unique_id, ]
         # Extract original ID from composite ID for reporting
-        id_parts <- strsplit(unique_id, "_")[[1]]
+        id_parts <- strsplit(unique_id, "|||", fixed = TRUE)[[1]]
         original_id <- id_parts[1]
         treatment <- id_parts[2]
         cage <- id_parts[3]
@@ -1129,22 +1131,22 @@ calculate_auc_values <- function(data, time_column, volume_column, treatment_col
       times <- subject_data[[time_column]]
       volumes <- subject_data[[volume_column]]
       
-      # Calculate AUC using trapezoidal rule
-      auc_value <- 0
-      for (i in 2:length(times)) {
-        # Area of trapezoid = (v1 + v2) * (t2 - t1) / 2
-        auc_value <- auc_value + (volumes[i-1] + volumes[i]) * (times[i] - times[i-1]) / 2
-      }
+      # Calculate AUC using consolidated trapezoidal utility
+      auc_value <- calculate_auc(times, volumes)
       
       # Add to AUC individual data
-      auc_individual <- rbind(auc_individual, data.frame(
+      auc_row_idx <- auc_row_idx + 1L
+      auc_rows[[auc_row_idx]] <- data.frame(
         ID = original_id,
         Treatment = treatment,
         Cage = cage,
         AUC = auc_value,
         stringsAsFactors = FALSE
-      ))
+      )
     }
+    
+    # Bind all rows at once
+    auc_individual <- do.call(rbind, auc_rows[seq_len(auc_row_idx)])
     
     # Set column names correctly
     names(auc_individual)[names(auc_individual) == "Treatment"] <- treatment_column

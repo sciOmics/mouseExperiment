@@ -64,10 +64,17 @@ plot_caterpillar <- function(model, title = "Fixed Effects with 95% Confidence I
     std_errors <- sqrt(diag(stats::vcov(model)))
   }
   
-  # Calculate confidence intervals
-  z_value <- stats::qnorm(1 - (1 - ci_level) / 2)
-  ci_lower <- estimates - z_value * std_errors
-  ci_upper <- estimates + z_value * std_errors
+  # Calculate confidence intervals using t-distribution
+  # Extract degrees of freedom based on model type
+  if (inherits(model, "lm") && !inherits(model, c("lmerMod", "glmerMod"))) {
+    df_resid <- stats::df.residual(model)
+  } else {
+    # For mixed models, approximate df as n - p
+    df_resid <- stats::nobs(model) - length(estimates)
+  }
+  t_value <- stats::qt(1 - (1 - ci_level) / 2, df = df_resid)
+  ci_lower <- estimates - t_value * std_errors
+  ci_upper <- estimates + t_value * std_errors
   
   # Remove intercept if requested
   if (!show_intercept) {
@@ -85,7 +92,7 @@ plot_caterpillar <- function(model, title = "Fixed Effects with 95% Confidence I
   
   # Main effects (no interaction terms)
   main_effect_pattern <- "^[^:]*$"
-  effect_type[grep(main_effect_pattern, coef_names) & !grepl("^\\(Intercept\\)$", coef_names)] <- "Main Effect"
+  effect_type[grepl(main_effect_pattern, coef_names) & !grepl("^\\(Intercept\\)$", coef_names)] <- "Main Effect"
   
   # Interaction effects
   interaction_pattern <- ":"

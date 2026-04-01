@@ -1,6 +1,7 @@
 #' Test for Dose-Response Relationship in Tumor Growth Data
 #' 
 #' @importFrom dplyr %>%
+#' @importFrom rlang .data
 #'
 #' @description
 #' Performs statistical tests to determine if there is a significant dose-response 
@@ -25,8 +26,8 @@
 #'   \item{summary_table}{Data frame summarizing results for each dose level}
 #'
 #' @import drc ggplot2 dplyr stats
-#' @importFrom rlang sym !!
-#' @importFrom clinfun jonckheere.test
+#' @importFrom stats coef
+#' @importFrom stats lm
 #' @export
 #'
 #' @examples
@@ -126,8 +127,8 @@ prepare_dose_data <- function(df, dose_column = "Dose", treatment_column = "Trea
   } else {
     # Get last measurement for each mouse
     analysis_data <- analysis_data %>%
-      dplyr::group_by_at(vars(treatment_column, dose_column, id_column)) %>%
-      dplyr::filter(get(day_column) == max(get(day_column))) %>%
+      dplyr::group_by(.data[[treatment_column]], .data[[dose_column]], .data[[id_column]]) %>%
+      dplyr::filter(.data[[day_column]] == max(.data[[day_column]])) %>%
       dplyr::ungroup()
   }
   
@@ -144,20 +145,20 @@ prepare_dose_data <- function(df, dose_column = "Dose", treatment_column = "Trea
 #' @export
 generate_summary_statistics <- function(analysis_data, dose_column = "Dose", volume_column = "Volume") {
   summary_stats <- analysis_data %>%
-    dplyr::group_by_at(vars(dose_column)) %>%
+    dplyr::group_by(.data[[dose_column]]) %>%
     dplyr::summarize(
-      mean_volume = mean(get(volume_column), na.rm = TRUE),
-      median_volume = median(get(volume_column), na.rm = TRUE),
-      sd_volume = sd(get(volume_column), na.rm = TRUE),
-      n = n(),
+      mean_volume = mean(.data[[volume_column]], na.rm = TRUE),
+      median_volume = median(.data[[volume_column]], na.rm = TRUE),
+      sd_volume = sd(.data[[volume_column]], na.rm = TRUE),
+      n = dplyr::n(),
       sem_volume = sd_volume / sqrt(n),
       ci95_lower = mean_volume - qt(0.975, n-1) * sem_volume,
       ci95_upper = mean_volume + qt(0.975, n-1) * sem_volume,
       .groups = "drop"
     )
   
-  print("Summary statistics by dose level:")
-  print(summary_stats)
+  message("Summary statistics by dose level:")
+  message(paste(utils::capture.output(print(summary_stats)), collapse = "\n"))
   
   return(summary_stats)
 }
@@ -176,7 +177,7 @@ create_dose_plots <- function(analysis_data, summary_stats, dose_column = "Dose"
   
   # Scatter plot with regression line
   plots$scatter <- ggplot2::ggplot(analysis_data, 
-                                 ggplot2::aes_string(x = dose_column, y = volume_column)) +
+                                 ggplot2::aes(x = .data[[dose_column]], y = .data[[volume_column]])) +
     ggplot2::geom_point(alpha = 0.7) +
     ggplot2::geom_smooth(method = "lm", formula = y ~ x, color = "blue") +
     ggplot2::labs(title = "Linear Dose-Response Relationship",
@@ -185,8 +186,8 @@ create_dose_plots <- function(analysis_data, summary_stats, dose_column = "Dose"
   
   # Box plot by dose level
   plots$boxplot <- ggplot2::ggplot(analysis_data, 
-                                 ggplot2::aes_string(x = paste0("factor(", dose_column, ")"), 
-                                                    y = volume_column)) +
+                                 ggplot2::aes(x = factor(.data[[dose_column]]),
+                                              y = .data[[volume_column]])) +
     ggplot2::geom_boxplot(outlier.shape = NA) +
     ggplot2::geom_jitter(width = 0.2, alpha = 0.6) +
     ggplot2::labs(title = "Tumor Volume by Dose Level",
@@ -195,7 +196,7 @@ create_dose_plots <- function(analysis_data, summary_stats, dose_column = "Dose"
   
   # Bar plot with error bars
   plots$barplot <- ggplot2::ggplot(summary_stats, 
-                                 ggplot2::aes_string(x = dose_column, y = "mean_volume")) +
+                                 ggplot2::aes(x = .data[[dose_column]], y = .data[["mean_volume"]])) +
     ggplot2::geom_bar(stat = "identity", fill = "steelblue", alpha = 0.7) +
     ggplot2::geom_errorbar(ggplot2::aes(ymin = ci95_lower, ymax = ci95_upper), width = 0.2) +
     ggplot2::labs(title = "Mean Tumor Volume by Dose Level (with 95% CI)",
@@ -303,14 +304,14 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose", volume_col
                                        drc_data[[dose_column]])
       }
       
-      # Fit models
+      # Fit models — decreasing (LL.4) vs increasing (LL.5, 5-param log-logistic)
       dr_model_decr <- drc::drm(as.formula(paste(volume_column, "~", dose_column)), 
                               data = drc_data, 
                               fct = drc::LL.4(names = c("Slope", "Lower Limit", "Upper Limit", "EC50")))
       
       dr_model_incr <- drc::drm(as.formula(paste(volume_column, "~", dose_column)), 
                               data = drc_data, 
-                              fct = drc::LL.4(names = c("Slope", "Lower Limit", "Upper Limit", "EC50")))
+                              fct = drc::LL.5(names = c("Slope", "Lower Limit", "Upper Limit", "EC50", "Asymmetry")))
       
       # Compare models
       model_aic_decr <- AIC(dr_model_decr)
@@ -378,13 +379,14 @@ analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_
   if (length(unique(df[[day_column]])) > 1) {
     # Calculate growth rate for each mouse
     growth_rates <- df %>%
-      dplyr::group_by_at(vars(dose_column, id_column)) %>%
-      dplyr::mutate(log_volume = log1p(get(volume_column))) %>%
-      dplyr::arrange_at(vars(day_column)) %>%
+      dplyr::group_by(.data[[dose_column]], .data[[id_column]]) %>%
+      dplyr::mutate(log_volume = log1p(.data[[volume_column]])) %>%
+      dplyr::arrange(.data[[day_column]]) %>%
       dplyr::summarize(
-        growth_rate = if(n() >= 3) {
+        growth_rate = if(dplyr::n() >= 3) {
           # Linear regression to estimate growth rate
-          model <- stats::lm(log_volume ~ get(day_column))
+          tmp_df <- data.frame(lv = log_volume, dv = .data[[day_column]])
+          model <- stats::lm(lv ~ dv, data = tmp_df)
           coef(model)[2] # Slope coefficient = growth rate
         } else {
           NA
@@ -398,8 +400,8 @@ analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_
       growth_model <- stats::lm(paste("growth_rate ~", dose_column), data = growth_rates)
       growth_summary <- summary(growth_model)
       
-      print("Growth rate vs dose model:")
-      print(growth_summary)
+      message("Growth rate vs dose model:")
+      message(paste(utils::capture.output(print(growth_summary)), collapse = "\n"))
       
       statistics$growth_dose_p_value <- growth_summary$coefficients[2, 4]
       statistics$growth_dose_r_squared <- growth_summary$r.squared

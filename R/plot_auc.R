@@ -211,7 +211,7 @@ plot_auc <- function(auc_data,
       fun.data = error_fun,
       geom = "errorbar",
       width = 0.2,
-      size = 1,
+      linewidth = 1,
       color = "black"
     )
   }
@@ -253,7 +253,7 @@ plot_auc <- function(auc_data,
       ),
       inherit.aes = FALSE,
       color = "black",
-      size = 1
+      linewidth = 1
     )
   }
   

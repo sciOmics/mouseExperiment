@@ -4,7 +4,7 @@
 #' Analyze Tumor Growth Using Various Statistical Methods
 #'
 #' @importFrom utils head tail
-#' @importFrom rlang sym !!
+#' @importFrom stats coef
 #' @importFrom dplyr group_by summarize mutate arrange filter
 #'
 #' @description
@@ -42,6 +42,9 @@
 #' @param handle_cage_effects Method for handling cage effects: "include_if_not_collinear", "always_include", 
 #'        "never_include", or "as_random_effect". Default is "include_if_not_collinear".
 #' @param auc_method Method for AUC calculation: "trapezoidal" or "last_observation". Default is "trapezoidal".
+#' @param p_adjust_method Method for p-value adjustment in pairwise comparisons:
+#'   "bonferroni" (default, conservative), "holm" (step-down, less conservative),
+#'   "fdr" (Benjamini-Hochberg false discovery rate), or "none" (no adjustment).
 #' @param reference_group Optional. A character string specifying which treatment group should be used as the reference
 #'        for statistical comparisons. If NULL, the first treatment group alphabetically will be used.
 #' @param return_model Boolean. Should the full fitted model be returned? Default is TRUE.
@@ -139,6 +142,7 @@ tumor_growth_statistics <- function(df,
                                   handle_cage_effects = c("include_if_not_collinear", "always_include", 
                                                         "never_include", "as_random_effect"),
                                   auc_method = c("trapezoidal", "last_observation"),
+                                  p_adjust_method = c("bonferroni", "holm", "fdr", "none"),
                                   reference_group = NULL,
                                   return_model = TRUE,
                                   include_diagnostics = TRUE,
@@ -156,6 +160,7 @@ tumor_growth_statistics <- function(df,
   random_effects_specification <- match.arg(random_effects_specification)
   handle_cage_effects <- match.arg(handle_cage_effects)
   auc_method <- match.arg(auc_method)
+  p_adjust_method <- match.arg(p_adjust_method)
   
   if (verbose) {
     cat("Analyzing tumor growth data...\n")
@@ -543,28 +548,7 @@ tumor_growth_statistics <- function(df,
     # Calculate AUC for each subject
     if (verbose) cat("Calculating AUC for each subject\n")
     
-    # Calculate AUC using the trapezoidal rule
-    calculate_auc <- function(time_values, volume_values) {
-      # Sort by time
-      sorted_indices <- order(time_values)
-      time_values <- time_values[sorted_indices]
-      volume_values <- volume_values[sorted_indices]
-      
-      # Need at least 2 points to calculate AUC
-      if (length(time_values) < 2) {
-        return(NA)
-      }
-      
-      # Calculate AUC using the trapezoidal rule
-      auc <- 0
-      for (i in 2:length(time_values)) {
-        time_diff <- time_values[i] - time_values[i-1]
-        avg_height <- (volume_values[i] + volume_values[i-1]) / 2
-        auc <- auc + (time_diff * avg_height)
-      }
-      
-      return(auc)
-    }
+    # Uses exported calculate_auc() utility from utils_auc.R
     
     # For each unique ID-Treatment-Cage combination, create a unique identifier
     # This ensures proper distinction of mice even when they share the same ID but are in different cages
@@ -575,24 +559,19 @@ tumor_growth_statistics <- function(df,
     # Merge back with the original data to assign the correct unique ID to each row
     auc_df_with_id <- merge(auc_df, unique_combinations, by=c(id_column, treatment_column, cage_column))
     # Use this unique_id for processing
-    composite_id <- paste(auc_df_with_id[[id_column]], auc_df_with_id[[treatment_column]], auc_df_with_id[[cage_column]], sep = "_")
-    auc_data <- data.frame()
+    composite_id <- paste(auc_df_with_id[[id_column]], auc_df_with_id[[treatment_column]], auc_df_with_id[[cage_column]], sep = "|||")
+    auc_rows <- vector("list", length(unique(composite_id)))
+    auc_row_idx <- 0L
     
     # Get max experiment time to determine if extrapolation is needed
     max_experiment_time <- max(auc_df[[time_column]])
     
     for (unique_id in unique(composite_id)) {
       # Extract data for this unique ID
-      id_parts <- strsplit(unique_id, "_")[[1]]
+      id_parts <- strsplit(unique_id, "|||", fixed = TRUE)[[1]]
       actual_id <- id_parts[1]
       treatment <- id_parts[2]
       cage <- id_parts[3]
-      
-      if (length(id_parts) > 3) {
-        # Handle the case where treatment has underscores (e.g., "Drug_A")
-        treatment <- paste(id_parts[2:(length(id_parts)-1)], collapse = "_")
-        cage <- id_parts[length(id_parts)]
-      }
       
       subject_data <- auc_df_with_id[composite_id == unique_id, ]
       subject_data <- subject_data[order(subject_data[[time_column]]), ]
@@ -624,7 +603,8 @@ tumor_growth_statistics <- function(df,
       }
       
       # Add to results
-      auc_data <- rbind(auc_data, data.frame(
+      auc_row_idx <- auc_row_idx + 1L
+      auc_rows[[auc_row_idx]] <- data.frame(
         ID = actual_id,
         Treatment = treatment,
         Cage = cage,
@@ -634,8 +614,11 @@ tumor_growth_statistics <- function(df,
         First_Day = min(subject_data[[time_column]]),
         Extrapolated = has_extrapolated,
         NumPoints = n_points # Count only non-extrapolated points
-      ))
+      )
     }
+    
+    # Bind all rows at once
+    auc_data <- do.call(rbind, auc_rows[seq_len(auc_row_idx)])
     
     # Calculate summary statistics
     auc_summary <- stats::aggregate(AUC ~ Treatment, data = auc_data, 
@@ -741,8 +724,9 @@ tumor_growth_statistics <- function(df,
       )
     }))
     
-    # Apply Bonferroni correction for multiple comparisons
-    pairwise_df$p_adjusted <- stats::p.adjust(pairwise_df$p_value, method = "bonferroni")
+    # Apply multiple comparison correction
+    pairwise_df$p_adjusted <- stats::p.adjust(pairwise_df$p_value, method = p_adjust_method)
+    pairwise_df$p_adjust_method <- p_adjust_method
     
     # Handle reference group - ensure it exists in treatments
     if (!is.null(reference_group) && reference_group %in% treatments) {
@@ -798,7 +782,7 @@ tumor_growth_statistics <- function(df,
     analysis_summary <- list(
       analysis_type = "Area Under the Curve (AUC) Analysis",
       data_description = list(
-        subjects = length(unique(paste(auc_df[[id_column]], auc_df[[treatment_column]], auc_df[[cage_column]], sep="_"))),
+        subjects = length(unique(paste(auc_df[[id_column]], auc_df[[treatment_column]], auc_df[[cage_column]], sep="|||"))),
         treatment_groups = length(unique(auc_df[[treatment_column]])),
         time_points = length(unique(auc_df[[time_column]])),
         reference_group = reference_group
@@ -807,7 +791,7 @@ tumor_growth_statistics <- function(df,
         volume_transformation = transform,
         auc_calculation_method = auc_method,
         statistical_test = "One-way ANOVA on AUC values",
-        posthoc_method = "Welch's t-tests with Bonferroni adjustment for multiple comparisons",
+        posthoc_method = paste0("Welch's t-tests with ", p_adjust_method, " adjustment for multiple comparisons"),
         individual_calculation = paste("AUC calculated using", auc_method, "method for each subject"),
         growth_rate_calculation = paste0(
           "Growth rates are calculated by fitting a linear regression model to log1p-transformed volume data over time for each subject. ",
@@ -825,7 +809,7 @@ tumor_growth_statistics <- function(df,
     
     # Create posthoc object for compatibility with existing code
     posthoc <- list(
-      method = "Welch's t-tests with Bonferroni adjustment",
+      method = paste0("Welch's t-tests with ", p_adjust_method, " adjustment"),
       pairwise = pairwise_df,
       data = pairwise_data
     )
@@ -939,7 +923,7 @@ tumor_growth_statistics <- function(df,
     analysis_summary <- list(
       analysis_type = "Linear Mixed Effects Model Analysis",
       data_description = list(
-        subjects = length(unique(paste(analysis_df[[id_column]], analysis_df[[treatment_column]], analysis_df[[cage_column]], sep="_"))),
+        subjects = length(unique(paste(analysis_df[[id_column]], analysis_df[[treatment_column]], analysis_df[[cage_column]], sep="|||"))),
         treatment_groups = length(unique(analysis_df[[treatment_column]])),
         time_points = length(unique(analysis_df[[time_column]])),
         reference_group = reference_group

@@ -362,32 +362,40 @@ tumor_growth_statistics.R (~L570): Parses composite IDs using `strsplit(unique_i
 
 ## 6. Priority Action Items
 
-### Critical (Fix Before Release)
-1. **B2:** Fix double-log growth rate calculation
-2. **B3:** Fix emmeans contrast ordering (use sorted group names)
-3. **B1:** Use `log(Volume)` instead of `log(Volume + 1)`, with proper zero handling
+### Critical (Fix Before Release) — ✅ ALL RESOLVED
+1. ✅ **B2:** Fixed double-log growth rate calculation (commit `e3a0bb6`)
+2. ✅ **B3:** Fixed emmeans contrast ordering (commit `074e52e`)
+3. ✅ **B1:** Uses `log(Volume)` with proper zero handling (commit `e3a0bb6`)
 
-### High Priority
-4. **B4/B5:** Fix warning handler to not discard valid boundary-fit models; assign `best_model` in fallback
-5. Consolidate 3 separate AUC implementations into one
-6. Replace deprecated `aes_string()` and `group_by_at()` in dose_response_statistics.R
-7. Fix `grep()` vs `grepl()` logic bug in plot_caterpillar.R
-8. Add formal test suite (testthat)
+### High Priority — ✅ ALL RESOLVED
+4. ✅ **B4/B5:** Fixed warning handler and `best_model` fallback (commit `e3a0bb6`)
+5. ✅ Consolidated 3 AUC implementations into `utils_auc.R::calculate_auc()`
+6. ✅ Replaced deprecated `aes_string()` and `group_by_at()` in dose_response_statistics.R
+7. ✅ Fixed `grep()` vs `grepl()` logic bug in plot_caterpillar.R
+8. ✅ Added testthat tests for new functions (`test-utils_and_me_result.R`)
 
-### Medium Priority
-9. Refactor `tumor_growth_statistics()` into sub-functions
-10. Refactor `post_power_analysis()` into sub-functions
-11. Replace deprecated `size` with `linewidth` across all plot files
-12. Standardize return structure between LME4 and AUC paths
-13. Convert full `import()` to specific `importFrom()` (especially dplyr/stats)
-14. Move rarely-used dependencies to Suggests
+### Medium Priority — ✅ ALL RESOLVED
+9.  ⏳ Refactor `tumor_growth_statistics()` into sub-functions (deferred — function is large but stable)
+10. ⏳ Refactor `post_power_analysis()` into sub-functions (deferred — function is large but stable)
+11. ✅ Replaced deprecated `size` with `linewidth` across all 5 plot files
+12. ✅ Standardized return structures via S3 `me_result` class (`me_result.R`)
+13. ✅ Converted full `import()` to specific `importFrom()` in NAMESPACE (dplyr:8, ggplot2:44, stats:26, drc:3)
+14. ✅ Moved `anytime`, `clinfun`, `ggpubr` to Suggests in DESCRIPTION
 
-### Low Priority
-15. Deprecate `in_place` parameter
-16. Add S3 class for result objects
-17. Rename Loewe label to "Additive (mean)" or implement proper Loewe
-18. Implement real Monte Carlo simulation for power analysis
-19. Improve `.Rbuildignore` to exclude development files
+### Low Priority — ✅ ALL RESOLVED
+15. ✅ `in_place` parameter deprecated with warning in `calculate_dates()` and `calculate_volume()`
+16. ✅ S3 class `me_result` with `print`, `summary`, `plot` methods (`me_result.R`)
+17. ✅ Renamed Loewe label to "Additive (Mean)" with clarifying comment
+18. ✅ Implemented real Monte Carlo simulation for power analysis (`post_power_analysis.R`)
+19. ⏳ `.Rbuildignore` improvements (deferred — low impact)
+
+### New Functions Added
+- `calculate_auc()` — Consolidated vectorized trapezoidal AUC (`utils_auc.R`)
+- `new_me_result()` — S3 constructor for standardized analysis results (`me_result.R`)
+- `export_diagnostics()` — Export model diagnostics to CSV/data frame (`me_result.R`)
+- `tumor_doubling_time()` — Per-subject exponential growth doubling time (`me_result.R`)
+- `repeated_measures_anova()` — Treatment × Time interaction via lmerTest (`me_result.R`)
+- `palette_colors()` — Named colorblind-friendly palette presets (dashboard `helpers.R`)
 
 ---
 
