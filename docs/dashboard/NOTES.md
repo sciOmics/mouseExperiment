@@ -25,4 +25,4 @@
 ## Future Improvements
 
 - Add CHANGELOG.md (once initial version is published)
-- Versioning
+- Versioning  
