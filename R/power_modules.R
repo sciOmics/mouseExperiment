@@ -152,6 +152,8 @@ powerAnalysisUI <- function(id) {
 power_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
   
+  current_pw_plot <- reactiveVal(NULL)
+
   rv$pw_results <- NULL
   
   observeEvent(input$run_pw_analysis, {
@@ -159,31 +161,26 @@ power_server <- function(id, rv) {
     
     if (length(input$pw_alpha) == 0) {
       output$pw_status_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"), "Please select at least one alpha level.")
+        status_alert("Please select at least one alpha level.", "danger")
       })
       return()
     }
     
     if (length(input$pw_power) == 0) {
       output$pw_status_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"), "Please select at least one power target.")
+        status_alert("Please select at least one power target.", "danger")
       })
       return()
     }
     
     output$pw_status_msg <- renderUI({
-      div(class = "alert alert-info",
-          icon("spinner", class = "fa-spin"), "Running power analysis...")
+      status_alert("Running power analysis...", "info")
     })
     
     # Prefer preprocessed data (Volume + Day already resolved); fall back to raw
     if (is.null(rv$processed_data)) {
       output$pw_status_msg <- renderUI({
-        div(class = "alert alert-warning",
-            icon("exclamation-triangle"),
-            "Please run the Tumor Growth Analysis first so that Volume and Day columns are resolved.")
+        status_alert("Please run the Tumor Growth Analysis first so that Volume and Day columns are resolved.", "warning")
       })
       return()
     }
@@ -236,14 +233,11 @@ power_server <- function(id, rv) {
     
     if (isTRUE(result$error)) {
       output$pw_status_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"),
-            "Error:", result$message)
+        status_alert(paste("Error:", result$message), "danger")
       })
     } else {
       output$pw_status_msg <- renderUI({
-        div(class = "alert alert-success",
-            icon("check"), "Power analysis completed successfully!")
+        status_alert("Power analysis completed successfully!", "success")
       })
     }
   })
@@ -353,8 +347,7 @@ power_server <- function(id, rv) {
       })
       pw_df <- do.call(rbind, rows)
 
-      print(
-        ggplot2::ggplot(pw_df,
+      p <- ggplot2::ggplot(pw_df,
           ggplot2::aes(x = N, y = Power,
                        color = Effect_Size, group = Effect_Size)) +
           ggplot2::geom_line(linewidth = 0.9) +
@@ -377,11 +370,14 @@ power_server <- function(id, rv) {
           ) +
           ggplot2::theme_classic() +
           ggplot2::theme(legend.position = "right")
-      )
+      current_pw_plot(p)
+      p
     } else {
       plots <- rv$pw_results$plots
       if (!is.null(plots$power_curves)) {
-        print(plots$power_curves)
+        p <- plots$power_curves
+        current_pw_plot(p)
+        p
       } else {
         plot(1, 1, type = "n", main = "Power curves not available", xlab = "", ylab = "")
       }
@@ -416,11 +412,10 @@ power_server <- function(id, rv) {
   output$download_pw_plot <- downloadHandler(
     filename = "power_curves.png",
     content = function(file) {
-      if (!is.null(rv$pw_results$plots$power_curves)) {
-        png(file, width = 900, height = 600)
-        print(rv$pw_results$plots$power_curves)
-        dev.off()
-      }
+      p <- current_pw_plot()
+      req(!is.null(p))
+      png(file, width = 900, height = 600)
+      print(p); dev.off()
     }
   )
   })

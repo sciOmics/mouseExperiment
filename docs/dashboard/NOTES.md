@@ -27,4 +27,4 @@
 - Add CHANGELOG.md (once initial version is published)
 - Versioning
 
-Assess the mouseExperimentDashboard CODE_REVIEW.md and mouseExperiment CODE_REVIEW.md and determine what has been addressed and what remains to be addressed. Update the document accordingly and report back.  
+I want to add a tab on all the diffrent sections (e.g. tumor growth analysis) that gives the logging and the ability to save/download. How would you suggest we go about this? Ask questions for clarification.  

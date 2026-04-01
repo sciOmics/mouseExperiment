@@ -53,8 +53,7 @@ data_upload_server <- function(id, rv) {
     data_path <- find_demo(chosen$data)
     if (is.null(data_path)) {
       output$demo_load_msg <- renderUI({
-        div(class="alert alert-danger", icon("exclamation-circle"),
-            "Demo file not found. Please reinstall the package.")
+        status_alert("Demo file not found. Please reinstall the package.", "danger")
       })
       return()
     }
@@ -63,7 +62,7 @@ data_upload_server <- function(id, rv) {
     result <- validate_uploaded_file(data_path, "csv")
     if (!result$valid) {
       output$demo_load_msg <- renderUI({
-        div(class="alert alert-danger", icon("exclamation-circle"), result$message)
+        status_alert(result$message, "danger")
       })
       return()
     }
@@ -78,11 +77,9 @@ data_upload_server <- function(id, rv) {
     updateTextInput(session, "reference_date", value = chosen$ref_date)
 
     output$file_validation_msg <- renderUI({
-      div(class="alert alert-success",
-          icon("check"),
-          paste(chosen$label, "loaded:",
+      status_alert(paste(chosen$label, "loaded:",
                 nrow(result$data), "rows,",
-                ncol(result$data), "cols."))
+                ncol(result$data), "cols."), "success")
     })
 
     output$demo_load_msg <- renderUI({
@@ -113,16 +110,14 @@ data_upload_server <- function(id, rv) {
 
       # Display validation message
       output$file_validation_msg <- renderUI({
-        div(class = "alert alert-success",
-            icon("check"), result$message)
+        status_alert(result$message, "success")
       })
       
     } else {
       rv$data_valid <- FALSE
       rv$uploaded_data <- NULL
       output$file_validation_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"), result$message)
+        status_alert(result$message, "danger")
       })
     }
   })

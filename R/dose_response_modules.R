@@ -189,6 +189,10 @@ doseResponseUI <- function(id) {
 dose_response_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
 
+  current_dr_scatter <- reactiveVal(NULL)
+  current_dr_boxplot <- reactiveVal(NULL)
+  current_dr_barplot <- reactiveVal(NULL)
+
   rv$dr_results <- NULL
 
   # Reactive: is a dose column configured?
@@ -203,19 +207,15 @@ dose_response_server <- function(id, rv) {
   # Status / warning banner
   output$dr_dose_status <- renderUI({
     if (!rv$data_valid) {
-      return(div(class = "alert alert-warning", icon("exclamation-triangle"),
-                 "Please upload and configure data in the Data Upload tab first."))
+      return(status_alert("Please upload and configure data in the Data Upload tab first.", "warning"))
     }
     if (is.null(rv$processed_data)) {
-      return(div(class = "alert alert-warning", icon("exclamation-triangle"),
-                 "Please run Tumor Growth Analysis first to resolve Volume and Day columns."))
+      return(status_alert("Please run Tumor Growth Analysis first to resolve Volume and Day columns.", "warning"))
     }
     if (!dr_dose_available()) {
-      return(div(class = "alert alert-warning", icon("exclamation-triangle"),
-                 "No Dose column selected. Please configure it in the Data Upload tab (Optional Columns \u2192 Dose Level)."))
+      return(status_alert("No Dose column selected. Please configure it in the Data Upload tab (Optional Columns \u2192 Dose Level).", "warning"))
     }
-    div(class = "alert alert-success", icon("check"),
-        paste("Dose column:", rv$dose_col))
+    status_alert(paste("Dose column:", rv$dose_col), "success")
   })
 
   # Populate control group choices from treatment column
@@ -244,8 +244,7 @@ dose_response_server <- function(id, rv) {
     req(rv$processed_data, dr_dose_available())
 
     output$dr_status_msg <- renderUI({
-      div(class = "alert alert-info", icon("spinner", class = "fa-spin"),
-          "Running dose-response analysis...")
+      status_alert("Running dose-response analysis...", "info")
     })
 
     data     <- rv$processed_data
@@ -260,8 +259,7 @@ dose_response_server <- function(id, rv) {
     n_na_dose <- sum(is.na(data[[dose_col]]))
     if (n_na_dose == nrow(data)) {
       output$dr_status_msg <- renderUI({
-        div(class = "alert alert-danger", icon("exclamation-circle"),
-            paste("Dose column", dose_col, "contains no numeric values. Please check your data."))
+        status_alert(paste("Dose column", dose_col, "contains no numeric values. Please check your data."), "danger")
       })
       return()
     }
@@ -318,13 +316,11 @@ dose_response_server <- function(id, rv) {
 
     if (isTRUE(result$error)) {
       output$dr_status_msg <- renderUI({
-        div(class = "alert alert-danger", icon("exclamation-circle"),
-            "Error: ", result$message)
+        status_alert(paste0("Error: ", result$message), "danger")
       })
     } else {
       output$dr_status_msg <- renderUI({
-        div(class = "alert alert-success", icon("check"),
-            "Dose-response analysis completed successfully!")
+        status_alert("Dose-response analysis completed successfully!", "success")
       })
     }
   })
@@ -412,8 +408,10 @@ dose_response_server <- function(id, rv) {
       ggplot2::labs(title = "Linear Dose-Response Relationship",
                    x = "Dose", y = "Tumor Volume") +
       ggplot2::theme_classic()
-    apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
+    p <- apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
                       input$dr_plot_title_align %||% "center", text_sz)
+    current_dr_scatter(p)
+    p
   }, width = function() input$dr_plot_width %||% 800,
      height = function() input$dr_plot_height %||% 600)
 
@@ -432,8 +430,10 @@ dose_response_server <- function(id, rv) {
       ggplot2::labs(title = "Tumor Volume by Dose Level",
                    x = "Dose", y = "Tumor Volume") +
       ggplot2::theme_classic()
-    apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
+    p <- apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
                       input$dr_plot_title_align %||% "center", text_sz)
+    current_dr_boxplot(p)
+    p
   }, width = function() input$dr_plot_width %||% 800,
      height = function() input$dr_plot_height %||% 600)
 
@@ -452,8 +452,10 @@ dose_response_server <- function(id, rv) {
       ggplot2::labs(title = "Mean Tumor Volume by Dose Level (with 95% CI)",
                    x = "Dose", y = "Mean Tumor Volume") +
       ggplot2::theme_classic()
-    apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
+    p <- apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
                       input$dr_plot_title_align %||% "center", text_sz)
+    current_dr_barplot(p)
+    p
   }, width = function() input$dr_plot_width %||% 800,
      height = function() input$dr_plot_height %||% 600)
 
@@ -503,20 +505,7 @@ dose_response_server <- function(id, rv) {
   output$download_dr_scatter <- downloadHandler(
     filename = "dose_scatter.png",
     content  = function(file) {
-      req(rv$dr_results)
-      ad       <- rv$dr_results$analysis_data %||% rv$dr_results$plots$scatter$data
-      dose_col <- rv$dose_col %||% "Dose"
-      vol_col  <- rv$vol_col  %||% "Volume"
-      pt_col   <- input$dr_scatter_pt_color   %||% "#555555"
-      ln_col   <- input$dr_scatter_line_color %||% "#2166AC"
-      p <- if (!is.null(ad)) {
-        ggplot2::ggplot(ad, ggplot2::aes(x = .data[[dose_col]], y = .data[[vol_col]])) +
-          ggplot2::geom_point(alpha = 0.7, color = pt_col) +
-          ggplot2::geom_smooth(method = "lm", formula = y ~ x, color = ln_col) +
-          ggplot2::labs(title = "Linear Dose-Response Relationship",
-                        x = "Dose", y = "Tumor Volume") +
-          ggplot2::theme_classic()
-      } else rv$dr_results$plots$scatter
+      p <- current_dr_scatter()
       req(!is.null(p))
       png(file, width = input$dr_plot_width %||% 800,
                 height = input$dr_plot_height %||% 600,
@@ -528,20 +517,7 @@ dose_response_server <- function(id, rv) {
   output$download_dr_boxplot <- downloadHandler(
     filename = "dose_boxplot.png",
     content  = function(file) {
-      req(rv$dr_results)
-      ad       <- rv$dr_results$analysis_data
-      dose_col <- rv$dose_col %||% "Dose"
-      vol_col  <- rv$vol_col  %||% "Volume"
-      bc       <- input$dr_box_fill_color %||% "#4292C6"
-      p <- if (!is.null(ad)) {
-        ggplot2::ggplot(ad, ggplot2::aes(x = factor(.data[[dose_col]]),
-                                         y = .data[[vol_col]])) +
-          ggplot2::geom_boxplot(outlier.shape = NA, fill = bc, alpha = 0.7) +
-          ggplot2::geom_jitter(width = 0.2, alpha = 0.5) +
-          ggplot2::labs(title = "Tumor Volume by Dose Level",
-                        x = "Dose", y = "Tumor Volume") +
-          ggplot2::theme_classic()
-      } else rv$dr_results$plots$boxplot
+      p <- current_dr_boxplot()
       req(!is.null(p))
       png(file, width = input$dr_plot_width %||% 800,
                 height = input$dr_plot_height %||% 600,
@@ -553,19 +529,7 @@ dose_response_server <- function(id, rv) {
   output$download_dr_barplot <- downloadHandler(
     filename = "dose_barplot.png",
     content  = function(file) {
-      req(rv$dr_results)
-      ss       <- rv$dr_results$summary_stats
-      dose_col <- rv$dose_col %||% "Dose"
-      bc       <- input$dr_bar_fill_color %||% "#4292C6"
-      p <- if (!is.null(ss)) {
-        ggplot2::ggplot(ss, ggplot2::aes(x = .data[[dose_col]], y = .data[["mean_volume"]])) +
-          ggplot2::geom_bar(stat = "identity", fill = bc, alpha = 0.8) +
-          ggplot2::geom_errorbar(
-            ggplot2::aes(ymin = .data[["ci95_lower"]], ymax = .data[["ci95_upper"]]), width = 0.2) +
-          ggplot2::labs(title = "Mean Tumor Volume by Dose Level (with 95% CI)",
-                        x = "Dose", y = "Mean Tumor Volume") +
-          ggplot2::theme_classic()
-      } else rv$dr_results$plots$barplot
+      p <- current_dr_barplot()
       req(!is.null(p))
       png(file, width = input$dr_plot_width %||% 800,
                 height = input$dr_plot_height %||% 600,

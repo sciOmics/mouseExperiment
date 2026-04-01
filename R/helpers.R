@@ -3,6 +3,27 @@
 #' Utility functions for data validation, formatting, and processing
 #'
 
+# ---- Alert helpers (consolidated validate/need pattern) ----------------------
+
+#' Create a Bootstrap alert div for module status messages
+#'
+#' @param msg  Character message to display.
+#' @param type One of "danger", "warning", "info", "success".
+#' @return A \code{shiny::div} tag.
+#' @keywords internal
+status_alert <- function(msg, type = "danger") {
+  icon_name <- switch(type,
+    danger  = "exclamation-circle",
+    warning = "exclamation-triangle",
+    info    = "spinner",
+    success = "check",
+    "info-circle"
+  )
+  icon_cls <- if (type == "info") paste(icon_name, "fa-spin") else icon_name
+  shiny::div(class = paste0("alert alert-", type),
+             shiny::icon(icon_cls), msg)
+}
+
 # ---- Date Preprocessing (consolidated — Issue 2.3) ---------------------------
 
 #' Detect the date format of a column and normalise data for calculate_dates()

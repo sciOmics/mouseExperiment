@@ -250,9 +250,7 @@ survival_server <- function(id, rv) {
     # Validate that required columns are configured from data upload
     if (rv$settings$col_treatment == "" || rv$settings$col_treatment == "-- Select a reference group --") {
       output$surv_status_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"), 
-            "Error: Please select a Treatment Group on the Data Upload tab")
+        status_alert("Error: Please select a Treatment Group on the Data Upload tab", "danger")
       })
       return()
     }
@@ -260,17 +258,14 @@ survival_server <- function(id, rv) {
 
     if (is.null(rv$settings$col_survival_event) || rv$settings$col_survival_event == "" || rv$settings$col_survival_event == "None") {
       output$surv_status_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"), 
-            "Error: Please select an Event/Censor Status Column on the Data Upload tab")
+        status_alert("Error: Please select an Event/Censor Status Column on the Data Upload tab", "danger")
       })
       return()
     }
     
     rv$surv_running <- TRUE
     output$surv_status_msg <- renderUI({
-      div(class = "alert alert-info",
-          icon("spinner", class = "fa-spin"), "Running survival analysis...")
+      status_alert("Running survival analysis...", "info")
     })
     
     # Prepare data — reuse canonical preprocessing if available
@@ -329,9 +324,7 @@ survival_server <- function(id, rv) {
         rv$surv_results <- result
         rv$surv_running <- FALSE
         output$surv_status_msg <- renderUI({
-          div(class = "alert alert-danger",
-              icon("exclamation-circle"),
-              "Error:", result$message)
+          status_alert(paste("Error:", result$message), "danger")
         })
         return()
       }
@@ -344,8 +337,7 @@ survival_server <- function(id, rv) {
         rv$surv_results <- result
         rv$surv_running <- FALSE
         output$surv_status_msg <- renderUI({
-          div(class = "alert alert-danger",
-              icon("exclamation-circle"), "Error: No data available for analysis")
+          status_alert("Error: No data available for analysis", "danger")
         })
         return()
       }
@@ -361,10 +353,8 @@ survival_server <- function(id, rv) {
     missing_cols <- check_required_cols(data, required)
     if (length(missing_cols) > 0) {
       output$surv_status_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"),
-            paste0("Required column(s) not found: ",
-                   paste(names(missing_cols), "=", sQuote(missing_cols), collapse = ", ")))
+        status_alert(paste0("Required column(s) not found: ",
+                   paste(names(missing_cols), "=", sQuote(missing_cols), collapse = ", ")), "danger")
       })
       rv$surv_running <- FALSE
       return()
@@ -453,14 +443,11 @@ survival_server <- function(id, rv) {
     
     if (isTRUE(result$error)) {
       output$surv_status_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"), 
-            "Error:", result$message)
+        status_alert(paste("Error:", result$message), "danger")
       })
     } else {
       output$surv_status_msg <- renderUI({
-        div(class = "alert alert-success",
-            icon("check"), "Survival analysis completed successfully!")
+        status_alert("Survival analysis completed successfully!", "success")
       })
     }
   })

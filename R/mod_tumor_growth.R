@@ -52,17 +52,14 @@ tumor_growth_server <- function(id, rv) {
     # Validate reference group selection
     if (input$tg_reference == "" || is.null(input$tg_reference)) {
       output$tg_status_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"), 
-            "Error: Please select a reference group before running analysis")
+        status_alert("Error: Please select a reference group before running analysis", "danger")
       })
       return()
     }
     
     rv$tg_running <- TRUE
     output$tg_status_msg <- renderUI({
-      div(class = "alert alert-info",
-          icon("spinner", class = "fa-spin"), "Running analysis...")
+      status_alert("Running analysis...", "info")
     })
     
     # Prepare data
@@ -89,19 +86,15 @@ tumor_growth_server <- function(id, rv) {
       wid_col <- rv$settings$col_width  %||% ""
       if (!nzchar(len_col) || !nzchar(wid_col)) {
         output$tg_status_msg <- renderUI({
-          div(class = "alert alert-danger",
-              icon("exclamation-circle"),
-              "Please select both Length and Width columns before running analysis.")
+          status_alert("Please select both Length and Width columns before running analysis.", "danger")
         })
         rv$tg_running <- FALSE
         return()
       }
       if (!len_col %in% colnames(data) || !wid_col %in% colnames(data)) {
         output$tg_status_msg <- renderUI({
-          div(class = "alert alert-danger",
-              icon("exclamation-circle"),
-              paste0("Column not found in data: '",
-                     if (!len_col %in% colnames(data)) len_col else wid_col, "'"))
+          status_alert(paste0("Column not found in data: '",
+                     if (!len_col %in% colnames(data)) len_col else wid_col, "'"), "danger")
         })
         rv$tg_running <- FALSE
         return()
@@ -152,10 +145,8 @@ tumor_growth_server <- function(id, rv) {
     missing_cols <- check_required_cols(data, required)
     if (length(missing_cols) > 0) {
       output$tg_status_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"),
-            paste0("Required column(s) not found in data: ",
-                   paste(names(missing_cols), "=", sQuote(missing_cols), collapse = ", ")))
+        status_alert(paste0("Required column(s) not found in data: ",
+                   paste(names(missing_cols), "=", sQuote(missing_cols), collapse = ", ")), "danger")
       })
       rv$tg_running <- FALSE
       return()
@@ -667,14 +658,11 @@ tumor_growth_server <- function(id, rv) {
     # Update status
     if (isTRUE(result$error)) {
       output$tg_status_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"), 
-            "Error:", result$message)
+        status_alert(paste("Error:", result$message), "danger")
       })
     } else {
       output$tg_status_msg <- renderUI({
-        div(class = "alert alert-success",
-            icon("check"), "Analysis completed successfully!")
+        status_alert("Analysis completed successfully!", "success")
       })
     }
   })

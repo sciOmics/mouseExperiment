@@ -228,84 +228,37 @@ synergy_server <- function(id, rv) {
     needed <- c(input$syn_drug_a, input$syn_drug_b, input$syn_combo, input$syn_control)
     if (any(is.null(needed)) || any(needed == "")) {
       output$syn_status_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"),
-            "Please select all four treatment groups.")
+        status_alert("Please select all four treatment groups.", "danger")
       })
       return()
     }
     
     if (length(unique(needed)) < 4) {
       output$syn_status_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"),
-            "Each role (Drug A, Drug B, Combination, Control) must be a different group.")
+        status_alert("Each role (Drug A, Drug B, Combination, Control) must be a different group.", "danger")
       })
       return()
     }
     
     output$syn_status_msg <- renderUI({
-      div(class = "alert alert-info",
-          icon("spinner", class = "fa-spin"), "Running synergy analysis...")
+      status_alert("Running synergy analysis...", "info")
     })
     
     # Use preprocessed data (Volume + Day resolved) if TG analysis has already
     # been run; otherwise preprocess inline from the raw uploaded data.
-    if (!is.null(rv$processed_data)) {
-      analysis_data <- rv$processed_data
-      vol_col  <- rv$vol_col
-      time_col <- rv$time_col
-      tx_col   <- rv$tx_col
-    } else {
-      # Inline preprocessing (fallback when TG analysis hasn't run)
-      analysis_data <- rv$uploaded_data
-      tx_col   <- if (!is.null(rv$settings$col_treatment) && rv$settings$col_treatment != "") rv$settings$col_treatment else "Treatment"
-      id_col   <- if (!is.null(rv$settings$col_id)        && rv$settings$col_id        != "") rv$settings$col_id        else "ID"
-      
-      if (!is.null(rv$settings$time_method) && rv$settings$time_method == "from_date" &&
-          !is.null(rv$settings$col_date_for_day) && rv$settings$col_date_for_day != "") {
-        tryCatch({
-          date_info <- detect_date_format(analysis_data, rv$settings$col_date_for_day,
-                                          rv$settings$reference_date %||% "")
-          analysis_data <- mouseExperiment::calculate_dates(date_info$data,
-            start_date  = date_info$start_date,
-            date_column = rv$settings$col_date_for_day,
-            date_format = date_info$date_format)
-        }, error = function(e) {
-          log_caught_error("synergy", "date calculation", e)
-          output$syn_status_msg <- renderUI({
-            div(class = "alert alert-danger", icon("exclamation-circle"),
-                "Date calculation failed: ", conditionMessage(e))
-          })
-          rv$syn_running <- FALSE
-          return()
-        })
-        time_col <- "Day"
-      } else {
-        time_col <- if (!is.null(rv$settings$col_day) && rv$settings$col_day != "") rv$settings$col_day else "Day"
-      }
-      
-      if (!is.null(rv$settings$volume_method) && rv$settings$volume_method == "calculate" &&
-          !is.null(rv$settings$col_length) && rv$settings$col_length != "" &&
-          !is.null(rv$settings$col_width)  && rv$settings$col_width  != "") {
-        tryCatch({
-          analysis_data <- mouseExperiment::calculate_volume(analysis_data,
-            length_column = rv$settings$col_length, width_column = rv$settings$col_width,
-            formula = rv$settings$volume_formula)
-        }, error = function(e) {
-          log_caught_error("synergy", "volume calculation", e)
-          output$syn_status_msg <- renderUI({
-            div(class = "alert alert-danger", icon("exclamation-circle"),
-                "Volume calculation failed: ", conditionMessage(e))
-          })
-          rv$syn_running <- FALSE
-          return()
-        })
-        vol_col <- "Volume"
-      } else {
-        vol_col <- if (!is.null(rv$settings$col_volume) && rv$settings$col_volume != "") rv$settings$col_volume else "Volume"
-      }
-    }
+    pp <- tryCatch(ensure_preprocessed(rv), error = function(e) {
+      log_caught_error("synergy", "preprocessing", e)
+      output$syn_status_msg <- renderUI({
+        status_alert(paste0("Preprocessing failed: ", conditionMessage(e)), "danger")
+      })
+      rv$syn_running <- FALSE
+      return(NULL)
+    })
+    if (is.null(pp)) return()
+    analysis_data <- pp$data
+    vol_col  <- pp$vol_col
+    time_col <- pp$time_col
+    tx_col   <- pp$tx_col
     
     # Coerce time and volume to numeric (guard against CSV character reads)
     if (time_col %in% colnames(analysis_data))
@@ -416,14 +369,11 @@ synergy_server <- function(id, rv) {
     
     if (isTRUE(result$error)) {
       output$syn_status_msg <- renderUI({
-        div(class = "alert alert-danger",
-            icon("exclamation-circle"),
-            "Error:", result$message)
+        status_alert(paste("Error:", result$message), "danger")
       })
     } else {
       output$syn_status_msg <- renderUI({
-        div(class = "alert alert-success",
-            icon("check"), "Synergy analysis completed successfully!")
+        status_alert("Synergy analysis completed successfully!", "success")
       })
     }
   })
