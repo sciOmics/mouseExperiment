@@ -504,7 +504,7 @@ tumorGrowthUI <- function(id) {
                       checkboxInput(ns("tg_opt_group_line"),
                                     "Show group average line", value = TRUE),
                       checkboxInput(ns("tg_opt_show_extrap"),
-                                    "Show extrapolated curves/points", value = FALSE)
+                                    "Show extrapolated curves/points", value = TRUE)
                     ),
                     conditionalPanel(ns = ns,
                       "input.tg_plot_selector == 'effect_forest'",
@@ -563,6 +563,13 @@ tumorGrowthUI <- function(id) {
                                   0.5, 10, 4, step = 0.5),
                       sliderInput(ns("tg_opt_jitter_width"), "Jitter width",
                                   0, 0.5, 0.1, step = 0.02)
+                    ),
+                    conditionalPanel(ns = ns,
+                      "input.tg_plot_selector == 'effect_forest'",
+                      sliderInput(ns("tg_opt_forest_pt_size"), "Point size",
+                                  min = 1, max = 10, value = 3, step = 0.5),
+                      sliderInput(ns("tg_opt_forest_ann_size"), "Annotation text size",
+                                  min = 8, max = 22, value = 12, step = 1)
                     )
                   ),
                   ctrl_section("export", "arrows-alt", "Plot Size / Export",

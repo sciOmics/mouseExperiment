@@ -4,23 +4,25 @@
 
 ## Tasks to be Done
 
-### Features:
+### Features
+
 - Add "Methods" section to documentation
 - Change coloring of boxes, selections, etc. 
 - Change loading icon to a mouse scratching
-- Add a "Learning" section to the Help that gives info on the who, what, when, where and how of the analysis. Best practices in experiment design and analysis. Etc. 
-    - Random intercept and analyzing the growth rate rather than comparing the volumes on a particular day controls for differences in when initial tumors develop (resulting in part to variance in tumor injection)
- 
-### Bugs:
+- Add a "Learning" section to the Help that gives info on the who, what, when, where and how of the analysis. Best practices in experiment design and analysis. Etc.  
+  - Random intercept and analyzing the growth rate rather than comparing the volumes on a particular day controls for differences in when initial tumors develop (resulting in part to variance in tumor injection)
+  
+### Bugs
 
-### Testing:
+### Testing
 
-### Other:
-- Update documentation. 
+### Other
+
+- Update documentation.  
 - Update DESCRIPTION file.
 - Update License file.
-- Add server logging. 
 
 ## Future Improvements
+
 - Add CHANGELOG.md (once initial version is published)
 - Versioning
