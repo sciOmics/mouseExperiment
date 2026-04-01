@@ -278,7 +278,7 @@ dose_response_server <- function(id, rv) {
     progress$set(message = "Running dose-response analysis...", value = 0.2)
     on.exit(progress$close(), add = TRUE)
 
-    result <- safe_analysis({
+    result <- safe_analysis(module = "dose_response", {
       mouseExperiment::dose_response_statistics(
         df                 = data,
         dose_column        = dose_col,

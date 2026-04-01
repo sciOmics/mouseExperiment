@@ -35,7 +35,11 @@ detect_date_format <- function(data, date_column, reference_date) {
       as.Date(start_date,
               tryFormats = c("%Y-%m-%d", "%m/%d/%Y", "%d-%b-%Y",
                              "%B %d %Y", "%B %d, %Y")),
-      error = function(e) Sys.Date()
+      error = function(e) {
+        log_warn(sprintf("detect_date_format: could not parse reference_date=%s, falling back to Sys.Date() | error=%s",
+                        start_date, conditionMessage(e)))
+        Sys.Date()
+      }
     )
     if (is.na(ref_parsed)) ref_parsed <- Sys.Date()
     ref_year <- as.integer(format(ref_parsed, "%Y"))
@@ -199,13 +203,23 @@ format_number <- function(x, digits = 3) {
 #' Safely execute analysis function with error handling
 #'
 #' @param expr Expression to execute
+#' @param module Optional module name for structured logging.
 #'
 #' @return Result or error message
 #' @keywords internal
-safe_analysis <- function(expr) {
+safe_analysis <- function(expr, module = "unknown") {
+  t0 <- proc.time()[["elapsed"]]
   tryCatch(
-    expr,
+    {
+      result <- expr
+      elapsed <- proc.time()[["elapsed"]] - t0
+      log_info(sprintf("analysis_complete | module=%s | elapsed_s=%.2f", module, round(elapsed, 2)))
+      result
+    },
     error = function(e) {
+      elapsed <- proc.time()[["elapsed"]] - t0
+      log_error(sprintf("analysis_failed | module=%s | elapsed_s=%.2f | error=%s",
+                        module, round(elapsed, 2), conditionMessage(e)))
       list(error = TRUE, message = conditionMessage(e))
     }
   )
@@ -250,7 +264,7 @@ check_required_cols <- function(data, cols) {
 #' Safely generate a plot, returning an error placeholder on failure
 #'
 #' Wraps a plot expression in tryCatch. On success returns the plot object.
-#' On failure logs via \code{message()} and returns a simple ggplot with the
+#' On failure logs via structured logger and returns a simple ggplot with the
 #' error text, so users see a message instead of a blank panel.
 #'
 #' @param expr    Expression that produces a ggplot / base plot grob.
@@ -262,7 +276,7 @@ safe_plot <- function(expr, label = "Plot") {
     expr,
     error = function(e) {
       msg <- paste0(label, " generation failed: ", conditionMessage(e))
-      message(msg)
+      log_caught_error("plot", label, e)
       ggplot2::ggplot() +
         ggplot2::annotate("text", x = 0.5, y = 0.5, label = msg,
                           size = 5, hjust = 0.5) +
@@ -401,7 +415,8 @@ format_df_for_display <- function(df, digits = 4) {
         df[[col]] <- round(df[[col]], digits)
       }
     }, error = function(e) {
-      # Leave the column as-is if formatting fails
+      # Log and leave column as-is if formatting fails
+      log_caught_error("format", paste0("format_df_for_display col '", col, "'"), e)
     })
   }
   df
@@ -445,8 +460,46 @@ build_color_vector <- function(input, prefix, groups) {
     val <- input[[paste0(prefix, "_", make.names(g))]]
     if (is.null(val) || !nzchar(val)) NA_character_ else val
   }, character(1L))
-  colors <- colors[!is.na(colors)]
-  if (length(colors) == 0L) NULL else colors
+  # Return NULL unless ALL groups have values — partial coverage causes
+  # ggplot2 scale_colour_manual to map missing groups as grey/invisible.
+  if (any(is.na(colors))) return(NULL)
+  colors
+}
+
+#' Remap colour vector names from dose-composite to treatment-group names
+#'
+#' When groups are stored as \code{"Treatment - Dose: X"}, colour names
+#' include the \code{" - Dose: "} separator.  Plot data (growth_rates, AUC) uses
+#' the \code{TreatmentGroup} column which pastes treatment and dose with a
+#' single space (e.g. \code{"Control 0"}).  This function converts
+#' \code{" - Dose: "} to \code{" "} and deduplicates (keeping first).
+#'
+#' @param colors Named character vector (or NULL).
+#' @return Named character vector with treatment-group names, or NULL.
+#' @keywords internal
+remap_colors_to_treatment <- function(colors) {
+  if (is.null(colors)) return(NULL)
+  nms <- gsub(" - Dose: ", " ", names(colors))
+  dups <- duplicated(nms)
+  out <- colors[!dups]
+  names(out) <- nms[!dups]
+  out
+}
+
+#' Remap shape vector names from dose-composite to treatment-group names
+#'
+#' Same logic as \code{remap_colors_to_treatment} but for the integer shape vector.
+#'
+#' @param shapes Named integer vector (or NULL).
+#' @return Named integer vector with treatment-level names, or NULL.
+#' @keywords internal
+remap_shapes_to_treatment <- function(shapes) {
+  if (is.null(shapes)) return(NULL)
+  nms <- gsub(" - Dose: ", " ", names(shapes))
+  dups <- duplicated(nms)
+  out <- shapes[!dups]
+  names(out) <- nms[!dups]
+  out
 }
 
 #' Build a named integer vector of per-group point shapes from Shiny inputs
@@ -465,8 +518,10 @@ build_shape_vector <- function(input, prefix, groups) {
     val <- input[[paste0(prefix, "_", make.names(g))]]
     if (is.null(val) || !nzchar(val)) NA_integer_ else as.integer(val)
   }, integer(1L))
-  shapes <- shapes[!is.na(shapes)]
-  if (length(shapes) == 0L) NULL else shapes
+  # Return NULL unless ALL groups have values — partial coverage causes
+  # ggplot2 scale_shape_manual to map missing groups as NA shape (invisible).
+  if (any(is.na(shapes))) return(NULL)
+  shapes
 }
 
 #' Generate n evenly-spaced ggplot2-style default colours for n groups
@@ -710,22 +765,36 @@ group_order_and_color_ui <- function(prefix, groups, ns = NS(NULL)) {
     )
   })
 
-  # JS: on sort / load, read data-value from each <li> and push to Shiny as
-  # a plain character vector — no ":type" suffix so no custom handler is needed.
-  capture_js <- htmlwidgets::JS(sprintf(
+  # JS helper: read data-value attributes from the sortable <li> elements
+  # and push the current order to Shiny.  Uses getElementById for reliability
+  # (avoids depending on SortableJS `this.el` inside async callbacks).
+  send_order_js <- htmlwidgets::JS(sprintf(
     "function(evt) {
-       var self = this;
-       if (typeof Shiny !== 'undefined') {
-         Shiny.initializedPromise.then(function() {
-           var order = Array.prototype.slice.call(self.el.children).map(
-             function(li) { return li.getAttribute('data-value'); }
-           );
-           Shiny.setInputValue('%s', order, {priority: 'event'});
-         });
+       var el = document.getElementById('%s');
+       if (el && typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+         var order = Array.prototype.slice.call(el.children).map(
+           function(li) { return li.getAttribute('data-value'); }
+         );
+         Shiny.setInputValue('%s', order, {priority: 'event'});
        }
      }",
-    input_id
+    list_id, input_id
   ))
+
+  # Fire once after the sortable is rendered so the initial order reaches Shiny
+  # (onLoad is NOT a standard SortableJS event and is silently ignored).
+  init_js <- sprintf(
+    "$(function(){
+       var el = document.getElementById('%s');
+       if (el && typeof Shiny !== 'undefined' && Shiny.setInputValue) {
+         var order = Array.prototype.slice.call(el.children).map(
+           function(li) { return li.getAttribute('data-value'); }
+         );
+         Shiny.setInputValue('%s', order, {priority: 'event'});
+       }
+     });",
+    list_id, input_id
+  )
 
   shiny::tagList(
     shiny::tags$p(
@@ -742,10 +811,10 @@ group_order_and_color_ui <- function(prefix, groups, ns = NS(NULL)) {
       options = sortable::sortable_options(
         handle    = ".drag-handle",
         animation = 150L,
-        onSort    = capture_js,
-        onLoad    = capture_js
+        onSort    = send_order_js
       )
-    )
+    ),
+    shiny::tags$script(shiny::HTML(init_js))
   )
 }
 

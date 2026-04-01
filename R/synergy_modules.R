@@ -272,7 +272,13 @@ synergy_server <- function(id, rv) {
             date_column = rv$settings$col_date_for_day,
             date_format = date_info$date_format)
         }, error = function(e) {
-          message("[Synergy] Date calculation failed: ", conditionMessage(e))
+          log_caught_error("synergy", "date calculation", e)
+          output$syn_status_msg <- renderUI({
+            div(class = "alert alert-danger", icon("exclamation-circle"),
+                "Date calculation failed: ", conditionMessage(e))
+          })
+          rv$syn_running <- FALSE
+          return()
         })
         time_col <- "Day"
       } else {
@@ -287,7 +293,13 @@ synergy_server <- function(id, rv) {
             length_column = rv$settings$col_length, width_column = rv$settings$col_width,
             formula = rv$settings$volume_formula)
         }, error = function(e) {
-          message("[Synergy] Volume calculation failed: ", conditionMessage(e))
+          log_caught_error("synergy", "volume calculation", e)
+          output$syn_status_msg <- renderUI({
+            div(class = "alert alert-danger", icon("exclamation-circle"),
+                "Volume calculation failed: ", conditionMessage(e))
+          })
+          rv$syn_running <- FALSE
+          return()
         })
         vol_col <- "Volume"
       } else {
@@ -314,7 +326,7 @@ synergy_server <- function(id, rv) {
     on.exit(progress$close(), add = TRUE)
     
     if (rv$syn_over_time) {
-      result <- safe_analysis({
+      result <- safe_analysis(module = "synergy_over_time", {
         mouseExperiment::analyze_drug_synergy_over_time(
           df               = analysis_data,
           treatment_column = tx_col,
@@ -323,11 +335,12 @@ synergy_server <- function(id, rv) {
           drug_a_name      = input$syn_drug_a,
           drug_b_name      = input$syn_drug_b,
           combo_name       = input$syn_combo,
-          control_name     = input$syn_control
+          control_name     = input$syn_control,
+          verbose          = FALSE
         )
       })
     } else {
-      result <- safe_analysis({
+      result <- safe_analysis(module = "synergy", {
         mouseExperiment::analyze_drug_synergy(
           df               = analysis_data,
           treatment_column = tx_col,
@@ -337,7 +350,8 @@ synergy_server <- function(id, rv) {
           drug_b_name      = input$syn_drug_b,
           combo_name       = input$syn_combo,
           control_name     = input$syn_control,
-          eval_time_point  = eval_tp
+          eval_time_point  = eval_tp,
+          verbose          = FALSE
         )
       })
     }
@@ -379,13 +393,13 @@ synergy_server <- function(id, rv) {
             ggplot2::theme_classic()
 
         }, error = function(e) {
-          message("[Synergy] Trend plot generation failed: ", conditionMessage(e))
+          log_caught_error("synergy", "trend plot generation", e)
         })
       } else {
         tryCatch({
           result$plot_main  <- mouseExperiment::plot_drug_synergy(result)
         }, error = function(e) {
-          message("[Synergy] Main plot generation failed: ", conditionMessage(e))
+          log_caught_error("synergy", "main plot generation", e)
         })
       }
     }
@@ -544,7 +558,10 @@ synergy_server <- function(id, rv) {
       }
       tryCatch(
         mouseExperiment::plot_drug_synergy(rv$syn_results, custom_colors = custom_colors),
-        error = function(e) rv$syn_results$plot_main
+        error = function(e) {
+          log_caught_error("synergy", "plot_drug_synergy re-render", e)
+          rv$syn_results$plot_main
+        }
       )
     }
     req(!is.null(final_p))

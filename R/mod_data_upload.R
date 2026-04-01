@@ -72,6 +72,8 @@ data_upload_server <- function(id, rv) {
     rv$data_valid     <- TRUE
     rv$detected_cols  <- detect_columns(colnames(result$data))
 
+    log_upload(session, chosen$label, nrow(result$data), ncol(result$data))
+
     # Set reference date for this dataset
     updateTextInput(session, "reference_date", value = chosen$ref_date)
 
@@ -106,7 +108,9 @@ data_upload_server <- function(id, rv) {
       rv$uploaded_data <- result$data
       rv$data_valid <- TRUE
       rv$detected_cols <- detect_columns(colnames(result$data))
-      
+
+      log_upload(session, file_info$name, nrow(result$data), ncol(result$data))
+
       # Display validation message
       output$file_validation_msg <- renderUI({
         div(class = "alert alert-success",

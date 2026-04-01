@@ -381,7 +381,7 @@ survival_server <- function(id, rv) {
     progress$set(message = "Running survival analysis...", value = 0.2)
     on.exit(progress$close(), add = TRUE)
 
-    result <- safe_analysis({
+    result <- safe_analysis(module = "survival", {
       mouseExperiment::survival_statistics(
         df = data,
         time_column = time_col,
@@ -427,6 +427,7 @@ survival_server <- function(id, rv) {
 
       }, error = function(e) {
         # Fallback to manual ggsurvplot if plot_survival() fails
+        log_caught_error("survival", "plot_survival()", e)
         tryCatch({
           surv_df <- result$survival_data
           km_fit <- survival::survfit(survival::Surv(Time, Event) ~ Treatment, data = surv_df)
@@ -442,7 +443,10 @@ survival_server <- function(id, rv) {
             title = "Kaplan-Meier Survival Curves by Treatment"
           )
           result$km_plot <<- km_plot_obj
-        }, error = function(e2) NULL)
+        }, error = function(e2) {
+          log_caught_error("survival", "ggsurvplot fallback", e2)
+          NULL
+        })
       })
     }
     
@@ -538,7 +542,10 @@ survival_server <- function(id, rv) {
     }
     km_fit <- tryCatch(
       survival::survfit(survival::Surv(Time, Event) ~ Treatment, data = surv_df),
-      error = function(e) rv$surv_results$km_fit
+      error = function(e) {
+        log_caught_error("survival", "KM refit for colour/order", e)
+        rv$surv_results$km_fit
+      }
     )
 
     # Build colour vector from per-group colourInputs (ordered to match strata)
@@ -795,7 +802,10 @@ survival_server <- function(id, rv) {
         surv_df$Treatment <- factor(surv_df$Treatment, levels = ordered_grps)
       km_fit <- tryCatch(
         survival::survfit(survival::Surv(Time, Event) ~ Treatment, data = surv_df),
-        error = function(e) rv$surv_results$km_fit
+        error = function(e) {
+          log_caught_error("survival", "KM refit for download", e)
+          rv$surv_results$km_fit
+        }
       )
       groups <- if (!is.null(ordered_grps)) ordered_grps else rv$surv_plot_groups
       pal <- build_color_vector(input, "surv_color", groups)

@@ -102,6 +102,13 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
 
   server <- function(input, output, session) {
 
+    # Initialise structured logging (JSON to stdout for Docker)
+    setup_logging()
+    log_session(session, "start")
+    session$onSessionEnded(function() {
+      log_session(session, "end")
+    })
+
     rv <- reactiveValues()
 
     # Startup disclaimer modal — shown once per session
@@ -138,6 +145,7 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
 
     # Guard: redirect away from placeholder tabs if reached via keyboard
     observeEvent(input$main_nav, {
+      log_navigation(session, input$main_nav)
       disabled_vals <- c("__toxicity_disabled__", "__dose_response_disabled__",
                          "__drug_synergy_disabled__", "__power_analysis_disabled__")
       if (input$main_nav %in% disabled_vals)

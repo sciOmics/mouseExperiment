@@ -166,7 +166,7 @@ tumor_growth_server <- function(id, rv) {
     progress$set(message = "Running tumor growth analysis...", value = 0.1)
     on.exit(progress$close(), add = TRUE)
 
-    result <- safe_analysis({
+    result <- safe_analysis(module = "tumor_growth", {
       progress$set(value = 0.3, detail = "Fitting model")
       res <- mouseExperiment::tumor_growth_statistics(
         df = data,
@@ -292,7 +292,10 @@ tumor_growth_server <- function(id, rv) {
                                        "Extrapolated" %in% colnames(result$auc_analysis$individual))
                                       "Extrapolated" else NULL
             ) + ggplot2::theme_classic()
-          }, error = function(e) NULL)
+          }, error = function(e) {
+            log_caught_error("tumor_growth", "AUC plot generation", e)
+            NULL
+          })
         }
         if (is.null(result$auc_plot) && !is.null(result$treatment_effects)) {
           effects_df <- as.data.frame(result$treatment_effects)
@@ -337,7 +340,10 @@ tumor_growth_server <- function(id, rv) {
 
               # Build beeswarm using per-subject growth rates when available,
               # overlaid with the LME adjusted mean ± CI from treatment_effects.
-              gr_df <- tryCatch(as.data.frame(result$growth_rates), error = function(e) NULL)
+              gr_df <- tryCatch(as.data.frame(result$growth_rates), error = function(e) {
+                log_caught_error("tumor_growth", "growth_rates coerce to data.frame", e)
+                NULL
+              })
               grp_col_gr <- if (!is.null(gr_df)) intersect(c("Group","Treatment","TreatmentGroup"), colnames(gr_df))[1] else NA
               val_col_gr <- if (!is.null(gr_df)) intersect(c("growth_rate","GrowthRate"), colnames(gr_df))[1] else NA
 
@@ -426,7 +432,10 @@ tumor_growth_server <- function(id, rv) {
               ggplot2::labs(title = "Q-Q Plot of Residuals",
                            x = "Theoretical Quantiles", y = "Sample Quantiles")
             result$diag_qq_plot     <- qq_p
-          }, error = function(e) NULL)
+          }, error = function(e) {
+            log_caught_error("tumor_growth", "QQ plot from model", e)
+            NULL
+          })
         }
         # Residuals vs Fitted
         if (!is.null(result$model)) {
@@ -444,11 +453,14 @@ tumor_growth_server <- function(id, rv) {
               ggplot2::theme_classic() +
               ggplot2::labs(title = "Residuals vs Fitted",
                            x = "Fitted Values", y = "Residuals")
-          }, error = function(e) NULL)
+          }, error = function(e) {
+            log_caught_error("tumor_growth", "residuals-vs-fitted plot", e)
+            NULL
+          })
         }
         
       }, error = function(e) {
-        message("[TG] Plot generation failed: ", conditionMessage(e))
+        log_caught_error("tumor_growth", "plot generation", e)
       })
     }
     
@@ -622,12 +634,12 @@ tumor_growth_server <- function(id, rv) {
                 ggplot2::theme(axis.text.y = ggplot2::element_text(size = 10))
             }
           }, error = function(e) {
-            message("[TG] Forest plot generation failed: ", conditionMessage(e))
+            log_caught_error("tumor_growth", "forest plot generation", e)
           })
         }
 
       }, error = function(e) {
-        message("[TG] Comparison generation failed: ", conditionMessage(e))
+        log_caught_error("tumor_growth", "comparison generation", e)
       })
     }
 
@@ -712,13 +724,14 @@ tumor_growth_server <- function(id, rv) {
     paste(summary_lines, collapse = "\n")
   })
 
-  # Update plot selector choices based on model type (AUC plot only in AUC mode)
+  # Update plot selector choices based on model type (AUC plot only in AUC mode;
+
+  # forest plot only in LME4 mode)
   observeEvent(input$tg_model_type, {
     base_choices <- c(
       "Tumor Growth Curves"       = "growth_curves",
       "Growth Rates Plot"         = "growth_rate",
-      "Waterfall Plot"            = "waterfall",
-      "Effect Size Forest Plot"   = "effect_forest"
+      "Waterfall Plot"            = "waterfall"
     )
     if (isTRUE(input$tg_model_type == "auc")) {
       base_choices <- append(
@@ -726,6 +739,8 @@ tumor_growth_server <- function(id, rv) {
         c("Area Under the Curve Plot" = "auc"),
         after = 2L  # insert after "Growth Rates Plot"
       )
+    } else {
+      base_choices <- c(base_choices, "Effect Size Forest Plot" = "effect_forest")
     }
     current <- isolate(input$tg_plot_selector) %||% "growth_curves"
     selected <- if (current %in% base_choices) current else "growth_curves"
@@ -1257,49 +1272,80 @@ tumor_growth_server <- function(id, rv) {
     if (isTRUE(rv$tg_results$error)) return(NULL)
     req(rv$tg_results$growth_rates)
     ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
-    colors     <- build_color_vector(input, "tg_color", ordered_grps)
-    shapes     <- build_shape_vector(input, "tg_shape", ordered_grps)
+    colors     <- remap_colors_to_treatment(build_color_vector(input, "tg_color", ordered_grps))
+    shapes     <- remap_shapes_to_treatment(build_shape_vector(input, "tg_shape", ordered_grps))
     center_bar <- input$tg_opt_center_bar %||% "mean"
-    show_mean  <- center_bar == "mean"
     err_type   <- input$tg_opt_error_bar  %||% "SEM"
     pt_size    <- input$tg_opt_point_size %||% 2.5
     jit_width  <- input$tg_opt_jitter_width %||% 0.2
     text_size  <- input$tg_opt_text_size %||% 12
     legend_pos <- input$tg_opt_legend_pos %||% "auto"
     rates      <- rv$tg_results$growth_rates
-    grp_col_r  <- intersect(c("Group", "Treatment"), colnames(rates))[1]
-    # Derive treatment-level order for plot_growth_rate (strip dose suffix if present)
+    grp_col_r  <- intersect(c("Treatment", "Group"), colnames(rates))[1]
+    req(!is.na(grp_col_r))
+    val_col_r  <- intersect(c("growth_rate", "GrowthRate"), colnames(rates))[1]
+    req(!is.na(val_col_r))
+    # Derive treatment-level order (convert " - Dose: " → " " to match TreatmentGroup column)
     gr_order <- if (length(ordered_grps) > 0) {
-      raw <- unique(sub(" - Dose: .*$", "", ordered_grps))
-      raw[raw %in% as.character(unique(rates[["Treatment"]]))]
+      raw <- unique(gsub(" - Dose: ", " ", ordered_grps))
+      raw[raw %in% as.character(unique(rates[[grp_col_r]]))]
     } else NULL
-    # Also factor the rates data for any stat_summary overlays added after the main plot
-    if (!is.null(gr_order) && length(gr_order) > 0 && "Treatment" %in% colnames(rates))
-      rates$Treatment <- factor(rates$Treatment, levels = gr_order)
-    p <- tryCatch({
-      mouseExperiment::plot_growth_rate(
-        growth_data    = rates,
-        colors         = colors,
-        group_order    = if (length(gr_order) > 0) gr_order else NULL,
-        show_mean      = show_mean,
-        error_bar_type = err_type,
-        point_size     = pt_size,
-        jitter_width   = jit_width
-      ) + ggplot2::theme_classic()
-    }, error = function(e) rv$tg_results$growth_rate_plot)
-    req(!is.null(p))
-    # Extra center bar overlays for median / geometric mean
-    if (center_bar %in% c("median", "geometric_mean") && !is.na(grp_col_r)) {
-      cfun <- if (center_bar == "median") median else
-                function(x) exp(mean(log(pmax(x, 1e-9, na.rm = TRUE))))
-      p <- p + ggplot2::stat_summary(
-        data = rates,
-        ggplot2::aes(x = .data[[grp_col_r]], y = growth_rate,
-                     color = .data[[grp_col_r]], group = .data[[grp_col_r]]),
-        fun.min = cfun, fun = cfun, fun.max = cfun,
-        geom = "crossbar", width = 0.4, linewidth = 0.8
-      )
+    if (!is.null(gr_order) && length(gr_order) > 0)
+      rates[[grp_col_r]] <- factor(rates[[grp_col_r]], levels = gr_order)
+
+    # Helper: build summary stats
+    make_gr_summary <- function(df, grp, val) {
+      grps <- if (is.factor(df[[grp]])) levels(df[[grp]]) else unique(as.character(df[[grp]]))
+      do.call(rbind, lapply(grps, function(g) {
+        x <- df[[val]][as.character(df[[grp]]) == g]
+        x <- x[!is.na(x)]
+        n <- length(x)
+        ctr <- switch(center_bar,
+          mean = mean(x), median = median(x),
+          geometric_mean = exp(mean(log(pmax(x, 1e-9)))), mean(x))
+        half <- switch(err_type,
+          SEM = sd(x) / sqrt(n), SD = sd(x),
+          CI = qt(0.975, df = max(n - 1L, 1L)) * sd(x) / sqrt(n), 0)
+        data.frame(grp = g, ctr = ctr, lo = ctr - half, hi = ctr + half,
+                   stringsAsFactors = FALSE)
+      }))
     }
+    summ_r <- make_gr_summary(rates, grp_col_r, val_col_r)
+    summ_r$grp <- factor(summ_r$grp, levels = if (is.factor(rates[[grp_col_r]])) levels(rates[[grp_col_r]]) else unique(as.character(rates[[grp_col_r]])))
+
+    # Build plot from scratch — ensures individual points are drawn LAST (on top)
+    p <- ggplot2::ggplot(rates,
+           ggplot2::aes(x = .data[[grp_col_r]], y = .data[[val_col_r]],
+                        colour = .data[[grp_col_r]], fill = .data[[grp_col_r]],
+                        shape = .data[[grp_col_r]])) +
+      ggplot2::theme_classic() +
+      ggplot2::labs(x = "Treatment Group", y = "Growth Rate (per day)",
+                    title = "Growth Rates by Treatment Group") +
+      ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "red", linewidth = 0.5)
+
+    # Error bars
+    if (err_type != "none")
+      p <- p + ggplot2::geom_errorbar(
+        data = summ_r,
+        ggplot2::aes(x = grp, ymin = lo, ymax = hi),
+        inherit.aes = FALSE,
+        colour = "black", width = 0.25, linewidth = 0.9)
+
+    # Center bar
+    if (center_bar != "none")
+      p <- p + ggplot2::geom_crossbar(
+        data = summ_r,
+        ggplot2::aes(x = grp, y = ctr, ymin = ctr, ymax = ctr),
+        inherit.aes = FALSE,
+        colour = "black", width = 0.35, linewidth = 0.9)
+
+    # Individual points — drawn LAST so they appear on top of bars
+    p <- p + ggplot2::geom_point(
+      position = ggplot2::position_jitter(width = jit_width, height = 0, seed = 42),
+      size = pt_size, alpha = 0.85)
+
+    if (!is.null(colors)) p <- p + ggplot2::scale_colour_manual(values = colors)
+    if (!is.null(colors)) p <- p + ggplot2::scale_fill_manual(values = colors)
     if (!is.null(shapes)) p <- p + ggplot2::scale_shape_manual(values = shapes)
     p <- apply_plot_labels(p, input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
                            input$tg_plot_title_align %||% "center", text_size,
@@ -1319,10 +1365,12 @@ tumor_growth_server <- function(id, rv) {
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
 
-    # Shared controls
+    # Shared controls — remap colours/shapes to treatment-level names
+    # so scale_*_manual values match the Treatment column, even when
+    # rv$tg_plot_groups contains dose-composite names.
     ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
-    colors     <- build_color_vector(input, "tg_color", ordered_grps)
-    shapes     <- build_shape_vector(input, "tg_shape", ordered_grps)
+    colors     <- remap_colors_to_treatment(build_color_vector(input, "tg_color", ordered_grps))
+    shapes     <- remap_shapes_to_treatment(build_shape_vector(input, "tg_shape", ordered_grps))
     center_bar <- input$tg_opt_center_bar %||% "mean"
     err_type   <- input$tg_opt_error_bar  %||% "SEM"
     pt_size    <- input$tg_opt_point_size %||% 2.5
@@ -1332,7 +1380,7 @@ tumor_growth_server <- function(id, rv) {
 
     # Helper: build a summary df (per group: center, lower, upper)
     make_summary <- function(df, grp_col, val_col) {
-      groups <- levels(factor(df[[grp_col]]))
+      groups <- if (is.factor(df[[grp_col]])) levels(df[[grp_col]]) else unique(as.character(df[[grp_col]]))
       do.call(rbind, lapply(groups, function(g) {
         x <- df[[val_col]][as.character(df[[grp_col]]) == g]
         x <- x[!is.na(x)]
@@ -1384,18 +1432,19 @@ tumor_growth_server <- function(id, rv) {
 
       # Factor ordering
       if (length(ordered_grps) > 0) {
-        auc_levels <- unique(sub(" - Dose: .*$", "", ordered_grps))
+        auc_levels <- unique(gsub(" - Dose: ", " ", ordered_grps))
         auc_levels <- auc_levels[auc_levels %in% as.character(unique(auc_ind[[grp_col_a]]))]
         if (length(auc_levels) > 0)
           auc_ind[[grp_col_a]] <- factor(auc_ind[[grp_col_a]], levels = auc_levels)
       }
 
       summ <- make_summary(auc_ind, grp_col_a, "AUC")
-      summ$grp <- factor(summ$grp, levels = levels(factor(auc_ind[[grp_col_a]])))
+      summ$grp <- factor(summ$grp, levels = if (is.factor(auc_ind[[grp_col_a]])) levels(auc_ind[[grp_col_a]]) else unique(as.character(auc_ind[[grp_col_a]])))
 
       p <- ggplot2::ggplot(auc_ind,
              ggplot2::aes(x = .data[[grp_col_a]], y = .data[["AUC"]],
-                          colour = .data[[grp_col_a]], shape = .data[[grp_col_a]])) +
+                          colour = .data[[grp_col_a]], fill = .data[[grp_col_a]],
+                          shape = .data[[grp_col_a]])) +
         ggplot2::theme_classic() +
         ggplot2::labs(x = "Treatment", y = "AUC", title = "Area Under the Curve") +
         ggplot2::theme(legend.title = ggplot2::element_blank())
@@ -1430,18 +1479,19 @@ tumor_growth_server <- function(id, rv) {
       val_col_b <- intersect(c("growth_rate", "GrowthRate"), colnames(rates))[1]
       if (!is.na(grp_col_b) && !is.na(val_col_b)) {
         gr_order <- if (length(ordered_grps) > 0) {
-          raw <- unique(sub(" - Dose: .*$", "", ordered_grps))
+          raw <- unique(gsub(" - Dose: ", " ", ordered_grps))
           raw[raw %in% as.character(unique(rates[[grp_col_b]]))]
         } else NULL
         if (!is.null(gr_order) && length(gr_order) > 0)
           rates[[grp_col_b]] <- factor(rates[[grp_col_b]], levels = gr_order)
 
         summ_b <- make_summary(rates, grp_col_b, val_col_b)
-        summ_b$grp <- factor(summ_b$grp, levels = levels(factor(rates[[grp_col_b]])))
+        summ_b$grp <- factor(summ_b$grp, levels = if (is.factor(rates[[grp_col_b]])) levels(rates[[grp_col_b]]) else unique(as.character(rates[[grp_col_b]])))
 
         p <- ggplot2::ggplot(rates,
                ggplot2::aes(x = .data[[grp_col_b]], y = .data[[val_col_b]],
-                            colour = .data[[grp_col_b]], shape = .data[[grp_col_b]])) +
+                            colour = .data[[grp_col_b]], fill = .data[[grp_col_b]],
+                            shape = .data[[grp_col_b]])) +
           ggplot2::theme_classic() +
           ggplot2::labs(x = "Treatment", y = "Growth Rate (log-volume / day)",
                         title = "Growth Rate Comparison") +
@@ -1507,7 +1557,7 @@ tumor_growth_server <- function(id, rv) {
 
       trt_col      <- "Treatment"
       ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
-      colors       <- build_color_vector(input, "tg_color", ordered_grps)
+      colors       <- remap_colors_to_treatment(build_color_vector(input, "tg_color", ordered_grps))
       text_size    <- input$tg_opt_text_size %||% 16
 
       p <- ggplot2::ggplot(
@@ -1517,7 +1567,8 @@ tumor_growth_server <- function(id, rv) {
                           fill = .data[[trt_col]])) +
         ggplot2::geom_col(width = 0.8, colour = "grey30", linewidth = 0.2) +
         ggplot2::geom_hline(yintercept = 0, linewidth = 0.6) +
-        ggplot2::scale_fill_manual(values = colors, name = trt_col) +
+        { if (!is.null(colors)) ggplot2::scale_fill_manual(values = colors, name = trt_col)
+          else ggplot2::scale_fill_discrete(name = trt_col) } +
         ggplot2::scale_x_continuous(
           breaks = wf_data$rank,
           labels = wf_data$animal_label,
@@ -1565,9 +1616,9 @@ tumor_growth_server <- function(id, rv) {
 
     text_size    <- input$tg_opt_text_size %||% 12
     ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
-    grps_clean   <- unique(sub(" - Dose: .*$", "", ordered_grps))
-    colors       <- build_color_vector(input, "tg_color", ordered_grps)
-    shapes       <- build_shape_vector(input, "tg_shape", ordered_grps)
+    grps_clean   <- unique(gsub(" - Dose: ", " ", ordered_grps))
+    colors       <- remap_colors_to_treatment(build_color_vector(input, "tg_color", ordered_grps))
+    shapes       <- remap_shapes_to_treatment(build_shape_vector(input, "tg_shape", ordered_grps))
 
     pc_df     <- as.data.frame(pc)
     label_col <- intersect(c("contrast", "Contrast", "comparison", "pair"), colnames(pc_df))[1]
@@ -1677,12 +1728,16 @@ tumor_growth_server <- function(id, rv) {
         ggplot2::aes(xmin = Lower, xmax = Upper, colour = Contrast),
         height = 0.25) +
       ggplot2::geom_point(data = ~ subset(., !is_ref),
-        ggplot2::aes(colour = Contrast, shape = Contrast), size = 3) +
-      ggplot2::geom_point(data = ~ subset(., is_ref),  size = 4, colour = "grey50", shape = 18) +
+        ggplot2::aes(colour = Contrast, shape = Contrast),
+        size = input$tg_opt_forest_pt_size %||% 3) +
+      ggplot2::geom_point(data = ~ subset(., is_ref),
+        size = input$tg_opt_forest_pt_size %||% 3, colour = "grey50", shape = 18) +
       ggplot2::geom_text(
         data = ~ subset(., !is_ref & nzchar(Ann_Label) & !is.na(Upper)),
         ggplot2::aes(label = Ann_Label, x = Upper),
-        hjust = -0.15, vjust = 0.5, size = text_size * 0.22, lineheight = 0.9) +
+        hjust = -0.15, vjust = 0.5,
+        size = (input$tg_opt_forest_ann_size %||% 12) / ggplot2::.pt,
+        lineheight = 0.9) +
       ggplot2::scale_colour_manual(values = forest_colours, guide = "none") +
       ggplot2::scale_shape_manual(values = forest_shapes, guide = "none") +
       ggplot2::scale_x_continuous(limits = x_lim, breaks = x_breaks) +

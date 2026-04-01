@@ -209,7 +209,7 @@ power_server <- function(id, rv) {
     progress$set(message = "Running power analysis...", value = 0.2)
     on.exit(progress$close(), add = TRUE)
 
-    result <- safe_analysis({
+    result <- safe_analysis(module = "power", {
       mouseExperiment::post_power_analysis(
         data             = rv$processed_data,
         alpha            = alpha_vals,
