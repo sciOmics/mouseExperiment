@@ -15,6 +15,8 @@
 #' @param control_name A character string specifying the name of the control/vehicle group. Default is "Control".
 #' @param min_time_point Optional. A numeric value specifying the minimum time point to include in analysis. Default is NULL.
 #' @param max_time_point Optional. A numeric value specifying the maximum time point to include in analysis. Default is NULL.
+#' @param verbose Logical. If TRUE, prints detailed results to the console.
+#'        Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.
 #'
 #' @return A list containing the following components:
 #' \describe{
@@ -72,7 +74,8 @@ analyze_drug_synergy_over_time <- function(df,
                                       combo_name,
                                       control_name = "Control",
                                       min_time_point = NULL,
-                                      max_time_point = NULL) {
+                                      max_time_point = NULL,
+                                      verbose = TRUE) {
   
   # Input validation
   required_columns <- c(treatment_column, volume_column, time_column)
@@ -155,7 +158,8 @@ analyze_drug_synergy_over_time <- function(df,
         drug_b_name = drug_b_name,
         combo_name = combo_name,
         control_name = control_name,
-        eval_time_point = tp
+        eval_time_point = tp,
+        verbose = FALSE
       )
       
       # Store full results
@@ -242,27 +246,29 @@ analyze_drug_synergy_over_time <- function(df,
   peak_ci_synergy <- synergy_summary[which.min(synergy_summary$Combination_Index), ]
   peak_bliss_synergy <- synergy_summary[which.max(synergy_summary$Bliss_Difference), ]
   
-  # Print summary of findings
-  cat("\n=== Drug Combination Synergy Analysis Over Time ===\n")
-  cat("Analysis performed across", nrow(synergy_summary), "time points from", 
-      min(synergy_summary$Time_Point), "to", max(synergy_summary$Time_Point), "\n\n")
-  
-  cat("Peak Synergy Findings:\n")
-  cat(paste0("Strongest CI Synergy at Day ", peak_ci_synergy$Time_Point, 
-             " (CI = ", round(peak_ci_synergy$Combination_Index, 2), ")\n"))
-  cat(paste0("Strongest Bliss Synergy at Day ", peak_bliss_synergy$Time_Point, 
-             " (Difference = ", round(peak_bliss_synergy$Bliss_Difference, 1), "%)\n\n"))
-  
-  cat("Synergy Summary by Time Point:\n")
-  print(synergy_summary[, c("Time_Point", "TGI_Combo", "Bliss_Expected_TGI", 
-                           "Bliss_Difference", "Combination_Index", "Synergy_Assessment", "Validation_Check")])
-  
-  # Check for validation issues
-  validation_issues <- synergy_summary$Validation_Check != "All calculations verified"
-  if (any(validation_issues)) {
-    cat("\nWARNING: Some validation checks failed. Please review calculations.\n")
-  } else {
-    cat("\nAll calculations verified as consistent.\n")
+  # Print summary of findings (only when verbose)
+  if (isTRUE(verbose)) {
+    cat("\n=== Drug Combination Synergy Analysis Over Time ===\n")
+    cat("Analysis performed across", nrow(synergy_summary), "time points from", 
+        min(synergy_summary$Time_Point), "to", max(synergy_summary$Time_Point), "\n\n")
+    
+    cat("Peak Synergy Findings:\n")
+    cat(paste0("Strongest CI Synergy at Day ", peak_ci_synergy$Time_Point, 
+               " (CI = ", round(peak_ci_synergy$Combination_Index, 2), ")\n"))
+    cat(paste0("Strongest Bliss Synergy at Day ", peak_bliss_synergy$Time_Point, 
+               " (Difference = ", round(peak_bliss_synergy$Bliss_Difference, 1), "%)\n\n"))
+    
+    cat("Synergy Summary by Time Point:\n")
+    print(synergy_summary[, c("Time_Point", "TGI_Combo", "Bliss_Expected_TGI", 
+                             "Bliss_Difference", "Combination_Index", "Synergy_Assessment", "Validation_Check")])
+    
+    # Check for validation issues
+    validation_issues <- synergy_summary$Validation_Check != "All calculations verified"
+    if (any(validation_issues)) {
+      cat("\nWARNING: Some validation checks failed. Please review calculations.\n")
+    } else {
+      cat("\nAll calculations verified as consistent.\n")
+    }
   }
   
   # Return comprehensive results

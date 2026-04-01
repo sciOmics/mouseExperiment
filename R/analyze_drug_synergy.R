@@ -16,6 +16,8 @@
 #' @param control_name A character string specifying the name of the control/vehicle group. Default is "Control".
 #' @param eval_time_point Optional. A numeric value specifying a specific time point to evaluate synergy.
 #'        If NULL (default), the function will use the last time point in the data.
+#' @param verbose Logical. If TRUE, prints detailed results to the console.
+#'        Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.
 #'
 #' @return A list containing the following components:
 #' \describe{
@@ -74,7 +76,8 @@ analyze_drug_synergy <- function(df,
                                drug_b_name,
                                combo_name,
                                control_name = "Control",
-                               eval_time_point = NULL) {
+                               eval_time_point = NULL,
+                               verbose = TRUE) {
   
   # Input validation
   required_columns <- c(treatment_column, volume_column, time_column)
@@ -226,34 +229,36 @@ analyze_drug_synergy <- function(df,
     Type = c("Observed", "Observed", "Expected", "Expected", "Observed")
   )
   
-  # Print results
-  cat("\n=== Drug Combination Synergy Analysis ===\n")
-  cat("Evaluation time point:", eval_time_point, "\n\n")
-  
-  cat("Treatment Mean Volumes:\n")
-  cat(paste0("Control (", control_name, "): ", round(control_mean, 2), "\n"))
-  cat(paste0(drug_a_name, ": ", round(drug_a_mean, 2), " (TGI: ", round(tgi_a, 1), "%)\n"))
-  cat(paste0(drug_b_name, ": ", round(drug_b_mean, 2), " (TGI: ", round(tgi_b, 1), "%)\n"))
-  cat(paste0(combo_name, ": ", round(combo_mean, 2), " (TGI: ", round(tgi_combo, 1), "%)\n\n"))
-  
-  cat("Expected Effects:\n")
-  cat(paste0("Bliss Independence: TGI = ", round(bliss_expected_tgi, 1), "%\n"))
-  cat(paste0("Loewe Additivity: TGI = ", round(loewe_expected_tgi, 1), "%\n\n"))
-  
-  cat("Synergy Assessment:\n")
-  cat(paste0("Bliss Difference: ", round(bliss_difference * 100, 1), "% (", 
-             ifelse(bliss_difference > 0, "Synergy", "No Synergy"), ")\n"))
-  cat(paste0("Loewe Difference: ", round(loewe_difference * 100, 1), "% (", 
-             ifelse(loewe_difference > 0, "Synergy", "No Synergy"), ")\n"))
-  cat(paste0("Combination Index: ", round(ci_value, 2), " (", synergy_interpretation, ")\n\n"))
-  
-  cat("Statistical Tests:\n")
-  cat(paste0("Combo vs ", drug_a_name, ": p = ", round(t_test_a_combo$p.value, 4), 
-             ifelse(t_test_a_combo$p.value < 0.05, " (Significant)", " (Not Significant)"), "\n"))
-  cat(paste0("Combo vs ", drug_b_name, ": p = ", round(t_test_b_combo$p.value, 4), 
-             ifelse(t_test_b_combo$p.value < 0.05, " (Significant)", " (Not Significant)"), "\n\n"))
-  
-  cat("Overall Assessment:", synergy_label, "\n\n")
+  # Print results (only when verbose)
+  if (isTRUE(verbose)) {
+    cat("\n=== Drug Combination Synergy Analysis ===\n")
+    cat("Evaluation time point:", eval_time_point, "\n\n")
+    
+    cat("Treatment Mean Volumes:\n")
+    cat(paste0("Control (", control_name, "): ", round(control_mean, 2), "\n"))
+    cat(paste0(drug_a_name, ": ", round(drug_a_mean, 2), " (TGI: ", round(tgi_a, 1), "%)\n"))
+    cat(paste0(drug_b_name, ": ", round(drug_b_mean, 2), " (TGI: ", round(tgi_b, 1), "%)\n"))
+    cat(paste0(combo_name, ": ", round(combo_mean, 2), " (TGI: ", round(tgi_combo, 1), "%)\n\n"))
+    
+    cat("Expected Effects:\n")
+    cat(paste0("Bliss Independence: TGI = ", round(bliss_expected_tgi, 1), "%\n"))
+    cat(paste0("Loewe Additivity: TGI = ", round(loewe_expected_tgi, 1), "%\n\n"))
+    
+    cat("Synergy Assessment:\n")
+    cat(paste0("Bliss Difference: ", round(bliss_difference * 100, 1), "% (", 
+               ifelse(bliss_difference > 0, "Synergy", "No Synergy"), ")\n"))
+    cat(paste0("Loewe Difference: ", round(loewe_difference * 100, 1), "% (", 
+               ifelse(loewe_difference > 0, "Synergy", "No Synergy"), ")\n"))
+    cat(paste0("Combination Index: ", round(ci_value, 2), " (", synergy_interpretation, ")\n\n"))
+    
+    cat("Statistical Tests:\n")
+    cat(paste0("Combo vs ", drug_a_name, ": p = ", round(t_test_a_combo$p.value, 4), 
+               ifelse(t_test_a_combo$p.value < 0.05, " (Significant)", " (Not Significant)"), "\n"))
+    cat(paste0("Combo vs ", drug_b_name, ": p = ", round(t_test_b_combo$p.value, 4), 
+               ifelse(t_test_b_combo$p.value < 0.05, " (Significant)", " (Not Significant)"), "\n\n"))
+    
+    cat("Overall Assessment:", synergy_label, "\n\n")
+  }
   
   # Return a list with all results
   return(list(

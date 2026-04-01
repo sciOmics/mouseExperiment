@@ -107,7 +107,7 @@ dose_response_statistics <- function(df,
 #' @param time_point Specific time point to analyze
 #' 
 #' @return Prepared data frame
-#' @keywords internal
+#' @export
 prepare_dose_data <- function(df, dose_column = "Dose", treatment_column = "Treatment", 
                              volume_column = "Volume", day_column = "Day", 
                              id_column = "ID", time_point = NULL) {
@@ -141,7 +141,7 @@ prepare_dose_data <- function(df, dose_column = "Dose", treatment_column = "Trea
 #' @param volume_column Volume column name
 #' 
 #' @return Summary statistics table
-#' @keywords internal
+#' @export
 generate_summary_statistics <- function(analysis_data, dose_column = "Dose", volume_column = "Volume") {
   summary_stats <- analysis_data %>%
     dplyr::group_by_at(vars(dose_column)) %>%

@@ -290,9 +290,11 @@ tumor_growth_statistics <- function(df,
   
   # Apply transformations if needed
   if (transform == "log") {
-    # Add a small constant to avoid log(0) issues
-    analysis_df[[volume_column]] <- log(analysis_df[[volume_column]] + 1)
-    if (verbose) cat("Applied log(x+1) transformation to volume data\n")
+    # Replace zeros/negatives with a small epsilon before log transform
+    vol <- analysis_df[[volume_column]]
+    vol[vol <= 0] <- min(vol[vol > 0], na.rm = TRUE) / 2
+    analysis_df[[volume_column]] <- log(vol)
+    if (verbose) cat("Applied log transformation to volume data\n")
   } else if (transform == "sqrt") {
     analysis_df[[volume_column]] <- sqrt(analysis_df[[volume_column]])
     if (verbose) cat("Applied square root transformation to volume data\n")
@@ -300,19 +302,20 @@ tumor_growth_statistics <- function(df,
   
   # Growth rate analysis
   growth_rates <- tryCatch({
-    # Split data by treatment, ID, and cage to ensure unique subjects
-    split_data <- split(analysis_df, list(analysis_df[[treatment_column]], 
-                                        analysis_df[[id_column]], 
-                                        analysis_df[[cage_column]]))
-    
     # Calculate growth rates for each subject
-    growth_rates_list <- lapply(split_data, function(subject_data) {
+    # Use auc_df (untransformed volumes) so growth rates are not double-transformed
+    split_auc <- split(auc_df, list(auc_df[[treatment_column]],
+                                    auc_df[[id_column]],
+                                    auc_df[[cage_column]]))
+    growth_rates_list <- lapply(split_auc, function(subject_data) {
       if (nrow(subject_data) >= 3) {
         # Sort by time
         subject_data <- subject_data[order(subject_data[[time_column]]), ]
         
-        # Calculate log volume
-        log_volume <- log1p(subject_data[[volume_column]])
+        # Calculate log volume from original (untransformed) data
+        raw_vol <- subject_data[[volume_column]]
+        raw_vol[raw_vol <= 0] <- min(raw_vol[raw_vol > 0], na.rm = TRUE) / 2
+        log_volume <- log(raw_vol)
         
         # Fit linear model
         model <- stats::lm(log_volume ~ subject_data[[time_column]])
@@ -397,35 +400,49 @@ tumor_growth_statistics <- function(df,
   
   # Fit different random effects specifications
   models <- list()
+  model_fit_errors <- list()
   
   # Base model (intercept only)
+  # Use withCallingHandlers so boundary (singular) fit warnings don't discard
+  # valid models — the model is still usable even when a random-effect variance
+  # is estimated near zero.
   models$intercept_only <- tryCatch({
-    lme4::lmer(
-      stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (1|", bt(id_column), ")")),
-      data = analysis_df,
-      control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
-                                check.nobs.vs.nRE = "ignore")
+    withCallingHandlers(
+      lme4::lmer(
+        stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (1|", bt(id_column), ")")),
+        data = analysis_df,
+        control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
+                                  check.nobs.vs.nRE = "ignore")
+      ),
+      warning = function(w) {
+        if (grepl("boundary|singular", w$message))
+          message("Note: intercept-only model has singular fit (random-effect variance near zero)")
+        invokeRestart("muffleWarning")
+      }
     )
-  }, warning = function(w) {
-    if (grepl("boundary", w$message)) {
-      warning("Boundary (singular) fit detected in intercept-only model")
-    }
-    return(NULL)
+  }, error = function(e) {
+    model_fit_errors[["intercept_only"]] <<- conditionMessage(e)
+    NULL
   })
   
   # Random slope model
   models$random_slope <- tryCatch({
-    lme4::lmer(
-      stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (", bt(time_column), "|", bt(id_column), ")")),
-      data = analysis_df,
-      control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
-                                check.nobs.vs.nRE = "ignore")
+    withCallingHandlers(
+      lme4::lmer(
+        stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (", bt(time_column), "|", bt(id_column), ")")),
+        data = analysis_df,
+        control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
+                                  check.nobs.vs.nRE = "ignore")
+      ),
+      warning = function(w) {
+        if (grepl("boundary|singular", w$message))
+          message("Note: random-slope model has singular fit (random-effect variance near zero)")
+        invokeRestart("muffleWarning")
+      }
     )
-  }, warning = function(w) {
-    if (grepl("boundary", w$message)) {
-      warning("Boundary (singular) fit detected in random slope model")
-    }
-    return(NULL)
+  }, error = function(e) {
+    model_fit_errors[["random_slope"]] <<- conditionMessage(e)
+    NULL
   })
   
   # Remove any NULL models
@@ -447,7 +464,8 @@ tumor_growth_statistics <- function(df,
       cat("Selected model:", best_model, "\n")
     }
   } else {
-    warning("No valid models could be fitted. Using intercept-only model as fallback.")
+    warning("No valid models could be fitted. Using intercept-only model as fallback. ",
+            "Errors: ", paste(names(model_fit_errors), "=", model_fit_errors, collapse = "; "))
     model <- lme4::lmer(
       stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (1|", bt(id_column), ")")),
       data = analysis_df,
@@ -457,6 +475,7 @@ tumor_growth_statistics <- function(df,
     model_selection$aic <- stats::AIC(model)
     model_selection$bic <- stats::BIC(model)
     model_selection$selected_model <- "intercept_only"
+    best_model <- "intercept_only"
   }
 
   # Diagnostic plots
@@ -872,12 +891,15 @@ tumor_growth_statistics <- function(df,
       treatment_effects$Upper_CL <- round(treatment_effects$Upper_CL, 3)
 
       # Create contrasts with reference group
+      # Use the emmeans factor level ordering (alphabetical) to ensure correct
+      # coefficient assignment — unique() ordering from the data may differ.
+      emm_levels <- levels(lsmeans_obj)[[1]]
       contrasts <- list()
-      other_groups <- setdiff(treatment_groups, reference_group)
+      other_groups <- setdiff(emm_levels, reference_group)
       for (group in other_groups) {
-        contrast_coef <- numeric(length(treatment_groups))
-        ref_idx <- which(treatment_groups == reference_group)
-        group_idx <- which(treatment_groups == group)
+        contrast_coef <- numeric(length(emm_levels))
+        ref_idx <- which(emm_levels == reference_group)
+        group_idx <- which(emm_levels == group)
         contrast_coef[ref_idx] <- -1
         contrast_coef[group_idx] <- 1
         contrasts[[paste(group, "-", reference_group)]] <- contrast_coef
