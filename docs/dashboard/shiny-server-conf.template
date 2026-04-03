@@ -1,0 +1,64 @@
+# shiny-server.conf - Configuration template for mouseExperimentDashboard
+# Place at: /etc/shiny-server/shiny-server.conf
+# After editing, restart: sudo systemctl restart shiny-server
+
+# Shiny Server Configuration for mouseExperimentDashboard
+# 
+# Documentation: https://docs.rstudio.com/shiny-server/
+
+# Run Shiny Server as the 'shiny' user
+run_as shiny;
+
+# Network settings
+listen 3838;
+
+# TCP backlog for pending connections
+tcp_backlog 50;
+
+# Connection limits
+max_connections 100;
+
+# Max concurrent R processes
+max_client_connections 100;
+
+# Memory and CPU resource limits (per process)
+# Set based on VPS specs - these are soft limits
+sanitize_errors on;
+
+# Define the location (URL path) of the application
+location / {
+  # Serve applications from directory
+  site_dir /srv/shiny-server;
+  
+  # Log output location
+  logs_dir /var/log/shiny-server;
+  
+  # Show directory listings
+  directory_index on;
+}
+
+# Specific configuration for mouseexperiment dashboard
+location /mouseexperiment {
+  app_dir /srv/shiny-server/mouseexperiment;
+  
+  # Use the robust entry point (app.R with better asset handling)
+  # Note: Shiny Server looks for app.R first, then ui.R+server.R
+  
+  # Logs go to:
+  # /var/log/shiny-server/app-name-<session-id>-<timestamp>.log
+  
+  # Enable session persistence
+  # (sessions timeout after period of inactivity)
+}
+
+# Alternative: Use via subpath
+# location /mouseexp {
+#   app_dir /srv/shiny-server/mouseexperiment;
+# }
+
+# Settings for Shiny Server Pro (if applicable)
+# Can be customized with:
+# - connection options
+# - authentication
+# - scaling settings
+# - etc.
