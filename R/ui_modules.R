@@ -411,20 +411,6 @@ tumorGrowthUI <- function(id) {
         tabsetPanel(
           id = ns("tg_results_tabs"),
 
-          tabPanel(
-            title = tags$span(icon("file-zipper"), " Download All"),
-            value = "__download_all__",
-            wellPanel(
-              style = "text-align:center; padding:30px;",
-              h4("Export All Results"),
-              p("Download every available result table (CSV) and plot (PNG) ",
-                "as a single ZIP file."),
-              downloadButton(ns("download_tg_all"), "Download All Results",
-                             class = "btn-lg btn-primary",
-                             icon = icon("download"))
-            )
-          ),
-          
           tabPanel("Summary",
             uiOutput(ns("tg_summary_tab_info")),
             shinycssloaders::withSpinner(
@@ -665,6 +651,20 @@ tumorGrowthUI <- function(id) {
                   plotOutput(ns("tg_diag_resid_fitted"), height = "400px")
                 )
               )
+            )
+          ),
+          
+          tabPanel(
+            title = tags$span(icon("file-zipper"), " Download All"),
+            value = "__download_all__",
+            wellPanel(
+              style = "text-align:center; padding:30px;",
+              h4("Export All Results"),
+              p("Download every available result table (CSV) and plot (PNG) ",
+                "as a single ZIP file."),
+              downloadButton(ns("download_tg_all"), "Download All Results",
+                             class = "btn-lg btn-primary",
+                             icon = icon("download"))
             )
           )
         )
