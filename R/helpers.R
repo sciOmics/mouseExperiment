@@ -45,27 +45,28 @@ detect_date_format <- function(data, date_column, reference_date) {
   first_val <- as.character(data[1, date_column])
   start_date <- reference_date
 
+  # Parse reference_date from its canonical YYYY-MM-DD or common dashboard formats
+  ref_parsed_base <- tryCatch(
+    as.Date(start_date,
+            tryFormats = c("%Y-%m-%d", "%m/%d/%Y", "%d-%b-%Y",
+                           "%B %d %Y", "%B %d, %Y")),
+    error = function(e) NA_Date_
+  )
+  if (is.na(ref_parsed_base)) ref_parsed_base <- Sys.Date()
+
   if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_val)) {
     fmt <- "%m/%d/%Y"
+    start_date <- format(ref_parsed_base, "%m/%d/%Y")
   } else if (grepl("^\\d{4}-\\d{1,2}-\\d{1,2}$", first_val)) {
     fmt <- "%Y-%m-%d"
+    start_date <- format(ref_parsed_base, "%Y-%m-%d")
   } else if (grepl("^\\d{1,2}-[A-Za-z]{3}$", first_val)) {
     fmt <- "%d-%b"
+    start_date <- format(ref_parsed_base, "%d-%b")
   } else if (grepl("^[A-Za-z]+\\s+\\d{1,2}$", first_val)) {
-    ref_parsed <- tryCatch(
-      as.Date(start_date,
-              tryFormats = c("%Y-%m-%d", "%m/%d/%Y", "%d-%b-%Y",
-                             "%B %d %Y", "%B %d, %Y")),
-      error = function(e) {
-        log_warn(sprintf("detect_date_format: could not parse reference_date=%s, falling back to Sys.Date() | error=%s",
-                        start_date, conditionMessage(e)))
-        Sys.Date()
-      }
-    )
-    if (is.na(ref_parsed)) ref_parsed <- Sys.Date()
-    ref_year <- as.integer(format(ref_parsed, "%Y"))
+    ref_year <- as.integer(format(ref_parsed_base, "%Y"))
     data[[date_column]] <- paste(data[[date_column]], ref_year)
-    start_date <- format(ref_parsed, "%B %d %Y")
+    start_date <- format(ref_parsed_base, "%B %d %Y")
     fmt <- "%B %d %Y"
   } else {
     fmt <- NULL
@@ -632,7 +633,7 @@ default_group_colors <- function(n) {
 #' \code{"default"} or unrecognised.
 #'
 #' @param name Character palette name: \code{"default"}, \code{"viridis"},
-#'   \code{"okabe_ito"}, or \code{"set2"}.
+#'   \code{"okabe_ito"}, \code{"set2"}, or \code{"wes_anderson"}.
 #' @param n    Number of colours required.
 #' @return Character vector of hex colour strings of length \code{n}.
 #' @keywords internal
@@ -649,6 +650,10 @@ palette_colors <- function(name, n) {
       s2 <- c("#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3",
               "#A6D854", "#FFD92F", "#E5C494", "#B3B3B3")
       rep_len(s2, n)
+    },
+    wes_anderson = {
+      wa <- c("#FF0000", "#00A08A", "#F2AD00", "#F98400", "#5BBCD6")
+      rep_len(wa, n)
     },
     default_group_colors(n)
   )
@@ -946,11 +951,12 @@ group_order_and_color_ui <- function(prefix, groups, ns = NS(NULL)) {
 
   shiny::tagList(
     shiny::selectInput(
-      pal_id, shiny::tags$span(shiny::icon("eye"), " Color palette"),
-      choices  = c("Default (ggplot2)" = "custom",
-                   "Viridis (colorblind)" = "viridis",
-                   "Okabe-Ito (colorblind)" = "okabe_ito",
-                   "Set2 (ColorBrewer)" = "set2"),
+      pal_id, shiny::tags$span(shiny::icon("eye"), " Color Palette Presets"),
+      choices  = c("Default" = "custom",
+                   "Viridis" = "viridis",
+                   "Okabe-Ito" = "okabe_ito",
+                   "Set2" = "set2",
+                   "Wes Anderson" = "wes_anderson"),
       selected = "custom",
       width    = "100%"
     ),

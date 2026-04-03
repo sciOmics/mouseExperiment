@@ -411,20 +411,6 @@ tumorGrowthUI <- function(id) {
         tabsetPanel(
           id = ns("tg_results_tabs"),
 
-          tabPanel(
-            title = tags$span(icon("file-zipper"), " Download All"),
-            value = "__download_all__",
-            wellPanel(
-              style = "text-align:center; padding:30px;",
-              h4("Export All Results"),
-              p("Download every available result table (CSV) and plot (PNG) ",
-                "as a single ZIP file."),
-              downloadButton(ns("download_tg_all"), "Download All Results",
-                             class = "btn-lg btn-primary",
-                             icon = icon("download"))
-            )
-          ),
-          
           tabPanel("Summary",
             uiOutput(ns("tg_summary_tab_info")),
             shinycssloaders::withSpinner(
@@ -666,6 +652,20 @@ tumorGrowthUI <- function(id) {
                 )
               )
             )
+          ),
+          
+          tabPanel(
+            title = tags$span(icon("file-zipper"), " Download All"),
+            value = "__download_all__",
+            wellPanel(
+              style = "text-align:center; padding:30px;",
+              h4("Export All Results"),
+              p("Download every available result table (CSV) and plot (PNG) ",
+                "as a single ZIP file."),
+              downloadButton(ns("download_tg_all"), "Download All Results",
+                             class = "btn-lg btn-primary",
+                             icon = icon("download"))
+            )
           )
         )
       )
@@ -760,12 +760,12 @@ citationUI <- function() {
   dash_version  <- tryCatch(as.character(utils::packageVersion("mouseExperimentDashboard")), error = function(e) "(not installed)")
   pkg_date      <- tryCatch({
     d <- utils::packageDescription("mouseExperiment")$Date
-    if (is.null(d) || is.na(d)) "2026-03-25" else d
-  }, error = function(e) "2026-03-25")
+    if (is.null(d) || is.na(d)) "2026-04-03" else d
+  }, error = function(e) "2026-04-03")
   dash_date     <- tryCatch({
     d <- utils::packageDescription("mouseExperimentDashboard")$Date
-    if (is.null(d) || is.na(d)) "2026-03-25" else d
-  }, error = function(e) "2026-03-25")
+    if (is.null(d) || is.na(d)) "2026-04-03" else d
+  }, error = function(e) "2026-04-03")
 
   fluidPage(
     h2("About"),
@@ -810,45 +810,11 @@ citationUI <- function() {
               tags$tr(
                 tags$td(strong("Last Updated")),
                 tags$td(dash_date)
-              ),
-              tags$tr(
-                tags$td(strong("Repository")),
-                tags$td(tags$a("github.com/sciOmics/mouseExperimentDashboard",
-                               href = "https://github.com/sciOmics/mouseExperimentDashboard",
-                               target = "_blank"))
               )
             )
           )
         )
       )
-    ),
-
-    wellPanel(
-      h3("How to Cite"),
-      p("If you use mouseExperiment or this dashboard in your research, please cite:"),
-      tags$blockquote(
-        style = "font-size: 1em; border-left: 4px solid #0073B7; padding-left: 16px;",
-        p(strong("mouseExperiment: "), "An R package for statistical analysis of mouse tumor growth experiments."),
-        p("Available at: ",
-          tags$a("https://github.com/sciOmics/mouseExperiment",
-                 href = "https://github.com/sciOmics/mouseExperiment", target = "_blank"))
-      )
-    ),
-
-    wellPanel(
-      h3("R Citation"),
-      p("To get the citation information directly in R:"),
-      tags$pre(
-        style = "background:#f5f5f5; padding:12px; border-radius:4px;",
-        'citation("mouseExperiment")'
-      )
-    ),
-
-    wellPanel(
-      h3("License"),
-      p("mouseExperiment is released under the ",
-        tags$a("MIT License", href = "https://github.com/sciOmics/mouseExperiment/blob/main/LICENSE",
-               target = "_blank"), ".")
     )
   )
 }

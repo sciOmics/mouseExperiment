@@ -2,6 +2,8 @@
 
 An interactive web-based dashboard for analyzing mouse tumor growth experiments. Provides a user-friendly, point-and-click interface to the `mouseExperiment` R package.
 
+**Note**: This is a proprietary application for private use. See LICENSE for details.
+
 ## Overview
 
 `mouseExperimentDashboard` wraps the statistical and visualization capabilities of `mouseExperiment`, exposing them through a Shiny web application. Users can:
@@ -13,40 +15,31 @@ An interactive web-based dashboard for analyzing mouse tumor growth experiments.
 - Download results in multiple formats
 
 
-## Local Installation
+## Local Installation & Development
 
 ### Prerequisites
 
 - **R** ≥ 4.0
 - **mouseExperiment** package (see [mouseExperiment repository](https://github.com/sciOmics/mouseExperiment))
 
-### Install the Dashboard Package
+### Setup for Development
 
 ```r
-# From GitHub (requires devtools)
-devtools::install_github("sciOmics/mouseExperimentDashboard")
-```
+# Clone the repository (or navigate to local working directory)
+cd /path/to/mouseExperimentDashboard
 
-Or in development mode:
-
-```r
+# Load dependencies
 devtools::load_all()
-```
 
-## Usage
-
-Start the dashboard with:
-
-```r
-library(mouseExperimentDashboard)
+# Run the app locally
 runDashboard()
 ```
 
 The app will open at `http://localhost:3838` (or another available port).
 
-### Basic Workflow
+## Usage
 
-1. **Data Upload** — Select a CSV or RDA file containing tumor growth data in long format (one row per observation). 
+### Basic Workflow — Select a CSV or RDA file containing tumor growth data in long format (one row per observation). 
 2. **Column Mapping** — Map the ID, time, volume, treatment, and optional columns to columns in the data
 3. **Tumor Growth Analysis Setup** — Choose statistical model (LME4 or AUC), data transformation, and additional parameters
 4. **Run Analysis** — Click "Run Analysis" to fit the model
@@ -188,18 +181,22 @@ devtools::check()
 
 # Citation
 
-If you use `mouseExperimentDashboard` or `mouseExperiment` in your research, please cite:
+If you use the underlying `mouseExperiment` R package in your research, please cite:
 
 ```
 mouseExperiment: An R package for statistical analysis of mouse tumor growth experiments.
 https://github.com/sciOmics/mouseExperiment
 ```
 
+**Note**: `mouseExperimentDashboard` is a proprietary private application and is not for citation or redistribution.
+
 ## License
 
-MIT License — See [LICENSE](LICENSE) for details.
+**Proprietary** — All Rights Reserved. See [LICENSE](LICENSE) for details.
+
+mouseExperiment (the underlying R package) is licensed under the MIT License.
 
 ## Support
 
-[Report an issue or suggest an improvement](https://github.com/sciOmics/mouseExperiment/issues)
+For questions or issues, contact: david@sciomics.bio
 

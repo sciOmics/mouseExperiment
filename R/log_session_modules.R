@@ -28,7 +28,13 @@ analysis_log_server <- function(id, rv) {
       input$refresh_log   # also invalidate on button click
       entries <- get_log_entries()
       if (length(entries) == 0L) return("No log entries yet.")
-      paste(rev(entries), collapse = "\n")
+      formatted <- vapply(rev(entries), function(line) {
+        tryCatch({
+          p <- jsonlite::fromJSON(line)
+          sprintf("[%s] %-5s  %s", p$time, p$level, p$msg)
+        }, error = function(e) line)
+      }, character(1L))
+      paste(formatted, collapse = "\n")
     })
 
     output$log_output <- renderText(log_text())
