@@ -32,9 +32,9 @@ Imports:
     ggbeeswarm (>= 0.7.0),
     logger (>= 0.3.0),
     jsonlite (>= 1.8.0),
-    wesanderson (>= 0.3.7)
+    wesanderson (>= 0.3.7),
+    mouseExperiment (>= 0.2.0)
 Suggests:
-    mouseExperiment (>= 0.2.0),
     testthat (>= 3.0.0),
     shinytest2 (>= 0.2.0),
     chromote,
