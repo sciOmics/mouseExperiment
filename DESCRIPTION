@@ -1,11 +1,11 @@
 Package: mouseExperiment
 Title: Analysis of Mouse Tumor Growth Experiments
-Version: 0.1.0
+Version: 0.2.0
 Date: 2026-03-25
 Authors@R: 
-    person("Insight", "BioAnalytics", , "info@insightbioanalytics.com", role = c("aut", "cre", "cph"))
-Author: Insight BioAnalytics [aut, cre, cph]
-Maintainer: Insight BioAnalytics <info@insightbioanalytics.com>
+    person("David", "Woods", , "david@sciomics.bio", role = c("aut", "cre", "cph"))
+Author: David Woods [aut, cre, cph]
+Maintainer: David Woods <david@sciomics.bio>
 Description: Provides tools for analyzing and visualizing mouse tumor growth experiments
     including calculating tumor volume, survival statistics, and tumor growth kinetics.
     The package offers functions for dose-response analysis, drug synergy evaluation,
