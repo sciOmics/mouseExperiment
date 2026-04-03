@@ -29,7 +29,6 @@ Imports:
     colourpicker (>= 1.1.1),
     sortable (>= 0.4.4),
     htmlwidgets (>= 1.6.0),
-    ggbeeswarm (>= 0.7.0),
     logger (>= 0.3.0),
     jsonlite (>= 1.8.0),
     wesanderson (>= 0.3.7),
