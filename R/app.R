@@ -21,17 +21,23 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
 
   if (!exists("APP_VERSION")) APP_VERSION <- "0.1.0 (Development)"
 
-  # Mount static assets explicitly so they resolve regardless of working
-  # directory. system.file(package=) returns the project root under
-  # devtools::load_all(), so "www" is always one level below it.
-  pkg_root <- system.file(package = "mouseExperimentDashboard")
-  www_dir  <- file.path(pkg_root, "www")
-  if (!dir.exists(www_dir)) www_dir <- file.path(getwd(), "www")
-  if (dir.exists(www_dir)) {
-    shiny::addResourcePath("css",    file.path(www_dir, "css"))
-    shiny::addResourcePath("images", file.path(www_dir, "images"))
-    shiny::addResourcePath("js",     file.path(www_dir, "js"))
+  # Mount static assets from inst/www/ (bundled with package)
+  # system.file() returns the installation path during normal use, and the
+  # source directory root during devtools::load_all(), so inst/www resolves correctly in both cases.
+  www_dir <- system.file("www", package = "mouseExperimentDashboard")
+  
+  if (!nzchar(www_dir) || !dir.exists(www_dir)) {
+    stop(
+      "Static assets (www/) folder not found in package installation.\n",
+      "Expected location: ", system.file(package = "mouseExperimentDashboard"), "/www\n",
+      "To fix: Reinstall the package to ensure inst/www/ is included:\n",
+      "  devtools::install() or R CMD INSTALL ."
+    )
   }
+  
+  shiny::addResourcePath("css",    file.path(www_dir, "css"))
+  shiny::addResourcePath("images", file.path(www_dir, "images"))
+  shiny::addResourcePath("js",     file.path(www_dir, "js"))
 
   # JS files are loaded from www/js/ via tags$script(src = ...) in the UI header
 
