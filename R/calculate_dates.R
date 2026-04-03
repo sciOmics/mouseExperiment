@@ -96,12 +96,21 @@ calculate_dates <- function(df, start_date, date_column = "Date",
         dates_parsed <- as.POSIXct(strptime(df[,date_column], format = date_format))
       }
       
-      # Parse start date with same format
+      # Parse start date - try the data format first, then fall back to common formats
+      # (dashboard always supplies start_date in YYYY-MM-DD regardless of data format)
       if (!is.null(year) && !grepl("%Y", date_format)) {
         start_date_with_year <- paste(start_date, year, sep = "-")
         start_date_parsed <- as.POSIXct(strptime(start_date_with_year, format = date_format_with_year))
       } else {
         start_date_parsed <- as.POSIXct(strptime(start_date, format = date_format))
+      }
+      # If the data-format parse failed (e.g. start_date is YYYY-MM-DD but data is MM/DD/YYYY),
+      # try a sequence of common unambiguous formats before reaching the anytime fallback below.
+      if (is.na(start_date_parsed)) {
+        for (fmt in c("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%d-%b-%Y", "%B %d %Y", "%B %d, %Y")) {
+          start_date_parsed <- as.POSIXct(strptime(start_date, format = fmt))
+          if (!is.na(start_date_parsed)) break
+        }
       }
     } else {
       # Format without year and no year provided (not recommended)
@@ -111,10 +120,6 @@ calculate_dates <- function(df, start_date, date_column = "Date",
     }
   } else {
     # Use anytime for automatic parsing (original behavior)
-    if (!requireNamespace("anytime", quietly = TRUE)) {
-      stop("Package 'anytime' is required for automatic date parsing. ",
-           "Install it or specify 'date_format' explicitly.", call. = FALSE)
-    }
     message("Using automatic date parsing. For more reliable results, specify date_format.")
     start_date_parsed <- anytime::anytime(start_date)
     dates_parsed <- anytime::anytime(df[,date_column])
@@ -148,11 +153,7 @@ calculate_dates <- function(df, start_date, date_column = "Date",
         }
       } else {
         # Fall back to anytime as last resort
-        if (requireNamespace("anytime", quietly = TRUE)) {
-          start_date_parsed <- anytime::anytime(start_date)
-        } else {
-          stop("Package 'anytime' not available. Please specify 'date_format'.", call. = FALSE)
-        }
+        start_date_parsed <- anytime::anytime(start_date)
       }
       
       # Check if successful now
