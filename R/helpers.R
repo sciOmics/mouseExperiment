@@ -633,7 +633,7 @@ default_group_colors <- function(n) {
 #' \code{"default"} or unrecognised.
 #'
 #' @param name Character palette name: \code{"default"}, \code{"viridis"},
-#'   \code{"okabe_ito"}, or \code{"set2"}.
+#'   \code{"okabe_ito"}, \code{"set2"}, or \code{"wes_anderson"}.
 #' @param n    Number of colours required.
 #' @return Character vector of hex colour strings of length \code{n}.
 #' @keywords internal
@@ -650,6 +650,10 @@ palette_colors <- function(name, n) {
       s2 <- c("#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3",
               "#A6D854", "#FFD92F", "#E5C494", "#B3B3B3")
       rep_len(s2, n)
+    },
+    wes_anderson = {
+      wa <- c("#FF0000", "#00A08A", "#F2AD00", "#F98400", "#5BBCD6")
+      rep_len(wa, n)
     },
     default_group_colors(n)
   )
@@ -951,7 +955,8 @@ group_order_and_color_ui <- function(prefix, groups, ns = NS(NULL)) {
       choices  = c("Default" = "custom",
                    "Viridis" = "viridis",
                    "Okabe-Ito" = "okabe_ito",
-                   "Set2" = "set2"),
+                   "Set2" = "set2",
+                   "Wes Anderson" = "wes_anderson"),
       selected = "custom",
       width    = "100%"
     ),
