@@ -1,11 +1,11 @@
 Package: mouseExperimentDashboard
 Title: Interactive Dashboard for mouseExperiment Analysis
-Version: 0.1.0
-Date: 2026-03-25
+Version: 0.1.1
+Date: 2026-04-03
 Authors@R: 
-    person("Insight", "BioAnalytics", , "david@sciomics.bio", role = c("aut", "cre"))
-Author: Insight BioAnalytics [aut, cre]
-Maintainer: Insight BioAnalytics <david@sciomics.bio>
+    person("David", "Woods", , "david@sciomics.bio", role = c("aut", "cre"))
+Author: David Woods [aut, cre]
+Maintainer: David Woods <david@sciomics.bio>
 Description: Provides an interactive web-based dashboard interface for the mouseExperiment
     package. Users can upload tumor growth data, configure analysis parameters through
     a point-and-click interface, and interactively explore statistical results and
@@ -34,7 +34,7 @@ Imports:
     jsonlite (>= 1.8.0),
     wesanderson (>= 0.3.7)
 Suggests:
-    mouseExperiment (>= 0.3.0),
+    mouseExperiment (>= 0.2.0),
     testthat (>= 3.0.0),
     shinytest2 (>= 0.2.0),
     chromote,
