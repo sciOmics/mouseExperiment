@@ -947,11 +947,11 @@ group_order_and_color_ui <- function(prefix, groups, ns = NS(NULL)) {
 
   shiny::tagList(
     shiny::selectInput(
-      pal_id, shiny::tags$span(shiny::icon("eye"), " Color palette"),
-      choices  = c("Default (ggplot2)" = "custom",
-                   "Viridis (colorblind)" = "viridis",
-                   "Okabe-Ito (colorblind)" = "okabe_ito",
-                   "Set2 (ColorBrewer)" = "set2"),
+      pal_id, shiny::tags$span(shiny::icon("eye"), " Color Palette Presets"),
+      choices  = c("Default" = "custom",
+                   "Viridis" = "viridis",
+                   "Okabe-Ito" = "okabe_ito",
+                   "Set2" = "set2"),
       selected = "custom",
       width    = "100%"
     ),
