@@ -9,7 +9,7 @@ Maintainer: David Woods <david@sciomics.bio>
 Description: Provides tools for analyzing and visualizing mouse tumor growth experiments
     including calculating tumor volume, survival statistics, and tumor growth kinetics.
     The package offers functions for dose-response analysis, drug synergy evaluation,
-    and comprehensive visualization of experimental results.
+    and visualization of experimental results.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
