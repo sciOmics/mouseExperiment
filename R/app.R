@@ -58,7 +58,12 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
         tags$script(src = "js/navbar.js"),
         tags$script(src = "js/sidebar.js"),
         tags$script(src = "js/darkmode.js"),
-        tags$script(src = "js/overlay.js")
+        tags$script(src = "js/overlay.js"),
+        tags$script(
+          async = NA,
+          src = "https://analytics.mouseexperiment.com/script.js",
+          `data-website-id` = "bada01ff-dc10-48d5-8998-24c1004543eb"
+        )
       )
     ),
 
