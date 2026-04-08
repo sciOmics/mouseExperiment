@@ -244,6 +244,9 @@ synergy_server <- function(id, rv) {
       status_alert("Running synergy analysis...", "info")
     })
     
+    # Track analysis start with Umami
+    shinyjs::runjs("window.trackAnalysisStart('drug_synergy', 'bliss_loewe', 'combo_vs_monotherapy');")
+    
     # Use preprocessed data (Volume + Day resolved) if TG analysis has already
     # been run; otherwise preprocess inline from the raw uploaded data.
     pp <- tryCatch(ensure_preprocessed(rv), error = function(e) {
@@ -358,6 +361,14 @@ synergy_server <- function(id, rv) {
     }
     
     rv$syn_results <- result
+
+    # Track analysis completion with Umami
+    if (isTRUE(result$error)) {
+      shinyjs::runjs(sprintf("window.trackAnalysisComplete('drug_synergy', false, '%s');",
+                             gsub("'", "\\\\'", result$message)))
+    } else {
+      shinyjs::runjs("window.trackAnalysisComplete('drug_synergy', true);")
+    }
 
     # Store the 4 group names so the Plots tab can build the color-named vector
     rv$syn_plot_inputs <- list(

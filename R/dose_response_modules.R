@@ -247,6 +247,9 @@ dose_response_server <- function(id, rv) {
       status_alert("Running dose-response analysis...", "info")
     })
 
+    # Track analysis start with Umami
+    shinyjs::runjs("window.trackAnalysisStart('dose_response', 'linear_regression+anova', 'control');")
+
     data     <- rv$processed_data
     dose_col <- rv$dose_col
     vol_col  <- rv$vol_col
@@ -313,6 +316,14 @@ dose_response_server <- function(id, rv) {
     }
 
     rv$dr_results <- result
+
+    # Track analysis completion with Umami
+    if (isTRUE(result$error)) {
+      shinyjs::runjs(sprintf("window.trackAnalysisComplete('dose_response', false, '%s');",
+                             gsub("'", "\\\\'", result$message)))
+    } else {
+      shinyjs::runjs("window.trackAnalysisComplete('dose_response', true);")
+    }
 
     if (isTRUE(result$error)) {
       output$dr_status_msg <- renderUI({

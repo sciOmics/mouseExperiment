@@ -177,6 +177,10 @@ power_server <- function(id, rv) {
       status_alert("Running power analysis...", "info")
     })
     
+    # Track analysis start with Umami
+    shinyjs::runjs(sprintf("window.trackAnalysisStart('power', '%s', 'post_hoc');",
+                           input$pw_method))
+    
     # Prefer preprocessed data (Volume + Day already resolved); fall back to raw
     if (is.null(rv$processed_data)) {
       output$pw_status_msg <- renderUI({
@@ -230,6 +234,14 @@ power_server <- function(id, rv) {
     }
 
     rv$pw_results <- result
+    
+    # Track analysis completion with Umami
+    if (isTRUE(result$error)) {
+      shinyjs::runjs(sprintf("window.trackAnalysisComplete('power', false, '%s');",
+                             gsub("'", "\\\\'", result$message)))
+    } else {
+      shinyjs::runjs("window.trackAnalysisComplete('power', true);")
+    }
     
     if (isTRUE(result$error)) {
       output$pw_status_msg <- renderUI({

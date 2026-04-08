@@ -54,8 +54,15 @@ tumor_growth_server <- function(id, rv) {
       output$tg_status_msg <- renderUI({
         status_alert("Error: Please select a reference group before running analysis", "danger")
       })
+      shinyjs::runjs("window.trackError('validation', 'Reference group not selected', 'tumor_growth');")
       return()
     }
+    
+    # Track analysis start and reference group selection with Umami
+    shinyjs::runjs(sprintf(
+      "window.trackAnalysisStart('tumor_growth', '%s', '%s'); window.trackReferenceGroupSelected('tumor_growth', '%s');",
+      input$tg_model_type, input$tg_reference, input$tg_reference
+    ))
     
     rv$tg_running <- TRUE
     output$tg_status_msg <- renderUI({
@@ -88,14 +95,17 @@ tumor_growth_server <- function(id, rv) {
         output$tg_status_msg <- renderUI({
           status_alert("Please select both Length and Width columns before running analysis.", "danger")
         })
+        shinyjs::runjs("window.trackError('validation', 'Length/Width columns not selected', 'tumor_growth');")
         rv$tg_running <- FALSE
         return()
       }
       if (!len_col %in% colnames(data) || !wid_col %in% colnames(data)) {
+        missing_col <- if (!len_col %in% colnames(data)) len_col else wid_col
         output$tg_status_msg <- renderUI({
-          status_alert(paste0("Column not found in data: '",
-                     if (!len_col %in% colnames(data)) len_col else wid_col, "'"), "danger")
+          status_alert(paste0("Column not found in data: '", missing_col, "'"), "danger")
         })
+        shinyjs::runjs(sprintf("window.trackError('validation', 'Column not found: %s', 'tumor_growth');",
+                               missing_col))
         rv$tg_running <- FALSE
         return()
       }
@@ -144,10 +154,13 @@ tumor_growth_server <- function(id, rv) {
                   Volume    = col_names$volume_column)
     missing_cols <- check_required_cols(data, required)
     if (length(missing_cols) > 0) {
+      error_msg <- paste0("Required column(s) not found in data: ",
+                   paste(names(missing_cols), "=", sQuote(missing_cols), collapse = ", "))
       output$tg_status_msg <- renderUI({
-        status_alert(paste0("Required column(s) not found in data: ",
-                   paste(names(missing_cols), "=", sQuote(missing_cols), collapse = ", ")), "danger")
+        status_alert(error_msg, "danger")
       })
+      shinyjs::runjs(sprintf("window.trackError('validation', '%s', 'tumor_growth');",
+                             gsub("'", "\\\\'", error_msg)))
       rv$tg_running <- FALSE
       return()
     }
@@ -642,6 +655,14 @@ tumor_growth_server <- function(id, rv) {
     rv$tg_results <- result
     rv$tg_running <- FALSE
 
+    # Track analysis completion with Umami
+    if (isTRUE(result$error)) {
+      shinyjs::runjs(sprintf("window.trackAnalysisComplete('tumor_growth', false, '%s');",
+                             gsub("'", "\\\\'", result$message)))
+    } else {
+      shinyjs::runjs("window.trackAnalysisComplete('tumor_growth', true);")
+    }
+
     # Store the data and column names needed for reactive plot re-rendering
     rv$tg_plot_data   <- data
     rv$tg_col_names   <- col_names
@@ -715,6 +736,12 @@ tumor_growth_server <- function(id, rv) {
   # Update plot selector choices based on model type (AUC plot only in AUC mode;
 
   # forest plot only in LME4 mode)
+  observeEvent(input$tg_model_type, {
+    req(input$tg_model_type)
+    shinyjs::runjs(sprintf("window.trackEvent('model_type_selected', {analysis_type: 'tumor_growth', method: '%s'});",
+                           input$tg_model_type))
+  }, ignoreInit = TRUE)
+
   observeEvent(input$tg_model_type, {
     base_choices <- c(
       "Tumor Growth Curves"       = "growth_curves",
@@ -792,6 +819,13 @@ tumor_growth_server <- function(id, rv) {
       auc_tabs_inserted(FALSE)
     }
   }, ignoreNULL = FALSE)
+
+  # Track plot type switching
+  observeEvent(input$tg_plot_selector, {
+    req(input$tg_plot_selector)
+    shinyjs::runjs(sprintf("window.trackEvent('plot_type_selected', {analysis_type: 'tumor_growth', plot_type: '%s'});",
+                           input$tg_plot_selector))
+  }, ignoreInit = TRUE)
 
   # ANOVA table
   output$tg_download_plot_btn <- renderUI({
@@ -1780,6 +1814,7 @@ tumor_growth_server <- function(id, rv) {
   output$download_tg_anova <- downloadHandler(
     filename = "anova_results.csv",
     content = function(file) {
+      shinyjs::runjs("window.trackDownload('tumor_growth', 'table', 'csv');")
       if (!is.null(rv$tg_results$anova)) {
         write.csv(as.data.frame(rv$tg_results$anova), file, row.names = TRUE)
       }
@@ -1789,6 +1824,7 @@ tumor_growth_server <- function(id, rv) {
   output$download_tg_comparisons <- downloadHandler(
     filename = "pairwise_comparisons.csv",
     content = function(file) {
+      shinyjs::runjs("window.trackDownload('tumor_growth', 'table', 'csv');")
       if (!is.null(rv$tg_results$pairwise_comparisons)) {
         write.csv(as.data.frame(rv$tg_results$pairwise_comparisons), file, row.names = FALSE)
       }
@@ -1798,6 +1834,7 @@ tumor_growth_server <- function(id, rv) {
   output$download_tg_effects <- downloadHandler(
     filename = "treatment_effects.csv",
     content = function(file) {
+      shinyjs::runjs("window.trackDownload('tumor_growth', 'table', 'csv');")
       if (!is.null(rv$tg_results$treatment_effects)) {
         write.csv(as.data.frame(rv$tg_results$treatment_effects), file, row.names = FALSE)
       }
@@ -1849,6 +1886,8 @@ tumor_growth_server <- function(id, rv) {
   output$download_tg_plot_growth <- downloadHandler(
     filename = "tumor_growth_curves.png",
     content = function(file) {
+      # Track plot download
+      shinyjs::runjs("window.trackDownload('tumor_growth', 'plot', 'png');")
       p <- tg_growth_plot()
       if (!is.null(p)) {
         png(file, width = input$tg_plot_width %||% 800,
@@ -1863,6 +1902,8 @@ tumor_growth_server <- function(id, rv) {
   output$download_tg_plot_rates <- downloadHandler(
     filename = "growth_rate_distribution.png",
     content = function(file) {
+      # Track plot download
+      shinyjs::runjs("window.trackDownload('tumor_growth', 'plot', 'png');")
       p <- tg_rates_plot()
       if (!is.null(p)) {
         png(file, width = input$tg_plot_width %||% 800,
@@ -1877,6 +1918,8 @@ tumor_growth_server <- function(id, rv) {
   output$download_tg_plot_auc <- downloadHandler(
     filename = "treatment_effects.png",
     content = function(file) {
+      # Track plot download
+      shinyjs::runjs("window.trackDownload('tumor_growth', 'plot', 'png');")
       p <- tg_auc_plot()
       if (!is.null(p)) {
         png(file, width = input$tg_plot_width %||% 800,
@@ -1891,6 +1934,7 @@ tumor_growth_server <- function(id, rv) {
   output$download_tg_plot_effect_forest <- downloadHandler(
     filename = "effect_size_forest_plot.png",
     content = function(file) {
+      shinyjs::runjs("window.trackDownload('tumor_growth', 'plot', 'png');")
       p <- tg_forest_plot()
       if (!is.null(p)) {
         png(file, width = input$tg_plot_width %||% 900,
@@ -1905,6 +1949,7 @@ tumor_growth_server <- function(id, rv) {
   output$download_tg_plot_waterfall <- downloadHandler(
     filename = "waterfall_plot.png",
     content = function(file) {
+      shinyjs::runjs("window.trackDownload('tumor_growth', 'plot', 'png');")
       p <- tg_wf_plot()
       if (!is.null(p)) {
         png(file, width  = input$tg_plot_width  %||% 800,
@@ -1921,6 +1966,7 @@ tumor_growth_server <- function(id, rv) {
       paste0("mouseExperiment_results_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".zip")
     },
     content = function(file) {
+      shinyjs::runjs("window.trackDownload('tumor_growth', 'all_results', 'zip');")
       tmpdir <- tempdir()
       outdir <- file.path(tmpdir, "mouseExperiment_results")
       dir.create(outdir, showWarnings = FALSE, recursive = TRUE)

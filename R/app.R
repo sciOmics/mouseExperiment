@@ -74,7 +74,8 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
           async = NA,
           src = "https://analytics.headpudding.com/script.js",
           `data-website-id` = "2bab3ca9-ec31-4ff2-9492-bd261dbedd48"
-        )
+        ),
+        tags$script(src = "js/umami-events.js")
       )
     ),
 
@@ -161,10 +162,26 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     # Guard: redirect away from placeholder tabs if reached via keyboard
     observeEvent(input$main_nav, {
       log_navigation(session, input$main_nav)
+
       disabled_vals <- c("__toxicity_disabled__", "__dose_response_disabled__",
                          "__drug_synergy_disabled__", "__power_analysis_disabled__")
-      if (input$main_nav %in% disabled_vals)
+
+      # Map internal disabled values to human-readable feature names
+      coming_soon_names <- c(
+        "__toxicity_disabled__"       = "Toxicity",
+        "__dose_response_disabled__"  = "Dose Response",
+        "__drug_synergy_disabled__"   = "Drug Synergy",
+        "__power_analysis_disabled__" = "Power Analysis"
+      )
+
+      if (input$main_nav %in% disabled_vals) {
+        feature_name <- coming_soon_names[[input$main_nav]]
+        shinyjs::runjs(sprintf("window.trackFeatureAccess('%s', 'coming_soon');", feature_name))
         updateNavbarPage(session, "main_nav", selected = "Survival")
+      } else {
+        # Track navigation to enabled tabs
+        shinyjs::runjs(sprintf("window.trackTabNavigation('%s');", input$main_nav))
+      }
     }, ignoreInit = TRUE)
 
     # Analysis tabs that require data to be uploaded first

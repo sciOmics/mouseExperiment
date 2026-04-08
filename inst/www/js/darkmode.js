@@ -13,5 +13,7 @@ $(document).ready(function () {
   $(document).on('click', '#nav-brand-icon', function () {
     var isDark = $('body').toggleClass('dark-mode').hasClass('dark-mode');
     localStorage.setItem(DARK_KEY, isDark ? '1' : '0');
+    // Track dark mode toggle with Umami
+    window.trackEvent('dark_mode_toggled', { enabled: isDark });
   });
 });

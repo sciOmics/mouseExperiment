@@ -48,6 +48,7 @@ analysis_log_server <- function(id, rv) {
         paste0("analysis_log_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".txt")
       },
       content = function(file) {
+        shinyjs::runjs("window.trackDownload('log', 'analysis_log', 'txt');")
         writeLines(get_log_entries(), file)
       }
     )
@@ -121,6 +122,7 @@ setup_session_save_restore <- function(input, output, session, rv) {
       )
       saveRDS(snapshot, file)
       log_info("session_save | file=mouseExperiment_session.rds")
+      shinyjs::runjs("window.trackEvent('session_saved', {format: 'rds'});")
     }
   )
 
@@ -131,12 +133,14 @@ setup_session_save_restore <- function(input, output, session, rv) {
       snapshot <- readRDS(file_info$datapath)
       if (!is.list(snapshot) || is.null(snapshot$uploaded_data)) {
         showNotification("Invalid session file.", type = "error")
+        shinyjs::runjs("window.trackError('session', 'Invalid session file', 'session_restore');")
         return()
       }
       # Restore keys
       for (key in names(snapshot)) {
         if (key != "saved_at") rv[[key]] <- snapshot[[key]]
       }
+      shinyjs::runjs("window.trackEvent('session_restored', {format: 'rds'});")
       showNotification(
         paste("Session restored from", format(snapshot$saved_at, "%Y-%m-%d %H:%M")),
         type = "message", duration = 5
@@ -144,6 +148,8 @@ setup_session_save_restore <- function(input, output, session, rv) {
       log_info(sprintf("session_restore | saved_at=%s", snapshot$saved_at))
     }, error = function(e) {
       showNotification(paste("Failed to restore session:", e$message), type = "error")
+      shinyjs::runjs(sprintf("window.trackError('session', '%s', 'session_restore');",
+                             gsub("'", "\\\\'", e$message)))
       log_caught_error("session", "restore", e)
     })
   })
