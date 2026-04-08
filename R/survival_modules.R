@@ -252,6 +252,7 @@ survival_server <- function(id, rv) {
       output$surv_status_msg <- renderUI({
         status_alert("Error: Please select a Treatment Group on the Data Upload tab", "danger")
       })
+      shinyjs::runjs("window.trackError('validation', 'Treatment column not selected', 'survival');")
       return()
     }
     
@@ -260,8 +261,17 @@ survival_server <- function(id, rv) {
       output$surv_status_msg <- renderUI({
         status_alert("Error: Please select an Event/Censor Status Column on the Data Upload tab", "danger")
       })
+      shinyjs::runjs("window.trackError('validation', 'Survival event column not selected', 'survival');")
       return()
     }
+    
+    # Track analysis start with Umami
+    ref_group <- if (!is.null(input$surv_reference_group) && nzchar(input$surv_reference_group))
+      input$surv_reference_group else "default"
+    shinyjs::runjs(sprintf(
+      "window.trackAnalysisStart('survival', 'cox', '%s'); window.trackReferenceGroupSelected('survival', '%s');",
+      ref_group, ref_group
+    ))
     
     rv$surv_running <- TRUE
     output$surv_status_msg <- renderUI({
@@ -435,6 +445,14 @@ survival_server <- function(id, rv) {
     
     rv$surv_results <- result
     rv$surv_running <- FALSE
+
+    # Track analysis completion with Umami
+    if (isTRUE(result$error)) {
+      shinyjs::runjs(sprintf("window.trackAnalysisComplete('survival', false, '%s');",
+                             gsub("'", "\\\\'", result$message)))
+    } else {
+      shinyjs::runjs("window.trackAnalysisComplete('survival', true);")
+    }
 
     # Store treatment group names for the per-group colour pickers in the Plots tab
     rv$surv_plot_groups <- if (!is.null(result$survival_data) && has_col(result$survival_data, "Treatment")) {
@@ -778,6 +796,7 @@ survival_server <- function(id, rv) {
   output$download_surv_plot_km <- downloadHandler(
     filename = "kaplan_meier_plot.png",
     content = function(file) {
+      shinyjs::runjs("window.trackDownload('survival', 'plot', 'png');")
       req(rv$surv_results)
       surv_df <- rv$surv_results$survival_data
       ordered_grps <- get_ordered_groups(input, "surv", rv$surv_plot_groups)
@@ -859,6 +878,7 @@ survival_server <- function(id, rv) {
   output$download_surv_cox <- downloadHandler(
     filename = "survival_results.csv",
     content = function(file) {
+      shinyjs::runjs("window.trackDownload('survival', 'table', 'csv');")
       if (!is.null(rv$surv_results$results)) {
         write.csv(rv$surv_results$results, file, row.names = FALSE)
       }
@@ -868,6 +888,7 @@ survival_server <- function(id, rv) {
   output$download_surv_risk_table <- downloadHandler(
     filename = "survival_risk_table.csv",
     content = function(file) {
+      shinyjs::runjs("window.trackDownload('survival', 'table', 'csv');")
       req(rv$surv_results$km_fit)
       km_sum <- summary(rv$surv_results$km_fit)
       risk_df <- data.frame(
@@ -885,6 +906,7 @@ survival_server <- function(id, rv) {
   output$download_surv_forest_plot <- downloadHandler(
     filename = "forest_plot.png",
     content = function(file) {
+      shinyjs::runjs("window.trackDownload('survival', 'plot', 'png');")
       req(rv$surv_results, !isTRUE(rv$surv_results$error), rv$surv_results$results)
       p <- build_surv_forest_plot(
         res      = rv$surv_results$results,

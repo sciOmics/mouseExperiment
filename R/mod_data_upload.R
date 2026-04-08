@@ -55,6 +55,7 @@ data_upload_server <- function(id, rv) {
       output$demo_load_msg <- renderUI({
         status_alert("Demo file not found. Please reinstall the package.", "danger")
       })
+      shinyjs::runjs("window.trackError('file_read', 'Demo file not found', 'data_upload');")
       return()
     }
 
@@ -64,6 +65,8 @@ data_upload_server <- function(id, rv) {
       output$demo_load_msg <- renderUI({
         status_alert(result$message, "danger")
       })
+      shinyjs::runjs(sprintf("window.trackError('validation', '%s', 'demo_data_load');",
+                             gsub("'", "\\\\'", result$message)))
       return()
     }
 
@@ -72,6 +75,10 @@ data_upload_server <- function(id, rv) {
     rv$detected_cols  <- detect_columns(colnames(result$data))
 
     log_upload(session, chosen$label, nrow(result$data), ncol(result$data))
+
+    # Track demo data loading with Umami
+    shinyjs::runjs(sprintf("window.trackDemoDataLoaded('%s'); window.trackDataUpload('csv', %d, %d);",
+                           chosen$label, nrow(result$data), ncol(result$data)))
 
     # Set reference date for this dataset
     updateTextInput(session, "reference_date", value = chosen$ref_date)
@@ -108,6 +115,10 @@ data_upload_server <- function(id, rv) {
 
       log_upload(session, file_info$name, nrow(result$data), ncol(result$data))
 
+      # Track file upload with Umami
+      shinyjs::runjs(sprintf("window.trackDataUpload('%s', %d, %d);",
+                             file_ext, nrow(result$data), ncol(result$data)))
+
       # Display validation message
       output$file_validation_msg <- renderUI({
         status_alert(result$message, "success")
@@ -119,6 +130,9 @@ data_upload_server <- function(id, rv) {
       output$file_validation_msg <- renderUI({
         status_alert(result$message, "danger")
       })
+      # Track file upload error
+      shinyjs::runjs(sprintf("window.trackError('validation', '%s', 'data_upload');",
+                             gsub("'", "\\\\'", result$message)))
     }
   })
   
@@ -566,6 +580,25 @@ data_upload_server <- function(id, rv) {
       volume_formula    = input$volume_formula %||% "ellipsoid",
       reference_date    = input$reference_date %||% ""
     )
+    
+    # Track column mapping when all required columns are set
+    if (rv$data_valid &&
+        nzchar(rv$settings$col_treatment) &&
+        nzchar(rv$settings$col_id) &&
+        (nzchar(rv$settings$col_day) || nzchar(rv$settings$col_date_for_day)) &&
+        (nzchar(rv$settings$col_volume) || 
+         (nzchar(rv$settings$col_length) && nzchar(rv$settings$col_width)))) {
+      
+      # Track mapping completion
+      shinyjs::runjs(sprintf(
+        "window.trackColumnMapping('%s', '%s', '%s', %s);",
+        rv$settings$col_treatment,
+        rv$settings$col_day %||% rv$settings$col_date_for_day,
+        rv$settings$col_volume %||% paste0(rv$settings$col_length, "+", rv$settings$col_width),
+        tolower(as.character(!is.null(rv$settings$col_survival_event) && 
+                nzchar(rv$settings$col_survival_event)))
+      ))
+    }
   })
 
   # Session save / restore handlers
