@@ -4,7 +4,23 @@
 #' @keywords internal
 data_upload_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
-  
+
+  # Helper: reset all downstream analysis state when new data is loaded
+  reset_analyses <- function(rv) {
+    rv$tg_results       <- NULL
+    rv$surv_results     <- NULL
+    rv$syn_results      <- NULL
+    rv$pw_results       <- NULL
+    rv$dr_results       <- NULL
+    rv$processed_data   <- NULL
+    rv$tg_running       <- FALSE
+    rv$surv_running     <- FALSE
+    rv$tg_plot_groups   <- NULL
+    rv$surv_plot_groups <- NULL
+    rv$syn_plot_inputs  <- NULL
+    rv$syn_over_time    <- FALSE
+  }
+
   # Reactive value to store uploaded data
   rv$uploaded_data <- NULL
   rv$data_valid <- FALSE
@@ -70,6 +86,7 @@ data_upload_server <- function(id, rv) {
       return()
     }
 
+    reset_analyses(rv)
     rv$uploaded_data  <- result$data
     rv$data_valid     <- TRUE
     rv$detected_cols  <- detect_columns(colnames(result$data))
@@ -109,6 +126,7 @@ data_upload_server <- function(id, rv) {
     result <- validate_uploaded_file(file_path, file_ext)
     
     if (result$valid) {
+      reset_analyses(rv)
       rv$uploaded_data <- result$data
       rv$data_valid <- TRUE
       rv$detected_cols <- detect_columns(colnames(result$data))
@@ -472,6 +490,7 @@ data_upload_server <- function(id, rv) {
   # Reset button
   observeEvent(input$reset_data, {
     # Clear reactive values
+    reset_analyses(rv)
     rv$uploaded_data <- NULL
     rv$data_valid <- FALSE
     rv$detected_cols <- NULL
