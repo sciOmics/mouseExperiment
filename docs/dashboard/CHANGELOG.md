@@ -2,10 +2,9 @@
 
 All notable changes to the mouseExperiment package will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
-## [Unreleased]
+## [v26.04.002] 2026 April 8th 
 
 ### Added
 - Comprehensive Umami analytics event tracking across all modules via a new `umami-events.js` helper library
