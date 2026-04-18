@@ -378,8 +378,6 @@ body {
 
 /* Disabled nav tabs */
 .navbar-nav li a[data-value='__toxicity_disabled__'],
-.navbar-nav li a[data-value='__dose_response_disabled__'],
-.navbar-nav li a[data-value='__drug_synergy_disabled__'],
 .navbar-nav li a[data-value='__power_analysis_disabled__'] {
   pointer-events: none;
   opacity: 0.45;

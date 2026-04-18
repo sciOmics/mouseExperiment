@@ -89,20 +89,8 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
       value = "__toxicity_disabled__",
       ""
     ),
-    tabPanel(
-      title = tags$span("Dose Response",
-                        style = "color: #999; cursor: not-allowed;",
-                        title = "Coming soon"),
-      value = "__dose_response_disabled__",
-      ""
-    ),
-    tabPanel(
-      title = tags$span("Drug Synergy",
-                        style = "color: #999; cursor: not-allowed;",
-                        title = "Coming soon"),
-      value = "__drug_synergy_disabled__",
-      ""
-    ),
+    tabPanel("Dose Response", doseResponseUI("dr")),
+    tabPanel("Drug Synergy",  synergyUI("syn")),
     tabPanel(
       title = tags$span("Power Analysis",
                         style = "color: #999; cursor: not-allowed;",
@@ -163,14 +151,11 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     observeEvent(input$main_nav, {
       log_navigation(session, input$main_nav)
 
-      disabled_vals <- c("__toxicity_disabled__", "__dose_response_disabled__",
-                         "__drug_synergy_disabled__", "__power_analysis_disabled__")
+      disabled_vals <- c("__toxicity_disabled__", "__power_analysis_disabled__")
 
       # Map internal disabled values to human-readable feature names
       coming_soon_names <- c(
         "__toxicity_disabled__"       = "Toxicity",
-        "__dose_response_disabled__"  = "Dose Response",
-        "__drug_synergy_disabled__"   = "Drug Synergy",
         "__power_analysis_disabled__" = "Power Analysis"
       )
 
@@ -185,7 +170,7 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     }, ignoreInit = TRUE)
 
     # Analysis tabs that require data to be uploaded first
-    analysis_tabs <- c("Tumor Growth", "Survival")
+    analysis_tabs <- c("Tumor Growth", "Survival", "Dose Response", "Drug Synergy")
 
     # Disable all analysis tabs on startup
     shinyjs::runjs(paste(
@@ -207,6 +192,19 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
           shinyjs::runjs("window.enableNavTab('Survival');")
         } else {
           shinyjs::runjs("window.disableNavTab('Survival');")
+        }
+
+        # Drug Synergy: available once data is loaded
+        shinyjs::runjs("window.enableNavTab('Drug Synergy');")
+
+        # Dose Response: only when a dose column is mapped
+        dose_mapped <- !is.null(rv$settings$col_dose) &&
+                       nzchar(rv$settings$col_dose) &&
+                       rv$settings$col_dose != "None"
+        if (dose_mapped) {
+          shinyjs::runjs("window.enableNavTab('Dose Response');")
+        } else {
+          shinyjs::runjs("window.disableNavTab('Dose Response');")
         }
 
       } else {
