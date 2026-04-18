@@ -4,6 +4,27 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.04.003] 2026 April 17th
+
+### Added
+- Enabled Dose Response and Drug Synergy analysis tabs (previously disabled)
+- Tumor Growth Inhibition (TGI) plot in Drug Synergy module
+  - Days on x-axis, percent inhibition on y-axis
+  - Per-mouse TGI computed from raw volume data against control group mean
+  - Combination group displayed as dashed line; monotherapies as solid
+  - Configurable error bars (SEM, SD, 95% CI, or None)
+- Toggleable region shading and labels on Combination Index plot (Synergistic / Additive / Antagonistic bands)
+- CI plot now rebuilt dynamically to support interactive option controls
+
+### Changed
+- Updated Drug Synergy analysis to use proper Loewe Additivity model (Berenbaum, 1989)
+  - Expected fractional effect: min(FE_A + FE_B, 1.0)
+  - Combination Index: (FE_A + FE_B) / FE_combo
+- Updated synergy info box, labels, and analytics tracking to reflect Loewe terminology
+
+### Fixed
+- Corrected synergy metrics info box text to match actual package output
+
 ## [v26.04.002] 2026 April 8th 
 
 ### Added
