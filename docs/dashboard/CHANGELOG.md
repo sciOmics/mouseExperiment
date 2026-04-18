@@ -15,15 +15,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   - Configurable error bars (SEM, SD, 95% CI, or None)
 - Toggleable region shading and labels on Combination Index plot (Synergistic / Additive / Antagonistic bands)
 - CI plot now rebuilt dynamically to support interactive option controls
+- Mobile incompatibility overlay — on screens ≤ 768 px a full-screen message recommends using a desktop, with a "Continue anyway" dismiss button
+- Viewport meta tag for proper mobile scaling
 
 ### Changed
 - Updated Drug Synergy analysis to use proper Loewe Additivity model (Berenbaum, 1989)
   - Expected fractional effect: min(FE_A + FE_B, 1.0)
-  - Combination Index: (FE_A + FE_B) / FE_combo
+  - Combination Index: min(FE_A + FE_B, 1) / FE_combo
 - Updated synergy info box, labels, and analytics tracking to reflect Loewe terminology
 
 ### Fixed
 - Corrected synergy metrics info box text to match actual package output
+- Fixed Combination Index formula: numerator now uses capped Loewe expected FE — previously the uncapped sum could inflate CI and falsely indicate antagonism when individual drug effects sum to > 1.0
 
 ## [v26.04.002] 2026 April 8th 
 

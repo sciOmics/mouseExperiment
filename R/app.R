@@ -53,6 +53,7 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
       shinyjs::useShinyjs(),
       shinyFeedback::useShinyFeedback(),
       tags$head(
+        tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
         tags$meta(property = "og:type",        content = "website"),
         tags$meta(property = "og:url",         content = "https://mouseexperiment.com/"),
         tags$meta(property = "og:title",       content = "mouseExperiment Dashboard"),
@@ -70,6 +71,7 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
         tags$script(src = "js/sidebar.js"),
         tags$script(src = "js/darkmode.js"),
         tags$script(src = "js/overlay.js"),
+        tags$script(src = "js/mobile.js"),
         tags$script(
           async = NA,
           src = "https://analytics.headpudding.com/script.js",

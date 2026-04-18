@@ -382,3 +382,60 @@ body {
   pointer-events: none;
   opacity: 0.45;
 }
+
+/* ---- Mobile incompatibility overlay ---- */
+#mobile-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  background: #f5f5f5;
+  color: #333;
+  text-align: center;
+  padding: 2rem 1.5rem;
+  overflow-y: auto;
+}
+
+#mobile-overlay .mobile-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+#mobile-overlay h2 {
+  font-size: 1.4rem;
+  margin-bottom: 0.75rem;
+}
+
+#mobile-overlay p {
+  font-size: 1rem;
+  line-height: 1.5;
+  max-width: 360px;
+  margin: 0 auto 1.5rem;
+  color: #555;
+}
+
+#mobile-overlay .mobile-continue-btn {
+  display: inline-block;
+  padding: 0.5rem 1.5rem;
+  border: 1px solid #999;
+  border-radius: 4px;
+  background: transparent;
+  color: #555;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+#mobile-overlay .mobile-continue-btn:hover {
+  background: #e0e0e0;
+  color: #333;
+}
+
+@media (max-width: 768px) {
+  #mobile-overlay:not(.dismissed) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+}
