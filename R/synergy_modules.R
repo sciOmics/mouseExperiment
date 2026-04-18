@@ -105,6 +105,20 @@ synergyUI <- function(id) {
                       checkboxInput(ns("syn_opt_show_shading"),
                                     "Show Synergy / Antagonism shading",
                                     value = TRUE)
+                    ),
+                    conditionalPanel(ns = ns,
+                      "input.syn_plot_selector == 'ci'",
+                      checkboxInput(ns("syn_opt_ci_show_regions"),
+                                    "Show region shading & labels",
+                                    value = TRUE)
+                    ),
+                    conditionalPanel(ns = ns,
+                      "input.syn_plot_selector == 'tgi'",
+                      selectInput(ns("syn_opt_error_bar"), "Error bars",
+                        choices  = c("SEM" = "SEM", "SD" = "SD",
+                                     "95% CI" = "CI", "None" = "none"),
+                        selected = "SEM"
+                      )
                     )
                   ),
                   ctrl_section("syn-title", "heading", "Title & Subtitle",
@@ -144,6 +158,12 @@ synergyUI <- function(id) {
                   shinycssloaders::withSpinner(
                     plotOutput(ns("syn_plot_ci"), width = "auto", height = "auto")
                   )
+                ),
+                conditionalPanel(ns = ns,"input.syn_plot_selector == 'tgi'",
+                  h4("Tumor Growth Inhibition"),
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("syn_plot_tgi"), width = "auto", height = "auto")
+                  )
                 )
               )
             )
@@ -166,6 +186,7 @@ synergy_server <- function(id, rv) {
   current_syn_main_plot  <- reactiveVal(NULL)
   current_syn_trend_plot <- reactiveVal(NULL)
   current_syn_ci_plot    <- reactiveVal(NULL)
+  current_syn_tgi_plot   <- reactiveVal(NULL)
   
   # Dynamically render group selector dropdowns from treatment column
   output$syn_group_selectors_ui <- renderUI({
@@ -408,7 +429,8 @@ synergy_server <- function(id, rv) {
   # Dynamic plot selector (Trend / CI only available for all-dates analysis)
   output$syn_plot_selector_ui <- renderUI({
     if (isTRUE(rv$syn_over_time)) {
-      choices <- c("Synergy Plot" = "trend", "Combination Index" = "ci")
+      choices <- c("Synergy Plot" = "trend", "Combination Index" = "ci",
+                   "Tumor Growth Inhibition" = "tgi")
     } else {
       choices <- c("Synergy Plot" = "main")
     }
@@ -481,6 +503,7 @@ synergy_server <- function(id, rv) {
       main   = "download_syn_plot_main",
       trend  = "download_syn_plot_trend",
       ci     = "download_syn_plot_ci",
+      tgi    = "download_syn_plot_tgi",
       "download_syn_plot_main"
     )
     downloadButton(session$ns(btn_id), "Download Plot")
@@ -615,20 +638,44 @@ synergy_server <- function(id, rv) {
   output$syn_plot_ci <- renderPlot({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error) || !isTRUE(rv$syn_over_time)) return(NULL)
-    text_sz <- input$syn_opt_text_size %||% 16
-    leg_pos <- input$syn_opt_legend_pos %||% "right"
-    if (!is.null(rv$syn_results$plot_ci)) {
-      p <- apply_plot_labels(rv$syn_results$plot_ci,
-                             input$syn_plot_title       %||% "",
-                             input$syn_plot_subtitle    %||% "",
-                             input$syn_plot_title_align %||% "center",
-                             text_sz)
-      p <- apply_legend_pos(p, leg_pos)
-      current_syn_ci_plot(p)
-      print(p)
-    } else {
-      plot(1, 1, type = "n", main = "CI plot not available", xlab = "", ylab = "")
+    req(rv$syn_results$synergy_summary)
+
+    syn_df      <- rv$syn_results$synergy_summary
+    text_sz     <- input$syn_opt_text_size  %||% 16
+    leg_pos     <- input$syn_opt_legend_pos %||% "right"
+    show_regions <- isTRUE(input$syn_opt_ci_show_regions)
+
+    mid_x <- mean(syn_df$Time_Point)
+    p <- ggplot2::ggplot(syn_df,
+                         ggplot2::aes(x = Time_Point, y = Combination_Index))
+
+    if (show_regions) {
+      p <- p +
+        ggplot2::geom_ribbon(ggplot2::aes(ymin = 0,    ymax = 0.85), fill = "blue",  alpha = 0.2) +
+        ggplot2::geom_ribbon(ggplot2::aes(ymin = 0.85, ymax = 1.15), fill = "grey",  alpha = 0.4) +
+        ggplot2::geom_ribbon(ggplot2::aes(ymin = 1.15, ymax = 2),    fill = "red",   alpha = 0.2) +
+        ggplot2::annotate("text", x = mid_x, y = 0.20, label = "Synergistic",
+                          color = "blue", size = 5) +
+        ggplot2::annotate("text", x = mid_x, y = 1.05, label = "Additive",    size = 5) +
+        ggplot2::annotate("text", x = mid_x, y = 1.80, label = "Antagonistic",
+                          color = "red",  size = 5)
     }
+
+    p <- p +
+      ggplot2::geom_line(color = "purple", linewidth = 1.5) +
+      ggplot2::labs(x = "Days", y = "Combination Index", title = "") +
+      ggplot2::ylim(0, 2) +
+      ggplot2::theme_classic() +
+      ggplot2::theme(text = ggplot2::element_text(size = text_sz))
+
+    p <- apply_legend_pos(p, leg_pos)
+    p <- apply_plot_labels(p,
+                           input$syn_plot_title       %||% "",
+                           input$syn_plot_subtitle    %||% "",
+                           input$syn_plot_title_align %||% "center",
+                           text_sz)
+    current_syn_ci_plot(p)
+    print(p)
   }, width = function() input$syn_plot_width %||% 800,
      height = function() input$syn_plot_height %||% 600)
   
@@ -674,6 +721,138 @@ synergy_server <- function(id, rv) {
     filename = "combination_index.png",
     content = function(file) {
       p <- current_syn_ci_plot()
+      if (!is.null(p)) {
+        png(file, width = input$syn_plot_width %||% 900,
+                  height = input$syn_plot_height %||% 600,
+                  units = "px", res = input$syn_plot_dpi %||% 100)
+        print(p); dev.off()
+      }
+    }
+  )
+  
+  # ------------------------------------------------------------------
+  # TGI over time plot: per-mouse TGI with group lines + error bars
+  # ------------------------------------------------------------------
+  output$syn_plot_tgi <- renderPlot({
+    req(rv$syn_results)
+    if (isTRUE(rv$syn_results$error) || !isTRUE(rv$syn_over_time)) return(NULL)
+    req(rv$syn_results$synergy_summary)
+
+    grps <- rv$syn_plot_inputs %||%
+            list(drug_a = "Drug A", drug_b = "Drug B",
+                 combo = "Combination", control = "Control")
+
+    # Retrieve the preprocessed data and column names
+    pp <- tryCatch(ensure_preprocessed(rv), error = function(e) NULL)
+    req(pp)
+    analysis_data <- pp$data
+    vol_col  <- pp$vol_col
+    time_col <- pp$time_col
+    tx_col   <- pp$tx_col
+
+    # Filter to the 4 synergy groups
+    syn_groups <- c(grps$control, grps$drug_a, grps$drug_b, grps$combo)
+    df <- analysis_data[analysis_data[[tx_col]] %in% syn_groups, ]
+    req(nrow(df) > 0)
+
+    # Coerce types
+    df[[time_col]] <- suppressWarnings(as.numeric(df[[time_col]]))
+    df[[vol_col]]  <- suppressWarnings(as.numeric(df[[vol_col]]))
+    df <- df[!is.na(df[[time_col]]) & !is.na(df[[vol_col]]), ]
+
+    # Compute per-mouse TGI at each timepoint
+    # TGI = 100 * (1 - mouse_vol / control_mean_vol)
+    days <- sort(unique(df[[time_col]]))
+    tgi_rows <- list()
+    for (d in days) {
+      day_df <- df[df[[time_col]] == d, ]
+      ctrl_vols <- day_df[[vol_col]][day_df[[tx_col]] == grps$control]
+      ctrl_mean <- mean(ctrl_vols, na.rm = TRUE)
+      if (is.na(ctrl_mean) || ctrl_mean <= 0) next
+      # Compute TGI for each non-control mouse
+      for (g in c(grps$drug_a, grps$drug_b, grps$combo)) {
+        g_rows <- day_df[day_df[[tx_col]] == g, ]
+        if (nrow(g_rows) == 0) next
+        tgi_vals <- 100 * (1 - g_rows[[vol_col]] / ctrl_mean)
+        tgi_rows[[length(tgi_rows) + 1L]] <- data.frame(
+          Day       = d,
+          Treatment = g,
+          TGI       = tgi_vals,
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+    req(length(tgi_rows) > 0)
+    tgi_df <- do.call(rbind, tgi_rows)
+    tgi_df$Treatment <- factor(tgi_df$Treatment,
+                               levels = c(grps$drug_a, grps$drug_b, grps$combo))
+
+    # Summarise per group per day
+    err_type <- input$syn_opt_error_bar %||% "SEM"
+    summ <- do.call(rbind, lapply(split(tgi_df, list(tgi_df$Day, tgi_df$Treatment)), function(chunk) {
+      if (nrow(chunk) == 0) return(NULL)
+      x <- chunk$TGI[!is.na(chunk$TGI)]
+      n <- length(x)
+      if (n == 0) return(NULL)
+      m <- mean(x)
+      half <- switch(err_type,
+        SEM = sd(x) / sqrt(n), SD = sd(x),
+        CI = qt(0.975, df = max(n - 1L, 1L)) * sd(x) / sqrt(n), 0)
+      data.frame(Day = chunk$Day[1], Treatment = chunk$Treatment[1],
+                 mean_tgi = m, lo = m - half, hi = m + half,
+                 stringsAsFactors = FALSE)
+    }))
+    summ$Treatment <- factor(summ$Treatment,
+                             levels = c(grps$drug_a, grps$drug_b, grps$combo))
+
+    # Colours and linetypes
+    col_A     <- input$syn_color_A     %||% "#2166AC"
+    col_B     <- input$syn_color_B     %||% "#D6604D"
+    col_combo <- input$syn_color_combo %||% "#762A83"
+    text_sz   <- input$syn_opt_text_size  %||% 16
+    leg_pos   <- input$syn_opt_legend_pos %||% "right"
+
+    color_vals <- stats::setNames(c(col_A, col_B, col_combo),
+                                  c(grps$drug_a, grps$drug_b, grps$combo))
+    lty_vals   <- stats::setNames(c("solid", "solid", "dashed"),
+                                  c(grps$drug_a, grps$drug_b, grps$combo))
+
+    p <- ggplot2::ggplot(summ, ggplot2::aes(x = Day, y = mean_tgi,
+                                            color = Treatment, linetype = Treatment,
+                                            group = Treatment)) +
+      ggplot2::geom_line(linewidth = 1) +
+      ggplot2::geom_point(size = 2.5)
+
+    if (err_type != "none") {
+      p <- p + ggplot2::geom_errorbar(
+        ggplot2::aes(ymin = lo, ymax = hi),
+        width = diff(range(summ$Day, na.rm = TRUE)) * 0.02,
+        linewidth = 0.6)
+    }
+
+    p <- p +
+      ggplot2::scale_color_manual(values = color_vals) +
+      ggplot2::scale_linetype_manual(values = lty_vals) +
+      ggplot2::labs(x = "Days", y = "Tumor Growth Inhibition (%)",
+                    color = NULL, linetype = NULL) +
+      ggplot2::theme_classic() +
+      ggplot2::theme(text = ggplot2::element_text(size = text_sz))
+
+    p <- apply_legend_pos(p, leg_pos)
+    p <- apply_plot_labels(p,
+                           input$syn_plot_title       %||% "",
+                           input$syn_plot_subtitle    %||% "",
+                           input$syn_plot_title_align %||% "center",
+                           text_sz)
+    current_syn_tgi_plot(p)
+    print(p)
+  }, width = function() input$syn_plot_width %||% 800,
+     height = function() input$syn_plot_height %||% 600)
+  
+  output$download_syn_plot_tgi <- downloadHandler(
+    filename = "synergy_tgi.png",
+    content = function(file) {
+      p <- current_syn_tgi_plot()
       if (!is.null(p)) {
         png(file, width = input$syn_plot_width %||% 900,
                   height = input$syn_plot_height %||% 600,
