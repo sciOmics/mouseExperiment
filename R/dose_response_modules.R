@@ -84,30 +84,26 @@ doseResponseUI <- function(id) {
                 wellPanel(
                   selectInput(ns("dr_plot_selector"), "Select Plot",
                     choices = c(
-                      "Scatter Plot"       = "scatter",
-                      "Boxplot by Dose"    = "boxplot",
-                      "Mean by Dose (Bar)" = "barplot"
+                      "Tumor Volume vs Dose" = "scatter",
+                      "Tumor Growth Inhibition vs Dose" = "tgi"
                     )
                   ),
                   hr(),
                   h6(icon("palette"), " Appearance"),
-                  conditionalPanel(ns = ns,"input.dr_plot_selector == 'scatter'",
-                    colourpicker::colourInput(ns("dr_scatter_pt_color"),
-                                             "Point colour",
-                                             value = "#555555"),
-                    colourpicker::colourInput(ns("dr_scatter_line_color"),
-                                             "Regression line colour",
-                                             value = "#2166AC")
-                  ),
-                  conditionalPanel(ns = ns,"input.dr_plot_selector == 'boxplot'",
-                    colourpicker::colourInput(ns("dr_box_fill_color"),
-                                             "Box fill colour",
-                                             value = "#4292C6")
-                  ),
-                  conditionalPanel(ns = ns,"input.dr_plot_selector == 'barplot'",
-                    colourpicker::colourInput(ns("dr_bar_fill_color"),
-                                             "Bar fill colour",
-                                             value = "#4292C6")
+                  colourpicker::colourInput(ns("dr_scatter_pt_color"),
+                                           "Point colour",
+                                           value = "#555555"),
+                  colourpicker::colourInput(ns("dr_scatter_line_color"),
+                                           "Trend line colour",
+                                           value = "#2166AC"),
+                  sliderInput(ns("dr_scatter_pt_size"), "Point size",
+                              min = 0.5, max = 6, value = 2, step = 0.5),
+                  checkboxInput(ns("dr_scatter_show_ci"),
+                                "Show trend line confidence interval",
+                                value = TRUE),
+                  radioButtons(ns("dr_trend_method"), "Trend line fit",
+                    choices = c("Linear" = "linear", "Non-linear (LOESS)" = "loess"),
+                    selected = "linear", inline = TRUE
                   ),
                   hr(),
                   h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
@@ -137,21 +133,15 @@ doseResponseUI <- function(id) {
               ),
               column(9,
                 conditionalPanel(ns = ns,"input.dr_plot_selector == 'scatter'",
-                  h4("Scatter Plot"),
+                  h4("Tumor Volume vs Dose"),
                   shinycssloaders::withSpinner(
                     plotOutput(ns("dr_plot_scatter"), width = "auto", height = "auto")
                   )
                 ),
-                conditionalPanel(ns = ns,"input.dr_plot_selector == 'boxplot'",
-                  h4("Boxplot by Dose"),
+                conditionalPanel(ns = ns,"input.dr_plot_selector == 'tgi'",
+                  h4("Tumor Growth Inhibition vs Dose"),
                   shinycssloaders::withSpinner(
-                    plotOutput(ns("dr_plot_boxplot"), width = "auto", height = "auto")
-                  )
-                ),
-                conditionalPanel(ns = ns,"input.dr_plot_selector == 'barplot'",
-                  h4("Mean by Dose"),
-                  shinycssloaders::withSpinner(
-                    plotOutput(ns("dr_plot_barplot"), width = "auto", height = "auto")
+                    plotOutput(ns("dr_plot_tgi"), width = "auto", height = "auto")
                   )
                 )
               )
@@ -190,8 +180,7 @@ dose_response_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
 
   current_dr_scatter <- reactiveVal(NULL)
-  current_dr_boxplot <- reactiveVal(NULL)
-  current_dr_barplot <- reactiveVal(NULL)
+  current_dr_tgi     <- reactiveVal(NULL)
 
   rv$dr_results <- NULL
 
@@ -398,8 +387,7 @@ dose_response_server <- function(id, rv) {
   output$dr_download_plot_btn <- renderUI({
     btn_id <- switch(input$dr_plot_selector %||% "scatter",
       scatter = "download_dr_scatter",
-      boxplot = "download_dr_boxplot",
-      barplot = "download_dr_barplot",
+      tgi     = "download_dr_tgi",
       "download_dr_scatter"
     )
     downloadButton(session$ns(btn_id), "Download Plot")
@@ -416,11 +404,19 @@ dose_response_server <- function(id, rv) {
     vol_col  <- rv$vol_col  %||% "Volume"
     pt_col   <- input$dr_scatter_pt_color   %||% "#555555"
     ln_col   <- input$dr_scatter_line_color %||% "#2166AC"
+    pt_sz    <- input$dr_scatter_pt_size     %||% 2
+    show_ci  <- isTRUE(input$dr_scatter_show_ci)
+    trend    <- input$dr_trend_method %||% "linear"
     text_sz  <- input$dr_opt_text_size %||% 16
+    smooth_args <- if (trend == "loess") {
+      list(method = "loess", formula = y ~ x, color = ln_col, se = show_ci)
+    } else {
+      list(method = "lm", formula = y ~ x, color = ln_col, se = show_ci)
+    }
     p <- ggplot2::ggplot(ad, ggplot2::aes(x = .data[[dose_col]], y = .data[[vol_col]])) +
-      ggplot2::geom_point(alpha = 0.7, color = pt_col) +
-      ggplot2::geom_smooth(method = "lm", formula = y ~ x, color = ln_col) +
-      ggplot2::labs(title = "Linear Dose-Response Relationship",
+      ggplot2::geom_point(alpha = 0.7, color = pt_col, size = pt_sz) +
+      do.call(ggplot2::geom_smooth, smooth_args) +
+      ggplot2::labs(title = "Tumor Volume vs Dose",
                    x = "Dose", y = "Tumor Volume") +
       ggplot2::theme_classic()
     p <- apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
@@ -430,46 +426,45 @@ dose_response_server <- function(id, rv) {
   }, width = function() input$dr_plot_width %||% 800,
      height = function() input$dr_plot_height %||% 600)
 
-  output$dr_plot_boxplot <- renderPlot({
+  output$dr_plot_tgi <- renderPlot({
     req(rv$dr_results)
     if (isTRUE(rv$dr_results$error)) return(NULL)
     ad <- rv$dr_results$analysis_data
     req(ad)
-    dose_col    <- rv$dose_col %||% "Dose"
-    vol_col     <- rv$vol_col  %||% "Volume"
-    box_color   <- input$dr_box_fill_color %||% "#4292C6"
-    text_sz     <- input$dr_opt_text_size %||% 16
-    p <- ggplot2::ggplot(ad, ggplot2::aes(x = factor(.data[[dose_col]]), y = .data[[vol_col]])) +
-      ggplot2::geom_boxplot(outlier.shape = NA, fill = box_color, alpha = 0.7) +
-      ggplot2::geom_jitter(width = 0.2, alpha = 0.5) +
-      ggplot2::labs(title = "Tumor Volume by Dose Level",
-                   x = "Dose", y = "Tumor Volume") +
-      ggplot2::theme_classic()
-    p <- apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
-                      input$dr_plot_title_align %||% "center", text_sz)
-    current_dr_boxplot(p)
-    p
-  }, width = function() input$dr_plot_width %||% 800,
-     height = function() input$dr_plot_height %||% 600)
+    dose_col <- rv$dose_col %||% "Dose"
+    vol_col  <- rv$vol_col  %||% "Volume"
+    tx_col   <- rv$tx_col   %||% "Treatment"
+    ctrl     <- input$dr_control_group %||% ""
 
-  output$dr_plot_barplot <- renderPlot({
-    req(rv$dr_results)
-    if (isTRUE(rv$dr_results$error)) return(NULL)
-    ss <- rv$dr_results$summary_stats
-    req(ss)
-    dose_col  <- rv$dose_col %||% "Dose"
-    bar_color <- input$dr_bar_fill_color %||% "#4292C6"
-    text_sz   <- input$dr_opt_text_size %||% 16
-    p <- ggplot2::ggplot(ss, ggplot2::aes(x = .data[[dose_col]], y = .data[["mean_volume"]])) +
-      ggplot2::geom_bar(stat = "identity", fill = bar_color, alpha = 0.8) +
-      ggplot2::geom_errorbar(
-        ggplot2::aes(ymin = .data[["ci95_lower"]], ymax = .data[["ci95_upper"]]), width = 0.2) +
-      ggplot2::labs(title = "Mean Tumor Volume by Dose Level (with 95% CI)",
-                   x = "Dose", y = "Mean Tumor Volume") +
+    # Compute mean control volume
+    ctrl_mean <- mean(ad[[vol_col]][ad[[tx_col]] == ctrl], na.rm = TRUE)
+    if (is.na(ctrl_mean) || ctrl_mean == 0) return(NULL)
+
+    # Compute per-observation %TGI
+    tgi_data <- ad
+    tgi_data$pct_tgi <- (1 - tgi_data[[vol_col]] / ctrl_mean) * 100
+
+    pt_col   <- input$dr_scatter_pt_color   %||% "#555555"
+    ln_col   <- input$dr_scatter_line_color %||% "#2166AC"
+    pt_sz    <- input$dr_scatter_pt_size     %||% 2
+    show_ci  <- isTRUE(input$dr_scatter_show_ci)
+    trend    <- input$dr_trend_method %||% "linear"
+    text_sz  <- input$dr_opt_text_size %||% 16
+    smooth_args <- if (trend == "loess") {
+      list(method = "loess", formula = y ~ x, color = ln_col, se = show_ci)
+    } else {
+      list(method = "lm", formula = y ~ x, color = ln_col, se = show_ci)
+    }
+    p <- ggplot2::ggplot(tgi_data, ggplot2::aes(x = .data[[dose_col]], y = .data[["pct_tgi"]])) +
+      ggplot2::geom_point(alpha = 0.7, color = pt_col, size = pt_sz) +
+      do.call(ggplot2::geom_smooth, smooth_args) +
+      ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+      ggplot2::labs(title = "Tumor Growth Inhibition vs Dose",
+                   x = "Dose", y = "% Tumor Growth Inhibition") +
       ggplot2::theme_classic()
     p <- apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
                       input$dr_plot_title_align %||% "center", text_sz)
-    current_dr_barplot(p)
+    current_dr_tgi(p)
     p
   }, width = function() input$dr_plot_width %||% 800,
      height = function() input$dr_plot_height %||% 600)
@@ -529,22 +524,10 @@ dose_response_server <- function(id, rv) {
     }
   )
 
-  output$download_dr_boxplot <- downloadHandler(
-    filename = "dose_boxplot.png",
+  output$download_dr_tgi <- downloadHandler(
+    filename = "dose_tgi.png",
     content  = function(file) {
-      p <- current_dr_boxplot()
-      req(!is.null(p))
-      png(file, width = input$dr_plot_width %||% 800,
-                height = input$dr_plot_height %||% 600,
-                units = "px", res = input$dr_plot_dpi %||% 100)
-      print(p); dev.off()
-    }
-  )
-
-  output$download_dr_barplot <- downloadHandler(
-    filename = "dose_barplot.png",
-    content  = function(file) {
-      p <- current_dr_barplot()
+      p <- current_dr_tgi()
       req(!is.null(p))
       png(file, width = input$dr_plot_width %||% 800,
                 height = input$dr_plot_height %||% 600,

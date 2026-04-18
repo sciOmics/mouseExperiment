@@ -4,6 +4,24 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.04.004] 2026 April 18th
+
+### Added
+- "Tumor Growth Inhibition vs Dose" plot in Dose Response module
+  - Per-observation %TGI computed as `(1 - Volume / mean_control_volume) * 100`
+  - Dashed reference line at 0% inhibition
+- Trend line fit selector (shared by both Dose Response plots): Linear or Non-linear (LOESS)
+- Point size slider for Dose Response scatter plots
+- Confidence interval shading toggle for Dose Response trend lines
+
+### Changed
+- Renamed Dose Response "Scatter Plot" to "Tumor Volume vs Dose"
+- Removed "Boxplot by Dose" and "Mean by Dose (Bar)" plot options from Dose Response module
+- Appearance controls (point colour, line colour, point size, CI toggle) now shared across both Dose Response plots
+
+### Fixed
+- Dose Response module no longer requires running Tumor Growth Analysis first — `ensure_preprocessed()` now resolves dose, ID, and cage column mappings from settings
+
 ## [v26.04.003] 2026 April 17th
 
 ### Added

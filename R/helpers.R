@@ -138,6 +138,13 @@ ensure_preprocessed <- function(rv) {
 
   tx_col <- settings$col_treatment
 
+  # Resolve optional columns (id, cage, dose) so other modules don't
+
+  # depend on TG analysis having been run first.
+  rv$id_col   <- if (!is.null(settings$col_id)   && nzchar(settings$col_id))   settings$col_id   else NULL
+  rv$cage_col <- if (!is.null(settings$col_cage)  && nzchar(settings$col_cage)) settings$col_cage  else NULL
+  rv$dose_col <- if (!is.null(settings$col_dose)  && nzchar(settings$col_dose)) settings$col_dose  else NULL
+
   # Cache for future callers
   rv$processed_data <- data
   rv$time_col       <- time_col
