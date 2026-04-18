@@ -120,9 +120,9 @@ analyze_drug_synergy_over_time <- function(df,
     TGI_Drug_B = numeric(),
     TGI_Combo = numeric(),
     Bliss_Expected_TGI = numeric(),
-    Additive_Mean_Expected_TGI = numeric(),
+    Loewe_Expected_TGI = numeric(),
     Bliss_Difference = numeric(),
-    Additive_Mean_Difference = numeric(),
+    Loewe_Difference = numeric(),
     Combination_Index = numeric(),
     P_Value_vs_Drug_A = numeric(),
     P_Value_vs_Drug_B = numeric(),
@@ -167,7 +167,7 @@ analyze_drug_synergy_over_time <- function(df,
       
       # Extract key metrics for summary
       bliss_result <- synergy_results$bliss_independence
-      loewe_result <- synergy_results$additive_model
+      loewe_result <- synergy_results$loewe_additivity
       ci_result <- synergy_results$combination_index
       stat_tests <- synergy_results$statistical_tests
       
@@ -184,8 +184,8 @@ analyze_drug_synergy_over_time <- function(df,
       bliss_expected_fe <- fe_a + fe_b - (fe_a * fe_b)
       bliss_expected <- bliss_expected_fe * 100
       
-      # Get Additive (Mean) expected value (which is simply (A+B)/2)
-      additive_mean_expected <- summary_df$TGI_Percent[summary_df$Treatment == "Additive (Mean)"]
+      # Get Loewe expected value
+      loewe_expected <- summary_df$TGI_Percent[summary_df$Treatment == "Loewe Expected"]
       
       # Perform validation checks
       # 1. Verify Bliss expected calculation is consistent
@@ -194,7 +194,7 @@ analyze_drug_synergy_over_time <- function(df,
       bliss_diff_check <- (tgi_combo / 100) - bliss_expected_check
       
       # 2. Verify CI calculation
-      ci_check <- (fe_a + fe_b) / (2 * (tgi_combo / 100))
+      ci_check <- (fe_a + fe_b) / (tgi_combo / 100)
       
       # Check if values match within tolerance
       bliss_match <- abs(bliss_expected - bliss_expected_tgi_check) < 0.01
@@ -215,9 +215,9 @@ analyze_drug_synergy_over_time <- function(df,
         TGI_Drug_B = tgi_drug_b,
         TGI_Combo = tgi_combo,
         Bliss_Expected_TGI = bliss_expected,
-        Additive_Mean_Expected_TGI = additive_mean_expected,
+        Loewe_Expected_TGI = loewe_expected,
         Bliss_Difference = bliss_result$difference * 100, # Convert to percentage
-        Additive_Mean_Difference = loewe_result$difference * 100, # Convert to percentage
+        Loewe_Difference = loewe_result$difference * 100, # Convert to percentage
         Combination_Index = ci_result$ci,
         P_Value_vs_Drug_A = stat_tests$P_Value[1],
         P_Value_vs_Drug_B = stat_tests$P_Value[2],

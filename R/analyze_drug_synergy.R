@@ -1,9 +1,9 @@
 #' Analyze Drug Combination Synergy in Tumor Growth
 #'
 #' This function tests for synergistic effects of drug combinations in tumor growth data.
-#' It compares the observed combination effect against several expected interaction models, 
-#' including Bliss independence and Loewe additivity. The function calculates synergy scores 
-#' and performs statistical tests to determine if the combination shows synergistic, 
+#' It compares the observed combination effect against several expected interaction models,
+#' including Bliss independence and Loewe additivity. The function calculates synergy scores
+#' and performs statistical tests to determine if the combination shows synergistic,
 #' additive, or antagonistic effects.
 #'
 #' @param df A data frame containing tumor growth data.
@@ -23,9 +23,8 @@
 #' \describe{
 #'   \item{summary}{A data frame summarizing the tumor growth inhibition (TGI) for each treatment and synergy metrics.}
 #'   \item{bliss_independence}{Results of the Bliss independence model, including expected vs. observed effects.}
-#'   \item{additive_model}{Results of the additive (mean) model.}
-#'   \item{loewe_additivity}{Deprecated alias for \code{additive_model}. Will be removed in a future version.}
-#'   \item{combination_index}{The combination index (CI), where CI < 1 indicates synergy, CI = 1 indicates additivity, and CI > 1 indicates antagonism.}
+#'   \item{loewe_additivity}{Results of the Loewe additivity model (linear dose-response assumption).}
+#'   \item{combination_index}{The Loewe-based combination index (CI), where CI < 1 indicates synergy, CI = 1 indicates additivity, and CI > 1 indicates antagonism.}
 #'   \item{statistical_test}{Results of statistical tests comparing observed vs. expected effects.}
 #'   \item{plot_data}{Data prepared for plotting, to be used with plot_drug_synergy function.}
 #' }
@@ -33,15 +32,17 @@
 #' @details
 #' The function calculates tumor growth inhibition (TGI) for each treatment group relative to the control.
 #' It then applies several models to test for synergy:
-#' 
+#'
 #' 1. Bliss Independence Model: Assumes drugs act independently through different mechanisms.
 #'    Expected effect = EA + EB - (EA * EB), where EA and EB are the effects of drug A and B alone.
-#' 
-#' 2. Loewe Additivity Model: Assumes drugs work through similar mechanisms.
-#'    Expected effect is calculated based on dose-response relationships.
-#' 
-#' 3. Combination Index: A widely used metric where CI < 1 indicates synergy.
-#' 
+#'
+#' 2. Loewe Additivity Model: Under a linear dose-response assumption (appropriate when only
+#'    single-dose TGI data is available), the expected combination effect equals the sum of
+#'    individual fractional effects, capped at 1.0. The Combination Index is calculated as
+#'    CI = (FE_A + FE_B) / FE_combo (Berenbaum, 1989).
+#'
+#' 3. Combination Index: CI < 1 indicates synergy, CI = 1 indicates additivity, CI > 1 indicates antagonism.
+#'
 #' The function performs statistical tests to determine if the observed combination effect
 #' significantly differs from the expected effect under these models.
 #'
@@ -138,17 +139,18 @@ analyze_drug_synergy <- function(df,
   bliss_expected_fe <- fe_a + fe_b - (fe_a * fe_b)
   bliss_expected_tgi <- bliss_expected_fe * 100
   
-  # Calculate expected additive effect (mean of individual effects)
-  # Note: This is a simplified additivity model (arithmetic mean), NOT true Loewe Additivity
-  # which requires dose-response data. Labelled "Additive (Mean)" to avoid confusion.
-  additive_mean_fe <- (fe_a + fe_b) / 2
-  additive_mean_tgi <- additive_mean_fe * 100
+  # Calculate expected effect using Loewe Additivity model
+  # Under a linear dose-response assumption (Berenbaum, 1989), the Loewe expected
+  # combination effect equals the sum of individual fractional effects.
+  # Capped at 1.0 since fractional effects cannot exceed 100% inhibition.
+  loewe_expected_fe <- min(fe_a + fe_b, 1.0)
+  loewe_expected_tgi <- loewe_expected_fe * 100
   
-  # Calculate Combination Index (CI)
+  # Calculate Combination Index (CI) based on Loewe Additivity
+  # CI = (FE_A + FE_B) / FE_combo
   # CI < 1 indicates synergy, CI = 1 indicates additivity, CI > 1 indicates antagonism
-  # Simplified CI calculation without dose information
   if (fe_combo > 0) {
-    ci_value <- (fe_a + fe_b) / (2 * fe_combo)
+    ci_value <- (fe_a + fe_b) / fe_combo
   } else {
     ci_value <- NA
     warning("Cannot calculate Combination Index: Combination effect is zero or negative")
@@ -168,14 +170,14 @@ analyze_drug_synergy <- function(df,
   
   # Calculate the difference between observed and expected effects
   bliss_difference <- fe_combo - bliss_expected_fe
-  additive_mean_difference <- fe_combo - additive_mean_fe
+  loewe_difference <- fe_combo - loewe_expected_fe
   
   # Determine synergy label based on both models
-  if (bliss_difference > 0.1 && additive_mean_difference > 0.1) {
+  if (bliss_difference > 0.1 && loewe_difference > 0.1) {
     synergy_label <- "Strong Synergy"
-  } else if (bliss_difference > 0 && additive_mean_difference > 0) {
+  } else if (bliss_difference > 0 && loewe_difference > 0) {
     synergy_label <- "Synergy"
-  } else if (bliss_difference > -0.1 && additive_mean_difference > -0.1) {
+  } else if (bliss_difference > -0.1 && loewe_difference > -0.1) {
     synergy_label <- "Additivity"
   } else {
     synergy_label <- "Antagonism"
@@ -201,18 +203,18 @@ analyze_drug_synergy <- function(df,
   
   # Create a data frame for summary results
   summary_df <- data.frame(
-    Treatment = c(drug_a_name, drug_b_name, combo_name, "Bliss Expected", "Additive (Mean)"),
+    Treatment = c(drug_a_name, drug_b_name, combo_name, "Bliss Expected", "Loewe Expected"),
     Mean_Volume = c(drug_a_mean, drug_b_mean, combo_mean, 
                    control_mean * (1 - bliss_expected_fe), 
-                   control_mean * (1 - additive_mean_fe)),
-    TGI_Percent = c(tgi_a, tgi_b, tgi_combo, bliss_expected_tgi, additive_mean_tgi),
-    Fractional_Effect = c(fe_a, fe_b, fe_combo, bliss_expected_fe, additive_mean_fe)
+                   control_mean * (1 - loewe_expected_fe)),
+    TGI_Percent = c(tgi_a, tgi_b, tgi_combo, bliss_expected_tgi, loewe_expected_tgi),
+    Fractional_Effect = c(fe_a, fe_b, fe_combo, bliss_expected_fe, loewe_expected_fe)
   )
   
   # Add synergy metrics to a separate data frame
   synergy_metrics <- data.frame(
-    Metric = c("Bliss Difference", "Additive (Mean) Difference", "Combination Index", "Interpretation"),
-    Value = c(bliss_difference, additive_mean_difference, ci_value, synergy_interpretation)
+    Metric = c("Bliss Difference", "Loewe Difference", "Combination Index", "Interpretation"),
+    Value = c(bliss_difference, loewe_difference, ci_value, synergy_interpretation)
   )
   
   # Create statistical test summary
@@ -224,9 +226,9 @@ analyze_drug_synergy <- function(df,
   
   # Prepare data for plotting (will be used by plot_drug_synergy function)
   plot_data <- data.frame(
-    Treatment = factor(c(drug_a_name, drug_b_name, combo_name, "Bliss Expected", "Additive (Mean)"),
-                     levels = c(drug_a_name, drug_b_name, "Bliss Expected", "Additive (Mean)", combo_name)),
-    TGI = c(tgi_a, tgi_b, bliss_expected_tgi, additive_mean_tgi, tgi_combo),
+    Treatment = factor(c(drug_a_name, drug_b_name, combo_name, "Bliss Expected", "Loewe Expected"),
+                     levels = c(drug_a_name, drug_b_name, "Bliss Expected", "Loewe Expected", combo_name)),
+    TGI = c(tgi_a, tgi_b, bliss_expected_tgi, loewe_expected_tgi, tgi_combo),
     Type = c("Observed", "Observed", "Expected", "Expected", "Observed")
   )
   
@@ -243,13 +245,13 @@ analyze_drug_synergy <- function(df,
     
     message("Expected Effects:")
     message("Bliss Independence: TGI = ", round(bliss_expected_tgi, 1), "%")
-    message("Additive (Mean): TGI = ", round(additive_mean_tgi, 1), "%\n")
+    message("Loewe Additivity: TGI = ", round(loewe_expected_tgi, 1), "%\n")
     
     message("Synergy Assessment:")
     message("Bliss Difference: ", round(bliss_difference * 100, 1), "% (", 
                ifelse(bliss_difference > 0, "Synergy", "No Synergy"), ")")
-    message("Additive (Mean) Difference: ", round(additive_mean_difference * 100, 1), "% (", 
-               ifelse(additive_mean_difference > 0, "Synergy", "No Synergy"), ")")
+    message("Loewe Difference: ", round(loewe_difference * 100, 1), "% (", 
+               ifelse(loewe_difference > 0, "Synergy", "No Synergy"), ")")
     message("Combination Index: ", round(ci_value, 2), " (", synergy_interpretation, ")\n")
     
     message("Statistical Tests:")
@@ -271,18 +273,11 @@ analyze_drug_synergy <- function(df,
       difference = bliss_difference,
       synergy = bliss_difference > 0
     ),
-    additive_model = list(
-      expected_effect = additive_mean_fe,
-      observed_effect = fe_combo,
-      difference = additive_mean_difference,
-      synergy = additive_mean_difference > 0
-    ),
-    # Deprecated alias — preserved for backward compatibility
     loewe_additivity = list(
-      expected_effect = additive_mean_fe,
+      expected_effect = loewe_expected_fe,
       observed_effect = fe_combo,
-      difference = additive_mean_difference,
-      synergy = additive_mean_difference > 0
+      difference = loewe_difference,
+      synergy = loewe_difference > 0
     ),
     combination_index = list(
       ci = ci_value,

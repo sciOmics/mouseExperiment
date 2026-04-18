@@ -143,11 +143,13 @@ make_dose_response <- function() {
 #   Control   mean volume = 500  TGI = 0
 #   DrugA     mean volume = 250  TGI = 0.50
 #   DrugB     mean volume = 300  TGI = 0.40
-#   Bliss expected combo vol = 500 * (1-0.50) * (1-0.40) = 150
+#   Bliss expected FE = 0.50 + 0.40 - 0.20 = 0.70  → combo vol = 150
+#   Loewe expected FE = min(0.50 + 0.40, 1.0) = 0.90  → combo vol = 50
+#   Loewe CI = (FE_A + FE_B) / FE_combo = 0.90 / FE_combo
 #
-#   Additive combo:     actual mean ≈ 150  → delta ≈ 0
-#   Synergistic combo:  actual mean ≈ 50   → more inhibition than expected
-#   Antagonistic combo: actual mean ≈ 325  → less inhibition than expected
+#   Bliss-neutral combo:  actual mean ≈ 150, FE=0.70, Loewe CI=1.29
+#   Synergistic combo:    actual mean ≈ 25,  FE=0.95, Loewe CI=0.95 (CI < 1)
+#   Antagonistic combo:   actual mean ≈ 325, FE=0.35, Loewe CI=2.57
 # Uses 6 mice per group; 8% CV so group means are very close to target.
 # -----------------------------------------------------------------------------
 make_synergy_base <- function(combo_mean) {
@@ -175,7 +177,7 @@ make_synergy_base <- function(combo_mean) {
 }
 
 make_synergy_additive    <- function() make_synergy_base(150)   # Bliss-neutral
-make_synergy_synergistic <- function() make_synergy_base(50)    # Better than additive
+make_synergy_synergistic <- function() make_synergy_base(25)    # FE > Loewe expected → CI < 1
 make_synergy_antagonist  <- function() make_synergy_base(325)   # Worse than additive
 
 # Bliss ground-truth expected combo volume (used in assertions)
