@@ -210,7 +210,11 @@ dose_response_server <- function(id, rv) {
       return(status_alert("Please upload and configure data in the Data Upload tab first.", "warning"))
     }
     if (is.null(rv$processed_data)) {
-      return(status_alert("Please run Tumor Growth Analysis first to resolve Volume and Day columns.", "warning"))
+      # Attempt to preprocess inline so TG analysis isn't required first
+      tryCatch(ensure_preprocessed(rv), error = function(e) NULL)
+    }
+    if (is.null(rv$processed_data)) {
+      return(status_alert("Could not resolve Volume and Day columns. Please check your column mappings in the Data Upload tab.", "warning"))
     }
     if (!dr_dose_available()) {
       return(status_alert("No Dose column selected. Please configure it in the Data Upload tab (Optional Columns \u2192 Dose Level).", "warning"))
