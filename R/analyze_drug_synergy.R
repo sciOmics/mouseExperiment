@@ -39,7 +39,7 @@
 #' 2. Loewe Additivity Model: Under a linear dose-response assumption (appropriate when only
 #'    single-dose TGI data is available), the expected combination effect equals the sum of
 #'    individual fractional effects, capped at 1.0. The Combination Index is calculated as
-#'    CI = (FE_A + FE_B) / FE_combo (Berenbaum, 1989).
+#'    CI = min(FE_A + FE_B, 1) / FE_combo (Berenbaum, 1989).
 #'
 #' 3. Combination Index: CI < 1 indicates synergy, CI = 1 indicates additivity, CI > 1 indicates antagonism.
 #'
@@ -147,10 +147,10 @@ analyze_drug_synergy <- function(df,
   loewe_expected_tgi <- loewe_expected_fe * 100
   
   # Calculate Combination Index (CI) based on Loewe Additivity
-  # CI = (FE_A + FE_B) / FE_combo
+  # CI = Loewe_Expected_FE / FE_combo = min(FE_A + FE_B, 1) / FE_combo
   # CI < 1 indicates synergy, CI = 1 indicates additivity, CI > 1 indicates antagonism
   if (fe_combo > 0) {
-    ci_value <- (fe_a + fe_b) / fe_combo
+    ci_value <- loewe_expected_fe / fe_combo
   } else {
     ci_value <- NA
     warning("Cannot calculate Combination Index: Combination effect is zero or negative")

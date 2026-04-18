@@ -194,7 +194,7 @@ analyze_drug_synergy_over_time <- function(df,
       bliss_diff_check <- (tgi_combo / 100) - bliss_expected_check
       
       # 2. Verify CI calculation
-      ci_check <- (fe_a + fe_b) / (tgi_combo / 100)
+      ci_check <- min(fe_a + fe_b, 1.0) / (tgi_combo / 100)
       
       # Check if values match within tolerance
       bliss_match <- abs(bliss_expected - bliss_expected_tgi_check) < 0.01
