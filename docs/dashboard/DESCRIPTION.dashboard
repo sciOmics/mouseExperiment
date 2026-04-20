@@ -1,7 +1,7 @@
 Package: mouseExperimentDashboard
 Title: Interactive Dashboard for mouseExperiment Analysis
-Version: 26.04.002
-Date: 2026-04-08
+Version: 26.04.005
+Date: 2026-04-18
 Authors@R: 
     person("David", "Woods", , "david@sciomics.bio", role = c("aut", "cre"))
 Author: David Woods [aut, cre]

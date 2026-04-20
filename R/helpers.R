@@ -143,7 +143,9 @@ ensure_preprocessed <- function(rv) {
   # depend on TG analysis having been run first.
   rv$id_col   <- if (!is.null(settings$col_id)   && nzchar(settings$col_id))   settings$col_id   else NULL
   rv$cage_col <- if (!is.null(settings$col_cage)  && nzchar(settings$col_cage)) settings$col_cage  else NULL
-  rv$dose_col <- if (!is.null(settings$col_dose)  && nzchar(settings$col_dose)) settings$col_dose  else NULL
+  rv$dose_col   <- if (!is.null(settings$col_dose)   && nzchar(settings$col_dose))   settings$col_dose   else NULL
+  rv$weight_col <- if (!is.null(settings$col_weight) && nzchar(settings$col_weight)) settings$col_weight else NULL
+  rv$sex_col    <- if (!is.null(settings$col_sex)    && nzchar(settings$col_sex))    settings$col_sex    else NULL
 
   # Cache for future callers
   rv$processed_data <- data
@@ -264,7 +266,12 @@ detect_columns <- function(col_names) {
     survival_time  = detect_column(col_names, col_names_lower,
                                    c("survival_time", "time_to_event", "days_to_event")),
     survival_event = detect_column(col_names, col_names_lower,
-                                   c("survival_event", "event", "survival_censor", "censor"))
+                                    c("survival_event", "event", "survival_censor", "censor")),
+    weight = detect_column(col_names, col_names_lower,
+                           c("weight", "body_weight", "body weight", "mouse_weight",
+                             "mouse weight", "mass", "body_mass", "body mass", "bw")),
+    sex    = detect_column(col_names, col_names_lower,
+                           c("sex", "gender", "m/f"))
   )
 
   detected

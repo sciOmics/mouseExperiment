@@ -101,16 +101,11 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
 
     tabPanel("Data",          dataUploadUI("data")),
     tabPanel("Tumor Growth",  tumorGrowthUI("tg")),
-    tabPanel("Survival",      survivalUI("surv")),
-    tabPanel(
-      title = tags$span("Toxicity",
-                        style = "color: #999; cursor: not-allowed;",
-                        title = "Coming soon"),
-      value = "__toxicity_disabled__",
-      ""
-    ),
-    tabPanel("Dose Response", doseResponseUI("dr")),
-    tabPanel("Drug Synergy",  synergyUI("syn")),
+    tabPanel("Survival",           survivalUI("surv")),
+    tabPanel("Toxicity",            toxicityUI("tox")),
+    tabPanel("Efficacy-Toxicity",   efficacyToxicityUI("et")),
+    tabPanel("Dose Response",       doseResponseUI("dr")),
+    tabPanel("Drug Synergy",        synergyUI("syn")),
     tabPanel(
       title = tags$span("Power Analysis",
                         style = "color: #999; cursor: not-allowed;",
@@ -162,6 +157,8 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     data_upload_server("data", rv)
     tumor_growth_server("tg", rv)
     survival_server("surv", rv)
+    toxicity_server("tox", rv)
+    efficacy_toxicity_server("et", rv)
     synergy_server("syn", rv)
     power_server("pw", rv)
     dose_response_server("dr", rv)
@@ -171,11 +168,10 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     observeEvent(input$main_nav, {
       log_navigation(session, input$main_nav)
 
-      disabled_vals <- c("__toxicity_disabled__", "__power_analysis_disabled__")
+      disabled_vals <- c("__power_analysis_disabled__")
 
       # Map internal disabled values to human-readable feature names
       coming_soon_names <- c(
-        "__toxicity_disabled__"       = "Toxicity",
         "__power_analysis_disabled__" = "Power Analysis"
       )
 
@@ -190,7 +186,8 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     }, ignoreInit = TRUE)
 
     # Analysis tabs that require data to be uploaded first
-    analysis_tabs <- c("Tumor Growth", "Survival", "Dose Response", "Drug Synergy")
+    analysis_tabs <- c("Tumor Growth", "Survival", "Toxicity", "Efficacy-Toxicity",
+                       "Dose Response", "Drug Synergy")
 
     # Disable all analysis tabs on startup
     shinyjs::runjs(paste(
@@ -212,6 +209,19 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
           shinyjs::runjs("window.enableNavTab('Survival');")
         } else {
           shinyjs::runjs("window.disableNavTab('Survival');")
+        }
+
+        # Toxicity: only when a weight column is mapped
+        wt_mapped <- !is.null(rv$settings$col_weight) &&
+                     nzchar(rv$settings$col_weight) &&
+                     rv$settings$col_weight != "None"
+        if (wt_mapped) {
+          shinyjs::runjs("window.enableNavTab('Toxicity');")
+          # Efficacy-Toxicity also needs volume (always available if data loaded)
+          shinyjs::runjs("window.enableNavTab('Efficacy-Toxicity');")
+        } else {
+          shinyjs::runjs("window.disableNavTab('Toxicity');")
+          shinyjs::runjs("window.disableNavTab('Efficacy-Toxicity');")
         }
 
         # Drug Synergy: available once data is loaded

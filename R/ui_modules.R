@@ -262,10 +262,18 @@ column_mapping_ui <- function(col_names, detected_cols, ns = NS(NULL)) {
         tags$p(tags$small("Required for Survival Analysis. Time will use the same Day/Date settings as above. Coding: ", tags$strong("1 = event (e.g. death)"), ", ", tags$strong("0 = censored"), ".")),
         
         br(),
-        selectInput(ns("col_weight"), "Weight / Mass",
+        selectInput(ns("col_weight"),
+                   tagList("Weight / Mass", help_tip("Body weight or mass measurements. Used for toxicity analysis, tumor weight adjustment, and weight-loss survival.")),
                    choices = c("None" = "", col_names),
-                   selected = ""),
-        tags$p(tags$small("Required for Toxicity Analysis. Should contain body weight or mass measurements."))
+                   selected = detected_cols$weight),
+        tags$p(tags$small("Required for Toxicity Analysis. Should contain body weight or mass measurements.")),
+
+        br(),
+        selectInput(ns("col_sex"),
+                   tagList("Sex / Gender", help_tip("Optional covariate for mixed models. Accounts for metabolic differences between male and female mice.")),
+                   choices = c("None" = "", col_names),
+                   selected = detected_cols$sex),
+        tags$p(tags$small("Optional covariate for Toxicity mixed models."))
       )
     )
   )

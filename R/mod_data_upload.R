@@ -594,6 +594,8 @@ data_upload_server <- function(id, rv) {
       col_cage          = input$col_cage %||% "",
       col_dose          = input$col_dose %||% "",
       col_survival_event = input$col_survival_event %||% "",
+      col_weight        = input$col_weight %||% "",
+      col_sex           = input$col_sex %||% "",
       time_method       = input$time_method %||% "direct_day",
       volume_method     = input$volume_method %||% "direct",
       volume_formula    = input$volume_formula %||% "ellipsoid",

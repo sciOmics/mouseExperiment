@@ -4,6 +4,24 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.04.005] 2026 April 18th
+
+### Added
+- **Toxicity tab** — new top-level analysis tab for body weight toxicity
+  - Body Weight Trajectory: spaghetti or mean±SEM/SD with shaded ribbons
+  - Mixed Model: longitudinal LME with tumor-weight adjustment, covariates (volume, sex, initial mass), auto-fallback random effects
+  - Body Weight AUC: trapezoidal AUC of % weight change, boxplot + jitter, nadir analysis, pairwise comparisons
+  - Weight Loss Survival: KM curves for time-to-threshold weight loss, log-rank, optional Cox PH, risk table
+- **Efficacy-Toxicity tab** — new top-level analysis tab combining tumor and weight data
+  - Therapeutic Window Metric (TWM): TGI/MaxWeightLoss% bar chart with noise-floor handling
+  - Safety-Efficacy Plot: per-mouse bivariate scatter with group ellipses/centroids, 3 efficacy metrics (TGI, tumor AUC, log cell kill)
+  - Total Benefit Score: B = AUC(efficacy) − λ×AUC(toxicity) with interactive λ slider
+  - Weight-Corrected TGI: side-by-side comparison after excluding mice exceeding safety threshold
+  - Correlation Heatmap: efficacy vs toxicity metrics
+  - Combined Report: merged summary table with CSV export
+- Weight and Sex column auto-detection in data upload
+- Tab enable/disable: Toxicity requires weight column, Efficacy-Toxicity requires both weight and volume
+
 ## [v26.04.004] 2026 April 18th
 
 ### Added
