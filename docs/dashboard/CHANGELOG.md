@@ -4,7 +4,7 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
-## [v26.04.005] 2026 April 18th
+## [v26.04.005] 2026 April 20th
 
 ### Added
 - **Toxicity tab** — new top-level analysis tab for body weight toxicity
