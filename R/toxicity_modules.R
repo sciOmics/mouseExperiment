@@ -697,8 +697,9 @@ toxicity_server <- function(id, rv) {
     line_w    <- input$tox_traj_line_width %||% 1
 
     if (traj_type == "spaghetti") {
+      td$.__LineGroup <- paste(td[["Treatment"]], td[["ID"]], sep = "\u00b7")
       ggplot2::ggplot(td, ggplot2::aes(.data[["Day"]], .data[["Weight"]],
-                                        group = .data[["ID"]], color = .data[["Treatment"]])) +
+                                        group = .data[[".__LineGroup"]], color = .data[["Treatment"]])) +
         ggplot2::geom_line(alpha = 0.6, linewidth = line_w) +
         ggplot2::geom_point(size = 1.5, alpha = 0.6) +
         ggplot2::labs(title = "Body Weight Trajectories",
