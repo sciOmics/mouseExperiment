@@ -108,6 +108,170 @@ toxicityUI <- function(id) {
         tabsetPanel(
           id = ns("tox_results_tabs"),
 
+          tabPanel("Info",
+            fluidRow(
+              column(10, offset = 1,
+                br(),
+
+                # ── Overview ────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading", h4(class = "panel-title", "Overview")),
+                  div(class = "panel-body",
+                    p("The Toxicity tab provides two complementary analysis modes selectable from the ",
+                      strong("Statistical Model"), " dropdown:"),
+                    tags$ul(
+                      tags$li(strong("Body Weight Analysis"), " — models longitudinal weight trajectories using a linear mixed-effects model, and derives AUC-based and time-to-event (KM) toxicity summaries."),
+                      tags$li(strong("Efficacy-Toxicity Analysis"), " — integrates body weight toxicity with tumor efficacy data to assess the overall therapeutic window. Requires a tumor volume column.")
+                    ),
+                    p(tags$small(class = "text-muted",
+                      "Body weight is used as the toxicity surrogate throughout. ",
+                      "When 'Subtract estimated tumor weight' is enabled, the gross weight is corrected by ",
+                      "subtracting Volume(mm\u00b3) \u00d7 density(g/cm\u00b3) / 1000, giving a net host weight."))
+                  )
+                ),
+
+                # ── Body Weight Analysis ────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-info", "Body Weight Analysis"), " \u2014 Analyses & Metrics")),
+                  div(class = "panel-body",
+
+                    h5(strong("Mixed-Effects Model")),
+                    p("Fits a linear mixed-effects model to all repeated weight measurements:"),
+                    tags$blockquote(
+                      tags$code("Weight ~ Treatment \u00d7 Day + [covariates] + (Day | Mouse)")
+                    ),
+                    p("Random slopes allow each mouse's weight trend to deviate from the group average. ",
+                      "Fixed effects test whether trajectories differ by treatment group over time."),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("REML"), tags$dd("Restricted Maximum Likelihood — preferred for final parameter estimates (default)."),
+                      tags$dt("ML"), tags$dd("Maximum Likelihood — use when comparing models with different fixed-effect structures.")
+                    ),
+                    tags$p(tags$b("Covariates (optional):")),
+                    tags$ul(
+                      tags$li(strong("Tumor Volume"), " — controls for tumor-driven weight changes independent of drug toxicity."),
+                      tags$li(strong("Sex"), " — adjusts for sex-specific baseline weight differences."),
+                      tags$li(strong("Initial Mass"), " — adjusts for pre-treatment weight variation across animals.")
+                    ),
+
+                    hr(),
+                    h5(strong("Body Weight AUC")),
+                    p("For each mouse, body weight is expressed as % change from baseline at each timepoint, then a trapezoidal AUC is computed over the study. ",
+                      "A negative AUC indicates sustained weight loss; a positive AUC indicates net weight gain."),
+                    tags$ul(
+                      tags$li("Individual AUC values are shown as a jitter plot (± boxplot)."),
+                      tags$li("Pairwise group comparisons use t-tests with Benjamini-Hochberg correction.")
+                    ),
+
+                    hr(),
+                    h5(strong("Nadir Analysis")),
+                    p("The nadir (minimum weight) is identified per mouse. Reported metrics include nadir day, nadir weight, % loss at nadir, and days to recovery."),
+
+                    hr(),
+                    h5(strong("Weight Loss KM Curve")),
+                    p("Treats each mouse as an event-time observation where the event is crossing the weight-loss threshold (default 20%). ",
+                      "Mice that never reach the threshold are censored at their last observation. ",
+                      "A Kaplan-Meier curve is fitted per group; group differences are tested with the log-rank test."),
+                    p(tags$b("Weight Loss Threshold:"),
+                      " The % body weight loss that constitutes a toxicity event. The default (20%) is a common IACUC endpoint; adjust to match study-specific welfare criteria.")
+                  )
+                ),
+
+                # ── Efficacy-Toxicity Analysis ──────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-warning", "Efficacy-Toxicity Analysis"), " \u2014 Analyses & Metrics")),
+                  div(class = "panel-body",
+
+                    h5(strong("Efficacy Metrics")),
+                    p("Three metrics quantify anti-tumor efficacy per mouse relative to the control group:"),
+                    tags$dl(
+                      tags$dt("Final TGI (%)"),
+                      tags$dd(
+                        "Tumor Growth Inhibition at the final timepoint: ",
+                        tags$code("TGI = (1 \u2212 V_treated / V\u0305_control) \u00d7 100"),
+                        ". Values > 0 indicate tumor suppression; > 100 indicates tumor regression."
+                      ),
+                      tags$dt("Tumor AUC"),
+                      tags$dd(
+                        "Trapezoidal AUC of tumor volume over time, normalised to the control AUC: ",
+                        tags$code("(1 \u2212 AUC_treated / AUC_control) \u00d7 100"),
+                        ". Captures the full trajectory rather than a single endpoint."
+                      ),
+                      tags$dt("Log Cell Kill (LCK)"),
+                      tags$dd(
+                        "Estimates tumor cell kill based on growth delay: ",
+                        tags$code("LCK = (T \u2212 C) / (3.32 \u00d7 T\u2082)"),
+                        " where T and C are the days for treated and control tumors to reach a target volume, and T\u2082 is the control doubling time. Requires adequate tumor growth in controls."
+                      )
+                    ),
+
+                    hr(),
+                    h5(strong("Therapeutic Window Metric (TWM)")),
+                    p("A summary ratio combining efficacy and toxicity per group:"),
+                    tags$blockquote(tags$code("TWM = TGI(%) / Max Body Weight Loss(%)")),
+                    p("Higher TWM indicates a more favourable balance. A noise floor prevents division by near-zero weight changes. Displayed as a ranked bar chart."),
+
+                    hr(),
+                    h5(strong("Safety-Efficacy Scatter")),
+                    p("A per-mouse bivariate plot where each point represents one animal. ",
+                      "X-axis shows the chosen efficacy metric; Y-axis shows maximum % body weight loss. ",
+                      "Points in the top-right quadrant (high efficacy, high toxicity) represent the least favourable profile."),
+                    tags$ul(
+                      tags$li(strong("Group ellipses"), " — 68% confidence ellipses (1 SD) per treatment group."),
+                      tags$li(strong("Group centroids"), " — mean efficacy and mean max weight loss per group, shown as large diamonds.")
+                    ),
+
+                    hr(),
+                    h5(strong("Total Benefit Score")),
+                    p("An integrated scalar combining efficacy and toxicity AUCs over time:"),
+                    tags$blockquote(tags$code("B = AUC(efficacy) \u2212 \u03bb \u00d7 AUC(toxicity)")),
+                    p("A positive score indicates net benefit; negative indicates net harm. The trade-off parameter ",
+                      tags$b("\u03bb"), " (lambda) controls how strongly toxicity is penalised:"),
+                    tags$ul(
+                      tags$li(tags$b("\u03bb = 1.0"), " (default) — equal weight on efficacy and toxicity."),
+                      tags$li(tags$b("\u03bb > 1"), " — penalise toxicity more heavily; use for fragile populations or curative intent."),
+                      tags$li(tags$b("\u03bb < 1"), " — tolerate more toxicity; use when efficacy improvement is the primary goal.")
+                    ),
+
+                    hr(),
+                    h5(strong("Weight-Corrected TGI")),
+                    p("Recalculates TGI using only mice that stayed ", em("within"), " the safety weight-loss threshold throughout the study. ",
+                      "Mice exceeding the threshold are excluded from the corrected calculation."),
+                    p("This prevents a drug that arrested tumor growth ", em("due to severe toxicity"), " from appearing falsely effective. ",
+                      "Comparing the standard and corrected TGI reveals the extent of this confound."),
+                    p(tags$b("Safety threshold:"),
+                      " Mirrors the Weight Loss Threshold in Body Weight Analysis. Mice whose maximum weight loss exceeds this value are excluded from the corrected TGI."),
+
+                    hr(),
+                    h5(strong("Correlation Heatmap")),
+                    p("Shows Pearson correlations between all available per-mouse metrics (Efficacy, Max Weight Loss, Efficacy AUC, Toxicity AUC). ",
+                      "Strong positive correlation between efficacy and toxicity suggests the drug cannot separate the two effects at the doses tested.")
+                  )
+                ),
+
+                # ── Shared Parameters ────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading", h4(class = "panel-title", "Shared Parameters")),
+                  div(class = "panel-body",
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Reference Group"),
+                      tags$dd("The vehicle/control group used as the denominator for TGI, LCK, and AUC ratios. Auto-detected from common names (DMSO, Vehicle, Control, PBS, Saline) or defaults to the first group alphabetically."),
+                      tags$dt("Subtract Tumor Weight"),
+                      tags$dd("Removes the estimated tumor mass (Volume \u00d7 density / 1000) from gross body weight before all calculations, so that body weight reflects host tissue rather than tumor burden."),
+                      tags$dt("Tumor Density"),
+                      tags$dd("Used only when tumor weight adjustment is enabled. Default 1.0 g/cm\u00b3 (water density). Typical soft-tissue tumor density is 0.9\u20131.1 g/cm\u00b3."),
+                      tags$dt("Baseline Day"),
+                      tags$dd("The study day used to compute % change from baseline. Defaults to the earliest available day.")
+                    )
+                  )
+                ),
+
+                br()
+              )
+            )
+          ),
+
           tabPanel("Summary",
             tab_info(
               strong("Analysis summary. "),
