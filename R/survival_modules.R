@@ -286,7 +286,10 @@ survival_server <- function(id, rv) {
 
   # Endpoint source UI: always shows both options; warns inline if volume column not configured
   output$surv_endpoint_source_ui <- renderUI({
-    has_vol <- !is.null(rv$settings$col_volume) && nzchar(rv$settings$col_volume %||% "")
+    has_vol <- nzchar(rv$settings$col_volume %||% "") ||
+               (isTRUE(rv$settings$volume_method == "calculate") &&
+                nzchar(rv$settings$col_length %||% "") &&
+                nzchar(rv$settings$col_width  %||% ""))
     tagList(
       radioButtons(session$ns("surv_event_source"), NULL,
         choices = c(
@@ -344,8 +347,11 @@ survival_server <- function(id, rv) {
         return()
       }
     } else {
-      vol_col_check <- rv$settings$col_volume %||% ""
-      if (!nzchar(vol_col_check)) {
+      has_vol_surv <- nzchar(rv$settings$col_volume %||% "") ||
+                      (isTRUE(rv$settings$volume_method == "calculate") &&
+                       nzchar(rv$settings$col_length %||% "") &&
+                       nzchar(rv$settings$col_width  %||% ""))
+      if (!has_vol_surv) {
         output$surv_status_msg <- renderUI({
           status_alert("Error: No Tumour Volume column configured. Configure it in Data Upload or switch to \u2018Use Event/Censor column\u2019.", "danger")
         })
@@ -449,7 +455,7 @@ survival_server <- function(id, rv) {
     # by finding the first day each animal's tumour exceeded the volume threshold
     if (event_src == "volume") {
       vol_threshold <- as.numeric(input$surv_vol_threshold %||% 2000)
-      vol_col_surv  <- rv$settings$col_volume %||% "Volume"
+      vol_col_surv  <- pp$vol_col  # uses calculated 'Volume' col when volume_method == 'calculate'
 
       evt_rows <- lapply(seq_len(nrow(data)), function(i) {
         if (has_id && has_cage) {
