@@ -4,6 +4,17 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.005] 2026 May 5th
+
+### Added
+- **Body Weight AUC plot** — new "Show box plot" checkbox (default: on) to toggle the boxplot layer, leaving only individual data points when unchecked; new "Point size" slider (0.5–6, default: 2); dot colours now follow the Groups palette when the boxplot is hidden
+
+### Fixed
+- **Safety-Efficacy Scatter plot** — corrected column name mismatches between `efficacy_toxicity_bivariate()` return value and the `renderPlot` code (`Max_Pct_Weight_Loss`, `Efficacy_Mean`, `Toxicity_Mean`); previously returned `[object Object]`
+- **Total Benefit Score plot** — corrected column reference from `Benefit` to `Benefit_Score`; previously returned `[object Object]`
+- **Weight-Corrected vs Standard TGI plot** — corrected column references from `Uncorrected_TGI`/`Corrected_TGI` to `TGI_Uncorrected`/`TGI_Corrected` (merge-suffix order from `weight_corrected_tgi()`); previously returned "arguments imply differing number of rows"
+- **Correlation Heatmap plot** — corrected AUC column references from `ea$AUC`/`ta$AUC` to `ea$Efficacy_AUC`/`ta$Toxicity_AUC`; previously returned "undefined columns selected"
+
 ## [v26.05.004] 2026 May 5th
 
 ### Fixed
