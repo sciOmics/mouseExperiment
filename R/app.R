@@ -103,7 +103,6 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     tabPanel("Tumor Growth",  tumorGrowthUI("tg")),
     tabPanel("Survival",           survivalUI("surv")),
     tabPanel("Toxicity",            toxicityUI("tox")),
-    tabPanel("Efficacy-Toxicity",   efficacyToxicityUI("et")),
     tabPanel("Dose Response",       doseResponseUI("dr")),
     tabPanel("Drug Synergy",        synergyUI("syn")),
     tabPanel(
@@ -158,7 +157,6 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     tumor_growth_server("tg", rv)
     survival_server("surv", rv)
     toxicity_server("tox", rv)
-    efficacy_toxicity_server("et", rv)
     synergy_server("syn", rv)
     power_server("pw", rv)
     dose_response_server("dr", rv)
@@ -186,7 +184,7 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     }, ignoreInit = TRUE)
 
     # Analysis tabs that require data to be uploaded first
-    analysis_tabs <- c("Tumor Growth", "Survival", "Toxicity", "Efficacy-Toxicity",
+    analysis_tabs <- c("Tumor Growth", "Survival", "Toxicity",
                        "Dose Response", "Drug Synergy")
 
     # Disable all analysis tabs on startup
@@ -217,11 +215,8 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
                      rv$settings$col_weight != "None"
         if (wt_mapped) {
           shinyjs::runjs("window.enableNavTab('Toxicity');")
-          # Efficacy-Toxicity also needs volume (always available if data loaded)
-          shinyjs::runjs("window.enableNavTab('Efficacy-Toxicity');")
         } else {
           shinyjs::runjs("window.disableNavTab('Toxicity');")
-          shinyjs::runjs("window.disableNavTab('Efficacy-Toxicity');")
         }
 
         # Drug Synergy: available once data is loaded

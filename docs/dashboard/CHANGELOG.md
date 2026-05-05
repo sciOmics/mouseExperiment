@@ -4,6 +4,18 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.04.006] 2026 April 20th
+
+### Changed
+- **Toxicity tab** — merged the former "Efficacy-Toxicity" tab into the Toxicity tab
+  - New **Statistical Model** dropdown in Analysis Parameters sidebar (matches Tumor Growth pattern):
+    - "Body Weight Analysis" — mixed-effects model, AUC, and time-to-threshold KM curve
+    - "Efficacy-Toxicity Analysis" — therapeutic window metric, safety-efficacy scatter, total benefit score, weight-corrected TGI, correlation heatmap, combined report
+  - Replaced four separate sub-tabs (Trajectory, Mixed Model, AUC, KM) with a unified **Plots** tab containing a plot-type selector, plus a **Results** tab with all data tables
+  - Plot controls (type selector, display style, scaling, export) consolidated into a single left-hand sidebar panel within the Plots tab, consistent with Tumor Growth module layout
+  - Sidebar parameters are now model-specific: Body Weight options (covariates, REML/ML, threshold, baseline day) shown only when "Body Weight Analysis" is selected; Efficacy-Toxicity options (efficacy metric, lambda, safety threshold) shown only when "Efficacy-Toxicity Analysis" is selected
+- Removed standalone **Efficacy-Toxicity** top-level tab from navigation bar
+
 ## [v26.04.005] 2026 April 20th
 
 ### Added
