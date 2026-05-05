@@ -4,6 +4,11 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.002] 2026 May 4th
+
+### Fixed
+- **Body Weight AUC and Weight Loss KM plots showing only the control group** — `body_weight_auc()` and `weight_loss_threshold()` in the `mouseExperiment` package now use a composite `Treatment + ID` key internally when grouping observations per mouse. Previously, if the same ID value (e.g. an ear tag) appeared in multiple treatment groups, all mice were incorrectly attributed to the first group encountered (typically the vehicle control). The fix ensures each treatment-group × ID combination is processed as a separate animal.
+
 ## [v26.05.001] 2026 May 4th
 
 ### Changed
