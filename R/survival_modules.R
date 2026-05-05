@@ -284,26 +284,30 @@ survival_server <- function(id, rv) {
                selected = "")
   })
 
-  # Endpoint source UI: shows volume-threshold option only when a volume column is configured
+  # Endpoint source UI: always shows both options; warns inline if volume column not configured
   output$surv_endpoint_source_ui <- renderUI({
     has_vol <- !is.null(rv$settings$col_volume) && nzchar(rv$settings$col_volume %||% "")
-    if (!has_vol) {
-      return(tags$p(tags$small(class = "text-muted",
-        "Using the Event/Censor column configured in Data Upload. ",
-        "Coding: 1\u202f=\u202fendpoint reached, 0\u202f=\u202fcensored.",
-        tags$br(),
-        "To enable volume-threshold derivation, configure a Tumour Volume column in Data Upload."
-      )))
-    }
     tagList(
       radioButtons(session$ns("surv_event_source"), NULL,
         choices = c(
           "Use Event/Censor column"             = "column",
           "Derive from tumour volume threshold" = "volume"
         ),
-        selected = "column"
+        selected = isolate(input$surv_event_source) %||% "column"
+      ),
+      conditionalPanel(ns = session$ns, "input.surv_event_source == 'column'",
+        tags$p(tags$small(class = "text-muted",
+          "Using the Event/Censor column configured in Data Upload. ",
+          "Coding: 1\u202f=\u202fendpoint reached, 0\u202f=\u202fcensored."
+        ))
       ),
       conditionalPanel(ns = session$ns, "input.surv_event_source == 'volume'",
+        if (!has_vol)
+          div(class = "alert alert-warning", style = "font-size:0.85em; padding:6px 10px; margin-bottom:6px;",
+            icon("triangle-exclamation"), " ",
+            "No Tumour Volume column is configured. Go to ",
+            strong("Data Upload"), " and map the Volume column, then return here."
+          ),
         numericInput(session$ns("surv_vol_threshold"),
                      "IACUC volume limit (mm\u00b3)",
                      value = 2000, min = 1, step = 50),
@@ -311,12 +315,6 @@ survival_server <- function(id, rv) {
           "First day each mouse\u2019s tumour reaches or exceeds this volume = Event\u202f=\u202f1 ",
           "(Time = that day). Mice that never exceed the limit are censored at their ",
           "last observation (Event\u202f=\u202f0)."
-        ))
-      ),
-      conditionalPanel(ns = session$ns, "input.surv_event_source == 'column'",
-        tags$p(tags$small(class = "text-muted",
-          "Using the Event/Censor column configured in Data Upload. ",
-          "Coding: 1\u202f=\u202fendpoint reached, 0\u202f=\u202fcensored."
         ))
       )
     )
