@@ -4,6 +4,15 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.006] 2026 May 5th
+
+### Added
+- **Toxicity Analysis — Info tab** — new first tab in the results panel with structured explanations of all analyses, metrics, and parameters, organised into four sections:
+  - *Overview*: when to use Body Weight Analysis vs Efficacy-Toxicity Analysis
+  - *Body Weight Analysis*: mixed-effects model formula and covariate effects, REML vs ML, AUC derivation, nadir analysis, KM weight-loss curve, and threshold definition
+  - *Efficacy-Toxicity Analysis*: Final TGI, Tumor AUC, and Log Cell Kill formulas; Therapeutic Window Metric; Safety-Efficacy Scatter layers; Total Benefit Score formula and λ guidance; Weight-Corrected TGI rationale; Correlation Heatmap interpretation
+  - *Shared Parameters*: reference group auto-detection, tumor weight adjustment, tumor density, and baseline day
+
 ## [v26.05.005] 2026 May 5th
 
 ### Added
