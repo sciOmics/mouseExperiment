@@ -859,14 +859,14 @@ toxicity_server <- function(id, rv) {
     eff_label <- switch(biv$efficacy_metric,
       tgi = "TGI (%)", tumor_auc = "Tumor AUC", log_cell_kill = "Log Cell Kill")
     p <- ggplot2::ggplot(pm,
-           ggplot2::aes(.data[["Efficacy"]], .data[["Max_Weight_Loss_Pct"]],
+           ggplot2::aes(.data[["Efficacy"]], .data[["Max_Pct_Weight_Loss"]],
                         color = .data[["Treatment"]])) +
       ggplot2::geom_point(size = pt_size, alpha = 0.7)
     if (show_ell && nrow(pm) > 3)
       p <- p + ggplot2::stat_ellipse(level = 0.68, linewidth = 0.8, show.legend = FALSE)
     if (show_cent && !is.null(biv$per_group))
       p <- p + ggplot2::geom_point(data = biv$per_group,
-                 ggplot2::aes(.data[["Mean_Efficacy"]], .data[["Mean_Max_Weight_Loss_Pct"]]),
+                 ggplot2::aes(.data[["Efficacy_Mean"]], .data[["Toxicity_Mean"]]),
                  shape = 18, size = 6)
     p + ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
       ggplot2::geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
@@ -931,7 +931,7 @@ toxicity_server <- function(id, rv) {
     if (isTRUE(biv$error)) return(NULL)
     text_sz <- input$tox_plot_text_size %||% 14
     pm <- biv$per_mouse
-    md <- pm[, c("Efficacy", "Max_Weight_Loss_Pct"), drop = FALSE]
+    md <- pm[, c("Efficacy", "Max_Pct_Weight_Loss"), drop = FALSE]
     colnames(md) <- c("Efficacy", "Max Weight Loss (%)")
     if (!is.null(rv$tox_results$benefit) && !isTRUE(rv$tox_results$benefit$error)) {
       ea <- rv$tox_results$benefit$efficacy_auc
