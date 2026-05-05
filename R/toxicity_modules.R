@@ -883,12 +883,12 @@ toxicity_server <- function(id, rv) {
     if (isTRUE(ben$error)) return(NULL)
     text_sz <- input$tox_plot_text_size %||% 14
     bt <- ben$benefit_table
-    bt$Treatment <- factor(bt$Treatment, levels = bt$Treatment[order(bt$Benefit)])
-    ggplot2::ggplot(bt, ggplot2::aes(.data[["Treatment"]], .data[["Benefit"]],
-                                      fill = .data[["Benefit"]] > 0)) +
+    bt$Treatment <- factor(bt$Treatment, levels = bt$Treatment[order(bt$Benefit_Score)])
+    ggplot2::ggplot(bt, ggplot2::aes(.data[["Treatment"]], .data[["Benefit_Score"]],
+                                      fill = .data[["Benefit_Score"]] > 0)) +
       ggplot2::geom_col(alpha = 0.8, width = 0.6) +
-      ggplot2::geom_text(ggplot2::aes(label = round(.data[["Benefit"]], 1)),
-                         vjust = ifelse(bt$Benefit >= 0, -0.5, 1.5), size = 4) +
+      ggplot2::geom_text(ggplot2::aes(label = round(.data[["Benefit_Score"]], 1)),
+                         vjust = ifelse(bt$Benefit_Score >= 0, -0.5, 1.5), size = 4) +
       ggplot2::geom_hline(yintercept = 0, linewidth = 0.8) +
       ggplot2::scale_fill_manual(values = c("TRUE" = "#2c7bb6", "FALSE" = "#d7191c"),
                                  labels = c("TRUE" = "Net Benefit", "FALSE" = "Net Harm"), name = "") +
@@ -910,7 +910,7 @@ toxicity_server <- function(id, rv) {
     plot_df <- data.frame(
       Treatment = rep(comp$Treatment, 2),
       Type      = rep(c("Uncorrected TGI", "Weight-Corrected TGI"), each = nrow(comp)),
-      TGI       = c(comp$Uncorrected_TGI, comp$Corrected_TGI),
+      TGI       = c(comp$TGI_Uncorrected, comp$TGI_Corrected),
       stringsAsFactors = FALSE
     )
     ggplot2::ggplot(plot_df,
@@ -936,8 +936,8 @@ toxicity_server <- function(id, rv) {
     if (!is.null(rv$tox_results$benefit) && !isTRUE(rv$tox_results$benefit$error)) {
       ea <- rv$tox_results$benefit$efficacy_auc
       ta <- rv$tox_results$benefit$toxicity_auc
-      if (!is.null(ea) && nrow(ea) == nrow(pm)) md[["Efficacy AUC"]] <- ea$AUC
-      if (!is.null(ta) && nrow(ta) == nrow(pm)) md[["Toxicity AUC"]] <- ta$AUC
+      if (!is.null(ea) && nrow(ea) == nrow(pm)) md[["Efficacy AUC"]] <- ea$Efficacy_AUC
+      if (!is.null(ta) && nrow(ta) == nrow(pm)) md[["Toxicity AUC"]] <- ta$Toxicity_AUC
     }
     req(ncol(md) >= 2)
     cm     <- stats::cor(md, use = "pairwise.complete.obs")
