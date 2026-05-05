@@ -51,38 +51,42 @@ weight_loss_threshold <- function(df,
   }
 
   wd <- wd[!is.na(wd$Weight) & !is.na(wd$Day), ]
-  wd <- wd[order(wd$ID, wd$Day), ]
+
+  # Composite key: ensures IDs shared across treatment groups are treated as
+  # distinct mice (common when ear tags / cage labels are reused per group).
+  wd$.MouseKey <- paste(wd$Treatment, wd$ID, sep = "\u2060")
+  wd <- wd[order(wd$.MouseKey, wd$Day), ]
 
   # --- Compute baseline weight per mouse ---
   if (!is.null(baseline_day)) {
     bl <- wd[wd$Day == baseline_day, ]
     # For mice without an observation on baseline_day, use their earliest
-    missing_ids <- setdiff(unique(wd$ID), unique(bl$ID))
-    if (length(missing_ids) > 0) {
-      fallback <- do.call(rbind, lapply(missing_ids, function(id) {
-        sub <- wd[wd$ID == id, ]
+    missing_keys <- setdiff(unique(wd$.MouseKey), unique(bl$.MouseKey))
+    if (length(missing_keys) > 0) {
+      fallback <- do.call(rbind, lapply(missing_keys, function(key) {
+        sub <- wd[wd$.MouseKey == key, ]
         sub[1, , drop = FALSE]
       }))
       bl <- rbind(bl, fallback)
     }
   } else {
-    bl <- do.call(rbind, lapply(unique(wd$ID), function(id) {
-      sub <- wd[wd$ID == id, ]
+    bl <- do.call(rbind, lapply(unique(wd$.MouseKey), function(key) {
+      sub <- wd[wd$.MouseKey == key, ]
       sub[1, , drop = FALSE]
     }))
   }
-  baseline_weights <- stats::setNames(bl$Weight, bl$ID)
+  baseline_weights <- stats::setNames(bl$Weight, bl$.MouseKey)
 
   # --- Determine event time per mouse ---
-  event_list <- lapply(unique(wd$ID), function(id) {
-    sub <- wd[wd$ID == id, ]
-    bw <- baseline_weights[id]
+  event_list <- lapply(unique(wd$.MouseKey), function(key) {
+    sub <- wd[wd$.MouseKey == key, ]
+    bw <- baseline_weights[key]
     threshold_weight <- bw * (1 - threshold)
     hit <- which(sub$Weight <= threshold_weight)
     if (length(hit) > 0) {
       # Event: first day at or below threshold
       data.frame(
-        ID        = id,
+        ID        = sub$ID[1],
         Treatment = sub$Treatment[1],
         Baseline_Weight = bw,
         Time      = sub$Day[hit[1]],
@@ -92,7 +96,7 @@ weight_loss_threshold <- function(df,
     } else {
       # Censored: last observation day
       data.frame(
-        ID        = id,
+        ID        = sub$ID[1],
         Treatment = sub$Treatment[1],
         Baseline_Weight = bw,
         Time      = max(sub$Day),

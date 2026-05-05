@@ -5,6 +5,12 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-05-04
+
+### Fixed
+- `body_weight_auc()` — now uses a composite `Treatment + ID` key when grouping observations per mouse. Previously, IDs shared across treatment groups (e.g. reused ear tags or cage labels) caused all mice to be attributed to the first treatment group encountered, so AUC results showed only the control group.
+- `weight_loss_threshold()` — same composite-key fix applied to the per-mouse baseline computation, event detection, and KM strata. KM curves previously collapsed to a single stratum (control group) when IDs were not unique across treatments.
+
 ## [0.3.0] - 2026-04-20
 
 ### Added

@@ -47,13 +47,17 @@ body_weight_auc <- function(df,
   }
 
   wd <- wd[!is.na(wd$Weight) & !is.na(wd$Day), ]
-  wd <- wd[order(wd$ID, wd$Day), ]
+
+  # Composite key: ensures IDs shared across treatment groups are treated as
+  # distinct mice (common when ear tags / cage labels are reused per group).
+  wd$.MouseKey <- paste(wd$Treatment, wd$ID, sep = "\u2060")
+  wd <- wd[order(wd$.MouseKey, wd$Day), ]
 
   # --- Per-mouse baseline and % change ---
-  baseline <- stats::aggregate(Weight ~ ID, data = wd,
+  baseline <- stats::aggregate(Weight ~ .MouseKey, data = wd,
                                FUN = function(x) x[1])
   names(baseline)[2] <- "Baseline_Weight"
-  wd <- merge(wd, baseline, by = "ID", all.x = TRUE)
+  wd <- merge(wd, baseline, by = ".MouseKey", all.x = TRUE)
   wd$Pct_Change <- (wd$Weight - wd$Baseline_Weight) / wd$Baseline_Weight * 100
 
   # --- Trapezoidal AUC per mouse ---
@@ -65,11 +69,11 @@ body_weight_auc <- function(df,
     sum(diff(t) * (v[-length(v)] + v[-1]) / 2)
   }
 
-  ids <- unique(wd$ID)
-  auc_list <- lapply(ids, function(id) {
-    sub <- wd[wd$ID == id, ]
+  mouse_keys <- unique(wd$.MouseKey)
+  auc_list <- lapply(mouse_keys, function(key) {
+    sub <- wd[wd$.MouseKey == key, ]
     data.frame(
-      ID        = id,
+      ID        = sub$ID[1],
       Treatment = sub$Treatment[1],
       Baseline_Weight = sub$Baseline_Weight[1],
       AUC_Weight      = trap_auc(sub$Day, sub$Weight),
