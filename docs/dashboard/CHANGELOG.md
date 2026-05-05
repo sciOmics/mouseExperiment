@@ -4,6 +4,27 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.003] 2026 May 4th
+
+### Added
+- **Survival tab — IACUC endpoint context and volume-threshold event derivation**
+  - Page header now shows subtitle "(Time-to-Endpoint)" and a warning banner explaining that in most preclinical mouse studies the recorded endpoint is time-until-tumour-volume-threshold (not true death), with a note on competing risks and the recommended pragmatic approach
+  - New **Endpoint** section in the Analysis Parameters sidebar:
+    - When a Tumour Volume column is configured in Data Upload, a radio group lets users choose between "Use Event/Censor column" (existing behaviour) and "Derive from tumour volume threshold" (new)
+    - Volume mode: `numericInput` for the IACUC volume limit (default 2000 mm³); automatically computes per-animal Time = first day volume ≥ threshold (Event = 1) or last observation day (Event = 0) if never exceeded
+  - New **Natural Death** checkbox in the sidebar (default: checked); text explains the competing-risks tradeoff and the pragmatic recommendation
+  - Summary output now shows "Event Source: Derived from tumour volume threshold (>= X mm³)" when in volume mode, replacing the "Event Column:" line
+  - KM plot title and axis labels update dynamically when volume mode is active ("Time-to-Tumour-Volume-Threshold by Treatment", "Time to Endpoint (Days)", "Proportion Below Volume Threshold")
+- **Data Upload — updated Event/Censor Status column descriptions**
+  - `help_tip` now reads: "1 = endpoint reached (tumour exceeded IACUC volume limit, or animal euthanised/died), 0 = censored"
+  - Below-input text notes that volume-threshold derivation is available in the Survival sidebar
+  - Help page bullet updated to mention tumour volume threshold as the typical endpoint
+
+### Changed
+- Summary tab header renamed from "Survival summary" to "Time-to-Endpoint summary"
+- Cox Model "Events" bullet updated to mention tumour volume threshold; Median_Survival bullet updated to say "reached the endpoint" rather than "experienced the event"
+- Risk Table N_Censored bullet updated to say "without reaching the endpoint (e.g. still within tumour volume limit at study end)"
+
 ## [v26.05.002] 2026 May 4th
 
 ### Fixed

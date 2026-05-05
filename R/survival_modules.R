@@ -3,24 +3,65 @@
 survivalUI <- function(id) {
   ns <- NS(id)
   fluidPage(
-    h2("Survival Analysis"),
-    
-    p("Analyze time-to-event data using Kaplan-Meier survival curves and proportional hazards models. ",
-      "Ensure data is uploaded and configured in the Data Upload tab."),
+    h2("Survival Analysis",
+       tags$small(class = "text-muted", style = "font-size:0.55em; margin-left:0.6em;",
+                  "(Time-to-Endpoint)")),
+
+    div(class = "alert alert-warning", style = "font-size:0.88em; margin-bottom:12px; padding:10px 14px;",
+      icon("triangle-exclamation"), " ",
+      strong("Note on \u2018survival\u2019 in mouse tumour experiments: "),
+      "Most IACUC protocols require euthanasia once tumour volume exceeds a set limit ",
+      "(e.g.\u202f2000\u202fmm\u00b3). The recorded endpoint is therefore ",
+      strong("time until tumour volume threshold"),
+      ", not true death. This is mathematically identical to survival analysis, but results ",
+      "should be labelled as \u2018Time-to-Endpoint\u2019 or \u2018Time-to-Tumour-Volume-Threshold\u2019 ",
+      "rather than \u2018survival\u2019 in publications.",
+      tags$br(),
+      tags$span(style = "color:#555; font-size:0.95em;",
+        "Occasionally a mouse dies before reaching the volume limit. ",
+        "Competing-risks models (e.g.\u202fFine\u2013Gray) are the rigorous solution, but they require ",
+        "large per-group sample sizes rarely achievable in mouse experiments. ",
+        "The recommended pragmatic approach is to treat any death as an event (\u2018endpoint reached\u2019), ",
+        "because the animal did not survive the study regardless of cause. ",
+        "The sidebar \u2018Natural death\u2019 option controls this behaviour."
+      )
+    ),
     
     tags$div(class = "row collapsible-sidebar-row",
       tags$div(class = "col-sm-3 sidebar-panel-col",
         wellPanel(
           h4("Analysis Parameters"),
-          
+
           uiOutput(ns("surv_reference_group_ui")),
-          
+
+          hr(),
+          h5(strong("Endpoint")),
+          uiOutput(ns("surv_endpoint_source_ui")),
+
+          hr(),
+          h5(strong("Natural Death")),
+          checkboxInput(ns("surv_natural_death_as_event"),
+            tagList("Treat natural death as event (recommended)",
+                    help_tip(paste(
+                      "Mice that die before reaching the tumour volume threshold are",
+                      "conventionally counted as events (endpoint = 1). This is the",
+                      "standard pragmatic approach in preclinical research.",
+                      "Competing-risks models (Fine\u2013Gray) are theoretically superior",
+                      "but require sample sizes rarely available in mouse experiments.",
+                      "Uncheck to note this caveat in the summary output."
+                    ))),
+            value = TRUE
+          ),
+          tags$p(tags$small(class = "text-muted",
+            "Competing-risks modelling (Fine\u2013Gray) is the rigorous alternative ",
+            "but is unreliable at typical mouse experiment sample sizes (n < 20/group)."
+          )),
+
           br(),
-          
-          actionButton(ns("run_surv_analysis"), 
+          actionButton(ns("run_surv_analysis"),
                       "Run Analysis",
                       class = "btn-lg btn-primary btn-block"),
-          
+
           uiOutput(ns("surv_status_msg"))
         )
       ),
@@ -36,7 +77,7 @@ survivalUI <- function(id) {
           id = ns("surv_results_tabs"),
           
           tabPanel("Summary",
-            tab_info(strong("Survival summary: "), "Per-group event counts, total subjects, event rate, and median survival time (the day by which 50\u202f% of animals have reached the endpoint). \u2018Not reached\u2019 means fewer than half the group experienced an event by the end of the study."),
+            tab_info(strong("Time-to-Endpoint summary: "), "Per-group event counts, total subjects, event rate, and median time-to-endpoint (the day by which 50\u202f% of animals reached the endpoint \u2014 typically tumour volume exceeding the IACUC limit). \u2018Not reached\u2019 means fewer than half the group experienced an event by study end."),
             shinycssloaders::withSpinner(
               verbatimTextOutput(ns("surv_summary"))
             )
@@ -51,10 +92,10 @@ survivalUI <- function(id) {
                 tags$li(strong("HR"), " \u2014 Hazard Ratio: the instantaneous risk of the event in this group relative to the reference. HR\u202f<\u202f1 means lower hazard (better survival); HR\u202f>\u202f1 means higher hazard."),
                 tags$li(strong("CI_Lower / CI_Upper"), " \u2014 95\u202f% confidence interval for the HR. If this interval does not include 1.0, the difference is statistically significant at the 5\u202f% level."),
                 tags$li(strong("P_Value"), " \u2014 p-value for the individual group coefficient from the Cox model."),
-                tags$li(strong("Events"), " \u2014 number of animals that experienced the endpoint (e.g. reached the tumour size threshold or were euthanised)."),
+                tags$li(strong("Events"), " \u2014 number of animals that reached the endpoint (tumour volume exceeded the IACUC threshold, or died before reaching it if natural death is treated as an event)."),
                 tags$li(strong("Total"), " \u2014 total number of animals in the group."),
                 tags$li(strong("Event_Rate"), " \u2014 Events \u00f7 Total. Values close to 1.0 mean most animals reached the endpoint."),
-                tags$li(strong("Median_Survival"), " \u2014 day by which 50\u202f% of the group experienced the event. \u2018Not reached\u2019 if fewer than half had events by study end."),
+                tags$li(strong("Median_Survival"), " \u2014 day by which 50\u202f% of the group reached the endpoint. \u2018Not reached\u2019 if fewer than half had events by study end."),
                 tags$li(strong("Note"), " \u2014 flags the reference group row.")
               )
             ),
@@ -171,7 +212,7 @@ survivalUI <- function(id) {
                 tags$li(strong("Time"), " \u2014 the day on which one or more events occurred."),
                 tags$li(strong("N_Risk"), " \u2014 number of animals still alive and uncensored at the start of this time interval."),
                 tags$li(strong("N_Events"), " \u2014 number of animals that experienced the endpoint at exactly this time."),
-                tags$li(strong("N_Censored"), " \u2014 number of animals whose last observation was at this time without experiencing the endpoint (e.g. removed from study)."),
+                tags$li(strong("N_Censored"), " \u2014 number of animals whose last observation was at this time without reaching the endpoint (e.g. still within tumour volume limit at study end, or removed from study)."),
                 tags$li(strong("Survival"), " \u2014 Kaplan\u2013Meier estimated survival probability at this time point (1.0\u202f=\u202f100\u202f% surviving).")
               ),
               "N_Risk decreases over time as events and censoring accumulate; a rapid drop indicates many events in a short window."
@@ -242,11 +283,51 @@ survival_server <- function(id, rv) {
                choices = "",
                selected = "")
   })
-  
+
+  # Endpoint source UI: shows volume-threshold option only when a volume column is configured
+  output$surv_endpoint_source_ui <- renderUI({
+    has_vol <- !is.null(rv$settings$col_volume) && nzchar(rv$settings$col_volume %||% "")
+    if (!has_vol) {
+      return(tags$p(tags$small(class = "text-muted",
+        "Using the Event/Censor column configured in Data Upload. ",
+        "Coding: 1\u202f=\u202fendpoint reached, 0\u202f=\u202fcensored.",
+        tags$br(),
+        "To enable volume-threshold derivation, configure a Tumour Volume column in Data Upload."
+      )))
+    }
+    tagList(
+      radioButtons(session$ns("surv_event_source"), NULL,
+        choices = c(
+          "Use Event/Censor column"             = "column",
+          "Derive from tumour volume threshold" = "volume"
+        ),
+        selected = "column"
+      ),
+      conditionalPanel(ns = session$ns, "input.surv_event_source == 'volume'",
+        numericInput(session$ns("surv_vol_threshold"),
+                     "IACUC volume limit (mm\u00b3)",
+                     value = 2000, min = 1, step = 50),
+        tags$p(tags$small(
+          "First day each mouse\u2019s tumour reaches or exceeds this volume = Event\u202f=\u202f1 ",
+          "(Time = that day). Mice that never exceed the limit are censored at their ",
+          "last observation (Event\u202f=\u202f0)."
+        ))
+      ),
+      conditionalPanel(ns = session$ns, "input.surv_event_source == 'column'",
+        tags$p(tags$small(class = "text-muted",
+          "Using the Event/Censor column configured in Data Upload. ",
+          "Coding: 1\u202f=\u202fendpoint reached, 0\u202f=\u202fcensored."
+        ))
+      )
+    )
+  })
+
   # Run survival analysis
   observeEvent(input$run_surv_analysis, {
     req(rv$uploaded_data, rv$data_valid)
-    
+
+    event_src <- input$surv_event_source %||% "column"
+
     # Validate that required columns are configured from data upload
     if (rv$settings$col_treatment == "" || rv$settings$col_treatment == "-- Select a reference group --") {
       output$surv_status_msg <- renderUI({
@@ -255,14 +336,23 @@ survival_server <- function(id, rv) {
       shinyjs::runjs("window.trackError('validation', 'Treatment column not selected', 'survival');")
       return()
     }
-    
 
-    if (is.null(rv$settings$col_survival_event) || rv$settings$col_survival_event == "" || rv$settings$col_survival_event == "None") {
-      output$surv_status_msg <- renderUI({
-        status_alert("Error: Please select an Event/Censor Status Column on the Data Upload tab", "danger")
-      })
-      shinyjs::runjs("window.trackError('validation', 'Survival event column not selected', 'survival');")
-      return()
+    if (event_src == "column") {
+      if (is.null(rv$settings$col_survival_event) || rv$settings$col_survival_event == "" || rv$settings$col_survival_event == "None") {
+        output$surv_status_msg <- renderUI({
+          status_alert("Error: Please select an Event/Censor Status column in Data Upload, or switch to \u2018Derive from tumour volume threshold\u2019.", "danger")
+        })
+        shinyjs::runjs("window.trackError('validation', 'Survival event column not selected', 'survival');")
+        return()
+      }
+    } else {
+      vol_col_check <- rv$settings$col_volume %||% ""
+      if (!nzchar(vol_col_check)) {
+        output$surv_status_msg <- renderUI({
+          status_alert("Error: No Tumour Volume column configured. Configure it in Data Upload or switch to \u2018Use Event/Censor column\u2019.", "danger")
+        })
+        return()
+      }
     }
     
     # Track analysis start with Umami
@@ -297,8 +387,9 @@ survival_server <- function(id, rv) {
     }
 
     # Handle time column — reuse from preprocessed data
-    time_col <- pp$time_col
-    
+    time_col  <- pp$time_col
+    full_data <- data  # preserve full longitudinal data for volume-threshold event derivation
+
     # For survival analysis, reduce data to one row per animal
     # Use the user-selected ID and Cage columns (not hardcoded names)
     id_col_surv   <- if (!is.null(rv$settings$col_id)   && nzchar(rv$settings$col_id))   rv$settings$col_id   else "ID"
@@ -356,10 +447,43 @@ survival_server <- function(id, rv) {
     # Run analysis with processed data and calculated/selected time column
     tx_col_surv <- if (has_dose_surv) "TreatmentGroup" else rv$settings$col_treatment
 
+    # Resolve event/time columns: either from user-supplied censor column or derived
+    # by finding the first day each animal's tumour exceeded the volume threshold
+    if (event_src == "volume") {
+      vol_threshold <- as.numeric(input$surv_vol_threshold %||% 2000)
+      vol_col_surv  <- rv$settings$col_volume %||% "Volume"
+
+      evt_rows <- lapply(seq_len(nrow(data)), function(i) {
+        if (has_id && has_cage) {
+          mask <- full_data[[id_col_surv]]   == data[[id_col_surv]][i] &
+                  full_data[[cage_col_surv]] == data[[cage_col_surv]][i]
+        } else if (has_id) {
+          mask <- full_data[[id_col_surv]] == data[[id_col_surv]][i]
+        } else {
+          mask <- seq_len(nrow(full_data)) == i
+        }
+        adf  <- full_data[mask, , drop = FALSE]
+        adf  <- adf[order(as.numeric(adf[[time_col]])), ]
+        vols <- as.numeric(adf[[vol_col_surv]])
+        days <- as.numeric(adf[[time_col]])
+        hit  <- which(!is.na(vols) & vols >= vol_threshold)
+        if (length(hit) > 0) list(Time = days[hit[1]], Event = 1L)
+        else                  list(Time = max(days, na.rm = TRUE), Event = 0L)
+      })
+      data[[".__DerivedTime"]]  <- as.numeric(sapply(evt_rows, `[[`, "Time"))
+      data[[".__DerivedEvent"]] <- as.integer(sapply(evt_rows, `[[`, "Event"))
+
+      censor_col_use <- ".__DerivedEvent"
+      time_col_use   <- ".__DerivedTime"
+    } else {
+      censor_col_use <- rv$settings$col_survival_event
+      time_col_use   <- time_col
+    }
+
     # Validate all required columns exist before analysis
     required <- c(Treatment = tx_col_surv,
-                  Time      = time_col,
-                  Event     = rv$settings$col_survival_event)
+                  Time      = time_col_use,
+                  Event     = censor_col_use)
     missing_cols <- check_required_cols(data, required)
     if (length(missing_cols) > 0) {
       output$surv_status_msg <- renderUI({
@@ -377,8 +501,8 @@ survival_server <- function(id, rv) {
     result <- safe_analysis(module = "survival", {
       mouseExperiment::survival_statistics(
         df = data,
-        time_column = time_col,
-        censor_column = rv$settings$col_survival_event,
+        time_column = time_col_use,
+        censor_column = censor_col_use,
         treatment_column = tx_col_surv,
         cage_column = if (!is.null(rv$settings$col_cage) && nzchar(rv$settings$col_cage)) rv$settings$col_cage else "Cage",
         dose_column = dose_col_surv,
@@ -387,7 +511,11 @@ survival_server <- function(id, rv) {
       )
     })
     progress$set(value = 0.9, detail = "Preparing results")
-    
+
+    # Store event source for downstream use (KM plot titles, summary text)
+    result$event_src_used     <- event_src
+    result$vol_threshold_used <- if (event_src == "volume") as.numeric(input$surv_vol_threshold %||% 2000) else NA_real_
+
     # Store time calculation info for later display
     result$time_method <- rv$settings$time_method
     result$time_column_used <- time_col
@@ -407,8 +535,8 @@ survival_server <- function(id, rv) {
         # (matches demo notebook approach; returns a ggsurvplot object)
         result$km_plot <- mouseExperiment::plot_survival(
           data              = data,
-          time_column       = time_col,
-          censor_column     = rv$settings$col_survival_event,
+          time_column       = time_col_use,
+          censor_column     = censor_col_use,
           treatment_column  = tx_col_surv,
           id_column         = rv$settings$col_id,
           cage_column       = if (!is.null(rv$settings$col_cage) && nzchar(rv$settings$col_cage)) rv$settings$col_cage else NULL,
@@ -431,9 +559,9 @@ survival_server <- function(id, rv) {
             risk.table = TRUE,
             risk.table.y.text.col = TRUE,
             conf.int = FALSE,
-            xlab = "Time (Days)",
-            ylab = "Survival Probability",
-            title = "Kaplan-Meier Survival Curves by Treatment"
+            xlab = if (event_src == "volume") "Time to Endpoint (Days)" else "Time (Days)",
+            ylab = if (event_src == "volume") "Proportion Below Volume Threshold" else "Survival Probability",
+            title = if (event_src == "volume") "Time-to-Tumour-Volume-Threshold by Treatment" else "Kaplan-Meier Survival Curves by Treatment"
           )
           result$km_plot <<- km_plot_obj
         }, error = function(e2) {
@@ -490,7 +618,12 @@ survival_server <- function(id, rv) {
         cat("Day Column:", rv$settings$col_day, "\n")
       }
       
-      cat("Event Column:", rv$settings$col_survival_event, "\n")
+      if (isTRUE(rv$surv_results$event_src_used == "volume")) {
+        cat("Event Source: Derived from tumour volume threshold (>=",
+            rv$surv_results$vol_threshold_used, "mm\u00b3)\n")
+      } else {
+        cat("Event Column:", rv$settings$col_survival_event, "\n")
+      }
       cat("Treatment Column:", rv$settings$col_treatment, "\n")
       cat("Statistical Method:", rv$surv_results$method_used, "\n")
       
@@ -559,9 +692,12 @@ survival_server <- function(id, rv) {
     # X-axis start
     x_start <- if (!is.null(input$surv_km_xstart) && !is.na(input$surv_km_xstart))
                   as.numeric(input$surv_km_xstart) else 0
-    text_size   <- input$surv_opt_text_size %||% 16
-    plot_title  <- if (nzchar(trimws(input$surv_plot_title %||% "")))
-                     input$surv_plot_title else "Kaplan-Meier Survival Curves by Treatment"
+    text_size     <- input$surv_opt_text_size %||% 16
+    event_src_km  <- rv$surv_results$event_src_used %||% "column"
+    default_title <- if (event_src_km == "volume") "Time-to-Tumour-Volume-Threshold by Treatment"
+                     else                          "Kaplan-Meier Survival Curves by Treatment"
+    plot_title    <- if (nzchar(trimws(input$surv_plot_title %||% "")))
+                       input$surv_plot_title else default_title
     plot_sub    <- input$surv_plot_subtitle %||% ""
     title_hjust <- switch(input$surv_plot_title_align %||% "center",
                           left = 0, center = 0.5, right = 1, 0.5)
@@ -579,8 +715,10 @@ survival_server <- function(id, rv) {
         risk.table.y.text.col = TRUE,
         conf.int              = isTRUE(input$surv_opt_conf_int),
         xlim                  = c(x_start, NA),
-        xlab                  = if (nzchar(xlab_custom)) xlab_custom else "Time (Days)",
-        ylab                  = if (nzchar(ylab_custom)) ylab_custom else "Survival Probability",
+        xlab                  = if (nzchar(xlab_custom)) xlab_custom else
+                                  if (event_src_km == "volume") "Time to Endpoint (Days)" else "Time (Days)",
+        ylab                  = if (nzchar(ylab_custom)) ylab_custom else
+                                  if (event_src_km == "volume") "Proportion Below Volume Threshold" else "Survival Probability",
         legend.title          = if (nzchar(leg_label)) leg_label else "Treatment",
         title                 = plot_title,
         ggtheme               = ggplot2::theme_classic(base_size = text_size)

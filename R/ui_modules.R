@@ -256,11 +256,11 @@ column_mapping_ui <- function(col_names, detected_cols, ns = NS(NULL)) {
         
         br(),
         selectInput(ns("col_survival_event"),
-                   tagList("Event/Censor Status", help_tip("Binary column: 1 = event occurred (death/sacrifice), 0 = censored (alive at end of study). Enables Kaplan-Meier and Cox regression.")),
+                   tagList("Event/Censor Status", help_tip("Binary column: 1 = endpoint reached (tumour exceeded IACUC volume limit, or animal euthanised/died), 0 = censored (did not reach endpoint by study end). In most mouse tumour experiments, event = tumour volume threshold, not natural death. Alternatively, leave unset and use the volume-threshold derivation option in the Survival tab sidebar.")),
                    choices = c("None" = "", col_names),
                    selected = detected_cols$survival_event),
-        tags$p(tags$small("Required for Survival Analysis. Time will use the same Day/Date settings as above. Coding: ", tags$strong("1 = event (e.g. death)"), ", ", tags$strong("0 = censored"), ".")),
-        
+        tags$p(tags$small("Required for Survival Analysis (or use volume-threshold derivation in Survival sidebar). Coding: ", tags$strong("1 = endpoint reached (e.g. tumour exceeded IACUC volume limit)"), ", ", tags$strong("0 = censored"), ".")),
+
         br(),
         selectInput(ns("col_weight"),
                    tagList("Weight / Mass", help_tip("Body weight or mass measurements. Used for toxicity analysis, tumor weight adjustment, and weight-loss survival.")),
@@ -743,7 +743,7 @@ helpUI <- function() {
       tags$li(strong("Treatment:"), "Treatment, Group"),
       tags$li(strong("Cage:"), "Cage, Cage_ID"),
       tags$li(strong("Dose (optional):"), "Dose, dose, DoseLevel"),
-      tags$li(strong("Survival/Censor (optional):"), "Survival_Censor, Censor, Event — numeric column coded as ", strong("1 = event (e.g. death)"), " and ", strong("0 = censored"), ".")
+      tags$li(strong("Survival/Censor (optional):"), "Survival_Censor, Censor, Event \u2014 numeric column coded as ", strong("1 = endpoint reached (e.g. tumour exceeded IACUC volume limit, or death)"), " and ", strong("0 = censored (did not reach endpoint by study end)"), ". Alternatively, leave unset and use the volume-threshold derivation option in the Survival tab sidebar.")
     ),
 
     h3("Statistical Methods"),
