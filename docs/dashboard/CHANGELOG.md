@@ -4,7 +4,7 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
-## [v26.04.006] 2026 April 20th
+## [v26.05.001] 2026 May 4th
 
 ### Changed
 - **Toxicity tab** — merged the former "Efficacy-Toxicity" tab into the Toxicity tab
