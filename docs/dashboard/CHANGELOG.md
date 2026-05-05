@@ -4,6 +4,19 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.007] 2026 May 5th
+
+### Added
+- **Survival Analysis — Endpoint source always visible** — the "Use Event/Censor column" / "Derive from tumour volume threshold" radio group is now shown unconditionally in the sidebar; previously it was hidden behind a static text message when no direct Volume column was mapped
+
+### Fixed
+- **Survival — volume-threshold endpoint with calculated volume** — when the Data Upload tab is configured to calculate tumour volume from length × width measurements (rather than mapping a direct Volume column), the volume-threshold event derivation now correctly uses the calculated `Volume` column produced by `ensure_preprocessed()`; previously `rv$settings$col_volume` was empty in this case, causing a validation error and blocking the analysis
+
+## [v26.05.006] 2026 May 5th
+
+### Added
+- **Survival Analysis — Endpoint source always visible** — the "Use Event/Censor column" / "Derive from tumour volume threshold" radio group is now shown unconditionally in the Analysis Parameters sidebar; previously it was replaced by a static text note when no Volume column was configured in Data Upload. When "Derive from tumour volume threshold" is selected and no volume column is available, an inline amber warning directs the user to Data Upload instead of silently hiding the control.
+
 ## [v26.05.005] 2026 May 5th
 
 ### Added
