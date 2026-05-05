@@ -218,6 +218,11 @@ toxicityUI <- function(id) {
                       selected = "mean_sem"
                     )
                   ),
+                  conditionalPanel(ns = ns, "output.tox_model_type_val == 'bw'",
+                    ctrl_section("tox-groups", "sort", "Groups",
+                      uiOutput(ns("tox_group_order_color_ui"))
+                    )
+                  ),
                   conditionalPanel(ns = ns,
                     "output.tox_model_type_val == 'et' && input.tox_et_plot_selector == 'scatter'",
                     hr(),
@@ -522,6 +527,14 @@ toxicity_server <- function(id, rv) {
     }
 
     rv$tox_results <- results
+
+    # Store treatment groups for colour/order pickers
+    rv$tox_plot_groups <- if (!is.null(results$trajectory_data) && nrow(results$trajectory_data) > 0)
+      unique(as.character(results$trajectory_data$Treatment))
+    else if (!is.null(tx_col) && has_col(data, tx_col))
+      unique(as.character(data[[tx_col]]))
+    else NULL
+
     progress$set(value = 1)
 
     if (n_err == n_total) {
@@ -688,23 +701,37 @@ toxicity_server <- function(id, rv) {
   })
 
   # ---- BW Plots ----
+
+  output$tox_group_order_color_ui <- renderUI({
+    req(rv$tox_plot_groups)
+    group_order_and_color_ui("tox", rv$tox_plot_groups, ns = session$ns)
+  })
+
+  observe_palette_preset(input, session, "tox", reactive(rv$tox_plot_groups))
+
   output$tox_trajectory_plot <- renderPlot({
     req(rv$tox_results, rv$tox_results$trajectory_data)
     td <- rv$tox_results$trajectory_data
     req(nrow(td) > 0)
-    traj_type <- input$tox_traj_type %||% "mean_sem"
-    text_sz   <- input$tox_plot_text_size %||% 14
-    line_w    <- input$tox_traj_line_width %||% 1
+    traj_type    <- input$tox_traj_type %||% "mean_sem"
+    text_sz      <- input$tox_plot_text_size %||% 14
+    line_w       <- input$tox_traj_line_width %||% 1
+    ordered_grps <- get_ordered_groups(input, "tox", rv$tox_plot_groups)
+    colors       <- build_color_vector(input, "tox_color", ordered_grps)
 
     if (traj_type == "spaghetti") {
       td$.__LineGroup <- paste(td[["Treatment"]], td[["ID"]], sep = "\u00b7")
-      ggplot2::ggplot(td, ggplot2::aes(.data[["Day"]], .data[["Weight"]],
-                                        group = .data[[".__LineGroup"]], color = .data[["Treatment"]])) +
+      if (!is.null(ordered_grps))
+        td$Treatment <- factor(td$Treatment, levels = ordered_grps)
+      p <- ggplot2::ggplot(td, ggplot2::aes(.data[["Day"]], .data[["Weight"]],
+                                            group = .data[[".__LineGroup"]], color = .data[["Treatment"]])) +
         ggplot2::geom_line(alpha = 0.6, linewidth = line_w) +
         ggplot2::geom_point(size = 1.5, alpha = 0.6) +
         ggplot2::labs(title = "Body Weight Trajectories",
                      x = "Day", y = "Weight (g)", color = "Treatment") +
         ggplot2::theme_classic(base_size = text_sz)
+      if (!is.null(colors)) p <- p + ggplot2::scale_color_manual(values = colors)
+      p
     } else {
       agg <- stats::aggregate(Weight ~ Treatment + Day, data = td, FUN = function(x)
         c(mean = mean(x, na.rm = TRUE), sd = stats::sd(x, na.rm = TRUE), n = length(x)))
@@ -713,8 +740,10 @@ toxicity_server <- function(id, rv) {
       af$SEM   <- af$SD / sqrt(af$N)
       af$Error <- if (traj_type == "mean_sd") af$SD else af$SEM
       err_lbl  <- if (traj_type == "mean_sd") "SD" else "SEM"
-      ggplot2::ggplot(af, ggplot2::aes(.data[["Day"]], .data[["Mean"]],
-                                        color = .data[["Treatment"]], fill = .data[["Treatment"]])) +
+      if (!is.null(ordered_grps))
+        af$Treatment <- factor(af$Treatment, levels = ordered_grps)
+      p <- ggplot2::ggplot(af, ggplot2::aes(.data[["Day"]], .data[["Mean"]],
+                                            color = .data[["Treatment"]], fill = .data[["Treatment"]])) +
         ggplot2::geom_ribbon(ggplot2::aes(ymin = .data[["Mean"]] - .data[["Error"]],
                                           ymax = .data[["Mean"]] + .data[["Error"]]),
                              alpha = 0.2, color = NA) +
@@ -723,6 +752,9 @@ toxicity_server <- function(id, rv) {
         ggplot2::labs(title = paste0("Body Weight Over Time (Mean \u00b1 ", err_lbl, ")"),
                      x = "Day", y = "Weight (g)", color = "Treatment", fill = "Treatment") +
         ggplot2::theme_classic(base_size = text_sz)
+      if (!is.null(colors)) p <- p + ggplot2::scale_color_manual(values = colors) +
+                                     ggplot2::scale_fill_manual(values = colors)
+      p
     }
   }, width  = function() input$tox_plot_width  %||% 800,
      height = function() input$tox_plot_height %||% 500)
@@ -731,8 +763,13 @@ toxicity_server <- function(id, rv) {
     req(rv$tox_results, rv$tox_results$bw_auc)
     auc <- rv$tox_results$bw_auc
     if (isTRUE(auc$error)) return(NULL)
-    text_sz <- input$tox_plot_text_size %||% 14
-    ggplot2::ggplot(auc$auc_per_mouse,
+    text_sz      <- input$tox_plot_text_size %||% 14
+    ordered_grps <- get_ordered_groups(input, "tox", rv$tox_plot_groups)
+    colors       <- build_color_vector(input, "tox_color", ordered_grps)
+    auc_df       <- auc$auc_per_mouse
+    if (!is.null(ordered_grps))
+      auc_df$Treatment <- factor(auc_df$Treatment, levels = ordered_grps)
+    p <- ggplot2::ggplot(auc_df,
       ggplot2::aes(.data[["Treatment"]], .data[["AUC_Pct_Change"]], fill = .data[["Treatment"]])) +
       ggplot2::geom_boxplot(outlier.shape = NA, alpha = 0.6) +
       ggplot2::geom_jitter(width = 0.2, alpha = 0.7, size = 2) +
@@ -741,6 +778,8 @@ toxicity_server <- function(id, rv) {
                    x = "Treatment", y = "AUC of % Weight Change") +
       ggplot2::theme_classic(base_size = text_sz) +
       ggplot2::theme(legend.position = "none")
+    if (!is.null(colors)) p <- p + ggplot2::scale_fill_manual(values = colors)
+    p
   }, width  = function() input$tox_plot_width  %||% 800,
      height = function() input$tox_plot_height %||% 500)
 
@@ -748,9 +787,21 @@ toxicity_server <- function(id, rv) {
     req(rv$tox_results, rv$tox_results$weight_loss)
     wl <- rv$tox_results$weight_loss
     if (isTRUE(wl$error)) return(NULL)
-    text_sz <- input$tox_plot_text_size %||% 14
+    text_sz      <- input$tox_plot_text_size %||% 14
+    ordered_grps <- get_ordered_groups(input, "tox", rv$tox_plot_groups)
+    colors       <- build_color_vector(input, "tox_color", ordered_grps)
+    # Apply group order to event_data so ggsurvplot respects it
+    event_df <- wl$event_data
+    if (!is.null(ordered_grps) && has_col(event_df, "Treatment"))
+      event_df$Treatment <- factor(event_df$Treatment, levels = ordered_grps)
+    km_fit <- tryCatch(
+      survival::survfit(survival::Surv(Time, Event) ~ Treatment, data = event_df),
+      error = function(e) wl$km_fit
+    )
+    pal <- if (!is.null(colors)) unname(colors) else "hue"
     km_plot <- tryCatch(
-      survminer::ggsurvplot(wl$km_fit, data = wl$event_data,
+      survminer::ggsurvplot(km_fit, data = event_df,
+        palette    = pal,
         risk.table = TRUE, pval = TRUE, conf.int = TRUE,
         title = paste0("Time to ", round(wl$threshold * 100), "% Body Weight Loss"),
         xlab = "Day", ylab = "Proportion Without Threshold Weight Loss",

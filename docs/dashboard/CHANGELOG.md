@@ -4,6 +4,12 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.004] 2026 May 5th
+
+### Fixed
+- **Body Weight Trajectory "Individual mice" plot** — spaghetti lines now correctly group by `paste(Treatment, ID)` composite key; previously, animals sharing the same ID across treatment groups were joined into a single crossing line
+- **Body Weight Trajectory, AUC, and Weight Loss KM plots** — added group recoloring and reordering controls (drag-and-drop order list + per-group colour pickers with palette presets) matching the Tumor Growth and Survival tab functionality
+
 ## [v26.05.003] 2026 May 4th
 
 ### Added
