@@ -218,6 +218,13 @@ toxicityUI <- function(id) {
                       selected = "mean_sem"
                     )
                   ),
+                  conditionalPanel(ns = ns,
+                    "output.tox_model_type_val == 'bw' && input.tox_bw_plot_selector == 'auc'",
+                    hr(),
+                    checkboxInput(ns("tox_auc_show_boxplot"), "Show box plot", value = TRUE),
+                    sliderInput(ns("tox_auc_pt_size"), "Point size",
+                                min = 0.5, max = 6, value = 2, step = 0.5)
+                  ),
                   conditionalPanel(ns = ns, "output.tox_model_type_val == 'bw'",
                     ctrl_section("tox-groups", "sort", "Groups",
                       uiOutput(ns("tox_group_order_color_ui"))
@@ -763,22 +770,29 @@ toxicity_server <- function(id, rv) {
     req(rv$tox_results, rv$tox_results$bw_auc)
     auc <- rv$tox_results$bw_auc
     if (isTRUE(auc$error)) return(NULL)
-    text_sz      <- input$tox_plot_text_size %||% 14
-    ordered_grps <- get_ordered_groups(input, "tox", rv$tox_plot_groups)
-    colors       <- build_color_vector(input, "tox_color", ordered_grps)
-    auc_df       <- auc$auc_per_mouse
+    text_sz       <- input$tox_plot_text_size %||% 14
+    show_box      <- isTRUE(input$tox_auc_show_boxplot %||% TRUE)
+    pt_sz         <- input$tox_auc_pt_size %||% 2
+    ordered_grps  <- get_ordered_groups(input, "tox", rv$tox_plot_groups)
+    colors        <- build_color_vector(input, "tox_color", ordered_grps)
+    auc_df        <- auc$auc_per_mouse
     if (!is.null(ordered_grps))
       auc_df$Treatment <- factor(auc_df$Treatment, levels = ordered_grps)
     p <- ggplot2::ggplot(auc_df,
-      ggplot2::aes(.data[["Treatment"]], .data[["AUC_Pct_Change"]], fill = .data[["Treatment"]])) +
-      ggplot2::geom_boxplot(outlier.shape = NA, alpha = 0.6) +
-      ggplot2::geom_jitter(width = 0.2, alpha = 0.7, size = 2) +
+      ggplot2::aes(.data[["Treatment"]], .data[["AUC_Pct_Change"]], fill = .data[["Treatment"]]))
+    if (show_box)
+      p <- p + ggplot2::geom_boxplot(outlier.shape = NA, alpha = 0.6)
+    p <- p +
+      ggplot2::geom_jitter(ggplot2::aes(color = .data[["Treatment"]]),
+                           width = 0.2, alpha = 0.8, size = pt_sz) +
       ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
       ggplot2::labs(title = "Body Weight AUC (% Change from Baseline)",
                    x = "Treatment", y = "AUC of % Weight Change") +
       ggplot2::theme_classic(base_size = text_sz) +
       ggplot2::theme(legend.position = "none")
-    if (!is.null(colors)) p <- p + ggplot2::scale_fill_manual(values = colors)
+    if (!is.null(colors)) p <- p +
+      ggplot2::scale_fill_manual(values = colors) +
+      ggplot2::scale_color_manual(values = colors)
     p
   }, width  = function() input$tox_plot_width  %||% 800,
      height = function() input$tox_plot_height %||% 500)
