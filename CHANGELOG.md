@@ -5,6 +5,12 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-05-12
+
+### Added
+- `apriori_power_analysis()` — analytic a priori power analysis for prospective sample-size planning. Supports two-sample t-test (two groups) and one-way ANOVA via `pwr::pwr.anova.test` (≥3 groups, with non-central F fallback). Accepts Cohen's d directly or a raw mean difference + pooled SD. Two modes: `"find_n"` (required N per group for a target power × alpha grid) and `"find_power"` (achieved power at a specified N). Optionally generates a variability-sensitivity table showing how required N changes as the assumed SD is perturbed by ±20% and ±40%.
+- `apriori_power_simulation()` — LMM-based a priori power analysis via Monte Carlo. Simulates longitudinal tumour-growth data with per-mouse random intercepts and slopes, fits `Volume ~ Treatment * Day + (Day|ID)` via `lme4::lmer`, and uses a likelihood-ratio test to determine significance. Power is the proportion of simulations where the Treatment × Day interaction is significant. Supports a `progress_fn` callback for Shiny integration.
+
 ## [0.3.2] - 2026-05-05
 
 ### Removed
