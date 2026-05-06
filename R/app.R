@@ -164,13 +164,15 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
 
     # Analysis tabs that require data to be uploaded first
     analysis_tabs <- c("Tumor Growth", "Survival", "Toxicity",
-                       "Dose Response", "Drug Synergy", "Power Analysis")
+                       "Dose Response", "Drug Synergy")
 
     # Disable all analysis tabs on startup
     shinyjs::runjs(paste(
       sprintf("window.disableNavTab('%s');", analysis_tabs),
       collapse = "\n"
     ))
+    # Power Analysis is always accessible (a priori modes need no data)
+    shinyjs::runjs("window.enableNavTab('Power Analysis');")
 
     # Enable / disable analysis tabs reactively
     observe({
@@ -201,8 +203,6 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
         # Drug Synergy: available once data is loaded
         shinyjs::runjs("window.enableNavTab('Drug Synergy');")
 
-        # Power Analysis: available once data is loaded
-        shinyjs::runjs("window.enableNavTab('Power Analysis');")
 
         # Dose Response: only when a dose column is mapped
         dose_mapped <- !is.null(rv$settings$col_dose) &&
