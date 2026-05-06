@@ -4,6 +4,11 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.010] 2026 May 5th
+
+### Removed
+- **Toxicity — Log Cell Kill efficacy metric** — removed from the ET mode sidebar radio buttons, the Info tab Efficacy Metrics list, the scatter-plot label switch, and the Shared Parameters description; matches the removal in mouseExperiment 0.3.2
+
 ## [v26.05.009] 2026 May 5th
 
 ### Added

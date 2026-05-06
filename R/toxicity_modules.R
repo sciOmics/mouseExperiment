@@ -86,8 +86,7 @@ toxicityUI <- function(id) {
               h5(strong("Efficacy Metric")),
               radioButtons(ns("tox_et_efficacy_metric"), NULL,
                 choices = c("Final TGI (%)" = "tgi",
-                            "Tumor AUC" = "tumor_auc",
-                            "Log Cell Kill" = "log_cell_kill"),
+                            "Tumor AUC" = "tumor_auc"),
                 selected = "tgi"
               ),
               hr(),
@@ -213,12 +212,6 @@ toxicityUI <- function(id) {
                         tags$code("(1 \u2212 AUC_treated / AUC_control) \u00d7 100"),
                         ". Captures the full trajectory rather than a single endpoint."
                       ),
-                      tags$dt("Log Cell Kill (LCK)"),
-                      tags$dd(
-                        "Estimates tumor cell kill based on growth delay: ",
-                        tags$code("LCK = (T \u2212 C) / (3.32 \u00d7 T\u2082)"),
-                        " where T and C are the days for treated and control tumors to reach a target volume, and T\u2082 is the control doubling time. Requires adequate tumor growth in controls."
-                      )
                     ),
 
                     hr(),
@@ -268,7 +261,7 @@ toxicityUI <- function(id) {
                   div(class = "panel-body",
                     tags$dl(class = "dl-horizontal",
                       tags$dt("Reference Group"),
-                      tags$dd("The vehicle/control group used as the denominator for TGI, LCK, and AUC ratios. Auto-detected from common names (DMSO, Vehicle, Control, PBS, Saline) or defaults to the first group alphabetically."),
+                      tags$dd("The vehicle/control group used as the denominator for TGI and AUC ratios. Auto-detected from common names (DMSO, Vehicle, Control, PBS, Saline) or defaults to the first group alphabetically."),
                       tags$dt("Subtract Tumor Weight"),
                       tags$dd("Removes the estimated tumor mass (Volume \u00d7 density / 1000) from gross body weight before all calculations, so that body weight reflects host tissue rather than tumor burden."),
                       tags$dt("Tumor Density"),
@@ -1397,7 +1390,7 @@ toxicity_server <- function(id, rv) {
     if (!is.null(ordered_grps))
       pm$Treatment <- factor(pm$Treatment, levels = ordered_grps)
     eff_label <- switch(biv$efficacy_metric,
-      tgi = "TGI (%)", tumor_auc = "Tumor AUC", log_cell_kill = "Log Cell Kill")
+      tgi = "TGI (%)", tumor_auc = "Tumor AUC", "Unknown metric")
     aes_base <- if (shape_by_grp)
       ggplot2::aes(.data[["Efficacy"]], .data[["Max_Pct_Weight_Loss"]],
                    color = .data[["Treatment"]], shape = .data[["Treatment"]])
