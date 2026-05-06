@@ -356,10 +356,14 @@ power_server <- function(id, rv) {
 
   # ---- Seed pooled SD from loaded data (analytic a priori) ------------------
   observeEvent(input$pw_seed_sd, {
-    req(rv$processed_data)
-    df      <- rv$processed_data
-    tx_col  <- rv$tx_col
-    vol_col <- rv$vol_col
+    prep <- tryCatch(ensure_preprocessed(rv), error = function(e) NULL)
+    if (is.null(prep)) {
+      showNotification("No data loaded yet — upload data first.", type = "warning", duration = 4)
+      return()
+    }
+    df      <- prep$data
+    tx_col  <- prep$tx_col
+    vol_col <- prep$vol_col
     if (!has_col(df, tx_col) || !has_col(df, vol_col)) {
       showNotification("Could not find treatment or volume column in processed data.",
                        type = "warning", duration = 4)
@@ -414,16 +418,17 @@ power_server <- function(id, rv) {
       shinyjs::runjs(sprintf("window.trackAnalysisStart('power', '%s', 'post_hoc');",
                              input$pw_method))
 
-      if (is.null(rv$processed_data)) {
+      prep <- tryCatch(ensure_preprocessed(rv), error = function(e) NULL)
+      if (is.null(prep)) {
         output$pw_status_msg <- renderUI({
-          status_alert("Please run the Tumor Growth Analysis first so that Volume and Day columns are resolved.", "warning")
+          status_alert("Could not resolve Volume and Day columns. Please check your data settings.", "warning")
         })
         return()
       }
 
-      time_col   <- rv$time_col
-      vol_col    <- rv$vol_col
-      tx_col     <- rv$tx_col
+      time_col   <- prep$time_col
+      vol_col    <- prep$vol_col
+      tx_col     <- prep$tx_col
       id_col     <- rv$id_col
       power_vals <- as.numeric(input$pw_power)
       n_sims     <- if (input$pw_method == "simulation") input$pw_n_simulations else 1000
@@ -441,7 +446,7 @@ power_server <- function(id, rv) {
 
       result <- safe_analysis(module = "power", {
         mouseExperiment::post_power_analysis(
-          data             = rv$processed_data,
+          data             = prep$data,
           alpha            = alpha_vals,
           power            = power_vals,
           method           = input$pw_method,
