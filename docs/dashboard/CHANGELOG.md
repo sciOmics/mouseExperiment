@@ -4,6 +4,20 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.008] 2026 May 5th
+
+### Added
+- **Toxicity Analysis — Results tabs restructured** — the single scrollable "Results" tab has been replaced with separate, focused tabs for each analysis section:
+  - *Body Weight mode*: **Mixed Model** (fixed effects + estimated marginal means), **AUC** (AUC summary, nadir, pairwise comparisons), **Weight Loss KM** (time-to-threshold event data)
+  - *Efficacy-Toxicity mode*: **Therapeutic Window**, **Safety-Efficacy**, **Benefit Score**, **Corrected TGI**, **Combined Report** — dynamically inserted/removed when the Statistical Model selector is changed
+- **Toxicity Analysis — Post-hoc comparison type** — new sidebar dropdown in Body Weight mode: "vs Reference Group" (BH-corrected Welch t-tests restricted to comparisons involving the control) or "All Pairwise (BH-corrected)" (all group pairs); the AUC Comparisons table, Comparisons title, and AUC Comparison Forest plot all react to this selector
+- **Toxicity Analysis — BH p-value correction** — Benjamini-Hochberg correction is now actually applied to the AUC comparison p-values (previously the Info tab stated BH correction was used but the displayed p-values were unadjusted); a `P_Adjusted_BH` column is now shown alongside the raw `P_Value`
+- **Toxicity Analysis — AUC Comparison Forest Plot** — new plot type in the BW Plots selector: effect-size forest plot of mean AUC differences with 95% CI, coloured by BH-corrected significance; respects the comparison type selector
+- **Toxicity Analysis — Diagnostics tab** — new tab showing Q-Q plot of mixed-model residuals and residuals-vs-fitted scatter, available in Body Weight mode; displays a notice in ET mode
+- **Toxicity Analysis — Download All tab** — new tab with a single button that exports all available result tables as a ZIP file of CSVs
+- **Toxicity Analysis — Additional download buttons** — new per-table download buttons: EMMs CSV (Mixed Model tab), Nadir CSV and Comparisons CSV (AUC tab)
+- **Toxicity Analysis — Reactive tab info** — AUC tab description and comparisons title now update dynamically to reflect the current comparison type
+
 ## [v26.05.007] 2026 May 5th
 
 ### Added

@@ -63,7 +63,21 @@ toxicityUI <- function(id) {
               h5(strong("Weight Loss Threshold")),
               sliderInput(ns("tox_threshold"), "Threshold (%)",
                           min = 5, max = 40, value = 20, step = 1),
-              uiOutput(ns("tox_baseline_day_ui"))
+              uiOutput(ns("tox_baseline_day_ui")),
+
+              hr(),
+              h5(strong("Post-hoc Comparisons")),
+              selectInput(ns("tox_comparison_type"), NULL,
+                choices = c(
+                  "vs Reference Group"          = "reference",
+                  "All Pairwise (BH-corrected)" = "pairwise"
+                ),
+                selected = "reference"
+              ),
+              helpText("'vs Reference' shows comparisons between each treatment and ",
+                       "the reference/control group only. ",
+                       "'All Pairwise' shows every group pair. Both apply ",
+                       "Benjamini-Hochberg p-value correction.")
             ),
 
             # Efficacy-Toxicity-specific options
@@ -281,69 +295,42 @@ toxicityUI <- function(id) {
             shinycssloaders::withSpinner(verbatimTextOutput(ns("tox_summary")))
           ),
 
-          tabPanel("Results",
+          tabPanel("Mixed Model",
+            uiOutput(ns("tox_bw_mixed_model_tab_info")),
+            h4("Fixed Effects"),
+            shinycssloaders::withSpinner(DTOutput(ns("tox_fixed_effects"))),
+            downloadButton(ns("download_tox_model"), "Download Fixed Effects CSV"),
+            hr(),
+            h4("Estimated Marginal Means by Treatment"),
+            shinycssloaders::withSpinner(DTOutput(ns("tox_emmeans"))),
+            downloadButton(ns("download_tox_emmeans_csv"), "Download EMMs CSV")
+          ),
 
-            # BW results
-            conditionalPanel(ns = ns, "output.tox_model_type_val == 'bw'",
-              tab_info(
-                strong("Body Weight Mixed Model. "),
-                "Fixed effects test whether weight trajectories differ by treatment group over time. ",
-                "Estimated marginal means give group-level estimates adjusted for covariates."
-              ),
-              h4("Fixed Effects"),
-              shinycssloaders::withSpinner(DTOutput(ns("tox_fixed_effects"))),
-              downloadButton(ns("download_tox_model"), "Download Fixed Effects CSV"),
-              hr(),
-              h4("Estimated Marginal Means by Treatment"),
-              shinycssloaders::withSpinner(DTOutput(ns("tox_emmeans"))),
-              hr(),
-              h4("AUC Summary by Group"),
-              shinycssloaders::withSpinner(DTOutput(ns("tox_auc_summary"))),
-              downloadButton(ns("download_tox_auc_csv"), "Download AUC CSV"),
-              hr(),
-              h4("Nadir Weight Analysis"),
-              shinycssloaders::withSpinner(DTOutput(ns("tox_nadir_table"))),
-              hr(),
-              h4("Pairwise AUC Comparisons"),
-              shinycssloaders::withSpinner(DTOutput(ns("tox_auc_comparisons"))),
-              hr(),
-              h4("Time-to-Threshold Event Data"),
-              shinycssloaders::withSpinner(DTOutput(ns("tox_event_table"))),
-              downloadButton(ns("download_tox_events"), "Download Events CSV")
+          tabPanel("AUC",
+            uiOutput(ns("tox_bw_auc_tab_info")),
+            h4("AUC Summary by Group"),
+            shinycssloaders::withSpinner(DTOutput(ns("tox_auc_summary"))),
+            downloadButton(ns("download_tox_auc_csv"), "Download AUC CSV"),
+            hr(),
+            h4("Nadir Weight Analysis"),
+            shinycssloaders::withSpinner(DTOutput(ns("tox_nadir_table"))),
+            downloadButton(ns("download_tox_nadir_csv"), "Download Nadir CSV"),
+            hr(),
+            uiOutput(ns("tox_comparisons_title")),
+            shinycssloaders::withSpinner(DTOutput(ns("tox_auc_comparisons"))),
+            downloadButton(ns("download_tox_comparisons_csv"), "Download Comparisons CSV")
+          ),
+
+          tabPanel("Weight Loss KM",
+            tab_info(
+              strong("Time-to-threshold event data. "),
+              "Each row is one mouse. Event = 1 when the weight-loss threshold was crossed; ",
+              "Event = 0 (censored) when the mouse never reached the threshold. ",
+              "This table feeds the Kaplan-Meier plot in the Plots tab."
             ),
-
-            # ET results
-            conditionalPanel(ns = ns, "output.tox_model_type_val == 'et'",
-              tab_info(
-                strong("Efficacy-Toxicity Results. "),
-                "TWM = TGI(%) / Max Body Weight Loss(%). ",
-                "Total Benefit B = AUC(efficacy) \u2212 \u03bb \u00d7 AUC(toxicity). ",
-                "Weight-corrected TGI excludes mice exceeding the safety threshold."
-              ),
-              h4("Therapeutic Window Metric"),
-              shinycssloaders::withSpinner(DTOutput(ns("tox_et_twm_table"))),
-              downloadButton(ns("download_et_twm_csv"), "Download TWM CSV"),
-              hr(),
-              h4("Per-Mouse Safety-Efficacy Data"),
-              shinycssloaders::withSpinner(DTOutput(ns("tox_et_per_mouse_table"))),
-              downloadButton(ns("download_et_bivariate_csv"), "Download Per-Mouse CSV"),
-              h4("Group Summary"),
-              shinycssloaders::withSpinner(DTOutput(ns("tox_et_per_group_table"))),
-              hr(),
-              h4("Total Benefit Score"),
-              shinycssloaders::withSpinner(DTOutput(ns("tox_et_benefit_table"))),
-              downloadButton(ns("download_et_benefit_csv"), "Download Benefit CSV"),
-              hr(),
-              h4("Weight-Corrected vs Standard TGI"),
-              shinycssloaders::withSpinner(DTOutput(ns("tox_et_wctgi_table"))),
-              h4("Excluded Mice"),
-              shinycssloaders::withSpinner(DTOutput(ns("tox_et_excluded_table"))),
-              downloadButton(ns("download_et_wctgi_csv"), "Download Corrected TGI CSV"),
-              hr(),
-              h4("Combined Report"),
-              shinycssloaders::withSpinner(DTOutput(ns("tox_et_combined_table"))),
-              downloadButton(ns("download_et_report"), "Download Combined Report CSV")
-            )
+            h4("Time-to-Threshold Event Data"),
+            shinycssloaders::withSpinner(DTOutput(ns("tox_event_table"))),
+            downloadButton(ns("download_tox_events"), "Download Events CSV")
           ),
 
           tabPanel("Plots",
@@ -353,9 +340,10 @@ toxicityUI <- function(id) {
                   conditionalPanel(ns = ns, "output.tox_model_type_val == 'bw'",
                     selectInput(ns("tox_bw_plot_selector"), "Plot Type",
                       choices = c(
-                        "Body Weight Trajectory" = "trajectory",
-                        "Body Weight AUC"        = "auc",
-                        "Weight Loss KM Curve"   = "km"
+                        "Body Weight Trajectory"  = "trajectory",
+                        "Body Weight AUC"         = "auc",
+                        "Weight Loss KM Curve"    = "km",
+                        "AUC Comparison Forest"   = "bw_forest"
                       ),
                       selected = "trajectory"
                     )
@@ -446,6 +434,13 @@ toxicityUI <- function(id) {
                   )
                 ),
                 conditionalPanel(ns = ns,
+                  "output.tox_model_type_val == 'bw' && input.tox_bw_plot_selector == 'bw_forest'",
+                  h4("AUC Comparison Forest Plot"),
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tox_bw_forest_plot"), width = "auto", height = "auto")
+                  )
+                ),
+                conditionalPanel(ns = ns,
                   "output.tox_model_type_val == 'et' && input.tox_et_plot_selector == 'twm'",
                   h4("Therapeutic Window Metric"),
                   shinycssloaders::withSpinner(
@@ -482,6 +477,50 @@ toxicityUI <- function(id) {
                 )
               )
             )
+          ),
+
+          tabPanel("Diagnostics",
+            conditionalPanel(ns = ns, "output.tox_model_type_val == 'bw'",
+              tab_info(
+                strong("Mixed-effects model diagnostics "), "for the body weight trajectory model. ",
+                "Inspect residual normality (Q-Q plot) and homoscedasticity (residuals vs fitted). ",
+                em("Diagnostics are only available in Body Weight Analysis mode.")
+              ),
+              fluidRow(
+                column(6,
+                  h4("Q-Q Plot of Residuals"),
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tox_diag_qq"), height = "400px")
+                  )
+                ),
+                column(6,
+                  h4("Residuals vs Fitted"),
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tox_diag_resid_fitted"), height = "400px")
+                  )
+                )
+              )
+            ),
+            conditionalPanel(ns = ns, "output.tox_model_type_val == 'et'",
+              tab_info(
+                "Model diagnostics are only available in ",
+                strong("Body Weight Analysis"), " mode. ",
+                "Switch the Statistical Model in the sidebar to access them."
+              )
+            )
+          ),
+
+          tabPanel(
+            title = tags$span(icon("file-zipper"), " Download All"),
+            value = "__tox_download_all__",
+            wellPanel(
+              style = "text-align:center; padding:30px;",
+              h4("Export All Results"),
+              p("Download every available result table (CSV) as a single ZIP file."),
+              downloadButton(ns("download_tox_all"), "Download All Results",
+                             class = "btn-lg btn-primary",
+                             icon = icon("download"))
+            )
           )
         )
       )
@@ -504,6 +543,141 @@ toxicity_server <- function(id, rv) {
 
   output$tox_model_type_val <- reactive({ input$tox_model_type %||% "bw" })
   outputOptions(output, "tox_model_type_val", suspendWhenHidden = FALSE)
+
+  # ---- Dynamic tab insertion based on model type ----
+  bw_tabs_inserted <- reactiveVal(TRUE)   # BW tabs present in initial UI
+  et_tabs_inserted <- reactiveVal(FALSE)
+
+  observeEvent(input$tox_model_type, {
+    mt      <- input$tox_model_type %||% "bw"
+    tabs_id <- "tox_results_tabs"
+    ns      <- session$ns
+
+    if (mt == "et" && !isTRUE(et_tabs_inserted())) {
+      if (isTRUE(bw_tabs_inserted())) {
+        removeTab(inputId = tabs_id, target = "Mixed Model")
+        removeTab(inputId = tabs_id, target = "AUC")
+        removeTab(inputId = tabs_id, target = "Weight Loss KM")
+        bw_tabs_inserted(FALSE)
+      }
+      insertTab(inputId = tabs_id, target = "Summary", position = "after",
+        tabPanel("Therapeutic Window",
+          tab_info(
+            strong("Therapeutic Window Metric (TWM). "),
+            "TWM = TGI(%) / Max Body Weight Loss(%). Higher values indicate a more ",
+            "favourable efficacy-to-toxicity ratio."
+          ),
+          shinycssloaders::withSpinner(DTOutput(ns("tox_et_twm_table"))),
+          downloadButton(ns("download_et_twm_csv"), "Download TWM CSV")
+        )
+      )
+      insertTab(inputId = tabs_id, target = "Therapeutic Window", position = "after",
+        tabPanel("Safety-Efficacy",
+          tab_info(
+            strong("Per-mouse and group-level safety-efficacy data. "),
+            "Each row is one mouse (or group). Efficacy is the chosen metric relative to control; ",
+            "toxicity is maximum % body weight loss."
+          ),
+          h4("Per-Mouse Data"),
+          shinycssloaders::withSpinner(DTOutput(ns("tox_et_per_mouse_table"))),
+          downloadButton(ns("download_et_bivariate_csv"), "Download Per-Mouse CSV"),
+          hr(),
+          h4("Group Summary"),
+          shinycssloaders::withSpinner(DTOutput(ns("tox_et_per_group_table")))
+        )
+      )
+      insertTab(inputId = tabs_id, target = "Safety-Efficacy", position = "after",
+        tabPanel("Benefit Score",
+          tab_info(
+            strong("Total Benefit Score. "),
+            "B = AUC(efficacy) \u2212 \u03bb \u00d7 AUC(toxicity). Positive = net benefit; ",
+            "negative = net harm. Adjust \u03bb in the sidebar to change the toxicity penalty."
+          ),
+          shinycssloaders::withSpinner(DTOutput(ns("tox_et_benefit_table"))),
+          downloadButton(ns("download_et_benefit_csv"), "Download Benefit CSV")
+        )
+      )
+      insertTab(inputId = tabs_id, target = "Benefit Score", position = "after",
+        tabPanel("Corrected TGI",
+          tab_info(
+            strong("Weight-corrected vs standard TGI. "),
+            "Mice exceeding the safety weight-loss threshold are excluded from the corrected TGI. ",
+            "A large gap between the two values indicates that efficacy was partly driven by toxicity."
+          ),
+          h4("Weight-Corrected vs Standard TGI"),
+          shinycssloaders::withSpinner(DTOutput(ns("tox_et_wctgi_table"))),
+          hr(),
+          h4("Excluded Mice"),
+          shinycssloaders::withSpinner(DTOutput(ns("tox_et_excluded_table"))),
+          downloadButton(ns("download_et_wctgi_csv"), "Download Corrected TGI CSV")
+        )
+      )
+      insertTab(inputId = tabs_id, target = "Corrected TGI", position = "after",
+        tabPanel("Combined Report",
+          tab_info(
+            strong("Combined results table. "),
+            "Merges TWM, Benefit Score, Corrected TGI, and exclusion count per group into a ",
+            "single summary for export."
+          ),
+          shinycssloaders::withSpinner(DTOutput(ns("tox_et_combined_table"))),
+          downloadButton(ns("download_et_report"), "Download Combined Report CSV")
+        )
+      )
+      et_tabs_inserted(TRUE)
+
+    } else if (mt == "bw" && !isTRUE(bw_tabs_inserted())) {
+      if (isTRUE(et_tabs_inserted())) {
+        removeTab(inputId = tabs_id, target = "Therapeutic Window")
+        removeTab(inputId = tabs_id, target = "Safety-Efficacy")
+        removeTab(inputId = tabs_id, target = "Benefit Score")
+        removeTab(inputId = tabs_id, target = "Corrected TGI")
+        removeTab(inputId = tabs_id, target = "Combined Report")
+        et_tabs_inserted(FALSE)
+      }
+      insertTab(inputId = tabs_id, target = "Summary", position = "after",
+        tabPanel("Mixed Model",
+          uiOutput(ns("tox_bw_mixed_model_tab_info")),
+          h4("Fixed Effects"),
+          shinycssloaders::withSpinner(DTOutput(ns("tox_fixed_effects"))),
+          downloadButton(ns("download_tox_model"), "Download Fixed Effects CSV"),
+          hr(),
+          h4("Estimated Marginal Means by Treatment"),
+          shinycssloaders::withSpinner(DTOutput(ns("tox_emmeans"))),
+          downloadButton(ns("download_tox_emmeans_csv"), "Download EMMs CSV")
+        )
+      )
+      insertTab(inputId = tabs_id, target = "Mixed Model", position = "after",
+        tabPanel("AUC",
+          uiOutput(ns("tox_bw_auc_tab_info")),
+          h4("AUC Summary by Group"),
+          shinycssloaders::withSpinner(DTOutput(ns("tox_auc_summary"))),
+          downloadButton(ns("download_tox_auc_csv"), "Download AUC CSV"),
+          hr(),
+          h4("Nadir Weight Analysis"),
+          shinycssloaders::withSpinner(DTOutput(ns("tox_nadir_table"))),
+          downloadButton(ns("download_tox_nadir_csv"), "Download Nadir CSV"),
+          hr(),
+          uiOutput(ns("tox_comparisons_title")),
+          shinycssloaders::withSpinner(DTOutput(ns("tox_auc_comparisons"))),
+          downloadButton(ns("download_tox_comparisons_csv"), "Download Comparisons CSV")
+        )
+      )
+      insertTab(inputId = tabs_id, target = "AUC", position = "after",
+        tabPanel("Weight Loss KM",
+          tab_info(
+            strong("Time-to-threshold event data. "),
+            "Each row is one mouse. Event = 1 when the weight-loss threshold was crossed; ",
+            "Event = 0 (censored) when the mouse never reached the threshold. ",
+            "This table feeds the Kaplan-Meier plot in the Plots tab."
+          ),
+          h4("Time-to-Threshold Event Data"),
+          shinycssloaders::withSpinner(DTOutput(ns("tox_event_table"))),
+          downloadButton(ns("download_tox_events"), "Download Events CSV")
+        )
+      )
+      bw_tabs_inserted(TRUE)
+    }
+  }, ignoreNULL = FALSE)
 
   output$tox_weight_status <- renderUI({
     if (!rv$data_valid) {
@@ -699,7 +873,8 @@ toxicity_server <- function(id, rv) {
 
     rv$tox_results <- results
 
-    # Store treatment groups for colour/order pickers
+    # Store reference group and treatment groups for colour/order pickers
+    rv$tox_ref_group   <- ref_group
     rv$tox_plot_groups <- if (!is.null(results$trajectory_data) && nrow(results$trajectory_data) > 0)
       unique(as.character(results$trajectory_data$Treatment))
     else if (!is.null(tx_col) && has_col(data, tx_col))
@@ -752,6 +927,45 @@ toxicity_server <- function(id, rv) {
     paste(lines, collapse = "\n")
   })
 
+  # ---- BW: Tab info outputs ----
+
+  output$tox_bw_mixed_model_tab_info <- renderUI({
+    tab_info(
+      strong("Body Weight Mixed Model. "),
+      "Fixed effects test whether weight trajectories differ by treatment group over time. ",
+      "The ", tags$code("Treatment \u00d7 Day"), " interaction is the primary term of interest. ",
+      "Estimated marginal means give group-level weight estimates adjusted for covariates."
+    )
+  })
+
+  output$tox_bw_auc_tab_info <- renderUI({
+    ctype <- input$tox_comparison_type %||% "reference"
+    if (ctype == "reference") {
+      tab_info(
+        strong("Body Weight AUC summaries and group comparisons. "),
+        "AUC is the trapezoidal integral of % weight change from baseline over the study. ",
+        "Comparisons shown are vs the reference/control group with BH p-value correction. ",
+        tags$small(class = "text-muted", "Change comparison type in the sidebar.")
+      )
+    } else {
+      tab_info(
+        strong("Body Weight AUC summaries and all-pairwise comparisons. "),
+        "AUC is the trapezoidal integral of % weight change from baseline over the study. ",
+        "All group pairs are shown with Benjamini-Hochberg p-value correction. ",
+        tags$small(class = "text-muted", "Change comparison type in the sidebar.")
+      )
+    }
+  })
+
+  output$tox_comparisons_title <- renderUI({
+    ctype <- input$tox_comparison_type %||% "reference"
+    lbl   <- if (ctype == "reference") "vs Reference Group" else "All Pairwise (BH-corrected)"
+    tagList(
+      h4(paste0("AUC Comparisons \u2014 ", lbl)),
+      tags$p(class = "text-muted", tags$small("Change comparison type in the sidebar."))
+    )
+  })
+
   # ---- BW: Result tables ----
   output$tox_fixed_effects <- renderDT({
     req(rv$tox_results, rv$tox_results$mixed_model)
@@ -788,11 +1002,16 @@ toxicity_server <- function(id, rv) {
 
   output$tox_auc_comparisons <- renderDT({
     req(rv$tox_results, rv$tox_results$bw_auc)
-    auc <- rv$tox_results$bw_auc
+    auc      <- rv$tox_results$bw_auc
+    cmp_type <- input$tox_comparison_type %||% "reference"
     if (isTRUE(auc$error) || is.null(auc$comparisons))
       return(datatable(data.frame(Message = "Not available")))
-    datatable(format_df_for_display(auc$comparisons),
-              options = list(scrollX = TRUE), rownames = FALSE)
+    df  <- auc$comparisons
+    ref <- rv$tox_ref_group %||% ""
+    if (cmp_type == "reference" && ref != "")
+      df <- df[df$Group1 == ref | df$Group2 == ref, , drop = FALSE]
+    if (nrow(df) > 0) df$P_Adjusted_BH <- stats::p.adjust(df$P_Value, method = "BH")
+    datatable(format_df_for_display(df), options = list(scrollX = TRUE), rownames = FALSE)
   })
 
   output$tox_event_table <- renderDT({
@@ -870,6 +1089,74 @@ toxicity_server <- function(id, rv) {
       return(datatable(data.frame(Message = "No results. Run the analysis first.")))
     datatable(format_df_for_display(report), options = list(scrollX = TRUE), rownames = FALSE)
   })
+
+  # ---- Diagnostics ----
+
+  output$tox_diag_qq <- renderPlot({
+    req(rv$tox_results, rv$tox_results$mixed_model)
+    mm <- rv$tox_results$mixed_model
+    if (isTRUE(mm$error) || is.null(mm$model)) return(NULL)
+    r <- tryCatch(stats::residuals(mm$model), error = function(e) NULL)
+    req(!is.null(r))
+    stats::qqnorm(r, main = "Q-Q Plot of Mixed Model Residuals", pch = 16,
+                  col = "#2c7bb6")
+    stats::qqline(r, col = "#d7191c", lwd = 2)
+  })
+
+  output$tox_diag_resid_fitted <- renderPlot({
+    req(rv$tox_results, rv$tox_results$mixed_model)
+    mm <- rv$tox_results$mixed_model
+    if (isTRUE(mm$error) || is.null(mm$model)) return(NULL)
+    r <- tryCatch(stats::residuals(mm$model), error = function(e) NULL)
+    f <- tryCatch(stats::fitted(mm$model),    error = function(e) NULL)
+    req(!is.null(r), !is.null(f))
+    plot(f, r, main = "Residuals vs Fitted",
+         xlab = "Fitted Values", ylab = "Residuals",
+         pch = 16, col = "#2c7bb6")
+    graphics::abline(h = 0, col = "#d7191c", lty = 2, lwd = 2)
+  })
+
+  # ---- BW AUC Forest Plot ----
+
+  output$tox_bw_forest_plot <- renderPlot({
+    req(rv$tox_results, rv$tox_results$bw_auc)
+    auc      <- rv$tox_results$bw_auc
+    if (isTRUE(auc$error) || is.null(auc$comparisons)) return(NULL)
+    cmp_type <- input$tox_comparison_type %||% "reference"
+    text_sz  <- input$tox_plot_text_size %||% 14
+    df  <- auc$comparisons
+    ref <- rv$tox_ref_group %||% ""
+    if (cmp_type == "reference" && ref != "")
+      df <- df[df$Group1 == ref | df$Group2 == ref, , drop = FALSE]
+    if (nrow(df) == 0) return(NULL)
+    df$P_Adjusted_BH <- stats::p.adjust(df$P_Value, method = "BH")
+    df$Comparison    <- paste(df$Group1, "vs", df$Group2)
+    df$Comparison    <- factor(df$Comparison, levels = rev(df$Comparison))
+    df$Significant   <- df$P_Adjusted_BH < 0.05
+    lbl <- if (cmp_type == "reference") "vs Reference Group" else "All Pairwise"
+    ggplot2::ggplot(df,
+      ggplot2::aes(x = .data[["Mean_Diff"]], y = .data[["Comparison"]],
+                   color = .data[["Significant"]])) +
+      ggplot2::geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+      ggplot2::geom_errorbarh(
+        ggplot2::aes(xmin = .data[["CI_Lower"]], xmax = .data[["CI_Upper"]]),
+        height = 0.25, linewidth = 0.8
+      ) +
+      ggplot2::geom_point(size = 3) +
+      ggplot2::scale_color_manual(
+        values = c("TRUE" = "#d7191c", "FALSE" = "#999999"),
+        labels = c("TRUE" = "BH p\u202f<\u202f0.05", "FALSE" = "n.s."),
+        name = ""
+      ) +
+      ggplot2::labs(
+        title    = "BW AUC Comparison Forest Plot",
+        subtitle = sprintf("%s comparisons; Benjamini-Hochberg correction", lbl),
+        x = "Mean Difference in AUC (% weight change)", y = NULL
+      ) +
+      ggplot2::theme_classic(base_size = text_sz) +
+      ggplot2::theme(legend.position = "top")
+  }, width  = function() input$tox_plot_width  %||% 800,
+     height = function() input$tox_plot_height %||% 500)
 
   # ---- BW Plots ----
 
@@ -1173,10 +1460,33 @@ toxicity_server <- function(id, rv) {
     if (isTRUE(rv$tox_results$mixed_model$error)) return()
     utils::write.csv(rv$tox_results$mixed_model$fixed_effects, file, row.names = FALSE)
   })
+  output$download_tox_emmeans_csv <- downloadHandler("body_weight_emmeans.csv", function(file) {
+    req(rv$tox_results, rv$tox_results$mixed_model)
+    mm <- rv$tox_results$mixed_model
+    if (isTRUE(mm$error) || is.null(mm$emmeans_table)) return()
+    utils::write.csv(mm$emmeans_table, file, row.names = FALSE)
+  })
   output$download_tox_auc_csv <- downloadHandler("body_weight_auc.csv", function(file) {
     req(rv$tox_results, rv$tox_results$bw_auc)
     if (isTRUE(rv$tox_results$bw_auc$error)) return()
     utils::write.csv(rv$tox_results$bw_auc$auc_per_mouse, file, row.names = FALSE)
+  })
+  output$download_tox_nadir_csv <- downloadHandler("body_weight_nadir.csv", function(file) {
+    req(rv$tox_results, rv$tox_results$bw_auc)
+    if (isTRUE(rv$tox_results$bw_auc$error)) return()
+    utils::write.csv(rv$tox_results$bw_auc$nadir_data, file, row.names = FALSE)
+  })
+  output$download_tox_comparisons_csv <- downloadHandler("bw_auc_comparisons.csv", function(file) {
+    req(rv$tox_results, rv$tox_results$bw_auc)
+    auc      <- rv$tox_results$bw_auc
+    cmp_type <- isolate(input$tox_comparison_type) %||% "reference"
+    if (isTRUE(auc$error) || is.null(auc$comparisons)) return()
+    df  <- auc$comparisons
+    ref <- rv$tox_ref_group %||% ""
+    if (cmp_type == "reference" && ref != "")
+      df <- df[df$Group1 == ref | df$Group2 == ref, , drop = FALSE]
+    if (nrow(df) > 0) df$P_Adjusted_BH <- stats::p.adjust(df$P_Value, method = "BH")
+    utils::write.csv(df, file, row.names = FALSE)
   })
   output$download_tox_events <- downloadHandler("weight_loss_events.csv", function(file) {
     req(rv$tox_results, rv$tox_results$weight_loss)
@@ -1218,6 +1528,62 @@ toxicity_server <- function(id, rv) {
     if (is.null(report)) return()
     utils::write.csv(report, file, row.names = FALSE)
   })
+
+  # ---- Download All (ZIP) ----
+  output$download_tox_all <- downloadHandler(
+    filename = "toxicity_results.zip",
+    content  = function(file) {
+      req(rv$tox_results)
+      res    <- rv$tox_results
+      tmpdir <- tempfile(pattern = "tox_export_")
+      dir.create(tmpdir, recursive = TRUE)
+      on.exit(unlink(tmpdir, recursive = TRUE), add = TRUE)
+
+      write_if <- function(df, fname) {
+        if (!is.null(df) && is.data.frame(df) && nrow(df) > 0)
+          utils::write.csv(df, file.path(tmpdir, fname), row.names = FALSE)
+      }
+
+      if (res$model_type == "bw") {
+        mm <- res$mixed_model
+        if (!isTRUE(mm$error)) {
+          write_if(mm$fixed_effects,  "bw_fixed_effects.csv")
+          write_if(mm$emmeans_table,  "bw_emmeans.csv")
+        }
+        bwa <- res$bw_auc
+        if (!isTRUE(bwa$error)) {
+          write_if(bwa$auc_per_mouse, "bw_auc_per_mouse.csv")
+          write_if(bwa$auc_summary,   "bw_auc_summary.csv")
+          write_if(bwa$nadir_data,    "bw_nadir.csv")
+          if (!is.null(bwa$comparisons)) {
+            df  <- bwa$comparisons
+            df$P_Adjusted_BH <- stats::p.adjust(df$P_Value, method = "BH")
+            write_if(df, "bw_auc_comparisons.csv")
+          }
+        }
+        wl <- res$weight_loss
+        if (!isTRUE(wl$error)) write_if(wl$event_data, "bw_weight_loss_events.csv")
+      } else {
+        if (!isTRUE(res$twm$error))      write_if(res$twm$twm_table,          "et_twm.csv")
+        if (!isTRUE(res$bivariate$error)) {
+          write_if(res$bivariate$per_mouse, "et_per_mouse.csv")
+          write_if(res$bivariate$per_group, "et_per_group.csv")
+        }
+        if (!isTRUE(res$benefit$error))  write_if(res$benefit$benefit_table,  "et_benefit.csv")
+        if (!isTRUE(res$wctgi$error)) {
+          write_if(res$wctgi$comparison,     "et_corrected_tgi.csv")
+          write_if(res$wctgi$excluded_summary, "et_excluded_mice.csv")
+        }
+      }
+
+      old_wd <- getwd()
+      setwd(tmpdir)
+      on.exit(setwd(old_wd), add = TRUE)
+      csv_files <- list.files(".", pattern = "\\.csv$")
+      if (length(csv_files) == 0) return()
+      utils::zip(zipfile = file, files = csv_files)
+    }
+  )
 
   }) # end moduleServer
 }
