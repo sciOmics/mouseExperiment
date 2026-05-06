@@ -202,10 +202,12 @@ data_upload_server <- function(id, rv) {
         !is.null(input$col_length) && input$col_length != "" &&
         !is.null(input$col_width)  && input$col_width  != "") {
       tryCatch({
+        ht_col <- if (!is.null(input$col_height) && nzchar(input$col_height)) input$col_height else NULL
         data <- mouseExperiment::calculate_volume(
           data,
           length_column = input$col_length,
           width_column  = input$col_width,
+          height_column = ht_col,
           formula       = input$volume_formula
         )
       }, error = function(e) {
@@ -591,6 +593,7 @@ data_upload_server <- function(id, rv) {
       col_volume        = input$col_volume %||% "",
       col_length        = input$col_length %||% "",
       col_width         = input$col_width %||% "",
+      col_height        = input$col_height %||% "",
       col_cage          = input$col_cage %||% "",
       col_dose          = input$col_dose %||% "",
       col_survival_event = input$col_survival_event %||% "",

@@ -217,23 +217,35 @@ column_mapping_ui <- function(col_names, detected_cols, ns = NS(NULL)) {
           selectInput(ns("col_width"), "Width Column",
                      choices = c("Select..." = "", col_names),
                      selected = detected_cols$width),
+          selectInput(ns("col_height"), tagList("Height Column",
+                     help_tip("Optional third dimension. Required for Ellipsoid (3-axis) and Box formulas. When omitted, height is approximated as equal to width.")),
+                     choices = c("None" = "", col_names),
+                     selected = ""),
           selectInput(ns("volume_formula"), "Volume Formula",
                      choices = c("Ellipsoid (default)" = "ellipsoid",
                                 "Modified Ellipsoid" = "modified_ellipsoid",
+                                "Ellipsoid (3-axis, L\u00d7W\u00d7H)" = "ellipsoid_3axis",
                                 "Cylinder" = "cylinder",
-                                "Sphere" = "sphere"),
+                                "Sphere" = "sphere",
+                                "Box (L\u00d7W\u00d7H)" = "box"),
                      selected = "ellipsoid"),
-          conditionalPanel(ns = ns,"input.volume_formula == 'ellipsoid'",
+          conditionalPanel(ns = ns, "input.volume_formula == 'ellipsoid'",
             tags$p(tags$small(HTML("V = (&pi;/6) &times; L &times; W&sup2;")))
           ),
-          conditionalPanel(ns = ns,"input.volume_formula == 'modified_ellipsoid'",
+          conditionalPanel(ns = ns, "input.volume_formula == 'modified_ellipsoid'",
             tags$p(tags$small(HTML("V = (L &times; W&sup2;) / 2")))
           ),
-          conditionalPanel(ns = ns,"input.volume_formula == 'cylinder'",
+          conditionalPanel(ns = ns, "input.volume_formula == 'ellipsoid_3axis'",
+            tags$p(tags$small(HTML("V = (&pi;/6) &times; L &times; W &times; H")))
+          ),
+          conditionalPanel(ns = ns, "input.volume_formula == 'cylinder'",
             tags$p(tags$small(HTML("V = &pi; &times; (W/2)&sup2; &times; L")))
           ),
-          conditionalPanel(ns = ns,"input.volume_formula == 'sphere'",
+          conditionalPanel(ns = ns, "input.volume_formula == 'sphere'",
             tags$p(tags$small(HTML("V = (&pi;/6) &times; ((L + W) / 2)&sup3;")))
+          ),
+          conditionalPanel(ns = ns, "input.volume_formula == 'box'",
+            tags$p(tags$small(HTML("V = L &times; W &times; H")))
           )
         )
       ),

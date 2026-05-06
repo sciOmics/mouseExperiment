@@ -123,11 +123,13 @@ ensure_preprocessed <- function(rv) {
     len_col <- settings$col_length %||% "Length"
     wid_col <- settings$col_width  %||% "Width"
     vol_formula <- settings$volume_formula %||% "modified_ellipsoid"
+    ht_col <- if (!is.null(settings$col_height) && nzchar(settings$col_height)) settings$col_height else NULL
     if (has_col(data, len_col) && has_col(data, wid_col)) {
       data <- mouseExperiment::calculate_volume(
         data,
         length_column = len_col,
         width_column  = wid_col,
+        height_column = ht_col,
         formula       = vol_formula
       )
     }

@@ -109,10 +109,12 @@ tumor_growth_server <- function(id, rv) {
         rv$tg_running <- FALSE
         return()
       }
+      ht_col_tg <- if (!is.null(rv$settings$col_height) && nzchar(rv$settings$col_height)) rv$settings$col_height else NULL
       data <- mouseExperiment::calculate_volume(
         data,
         length_column = len_col,
         width_column  = wid_col,
+        height_column = ht_col_tg,
         formula       = rv$settings$volume_formula
       )
       vol_col <- "Volume"
