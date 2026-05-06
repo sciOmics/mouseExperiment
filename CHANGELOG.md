@@ -5,6 +5,11 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-05-05
+
+### Removed
+- `efficacy_toxicity_bivariate()` — Log Cell Kill (`log_cell_kill`) efficacy metric removed. The metric required exponential control-group tumor growth and reliable volume observations at a common target size, conditions that are rarely satisfied in practice. The `efficacy_metric` argument now accepts `"tgi"` or `"tumor_auc"` only; the control-group doubling-time computation and `ctrl_doubling_time` return-list element are also gone.
+
 ## [0.3.1] - 2026-05-04
 
 ### Fixed

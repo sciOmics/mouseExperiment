@@ -13,7 +13,7 @@
 #' @param adjust_tumor_weight Logical; subtract estimated tumor weight.
 #' @param tumor_density Density in g/cm³ (default 1.0).
 #' @param reference_group Name of the control/reference group.
-#' @param efficacy_metric One of "tgi", "tumor_auc", or "log_cell_kill".
+#' @param efficacy_metric One of "tgi" or "tumor_auc".
 #' @return A list with: per_mouse, per_group, efficacy_metric, reference_group.
 #' @export
 efficacy_toxicity_bivariate <- function(df,
@@ -25,7 +25,7 @@ efficacy_toxicity_bivariate <- function(df,
                                         adjust_tumor_weight = TRUE,
                                         tumor_density    = 1.0,
                                         reference_group  = NULL,
-                                        efficacy_metric  = c("tgi", "tumor_auc", "log_cell_kill")) {
+                                        efficacy_metric  = c("tgi", "tumor_auc")) {
 
   efficacy_metric <- match.arg(efficacy_metric)
 
@@ -85,23 +85,6 @@ efficacy_toxicity_bivariate <- function(df,
   ctrl_data <- wd[wd$Treatment == reference_group, ]
   ctrl_mean_final_vol <- mean(ctrl_data$Volume[ctrl_data$Day == max_day], na.rm = TRUE)
 
-  # Control group doubling time for LCK
-  ctrl_doubling_time <- NA_real_
-  if (efficacy_metric == "log_cell_kill") {
-    ctrl_growth <- tryCatch({
-      ctrl_agg <- stats::aggregate(Volume ~ Day, data = ctrl_data, FUN = mean)
-      ctrl_agg <- ctrl_agg[order(ctrl_agg$Day), ]
-      if (nrow(ctrl_agg) >= 2 && all(ctrl_agg$Volume > 0)) {
-        lm_fit <- stats::lm(log(Volume) ~ Day, data = ctrl_agg)
-        growth_rate <- stats::coef(lm_fit)["Day"]
-        if (!is.na(growth_rate) && growth_rate > 0) {
-          log(2) / growth_rate
-        } else NA_real_
-      } else NA_real_
-    }, error = function(e) NA_real_)
-    ctrl_doubling_time <- ctrl_growth
-  }
-
   # Per-mouse efficacy — use composite key so IDs shared across groups are
   # treated as distinct mice (matches the pattern in body_weight_auc.R)
   wd$.MouseKey <- paste(wd$Treatment, wd$ID, sep = "\u2060")
@@ -124,30 +107,6 @@ efficacy_toxicity_bivariate <- function(df,
         if (!is.na(ctrl_auc) && ctrl_auc > 0) {
           (1 - mouse_auc / ctrl_auc) * 100
         } else NA_real_
-      },
-      log_cell_kill = {
-        if (is.na(ctrl_doubling_time) || ctrl_doubling_time <= 0) {
-          NA_real_
-        } else {
-          # Growth delay version: LCK = (T - C) / (3.32 × Td)
-          # Use time for treated to reach a target volume vs control
-          target_vol <- ctrl_mean_final_vol
-          ctrl_time <- tryCatch({
-            ctrl_agg <- stats::aggregate(Volume ~ Day, data = ctrl_data, FUN = mean)
-            ctrl_agg <- ctrl_agg[order(ctrl_agg$Day), ]
-            hit <- ctrl_agg$Day[ctrl_agg$Volume >= target_vol]
-            if (length(hit) > 0) hit[1] else max(ctrl_agg$Day)
-          }, error = function(e) NA_real_)
-
-          treated_time <- tryCatch({
-            hit <- sub$Day[sub$Volume >= target_vol]
-            if (length(hit) > 0) hit[1] else max(sub$Day)
-          }, error = function(e) NA_real_)
-
-          if (!is.na(ctrl_time) && !is.na(treated_time)) {
-            (treated_time - ctrl_time) / (3.32 * ctrl_doubling_time)
-          } else NA_real_
-        }
       }
     )
 
@@ -176,7 +135,6 @@ efficacy_toxicity_bivariate <- function(df,
     per_mouse       = per_mouse,
     per_group       = pg,
     efficacy_metric = efficacy_metric,
-    reference_group = reference_group,
-    ctrl_doubling_time = ctrl_doubling_time
+    reference_group = reference_group
   )
 }
