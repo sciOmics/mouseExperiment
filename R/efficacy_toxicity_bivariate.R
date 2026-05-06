@@ -102,11 +102,14 @@ efficacy_toxicity_bivariate <- function(df,
     ctrl_doubling_time <- ctrl_growth
   }
 
-  # Per-mouse efficacy
-  ids <- unique(wd$ID)
-  eff_list <- lapply(ids, function(id) {
-    sub <- wd[wd$ID == id, ]
+  # Per-mouse efficacy — use composite key so IDs shared across groups are
+  # treated as distinct mice (matches the pattern in body_weight_auc.R)
+  wd$.MouseKey <- paste(wd$Treatment, wd$ID, sep = "\u2060")
+  mouse_keys <- unique(wd$.MouseKey)
+  eff_list <- lapply(mouse_keys, function(key) {
+    sub <- wd[wd$.MouseKey == key, ]
     tx <- sub$Treatment[1]
+    id <- sub$ID[1]
     final_vol <- sub$Volume[sub$Day == max_day]
     if (length(final_vol) == 0) final_vol <- sub$Volume[nrow(sub)]
 
@@ -152,8 +155,6 @@ efficacy_toxicity_bivariate <- function(df,
                stringsAsFactors = FALSE)
   })
   eff_df <- do.call(rbind, eff_list)
-
-  # --- Merge per-mouse ---
   per_mouse <- merge(max_wl, eff_df, by = c("ID", "Treatment"))
 
   # --- Per-group means ---
