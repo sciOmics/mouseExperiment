@@ -4,6 +4,20 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.009] 2026 May 5th
+
+### Added
+- **Toxicity — BW Trajectory combined view** — new display mode "Individual + Group Mean" overlays individual mouse trajectories (faint) with bold group-mean lines; default display changed to "Individual mice"
+- **Toxicity — BW AUC plot controls** — replaced "Show box plot" checkbox with TG-style centre-bar selector (Mean / Median / None), error-bar selector (SEM / SD / 95% CI / None), and jitter-width slider; y-axis label updated to include units (%·days)
+- **Toxicity — ET plot group controls** — group order, colour, and palette-preset controls now available for all ET mode plots (Therapeutic Window, Safety-Efficacy Scatter, Total Benefit Score, Weight-Corrected TGI)
+- **Toxicity — Safety-Efficacy Scatter controls** — added centroid size slider, ellipse line-width slider, ellipse line-style selector (solid / dashed / dotted), and "Shape by group" checkbox
+
+### Fixed
+- **Toxicity — Safety-Efficacy Scatter only showing reference group** — `efficacy_toxicity_bivariate()` now uses composite `Treatment⁠ID` keys when iterating per-mouse efficacy, preventing shared IDs across groups from collapsing to a single group
+
+### Removed
+- **Toxicity — Correlation Heatmap** — removed from ET plot selector, UI, server, and download handler
+
 ## [v26.05.008] 2026 May 5th
 
 ### Added

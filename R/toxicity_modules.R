@@ -173,7 +173,8 @@ toxicityUI <- function(id) {
                     p("For each mouse, body weight is expressed as % change from baseline at each timepoint, then a trapezoidal AUC is computed over the study. ",
                       "A negative AUC indicates sustained weight loss; a positive AUC indicates net weight gain."),
                     tags$ul(
-                      tags$li("Individual AUC values are shown as a jitter plot (± boxplot)."),
+                      tags$li("Individual AUC values are shown as a jitter plot with a configurable centre mark (mean or median) and error bars (SEM, SD, or 95% CI)."),
+                      tags$li("Units are ", tags$b("% \u00b7 days"), ": e.g. a value of \u2212100 means an average 5% weight loss sustained over 20 days."),
                       tags$li("Pairwise group comparisons use t-tests with Benjamini-Hochberg correction.")
                     ),
 
@@ -257,10 +258,7 @@ toxicityUI <- function(id) {
                     p(tags$b("Safety threshold:"),
                       " Mirrors the Weight Loss Threshold in Body Weight Analysis. Mice whose maximum weight loss exceeds this value are excluded from the corrected TGI."),
 
-                    hr(),
-                    h5(strong("Correlation Heatmap")),
-                    p("Shows Pearson correlations between all available per-mouse metrics (Efficacy, Max Weight Loss, Efficacy AUC, Toxicity AUC). ",
-                      "Strong positive correlation between efficacy and toxicity suggests the drug cannot separate the two effects at the doses tested.")
+                    br()
                   )
                 ),
 
@@ -354,8 +352,7 @@ toxicityUI <- function(id) {
                         "Therapeutic Window"      = "twm",
                         "Safety-Efficacy Scatter" = "scatter",
                         "Total Benefit Score"     = "benefit",
-                        "Weight-Corrected TGI"    = "wctgi",
-                        "Correlation Heatmap"     = "heatmap"
+                        "Weight-Corrected TGI"    = "wctgi"
                       ),
                       selected = "twm"
                     )
@@ -364,22 +361,35 @@ toxicityUI <- function(id) {
                     "output.tox_model_type_val == 'bw' && input.tox_bw_plot_selector == 'trajectory'",
                     hr(),
                     radioButtons(ns("tox_traj_type"), "Display style",
-                      choices = c("Mean \u00b1 SEM" = "mean_sem",
-                                  "Mean \u00b1 SD"  = "mean_sd",
-                                  "Individual mice" = "spaghetti"),
-                      selected = "mean_sem"
+                      choices = c("Individual mice"            = "spaghetti",
+                                  "Individual + Group Mean"    = "mean_spaghetti",
+                                  "Mean \u00b1 SEM"            = "mean_sem",
+                                  "Mean \u00b1 SD"             = "mean_sd"),
+                      selected = "spaghetti"
                     )
                   ),
                   conditionalPanel(ns = ns,
                     "output.tox_model_type_val == 'bw' && input.tox_bw_plot_selector == 'auc'",
                     hr(),
-                    checkboxInput(ns("tox_auc_show_boxplot"), "Show box plot", value = TRUE),
+                    selectInput(ns("tox_auc_center_bar"), "Center bar",
+                      choices  = c("Mean" = "mean", "Median" = "median", "None" = "none"),
+                      selected = "mean"),
+                    selectInput(ns("tox_auc_error_bar"), "Error bars",
+                      choices  = c("SEM" = "SEM", "SD" = "SD", "95% CI" = "CI", "None" = "none"),
+                      selected = "SEM"),
                     sliderInput(ns("tox_auc_pt_size"), "Point size",
-                                min = 0.5, max = 6, value = 2, step = 0.5)
+                                min = 0.5, max = 6, value = 2, step = 0.5),
+                    sliderInput(ns("tox_auc_jitter_width"), "Jitter width",
+                                min = 0, max = 0.4, value = 0.15, step = 0.02)
                   ),
                   conditionalPanel(ns = ns, "output.tox_model_type_val == 'bw'",
                     ctrl_section("tox-groups", "sort", "Groups",
                       uiOutput(ns("tox_group_order_color_ui"))
+                    )
+                  ),
+                  conditionalPanel(ns = ns, "output.tox_model_type_val == 'et'",
+                    ctrl_section("tox-et-groups", "sort", "Groups",
+                      uiOutput(ns("tox_et_group_order_color_ui"))
                     )
                   ),
                   conditionalPanel(ns = ns,
@@ -387,7 +397,13 @@ toxicityUI <- function(id) {
                     hr(),
                     checkboxInput(ns("tox_et_show_ellipses"),  "Show group ellipses",  value = TRUE),
                     checkboxInput(ns("tox_et_show_centroids"), "Show group centroids", value = TRUE),
-                    sliderInput(ns("tox_et_scatter_pt_size"), "Point size", 1, 6, 3, step = 0.5)
+                    sliderInput(ns("tox_et_scatter_pt_size"),  "Point size",       1,   6,  3,   step = 0.5),
+                    sliderInput(ns("tox_et_centroid_size"),    "Centroid size",    2,  12,  6,   step = 0.5),
+                    sliderInput(ns("tox_et_ellipse_lwd"),      "Ellipse line width", 0.3, 3, 0.8, step = 0.1),
+                    selectInput(ns("tox_et_ellipse_lty"),      "Ellipse line style",
+                      choices = c("Solid" = "solid", "Dashed" = "dashed", "Dotted" = "dotted"),
+                      selected = "solid"),
+                    checkboxInput(ns("tox_et_shape_by_group"), "Shape by group", value = FALSE)
                   ),
                   ctrl_section("tox-scaling", "expand", "Scaling",
                     sliderInput(ns("tox_plot_text_size"), "Text size (pt)",
@@ -468,13 +484,7 @@ toxicityUI <- function(id) {
                     plotOutput(ns("tox_et_wctgi_plot"), width = "auto", height = "auto")
                   )
                 ),
-                conditionalPanel(ns = ns,
-                  "output.tox_model_type_val == 'et' && input.tox_et_plot_selector == 'heatmap'",
-                  h4("Correlation Heatmap"),
-                  shinycssloaders::withSpinner(
-                    plotOutput(ns("tox_et_heatmap_plot"), width = "auto", height = "auto")
-                  )
-                )
+
               )
             )
           ),
@@ -881,6 +891,15 @@ toxicity_server <- function(id, rv) {
       unique(as.character(data[[tx_col]]))
     else NULL
 
+    rv$tox_et_plot_groups <- if (model_type == "et" &&
+                                 !is.null(results$bivariate) &&
+                                 !isTRUE(results$bivariate$error) &&
+                                 !is.null(results$bivariate$per_mouse))
+      unique(as.character(results$bivariate$per_mouse$Treatment))
+    else if (model_type == "et" && !is.null(tx_col) && has_col(data, tx_col))
+      unique(as.character(data[[tx_col]]))
+    else NULL
+
     progress$set(value = 1)
 
     if (n_err == n_total) {
@@ -1164,30 +1183,46 @@ toxicity_server <- function(id, rv) {
     req(rv$tox_plot_groups)
     group_order_and_color_ui("tox", rv$tox_plot_groups, ns = session$ns)
   })
-
   observe_palette_preset(input, session, "tox", reactive(rv$tox_plot_groups))
+
+  output$tox_et_group_order_color_ui <- renderUI({
+    req(rv$tox_et_plot_groups)
+    group_order_and_color_ui("tox_et", rv$tox_et_plot_groups, ns = session$ns)
+  })
+  observe_palette_preset(input, session, "tox_et", reactive(rv$tox_et_plot_groups))
 
   output$tox_trajectory_plot <- renderPlot({
     req(rv$tox_results, rv$tox_results$trajectory_data)
     td <- rv$tox_results$trajectory_data
     req(nrow(td) > 0)
-    traj_type    <- input$tox_traj_type %||% "mean_sem"
+    traj_type    <- input$tox_traj_type %||% "spaghetti"
     text_sz      <- input$tox_plot_text_size %||% 14
     line_w       <- input$tox_traj_line_width %||% 1
     ordered_grps <- get_ordered_groups(input, "tox", rv$tox_plot_groups)
     colors       <- build_color_vector(input, "tox_color", ordered_grps)
 
-    if (traj_type == "spaghetti") {
+    if (traj_type %in% c("spaghetti", "mean_spaghetti")) {
       td$.__LineGroup <- paste(td[["Treatment"]], td[["ID"]], sep = "\u00b7")
       if (!is.null(ordered_grps))
         td$Treatment <- factor(td$Treatment, levels = ordered_grps)
       p <- ggplot2::ggplot(td, ggplot2::aes(.data[["Day"]], .data[["Weight"]],
                                             group = .data[[".__LineGroup"]], color = .data[["Treatment"]])) +
-        ggplot2::geom_line(alpha = 0.6, linewidth = line_w) +
-        ggplot2::geom_point(size = 1.5, alpha = 0.6) +
+        ggplot2::geom_line(alpha = if (traj_type == "mean_spaghetti") 0.3 else 0.6,
+                           linewidth = line_w) +
+        ggplot2::geom_point(size = 1.5, alpha = if (traj_type == "mean_spaghetti") 0.3 else 0.6) +
         ggplot2::labs(title = "Body Weight Trajectories",
                      x = "Day", y = "Weight (g)", color = "Treatment") +
         ggplot2::theme_classic(base_size = text_sz)
+      if (traj_type == "mean_spaghetti") {
+        grp_mean <- stats::aggregate(Weight ~ Treatment + Day, data = td, FUN = mean, na.rm = TRUE)
+        if (!is.null(ordered_grps))
+          grp_mean$Treatment <- factor(grp_mean$Treatment, levels = ordered_grps)
+        p <- p + ggplot2::geom_line(
+          data = grp_mean,
+          ggplot2::aes(.data[["Day"]], .data[["Weight"]], group = .data[["Treatment"]],
+                       color = .data[["Treatment"]]),
+          linewidth = line_w * 2.2, inherit.aes = FALSE)
+      }
       if (!is.null(colors)) p <- p + ggplot2::scale_color_manual(values = colors)
       p
     } else {
@@ -1221,28 +1256,66 @@ toxicity_server <- function(id, rv) {
     req(rv$tox_results, rv$tox_results$bw_auc)
     auc <- rv$tox_results$bw_auc
     if (isTRUE(auc$error)) return(NULL)
-    text_sz       <- input$tox_plot_text_size %||% 14
-    show_box      <- isTRUE(input$tox_auc_show_boxplot %||% TRUE)
-    pt_sz         <- input$tox_auc_pt_size %||% 2
-    ordered_grps  <- get_ordered_groups(input, "tox", rv$tox_plot_groups)
-    colors        <- build_color_vector(input, "tox_color", ordered_grps)
-    auc_df        <- auc$auc_per_mouse
+    text_sz      <- input$tox_plot_text_size %||% 14
+    center       <- input$tox_auc_center_bar %||% "mean"
+    err_bars     <- input$tox_auc_error_bar  %||% "SEM"
+    pt_sz        <- input$tox_auc_pt_size    %||% 2
+    jitter_w     <- input$tox_auc_jitter_width %||% 0.15
+    ordered_grps <- get_ordered_groups(input, "tox", rv$tox_plot_groups)
+    colors       <- build_color_vector(input, "tox_color", ordered_grps)
+    auc_df       <- auc$auc_per_mouse
     if (!is.null(ordered_grps))
       auc_df$Treatment <- factor(auc_df$Treatment, levels = ordered_grps)
+
+    # Per-group summary for center bar and error bars
+    gs <- stats::aggregate(AUC_Pct_Change ~ Treatment, data = auc_df,
+      FUN = function(x) c(mean   = mean(x, na.rm = TRUE),
+                          median = stats::median(x, na.rm = TRUE),
+                          sd     = stats::sd(x, na.rm = TRUE),
+                          n      = sum(!is.na(x))))
+    gs <- do.call(data.frame, gs)
+    names(gs) <- c("Treatment", "Mean", "Median", "SD", "N")
+    gs$SEM  <- gs$SD / sqrt(gs$N)
+    gs$CI95 <- gs$SEM * stats::qt(0.975, pmax(gs$N - 1, 1))
+    if (!is.null(ordered_grps))
+      gs$Treatment <- factor(gs$Treatment, levels = ordered_grps)
+    gs$center_y <- if (center == "median") gs$Median else gs$Mean
+
     p <- ggplot2::ggplot(auc_df,
-      ggplot2::aes(.data[["Treatment"]], .data[["AUC_Pct_Change"]], fill = .data[["Treatment"]]))
-    if (show_box)
-      p <- p + ggplot2::geom_boxplot(outlier.shape = NA, alpha = 0.6)
-    p <- p +
+      ggplot2::aes(x = .data[["Treatment"]], y = .data[["AUC_Pct_Change"]])) +
       ggplot2::geom_jitter(ggplot2::aes(color = .data[["Treatment"]]),
-                           width = 0.2, alpha = 0.8, size = pt_sz) +
+                           width = jitter_w, alpha = 0.8, size = pt_sz)
+
+    if (center != "none") {
+      p <- p + ggplot2::geom_crossbar(
+        data = gs,
+        ggplot2::aes(x = .data[["Treatment"]], y = .data[["center_y"]],
+                     ymin = .data[["center_y"]], ymax = .data[["center_y"]]),
+        width = 0.45, linewidth = 0.8, color = "black", fill = NA,
+        inherit.aes = FALSE)
+      if (err_bars != "none") {
+        err_half <- switch(err_bars,
+          SEM = gs$SEM, SD = gs$SD, CI = gs$CI95, NULL)
+        if (!is.null(err_half)) {
+          gs$ymin_err <- gs$center_y - err_half
+          gs$ymax_err <- gs$center_y + err_half
+          p <- p + ggplot2::geom_errorbar(
+            data = gs,
+            ggplot2::aes(x = .data[["Treatment"]], ymin = .data[["ymin_err"]],
+                         ymax = .data[["ymax_err"]]),
+            width = 0.2, linewidth = 0.8, color = "black",
+            inherit.aes = FALSE)
+        }
+      }
+    }
+
+    p <- p +
       ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
       ggplot2::labs(title = "Body Weight AUC (% Change from Baseline)",
-                   x = "Treatment", y = "AUC of % Weight Change") +
+                   x = "Treatment", y = "AUC of % Weight Change (\u00b7days)") +
       ggplot2::theme_classic(base_size = text_sz) +
       ggplot2::theme(legend.position = "none")
     if (!is.null(colors)) p <- p +
-      ggplot2::scale_fill_manual(values = colors) +
       ggplot2::scale_color_manual(values = colors)
     p
   }, width  = function() input$tox_plot_width  %||% 800,
@@ -1282,10 +1355,16 @@ toxicity_server <- function(id, rv) {
     req(rv$tox_results, rv$tox_results$twm)
     twm <- rv$tox_results$twm
     if (isTRUE(twm$error)) return(NULL)
-    text_sz <- input$tox_plot_text_size %||% 14
+    text_sz      <- input$tox_plot_text_size %||% 14
+    ordered_grps <- get_ordered_groups(input, "tox_et", rv$tox_et_plot_groups)
+    colors       <- build_color_vector(input, "tox_et_color", ordered_grps)
     tbl <- twm$twm_table
-    tbl$Treatment <- factor(tbl$Treatment, levels = tbl$Treatment[order(tbl$TWM)])
-    ggplot2::ggplot(tbl, ggplot2::aes(.data[["Treatment"]], .data[["TWM"]], fill = .data[["Treatment"]])) +
+    if (!is.null(ordered_grps))
+      tbl$Treatment <- factor(tbl$Treatment, levels = ordered_grps)
+    else
+      tbl$Treatment <- factor(tbl$Treatment, levels = tbl$Treatment[order(tbl$TWM)])
+    p <- ggplot2::ggplot(tbl,
+           ggplot2::aes(.data[["Treatment"]], .data[["TWM"]], fill = .data[["Treatment"]])) +
       ggplot2::geom_col(alpha = 0.8, width = 0.6) +
       ggplot2::geom_text(ggplot2::aes(label = round(.data[["TWM"]], 2)), vjust = -0.5, size = 4) +
       ggplot2::geom_hline(yintercept = 1, linetype = "dashed", color = "grey40") +
@@ -1295,6 +1374,8 @@ toxicity_server <- function(id, rv) {
       ggplot2::theme_classic(base_size = text_sz) +
       ggplot2::theme(legend.position = "none",
                      axis.text.x = ggplot2::element_text(angle = 30, hjust = 1))
+    if (!is.null(colors)) p <- p + ggplot2::scale_fill_manual(values = colors)
+    p
   }, width  = function() input$tox_plot_width  %||% 800,
      height = function() input$tox_plot_height %||% 500)
 
@@ -1302,29 +1383,50 @@ toxicity_server <- function(id, rv) {
     req(rv$tox_results, rv$tox_results$bivariate)
     biv <- rv$tox_results$bivariate
     if (isTRUE(biv$error)) return(NULL)
-    pm        <- biv$per_mouse
-    text_sz   <- input$tox_plot_text_size %||% 14
-    pt_size   <- input$tox_et_scatter_pt_size %||% 3
-    show_ell  <- isTRUE(input$tox_et_show_ellipses)
-    show_cent <- isTRUE(input$tox_et_show_centroids)
+    pm           <- biv$per_mouse
+    text_sz      <- input$tox_plot_text_size %||% 14
+    pt_size      <- input$tox_et_scatter_pt_size %||% 3
+    cent_size    <- input$tox_et_centroid_size   %||% 6
+    ell_lwd      <- input$tox_et_ellipse_lwd     %||% 0.8
+    ell_lty      <- input$tox_et_ellipse_lty     %||% "solid"
+    show_ell     <- isTRUE(input$tox_et_show_ellipses)
+    show_cent    <- isTRUE(input$tox_et_show_centroids)
+    shape_by_grp <- isTRUE(input$tox_et_shape_by_group)
+    ordered_grps <- get_ordered_groups(input, "tox_et", rv$tox_et_plot_groups)
+    colors       <- build_color_vector(input, "tox_et_color", ordered_grps)
+    if (!is.null(ordered_grps))
+      pm$Treatment <- factor(pm$Treatment, levels = ordered_grps)
     eff_label <- switch(biv$efficacy_metric,
       tgi = "TGI (%)", tumor_auc = "Tumor AUC", log_cell_kill = "Log Cell Kill")
-    p <- ggplot2::ggplot(pm,
-           ggplot2::aes(.data[["Efficacy"]], .data[["Max_Pct_Weight_Loss"]],
-                        color = .data[["Treatment"]])) +
+    aes_base <- if (shape_by_grp)
+      ggplot2::aes(.data[["Efficacy"]], .data[["Max_Pct_Weight_Loss"]],
+                   color = .data[["Treatment"]], shape = .data[["Treatment"]])
+    else
+      ggplot2::aes(.data[["Efficacy"]], .data[["Max_Pct_Weight_Loss"]],
+                   color = .data[["Treatment"]])
+    p <- ggplot2::ggplot(pm, aes_base) +
       ggplot2::geom_point(size = pt_size, alpha = 0.7)
     if (show_ell && nrow(pm) > 3)
-      p <- p + ggplot2::stat_ellipse(level = 0.68, linewidth = 0.8, show.legend = FALSE)
-    if (show_cent && !is.null(biv$per_group))
-      p <- p + ggplot2::geom_point(data = biv$per_group,
-                 ggplot2::aes(.data[["Efficacy_Mean"]], .data[["Toxicity_Mean"]]),
-                 shape = 18, size = 6)
-    p + ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+      p <- p + ggplot2::stat_ellipse(level = 0.68, linewidth = ell_lwd,
+                                     linetype = ell_lty, show.legend = FALSE)
+    if (show_cent && !is.null(biv$per_group)) {
+      pg <- biv$per_group
+      if (!is.null(ordered_grps))
+        pg$Treatment <- factor(pg$Treatment, levels = ordered_grps)
+      p <- p + ggplot2::geom_point(data = pg,
+                 ggplot2::aes(.data[["Efficacy_Mean"]], .data[["Toxicity_Mean"]],
+                              color = .data[["Treatment"]]),
+                 shape = 18, size = cent_size, inherit.aes = FALSE)
+    }
+    p <- p +
+      ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
       ggplot2::geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
       ggplot2::labs(title = "Safety-Efficacy Scatter",
                    subtitle = paste0("Each point is one mouse. Efficacy: ", eff_label),
                    x = eff_label, y = "Max Weight Loss (%)", color = "Treatment") +
       ggplot2::theme_classic(base_size = text_sz)
+    if (!is.null(colors)) p <- p + ggplot2::scale_color_manual(values = colors)
+    p
   }, width  = function() input$tox_plot_width  %||% 800,
      height = function() input$tox_plot_height %||% 500)
 
@@ -1332,9 +1434,13 @@ toxicity_server <- function(id, rv) {
     req(rv$tox_results, rv$tox_results$benefit)
     ben <- rv$tox_results$benefit
     if (isTRUE(ben$error)) return(NULL)
-    text_sz <- input$tox_plot_text_size %||% 14
+    text_sz      <- input$tox_plot_text_size %||% 14
+    ordered_grps <- get_ordered_groups(input, "tox_et", rv$tox_et_plot_groups)
     bt <- ben$benefit_table
-    bt$Treatment <- factor(bt$Treatment, levels = bt$Treatment[order(bt$Benefit_Score)])
+    if (!is.null(ordered_grps))
+      bt$Treatment <- factor(bt$Treatment, levels = ordered_grps)
+    else
+      bt$Treatment <- factor(bt$Treatment, levels = bt$Treatment[order(bt$Benefit_Score)])
     ggplot2::ggplot(bt, ggplot2::aes(.data[["Treatment"]], .data[["Benefit_Score"]],
                                       fill = .data[["Benefit_Score"]] > 0)) +
       ggplot2::geom_col(alpha = 0.8, width = 0.6) +
@@ -1356,8 +1462,11 @@ toxicity_server <- function(id, rv) {
     req(rv$tox_results, rv$tox_results$wctgi)
     wc <- rv$tox_results$wctgi
     if (isTRUE(wc$error)) return(NULL)
-    text_sz <- input$tox_plot_text_size %||% 14
+    text_sz      <- input$tox_plot_text_size %||% 14
+    ordered_grps <- get_ordered_groups(input, "tox_et", rv$tox_et_plot_groups)
     comp <- wc$comparison
+    if (!is.null(ordered_grps))
+      comp$Treatment <- factor(comp$Treatment, levels = ordered_grps)
     plot_df <- data.frame(
       Treatment = rep(comp$Treatment, 2),
       Type      = rep(c("Uncorrected TGI", "Weight-Corrected TGI"), each = nrow(comp)),
@@ -1376,37 +1485,6 @@ toxicity_server <- function(id, rv) {
   }, width  = function() input$tox_plot_width  %||% 800,
      height = function() input$tox_plot_height %||% 500)
 
-  output$tox_et_heatmap_plot <- renderPlot({
-    req(rv$tox_results, rv$tox_results$bivariate)
-    biv <- rv$tox_results$bivariate
-    if (isTRUE(biv$error)) return(NULL)
-    text_sz <- input$tox_plot_text_size %||% 14
-    pm <- biv$per_mouse
-    md <- pm[, c("Efficacy", "Max_Pct_Weight_Loss"), drop = FALSE]
-    colnames(md) <- c("Efficacy", "Max Weight Loss (%)")
-    if (!is.null(rv$tox_results$benefit) && !isTRUE(rv$tox_results$benefit$error)) {
-      ea <- rv$tox_results$benefit$efficacy_auc
-      ta <- rv$tox_results$benefit$toxicity_auc
-      if (!is.null(ea) && nrow(ea) == nrow(pm)) md[["Efficacy AUC"]] <- ea$Efficacy_AUC
-      if (!is.null(ta) && nrow(ta) == nrow(pm)) md[["Toxicity AUC"]] <- ta$Toxicity_AUC
-    }
-    req(ncol(md) >= 2)
-    cm     <- stats::cor(md, use = "pairwise.complete.obs")
-    cor_df <- expand.grid(Var1 = colnames(cm), Var2 = colnames(cm), stringsAsFactors = FALSE)
-    cor_df$Correlation <- as.vector(cm)
-    ggplot2::ggplot(cor_df, ggplot2::aes(.data[["Var1"]], .data[["Var2"]],
-                                          fill = .data[["Correlation"]])) +
-      ggplot2::geom_tile(color = "white", linewidth = 1) +
-      ggplot2::geom_text(ggplot2::aes(label = sprintf("%.2f", .data[["Correlation"]])),
-                         size = 5, color = "black") +
-      ggplot2::scale_fill_gradient2(low = "#d7191c", mid = "white", high = "#2c7bb6",
-                                    midpoint = 0, limits = c(-1, 1)) +
-      ggplot2::labs(title = "Correlation Heatmap: Efficacy vs Toxicity Metrics", x = "", y = "") +
-      ggplot2::theme_classic(base_size = text_sz) +
-      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
-  }, width  = function() input$tox_plot_width  %||% 600,
-     height = function() input$tox_plot_height %||% 600)
-
   # ---- Active plot download ----
   output$download_tox_active_plot <- downloadHandler(
     filename = function() {
@@ -1418,7 +1496,7 @@ toxicity_server <- function(id, rv) {
         switch(input$tox_et_plot_selector %||% "twm",
           twm = "therapeutic_window.png", scatter = "safety_efficacy_scatter.png",
           benefit = "total_benefit.png", wctgi = "weight_corrected_tgi.png",
-          heatmap = "correlation_heatmap.png", "efficacy_toxicity_plot.png")
+          "efficacy_toxicity_plot.png")
       }
     },
     content = function(file) {
@@ -1444,7 +1522,7 @@ toxicity_server <- function(id, rv) {
         switch(input$tox_et_plot_selector %||% "twm",
           twm = "tox_et_twm_plot", scatter = "tox_et_scatter_plot",
           benefit = "tox_et_benefit_plot", wctgi = "tox_et_wctgi_plot",
-          heatmap = "tox_et_heatmap_plot", "tox_et_twm_plot")
+          "tox_et_twm_plot")
       }
       tryCatch({
         png(file, width = w, height = h, units = "px", res = dpi)
