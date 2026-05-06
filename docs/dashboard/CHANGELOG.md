@@ -4,6 +4,13 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.012] 2026 May 12th
+
+### Added
+- **Power Analysis — A priori Analytic mode** — new sidebar mode alongside the existing post-hoc. Users enter Cohen's d values (one or several, comma-separated) or a raw mean difference + pooled SD. Supports two-sample t-test (two groups) or one-way ANOVA omnibus (k ≥ 3 groups via `pwr::pwr.anova.test`). Sub-modes: "Find N" (required N per group for each target power × alpha combination) and "Find Power" (achieved power at user-specified N values). A "Seed SD from data" button fills the pooled SD from the currently loaded dataset. For mean-difference inputs, an SD sensitivity table shows how required N changes as the assumed SD is varied ±20% and ±40%, communicating uncertainty in the pilot SD estimate.
+- **Power Analysis — A priori LMM Simulation mode** — simulates longitudinal tumour-growth data from user-supplied growth parameters (baseline volume, control rate, treatment rate-reduction, random effects, residual SD, timepoint schedule). Fits `Volume ~ Treatment * Day + (Day|ID)` via `lme4::lmer` and uses a likelihood-ratio test for the Treatment × Day interaction; power = proportion of simulations where p < α. Evaluates power across a user-specified range of N per group. Progress bar updates during each (N, alpha) scenario.
+- **Power Analysis — Analysis Mode selector** — `radioButtons` at the top of the sidebar switches between "Post-hoc (observed data)", "A priori — Analytic", and "A priori — LMM Simulation". Result panels are conditionally displayed; post-hoc tabs only show for post-hoc mode, a priori tabs (Scenario Table, Power Curves, SD Sensitivity) only show for a priori modes.
+
 ## [v26.05.011] 2026 May 5th
 
 ### Added
