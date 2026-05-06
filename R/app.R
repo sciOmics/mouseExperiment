@@ -105,13 +105,7 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     tabPanel("Toxicity",            toxicityUI("tox")),
     tabPanel("Dose Response",       doseResponseUI("dr")),
     tabPanel("Drug Synergy",        synergyUI("syn")),
-    tabPanel(
-      title = tags$span("Power Analysis",
-                        style = "color: #999; cursor: not-allowed;",
-                        title = "Coming soon"),
-      value = "__power_analysis_disabled__",
-      ""
-    ),
+    tabPanel("Power Analysis",  powerAnalysisUI("pw")),
     tabPanel("Log",           analysisLogUI("log")),
     tabPanel("Help",          helpUI()),
     tabPanel("About",          citationUI())
@@ -165,27 +159,12 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     # Guard: redirect away from placeholder tabs if reached via keyboard
     observeEvent(input$main_nav, {
       log_navigation(session, input$main_nav)
-
-      disabled_vals <- c("__power_analysis_disabled__")
-
-      # Map internal disabled values to human-readable feature names
-      coming_soon_names <- c(
-        "__power_analysis_disabled__" = "Power Analysis"
-      )
-
-      if (input$main_nav %in% disabled_vals) {
-        feature_name <- coming_soon_names[[input$main_nav]]
-        shinyjs::runjs(sprintf("window.trackFeatureAccess('%s', 'coming_soon');", feature_name))
-        updateNavbarPage(session, "main_nav", selected = "Survival")
-      } else {
-        # Track navigation to enabled tabs
-        shinyjs::runjs(sprintf("window.trackTabNavigation('%s');", input$main_nav))
-      }
+      shinyjs::runjs(sprintf("window.trackTabNavigation('%s');", input$main_nav))
     }, ignoreInit = TRUE)
 
     # Analysis tabs that require data to be uploaded first
     analysis_tabs <- c("Tumor Growth", "Survival", "Toxicity",
-                       "Dose Response", "Drug Synergy")
+                       "Dose Response", "Drug Synergy", "Power Analysis")
 
     # Disable all analysis tabs on startup
     shinyjs::runjs(paste(
@@ -221,6 +200,9 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
 
         # Drug Synergy: available once data is loaded
         shinyjs::runjs("window.enableNavTab('Drug Synergy');")
+
+        # Power Analysis: available once data is loaded
+        shinyjs::runjs("window.enableNavTab('Power Analysis');")
 
         # Dose Response: only when a dose column is mapped
         dose_mapped <- !is.null(rv$settings$col_dose) &&

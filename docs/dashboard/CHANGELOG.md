@@ -4,6 +4,11 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.011] 2026 May 5th
+
+### Added
+- **Power Analysis tab** — activated as a full tab; previously rendered as a greyed-out "Coming soon" placeholder even though the module was fully implemented. The tab is now enabled whenever data is loaded (same condition as Tumor Growth). The analysis itself requires preprocessed data from a prior Tumor Growth run; a warning is shown if that has not been done yet.
+
 ## [v26.05.010] 2026 May 5th
 
 ### Removed
