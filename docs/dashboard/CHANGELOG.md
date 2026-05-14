@@ -4,6 +4,20 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.015] 2026 May 14th
+
+### Added
+- **Tumor Growth — Bayesian LMM (brms) analysis mode** — new "Bayesian LMM (brms)" option in the Statistical Model selector. When selected, the analysis runs asynchronously in a background worker via `future`/`promises` so the app remains fully responsive during the 3–12 minute Stan compilation and MCMC sampling. A spinner notification is shown while the model runs.
+  - Sidebar controls: Prior Strength preset (Weakly informative / Informative / Diffuse), MCMC chains (default 4), Iterations per chain (default 2 000), and an amber timing notice.
+  - Random Effects selector is now visible for both `lme4` and `bayes` modes (previously lme4-only).
+  - Two Bayesian-specific result tabs are dynamically inserted when Bayesian mode is active and removed when switching away: **Posterior Check** (posterior predictive density overlay via `brms::pp_check`) and **MCMC Diagnostics** (Rhat, Bulk_ESS, Tail_ESS, Converged flag table + trace plots).
+  - The **ANOVA** tab displays an informative "not applicable" message in Bayesian mode (ANOVA has no meaning for posterior inference).
+  - The **Diagnostics** tab (Q–Q and Residuals vs Fitted plots) redirects users to the Posterior Check tab in Bayesian mode.
+  - Treatment Effects and Pairwise Comparisons tabs populate from the same column structure as the lme4 path (95 % CrI for Bayes, 95 % CI for lme4).
+  - **Bayesian LMM Mode** section added to the Tumor Growth Info tab describing priors, outputs, and interpretation guidance.
+- **Async execution infrastructure** — `future::plan(multisession, workers = 1L)` initialised at app startup in `app.R`; cleaned up on exit via `on.exit`. Prevents blocking the Shiny event loop during long-running Stan fits.
+- `future (>= 1.33.0)`, `promises (>= 1.2.0)`, `brms (>= 2.19)`, `bayesplot (>= 1.10)` added to `Suggests` in DESCRIPTION.
+
 ## [v26.05.014] 2026 May 14th
 
 ### Changed

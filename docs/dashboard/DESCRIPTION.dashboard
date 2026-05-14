@@ -1,7 +1,7 @@
 Package: mouseExperimentDashboard
 Title: Interactive Dashboard for mouseExperiment Analysis
-Version: 26.05.012
-Date: 2026-05-04
+Version: 26.05.015
+Date: 2026-05-14
 Authors@R: 
     person("David", "Woods", , "david@sciomics.bio", role = c("aut", "cre"))
 Author: David Woods [aut, cre]
@@ -34,6 +34,10 @@ Imports:
     wesanderson (>= 0.3.7),
     mouseExperiment (>= 0.2.0)
 Suggests:
+    future (>= 1.33.0),
+    promises (>= 1.2.0),
+    brms (>= 2.19),
+    bayesplot (>= 1.10),
     testthat (>= 3.0.0),
     shinytest2 (>= 0.2.0),
     chromote,

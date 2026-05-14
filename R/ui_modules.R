@@ -328,12 +328,15 @@ tumorGrowthUI <- function(id) {
           selectInput(ns("tg_model_type"),
                      "Statistical Model",
                      choices = c("Linear Mixed-Effects (LME4)" = "lme4",
-                                "Area Under Curve (AUC)" = "auc"),
+                                "Area Under Curve (AUC)"       = "auc",
+                                "Bayesian LMM (brms)"          = "bayes"),
                      selected = "lme4"),
           helpText("LME4 models tumor volume trajectories over time using a linear ",
                    "mixed-effects model, which handles repeated measures and unequal ",
                    "timepoints. AUC summarizes total tumor burden as the area under ",
-                   "each animal's growth curve."),
+                   "each animal's growth curve. Bayesian LMM fits the same mixed-effects ",
+                   "model as LME4 but reports full posterior distributions and 95 % ",
+                   "credible intervals; computation takes 3–12 minutes."),
 
           # 2. Reference Group
           selectInput(ns("tg_reference"),
@@ -396,9 +399,9 @@ tumorGrowthUI <- function(id) {
                      "treatment. Requires a Cage ID column to be mapped in Data Upload.")
           ),
 
-          # 7. Random Effects (LME4 only)
+          # 7. Random Effects (LME4 and Bayesian)
           conditionalPanel(ns = ns,
-            condition = "input.tg_model_type == 'lme4'",
+            condition = "input.tg_model_type == 'lme4' || input.tg_model_type == 'bayes'",
             selectInput(ns("tg_random_effects"),
                        "Random Effects",
                        choices = c("Intercept only" = "intercept_only",
@@ -408,7 +411,35 @@ tumorGrowthUI <- function(id) {
             helpText("Specifies the random effects structure for individual animals. ",
                      "'Intercept only' allows each animal to have its own baseline ",
                      "volume. 'Intercept + Slope' also allows individual growth rates, ",
-                     "which is more flexible but may fail to converge with small samples.")
+                     "which is more flexible but may fail to converge with small samples. ",
+                     "('None' is not available in Bayesian mode.)")
+          ),
+
+          # 8. Bayesian-specific controls
+          conditionalPanel(ns = ns,
+            condition = "input.tg_model_type == 'bayes'",
+            hr(),
+            h5(strong("Bayesian Settings")),
+            selectInput(ns("tg_prior_strength"), "Prior Strength",
+              choices = c(
+                "Weakly informative (recommended)" = "weakly_informative",
+                "Informative"                      = "informative",
+                "Diffuse"                          = "diffuse"
+              ),
+              selected = "weakly_informative"
+            ),
+            helpText("Prior on fixed effects (log-scale slopes/contrasts). ",
+                     "Weakly informative: N(0, 1) — regularises estimates without ",
+                     "strong assumptions. Informative: N(0, 0.5) — tighter. ",
+                     "Diffuse: N(0, 2.5) — minimal regularisation."),
+            numericInput(ns("tg_bayes_chains"), "MCMC chains",
+                         value = 4, min = 1, max = 8, step = 1),
+            numericInput(ns("tg_bayes_iter"), "Iterations per chain",
+                         value = 2000, min = 500, max = 10000, step = 500),
+            div(class = "alert alert-warning", style = "font-size:0.85em; padding:8px; margin-top:6px;",
+              icon("clock"), " Bayesian fitting takes ~3–12 minutes. ",
+              "The app stays usable while the model runs in the background."
+            )
           ),
 
           br(),
@@ -512,6 +543,65 @@ tumorGrowthUI <- function(id) {
                       "LOCF (last observation carried forward) can extrapolate AUC to a common endpoint for animals censored early, ",
                       "so all animals contribute to the same time window. Set Extrapolation Points to 0 to use only observed data."
                     ))
+                  )
+                ),
+
+                # ── Bayesian LMM Mode ─────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-success", "Bayesian LMM Mode"), " — Method & Outputs")),
+                  div(class = "panel-body",
+
+                    h5(strong("Method")),
+                    p("Fits the same model formula as LME4 using full Bayesian inference via ",
+                      tags$a("brms", href = "https://paul-buerkner.github.io/brms/", target = "_blank"),
+                      " / Stan. Instead of point estimates and p-values, every parameter has a ",
+                      strong("posterior distribution"), ": a probability distribution over plausible values ",
+                      "given the data and priors."),
+                    tags$blockquote(tags$code(
+                      "log(Volume) ~ Treatment × Day + (1 | ID)"
+                    )),
+                    p("Results are summarised as posterior medians with ",
+                      strong("95 % highest posterior density (HPD) credible intervals"), ". ",
+                      "A 95 % CrI has a direct probability interpretation: there is a 95 % posterior ",
+                      "probability that the true parameter lies within the interval — unlike a frequentist ",
+                      "confidence interval."),
+
+                    hr(),
+                    h5(strong("Prior Strength")),
+                    p("Priors regularise the model in the absence of strong data. All presets use the ",
+                      "same prior family; only the width changes:"),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Weakly informative"),
+                      tags$dd("N(0, 1) on fixed effects (log-scale); Exponential(1) on SDs. ",
+                              "Recommended for most datasets — prevents extreme estimates without ",
+                              "imposing biological assumptions."),
+                      tags$dt("Informative"),
+                      tags$dd("N(0, 0.5) — tighter regularisation; use when you have strong prior ",
+                              "knowledge that effects are small."),
+                      tags$dt("Diffuse"),
+                      tags$dd("N(0, 2.5) — minimal regularisation; equivalent to near-flat priors. ",
+                              "Use with caution on small datasets.")
+                    ),
+
+                    hr(),
+                    h5(strong("Result Tabs")),
+                    tags$ul(
+                      tags$li(strong("Summary"), " — posterior median and 95 % CrI for every model parameter."),
+                      tags$li(strong("Treatment Effects"), " — group-level estimated marginal means (posterior) at the mean study day."),
+                      tags$li(strong("Comparisons"), " — posterior contrasts of each group vs the reference."),
+                      tags$li(strong("Posterior Check"), " — overlay of observed data density vs 50 draws from the posterior predictive distribution. Systematic mismatch indicates model mis-specification."),
+                      tags$li(strong("MCMC Diagnostics"), " — Rhat and effective sample size (ESS) per parameter. Rhat > 1.01 indicates non-convergence; increase iterations or inspect trace plots."),
+                      tags$li(strong("Growth Rates"), " — per-animal log-linear regression rates (same as LME4, not MCMC-based).")
+                    ),
+
+                    div(class = "alert alert-info", style = "margin-top:10px;",
+                      icon("clock"), " ",
+                      strong("Computation time:"), " typically 3–12 minutes on modern hardware. ",
+                      "Stan compiles the model on the first call with a given formula and caches the result — ",
+                      "subsequent calls with the same formula are faster. ",
+                      "The dashboard runs fitting in the background; the app stays responsive while the model runs."
+                    )
                   )
                 ),
 

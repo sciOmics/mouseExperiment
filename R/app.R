@@ -230,6 +230,13 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     })
   }
 
+  # Enable background async execution for Bayesian models (1 worker to avoid
+  # overloading the server; each Bayesian fit runs Stan in parallel internally)
+  if (requireNamespace("future", quietly = TRUE)) {
+    future::plan(future::multisession, workers = 1L)
+    on.exit(future::plan(future::sequential), add = TRUE)
+  }
+
   app <- shinyApp(ui = ui, server = server)
   shiny::runApp(app, host = host, port = port, launch.browser = TRUE)
 }

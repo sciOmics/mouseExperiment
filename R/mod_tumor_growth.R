@@ -167,6 +167,95 @@ tumor_growth_server <- function(id, rv) {
       return()
     }
     
+    # ── Bayesian async branch ────────────────────────────────────────────────
+    if (isTRUE(input$tg_model_type == "bayes")) {
+      pkg_ok <- requireNamespace("future",   quietly = TRUE) &&
+                requireNamespace("promises", quietly = TRUE) &&
+                requireNamespace("brms",     quietly = TRUE)
+      if (!pkg_ok) {
+        output$tg_status_msg <- renderUI(
+          status_alert(paste(
+            "Bayesian mode requires the 'brms', 'future', and 'promises' packages.",
+            "Install them with: install.packages(c('brms', 'future', 'promises'))"
+          ), "danger")
+        )
+        rv$tg_running <- FALSE
+        return(NULL)
+      }
+
+      # Random effects: Bayesian does not support "none" — fall back to intercept_only
+      re_spec <- if (isTRUE(input$tg_random_effects == "none")) "intercept_only" else
+                   input$tg_random_effects %||% "intercept_only"
+
+      # Capture all reactive values before entering the future
+      bayes_params <- list(
+        data             = data,
+        col_names        = col_names,
+        reference_group  = input$tg_reference,
+        random_effects   = re_spec,
+        prior_strength   = input$tg_prior_strength   %||% "weakly_informative",
+        n_chains         = as.integer(input$tg_bayes_chains %||% 4L),
+        n_iter           = as.integer(input$tg_bayes_iter   %||% 2000L),
+        extrap_pts       = as.integer(input$tg_extrapolation_points %||% 0L),
+        dose_col         = rv$dose_col,
+        plot_groups      = rv$tg_plot_groups
+      )
+
+      notif_id <- paste0("bayes_run_", as.integer(Sys.time()))
+      shiny::showNotification(
+        ui       = tagList(icon("spinner", class = "fa-spin"),
+                           " Bayesian model running in background (~3–12 min)…"),
+        id       = notif_id,
+        duration = NULL,
+        type     = "message"
+      )
+
+      promises::future_promise({
+        mouseExperiment::bayesian_tumor_growth(
+          df                           = bayes_params$data,
+          time_column                  = bayes_params$col_names$time_column,
+          volume_column                = bayes_params$col_names$volume_column,
+          id_column                    = bayes_params$col_names$id_column,
+          treatment_column             = bayes_params$col_names$treatment_column,
+          cage_column                  = bayes_params$col_names$cage_column,
+          dose_column                  = bayes_params$dose_col,
+          random_effects_specification = bayes_params$random_effects,
+          reference_group              = bayes_params$reference_group,
+          prior_strength               = bayes_params$prior_strength,
+          n_chains                     = bayes_params$n_chains,
+          n_iter                       = bayes_params$n_iter,
+          return_model                 = TRUE,
+          plots                        = FALSE,
+          verbose                      = FALSE
+        )
+      }) %...>% (function(result) {
+        shiny::removeNotification(notif_id)
+        result$model_type_used <- "bayes"
+        rv$tg_results  <- result
+        rv$tg_running  <- FALSE
+        rv$tg_plot_data <- bayes_params$data
+        rv$tg_col_names <- bayes_params$col_names
+
+        output$tg_status_msg <- renderUI(
+          status_alert("Bayesian analysis completed successfully!", "success")
+        )
+        shinyjs::runjs("window.trackAnalysisComplete('tumor_growth', true);")
+      }) %...!% (function(err) {
+        shiny::removeNotification(notif_id)
+        rv$tg_running <- FALSE
+        err_msg <- conditionMessage(err)
+        output$tg_status_msg <- renderUI(
+          status_alert(paste("Bayesian analysis failed:", err_msg), "danger")
+        )
+        shinyjs::runjs(sprintf(
+          "window.trackAnalysisComplete('tumor_growth', false, '%s');",
+          gsub("'", "\\\\'", err_msg)
+        ))
+      })
+
+      return(NULL)   # return immediately — Shiny knows this is non-blocking
+    }
+
     # Run analysis with progress indicator
     progress <- shiny::Progress$new(session, min = 0, max = 1)
     progress$set(message = "Running tumor growth analysis...", value = 0.1)
@@ -822,6 +911,60 @@ tumor_growth_server <- function(id, rv) {
     }
   }, ignoreNULL = FALSE)
 
+  # Dynamically insert / remove Bayesian tabs based on model type
+  bayes_tabs_inserted <- reactiveVal(FALSE)
+
+  observeEvent(input$tg_model_type, {
+    tabs_id <- "tg_results_tabs"
+    if (isTRUE(input$tg_model_type == "bayes") && !isTRUE(bayes_tabs_inserted())) {
+      appendTab(inputId = tabs_id,
+        tabPanel("Posterior Check",
+          tab_info(
+            strong("Posterior predictive check (PPC)"), " — the model generates new datasets from the posterior and overlays their densities on the observed data. Good model fit means the simulated densities closely envelope the observed density.",
+            tags$ul(
+              tags$li(strong("y"), " — observed (transformed) tumor volume values."),
+              tags$li(strong("y_rep"), " — 50 simulated datasets drawn from the posterior predictive distribution.")
+            ),
+            em("If the observed density falls well outside the simulated envelope, consider a different transformation or random-effects specification.")
+          ),
+          shinycssloaders::withSpinner(
+            plotOutput(session$ns("tg_pp_check_plot"), height = "450px")
+          ),
+          downloadButton(session$ns("download_tg_pp_check"), "Download Plot")
+        ),
+        select = FALSE
+      )
+      appendTab(inputId = tabs_id,
+        tabPanel("MCMC Diagnostics",
+          tab_info(
+            strong("MCMC convergence diagnostics"), " for all fixed-effect parameters. All chains should have converged (R̂ ≈ 1.00) and sufficient effective samples before interpreting results.",
+            tags$ul(
+              tags$li(strong("Parameter"), " — model parameter name."),
+              tags$li(strong("Rhat"), " — potential scale-reduction factor; values > 1.01 indicate non-convergence."),
+              tags$li(strong("Bulk_ESS"), " — bulk effective sample size; aim for > 400 per chain."),
+              tags$li(strong("Tail_ESS"), " — tail effective sample size; important for credible interval accuracy."),
+              tags$li(strong("Converged"), " — TRUE when R̂ ≤ 1.01.")
+            ),
+            em("If Rhat > 1.01, try increasing iterations or chains before reporting results.")
+          ),
+          shinycssloaders::withSpinner(
+            DTOutput(session$ns("tg_mcmc_diag_table"))
+          ),
+          br(),
+          shinycssloaders::withSpinner(
+            plotOutput(session$ns("tg_mcmc_trace_plot"), height = "500px")
+          )
+        ),
+        select = FALSE
+      )
+      bayes_tabs_inserted(TRUE)
+    } else if (!isTRUE(input$tg_model_type == "bayes") && isTRUE(bayes_tabs_inserted())) {
+      removeTab(inputId = tabs_id, target = "Posterior Check")
+      removeTab(inputId = tabs_id, target = "MCMC Diagnostics")
+      bayes_tabs_inserted(FALSE)
+    }
+  }, ignoreNULL = FALSE)
+
   # Track plot type switching
   observeEvent(input$tg_plot_selector, {
     req(input$tg_plot_selector)
@@ -952,13 +1095,22 @@ tumor_growth_server <- function(id, rv) {
 
   output$tg_anova_table <- renderDT({
     req(rv$tg_results)
+    if (isTRUE(rv$tg_results$model_type_used == "bayes")) {
+      return(datatable(data.frame(
+        Message = paste(
+          "ANOVA is not applicable for Bayesian models.",
+          "See the Posterior Check tab for model fit validation",
+          "and the MCMC Diagnostics tab for convergence assessment."
+        )
+      ), options = list(paging = FALSE, searching = FALSE)))
+    }
     if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$anova)) {
       return(datatable(data.frame(Message = "ANOVA table not available")))
     }
-    
+
     anova_df <- as.data.frame(rv$tg_results$anova)
     anova_df <- format_df_for_display(anova_df)
-    
+
     datatable(anova_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
@@ -1796,6 +1948,11 @@ tumor_growth_server <- function(id, rv) {
   output$tg_diag_qq <- renderPlot({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
+    if (isTRUE(rv$tg_results$model_type_used == "bayes")) {
+      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = "Frequentist diagnostics not applicable in Bayesian mode.\nSee the Posterior Check tab for model validation.")
+      return(invisible(NULL))
+    }
     if (!is.null(rv$tg_results$diag_qq_plot)) {
       return(rv$tg_results$diag_qq_plot)
     }
@@ -1806,12 +1963,68 @@ tumor_growth_server <- function(id, rv) {
   output$tg_diag_resid_fitted <- renderPlot({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
+    if (isTRUE(rv$tg_results$model_type_used == "bayes")) {
+      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = "Frequentist diagnostics not applicable in Bayesian mode.\nSee the Posterior Check tab for model validation.")
+      return(invisible(NULL))
+    }
     if (!is.null(rv$tg_results$diag_resid_fitted_plot)) {
       return(rv$tg_results$diag_resid_fitted_plot)
     }
     plot(1, 1, type = "n", main = "Residuals vs Fitted not available", xlab = "", ylab = "")
   })
   
+  # --- Bayesian-specific output renderers ---
+
+  output$tg_posterior_summary <- renderDT({
+    req(rv$tg_results)
+    req(isTRUE(rv$tg_results$model_type_used == "bayes"))
+    req(!isTRUE(rv$tg_results$error))
+    ps <- rv$tg_results$posterior_summary
+    req(!is.null(ps))
+    datatable(
+      format_df_for_display(as.data.frame(ps)),
+      options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)
+    )
+  })
+
+  output$tg_pp_check_plot <- renderPlot({
+    req(rv$tg_results)
+    req(isTRUE(rv$tg_results$model_type_used == "bayes"))
+    req(!isTRUE(rv$tg_results$error))
+    req(!is.null(rv$tg_results$model))
+    brms::pp_check(rv$tg_results$model, type = "dens_overlay", ndraws = 50)
+  })
+
+  output$tg_mcmc_diag_table <- renderDT({
+    req(rv$tg_results)
+    req(isTRUE(rv$tg_results$model_type_used == "bayes"))
+    req(!isTRUE(rv$tg_results$error))
+    diag <- rv$tg_results$mcmc_diagnostics
+    req(!is.null(diag))
+    datatable(
+      format_df_for_display(as.data.frame(diag)),
+      options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)
+    )
+  })
+
+  output$tg_mcmc_trace_plot <- renderPlot({
+    req(rv$tg_results)
+    req(isTRUE(rv$tg_results$model_type_used == "bayes"))
+    req(!isTRUE(rv$tg_results$error))
+    req(!is.null(rv$tg_results$model))
+    bayesplot::mcmc_trace(brms::as.array(rv$tg_results$model))
+  })
+
+  output$download_tg_pp_check <- downloadHandler(
+    filename = "posterior_predictive_check.png",
+    content = function(file) {
+      req(!is.null(rv$tg_results$model))
+      p <- brms::pp_check(rv$tg_results$model, type = "dens_overlay", ndraws = 50)
+      ggplot2::ggsave(file, plot = p, width = 8, height = 5, dpi = 150)
+    }
+  )
+
   # Download handlers (placeholder implementations)
   output$download_tg_anova <- downloadHandler(
     filename = "anova_results.csv",
