@@ -4,6 +4,15 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.014] 2026 May 14th
+
+### Changed
+- **Power Analysis — LMM Simulation defaults and labels** — growth-rate and variance-component inputs now use log-scale defaults (`Control log-growth rate = 0.15`, `Treatment reduction = 0.10`, `Random intercept SD = 0.20`, `Random slope SD = 0.05`, `Residual SD = 0.10`) matching the corrected `apriori_power_simulation()` which generates log-normal data and fits `log(Volume)`.
+- **Toxicity — Therapeutic Window Metric formula** — TWM denominator now reads "Mean Body Weight Loss" throughout the UI (info panel, tab description, plot subtitle) and the summary text correctly references `Mean_Pct_Weight_Loss` and `TGI` columns from the updated package.
+
+### Fixed
+- **Toxicity — TWM summary text** — the combined-report text block referenced non-existent columns `TGI_Pct` and `Max_Weight_Loss_Pct`; corrected to `TGI` and `Mean_Pct_Weight_Loss`.
+
 ## [v26.05.013] 2026 May 14th
 
 ### Removed

@@ -217,8 +217,8 @@ toxicityUI <- function(id) {
                     hr(),
                     h5(strong("Therapeutic Window Metric (TWM)")),
                     p("A summary ratio combining efficacy and toxicity per group:"),
-                    tags$blockquote(tags$code("TWM = TGI(%) / Max Body Weight Loss(%)")),
-                    p("Higher TWM indicates a more favourable balance. A noise floor prevents division by near-zero weight changes. Displayed as a ranked bar chart."),
+                    tags$blockquote(tags$code("TWM = TGI(%) / Mean Body Weight Loss(%)")),
+                    p("Higher TWM indicates a more favourable balance. The denominator is the group mean of per-mouse maximum weight loss (not the single worst-case mouse). A noise floor prevents division by near-zero weight changes. Displayed as a ranked bar chart."),
 
                     hr(),
                     h5(strong("Safety-Efficacy Scatter")),
@@ -567,7 +567,7 @@ toxicity_server <- function(id, rv) {
         tabPanel("Therapeutic Window",
           tab_info(
             strong("Therapeutic Window Metric (TWM). "),
-            "TWM = TGI(%) / Max Body Weight Loss(%). Higher values indicate a more ",
+            "TWM = TGI(%) / Mean Body Weight Loss(%). Higher values indicate a more ",
             "favourable efficacy-to-toxicity ratio."
           ),
           shinycssloaders::withSpinner(DTOutput(ns("tox_et_twm_table"))),
@@ -923,11 +923,11 @@ toxicity_server <- function(id, rv) {
     lines <- c("=== EFFICACY-TOXICITY ANALYSIS SUMMARY ===", "")
     if (!is.null(res$twm) && !isTRUE(res$twm$error)) {
       tbl   <- res$twm$twm_table
-      lines <- c(lines, "Therapeutic Window Metric (TWM = TGI / Max Weight Loss%):", "")
+      lines <- c(lines, "Therapeutic Window Metric (TWM = TGI / Mean Weight Loss%):", "")
       for (i in seq_len(nrow(tbl)))
-        lines <- c(lines, sprintf("  %s:  TWM = %.2f  |  TGI = %.1f%%  |  Max Weight Loss = %.1f%%",
+        lines <- c(lines, sprintf("  %s:  TWM = %.2f  |  TGI = %.1f%%  |  Mean Weight Loss = %.1f%%",
                                   tbl$Treatment[i], tbl$TWM[i],
-                                  tbl$TGI_Pct[i], tbl$Max_Weight_Loss_Pct[i]))
+                                  tbl$TGI[i], tbl$Mean_Pct_Weight_Loss[i]))
       lines <- c(lines, "")
     }
     if (!is.null(res$benefit) && !isTRUE(res$benefit$error)) {
@@ -1362,7 +1362,7 @@ toxicity_server <- function(id, rv) {
       ggplot2::geom_text(ggplot2::aes(label = round(.data[["TWM"]], 2)), vjust = -0.5, size = 4) +
       ggplot2::geom_hline(yintercept = 1, linetype = "dashed", color = "grey40") +
       ggplot2::labs(title = "Therapeutic Window Metric by Treatment",
-                   subtitle = "TWM = TGI(%) / Max Weight Loss(%). Dashed line = TWM of 1.",
+                   subtitle = "TWM = TGI(%) / Mean Weight Loss(%). Dashed line = TWM of 1.",
                    x = "Treatment", y = "TWM") +
       ggplot2::theme_classic(base_size = text_sz) +
       ggplot2::theme(legend.position = "none",
