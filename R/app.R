@@ -100,12 +100,12 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     ),
 
     tabPanel("Data",          dataUploadUI("data")),
+    tabPanel("Power Analysis",  powerAnalysisUI("pw")),
     tabPanel("Tumor Growth",  tumorGrowthUI("tg")),
     tabPanel("Survival",           survivalUI("surv")),
     tabPanel("Toxicity",            toxicityUI("tox")),
     tabPanel("Dose Response",       doseResponseUI("dr")),
     tabPanel("Drug Synergy",        synergyUI("syn")),
-    tabPanel("Power Analysis",  powerAnalysisUI("pw")),
     tabPanel("Log",           analysisLogUI("log")),
     tabPanel("Help",          helpUI()),
     tabPanel("About",          citationUI())
