@@ -121,15 +121,6 @@ calculate_volume <- function(df, length_column = "Length", width_column = "Width
   # Add volume to result dataframe
   result <- cbind(df_result, Volume)
   
-  # If in_place is TRUE and we're in a function, update the original df in the parent environment
-  if (in_place) {
-    parent_frame <- parent.frame()
-    df_name <- deparse(substitute(df))
-    if (exists(df_name, envir = parent_frame)) {
-      assign(df_name, result, envir = parent_frame)
-    }
-  }
-  
   # Return the result
   return(result)
 }

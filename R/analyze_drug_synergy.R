@@ -195,12 +195,6 @@ analyze_drug_synergy <- function(df,
     analysis_data[[volume_column]][analysis_data[[treatment_column]] == drug_b_name]
   )
   
-  # Clean up combo_name if needed - handle "HDACi + PD1" vs "aPD1"
-  # This fixes inconsistencies where "HDACi + PD1" is in the data but drug_b might be named "aPD1"
-  if (combo_name == "HDACi + PD1" && drug_b_name == "aPD1") {
-    # Variables are already correct - no change needed
-  }
-  
   # Create a data frame for summary results
   summary_df <- data.frame(
     Treatment = c(drug_a_name, drug_b_name, combo_name, "Bliss Expected", "Loewe Expected"),

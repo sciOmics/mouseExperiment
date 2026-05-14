@@ -15,11 +15,11 @@
 #' @keywords internal
 tgs_extrapolate <- function(df, id_column, treatment_column, cage_column,
                             time_column, volume_column, verbose) {
-  if (verbose) message("Extrapolating points for subjects with missing data at the last timepoint")
+  if (isTRUE(verbose)) message("Extrapolating points for subjects with missing data at the last timepoint")
   
   # Find the true maximum day across all subjects (global maximum day of the study)
   true_max_day <- max(df[[time_column]], na.rm = TRUE)
-  if (verbose) message("True maximum day of the study: ", true_max_day)
+  if (isTRUE(verbose)) message("True maximum day of the study: ", true_max_day)
   
   # Make sure all data has the Extrapolated column
   if (!"Extrapolated" %in% colnames(df)) {
@@ -30,11 +30,13 @@ tgs_extrapolate <- function(df, id_column, treatment_column, cage_column,
   subjects_with_extrapolation <- list()
   
   # Process each unique subject
-  unique_subjects <- unique(paste(df[[id_column]], df[[treatment_column]], df[[cage_column]], sep="|||"))
-  
+  unique_subjects <- unique(
+    make_mouse_key(df[[id_column]], df[[treatment_column]], df[[cage_column]])
+  )
+
   for (subject_id in unique_subjects) {
     # Parse the composite ID
-    id_parts <- strsplit(subject_id, "|||", fixed = TRUE)[[1]]
+    id_parts <- split_mouse_key(subject_id)
     id <- id_parts[1]
     treatment <- id_parts[2]
     cage <- id_parts[3]
@@ -74,11 +76,11 @@ tgs_extrapolate <- function(df, id_column, treatment_column, cage_column,
           # Add the new extrapolated point to the subject data
           subject_data <- rbind(subject_data, new_row)
           
-          if (verbose) {
+          if (isTRUE(verbose)) {
             message("Extrapolated subject ", id, " from day ", max_subj_day, " to day ", true_max_day)
           }
         }, error = function(e) {
-          if (verbose) {
+          if (isTRUE(verbose)) {
             message("Failed to extrapolate subject ", id, ": ", conditionMessage(e))
           }
         })
@@ -93,7 +95,7 @@ tgs_extrapolate <- function(df, id_column, treatment_column, cage_column,
   df <- do.call(rbind, subjects_with_extrapolation)
   
   # Count extrapolated subjects for verbose output
-  if (verbose) {
+  if (isTRUE(verbose)) {
     extrapolated_subjects <- unique(df$Extrapolated[df$Extrapolated])
     n_extrapolated <- length(extrapolated_subjects)
     if (n_extrapolated > 0) {
@@ -223,105 +225,153 @@ tgs_compute_cage_effects <- function(analysis_df, cage_column, treatment_column,
   cage_analysis
 }
 
-#' Fit and select lme4 mixed-effects models
+#' Fit lme4 mixed-effects model using caller-specified structure
 #'
 #' @param analysis_df Transformed analysis data frame
 #' @param volume_column Column name for tumor volume
 #' @param time_column Column name for time points
 #' @param treatment_column Column name for treatment groups
 #' @param id_column Column name for subject IDs
+#' @param cage_column Column name for cage identifiers
+#' @param random_effects_specification One of "intercept_only", "slope", "none"
+#' @param handle_cage_effects One of "include_if_not_collinear", "always_include",
+#'   "never_include", "as_random_effect"
+#' @param polynomial_degree Integer >= 1 for the polynomial degree of the time term
+#' @param cage_collinear Logical; whether cage is collinear with treatment
 #' @param verbose Print progress messages
 #' @return List with model, model_selection, and best_model
 #' @noRd
 #' @keywords internal
 tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
-                                treatment_column, id_column, verbose) {
-  # Helper: wrap a column name in backticks for use inside formula strings
+                                treatment_column, id_column, cage_column,
+                                random_effects_specification,
+                                handle_cage_effects,
+                                polynomial_degree,
+                                cage_collinear,
+                                verbose) {
   bt <- function(x) paste0("`", x, "`")
 
-  # Model selection
-  model_selection <- list()
-  
-  # Fit different random effects specifications
-  models <- list()
-  model_fit_errors <- list()
-  
-  # Base model (intercept only)
-  # Use withCallingHandlers so boundary (singular) fit warnings don't discard
-  # valid models — the model is still usable even when a random-effect variance
-  # is estimated near zero.
-  models$intercept_only <- tryCatch({
-    withCallingHandlers(
-      lme4::lmer(
-        stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (1|", bt(id_column), ")")),
-        data = analysis_df,
-        control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
-                                  check.nobs.vs.nRE = "ignore")
-      ),
-      warning = function(w) {
-        if (grepl("boundary|singular", w$message))
-          message("Note: intercept-only model has singular fit (random-effect variance near zero)")
-        invokeRestart("muffleWarning")
-      }
-    )
-  }, error = function(e) {
-    model_fit_errors[["intercept_only"]] <<- conditionMessage(e)
-    NULL
-  })
-  
-  # Random slope model
-  models$random_slope <- tryCatch({
-    withCallingHandlers(
-      lme4::lmer(
-        stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (", bt(time_column), "|", bt(id_column), ")")),
-        data = analysis_df,
-        control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
-                                  check.nobs.vs.nRE = "ignore")
-      ),
-      warning = function(w) {
-        if (grepl("boundary|singular", w$message))
-          message("Note: random-slope model has singular fit (random-effect variance near zero)")
-        invokeRestart("muffleWarning")
-      }
-    )
-  }, error = function(e) {
-    model_fit_errors[["random_slope"]] <<- conditionMessage(e)
-    NULL
-  })
-  
-  # Remove any NULL models
-  models <- models[!sapply(models, is.null)]
-  
-  if (length(models) > 0) {
-    # Compare models using AIC and BIC
-    model_selection$aic <- sapply(models, stats::AIC)
-    model_selection$bic <- sapply(models, stats::BIC)
-    
-    # Select best model based on BIC (more conservative)
-    best_model <- names(which.min(model_selection$bic))
-    model <- models[[best_model]]
-    
-    if (verbose) {
-      message("Model selection results:")
-      message("AIC: ", paste(names(model_selection$aic), "=", round(model_selection$aic, 2), collapse = ", "))
-      message("BIC: ", paste(names(model_selection$bic), "=", round(model_selection$bic, 2), collapse = ", "))
-      message("Selected model: ", best_model)
-    }
+  # Build time term based on polynomial degree
+  time_term <- if (polynomial_degree == 1) {
+    bt(time_column)
   } else {
-    warning("No valid models could be fitted. Using intercept-only model as fallback. ",
-            "Errors: ", paste(names(model_fit_errors), "=", model_fit_errors, collapse = "; "))
-    model <- lme4::lmer(
-      stats::as.formula(paste(bt(volume_column), "~", bt(time_column), "*", bt(treatment_column), "+ (1|", bt(id_column), ")")),
-      data = analysis_df,
-      control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
-                                check.nobs.vs.nRE = "ignore")
-    )
-    model_selection$aic <- stats::AIC(model)
-    model_selection$bic <- stats::BIC(model)
-    model_selection$selected_model <- "intercept_only"
-    best_model <- "intercept_only"
+    inner <- paste(c(
+      bt(time_column),
+      paste0("I(", bt(time_column), "^", 2:polynomial_degree, ")")
+    ), collapse = " + ")
+    paste0("(", inner, ")")
   }
-  list(model = model, model_selection = model_selection, best_model = best_model)
+
+  # Determine cage inclusion in fixed vs random effects
+  include_cage_fixed <- switch(handle_cage_effects,
+    include_if_not_collinear = !cage_collinear,
+    always_include           = TRUE,
+    never_include            = FALSE,
+    as_random_effect         = FALSE
+  )
+  include_cage_random <- handle_cage_effects == "as_random_effect"
+
+  # Build fixed-effects string
+  fixed_part <- paste(
+    bt(volume_column), "~", time_term, "*", bt(treatment_column)
+  )
+  if (include_cage_fixed) {
+    fixed_part <- paste(fixed_part, "+", bt(cage_column))
+  }
+
+  if (isTRUE(verbose)) {
+    message("Random effects specification: ", random_effects_specification)
+    message("Polynomial degree: ", polynomial_degree)
+    message("Cage in fixed effects: ", include_cage_fixed)
+    message("Cage as random effect: ", include_cage_random)
+  }
+
+  # No random effects — use lm()
+  if (random_effects_specification == "none") {
+    if (include_cage_random) {
+      warning(
+        "handle_cage_effects = 'as_random_effect' requires random effects; ",
+        "ignored because random_effects_specification = 'none'."
+      )
+    }
+    model <- tryCatch(
+      stats::lm(stats::as.formula(fixed_part), data = analysis_df),
+      error = function(e) {
+        warning("lm() failed (", e$message, "). Falling back to intercept-only lmer.")
+        lme4::lmer(
+          stats::as.formula(
+            paste(fixed_part, "+ (1|", bt(id_column), ")")
+          ),
+          data = analysis_df,
+          control = lme4::lmerControl(
+            check.nobs.vs.nlev = "ignore",
+            check.nobs.vs.nRE  = "ignore"
+          )
+        )
+      }
+    )
+    model_selection <- list(
+      aic = stats::AIC(model),
+      bic = stats::BIC(model),
+      selected_model = "none"
+    )
+    return(list(model = model, model_selection = model_selection,
+                best_model = "none"))
+  }
+
+  # Build random-effects string
+  # Use withCallingHandlers so boundary (singular) fit warnings don't discard
+  # valid models — the model is still usable when a random-effect variance is
+  # estimated near zero.
+  re_part <- switch(random_effects_specification,
+    intercept_only = paste0("(1|", bt(id_column), ")"),
+    slope          = paste0("(", bt(time_column), "|", bt(id_column), ")")
+  )
+  if (include_cage_random) {
+    re_part <- paste(re_part, "+", paste0("(1|", bt(cage_column), ")"))
+  }
+
+  formula_str <- paste(fixed_part, "+", re_part)
+
+  model <- tryCatch({
+    withCallingHandlers(
+      lme4::lmer(
+        stats::as.formula(formula_str),
+        data = analysis_df,
+        control = lme4::lmerControl(
+          check.nobs.vs.nlev = "ignore",
+          check.nobs.vs.nRE  = "ignore"
+        )
+      ),
+      warning = function(w) {
+        if (grepl("boundary|singular", w$message))
+          message("Note: model has singular fit (random-effect variance near zero)")
+        invokeRestart("muffleWarning")
+      }
+    )
+  }, error = function(e) {
+    warning("lmer() failed (", e$message, "). Falling back to intercept-only model.")
+    lme4::lmer(
+      stats::as.formula(paste(
+        bt(volume_column), "~", bt(time_column), "*",
+        bt(treatment_column), "+ (1|", bt(id_column), ")"
+      )),
+      data = analysis_df,
+      control = lme4::lmerControl(
+        check.nobs.vs.nlev = "ignore",
+        check.nobs.vs.nRE  = "ignore"
+      )
+    )
+  })
+
+  model_selection <- list(
+    aic = stats::AIC(model),
+    bic = stats::BIC(model),
+    selected_model = random_effects_specification
+  )
+
+  list(model = model, model_selection = model_selection,
+       best_model = random_effects_specification)
 }
 
 #' Compute descriptive summary statistics by treatment and time
@@ -388,7 +438,7 @@ tgs_compute_summary <- function(analysis_df, treatment_column, time_column,
 tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
                             time_column, volume_column, verbose) {
   # Calculate AUC for each subject
-  if (verbose) message("Calculating AUC for each subject")
+  if (isTRUE(verbose)) message("Calculating AUC for each subject")
   
   # Uses exported calculate_auc() utility from utils_auc.R
   
@@ -401,7 +451,11 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
   # Merge back with the original data to assign the correct unique ID to each row
   auc_df_with_id <- merge(auc_df, unique_combinations, by=c(id_column, treatment_column, cage_column))
   # Use this unique_id for processing
-  composite_id <- paste(auc_df_with_id[[id_column]], auc_df_with_id[[treatment_column]], auc_df_with_id[[cage_column]], sep = "|||")
+  composite_id <- make_mouse_key(
+    auc_df_with_id[[id_column]],
+    auc_df_with_id[[treatment_column]],
+    auc_df_with_id[[cage_column]]
+  )
   auc_rows <- vector("list", length(unique(composite_id)))
   auc_row_idx <- 0L
   
@@ -410,7 +464,7 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
   
   for (unique_id in unique(composite_id)) {
     # Extract data for this unique ID
-    id_parts <- strsplit(unique_id, "|||", fixed = TRUE)[[1]]
+    id_parts <- split_mouse_key(unique_id)
     actual_id <- id_parts[1]
     treatment <- id_parts[2]
     cage <- id_parts[3]
@@ -639,7 +693,7 @@ tumor_growth_statistics <- function(df,
   auc_method <- match.arg(auc_method)
   p_adjust_method <- match.arg(p_adjust_method)
   
-  if (verbose) {
+  if (isTRUE(verbose)) {
     message("Analyzing tumor growth data...")
     message("Model type: ", model_type)
     message("Transform: ", transform)
@@ -659,7 +713,7 @@ tumor_growth_statistics <- function(df,
   if (no_cage_mode) {
     cage_column <- ".cage_placeholder"
     df[[cage_column]] <- "1"
-    if (verbose) message("No cage column provided 2014 cage effects will not be analysed.")
+    if (isTRUE(verbose)) message("No cage column provided 2014 cage effects will not be analysed.")
   }
   
   # Set reference group if not specified
@@ -669,7 +723,7 @@ tumor_growth_statistics <- function(df,
   } else if (!reference_group %in% treatment_groups) {
     stop("Reference group '", reference_group, "' is not present in the data.")
   }
-  if (verbose) {
+  if (isTRUE(verbose)) {
     message("Using ", reference_group, " as reference group for statistical comparisons")
   }
   
@@ -691,10 +745,10 @@ tumor_growth_statistics <- function(df,
     vol <- analysis_df[[volume_column]]
     vol[vol <= 0] <- min(vol[vol > 0], na.rm = TRUE) / 2
     analysis_df[[volume_column]] <- log(vol)
-    if (verbose) message("Applied log transformation to volume data")
+    if (isTRUE(verbose)) message("Applied log transformation to volume data")
   } else if (transform == "sqrt") {
     analysis_df[[volume_column]] <- sqrt(analysis_df[[volume_column]])
-    if (verbose) message("Applied square root transformation to volume data")
+    if (isTRUE(verbose)) message("Applied square root transformation to volume data")
   }
   
   # Growth rate analysis
@@ -706,8 +760,14 @@ tumor_growth_statistics <- function(df,
   cage_effects <- cage_analysis$effects
 
   # Model fitting and selection
-  lme4_result <- tgs_fit_lme4_models(analysis_df, volume_column, time_column,
-                                     treatment_column, id_column, verbose)
+  cage_collinear <- !is.null(cage_analysis$collinearity_test) &&
+    isTRUE(cage_analysis$collinearity_test$p.value < 0.05)
+  lme4_result <- tgs_fit_lme4_models(
+    analysis_df, volume_column, time_column,
+    treatment_column, id_column, cage_column,
+    random_effects_specification, handle_cage_effects,
+    polynomial_degree, cage_collinear, verbose
+  )
   model <- lme4_result$model
   model_selection <- lme4_result$model_selection
   best_model <- lme4_result$best_model
@@ -723,16 +783,19 @@ tumor_growth_statistics <- function(df,
       qq_plot = stats::qqnorm(stats::residuals(model), plot.it = FALSE)
     )
     
-    # Random effects plots
-    diagnostics$random_effects <- list(
-      intercepts = lme4::ranef(model)[[id_column]],
-      slopes = if (best_model == "random_slope") {
-        lme4::ranef(model)[[id_column]][, 2]
-      } else NULL
-    )
-    
-    # Variance components
-    diagnostics$variance_components <- lme4::VarCorr(model)
+    # Random effects plots (only available for lmer models)
+    if (inherits(model, "lmerMod")) {
+      diagnostics$random_effects <- list(
+        intercepts = lme4::ranef(model)[[id_column]],
+        slopes = if (best_model == "slope") {
+          lme4::ranef(model)[[id_column]][, 2]
+        } else NULL
+      )
+      diagnostics$variance_components <- lme4::VarCorr(model)
+    } else {
+      diagnostics$random_effects <- NULL
+      diagnostics$variance_components <- NULL
+    }
   }
 
   # Create a basic summary of the data
@@ -891,7 +954,9 @@ tumor_growth_statistics <- function(df,
     analysis_summary <- list(
       analysis_type = "Area Under the Curve (AUC) Analysis",
       data_description = list(
-        subjects = length(unique(paste(auc_df[[id_column]], auc_df[[treatment_column]], auc_df[[cage_column]], sep="|||"))),
+        subjects = length(unique(make_mouse_key(
+          auc_df[[id_column]], auc_df[[treatment_column]], auc_df[[cage_column]]
+        ))),
         treatment_groups = length(unique(auc_df[[treatment_column]])),
         time_points = length(unique(auc_df[[time_column]])),
         reference_group = reference_group
@@ -929,6 +994,7 @@ tumor_growth_statistics <- function(df,
       anova = anova_table,
       summary = analysis_summary,
       posthoc = posthoc,
+      pairwise_comparisons = posthoc$pairwise,
       treatment_effects = treatment_effects,
       growth_rates = growth_rates,
       cage_analysis = cage_analysis,
@@ -1032,7 +1098,9 @@ tumor_growth_statistics <- function(df,
     analysis_summary <- list(
       analysis_type = "Linear Mixed Effects Model Analysis",
       data_description = list(
-        subjects = length(unique(paste(analysis_df[[id_column]], analysis_df[[treatment_column]], analysis_df[[cage_column]], sep="|||"))),
+        subjects = length(unique(make_mouse_key(
+          analysis_df[[id_column]], analysis_df[[treatment_column]], analysis_df[[cage_column]]
+        ))),
         treatment_groups = length(unique(analysis_df[[treatment_column]])),
         time_points = length(unique(analysis_df[[time_column]])),
         reference_group = reference_group
@@ -1047,9 +1115,10 @@ tumor_growth_statistics <- function(df,
         cage_effects = handle_cage_effects
       ),
       model_selection = list(
-        criteria = "Model selected based on minimum BIC",
-        selected_model = if(!is.null(model_selection$selected_model)) model_selection$selected_model else "Default model",
-        models_compared = if(!is.null(model_selection$bic)) names(model_selection$bic) else "None"
+        criteria = paste("Random effects:", random_effects_specification),
+        selected_model = if (!is.null(model_selection$selected_model)) {
+          model_selection$selected_model
+        } else random_effects_specification
       ),
       methods = list(
         volume_transformation = transform,
@@ -1076,6 +1145,10 @@ tumor_growth_statistics <- function(df,
       anova = anova_table,
       summary = analysis_summary,
       pairwise_comparisons = pairwise_comp,
+      posthoc = list(
+        method = posthoc_method,
+        pairwise = if (!is.null(pairwise_comp)) as.data.frame(summary(pairwise_comp)) else NULL
+      ),
       treatment_effects = treatment_effects,
       growth_rates = growth_rates,
       cage_analysis = cage_analysis,

@@ -114,22 +114,7 @@ analyze_drug_synergy_over_time <- function(df,
   
   # Initialize lists to store results
   timepoint_results <- list()
-  synergy_summary <- data.frame(
-    Time_Point = numeric(),
-    TGI_Drug_A = numeric(),
-    TGI_Drug_B = numeric(),
-    TGI_Combo = numeric(),
-    Bliss_Expected_TGI = numeric(),
-    Loewe_Expected_TGI = numeric(),
-    Bliss_Difference = numeric(),
-    Loewe_Difference = numeric(),
-    Combination_Index = numeric(),
-    P_Value_vs_Drug_A = numeric(),
-    P_Value_vs_Drug_B = numeric(),
-    Synergy_Assessment = character(),
-    Validation_Check = character(),  # Add validation column
-    stringsAsFactors = FALSE
-  )
+  synergy_rows <- list()
   
   # Loop through each time point and calculate synergy
   for (tp in all_timepoints) {
@@ -177,63 +162,35 @@ analyze_drug_synergy_over_time <- function(df,
       tgi_drug_b <- summary_df$TGI_Percent[summary_df$Treatment == drug_b_name]
       tgi_combo <- summary_df$TGI_Percent[summary_df$Treatment == combo_name]
       
-      # Recalculate the Bliss expected values to ensure consistency with bar graphs
-      # Use the same formula as in analyze_drug_synergy: EA + EB - (EA * EB)
-      fe_a <- tgi_drug_a / 100  # Convert to fractional effect
-      fe_b <- tgi_drug_b / 100
-      bliss_expected_fe <- fe_a + fe_b - (fe_a * fe_b)
-      bliss_expected <- bliss_expected_fe * 100
-      
-      # Get Loewe expected value
+      # Get Bliss and Loewe expected values directly from summary_df
+      bliss_expected <- summary_df$TGI_Percent[summary_df$Treatment == "Bliss Expected"]
       loewe_expected <- summary_df$TGI_Percent[summary_df$Treatment == "Loewe Expected"]
-      
-      # Perform validation checks
-      # 1. Verify Bliss expected calculation is consistent
-      bliss_expected_check <- fe_a + fe_b - (fe_a * fe_b)
-      bliss_expected_tgi_check <- bliss_expected_check * 100
-      bliss_diff_check <- (tgi_combo / 100) - bliss_expected_check
-      
-      # 2. Verify CI calculation
-      ci_check <- min(fe_a + fe_b, 1.0) / (tgi_combo / 100)
-      
-      # Check if values match within tolerance
-      bliss_match <- abs(bliss_expected - bliss_expected_tgi_check) < 0.01
-      ci_match <- abs(ci_result$ci - ci_check) < 0.01
-      
-      # 3. Create validation message
-      validation_msg <- "All calculations verified"
-      if (!bliss_match) {
-        validation_msg <- paste("Bliss mismatch:", round(bliss_expected, 2), "vs", round(bliss_expected_tgi_check, 2))
-      } else if (!ci_match) {
-        validation_msg <- paste("CI mismatch:", round(ci_result$ci, 2), "vs", round(ci_check, 2))
-      }
-      
-      # Create a row for this time point
-      tp_row <- data.frame(
+
+      # Accumulate row for this time point
+      synergy_rows[[length(synergy_rows) + 1]] <- data.frame(
         Time_Point = tp,
         TGI_Drug_A = tgi_drug_a,
         TGI_Drug_B = tgi_drug_b,
         TGI_Combo = tgi_combo,
         Bliss_Expected_TGI = bliss_expected,
         Loewe_Expected_TGI = loewe_expected,
-        Bliss_Difference = bliss_result$difference * 100, # Convert to percentage
-        Loewe_Difference = loewe_result$difference * 100, # Convert to percentage
+        Bliss_Difference = bliss_result$difference * 100,
+        Loewe_Difference = loewe_result$difference * 100,
         Combination_Index = ci_result$ci,
         P_Value_vs_Drug_A = stat_tests$P_Value[1],
         P_Value_vs_Drug_B = stat_tests$P_Value[2],
         Synergy_Assessment = synergy_results$overall_assessment,
-        Validation_Check = validation_msg,
         stringsAsFactors = FALSE
       )
-      
-      # Add to summary data frame
-      synergy_summary <- rbind(synergy_summary, tp_row)
       
     }, error = function(e) {
       warning(paste("Error analyzing time point", tp, ":", e$message))
     })
   }
   
+  # Combine accumulated rows into summary data frame
+  synergy_summary <- if (length(synergy_rows) > 0) do.call(rbind, synergy_rows) else data.frame()
+
   # Check if we have any successful results
   if (nrow(synergy_summary) == 0) {
     stop("Could not calculate synergy for any time points.")
@@ -260,17 +217,9 @@ analyze_drug_synergy_over_time <- function(df,
     
     message("Synergy Summary by Time Point:")
     message(paste(utils::capture.output(
-      print(synergy_summary[, c("Time_Point", "TGI_Combo", "Bliss_Expected_TGI", 
-                             "Bliss_Difference", "Combination_Index", "Synergy_Assessment", "Validation_Check")])
+      print(synergy_summary[, c("Time_Point", "TGI_Combo", "Bliss_Expected_TGI",
+                             "Bliss_Difference", "Combination_Index", "Synergy_Assessment")])
     ), collapse = "\n"))
-    
-    # Check for validation issues
-    validation_issues <- synergy_summary$Validation_Check != "All calculations verified"
-    if (any(validation_issues)) {
-      message("\nWARNING: Some validation checks failed. Please review calculations.")
-    } else {
-      message("\nAll calculations verified as consistent.")
-    }
   }
   
   # Return comprehensive results
@@ -338,20 +287,28 @@ plot_synergy_trend <- function(synergy_results, custom_title = NULL, custom_colo
     color_values <- custom_colors
   }
   
+  # Annotation coordinates: additive offsets so they work when Time_Point starts at 0
+  .tp_lo   <- min(synergy_summary$Time_Point)
+  .tp_span <- max(max(synergy_summary$Time_Point) - .tp_lo, 1)
+  .tp_x1   <- .tp_lo + .tp_span * 0.05
+  .tp_x2   <- .tp_lo + .tp_span * 0.15
+  .tp_x3   <- .tp_lo + .tp_span * 0.20
+  .tgi_max <- max(synergy_summary$TGI_Combo, na.rm = TRUE)
+
   # Create the plot
   trend_plot <- ggplot2::ggplot(synergy_summary, ggplot2::aes(x = Time_Point)) +
     # Treatment TGI lines - use named mapping for consistency
     ggplot2::geom_line(ggplot2::aes(y = TGI_Drug_A, color = drug_a_name)) +
     ggplot2::geom_line(ggplot2::aes(y = TGI_Drug_B, color = drug_b_name)) +
-    ggplot2::geom_line(ggplot2::aes(y = TGI_Combo, color = combo_name), size = 1.2) +
+    ggplot2::geom_line(ggplot2::aes(y = TGI_Combo, color = combo_name), linewidth = 1.2) +
     ggplot2::geom_line(ggplot2::aes(y = Bliss_Expected_TGI, color = "Bliss Expected"), linetype = "dashed") +
     # Synergy area (when combo effect > bliss expected)
     ggplot2::geom_ribbon(data = subset(synergy_summary, TGI_Combo > Bliss_Expected_TGI),
-                      ggplot2::aes(ymin = Bliss_Expected_TGI, ymax = TGI_Combo), 
+                      ggplot2::aes(ymin = Bliss_Expected_TGI, ymax = TGI_Combo),
                       fill = "lightgreen", alpha = 0.4) +
     # Antagonism area (when combo effect < bliss expected)
     ggplot2::geom_ribbon(data = subset(synergy_summary, TGI_Combo < Bliss_Expected_TGI),
-                      ggplot2::aes(ymin = TGI_Combo, ymax = Bliss_Expected_TGI), 
+                      ggplot2::aes(ymin = TGI_Combo, ymax = Bliss_Expected_TGI),
                       fill = "pink", alpha = 0.4) +
     # Formatting
     ggplot2::scale_color_manual(
@@ -359,26 +316,20 @@ plot_synergy_trend <- function(synergy_results, custom_title = NULL, custom_colo
       values = color_values,
       labels = c(drug_a_name, drug_b_name, combo_name, "Bliss Expected")
     ) +
-    # Add a manual legend for the ribbon areas using labelled rectangles in the plot
-    ggplot2::annotate("rect", 
-              xmin = min(synergy_summary$Time_Point) * 1.05, 
-              xmax = min(synergy_summary$Time_Point) * 1.15, 
-              ymin = max(synergy_summary$TGI_Combo, na.rm = TRUE) * 0.85, 
-              ymax = max(synergy_summary$TGI_Combo, na.rm = TRUE) * 0.90,
+    # Manual legend for ribbon areas
+    ggplot2::annotate("rect",
+              xmin = .tp_x1, xmax = .tp_x2,
+              ymin = .tgi_max * 0.85, ymax = .tgi_max * 0.90,
               fill = "lightgreen", alpha = 0.4) +
-    ggplot2::annotate("text", 
-              x = min(synergy_summary$Time_Point) * 1.2, 
-              y = max(synergy_summary$TGI_Combo, na.rm = TRUE) * 0.875,
+    ggplot2::annotate("text",
+              x = .tp_x3, y = .tgi_max * 0.875,
               label = "Synergy", hjust = 0) +
-    ggplot2::annotate("rect", 
-              xmin = min(synergy_summary$Time_Point) * 1.05, 
-              xmax = min(synergy_summary$Time_Point) * 1.15, 
-              ymin = max(synergy_summary$TGI_Combo, na.rm = TRUE) * 0.75, 
-              ymax = max(synergy_summary$TGI_Combo, na.rm = TRUE) * 0.80,
+    ggplot2::annotate("rect",
+              xmin = .tp_x1, xmax = .tp_x2,
+              ymin = .tgi_max * 0.75, ymax = .tgi_max * 0.80,
               fill = "pink", alpha = 0.4) +
-    ggplot2::annotate("text", 
-              x = min(synergy_summary$Time_Point) * 1.2, 
-              y = max(synergy_summary$TGI_Combo, na.rm = TRUE) * 0.775,
+    ggplot2::annotate("text",
+              x = .tp_x3, y = .tgi_max * 0.775,
               label = "Antagonism", hjust = 0) +
     ggplot2::labs(
       title = title,
@@ -434,7 +385,7 @@ plot_combination_index <- function(synergy_results, custom_title = NULL) {
   
   # Create the plot
   ci_plot <- ggplot2::ggplot(synergy_summary, ggplot2::aes(x = Time_Point, y = Combination_Index)) +
-    ggplot2::geom_line(size = 1) +
+    ggplot2::geom_line(linewidth = 1) +
     # Fix the TRUE/FALSE mapping issue by explicitly setting aesthetics
     ggplot2::geom_point(
       data = subset(synergy_summary, Combination_Index < 1),

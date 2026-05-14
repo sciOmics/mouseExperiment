@@ -54,7 +54,7 @@ weight_loss_threshold <- function(df,
 
   # Composite key: ensures IDs shared across treatment groups are treated as
   # distinct mice (common when ear tags / cage labels are reused per group).
-  wd$.MouseKey <- paste(wd$Treatment, wd$ID, sep = "\u2060")
+  wd$.MouseKey <- make_mouse_key(wd$Treatment, wd$ID)
   wd <- wd[order(wd$.MouseKey, wd$Day), ]
 
   # --- Compute baseline weight per mouse ---

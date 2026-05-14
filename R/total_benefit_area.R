@@ -53,13 +53,6 @@ total_benefit_area <- function(df,
     reference_group <- if (length(ref_match) > 0) ref_match[1] else groups[1]
   }
 
-  trap_auc <- function(time, value) {
-    if (length(time) < 2) return(NA_real_)
-    ord <- order(time)
-    t <- time[ord]; v <- value[ord]
-    sum(diff(t) * (v[-length(v)] + v[-1]) / 2)
-  }
-
   # --- Efficacy AUC: TGI over time per group ---
   # Compute mean volume per group per day
   vol_agg <- stats::aggregate(Volume ~ Treatment + Day, data = wd, FUN = mean, na.rm = TRUE)
@@ -71,7 +64,7 @@ total_benefit_area <- function(df,
     merged <- merge(gv, ctrl_vol, by = "Day")
     merged$TGI <- (1 - merged$Volume / merged$Ctrl_Volume) * 100
     merged$TGI[is.nan(merged$TGI)] <- 0
-    auc_val <- trap_auc(merged$Day, merged$TGI)
+    auc_val <- calculate_auc(merged$Day, merged$TGI)
     data.frame(Treatment = g, Efficacy_AUC = auc_val, stringsAsFactors = FALSE)
   })
   efficacy_df <- do.call(rbind, efficacy_auc)
@@ -83,9 +76,14 @@ total_benefit_area <- function(df,
     wd$Net_Weight <- wd$Weight
   }
 
-  # Per-group mean baseline
-  baseline_grp <- stats::aggregate(Net_Weight ~ Treatment, data = wd,
-    FUN = function(x) x[1])
+  # Per-group mean baseline: use weight at the earliest study day.
+  # aggregate(x[1]) gives no ordering guarantee, so filter to min(Day) first.
+  min_day <- min(wd$Day, na.rm = TRUE)
+  baseline_grp <- stats::aggregate(
+    Net_Weight ~ Treatment,
+    data = wd[wd$Day == min_day, ],
+    FUN = mean, na.rm = TRUE
+  )
   names(baseline_grp)[2] <- "Baseline_Weight"
 
   wt_agg <- stats::aggregate(Net_Weight ~ Treatment + Day, data = wd, FUN = mean, na.rm = TRUE)
@@ -95,7 +93,7 @@ total_benefit_area <- function(df,
 
   toxicity_auc <- lapply(setdiff(groups, reference_group), function(g) {
     gw <- wt_agg[wt_agg$Treatment == g, ]
-    auc_val <- trap_auc(gw$Day, gw$Pct_Loss)
+    auc_val <- calculate_auc(gw$Day, gw$Pct_Loss)
     data.frame(Treatment = g, Toxicity_AUC = auc_val, stringsAsFactors = FALSE)
   })
   toxicity_df <- do.call(rbind, toxicity_auc)

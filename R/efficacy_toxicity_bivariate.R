@@ -74,20 +74,22 @@ efficacy_toxicity_bivariate <- function(df,
   max_wl$Max_Pct_Weight_Loss <- pmax(max_wl$Max_Pct_Weight_Loss, 0)
 
   # --- Efficacy: per mouse ---
-  trap_auc <- function(time, value) {
-    if (length(time) < 2) return(NA_real_)
-    ord <- order(time)
-    t <- time[ord]; v <- value[ord]
-    sum(diff(t) * (v[-length(v)] + v[-1]) / 2)
-  }
-
   max_day <- max(wd$Day, na.rm = TRUE)
   ctrl_data <- wd[wd$Treatment == reference_group, ]
   ctrl_mean_final_vol <- mean(ctrl_data$Volume[ctrl_data$Day == max_day], na.rm = TRUE)
 
+  # Control AUC: mean of per-mouse AUCs (pooling all observations produces a
+  # nonsensical integral when multiple mice share the same timepoints).
+  ctrl_mouse_keys <- unique(make_mouse_key(ctrl_data$Treatment, ctrl_data$ID))
+  ctrl_aucs <- vapply(ctrl_mouse_keys, function(k) {
+    s <- ctrl_data[make_mouse_key(ctrl_data$Treatment, ctrl_data$ID) == k, ]
+    calculate_auc(s$Day, s$Volume)
+  }, numeric(1))
+  ctrl_mean_auc <- mean(ctrl_aucs, na.rm = TRUE)
+
   # Per-mouse efficacy — use composite key so IDs shared across groups are
   # treated as distinct mice (matches the pattern in body_weight_auc.R)
-  wd$.MouseKey <- paste(wd$Treatment, wd$ID, sep = "\u2060")
+  wd$.MouseKey <- make_mouse_key(wd$Treatment, wd$ID)
   mouse_keys <- unique(wd$.MouseKey)
   eff_list <- lapply(mouse_keys, function(key) {
     sub <- wd[wd$.MouseKey == key, ]
@@ -102,10 +104,9 @@ efficacy_toxicity_bivariate <- function(df,
       },
       tumor_auc = {
         # Lower AUC = better efficacy; we invert so higher = better
-        ctrl_auc <- trap_auc(ctrl_data$Day, ctrl_data$Volume)
-        mouse_auc <- trap_auc(sub$Day, sub$Volume)
-        if (!is.na(ctrl_auc) && ctrl_auc > 0) {
-          (1 - mouse_auc / ctrl_auc) * 100
+        mouse_auc <- calculate_auc(sub$Day, sub$Volume)
+        if (!is.na(ctrl_mean_auc) && ctrl_mean_auc > 0) {
+          (1 - mouse_auc / ctrl_mean_auc) * 100
         } else NA_real_
       }
     )

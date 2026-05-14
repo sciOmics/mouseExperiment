@@ -16,6 +16,7 @@
 #' @param id_column Column with individual mouse identifiers. Default: "ID".
 #' @param time_point Optional specific time point (day) to analyze. Default: NULL (uses last time point).
 #' @param control_group_name Name of the control group. Default: "Control".
+#' @param verbose Logical; if TRUE, prints model summaries and statistics to the console. Default: TRUE.
 #'
 #' @return A list containing:
 #'   \item{dose_effect_test}{Statistical test results for dose-dependency}
@@ -64,7 +65,8 @@ dose_response_statistics <- function(df,
                                     id_column = id_column, time_point = time_point)
   
   # Generate summary statistics
-  summary_stats <- generate_summary_statistics(analysis_data, dose_column = dose_column, volume_column = volume_column)
+  summary_stats <- generate_summary_statistics(analysis_data, dose_column = dose_column,
+                                               volume_column = volume_column, verbose = verbose)
   
   # Create visualizations
   plots <- create_dose_plots(analysis_data, summary_stats, dose_column = dose_column, volume_column = volume_column)
@@ -75,7 +77,7 @@ dose_response_statistics <- function(df,
                                               verbose = verbose)
   
   # Generate user-friendly report
-  if (verbose) generate_user_report(stats_results, plots)
+  if (isTRUE(verbose)) generate_user_report(stats_results, plots)
   
   # Return all results
   return(list(
@@ -110,7 +112,8 @@ dose_response_statistics <- function(df,
 #' @param time_point Specific time point to analyze
 #' 
 #' @return Prepared data frame
-#' @export
+#' @noRd
+#' @keywords internal
 prepare_dose_data <- function(df, dose_column = "Dose", treatment_column = "Treatment", 
                              volume_column = "Volume", day_column = "Day", 
                              id_column = "ID", time_point = NULL) {
@@ -138,14 +141,17 @@ prepare_dose_data <- function(df, dose_column = "Dose", treatment_column = "Trea
 }
 
 #' Generate summary statistics for each dose level
-#' 
+#'
 #' @param analysis_data Prepared data frame
 #' @param dose_column Dose column name
 #' @param volume_column Volume column name
-#' 
+#' @param verbose Logical; whether to print summary statistics
+#'
 #' @return Summary statistics table
-#' @export
-generate_summary_statistics <- function(analysis_data, dose_column = "Dose", volume_column = "Volume") {
+#' @noRd
+#' @keywords internal
+generate_summary_statistics <- function(analysis_data, dose_column = "Dose", volume_column = "Volume",
+                                        verbose = TRUE) {
   summary_stats <- analysis_data %>%
     dplyr::group_by(.data[[dose_column]]) %>%
     dplyr::summarize(
@@ -158,10 +164,12 @@ generate_summary_statistics <- function(analysis_data, dose_column = "Dose", vol
       ci95_upper = mean_volume + qt(0.975, n-1) * sem_volume,
       .groups = "drop"
     )
-  
-  message("Summary statistics by dose level:")
-  message(paste(utils::capture.output(print(summary_stats)), collapse = "\n"))
-  
+
+  if (isTRUE(verbose)) {
+    message("Summary statistics by dose level:")
+    message(paste(utils::capture.output(print(summary_stats)), collapse = "\n"))
+  }
+
   return(summary_stats)
 }
 
@@ -228,7 +236,7 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
   linear_model <- stats::lm(paste(volume_column, "~", dose_column), data = analysis_data)
   linear_summary <- summary(linear_model)
   
-  if (verbose) {
+  if (isTRUE(verbose)) {
     message("Linear regression model:")
     message(paste(utils::capture.output(print(linear_summary)), collapse = "\n"))
   }
@@ -243,7 +251,7 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
                            data = analysis_data)
   anova_summary <- summary(anova_model)
   
-  if (verbose) {
+  if (isTRUE(verbose)) {
     message("ANOVA model:")
     message(paste(utils::capture.output(print(anova_summary)), collapse = "\n"))
   }
@@ -258,7 +266,7 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
   # 3. Post-hoc Tukey test
   if (!is.na(statistics$anova_p_value) && statistics$anova_p_value < 0.05) {
     tukey_results <- stats::TukeyHSD(anova_model)
-    if (verbose) {
+    if (isTRUE(verbose)) {
       message("Tukey HSD test:")
       message(paste(utils::capture.output(print(tukey_results)), collapse = "\n"))
     }
@@ -266,14 +274,21 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
   }
   
   # 4. Try to fit non-linear dose-response models
-  statistics <- try_nonlinear_models(analysis_data, dose_column, volume_column, statistics, linear_model)
-  
+  statistics <- try_nonlinear_models(
+    analysis_data, dose_column, volume_column, statistics, linear_model,
+    verbose = verbose
+  )
+
   # 5. Growth rate analysis
-  statistics <- analyze_growth_rate(original_df, analysis_data, dose_column, volume_column, 
-                                  day_column, id_column, statistics)
-  
+  statistics <- analyze_growth_rate(original_df, analysis_data, dose_column,
+                                    volume_column, day_column, id_column,
+                                    statistics)
+
   # 6. Polynomial trend analysis
-  statistics <- analyze_polynomial_trends(analysis_data, dose_column, volume_column, statistics)
+  statistics <- analyze_polynomial_trends(
+    analysis_data, dose_column, volume_column, statistics,
+    verbose = verbose
+  )
   
   # Jonckheere-Terpstra test not run due to mentioned issues
   jt_result <- NULL
@@ -296,8 +311,10 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
 #' 
 #' @return Updated statistics list
 #' @keywords internal
-try_nonlinear_models <- function(analysis_data, dose_column = "Dose", volume_column = "Volume", 
-                              statistics = list(), linear_model = NULL) {
+try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
+                              volume_column = "Volume",
+                              statistics = list(), linear_model = NULL,
+                              verbose = TRUE) {
   if (requireNamespace("drc", quietly = TRUE)) {
     tryCatch({
       # Prepare data for drc
@@ -338,7 +355,7 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose", volume_col
       # Get model summary
       dr_summary <- summary(dr_model)
       
-      if (verbose) {
+      if (isTRUE(verbose)) {
         message("Selected dose-response model type: ", model_type)
         message("Non-linear dose-response model:")
         message(paste(utils::capture.output(print(dr_summary)), collapse = "\n"))
@@ -432,8 +449,9 @@ analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_
 #' 
 #' @return Updated statistics list
 #' @keywords internal
-analyze_polynomial_trends <- function(analysis_data, dose_column = "Dose", volume_column = "Volume", 
-                                 statistics = list()) {
+analyze_polynomial_trends <- function(analysis_data, dose_column = "Dose",
+                                 volume_column = "Volume",
+                                 statistics = list(), verbose = TRUE) {
   tryCatch({
     # Check if we have enough dose levels
     if (length(unique(analysis_data[[dose_column]])) >= 3) {
@@ -449,7 +467,7 @@ analyze_polynomial_trends <- function(analysis_data, dose_column = "Dose", volum
       poly_summary <- summary(poly_model)
       poly_anova <- stats::anova(poly_model)
       
-      if (verbose) {
+      if (isTRUE(verbose)) {
         message("Polynomial contrasts for dose-response trends:")
         message(paste(utils::capture.output(print(summary(poly_model))), collapse = "\n"))
         message(paste(utils::capture.output(print(poly_anova)), collapse = "\n"))

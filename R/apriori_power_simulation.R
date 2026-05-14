@@ -141,34 +141,34 @@ apriori_power_simulation <- function(n_per_group          = c(5L, 8L, 10L, 12L, 
         n_fit <- n_fit + 1L
 
         # ---- Extract p-value for Treatment:Day ------------------------------
+        # Prefer LRT (statistically preferred for LMMs); lme4 does not compute
+        # p-values by default so the coefficient table rarely has Pr(>|t|).
         p_val <- tryCatch({
-          coefs  <- as.data.frame(stats::coef(summary(fit)))
-          # Rows whose name contains ":"  — the interaction terms
-          int_rows <- coefs[grep(":", rownames(coefs), fixed = TRUE), , drop = FALSE]
-          if (nrow(int_rows) == 0) {
-            # Fall back: Satterthwaite via lmerTest if available
-            if (requireNamespace("lmerTest", quietly = TRUE)) {
-              fit2 <- lmerTest::as_lmerModLmerTest(fit)
-              coefs2 <- as.data.frame(stats::coef(summary(fit2)))
-              int_rows2 <- coefs2[grep(":", rownames(coefs2), fixed = TRUE), , drop = FALSE]
-              if (nrow(int_rows2) > 0 && "Pr(>|t|)" %in% colnames(int_rows2))
-                min(int_rows2[["Pr(>|t|)"]], na.rm = TRUE)
-              else NA_real_
-            } else NA_real_
+          fit_red <- tryCatch(
+            lme4::lmer(Volume ~ Treatment + Day + (Day | ID),
+                       data    = df_sim,
+                       REML    = FALSE,
+                       control = lme4::lmerControl(optimizer = "bobyqa",
+                                                   calc.derivs = FALSE)),
+            error = function(e) NULL
+          )
+          if (!is.null(fit_red)) {
+            lrt <- stats::anova(fit_red, fit)
+            lrt$`Pr(>Chisq)`[2]
+          } else if (requireNamespace("lmerTest", quietly = TRUE)) {
+            # Fall back to Satterthwaite approximation
+            fit2      <- lmerTest::as_lmerModLmerTest(fit)
+            coefs2    <- as.data.frame(stats::coef(summary(fit2)))
+            int_rows2 <- coefs2[
+              grep(":", rownames(coefs2), fixed = TRUE), , drop = FALSE
+            ]
+            if (nrow(int_rows2) > 0 && "Pr(>|t|)" %in% colnames(int_rows2)) {
+              min(int_rows2[["Pr(>|t|)"]], na.rm = TRUE)
+            } else {
+              NA_real_
+            }
           } else {
-            # Use likelihood-ratio test between full and reduced model
-            fit_red <- tryCatch(
-              lme4::lmer(Volume ~ Treatment + Day + (Day | ID),
-                         data    = df_sim,
-                         REML    = FALSE,
-                         control = lme4::lmerControl(optimizer = "bobyqa",
-                                                     calc.derivs = FALSE)),
-              error = function(e) NULL
-            )
-            if (!is.null(fit_red)) {
-              lrt <- stats::anova(fit_red, fit)
-              lrt$`Pr(>Chisq)`[2]
-            } else NA_real_
+            NA_real_
           }
         }, error = function(e) NA_real_)
 

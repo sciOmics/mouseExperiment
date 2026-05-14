@@ -5,6 +5,20 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] - 2026-05-14
+
+### Removed
+- `post_power_analysis()` — eliminated entirely. Post-hoc power computed from observed effect sizes is uninformative: it is a 1-to-1 monotone function of the p-value and provides no information beyond it (Hoenig & Heisey, 2001). All power and sample-size questions should be answered prospectively with `apriori_power_analysis()` or `apriori_power_simulation()`. The `export(post_power_analysis)` entry has been removed from `NAMESPACE`.
+
+### Fixed
+- `body_weight_auc()`, `efficacy_toxicity_bivariate()`, `total_benefit_area()` — removed local `trap_auc()` definitions; all three now call the shared `calculate_auc()` from `utils_auc.R`. Identical implementations had drifted into three separate files.
+- `apriori_power_simulation()` — likelihood-ratio test (LRT via `lme4`) is now the preferred method for extracting a p-value from the fitted LMM, with Satterthwaite (`lmerTest`) as a fallback. Previously the branches were inverted: because `lme4` does not populate p-values in the coefficient table, the LRT path was almost never taken and Satterthwaite was always used.
+- `analyze_drug_synergy_over_time()` — removed internal Bliss-validation recalculation block that duplicated logic already computed by `analyze_drug_synergy()`; the Bliss Expected TGI is now read directly from the per-timepoint summary. Annotation x-coordinates in the synergy-trend plot now use additive range-based offsets instead of multiplicative offsets, which broke at `Time_Point = 0`. Row accumulation in the timepoint loop replaced with list-based pre-allocation.
+- `survival_statistics()` — `print_results()` no longer re-derives median survival by refitting `survfit` internally; it now reads from the already-computed `results` data frame passed by the caller. The previous approach updated only a local copy, leaving `NA` values in the returned result list.
+- `dose_response_statistics()` — `verbose` is now forwarded to `generate_summary_statistics()`, so message output is properly suppressed when `verbose = FALSE`. All `if (verbose)` guards standardised to `if (isTRUE(verbose))`.
+- `survival_statistics()`, `tumor_growth_statistics()` — all `if (verbose)` guards standardised to `if (isTRUE(verbose))`.
+- `tumor_auc_analysis()` — removed dead `exists("plot_auc", mode = "function")` guard and its unreachable fallback branch; `plot_auc()` is always available via the package namespace.
+
 ## [0.3.3] - 2026-05-12
 
 ### Added

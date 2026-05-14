@@ -60,15 +60,24 @@ weight_corrected_tgi <- function(df,
     wd$Net_Weight <- wd$Weight
   }
 
-  baseline <- stats::aggregate(Net_Weight ~ ID, data = wd, FUN = function(x) x[1])
-  names(baseline)[2] <- "Baseline_Weight"
-  wd <- merge(wd, baseline, by = "ID", all.x = TRUE)
+  # Baseline per mouse+treatment at the earliest study day.
+  # Aggregate by both ID and Treatment to handle IDs shared across groups.
+  min_day <- min(wd$Day, na.rm = TRUE)
+  baseline <- stats::aggregate(Net_Weight ~ ID + Treatment,
+                               data = wd[wd$Day == min_day, ],
+                               FUN = mean, na.rm = TRUE)
+  names(baseline)[3] <- "Baseline_Weight"
+  wd <- merge(wd, baseline, by = c("ID", "Treatment"), all.x = TRUE)
   wd$Pct_Loss <- (wd$Baseline_Weight - wd$Net_Weight) / wd$Baseline_Weight
 
   # --- Identify mice exceeding threshold ---
   max_loss <- stats::aggregate(Pct_Loss ~ ID + Treatment, data = wd, FUN = max, na.rm = TRUE)
   max_loss$Exceeded <- max_loss$Pct_Loss >= safety_threshold
-  excluded_ids <- max_loss$ID[max_loss$Exceeded]
+  # Use composite key so shared IDs in different groups are excluded independently.
+  excluded_keys <- make_mouse_key(
+    max_loss$Treatment[max_loss$Exceeded],
+    max_loss$ID[max_loss$Exceeded]
+  )
 
   # --- Compute TGI (uncorrected, all mice) ---
   max_day <- max(wd$Day, na.rm = TRUE)
@@ -82,7 +91,8 @@ weight_corrected_tgi <- function(df,
   uncorrected$N <- as.integer(table(final_all$Treatment)[uncorrected$Treatment])
 
   # --- Compute TGI (corrected, excluding unsafe mice) ---
-  safe_data <- wd[!wd$ID %in% excluded_ids, ]
+  safe_data <- wd[
+    !make_mouse_key(wd$Treatment, wd$ID) %in% excluded_keys, ]
   final_safe <- safe_data[safe_data$Day == max_day, ]
   ctrl_mean_safe <- mean(final_safe$Volume[final_safe$Treatment == reference_group], na.rm = TRUE)
 

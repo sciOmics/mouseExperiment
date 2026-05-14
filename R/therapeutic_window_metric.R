@@ -71,8 +71,11 @@ therapeutic_window_metric <- function(df,
 
   # --- Max % weight loss per group ---
   # Per mouse: baseline weight, nadir weight, max % loss
-  baseline <- stats::aggregate(Weight ~ ID + Treatment, data = wd,
-                               FUN = function(x) x[1])
+  # Filter to the earliest study day before aggregating so x[1] is ordered.
+  min_day <- min(wd$Day, na.rm = TRUE)
+  baseline <- stats::aggregate(Weight ~ ID + Treatment,
+                               data = wd[wd$Day == min_day, ],
+                               FUN = mean, na.rm = TRUE)
   names(baseline)[3] <- "Baseline_Weight"
 
   nadir <- stats::aggregate(Weight ~ ID + Treatment, data = wd,

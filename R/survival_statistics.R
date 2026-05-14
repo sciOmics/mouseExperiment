@@ -92,16 +92,17 @@ survival_statistics <- function(df,
   
   # Choose and fit appropriate model
   model_results <- fit_survival_model(
-    df, 
-    surv_obj, 
-    cox_formula, 
-    treatment_column, 
+    df,
+    surv_obj,
+    cox_formula,
+    treatment_column,
     treatment_groups,
     reference_group,
     time_column,
     censor_column,
     separation_info,
-    firth_correction
+    firth_correction,
+    verbose = verbose
   )
   
   # Extract model results
@@ -117,7 +118,7 @@ survival_statistics <- function(df,
   km_fit <- survival::survfit(surv_formula, data = df)
   
   # Display median survival information
-  if (verbose) message(paste(utils::capture.output(print(km_fit)), collapse = "\n"))
+  if (isTRUE(verbose)) message(paste(utils::capture.output(print(km_fit)), collapse = "\n"))
   
   # Calculate and add median survival times
   median_survival <- NULL
@@ -238,7 +239,7 @@ survival_statistics <- function(df,
   results$Note <- ifelse(results$Group == reference_group, "Reference group", "")
   
   # Print formatted results
-  if (verbose) print_results(results, df, treatment_column, time_column, censor_column)
+  if (isTRUE(verbose)) print_results(results, df, treatment_column, time_column, censor_column)
   
   # Build our result list
   result_list <- list(
@@ -327,7 +328,7 @@ check_separation <- function(df, treatment_column, censor_column) {
 #' @noRd
 fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, treatment_groups,
                               reference_group, time_column, censor_column, separation_info,
-                              firth_correction) {
+                              firth_correction, verbose = TRUE) {
   
   # Try standard Cox model first
   cox_model <- tryCatch({
@@ -439,9 +440,9 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
       model <- NULL
       results <- data.frame()
     } else {
+      method_used <- results$method_used
       model <- results$model
       results <- results$results
-      method_used <- results$method_used
     }
     
   } else if (has_issues) {
@@ -451,7 +452,7 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     
     # Fit Log-Rank test
     surv_diff <- survival::survdiff(cox_formula, data = df)
-    if (verbose) message(paste(utils::capture.output(print(surv_diff)), collapse = "\n"))
+    if (isTRUE(verbose)) message(paste(utils::capture.output(print(surv_diff)), collapse = "\n"))
     
     # Calculate p-value
     chisq <- surv_diff$chisq
@@ -570,45 +571,7 @@ print_results <- function(results, df = NULL, treatment_column = NULL, time_colu
       if (!is.na(results$Median_Survival[i])) {
         message(sprintf("Median Survival: %.1f days", results$Median_Survival[i]))
       } else {
-        # Check if we have event rate information
-        if ("Event_Rate" %in% colnames(results) && !is.na(results$Event_Rate[i])) {
-          # If more than 50% of subjects had events, try to calculate it
-          if (results$Event_Rate[i] > 0.5) {
-            # We need to calculate the median survival since we have >50% events
-            if (!is.null(df) && !is.null(treatment_column) && !is.null(time_column) && !is.null(censor_column)) {
-              group_data <- df[df[[treatment_column]] == results$Group[i], ]
-              if (nrow(group_data) > 0) {
-                # Create a survfit object for just this group
-                group_surv_formula <- stats::as.formula(paste("Surv(", time_column, ",", censor_column, ") ~ 1"))
-                group_km_fit <- survival::survfit(group_surv_formula, data = group_data)
-                
-                # Try to extract the median survival
-                if (!is.null(group_km_fit$median)) {
-                  med_surv <- group_km_fit$median
-                  if (!is.na(med_surv) && med_surv > 0) {
-                    # Update the results data frame with the calculated median
-                    results$Median_Survival[i] <- med_surv
-                    message(sprintf("Median Survival: %.1f days", med_surv))
-                  } else {
-                    message("Median Survival: Error calculating median")
-                  }
-                } else {
-                  message("Median Survival: Error extracting median from survfit")
-                }
-              } else {
-                message("Median Survival: No data available for group")
-              }
-            } else {
-              message("Median Survival: Required data for calculation not provided")
-            }
-          } else {
-            # Less than 50% had events, so "Not Reached" is accurate
-            message("Median Survival: Not reached")
-          }
-        } else {
-          # If we don't have event rate info, use original behavior
-          message("Median Survival: Not reached")
-        }
+        message("Median Survival: Not reached")
       }
     }
     
@@ -659,49 +622,9 @@ print_results <- function(results, df = NULL, treatment_column = NULL, time_colu
   
   # Add median survival to table if available
   if ("Median_Survival" %in% colnames(results)) {
-    formatted_table$"Median Survival" <- sapply(1:nrow(results), function(i) {
-      if (is.na(results$Median_Survival[i])) {
-        # Check if we have event rate information
-        if ("Event_Rate" %in% colnames(results) && !is.na(results$Event_Rate[i])) {
-          # If more than 50% of subjects had events, try to calculate it
-          if (results$Event_Rate[i] > 0.5) {
-            # We need to calculate the median survival since we have >50% events
-            if (!is.null(df) && !is.null(treatment_column) && !is.null(time_column) && !is.null(censor_column)) {
-              group_data <- df[df[[treatment_column]] == results$Group[i], ]
-              if (nrow(group_data) > 0) {
-                # Create a survfit object for just this group
-                group_surv_formula <- stats::as.formula(paste("Surv(", time_column, ",", censor_column, ") ~ 1"))
-                group_km_fit <- survival::survfit(group_surv_formula, data = group_data)
-                
-                # Try to extract the median survival
-                if (!is.null(group_km_fit$median)) {
-                  med_surv <- group_km_fit$median
-                  if (!is.na(med_surv) && med_surv > 0) {
-                    # Update the results data frame with the calculated median
-                    results$Median_Survival[i] <- med_surv
-                    return(sprintf("%.1f days", med_surv))
-                  }
-                }
-                
-                # If we're here, we couldn't calculate it despite having >50% events
-                return("Error calculating median")
-              } else {
-                return("No data available")
-              }
-            } else {
-              return("Required data not provided")
-            }
-          } else {
-            # Less than 50% had events, so "Not Reached" is accurate
-            return("Not reached")
-          }
-        } else {
-          # If we don't have event rate info, use original behavior
-          return("Not reached")
-        }
-      } else {
-        return(sprintf("%.1f days", results$Median_Survival[i]))
-      }
+    formatted_table$"Median Survival" <- sapply(seq_len(nrow(results)), function(i) {
+      if (is.na(results$Median_Survival[i])) "Not reached"
+      else sprintf("%.1f days", results$Median_Survival[i])
     })
   }
   

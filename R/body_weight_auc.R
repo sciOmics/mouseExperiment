@@ -50,7 +50,7 @@ body_weight_auc <- function(df,
 
   # Composite key: ensures IDs shared across treatment groups are treated as
   # distinct mice (common when ear tags / cage labels are reused per group).
-  wd$.MouseKey <- paste(wd$Treatment, wd$ID, sep = "\u2060")
+  wd$.MouseKey <- make_mouse_key(wd$Treatment, wd$ID)
   wd <- wd[order(wd$.MouseKey, wd$Day), ]
 
   # --- Per-mouse baseline and % change ---
@@ -61,14 +61,6 @@ body_weight_auc <- function(df,
   wd$Pct_Change <- (wd$Weight - wd$Baseline_Weight) / wd$Baseline_Weight * 100
 
   # --- Trapezoidal AUC per mouse ---
-  trap_auc <- function(time, value) {
-    if (length(time) < 2) return(NA_real_)
-    ord <- order(time)
-    t <- time[ord]
-    v <- value[ord]
-    sum(diff(t) * (v[-length(v)] + v[-1]) / 2)
-  }
-
   mouse_keys <- unique(wd$.MouseKey)
   auc_list <- lapply(mouse_keys, function(key) {
     sub <- wd[wd$.MouseKey == key, ]
@@ -76,8 +68,8 @@ body_weight_auc <- function(df,
       ID        = sub$ID[1],
       Treatment = sub$Treatment[1],
       Baseline_Weight = sub$Baseline_Weight[1],
-      AUC_Weight      = trap_auc(sub$Day, sub$Weight),
-      AUC_Pct_Change  = trap_auc(sub$Day, sub$Pct_Change),
+      AUC_Weight      = calculate_auc(sub$Day, sub$Weight),
+      AUC_Pct_Change  = calculate_auc(sub$Day, sub$Pct_Change),
       Nadir_Weight    = min(sub$Weight, na.rm = TRUE),
       Nadir_Day       = sub$Day[which.min(sub$Weight)],
       Nadir_Pct_Change = min(sub$Pct_Change, na.rm = TRUE),
