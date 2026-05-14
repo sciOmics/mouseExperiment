@@ -10,8 +10,13 @@ tumor_auc_analysis(
   volume_column = "Volume",
   treatment_column = "Treatment",
   id_column = "ID",
+  cage_column = "Cage",
   auc_method = c("trapezoidal", "last_observation"),
-  reference_group = NULL
+  extrapolation_points = 3,
+  reference_group = NULL,
+  colors = NULL,
+  point_size = 2.5,
+  jitter_width = 0.2
 )
 }
 \arguments{
@@ -25,9 +30,23 @@ tumor_auc_analysis(
 
 \item{id_column}{Name of column containing individual subject identifiers (default: "ID")}
 
+\item{cage_column}{Name of column containing cage information (default: "Cage"). This is used to create
+unique subject identifiers by combining ID, Treatment, and Cage, ensuring mice with the same ID
+in different cages are treated as distinct subjects.}
+
 \item{auc_method}{Method for calculating AUC: "trapezoidal" (default) or "last_observation"}
 
+\item{extrapolation_points}{Number of most recent data points to use when calculating extrapolation
+for subjects with incomplete data. The function will use the last N points to fit the extrapolation curve.
+Default is 3. This value must be at least 2 to perform extrapolation.}
+
 \item{reference_group}{Reference group for statistical comparisons (default: first alphabetically)}
+
+\item{colors}{Optional named vector of colors for treatment groups in the plot (default: NULL)}
+
+\item{point_size}{Size of the points in the plot (default: 2.5)}
+
+\item{jitter_width}{Width of the jitter for the points in the plot (default: 0.2)}
 }
 \value{
 A list containing:
@@ -43,6 +62,11 @@ A list containing:
 This function calculates the area under the tumor growth curve for each subject
 and performs statistical comparison between treatment groups.
 }
+\details{
+The function creates a composite subject identifier using ID, Treatment, and Cage (if available)
+to ensure proper identification of mice, even when they share the same ID across different cages.
+This is particularly important for experiments where mice are housed in multiple cages per treatment group.
+}
 \examples{
 \dontrun{
 # Load example data
@@ -57,6 +81,16 @@ auc_results <- tumor_auc_analysis(tumor_data)
 auc_results$auc_summary
 auc_results$auc_comparisons
 print(auc_results$auc_plot)
+
+# With extrapolation settings and custom colors
+treatment_colors <- c("Vehicle" = "#1f77b4", "Drug A" = "#ff7f0e", 
+                      "Drug B" = "#2ca02c", "Combination" = "#d62728")
+auc_results <- tumor_auc_analysis(
+  tumor_data, 
+  extrapolation_points = 4, 
+  colors = treatment_colors,
+  point_size = 3
+)
 }
 
 }

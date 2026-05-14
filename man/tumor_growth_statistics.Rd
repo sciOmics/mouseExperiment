@@ -19,6 +19,7 @@ tumor_growth_statistics(
   handle_cage_effects = c("include_if_not_collinear", "always_include", "never_include",
     "as_random_effect"),
   auc_method = c("trapezoidal", "last_observation"),
+  p_adjust_method = c("bonferroni", "holm", "fdr", "none"),
   reference_group = NULL,
   return_model = TRUE,
   include_diagnostics = TRUE,
@@ -70,6 +71,10 @@ Default is "lme4".}
 "never_include", or "as_random_effect". Default is "include_if_not_collinear".}
 
 \item{auc_method}{Method for AUC calculation: "trapezoidal" or "last_observation". Default is "trapezoidal".}
+
+\item{p_adjust_method}{Method for p-value adjustment in pairwise comparisons:
+"bonferroni" (default, conservative), "holm" (step-down, less conservative),
+"fdr" (Benjamini-Hochberg false discovery rate), or "none" (no adjustment).}
 
 \item{reference_group}{Optional. A character string specifying which treatment group should be used as the reference
 for statistical comparisons. If NULL, the first treatment group alphabetically will be used.}

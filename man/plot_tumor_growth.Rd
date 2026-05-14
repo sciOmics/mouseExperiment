@@ -15,7 +15,8 @@ plot_tumor_growth(
   survival_column = "Survival_Censor",
   extrapolate_volumes = FALSE,
   extrapolation_points = "all",
-  group_summary_line = TRUE
+  group_summary_line = TRUE,
+  point_size = 2
 )
 }
 \arguments{

@@ -9,7 +9,8 @@ try_nonlinear_models(
   dose_column = "Dose",
   volume_column = "Volume",
   statistics = list(),
-  linear_model = NULL
+  linear_model = NULL,
+  verbose = TRUE
 )
 }
 \arguments{

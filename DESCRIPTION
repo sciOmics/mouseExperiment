@@ -1,6 +1,6 @@
 Package: mouseExperiment
 Title: Analysis of Mouse Tumor Growth Experiments
-Version: 0.3.5
+Version: 0.3.6
 Date: 2026-05-14
 Authors@R: 
     person("David", "Woods", , "david@sciomics.bio", role = c("aut", "cre", "cph"))
@@ -13,8 +13,10 @@ Description: Provides tools for analyzing and visualizing mouse tumor growth exp
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 Suggests:
+    bayesplot (>= 1.10),
+    brms (>= 2.19),
     clinfun,
     pwr,
     ggpubr,

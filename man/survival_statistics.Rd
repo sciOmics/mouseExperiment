@@ -13,7 +13,8 @@ survival_statistics(
   id_column = "ID",
   dose_column = NULL,
   reference_group = NULL,
-  firth_correction = TRUE
+  firth_correction = TRUE,
+  verbose = TRUE
 )
 }
 \arguments{
@@ -34,13 +35,14 @@ survival_statistics(
 \item{reference_group}{Treatment group to use as reference. Default: NULL (uses first alphabetically)}
 
 \item{firth_correction}{Whether to apply Firth's correction for separation issues. Default: TRUE}
+
+\item{verbose}{Whether to print analysis details to the console. Default: TRUE}
 }
 \value{
 A list containing:
 \describe{
 \item{model}{The fitted statistical model object}
 \item{results}{Data frame with hazard ratios, confidence intervals, p-values, and median survival times}
-\item{km_plot}{A Kaplan-Meier survival curve plot}
 \item{reference_group}{The treatment group used as reference}
 \item{method_used}{The statistical method used ("cox", "coxphf", or "logrank")}
 }
@@ -78,11 +80,5 @@ print(results$results)  # Hazard ratios, CIs, p-values, and median survival time
 median_surv <- results$results$Median_Survival
 names(median_surv) <- results$results$Group
 print(median_surv)
-
-# Display visualizations
-print(results$km_plot)      # Kaplan-Meier survival curves
-
-# Create a forest plot from the results
-plot_forest(results$results) # Forest plot of hazard ratios
 
 }

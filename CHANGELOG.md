@@ -5,6 +5,13 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6] - 2026-05-14
+
+### Added
+- `bayesian_tumor_growth()` — new exported function for Bayesian linear mixed-effects analysis of tumor growth data using `brms` (Stan backend). Accepts the same data format and column arguments as `tumor_growth_statistics()` and returns a compatible result structure (`treatment_effects`, `pairwise_comparisons`, `growth_rates`, `data_summary`) alongside Bayesian-specific outputs: `posterior_summary` (fixed-effect parameters with 95 % credible intervals, Rhat, ESS), `mcmc_diagnostics` (per-parameter Rhat, Bulk_ESS, Tail_ESS, Converged flag), `pp_check_plot` (posterior predictive density overlay), `posterior_dist_plot` (mcmc_areas for treatment parameters), `mcmc_trace_plot`, and `credible_intervals_plot` (forest plot of credible intervals). Three prior-strength presets: `"weakly_informative"` (default: b ~ N(0,1), σ ~ Exp(1)), `"informative"` (b ~ N(0,0.5)), `"diffuse"` (b ~ N(0,2.5)). Supports `log`, `sqrt`, and `none` volume transformations and both `intercept_only` and `slope` random-effects specifications. Requires `brms (>= 2.19)` and `bayesplot (>= 1.10)` (both in `Suggests`).
+- `brms (>= 2.19)` and `bayesplot (>= 1.10)` added to `Suggests` in DESCRIPTION.
+- Tests for `bayesian_tumor_growth()` in `tests/testthat/test-bayesian_tumor_growth.R`: return-structure coverage, column-name compatibility with the lme4 path, Rhat convergence check, `return_model = FALSE` path, and graceful error when `brms` is absent. All tests are skipped when `brms` is not installed.
+
 ## [0.3.5] - 2026-05-14
 
 ### Fixed
