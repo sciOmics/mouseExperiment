@@ -8,6 +8,13 @@
 #'   (for ANOVA; f = sd_means / pooled_within_sd). If \code{delta} and
 #'   \code{pooled_sd} are supplied instead, \code{effect_size} is computed as
 #'   \code{abs(delta) / pooled_sd} and the two-group t-test path is used.
+#'   \strong{When \code{n_groups >= 3}:} the supplied value is treated as
+#'   Cohen's d for the largest pairwise contrast and converted to Cohen's f
+#'   via \code{f = d / sqrt(2)}. This conversion assumes exactly two extreme
+#'   groups (one high, one low) with all others at the grand mean — a scenario
+#'   that overestimates f (and therefore power) when all treated groups are
+#'   uniformly reduced relative to control. Supply Cohen's f directly via this
+#'   argument if you have a more accurate estimate of between-group variability.
 #' @param delta Numeric scalar. Raw mean difference between groups. Used only
 #'   when \code{pooled_sd} is also supplied. Ignored if \code{effect_size} is
 #'   provided directly.
@@ -86,9 +93,12 @@ apriori_power_analysis <- function(effect_size   = NULL,
       )
     }
   } else {
-    # One-way ANOVA: convert d → f = d / sqrt(2)  (equal group means, two
-    # extreme groups), then use pwr::pwr.anova.test if available, otherwise
-    # approximate via non-central F.
+    # One-way ANOVA: convert d → f = d / sqrt(2).
+    # This conversion is exact only when two groups have means ±d/2·σ and all
+    # others equal the grand mean. For oncology designs where all treated groups
+    # are uniformly reduced vs. control, the true f is smaller and this path
+    # will overestimate power. Users with a directional hypothesis should supply
+    # Cohen's f directly rather than Cohen's d.
     f_val <- effect_size / sqrt(2)
     function(n, a) {
       if (requireNamespace("pwr", quietly = TRUE)) {
@@ -211,6 +221,14 @@ apriori_power_analysis <- function(effect_size   = NULL,
     sensitivity_table <- do.call(rbind, sens_rows)
   }
 
+  method_note <- if (n_groups >= 3L) {
+    paste0(
+      "ANOVA power computed via f = d/sqrt(2) = ", round(effect_size / sqrt(2), 3),
+      ". This conversion assumes two extreme groups; power may be overestimated ",
+      "when all treated groups are uniformly reduced vs. control."
+    )
+  } else NULL
+
   list(
     scenario_table    = scenario_table,
     power_curve_data  = power_curve_data,
@@ -218,6 +236,7 @@ apriori_power_analysis <- function(effect_size   = NULL,
     effect_size       = effect_size,
     pooled_sd         = stored_pooled_sd,
     n_groups          = n_groups,
-    mode              = mode
+    mode              = mode,
+    method_note       = method_note
   )
 }

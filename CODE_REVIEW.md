@@ -144,7 +144,7 @@ Post-hoc ("observed") power analysis is widely criticised and considered uninfor
 
 ---
 
-### 2.2 Power simulation on linear scale, analysis on log scale
+### 2.2 Power simulation on linear scale, analysis on log scale — FIXED
 **File:** `R/apriori_power_simulation.R` (~lines 105–118)
 
 The simulation generates data as:
@@ -153,11 +153,16 @@ vol <- (baseline_volume + b0[j]) + (growth_rates[g] + b1[j]) * timepoints + nois
 ```
 This is a **linear** data-generating model. However, `tumor_growth_statistics()` applies a **log transformation** before fitting. Simulating on the linear scale and fitting on the log scale produces anti-conservative power estimates — the residual variance after log-transformation is much smaller than on the raw scale, so the simulation understates noise, inflating apparent power.
 
-**Fix:** Simulate log-volume data (i.e., the linear model on the log scale) and exponentiate, or simulate volumes as log-normal: `vol <- exp(log(baseline_volume) + b0[j] + (growth_rates[g] + b1[j]) * timepoints + noise)`, then fit with log-transformation as in the real analysis pipeline.
+**Resolution:** Data are now generated on the log scale:
+```r
+log_vol <- log(baseline_volume) + b0[j] + (growth_rates[g] + b1[j]) * timepoints + noise
+vol <- exp(log_vol)
+```
+The LMM is fitted as `log(Volume) ~ Treatment * Day + (Day | ID)` (full and reduced models), matching `tumor_growth_statistics()`. Function-argument defaults updated to log-scale values (`control_growth_rate = 0.15`, `treatment_effect = 0.10`, `random_intercept_sd = 0.20`, `random_slope_sd = 0.05`, `residual_sd = 0.10`). Dashboard LMM defaults and labels updated to match.
 
 ---
 
-### 2.3 Cohen's d to f conversion for ANOVA power is scenario-specific
+### 2.3 Cohen's d to f conversion for ANOVA power is scenario-specific — FIXED
 **File:** `R/apriori_power_analysis.R` (~line 90)
 
 ```r
@@ -166,22 +171,22 @@ f_val <- effect_size / sqrt(2)
 
 This comment says "equal group means, two extreme groups." This conversion of Cohen's d to Cohen's f is valid only for the specific scenario where two groups have different means and all others are zero. For a typical oncology study where all treatment groups have reduced growth relative to control, the true Cohen's f would be different (generally smaller). Users specifying a Cohen's d for a pairwise comparison and assuming it drives the ANOVA correctly will over-estimate power.
 
-**Fix:** Accept Cohen's f directly for ANOVA, or document the specific scenario assumed and direct users to compute f from their anticipated group means.
+**Resolution:** The assumption is now fully documented in the `@param effect_size` roxygen block, in an inline comment at the conversion site, and in a `method_note` field returned when `n_groups >= 3`. Users who have a better estimate of between-group variability are directed to supply Cohen's f directly.
 
 ---
 
-### 2.4 Bliss Independence applied to TGI — known limitation not documented
+### 2.4 Bliss Independence applied to TGI — known limitation not documented — FIXED
 **Files:** `R/analyze_drug_synergy.R`, `R/analyze_drug_synergy_over_time.R`
 
 Bliss Independence was formulated for probability of cell death, not for proportional inhibition (TGI). Applying it to TGI is a common pragmatic choice but carries specific implications: when individual drug effects are large (TGI > 50% each), the Bliss expected combined effect can approach 100%, making it nearly impossible to demonstrate synergy by the Bliss criterion regardless of actual biological interaction. There is no documentation of this limitation.
 
 Similarly, the Loewe Additivity single-dose approximation (`min(FE_A + FE_B, 1) / FE_combo`) is explicitly noted as requiring the "linear dose-response assumption," but the associated limitations (unknown dose-response curvature, absence of IC50 estimates) are not communicated to the user.
 
-**Fix:** Add a `Notes` section to each function's documentation explaining the assumptions and appropriate interpretation range.
+**Resolution:** Added `@section Assumptions and Limitations:` to both functions' roxygen documentation. The Bliss ceiling effect (individual TGI > 50%) and the Loewe single-dose approximation limitation are now clearly described.
 
 ---
 
-### 2.5 `tumor_auc_analysis()` LOCF method is not an AUC
+### 2.5 `tumor_auc_analysis()` LOCF method is not an AUC — FIXED
 **File:** `R/tumor_auc_analysis.R` (~lines 202–217)
 
 ```r
@@ -193,9 +198,11 @@ Similarly, the Loewe Additivity single-dose approximation (`min(FE_A + FE_B, 1) 
 
 The "last observation" return value is `last_volume` (a single volume measurement in mm³), not an area. Adding `extrapolated_value` (an area in mm³·day) to `last_volume` (mm³) is dimensionally incoherent. The result will be numerically close to the last volume for short extrapolation windows but structurally wrong. LOCF should carry the last observation forward to fill the time-series and then apply the trapezoidal rule over the full period.
 
+**Resolution:** The LOCF branch now computes the trapezoidal AUC for the observed period first via `calculate_auc(times, volumes)`, then adds the LOCF extension `(max_experiment_time − subject_max_time) × last_volume` as an mm³·day area. The dimensionally incoherent `last_volume + extrapolated_value` is gone.
+
 ---
 
-### 2.6 `dose_response_statistics()` — AIC comparison between `lm` and `drc` models is invalid
+### 2.6 `dose_response_statistics()` — AIC comparison between `lm` and `drc` models is invalid — FIXED
 **File:** `R/dose_response_statistics.R` (~lines 359–362)
 
 ```r
@@ -205,9 +212,11 @@ statistics$nonlinear_aic <- AIC(dr_model)
 
 AIC values from `stats::lm` and `drc::drm` are not directly comparable because `drc` uses a different parameterisation of the likelihood (it does not include the `log(2π)` constant term in the same way and estimates separate variance parameters). Comparing these values as if they were on the same scale will mislead model selection.
 
+**Resolution:** Added a prominent `WARNING` comment at the AIC storage site explaining the incompatibility. A `statistics$aic_comparison_note` field is added to the return value with the same warning for users who access results programmatically.
+
 ---
 
-### 2.7 `tumor_growth_statistics()` — emmeans contrast at mean time point only
+### 2.7 `tumor_growth_statistics()` — emmeans contrast at mean time point only — FIXED
 **File:** `R/tumor_growth_statistics.R` (~lines 955–1003)
 
 ```r
@@ -217,9 +226,11 @@ lsmeans_obj <- emmeans::emmeans(model, specs = treatment_column,
 
 Marginalising over a single time point (the mean day) to summarise treatment effects from a `Day * Treatment` interaction model discards the full interaction structure. If treatments diverge over time (the biologically relevant signal), the marginal mean at a single time point is an incomplete summary. The user should receive estimated marginal means across multiple time points or the interaction terms themselves should be the primary output.
 
+**Resolution:** The lme4 path now computes two EMM objects: the existing `lsmeans_obj` at the mean day (backward-compatible `treatment_effects`) and a new `lsmeans_time` at the five quintile study days (min, Q1, median, Q3, max). The latter is returned as `treatment_effects_over_time` — a data frame with one row per (Treatment, Day) combination showing the adjusted mean, SE, and 95% CI at each quintile. The pairwise contrasts continue to use the mean-day EMM for a compact summary.
+
 ---
 
-### 2.8 Survival analysis: logrank p-value inflated for multi-group comparison
+### 2.8 Survival analysis: logrank p-value inflated for multi-group comparison — FIXED
 **File:** `R/survival_statistics.R` — `fit_survival_model()` (~line 457–458)
 
 When multiple treatment groups have separation and the logrank fallback is used:
@@ -233,9 +244,11 @@ results$P_Value[-ref_idx] <- p_value
 
 An omnibus test p-value is not a valid per-comparison p-value. Users may interpret these identical p-values as pairwise comparisons with the reference group when they are not.
 
+**Resolution:** The logrank fallback now runs a pairwise log-rank test for each non-reference group (`survdiff()` restricted to that group vs. reference, df = 1) and assigns the resulting p-value to that group's row only. The omnibus test result is retained in a local variable `omnibus_p` for reference but is not propagated to the per-group results table.
+
 ---
 
-### 2.9 `therapeutic_window_metric()` — max weight loss taken as maximum across group, not mean
+### 2.9 `therapeutic_window_metric()` — max weight loss taken as maximum across group, not mean — FIXED
 **File:** `R/therapeutic_window_metric.R` (~lines 87–89)
 
 ```r
@@ -243,6 +256,8 @@ group_wl <- stats::aggregate(Pct_Loss ~ Treatment, data = mouse_wl, FUN = max, n
 ```
 
 The TWM denominator is the single worst-case mouse in each group. This makes TWM hypersensitive to a single outlier and not representative of typical toxicity. A mean or median weight loss would be more interpretable.
+
+**Resolution:** Changed `FUN = max` to `FUN = mean`. The column renamed from `Max_Pct_Weight_Loss` to `Mean_Pct_Weight_Loss`. Dashboard labels and the broken column references in the summary text (`TGI_Pct` → `TGI`, `Max_Weight_Loss_Pct` → `Mean_Pct_Weight_Loss`) corrected. TWM formula description updated throughout the dashboard UI.
 
 ---
 
@@ -480,14 +495,14 @@ This is dead code (the body does nothing) referencing specific drug names from w
 | 1.7 | Baseline weight from `aggregate(x[1])` without ordering guarantee | Critical | `total_benefit_area.R`, `therapeutic_window_metric.R` | ✅ Fixed |
 | 1.8 | Composite key not used — shared IDs across groups produce wrong TGI | Critical | `weight_corrected_tgi.R` | ✅ Fixed |
 | 2.1 | Post-hoc power is statistically invalid when effect sizes are data-derived | Major | `post_power_analysis.R` | ✅ Fixed (deleted) |
-| 2.2 | Simulation generates linear-scale data; analysis fits log-scale — anti-conservative power | Major | `apriori_power_simulation.R` | Open |
-| 2.3 | d→f conversion for ANOVA is scenario-specific, not general | Major | `apriori_power_analysis.R` | Open |
-| 2.4 | Bliss/Loewe assumptions on TGI not documented | Major | `analyze_drug_synergy*.R` | Open |
-| 2.5 | LOCF AUC returns volume (mm³), not area (mm³·day) | Major | `tumor_auc_analysis.R` | Open |
-| 2.6 | AIC comparison between `lm` and `drc` models is invalid | Major | `dose_response_statistics.R` | Open |
-| 2.7 | emmeans at single mean time point discards interaction | Major | `tumor_growth_statistics.R` | Open |
-| 2.8 | Omnibus logrank p-value assigned as per-group p-value | Major | `survival_statistics.R` | Open |
-| 2.9 | TWM denominator is max of one mouse, not group mean | Major | `therapeutic_window_metric.R` | Open |
+| 2.2 | Simulation generates linear-scale data; analysis fits log-scale — anti-conservative power | Major | `apriori_power_simulation.R` | ✅ Fixed |
+| 2.3 | d→f conversion for ANOVA is scenario-specific, not general | Major | `apriori_power_analysis.R` | ✅ Fixed |
+| 2.4 | Bliss/Loewe assumptions on TGI not documented | Major | `analyze_drug_synergy*.R` | ✅ Fixed |
+| 2.5 | LOCF AUC returns volume (mm³), not area (mm³·day) | Major | `tumor_auc_analysis.R` | ✅ Fixed |
+| 2.6 | AIC comparison between `lm` and `drc` models is invalid | Major | `dose_response_statistics.R` | ✅ Fixed |
+| 2.7 | emmeans at single mean time point discards interaction | Major | `tumor_growth_statistics.R` | ✅ Fixed |
+| 2.8 | Omnibus logrank p-value assigned as per-group p-value | Major | `survival_statistics.R` | ✅ Fixed |
+| 2.9 | TWM denominator is max of one mouse, not group mean | Major | `therapeutic_window_metric.R` | ✅ Fixed |
 | 3.1 | Composite ID separator inconsistent across files | Minor | Multiple | ✅ Fixed |
 | 3.2 | `rbind` in loops — O(n²) | Minor | Multiple | ✅ Fixed |
 | 3.3 | `in_place` assigns to parent frame via `assign()` | Minor | `calculate_volume.R` | ✅ Fixed |

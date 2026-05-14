@@ -372,11 +372,18 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
       statistics$dr_model <- dr_model
       statistics$dr_model_type <- model_type
       
-      # Compare models
+      # Store per-model information criteria.
+      # WARNING: linear_aic and nonlinear_aic are NOT directly comparable.
+      # stats::lm and drc::drm use different likelihood parameterisations
+      # (drc omits the log(2π) constant and estimates a separate variance
+      # parameter), so their AIC values are on different scales. Use them
+      # within each model family only; do not use delta-AIC for model selection.
       statistics$linear_aic <- AIC(linear_model)
       statistics$nonlinear_aic <- AIC(dr_model)
       statistics$linear_bic <- BIC(linear_model)
       statistics$nonlinear_bic <- BIC(dr_model)
+      statistics$aic_comparison_note <-
+        "AIC/BIC values from lm and drc are not on the same scale and cannot be directly compared for model selection."
       
     }, error = function(e) {
       message("Non-linear regression failed: ", e$message)

@@ -46,6 +46,20 @@
 #' The function performs statistical tests to determine if the observed combination effect
 #' significantly differs from the expected effect under these models.
 #'
+#' @section Assumptions and Limitations:
+#' \strong{Bliss Independence applied to TGI:} Bliss Independence was formulated for the
+#' probability of cell death, not for proportional growth inhibition. Applying it to TGI is a
+#' common pragmatic choice but carries a ceiling effect: when individual drug TGIs are large
+#' (each > 50\%), the Bliss expected combined TGI approaches 100\%, making it nearly impossible
+#' to demonstrate synergy by this criterion regardless of the true biological interaction.
+#' Interpret Bliss results cautiously when individual-agent TGIs exceed 50\%.
+#'
+#' \strong{Loewe Additivity single-dose approximation:} The CI formula
+#' \code{min(FE_A + FE_B, 1) / FE_combo} assumes a linear dose-response relationship, which
+#' is appropriate when only single-dose data are available but is an approximation. Without
+#' dose-response curves the true IC50 values are unknown, so the result should be interpreted
+#' as a qualitative synergy indicator rather than a precise mechanistic estimate.
+#'
 #' @examples
 #' # Example with synthetic dataset
 #' data(combo_treatment_synthetic_data)

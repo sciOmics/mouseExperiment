@@ -1,7 +1,9 @@
 #' Therapeutic Window Metric (TWM)
 #'
-#' Computes TWM = TGI / MaxWeightLoss% per treatment group.
+#' Computes TWM = TGI / MeanWeightLoss% per treatment group.
 #' When weight loss is negligible (≤ noise floor), the safety score equals TGI.
+#' The denominator uses the group mean of per-mouse maximum weight loss, not the
+#' single worst-case mouse, to give a representative measure of typical toxicity.
 #'
 #' @param df Data frame with longitudinal data.
 #' @param weight_column Name of the body weight column.
@@ -87,19 +89,21 @@ therapeutic_window_metric <- function(df,
                         mouse_wl$Baseline_Weight * 100
   mouse_wl$Pct_Loss <- pmax(mouse_wl$Pct_Loss, 0)  # clamp negative (weight gain)
 
+  # Group mean of per-mouse max weight loss: more representative of typical
+  # toxicity than the single worst-case mouse (previously used max here).
   group_wl <- stats::aggregate(Pct_Loss ~ Treatment, data = mouse_wl,
-                               FUN = max, na.rm = TRUE)
-  names(group_wl)[2] <- "Max_Pct_Weight_Loss"
+                               FUN = mean, na.rm = TRUE)
+  names(group_wl)[2] <- "Mean_Pct_Weight_Loss"
 
   # --- TWM ---
   twm <- merge(tgi_data, group_wl, by = "Treatment")
   twm$TWM <- ifelse(
-    twm$Max_Pct_Weight_Loss <= noise_floor,
+    twm$Mean_Pct_Weight_Loss <= noise_floor,
     abs(twm$TGI),  # Safety score = TGI when weight loss negligible
-    abs(twm$TGI) / twm$Max_Pct_Weight_Loss
+    abs(twm$TGI) / twm$Mean_Pct_Weight_Loss
   )
   twm$Safety_Note <- ifelse(
-    twm$Max_Pct_Weight_Loss <= noise_floor,
+    twm$Mean_Pct_Weight_Loss <= noise_floor,
     "Negligible weight loss",
     ""
   )

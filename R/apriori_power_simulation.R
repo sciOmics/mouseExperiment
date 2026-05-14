@@ -7,29 +7,45 @@
 #' interaction is significant.
 #'
 #' @section Model:
-#' Simulated data: \eqn{y_{ij} = (\mu_i + b_{0,j}) + (\beta_i + b_{1,j}) \cdot t_{ij} + \varepsilon_{ij}}
-#' where \eqn{\mu_i} = group baseline, \eqn{\beta_i} = group growth rate,
+#' Data are generated on the \strong{log scale} to match the log-transformed
+#' LMM used in \code{tumor_growth_statistics()}:
+#' \deqn{\log(V_{ij}) = \log(\mu_i) + b_{0,j} + (\beta_i + b_{1,j}) \cdot t_{ij} + \varepsilon_{ij}}
+#' where \eqn{\mu_i} = group geometric-mean baseline volume,
+#' \eqn{\beta_i} = log-scale daily growth rate,
 #' \eqn{b_0 \sim N(0, \sigma_{b0}^2)}, \eqn{b_1 \sim N(0, \sigma_{b1}^2)},
-#' \eqn{\varepsilon \sim N(0, \sigma_e^2)}.
-#' The fitted model is \code{Volume ~ Treatment * Day + (Day | ID)};
-#' the p-value for the \code{Treatment:Day} interaction is extracted.
+#' \eqn{\varepsilon \sim N(0, \sigma_e^2)}, all on the log scale.
+#' Volumes are obtained by exponentiating: \eqn{V_{ij} = \exp(\cdot)}.
+#' The fitted model is \code{log(Volume) ~ Treatment * Day + (Day | ID)};
+#' power is the proportion of LRTs where the \code{Treatment:Day} p-value < \eqn{\alpha}.
+#'
+#' @section Parameter scale:
+#' \code{control_growth_rate}, \code{treatment_effect}, \code{random_slope_sd},
+#' \code{random_intercept_sd}, and \code{residual_sd} are all on the
+#' \strong{log scale}. A \code{control_growth_rate} of 0.15 means log-volume
+#' increases by 0.15 per day (~16\% daily volume growth). A
+#' \code{treatment_effect} of 0.10 means the treated group's log-growth rate
+#' is 0.10 lower than control. \code{baseline_volume} is in raw volume units
+#' (mm³); it is log-transformed internally.
 #'
 #' @param n_per_group Integer vector. Sample sizes per group to evaluate.
 #'   Power is computed for each value independently. Default \code{c(5, 8, 10, 12, 15)}.
 #' @param n_groups Integer ≥ 2. Number of treatment groups (default 2). When
 #'   > 2, all non-control groups share the same \code{treatment_effect}.
-#' @param baseline_volume Numeric > 0. Mean tumour volume at Day 0 (default 100).
-#' @param baseline_sd Numeric > 0. SD of baseline volume (default 20).
-#' @param control_growth_rate Numeric. Daily growth rate for the control group
-#'   in the same units as \code{baseline_volume} (default 15).
-#' @param treatment_effect Numeric. Reduction in daily growth rate for treated
-#'   groups relative to control (default 10; i.e. treated rate = control_rate −
-#'   treatment_effect). Positive values mean tumour suppression.
-#' @param random_slope_sd Numeric ≥ 0. SD of the per-mouse random slope
-#'   (default 3).
+#' @param baseline_volume Numeric > 0. Geometric mean tumour volume at Day 0
+#'   in mm³ (default 100).
+#' @param baseline_sd Numeric > 0. SD of baseline volume in mm³ (unused in
+#'   simulation; retained for documentation purposes).
+#' @param control_growth_rate Numeric. Log-scale daily growth rate for the
+#'   control group (default 0.15, ~16\% daily increase).
+#' @param treatment_effect Numeric. Reduction in log-scale daily growth rate
+#'   for treated groups relative to control (default 0.10; i.e. treated rate =
+#'   control_rate − treatment_effect). Positive values mean tumour suppression.
+#' @param random_slope_sd Numeric ≥ 0. SD of the per-mouse random slope on
+#'   the log scale (default 0.05).
 #' @param random_intercept_sd Numeric ≥ 0. SD of the per-mouse random
-#'   intercept (default 10).
-#' @param residual_sd Numeric > 0. Residual (measurement) SD (default 10).
+#'   intercept on the log scale (default 0.20).
+#' @param residual_sd Numeric > 0. Residual (measurement) SD on the log scale
+#'   (default 0.10).
 #' @param timepoints Integer vector. Study days at which measurements are
 #'   taken (default \code{0:14}).
 #' @param alpha Numeric vector of significance levels (default \code{c(0.05)}).
@@ -55,11 +71,11 @@ apriori_power_simulation <- function(n_per_group          = c(5L, 8L, 10L, 12L, 
                                      n_groups             = 2L,
                                      baseline_volume      = 100,
                                      baseline_sd          = 20,
-                                     control_growth_rate  = 15,
-                                     treatment_effect     = 10,
-                                     random_slope_sd      = 3,
-                                     random_intercept_sd  = 10,
-                                     residual_sd          = 10,
+                                     control_growth_rate  = 0.15,
+                                     treatment_effect     = 0.10,
+                                     random_slope_sd      = 0.05,
+                                     random_intercept_sd  = 0.20,
+                                     residual_sd          = 0.10,
                                      timepoints           = 0:14,
                                      alpha                = c(0.05),
                                      n_simulations        = 500L,
@@ -101,11 +117,12 @@ apriori_power_simulation <- function(n_per_group          = c(5L, 8L, 10L, 12L, 
           b0  <- stats::rnorm(n, 0, random_intercept_sd)
           b1  <- stats::rnorm(n, 0, random_slope_sd)
           for (j in seq_len(n)) {
-            vol <- (baseline_volume + b0[j]) +
+            # Log-normal data: log(V) = log(baseline) + b0 + (rate + b1)*t + e
+            # Matches the log(Volume) LMM fitted below.
+            log_vol <- log(baseline_volume) + b0[j] +
               (growth_rates[g] + b1[j]) * timepoints +
               stats::rnorm(n_timepoints, 0, residual_sd)
-            # Clamp to avoid negative volumes (log-scale artifacts)
-            vol <- pmax(vol, 0.1)
+            vol <- exp(log_vol)
             sim_list[[(g - 1L) * n + j]] <- data.frame(
               ID        = ids[j],
               Treatment = group_names[g],
@@ -118,9 +135,10 @@ apriori_power_simulation <- function(n_per_group          = c(5L, 8L, 10L, 12L, 
         df_sim <- do.call(rbind, sim_list)
         df_sim$Treatment <- factor(df_sim$Treatment, levels = group_names)
 
-        # ---- Fit LMM ---------------------------------------------------------
+        # ---- Fit LMM on log(Volume) ------------------------------------------
+        # Matches tumor_growth_statistics() which log-transforms before fitting.
         fit <- tryCatch(
-          lme4::lmer(Volume ~ Treatment * Day + (Day | ID),
+          lme4::lmer(log(Volume) ~ Treatment * Day + (Day | ID),
                      data    = df_sim,
                      REML    = FALSE,
                      control = lme4::lmerControl(optimizer = "bobyqa",
@@ -128,7 +146,7 @@ apriori_power_simulation <- function(n_per_group          = c(5L, 8L, 10L, 12L, 
           error   = function(e) NULL,
           warning = function(w) {
             tryCatch(
-              lme4::lmer(Volume ~ Treatment * Day + (1 | ID),
+              lme4::lmer(log(Volume) ~ Treatment * Day + (1 | ID),
                          data    = df_sim,
                          REML    = FALSE,
                          control = lme4::lmerControl(optimizer = "bobyqa",
@@ -145,7 +163,7 @@ apriori_power_simulation <- function(n_per_group          = c(5L, 8L, 10L, 12L, 
         # p-values by default so the coefficient table rarely has Pr(>|t|).
         p_val <- tryCatch({
           fit_red <- tryCatch(
-            lme4::lmer(Volume ~ Treatment + Day + (Day | ID),
+            lme4::lmer(log(Volume) ~ Treatment + Day + (Day | ID),
                        data    = df_sim,
                        REML    = FALSE,
                        control = lme4::lmerControl(optimizer = "bobyqa",

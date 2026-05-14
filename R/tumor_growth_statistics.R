@@ -1017,9 +1017,35 @@ tumor_growth_statistics <- function(df,
     
     # Create pairwise comparisons
     if (requireNamespace("emmeans", quietly = TRUE)) {
-      # Set up emmeans with reference group, averaging over time points
-      lsmeans_obj <- emmeans::emmeans(model, specs = treatment_column, at = stats::setNames(list(mean(analysis_df[[time_column]])), time_column))
-      
+      # Marginalise at the mean time point for the primary treatment_effects
+      # summary (backward-compatible). Additionally compute EMMs at the five
+      # study-day quantiles (min, Q1, median, Q3, max) to capture how the
+      # treatment × time interaction unfolds — marginalising at a single point
+      # discards the interaction structure that is the primary analysis target.
+      mean_day <- mean(analysis_df[[time_column]])
+      day_range <- unique(sort(analysis_df[[time_column]]))
+      quant_days <- unique(round(stats::quantile(
+        day_range,
+        probs = c(0, 0.25, 0.5, 0.75, 1),
+        type  = 1
+      )))
+
+      lsmeans_obj <- emmeans::emmeans(
+        model, specs = treatment_column,
+        at = stats::setNames(list(mean_day), time_column)
+      )
+
+      # EMMs over time: one row per (Treatment, Day) combination
+      lsmeans_time <- emmeans::emmeans(
+        model,
+        specs = c(treatment_column, time_column),
+        at    = stats::setNames(list(quant_days), time_column)
+      )
+      emm_time_df <- as.data.frame(summary(lsmeans_time))
+      names(emm_time_df)[names(emm_time_df) == "emmean"]   <- "Adjusted_Mean"
+      names(emm_time_df)[names(emm_time_df) == "lower.CL"] <- "Lower_CL"
+      names(emm_time_df)[names(emm_time_df) == "upper.CL"] <- "Upper_CL"
+
       # Extract treatment effects
       emm_summary <- summary(lsmeans_obj)
       treatment_effects <- data.frame(
@@ -1066,12 +1092,13 @@ tumor_growth_statistics <- function(df,
 
       # Calculate pairwise comparisons
       pairwise_comp <- emmeans::contrast(lsmeans_obj, method = contrasts)
-      
+
       posthoc_method <- "Estimated marginal means with pairwise contrasts"
 
     } else {
       pairwise_comp <- NULL
-      treatment_effects <- NULL
+      treatment_effects    <- NULL
+      emm_time_df          <- NULL
       posthoc_method <- NA
       warning("Package 'emmeans' not available. Pairwise comparisons and treatment effects not calculated.")
     }
@@ -1149,7 +1176,8 @@ tumor_growth_statistics <- function(df,
         method = posthoc_method,
         pairwise = if (!is.null(pairwise_comp)) as.data.frame(summary(pairwise_comp)) else NULL
       ),
-      treatment_effects = treatment_effects,
+      treatment_effects          = treatment_effects,
+      treatment_effects_over_time = emm_time_df,
       growth_rates = growth_rates,
       cage_analysis = cage_analysis,
       model_selection = model_selection,
@@ -1157,7 +1185,7 @@ tumor_growth_statistics <- function(df,
       data_summary = data_summary,
       plots = plots_list
     )
-    
+
     return(results)
   }
 }

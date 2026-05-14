@@ -446,37 +446,42 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     }
     
   } else if (has_issues) {
-    # Use Log-Rank test as fallback
+    # Use pairwise log-rank tests as fallback (one per non-reference group).
+    # An omnibus logrank p-value must not be assigned to all groups — it is a
+    # single test for any difference and is not a valid per-comparison p-value.
     method_used <- "logrank"
-    message("One or more groups have zero events. Using log-rank test to estimate HRs for these groups.")
-    
-    # Fit Log-Rank test
+    message("One or more groups have zero events. Using pairwise log-rank tests.")
+
+    # Omnibus test (stored separately for reference; not used as per-group p-values)
     surv_diff <- survival::survdiff(cox_formula, data = df)
     if (isTRUE(verbose)) message(paste(utils::capture.output(print(surv_diff)), collapse = "\n"))
-    
-    # Calculate p-value
-    chisq <- surv_diff$chisq
-    p_value <- 1 - stats::pchisq(chisq, df = length(treatment_groups) - 1)
-    
-    # Create basic results without HRs (not estimable in this case)
+    omnibus_p <- 1 - stats::pchisq(surv_diff$chisq, df = length(treatment_groups) - 1L)
+
+    # Create basic results without HRs (not estimable when a group has zero events)
     results <- data.frame(
-      Group = treatment_groups,
-      HR = NA,
+      Group    = treatment_groups,
+      HR       = NA,
       CI_Lower = NA,
       CI_Upper = NA,
-      P_Value = NA,
+      P_Value  = NA,
       stringsAsFactors = FALSE
     )
-    
-    # Set reference group values
+
     ref_idx <- which(results$Group == reference_group)
-    results$HR[ref_idx] <- 1
+    results$HR[ref_idx]       <- 1
     results$CI_Lower[ref_idx] <- 1
     results$CI_Upper[ref_idx] <- 1
-    
-    # Set p-value for non-reference groups
-    results$P_Value[-ref_idx] <- p_value
-    
+
+    # Pairwise log-rank: compare each treatment group vs. reference individually
+    for (grp in treatment_groups[treatment_groups != reference_group]) {
+      pair_data <- df[df[[treatment_column]] %in% c(reference_group, grp), ]
+      pair_p <- tryCatch({
+        pair_diff <- survival::survdiff(cox_formula, data = pair_data)
+        1 - stats::pchisq(pair_diff$chisq, df = 1L)
+      }, error = function(e) omnibus_p)
+      results$P_Value[results$Group == grp] <- pair_p
+    }
+
     model <- surv_diff
     
   } else {

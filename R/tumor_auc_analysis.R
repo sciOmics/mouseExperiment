@@ -200,21 +200,27 @@ tumor_auc_analysis <- function(df,
       return(list(auc = auc + extrapolated_value, extrapolated = is_extrapolated))
       
     } else if (method == "last_observation") {
-      # Last observation carried forward method
-      latest <- subject_data[which.max(subject_data[[time_column]]), ]
-      last_volume <- latest[[volume_column]]
-      
-      # For last observation method, extrapolation means extending the last volume
-      # to the maximum experiment time
+      # Last observation carried forward (LOCF) method.
+      # Compute trapezoidal AUC for the observed period first, then carry the
+      # last volume forward to max_experiment_time. Previously this branch
+      # returned `last_volume` (mm³) which is not an area — fixed here.
+      times   <- subject_data[[time_column]]
+      volumes <- subject_data[[volume_column]]
+
+      if (length(times) < 2) {
+        return(list(auc = NA, extrapolated = NA))
+      }
+
+      observed_auc <- calculate_auc(times, volumes)
+      last_volume  <- volumes[which.max(times)]
+
       if (can_extrapolate) {
-        # Calculate the additional AUC from last observation to max experiment time
         dt_extrapolation <- max_experiment_time - subject_max_time
         extrapolated_value <- dt_extrapolation * last_volume
         is_extrapolated <- TRUE
       }
-      
-      # For LOCF method, AUC is the last volume (for the observed period) plus any extrapolation
-      return(list(auc = last_volume + extrapolated_value, extrapolated = is_extrapolated))
+
+      return(list(auc = observed_auc + extrapolated_value, extrapolated = is_extrapolated))
     }
   }
   

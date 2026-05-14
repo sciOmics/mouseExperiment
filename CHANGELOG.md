@@ -5,6 +5,18 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] - 2026-05-14
+
+### Fixed
+- `apriori_power_simulation()` — data are now generated on the **log scale** (`log(V) = log(baseline) + b0 + (rate + b1)*t + ε`; volumes exponentiated) and the LMM is fitted as `log(Volume) ~ Treatment * Day + (Day | ID)`, matching `tumor_growth_statistics()`. The previous linear data-generating model produced anti-conservative power estimates when the fitted model uses log-transformation. Function argument defaults updated to log-scale values: `control_growth_rate = 0.15`, `treatment_effect = 0.10`, `random_intercept_sd = 0.20`, `random_slope_sd = 0.05`, `residual_sd = 0.10`.
+- `apriori_power_analysis()` — the Cohen's d → f conversion (`f = d / sqrt(2)`) used for ANOVA power (k ≥ 3 groups) is now fully documented: it assumes two extreme groups and overestimates f (and therefore power) when all treated groups are uniformly reduced vs. control. A `method_note` field is returned when `n_groups >= 3` to surface this at runtime.
+- `tumor_auc_analysis()` — the `last_observation` (LOCF) AUC method was dimensionally incoherent: it returned `last_volume` (mm³) added to `extrapolated_value` (mm³·day). Fixed to compute the trapezoidal AUC for the observed period first, then add the LOCF extension (time gap × last volume) as a properly dimensioned mm³·day area.
+- `survival_statistics()` — in the logrank fallback path (zero-event groups), the omnibus chi-squared p-value was assigned to every non-reference group. Replaced with per-pair log-rank tests (`survdiff()` restricted to each treatment vs. reference, df = 1) so each group receives its own p-value.
+- `therapeutic_window_metric()` — TWM denominator changed from the single worst-case mouse in each group (`FUN = max`) to the group mean of per-mouse maximum weight loss (`FUN = mean`), making the metric less sensitive to outliers. Column renamed `Max_Pct_Weight_Loss` → `Mean_Pct_Weight_Loss`.
+- `tumor_growth_statistics()` — the lme4 path now additionally computes estimated marginal means (EMMs) at five quintile study days (min, Q1, median, Q3, max) via `emmeans::emmeans()`, returned as `treatment_effects_over_time`. Marginalising at a single mean time point (the existing `treatment_effects`) discards the Treatment × Day interaction that is the primary analysis target.
+- `dose_response_statistics()` — AIC and BIC from `stats::lm` and `drc::drm` are stored with a warning comment and an `aic_comparison_note` return field: the two likelihoods use different parameterisations and their information criteria are not directly comparable for model selection.
+- `analyze_drug_synergy()`, `analyze_drug_synergy_over_time()` — added `@section Assumptions and Limitations:` documenting the Bliss ceiling effect (individual TGI > 50% makes synergy detection nearly impossible) and the Loewe single-dose linear approximation limitation.
+
 ## [0.3.4] - 2026-05-14
 
 ### Removed
