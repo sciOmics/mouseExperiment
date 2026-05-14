@@ -4,7 +4,17 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
-## [v26.05.012] 2026 May 12th
+## [v26.05.013] 2026 May 14th
+
+### Removed
+- **Power Analysis — Post-hoc (observed data) mode** — eliminated in line with the removal of `post_power_analysis()` from the `mouseExperiment` package. Post-hoc power is statistically uninformative (a monotone function of the p-value) and should not be offered as an analysis option. Removed: the "Post-hoc" radio option, post-hoc sidebar controls (method selector, simulation count, custom effect sizes), post-hoc results panel (Summary, Effect Sizes, Power Analysis, Sample Size Recommendations, Power Curves tabs), and all associated server outputs and download handlers (`pw_summary`, `pw_effect_sizes_table`, `pw_power_table`, `pw_sample_sizes_table`, `pw_plot_curves`, `download_pw_effect_sizes`, `download_pw_power_table`, `download_pw_sample_sizes`, `download_pw_plot`).
+
+### Changed
+- **Power Analysis — default mode** changed from "Post-hoc (observed data)" to "A priori — Analytic".
+- **Power Analysis — Target Power** panel now shown only for "A priori — Analytic" mode (previously also shown for post-hoc mode).
+- **Power Analysis — results area** is now a single unconditional tabset showing Scenario Table, Power Curves, and SD Sensitivity (previously two conditional panels switching between post-hoc and a priori tabs).
+
+## [v26.05.012] 2026 May 5th
 
 ### Added
 - **Power Analysis — A priori Analytic mode** — new sidebar mode alongside the existing post-hoc. Users enter Cohen's d values (one or several, comma-separated) or a raw mean difference + pooled SD. Supports two-sample t-test (two groups) or one-way ANOVA omnibus (k ≥ 3 groups via `pwr::pwr.anova.test`). Sub-modes: "Find N" (required N per group for each target power × alpha combination) and "Find Power" (achieved power at user-specified N values). A "Seed SD from data" button fills the pooled SD from the currently loaded dataset. For mean-difference inputs, an SD sensitivity table shows how required N changes as the assumed SD is varied ±20% and ±40%, communicating uncertainty in the pilot SD estimate.
