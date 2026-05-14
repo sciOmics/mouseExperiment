@@ -75,7 +75,92 @@ survivalUI <- function(id) {
         ),
         tabsetPanel(
           id = ns("surv_results_tabs"),
-          
+
+          tabPanel("Info",
+            fluidRow(
+              column(10, offset = 1,
+                br(),
+
+                # ── Overview ────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading", h4(class = "panel-title", "Overview")),
+                  div(class = "panel-body",
+                    p("The Survival tab fits Kaplan–Meier (KM) survival curves and a Cox proportional hazards model to time-to-endpoint data. In mouse tumor experiments the 'endpoint' is typically the day a tumor exceeds the IACUC volume limit, not true animal death."),
+                    p("Three outputs are produced:"),
+                    tags$ul(
+                      tags$li(strong("Kaplan–Meier curves"), " with log-rank test p-values."),
+                      tags$li(strong("Cox proportional hazards model"), " reporting hazard ratios (HR) per group relative to the reference."),
+                      tags$li(strong("Risk table"), " showing animals at risk, events, and KM estimates at each event time.")
+                    )
+                  )
+                ),
+
+                # ── KM ───────────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-info", "Kaplan–Meier Estimator"))),
+                  div(class = "panel-body",
+                    p("The KM estimator computes a non-parametric step-function survival probability S(t) = P(T > t) from event times. Each downward step corresponds to one or more events on that day."),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Log-rank test"),
+                      tags$dd("Tests whether the survival curves of two or more groups are statistically equivalent. The omnibus p-value tests all groups simultaneously; pairwise p-values are computed by restricting each comparison to the relevant two groups (df = 1)."),
+                      tags$dt("Median survival"),
+                      tags$dd("Day by which 50 % of animals reached the endpoint. 'Not reached' if fewer than half had events before study end."),
+                      tags$dt("Censoring"),
+                      tags$dd("Animals that never reach the endpoint contribute their last observation day as a censored time. This correctly uses partial information rather than excluding them.")
+                    ),
+                    p(tags$small(class = "text-muted",
+                      "When all animals in a group are censored (zero events), a log-rank test is not meaningful. ",
+                      "The model falls back to pairwise comparisons using only groups with at least one event."
+                    ))
+                  )
+                ),
+
+                # ── Cox ───────────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-warning", "Cox Proportional Hazards Model"))),
+                  div(class = "panel-body",
+                    p("The Cox model estimates the hazard ratio (HR) for each treatment group relative to the reference:"),
+                    tags$blockquote(tags$code("h(t) = h₀(t) × exp(β₁ × Treatment)")),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("HR < 1"),
+                      tags$dd("Lower hazard than reference — animals reach the endpoint more slowly (better outcome)."),
+                      tags$dt("HR = 1"),
+                      tags$dd("Identical hazard to reference."),
+                      tags$dt("HR > 1"),
+                      tags$dd("Higher hazard than reference — animals reach the endpoint faster (worse outcome).")
+                    ),
+                    p(strong("Firth's bias-reduced estimation"), " is applied automatically when any group has zero events. Standard Cox partial likelihood produces infinite coefficient estimates in this case; Firth's penalisation regularises them."),
+                    p(tags$small(class = "text-muted",
+                      "The proportional hazards assumption requires that the HR is constant over time. ",
+                      "Crossing KM curves indicate a time-varying HR, which violates this assumption — interpret Cox results with caution in that case."
+                    ))
+                  )
+                ),
+
+                # ── Endpoint ─────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading", h4(class = "panel-title", "Endpoint Configuration")),
+                  div(class = "panel-body",
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Mapped censor column"),
+                      tags$dd("When an Event/Censor column is mapped in Data Upload (0 = censored, 1 = event), it is used directly."),
+                      tags$dt("Auto-detection"),
+                      tags$dd("When no censor column is mapped, animals that disappear before the final study day are automatically treated as events; animals present at the final day are censored."),
+                      tags$dt("Volume threshold"),
+                      tags$dd("Optionally generate an event indicator by flagging animals whose tumor volume exceeds a specified threshold at any timepoint."),
+                      tags$dt("Natural death"),
+                      tags$dd("If checked (recommended), animals that die before reaching the volume threshold are counted as events. If unchecked, only volume threshold crossings are events and natural deaths are censored.")
+                    )
+                  )
+                ),
+
+                br()
+              )
+            )
+          ),
+
           tabPanel("Summary",
             tab_info(strong("Time-to-Endpoint summary: "), "Per-group event counts, total subjects, event rate, and median time-to-endpoint (the day by which 50\u202f% of animals reached the endpoint \u2014 typically tumour volume exceeding the IACUC limit). \u2018Not reached\u2019 means fewer than half the group experienced an event by study end."),
             shinycssloaders::withSpinner(

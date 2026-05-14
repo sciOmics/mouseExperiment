@@ -48,6 +48,95 @@ doseResponseUI <- function(id) {
         tabsetPanel(
           id = ns("dr_results_tabs"),
 
+          tabPanel("Info",
+            fluidRow(
+              column(10, offset = 1,
+                br(),
+
+                # ── Overview ────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading", h4(class = "panel-title", "Overview")),
+                  div(class = "panel-body",
+                    p("The Dose-Response tab models how tumor volume (or TGI) varies across dose levels. Three complementary analyses are performed simultaneously:"),
+                    tags$ul(
+                      tags$li(strong("Linear regression"), " — tests whether there is a significant linear trend in tumor volume with increasing dose."),
+                      tags$li(strong("One-way ANOVA"), " — tests whether any dose group differs from the others, followed by Tukey HSD post-hoc comparisons if significant."),
+                      tags$li(strong("Non-linear dose-response model (4PL)"), " — fits a four-parameter log-logistic (Hill) model to quantify ED50 and curve steepness.")
+                    ),
+                    p(tags$small(class = "text-muted",
+                      "Tumor Growth Analysis must be run before using this tab — dose-response uses volume data preprocessed there. ",
+                      "A Dose column must also be mapped in Data Upload."
+                    ))
+                  )
+                ),
+
+                # ── Linear Regression ────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-info", "Linear Regression"))),
+                  div(class = "panel-body",
+                    p("Fits ", tags$code("Volume ~ Dose"), " by ordinary least squares. The slope quantifies the change in mean tumor volume per unit increase in dose."),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Slope"),
+                      tags$dd("Change in volume per dose unit. A negative slope indicates dose-dependent tumor suppression."),
+                      tags$dt("R²"),
+                      tags$dd("Proportion of variance in volume explained by dose. Low R² with a significant slope can occur when individual variability is high relative to group differences."),
+                      tags$dt("p-value"),
+                      tags$dd("Significance of the slope. A non-significant p-value does not exclude a non-linear relationship — inspect the 4PL model output and plots as well.")
+                    )
+                  )
+                ),
+
+                # ── ANOVA ────────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-warning", "One-Way ANOVA & Tukey HSD"))),
+                  div(class = "panel-body",
+                    p("Treats dose as a categorical factor and tests whether group means differ. A significant F-test (p < 0.05) triggers Tukey HSD post-hoc comparisons to identify which specific dose pairs differ."),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("F-statistic"),
+                      tags$dd("Ratio of between-group to within-group variance. Larger values indicate greater separation between dose groups relative to within-group noise."),
+                      tags$dt("Tukey HSD"),
+                      tags$dd("Family-wise error rate corrected pairwise differences. Values in 'p adj' below 0.05 indicate a significant difference at the 5 % level after correction for all comparisons.")
+                    ),
+                    p(tags$small(class = "text-muted",
+                      "ANOVA assumes equal variances across groups (homoscedasticity). ",
+                      "When this is violated, interpret alongside the linear regression, which is more robust to mild heteroscedasticity."
+                    ))
+                  )
+                ),
+
+                # ── 4PL ──────────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-success", "Non-Linear Model (4-Parameter Log-Logistic)"))),
+                  div(class = "panel-body",
+                    p("A four-parameter log-logistic (4PL / Hill) model is fitted via the ", tags$code("drc"), " package:"),
+                    tags$blockquote(tags$code(
+                      "Volume = c + (d − c) / (1 + (Dose / ED50)^b)"
+                    )),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("b"), tags$dd("Hill coefficient: steepness of the dose-response curve. Larger absolute values indicate a sharper transition."),
+                      tags$dt("c"), tags$dd("Lower asymptote (response at saturating inhibitory dose)."),
+                      tags$dt("d"), tags$dd("Upper asymptote (response in the absence of drug)."),
+                      tags$dt("ED50"), tags$dd("Dose producing 50 % of the maximal effect. The primary pharmacodynamic summary statistic.")
+                    ),
+                    div(class = "alert alert-info", style = "margin-top:10px;",
+                      icon("circle-info"), " ",
+                      strong("AIC / BIC note: "),
+                      "AIC and BIC from the linear model (", tags$code("stats::lm"), ") and the non-linear model (",
+                      tags$code("drc::drm"), ") are ", strong("not directly comparable"), " for model selection — ",
+                      "the two packages use different likelihood parameterisations. ",
+                      "Prefer visual inspection of the fitted curve and residuals when choosing between linear and non-linear models."
+                    )
+                  )
+                ),
+
+                br()
+              )
+            )
+          ),
+
           tabPanel("Summary",
             tab_info(
               strong("Dose-response summary: "),

@@ -183,6 +183,127 @@ powerAnalysisUI <- function(id) {
         tabsetPanel(
           id = ns("pw_ap_results_tabs"),
 
+          tabPanel("Info",
+            fluidRow(
+              column(10, offset = 1,
+                br(),
+
+                # ── Overview ────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading", h4(class = "panel-title", "Overview")),
+                  div(class = "panel-body",
+                    p("The Power Analysis tab supports prospective (a priori) sample-size planning before an experiment is run. Both methods estimate the probability of detecting a true effect of a specified magnitude at a chosen significance level."),
+                    tags$ul(
+                      tags$li(strong("A priori — Analytic"), " — closed-form power calculation using a two-sample t-test (two groups) or one-way ANOVA (three or more groups). Fast; no simulation required."),
+                      tags$li(strong("A priori — LMM Simulation"), " — Monte Carlo simulation of longitudinal tumor-growth data. Fits the same mixed-effects model used in the Tumor Growth tab and extracts power from the Treatment × Day interaction. More realistic for repeated-measures designs.")
+                    ),
+                    p(tags$small(class = "text-muted",
+                      "Post-hoc power analysis (computed from observed data after the experiment) is not provided. ",
+                      "Post-hoc power is a monotone function of the p-value and adds no information beyond the test result itself ",
+                      "(Hoenig & Heisey, 2001)."
+                    ))
+                  )
+                ),
+
+                # ── Analytic Mode ────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-info", "Analytic Mode"), " — Method & Parameters")),
+                  div(class = "panel-body",
+
+                    h5(strong("Method")),
+                    p("For two groups, a two-sample t-test power calculation is used (non-central t-distribution). For three or more groups, one-way ANOVA power is computed via the non-central F distribution."),
+                    tags$blockquote(
+                      p(tags$b("Two groups:"), " Cohen's d = Δ / SD_pooled; power from the non-central t-distribution."),
+                      p(tags$b("Three or more groups:"), " Cohen's d is converted to Cohen's f via ", tags$code("f = d / √2"), ". ",
+                        "This assumes the two most extreme groups span the full effect and overestimates f — and therefore power — when all treated groups are uniformly shifted vs control. ",
+                        "A method note is shown in the Scenario Table output when ≥ 3 groups are selected.")
+                    ),
+
+                    hr(),
+                    h5(strong("Effect Size Input")),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Cohen's d"),
+                      tags$dd("Enter one or more d values directly (comma-separated). Conventional benchmarks: small ≈ 0.2, medium ≈ 0.5, large ≈ 0.8."),
+                      tags$dt("Mean difference + SD"),
+                      tags$dd("Enter the expected mean difference (Δ) and pooled within-group SD. Cohen's d is computed internally. Use 'Seed SD from loaded data' to populate the SD from your uploaded dataset.")
+                    ),
+
+                    hr(),
+                    h5(strong("Solve For")),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Find N"),
+                      tags$dd("Returns the required N per group to achieve each target power × alpha combination. Results shown in the Scenario Table."),
+                      tags$dt("Find Power"),
+                      tags$dd("Returns achieved power at specified N values. Useful when sample size is constrained by practical considerations.")
+                    ),
+
+                    hr(),
+                    h5(strong("SD Sensitivity Tab")),
+                    p("Shows how the required N changes when the assumed SD is perturbed by ±20 % and ±40 %. Only available in Mean Difference + Pooled SD mode. Use this to gauge sensitivity of your sample size estimate to uncertainty in the expected variance.")
+                  )
+                ),
+
+                # ── LMM Simulation Mode ───────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-warning", "LMM Simulation Mode"), " — Method & Parameters")),
+                  div(class = "panel-body",
+
+                    h5(strong("Method")),
+                    p("Synthetic tumor-growth datasets are generated on the log scale:"),
+                    tags$blockquote(tags$code(
+                      "log(Volume) = log(baseline) + b₀ + (rate + b₁) × t + ε"
+                    )),
+                    p("where ", tags$code("b₀"), " ~ N(0, random intercept SD), ", tags$code("b₁"), " ~ N(0, random slope SD), and ",
+                      tags$code("ε"), " ~ N(0, residual SD). Volumes are exponentiated back to the original scale."),
+                    p("For each simulated dataset, ", tags$code("log(Volume) ~ Treatment × Day + (Day | ID)"),
+                      " is fitted via lme4 and significance assessed by a likelihood-ratio test (LRT). Power = proportion of simulations where p < α."),
+
+                    hr(),
+                    h5(strong("Key Parameters")),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Control log-growth rate"),
+                      tags$dd("Exponential growth constant for the control group on the log scale. A rate of 0.15 corresponds to ~16 % daily volume increase."),
+                      tags$dt("Treatment rate reduction"),
+                      tags$dd("Reduction in growth rate for treated vs control, on the log scale."),
+                      tags$dt("Random intercept SD"),
+                      tags$dd("Between-animal variability in baseline volume (log scale). Higher values require larger N."),
+                      tags$dt("Random slope SD"),
+                      tags$dd("Between-animal variability in growth rate (log scale)."),
+                      tags$dt("Residual SD"),
+                      tags$dd("Within-animal measurement noise (log scale)."),
+                      tags$dt("Simulations"),
+                      tags$dd("Number of Monte Carlo draws. Use ≥ 1000 for publication-quality estimates; ≤ 500 for quick exploration. Power estimates are shown with ±1.96 × SE uncertainty bands in the Power Curves tab.")
+                    )
+                  )
+                ),
+
+                # ── Interpretation ───────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading", h4(class = "panel-title", "Interpretation")),
+                  div(class = "panel-body",
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Alpha (α)"),
+                      tags$dd("Significance threshold (Type I error rate). Conventional choices are 0.05 (5 %) and 0.01 (1 %). Lower alpha requires a larger N to achieve the same power."),
+                      tags$dt("Power (1−β)"),
+                      tags$dd("Probability of detecting a true effect. 0.80 is a common minimum; 0.90 is recommended when false negatives are costly."),
+                      tags$dt("N per group"),
+                      tags$dd("Sample size per treatment arm. Total study animals = N per group × number of groups.")
+                    ),
+                    p(tags$small(class = "text-muted",
+                      "Power estimates assume the specified effect size is exactly correct. ",
+                      "If the true effect is smaller, actual power will be lower than estimated. ",
+                      "Use the SD Sensitivity tab to understand robustness to variance assumptions."
+                    ))
+                  )
+                ),
+
+                br()
+              )
+            )
+          ),
+
           tabPanel("Scenario Table",
             tab_info(
               strong("A priori power / sample size table: "),

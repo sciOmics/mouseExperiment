@@ -431,6 +431,112 @@ tumorGrowthUI <- function(id) {
         tabsetPanel(
           id = ns("tg_results_tabs"),
 
+          tabPanel("Info",
+            fluidRow(
+              column(10, offset = 1,
+                br(),
+
+                # ── Overview ────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading", h4(class = "panel-title", "Overview")),
+                  div(class = "panel-body",
+                    p("The Tumor Growth tab provides two statistical modeling approaches selectable from the ",
+                      strong("Statistical Model"), " dropdown:"),
+                    tags$ul(
+                      tags$li(strong("Linear Mixed-Effects Model (LME4)"), " — fits a mixed-effects model to repeated tumor volume measurements. Accounts for inter-animal variability and unequal observation times. Recommended for most longitudinal datasets."),
+                      tags$li(strong("Area Under Curve (AUC)"), " — summarises each animal’s total tumor burden as the trapezoidal AUC of its growth curve. Non-parametric and robust to missing timepoints, but discards trajectory shape information.")
+                    ),
+                    p(tags$small(class = "text-muted",
+                      "Both modes compute Tumor Growth Inhibition (TGI) for each treatment group relative to the reference. ",
+                      "TGI = (1 − V_treated / V_control) × 100 at the final timepoint."
+                    ))
+                  )
+                ),
+
+                # ── LME4 Mode ───────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-info", "LME4 Mode"), " — Analyses & Outputs")),
+                  div(class = "panel-body",
+
+                    h5(strong("Model")),
+                    p("A linear mixed-effects model is fitted to transformed tumor volumes:"),
+                    tags$blockquote(tags$code("log(Volume) ~ Treatment × Day + (1 | ID)")),
+                    p("The Treatment × Day interaction captures whether treatment groups differ in their growth ", em("trajectories"), " over time, not just at a single endpoint."),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Transformation"), tags$dd("Log (default) stabilises variance and linearises exponential growth. Square root suits moderate heteroscedasticity. Use ‘None’ only for already-linear data."),
+                      tags$dt("Random Effects"), tags$dd("‘Intercept only’ allows each animal to have its own baseline volume. ‘Intercept + Slope’ additionally allows individual growth rates — more flexible but may fail to converge with small groups."),
+                      tags$dt("Cage Effect"), tags$dd("When a cage ID is mapped in Data Upload, cage can be included as a covariate to account for housing-level clustering. ‘Include if not collinear’ adds it automatically when it is statistically separable from treatment.")
+                    ),
+
+                    hr(),
+                    h5(strong("ANOVA Tab")),
+                    p("Type III ANOVA F-test for Treatment, Day, and the Treatment × Day interaction. A significant interaction (p < 0.05) indicates that treatment groups differ in their growth trajectories — the primary analysis target."),
+
+                    hr(),
+                    h5(strong("Comparisons Tab")),
+                    p("Pairwise group comparisons at the mean observation day using estimated marginal means (EMMs):"),
+                    tags$ul(
+                      tags$li(strong("vs Reference (Dunnett)"), " — each treatment vs the reference group only. Dunnett correction controls the familywise error rate for this one-vs-many structure and is less conservative than Bonferroni."),
+                      tags$li(strong("All Comparisons (Tukey HSD)"), " — every pairwise combination. Use when all inter-group differences are of scientific interest.")
+                    ),
+                    p(tags$small(class = "text-muted",
+                      "Comparisons are marginalised at the mean study day. For trajectory differences across time, see the Treatment Effects tab."
+                    )),
+
+                    hr(),
+                    h5(strong("Treatment Effects Tab")),
+                    p("Estimated marginal means (EMMs) of transformed volume per treatment group. EMMs are shown at the mean observation day and at five quantile days (min, Q1, median, Q3, max), capturing the Treatment × Day interaction that a single mean-day estimate would miss."),
+
+                    hr(),
+                    h5(strong("Growth Rates Tab")),
+                    p("Per-animal exponential growth rates estimated by log-linear regression of each animal’s volume trajectory independently. Reported as growth rate (log-scale slope), fold change, and % change per day with 95 % CIs and R². These are descriptive; for group-level inference use the ANOVA and Comparisons tabs."),
+
+                    hr(),
+                    h5(strong("Diagnostics Tab")),
+                    p("Q–Q plot of residuals and residuals vs fitted values. Systematic curvature suggests the transformation choice should be revisited. Funnel-shaped spread indicates heteroscedasticity.")
+                  )
+                ),
+
+                # ── AUC Mode ─────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-warning", "AUC Mode"), " — Analyses & Outputs")),
+                  div(class = "panel-body",
+                    p("Trapezoidal AUC of tumor volume over time is computed per animal. AUC (mm³·day) captures total tumor burden integrated over the study, not just the final timepoint."),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Individual AUC"), tags$dd("Per-animal AUC values with group summaries (mean, SD, SEM)."),
+                      tags$dt("AUC Summary"), tags$dd("Group comparisons via Welch t-tests with Benjamini–Hochberg correction.")
+                    ),
+                    p(tags$small(class = "text-muted",
+                      "LOCF (last observation carried forward) can extrapolate AUC to a common endpoint for animals censored early, ",
+                      "so all animals contribute to the same time window. Set Extrapolation Points to 0 to use only observed data."
+                    ))
+                  )
+                ),
+
+                # ── Shared Parameters ─────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading", h4(class = "panel-title", "Shared Parameters")),
+                  div(class = "panel-body",
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Reference Group"),
+                      tags$dd("The vehicle/control group used as comparator. Auto-detected from common names (Vehicle, Control, DMSO, PBS, Saline) or defaults to the first group alphabetically."),
+                      tags$dt("Post-hoc Comparisons"),
+                      tags$dd("Dunnett (vs reference, default) or Tukey HSD (all pairs). Applies to the Comparisons tab in LME4 mode."),
+                      tags$dt("Extrapolation Points"),
+                      tags$dd("Number of recent timepoints used to fit a slope for animals that died before study end, then extrapolate their volume to the final day. Set to 0 to use observed data only."),
+                      tags$dt("Time Column"),
+                      tags$dd("Numeric study day, or calculated from a date column mapped in Data Upload (days elapsed from first observation).")
+                    )
+                  )
+                ),
+
+                br()
+              )
+            )
+          ),
+
           tabPanel("Summary",
             uiOutput(ns("tg_summary_tab_info")),
             shinycssloaders::withSpinner(

@@ -43,7 +43,92 @@ synergyUI <- function(id) {
         ),
         tabsetPanel(
           id = ns("syn_results_tabs"),
-          
+
+          tabPanel("Info",
+            fluidRow(
+              column(10, offset = 1,
+                br(),
+
+                # ── Overview ────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading", h4(class = "panel-title", "Overview")),
+                  div(class = "panel-body",
+                    p("The Drug Synergy tab assesses whether a drug combination produces greater tumor suppression than predicted from the individual drugs acting independently. Two reference models are evaluated simultaneously:"),
+                    tags$ul(
+                      tags$li(strong("Bliss Independence"), " — treats the two drugs as probabilistically independent. The expected combined TGI is the sum of individual TGIs, capped at 100 %."),
+                      tags$li(strong("Loewe Additivity"), " — treats the drugs as dose-equivalent. The Combination Index (CI) measures how the observed combination effect compares to the expected additive effect.")
+                    ),
+                    p("Four treatment groups must be assigned in the sidebar: Control, Drug A only, Drug B only, and the Combination (A + B). Analysis can be run at a single timepoint or tracked over the full study duration."),
+                    p(tags$small(class = "text-muted",
+                      "Tumor Growth Analysis must be run first — Drug Synergy uses preprocessed volume data from that tab."
+                    ))
+                  )
+                ),
+
+                # ── Bliss ────────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-info", "Bliss Independence"))),
+                  div(class = "panel-body",
+                    p("Under Bliss independence, drugs act on independent targets and their joint fractional effect (FE) is:"),
+                    tags$blockquote(tags$code("Expected TGI = min(FE_A + FE_B, 1.0) × 100")),
+                    p("where FE = TGI / 100 for each single agent. The cap at 1.0 prevents the expected value from exceeding the biological ceiling."),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Bliss Difference"),
+                      tags$dd("TGI_combo − Expected TGI. Positive = synergy; negative = antagonism; near zero = independence.")
+                    ),
+                    div(class = "alert alert-warning", style = "margin-top:10px;",
+                      icon("triangle-exclamation"), " ",
+                      strong("Ceiling effect: "),
+                      "When either individual drug achieves TGI > 50 %, the Bliss expected TGI approaches or reaches 100 %, ",
+                      "leaving no room to detect synergy even if it is real. ",
+                      "In this regime Bliss Difference will be near zero or negative regardless of combination performance. ",
+                      "Interpret Bliss results cautiously when single-agent TGIs are high."
+                    )
+                  )
+                ),
+
+                # ── Loewe ────────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-warning", "Loewe Additivity & Combination Index"))),
+                  div(class = "panel-body",
+                    p("Loewe additivity assumes that drugs acting on the same pathway are dose-equivalent and interchangeable. The Combination Index (CI) is:"),
+                    tags$blockquote(tags$code("CI = min(FE_A + FE_B, 1.0) / FE_combo")),
+                    p("Interpretation thresholds:"),
+                    tags$ul(
+                      tags$li(tags$b("CI < 0.85"), " — synergistic: the combination outperforms the additive expectation."),
+                      tags$li(tags$b("0.85 ≤ CI ≤ 1.15"), " — additive: the combination matches the expected additive effect."),
+                      tags$li(tags$b("CI > 1.15"), " — antagonistic: the combination underperforms the additive expectation.")
+                    ),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Loewe Difference"),
+                      tags$dd("TGI_combo − Loewe Expected TGI. Positive = synergy; negative = antagonism.")
+                    ),
+                    div(class = "alert alert-info", style = "margin-top:10px;",
+                      icon("circle-info"), " ",
+                      strong("Single-dose approximation: "),
+                      "This implementation derives fractional effects from single-dose measurements rather than full dose-response curves for each drug. ",
+                      "The CI is therefore an approximation of the true Loewe CI. ",
+                      "A rigorous Loewe analysis requires IC50 values from complete dose-response curves — collect full dose-response data if a definitive CI is needed."
+                    )
+                  )
+                ),
+
+                # ── Over-time ────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading", h4(class = "panel-title", "Over-Time Analysis")),
+                  div(class = "panel-body",
+                    p("When 'Analyze over time' is enabled in the sidebar, Bliss and Loewe scores are computed at every measured timepoint and plotted as a synergy trend. This reveals whether synergy emerges, fades, or reverses over the course of treatment."),
+                    p("Per-timepoint p-values (Combination vs Drug A and vs Drug B, two-sample t-test) are included in the Synergy Metrics table. These are unadjusted for multiple testing across timepoints — interpret overall patterns rather than individual p-values at isolated days.")
+                  )
+                ),
+
+                br()
+              )
+            )
+          ),
+
           tabPanel("Summary",
             tab_info(strong("Synergy summary: "), "Overall assessment combining Bliss independence and Combination Index (CI) metrics. Reports whether the drug combination is synergistic, additive, or antagonistic at the evaluated timepoint, and lists the key quantitative scores."),
             shinycssloaders::withSpinner(
