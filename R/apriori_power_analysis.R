@@ -175,6 +175,7 @@ apriori_power_analysis <- function(effect_size   = NULL,
   n_seq <- seq(2L, 80L, by = 1L)
   curve_rows <- lapply(alpha, function(a) {
     data.frame(
+      Effect_Size = effect_size,
       N_Per_Group = n_seq,
       Power       = vapply(n_seq, function(n) power_fn(n, a), numeric(1)),
       Alpha       = a,
