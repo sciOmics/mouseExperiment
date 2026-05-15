@@ -21,7 +21,9 @@ bayesian_tumor_growth(
   seed = 42L,
   return_model = TRUE,
   plots = TRUE,
-  verbose = FALSE
+  verbose = FALSE,
+  necrotic_column = NULL,
+  necrotic_handling = c("exclude", "covariate", "none")
 )
 }
 \arguments{

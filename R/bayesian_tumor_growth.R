@@ -138,7 +138,9 @@ bayesian_tumor_growth <- function(
   seed                         = 42L,
   return_model                 = TRUE,
   plots                        = TRUE,
-  verbose                      = FALSE
+  verbose                      = FALSE,
+  necrotic_column              = NULL,
+  necrotic_handling            = c("exclude", "covariate", "none")
 ) {
 
   # ── Dependency checks ──────────────────────────────────────────────────────
@@ -152,6 +154,7 @@ bayesian_tumor_growth <- function(
   transform                    <- match.arg(transform)
   random_effects_specification <- match.arg(random_effects_specification)
   prior_strength               <- match.arg(prior_strength)
+  necrotic_handling            <- match.arg(necrotic_handling)
 
   # ── Column validation ──────────────────────────────────────────────────────
   required_cols <- c(time_column, volume_column, treatment_column, id_column)
@@ -184,6 +187,17 @@ bayesian_tumor_growth <- function(
   auc_df      <- df          # untransformed copy for growth rates
   analysis_df <- df
 
+  # Handle necrotic observations (before transformation)
+  necrosis_summary <- NULL
+  include_necrotic_covariate <- FALSE
+  if (!is.null(necrotic_column) && necrotic_column %in% colnames(analysis_df)) {
+    nec <- tgs_handle_necrosis(analysis_df, necrotic_column, necrotic_handling,
+                               treatment_column, id_column, time_column)
+    analysis_df      <- nec$data
+    necrosis_summary <- nec$necrosis_summary
+    include_necrotic_covariate <- necrotic_handling == "covariate"
+  }
+
   if (transform == "log") {
     vol <- analysis_df[[volume_column]]
     vol[vol <= 0] <- min(vol[vol > 0], na.rm = TRUE) / 2
@@ -199,9 +213,11 @@ bayesian_tumor_growth <- function(
     paste0("(1 | ", id_column, ")")
   }
 
-  brms_formula <- stats::as.formula(paste(
-    volume_column, "~", treatment_column, "*", time_column, "+", re_term
-  ))
+  fixed_part <- paste(volume_column, "~", treatment_column, "*", time_column)
+  if (isTRUE(include_necrotic_covariate)) {
+    fixed_part <- paste(fixed_part, "+ necrotic_cov_flag")
+  }
+  brms_formula <- stats::as.formula(paste(fixed_part, "+", re_term))
 
   # ── Prior specification ────────────────────────────────────────────────────
   b_sd     <- switch(prior_strength,
@@ -472,6 +488,7 @@ bayesian_tumor_growth <- function(
     credible_intervals_plot = credible_intervals_plot,
     mcmc_trace_plot         = mcmc_trace_plot,
     growth_rates            = growth_rates,
-    data_summary            = data_summary
+    data_summary            = data_summary,
+    necrosis_summary        = necrosis_summary
   )
 }

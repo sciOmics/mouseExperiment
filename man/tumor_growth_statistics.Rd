@@ -25,7 +25,9 @@ tumor_growth_statistics(
   include_diagnostics = TRUE,
   plots = TRUE,
   verbose = FALSE,
-  extrapolation_points = 0
+  extrapolation_points = 0,
+  necrotic_column = NULL,
+  necrotic_handling = c("exclude", "covariate", "none")
 )
 }
 \arguments{

@@ -248,7 +248,8 @@ tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
                                 handle_cage_effects,
                                 polynomial_degree,
                                 cage_collinear,
-                                verbose) {
+                                verbose,
+                                include_necrotic_covariate = FALSE) {
   bt <- function(x) paste0("`", x, "`")
 
   # Build time term based on polynomial degree
@@ -277,6 +278,9 @@ tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
   )
   if (include_cage_fixed) {
     fixed_part <- paste(fixed_part, "+", bt(cage_column))
+  }
+  if (isTRUE(include_necrotic_covariate)) {
+    fixed_part <- paste(fixed_part, "+ necrotic_cov_flag")
   }
 
   if (isTRUE(verbose)) {
@@ -351,11 +355,14 @@ tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
     )
   }, error = function(e) {
     warning("lmer() failed (", e$message, "). Falling back to intercept-only model.")
+    fallback_fixed <- paste(
+      bt(volume_column), "~", bt(time_column), "*", bt(treatment_column)
+    )
+    if (isTRUE(include_necrotic_covariate)) {
+      fallback_fixed <- paste(fallback_fixed, "+ necrotic_cov_flag")
+    }
     lme4::lmer(
-      stats::as.formula(paste(
-        bt(volume_column), "~", bt(time_column), "*",
-        bt(treatment_column), "+ (1|", bt(id_column), ")"
-      )),
+      stats::as.formula(paste(fallback_fixed, "+ (1|", bt(id_column), ")")),
       data = analysis_df,
       control = lme4::lmerControl(
         check.nobs.vs.nlev = "ignore",
@@ -679,7 +686,9 @@ tumor_growth_statistics <- function(df,
                                   include_diagnostics = TRUE,
                                   plots = TRUE,
                                   verbose = FALSE,
-                                  extrapolation_points = 0) {
+                                  extrapolation_points = 0,
+                                  necrotic_column  = NULL,
+                                  necrotic_handling = c("exclude", "covariate", "none")) {
   # Check for required packages
   if (!requireNamespace("lme4", quietly = TRUE)) {
     stop("Please install the lme4 package: install.packages('lme4')")
@@ -692,6 +701,7 @@ tumor_growth_statistics <- function(df,
   handle_cage_effects <- match.arg(handle_cage_effects)
   auc_method <- match.arg(auc_method)
   p_adjust_method <- match.arg(p_adjust_method)
+  necrotic_handling <- match.arg(necrotic_handling)
   
   if (isTRUE(verbose)) {
     message("Analyzing tumor growth data...")
@@ -738,7 +748,22 @@ tumor_growth_statistics <- function(df,
   
   # Create a copy for AUC calculation before transformation
   auc_df <- df
-  
+
+  # Handle necrotic observations (before transformation, after extrapolation)
+  necrosis_summary <- NULL
+  include_necrotic_covariate <- FALSE
+  if (!is.null(necrotic_column) && necrotic_column %in% colnames(analysis_df)) {
+    nec <- tgs_handle_necrosis(analysis_df, necrotic_column, necrotic_handling,
+                               treatment_column, id_column, time_column)
+    analysis_df      <- nec$data
+    necrosis_summary <- nec$necrosis_summary
+    include_necrotic_covariate <- necrotic_handling == "covariate"
+    if (isTRUE(verbose)) {
+      n_excl <- attr(analysis_df, ".n_necrotic_excluded") %||% 0L
+      message("Necrosis handling: '", necrotic_handling, "'. Excluded: ", n_excl, " observations.")
+    }
+  }
+
   # Apply transformations if needed
   if (transform == "log") {
     # Replace zeros/negatives with a small epsilon before log transform
@@ -766,7 +791,8 @@ tumor_growth_statistics <- function(df,
     analysis_df, volume_column, time_column,
     treatment_column, id_column, cage_column,
     random_effects_specification, handle_cage_effects,
-    polynomial_degree, cage_collinear, verbose
+    polynomial_degree, cage_collinear, verbose,
+    include_necrotic_covariate = include_necrotic_covariate
   )
   model <- lme4_result$model
   model_selection <- lme4_result$model_selection
@@ -1000,9 +1026,10 @@ tumor_growth_statistics <- function(df,
       cage_analysis = cage_analysis,
       auc_analysis = auc_analysis,
       data_summary = data_summary,
-      diagnostics = diagnostics
+      diagnostics = diagnostics,
+      necrosis_summary = necrosis_summary
     )
-    
+
     return(results)
   } else {
     # Create ANOVA table
@@ -1183,7 +1210,8 @@ tumor_growth_statistics <- function(df,
       model_selection = model_selection,
       diagnostics = if (include_diagnostics) diagnostics else NULL,
       data_summary = data_summary,
-      plots = plots_list
+      plots = plots_list,
+      necrosis_summary = necrosis_summary
     )
 
     return(results)
