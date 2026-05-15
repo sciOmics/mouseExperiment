@@ -346,7 +346,8 @@ tumor_growth_server <- function(id, rv) {
             survival_column = surv_col,
             extrapolate_volumes = do_extrapolate,
             extrapolation_points = if (extra_pts > 0L) extra_pts else "all",
-            group_summary_line = TRUE
+            group_summary_line = TRUE,
+            necrotic_column = rv$necrotic_col
           ) + ggplot2::theme_classic()
         }
         
