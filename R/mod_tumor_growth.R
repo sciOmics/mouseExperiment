@@ -189,14 +189,44 @@ tumor_growth_server <- function(id, rv) {
                    input$tg_random_effects %||% "intercept_only"
 
       # Capture all reactive values before entering the future
+      # Build manual prior strings from structured UI inputs if needed
+      prior_str <- input$tg_prior_strength %||% "skeptical"
+      bayes_manual_priors <- if (prior_str == "manual") {
+        build_fe_prior_string <- function(dist, mu, sd, df) {
+          if (isTRUE(dist == "student_t"))
+            sprintf("student_t(%s, %s, %s)", df %||% 3, mu %||% 0, sd %||% 0.25)
+          else
+            sprintf("normal(%s, %s)", mu %||% 0, sd %||% 0.25)
+        }
+        build_scale_prior_string <- function(dist, param) {
+          if (isTRUE(dist == "half_normal"))
+            sprintf("normal(0, %s)", param %||% 0.5)
+          else
+            sprintf("exponential(%s)", param %||% 2)
+        }
+        list(
+          prior_b         = build_fe_prior_string(
+            input$tg_prior_b_dist, input$tg_prior_b_mu,
+            input$tg_prior_b_sd,   input$tg_prior_b_df),
+          prior_intercept = build_fe_prior_string(
+            input$tg_prior_int_dist, input$tg_prior_int_mu,
+            input$tg_prior_int_sd,   input$tg_prior_int_df),
+          prior_sd        = build_scale_prior_string(
+            input$tg_prior_sd_dist,    input$tg_prior_sd_param),
+          prior_sigma     = build_scale_prior_string(
+            input$tg_prior_sigma_dist, input$tg_prior_sigma_param)
+        )
+      } else NULL
+
       bayes_params <- list(
-        data             = data,
-        col_names        = col_names,
-        reference_group  = input$tg_reference,
-        random_effects   = re_spec,
-        prior_strength   = input$tg_prior_strength   %||% "weakly_informative",
-        n_chains         = as.integer(input$tg_bayes_chains %||% 4L),
-        n_iter           = as.integer(input$tg_bayes_iter   %||% 2000L),
+        data              = data,
+        col_names         = col_names,
+        reference_group   = input$tg_reference,
+        random_effects    = re_spec,
+        prior_strength    = prior_str,
+        manual_priors     = bayes_manual_priors,
+        n_chains          = as.integer(input$tg_bayes_chains %||% 4L),
+        n_iter            = as.integer(input$tg_bayes_iter   %||% 2000L),
         extrap_pts        = as.integer(input$tg_extrapolation_points %||% 0L),
         dose_col          = rv$dose_col,
         necrotic_col      = rv$necrotic_col,
@@ -225,6 +255,10 @@ tumor_growth_server <- function(id, rv) {
           random_effects_specification = bayes_params$random_effects,
           reference_group              = bayes_params$reference_group,
           prior_strength               = bayes_params$prior_strength,
+          prior_b                      = bayes_params$manual_priors$prior_b,
+          prior_intercept              = bayes_params$manual_priors$prior_intercept,
+          prior_sd                     = bayes_params$manual_priors$prior_sd,
+          prior_sigma                  = bayes_params$manual_priors$prior_sigma,
           n_chains                     = bayes_params$n_chains,
           n_iter                       = bayes_params$n_iter,
           necrotic_column              = bayes_params$necrotic_col,
@@ -788,6 +822,14 @@ tumor_growth_server <- function(id, rv) {
     }
   })
   
+  # Dynamic labels for manual scale prior parameter inputs
+  output$tg_prior_sd_param_label <- renderUI({
+    if (isTRUE(input$tg_prior_sd_dist == "half_normal")) "Scale σ" else "Rate"
+  })
+  output$tg_prior_sigma_param_label <- renderUI({
+    if (isTRUE(input$tg_prior_sigma_dist == "half_normal")) "Scale σ" else "Rate"
+  })
+
   # Necrotic handling selector — visible only when a necrotic column is mapped
   output$necrotic_handling_ui <- renderUI({
     if (is.null(rv$necrotic_col)) return(NULL)

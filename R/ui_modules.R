@@ -430,16 +430,68 @@ tumorGrowthUI <- function(id) {
             h5(strong("Bayesian Settings")),
             selectInput(ns("tg_prior_strength"), "Prior Strength",
               choices = c(
-                "Weakly informative (recommended)" = "weakly_informative",
-                "Informative"                      = "informative",
-                "Diffuse"                          = "diffuse"
+                "Skeptical (recommended)" = "skeptical",
+                "Weakly informative"      = "weakly_informative",
+                "Informative"             = "informative",
+                "Diffuse"                 = "diffuse",
+                "Manual specification"    = "manual"
               ),
-              selected = "weakly_informative"
+              selected = "skeptical"
             ),
-            helpText("Prior on fixed effects (log-scale slopes/contrasts). ",
-                     "Weakly informative: N(0, 1) — regularises estimates without ",
-                     "strong assumptions. Informative: N(0, 0.5) — tighter. ",
-                     "Diffuse: N(0, 2.5) — minimal regularisation."),
+            helpText(
+              strong("Skeptical"), " — N(0, 0.25): requires strong data to support large effects. ",
+              strong("Weakly informative"), " — N(0, 1). ",
+              strong("Informative"), " — N(0, 0.5). ",
+              strong("Diffuse"), " — N(0, 2.5). ",
+              strong("Manual"), " — specify each prior below."
+            ),
+            # Manual prior specification — shown only when "Manual" is selected
+            conditionalPanel(ns = ns,
+              condition = "input.tg_prior_strength == 'manual'",
+              tags$hr(style = "margin:8px 0"),
+              tags$p(tags$strong("Fixed effects (b)"), style = "margin-bottom:4px; font-size:0.9em;"),
+              fluidRow(
+                column(6, selectInput(ns("tg_prior_b_dist"), NULL,
+                  choices = c("normal" = "normal", "student_t" = "student_t"),
+                  selected = "normal")),
+                column(3, numericInput(ns("tg_prior_b_mu"),  "μ",  value = 0,    step = 0.05)),
+                column(3, numericInput(ns("tg_prior_b_sd"),  "σ",  value = 0.25, step = 0.05, min = 0.01))
+              ),
+              conditionalPanel(ns = ns,
+                condition = "input.tg_prior_b_dist == 'student_t'",
+                numericInput(ns("tg_prior_b_df"), "df (student_t)", value = 3, min = 1, step = 1)
+              ),
+              tags$p(tags$strong("Intercept"), style = "margin:6px 0 4px; font-size:0.9em;"),
+              fluidRow(
+                column(6, selectInput(ns("tg_prior_int_dist"), NULL,
+                  choices = c("normal" = "normal", "student_t" = "student_t"),
+                  selected = "normal")),
+                column(3, numericInput(ns("tg_prior_int_mu"), "μ",  value = 0,    step = 0.1)),
+                column(3, numericInput(ns("tg_prior_int_sd"), "σ",  value = 0.625, step = 0.05, min = 0.01))
+              ),
+              conditionalPanel(ns = ns,
+                condition = "input.tg_prior_int_dist == 'student_t'",
+                numericInput(ns("tg_prior_int_df"), "df (student_t)", value = 3, min = 1, step = 1)
+              ),
+              tags$p(tags$strong("Random-effect SD (sd)"), style = "margin:6px 0 4px; font-size:0.9em;"),
+              fluidRow(
+                column(6, selectInput(ns("tg_prior_sd_dist"), NULL,
+                  choices = c("exponential" = "exponential", "half-normal" = "half_normal"),
+                  selected = "exponential")),
+                column(6, numericInput(ns("tg_prior_sd_param"),
+                  label = uiOutput(ns("tg_prior_sd_param_label")),
+                  value = 2, min = 0.01, step = 0.1))
+              ),
+              tags$p(tags$strong("Residual SD (sigma)"), style = "margin:6px 0 4px; font-size:0.9em;"),
+              fluidRow(
+                column(6, selectInput(ns("tg_prior_sigma_dist"), NULL,
+                  choices = c("exponential" = "exponential", "half-normal" = "half_normal"),
+                  selected = "exponential")),
+                column(6, numericInput(ns("tg_prior_sigma_param"),
+                  label = uiOutput(ns("tg_prior_sigma_param_label")),
+                  value = 2, min = 0.01, step = 0.1))
+              )
+            ),
             numericInput(ns("tg_bayes_chains"), "MCMC chains",
                          value = 4, min = 1, max = 8, step = 1),
             numericInput(ns("tg_bayes_iter"), "Iterations per chain",
@@ -580,19 +632,31 @@ tumorGrowthUI <- function(id) {
 
                     hr(),
                     h5(strong("Prior Strength")),
-                    p("Priors regularise the model in the absence of strong data. All presets use the ",
-                      "same prior family; only the width changes:"),
+                    p("Priors express what you believe about parameter values ", em("before"), " seeing the data. ",
+                      "They regularise estimates and prevent the model from chasing noise in small samples. ",
+                      "All presets use Normal priors on fixed effects and Exponential priors on variance components; only the widths differ."),
                     tags$dl(class = "dl-horizontal",
+                      tags$dt("Skeptical"),
+                      tags$dd(tags$strong("Default."), " N(0, 0.25) on fixed effects; Exponential(2) on SDs. ",
+                              "Encodes the reasonable belief that treatment effects are small — effects > ±0.5 log-units per day ",
+                              "are considered very unlikely a priori. Recommended for exploratory preclinical studies where ",
+                              "large effects have not been previously established."),
                       tags$dt("Weakly informative"),
-                      tags$dd("N(0, 1) on fixed effects (log-scale); Exponential(1) on SDs. ",
-                              "Recommended for most datasets — prevents extreme estimates without ",
-                              "imposing biological assumptions."),
+                      tags$dd("N(0, 1) on fixed effects; Exponential(1) on SDs. ",
+                              "Broader than Skeptical — appropriate when prior work suggests the treatment ",
+                              "category can produce moderate-to-large effects."),
                       tags$dt("Informative"),
-                      tags$dd("N(0, 0.5) — tighter regularisation; use when you have strong prior ",
-                              "knowledge that effects are small."),
+                      tags$dd("N(0, 0.5) on fixed effects; Exponential(2) on SDs. ",
+                              "Between Skeptical and Weakly informative. Useful when effect sizes in the ",
+                              "0.1–0.5 log-unit range are plausible based on prior data."),
                       tags$dt("Diffuse"),
-                      tags$dd("N(0, 2.5) — minimal regularisation; equivalent to near-flat priors. ",
-                              "Use with caution on small datasets.")
+                      tags$dd("N(0, 2.5) on fixed effects; Exponential(0.5) on SDs. ",
+                              "Near-flat priors; use with caution on small datasets as estimates can be ",
+                              "driven entirely by noisy data."),
+                      tags$dt("Manual"),
+                      tags$dd("Specify the prior family and parameters for each model class independently. ",
+                              "Fixed effects (b): Normal or Student-t. Intercept: same. ",
+                              "Random-effect SD and residual sigma: Exponential or half-Normal.")
                     ),
 
                     hr(),
