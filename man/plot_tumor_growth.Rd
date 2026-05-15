@@ -16,6 +16,7 @@ plot_tumor_growth(
   extrapolate_volumes = FALSE,
   extrapolation_points = "all",
   group_summary_line = TRUE,
+  necrotic_column = NULL,
   point_size = 2
 )
 }
@@ -41,6 +42,11 @@ plot_tumor_growth(
 \item{extrapolation_points}{Character or numeric. Number of data points to use for extrapolation: "all" uses all available data points, a numeric value uses that many recent points, with fallback options if needed. Default is "all".}
 
 \item{group_summary_line}{Boolean. Should a line for the treatment group average be plotted? Default is TRUE.}
+
+\item{necrotic_column}{Optional. Name of a column in \code{df} containing
+necrotic flag values (Y/N, yes/no, 1/0, TRUE/FALSE, case-insensitive).
+When supplied, an × marker is overlaid on each necrotic observation and a
+caption note is added. Defaults to \code{NULL} (no necrotic marking).}
 }
 \value{
 A ggplot of tumor growth curves colored by treatment group

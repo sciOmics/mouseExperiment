@@ -13,6 +13,10 @@
 #' @param extrapolate_volumes Boolean. Should missing volumes for mice that have died be extrapolated? Extrapolated values are shown with dashed lines. Default is FALSE.
 #' @param extrapolation_points Character or numeric. Number of data points to use for extrapolation: "all" uses all available data points, a numeric value uses that many recent points, with fallback options if needed. Default is "all".
 #' @param group_summary_line Boolean. Should a line for the treatment group average be plotted? Default is TRUE.
+#' @param necrotic_column Optional. Name of a column in \code{df} containing
+#'   necrotic flag values (Y/N, yes/no, 1/0, TRUE/FALSE, case-insensitive).
+#'   When supplied, an × marker is overlaid on each necrotic observation and a
+#'   caption note is added. Defaults to \code{NULL} (no necrotic marking).
 #'
 #' @return A ggplot of tumor growth curves colored by treatment group
 #' @export
@@ -40,13 +44,14 @@
 #'                 dose_column = "Dose",
 #'                 extrapolate_volumes = TRUE)
 #' }
-plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day", 
-                             treatment_column = "Treatment", cage_column = "Cage", ID_column = "ID", 
+plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
+                             treatment_column = "Treatment", cage_column = "Cage", ID_column = "ID",
                              dose_column = NULL,
-                             survival_column = "Survival_Censor", 
+                             survival_column = "Survival_Censor",
                              extrapolate_volumes = FALSE,
                              extrapolation_points = "all",
                              group_summary_line = TRUE,
+                             necrotic_column = NULL,
                              point_size = 2) {
   
   # Input validation — cage_column is optional
@@ -335,6 +340,29 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
     }
   }
   
+  # Captions accumulate across optional features; necrotic and extrapolation both append here.
+  captions <- c()
+
+  # Overlay × markers on necrotic observations
+  if (!is.null(necrotic_column) && necrotic_column %in% colnames(plot_df)) {
+    necrotic_flag <- tolower(as.character(plot_df[[necrotic_column]])) %in%
+      c("y", "yes", "1", "true")
+    necrotic_pts <- plot_df[necrotic_flag & !plot_df$Extrapolated, ]
+    if (nrow(necrotic_pts) > 0) {
+      plot <- plot +
+        ggplot2::geom_point(
+          data = necrotic_pts,
+          ggplot2::aes(x = .data[[day_column]], y = .data[[volume_column]]),
+          shape  = 4,              # × symbol
+          color  = "black",
+          size   = point_size * 1.8,
+          stroke = 1.2,
+          inherit.aes = FALSE
+        )
+      captions <- c(captions, "× indicates necrotic observation")
+    }
+  }
+
   # Add group summary line if requested
   if (group_summary_line) {
     plot <- plot + ggplot2::stat_summary(
@@ -366,9 +394,6 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
       legend.title = ggplot2::element_blank(),  # Remove the legend title
       legend.margin = ggplot2::margin(t = 10)  # Add top margin to increase space from title
     )
-  
-  # Create captions based on what features are used
-  captions <- c()
   
   # Add caption for extrapolation if used
   if (extrapolate_volumes) {
