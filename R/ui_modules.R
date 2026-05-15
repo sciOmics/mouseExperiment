@@ -450,29 +450,8 @@ tumorGrowthUI <- function(id) {
             )
           ),
 
-          # Necrotic handling — only shown when a necrotic column is mapped
-          conditionalPanel(
-            ns = ns,
-            condition = sprintf("input['%s-col_necrotic'] !== '' && input['%s-col_necrotic'] !== undefined",
-                                "data", "data"),
-            hr(),
-            h5(strong("Necrotic Observations")),
-            selectInput(ns("tg_necrotic_handling"), NULL,
-              choices = c(
-                "Exclude from analysis"       = "exclude",
-                "Include as covariate"        = "covariate",
-                "No adjustment (raw data)"    = "none"
-              ),
-              selected = "exclude"
-            ),
-            helpText(
-              strong("Exclude"), " — removes flagged observations before fitting the model.",
-              tags$br(),
-              strong("Covariate"), " — adds a 0/1 Necrotic term to the fixed effects.",
-              tags$br(),
-              strong("No adjustment"), " — ignores the flag (keeps all observations)."
-            )
-          ),
+          # Necrotic handling — rendered server-side so rv$necrotic_col drives visibility
+          uiOutput(ns("necrotic_handling_ui")),
 
           br(),
 

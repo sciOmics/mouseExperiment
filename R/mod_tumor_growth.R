@@ -787,6 +787,30 @@ tumor_growth_server <- function(id, rv) {
     }
   })
   
+  # Necrotic handling selector — visible only when a necrotic column is mapped
+  output$necrotic_handling_ui <- renderUI({
+    if (is.null(rv$necrotic_col)) return(NULL)
+    tagList(
+      hr(),
+      h5(strong("Necrotic Observations")),
+      selectInput(session$ns("tg_necrotic_handling"), NULL,
+        choices = c(
+          "Exclude from analysis"    = "exclude",
+          "Include as covariate"     = "covariate",
+          "No adjustment (raw data)" = "none"
+        ),
+        selected = "exclude"
+      ),
+      helpText(
+        strong("Exclude"), " — removes flagged observations before fitting the model.",
+        tags$br(),
+        strong("Covariate"), " — adds a 0/1 Necrotic term to the fixed effects.",
+        tags$br(),
+        strong("No adjustment"), " — ignores the flag (keeps all observations)."
+      )
+    )
+  })
+
   # Summary output
   output$tg_summary <- renderText({
     req(rv$tg_results)
@@ -980,7 +1004,8 @@ tumor_growth_server <- function(id, rv) {
     has_necrotic <- !is.null(rv$tg_results) && !isTRUE(rv$tg_results$error) &&
                    !is.null(rv$tg_results$necrosis_summary)
     if (isTRUE(has_necrotic) && !isTRUE(necrosis_tab_inserted())) {
-      appendTab(inputId = "tg_results_tabs",
+      insertTab(inputId = "tg_results_tabs",
+        target = "ANOVA", position = "before",
         tabPanel("Necrosis",
           tab_info(
             strong("Per-group necrosis summary"), " — counts and percentages of necrotic
