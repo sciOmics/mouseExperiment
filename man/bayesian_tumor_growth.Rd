@@ -15,7 +15,12 @@ bayesian_tumor_growth(
   transform = c("log", "sqrt", "none"),
   random_effects_specification = c("intercept_only", "slope"),
   reference_group = NULL,
-  prior_strength = c("weakly_informative", "informative", "diffuse"),
+  prior_strength = c("skeptical", "weakly_informative", "informative", "diffuse",
+    "manual"),
+  prior_b = NULL,
+  prior_intercept = NULL,
+  prior_sd = NULL,
+  prior_sigma = NULL,
   n_chains = 4L,
   n_iter = 2000L,
   seed = 42L,
@@ -54,16 +59,38 @@ composite mouse-key construction (consistent with the \code{lme4} path).}
 \item{reference_group}{Treatment group used as the reference (Intercept)
 level. Auto-detected from common control names if \code{NULL}.}
 
-\item{prior_strength}{Prior width preset applied to all fixed effects:
+\item{prior_strength}{Prior preset applied to all fixed effects:
 \describe{
-\item{\code{"weakly_informative"}}{(default) \eqn{b \sim N(0, 1)};
+\item{\code{"skeptical"}}{(default) \eqn{b \sim N(0, 0.25)};
+\eqn{\text{sd}, \sigma \sim \text{Exponential}(2)}.
+Expresses prior belief that treatment effects are small; requires
+stronger data to support large estimated differences.}
+\item{\code{"weakly_informative"}}{\eqn{b \sim N(0, 1)};
 \eqn{\text{sd}, \sigma \sim \text{Exponential}(1)}.}
 \item{\code{"informative"}}{\eqn{b \sim N(0, 0.5)};
 \eqn{\text{sd}, \sigma \sim \text{Exponential}(2)}.}
 \item{\code{"diffuse"}}{\eqn{b \sim N(0, 2.5)};
 \eqn{\text{sd}, \sigma \sim \text{Exponential}(0.5)}.}
+\item{\code{"manual"}}{Use the \code{prior_b}, \code{prior_intercept},
+\code{prior_sd}, and \code{prior_sigma} arguments to specify brms
+prior strings directly.}
 }
 All presets use an intercept prior with SD = \eqn{2.5 \times \sigma_b}.}
+
+\item{prior_b}{brms prior string for fixed-effect coefficients (class
+\code{"b"}), e.g. \code{"normal(0, 0.25)"} or \code{"student_t(3, 0, 0.5)"}.
+Only used when \code{prior_strength = "manual"}.}
+
+\item{prior_intercept}{brms prior string for the model intercept, e.g.
+\code{"normal(0, 2.5)"}. Only used when \code{prior_strength = "manual"}.}
+
+\item{prior_sd}{brms prior string for random-effect standard deviations
+(class \code{"sd"}), e.g. \code{"exponential(2)"}.
+Only used when \code{prior_strength = "manual"}.}
+
+\item{prior_sigma}{brms prior string for the residual standard deviation
+(class \code{"sigma"}), e.g. \code{"exponential(2)"}.
+Only used when \code{prior_strength = "manual"}.}
 
 \item{n_chains}{Number of MCMC chains. Default \code{4}.}
 

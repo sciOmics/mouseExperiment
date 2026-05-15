@@ -26,16 +26,34 @@
 #'   \code{"slope"} (\code{(Day | ID)}, adds per-animal random slopes).
 #' @param reference_group Treatment group used as the reference (Intercept)
 #'   level. Auto-detected from common control names if \code{NULL}.
-#' @param prior_strength Prior width preset applied to all fixed effects:
+#' @param prior_strength Prior preset applied to all fixed effects:
 #'   \describe{
-#'     \item{\code{"weakly_informative"}}{(default) \eqn{b \sim N(0, 1)};
+#'     \item{\code{"skeptical"}}{(default) \eqn{b \sim N(0, 0.25)};
+#'       \eqn{\text{sd}, \sigma \sim \text{Exponential}(2)}.
+#'       Expresses prior belief that treatment effects are small; requires
+#'       stronger data to support large estimated differences.}
+#'     \item{\code{"weakly_informative"}}{\eqn{b \sim N(0, 1)};
 #'       \eqn{\text{sd}, \sigma \sim \text{Exponential}(1)}.}
 #'     \item{\code{"informative"}}{\eqn{b \sim N(0, 0.5)};
 #'       \eqn{\text{sd}, \sigma \sim \text{Exponential}(2)}.}
 #'     \item{\code{"diffuse"}}{\eqn{b \sim N(0, 2.5)};
 #'       \eqn{\text{sd}, \sigma \sim \text{Exponential}(0.5)}.}
+#'     \item{\code{"manual"}}{Use the \code{prior_b}, \code{prior_intercept},
+#'       \code{prior_sd}, and \code{prior_sigma} arguments to specify brms
+#'       prior strings directly.}
 #'   }
 #'   All presets use an intercept prior with SD = \eqn{2.5 \times \sigma_b}.
+#' @param prior_b brms prior string for fixed-effect coefficients (class
+#'   \code{"b"}), e.g. \code{"normal(0, 0.25)"} or \code{"student_t(3, 0, 0.5)"}.
+#'   Only used when \code{prior_strength = "manual"}.
+#' @param prior_intercept brms prior string for the model intercept, e.g.
+#'   \code{"normal(0, 2.5)"}. Only used when \code{prior_strength = "manual"}.
+#' @param prior_sd brms prior string for random-effect standard deviations
+#'   (class \code{"sd"}), e.g. \code{"exponential(2)"}.
+#'   Only used when \code{prior_strength = "manual"}.
+#' @param prior_sigma brms prior string for the residual standard deviation
+#'   (class \code{"sigma"}), e.g. \code{"exponential(2)"}.
+#'   Only used when \code{prior_strength = "manual"}.
 #' @param n_chains Number of MCMC chains. Default \code{4}.
 #' @param n_iter Total iterations per chain (including warmup). Default \code{2000}.
 #' @param seed Integer random seed for reproducibility. Default \code{42}.
@@ -132,7 +150,11 @@ bayesian_tumor_growth <- function(
   transform                    = c("log", "sqrt", "none"),
   random_effects_specification = c("intercept_only", "slope"),
   reference_group              = NULL,
-  prior_strength               = c("weakly_informative", "informative", "diffuse"),
+  prior_strength               = c("skeptical", "weakly_informative", "informative", "diffuse", "manual"),
+  prior_b                      = NULL,
+  prior_intercept              = NULL,
+  prior_sd                     = NULL,
+  prior_sigma                  = NULL,
   n_chains                     = 4L,
   n_iter                       = 2000L,
   seed                         = 42L,
@@ -220,23 +242,36 @@ bayesian_tumor_growth <- function(
   brms_formula <- stats::as.formula(paste(fixed_part, "+", re_term))
 
   # ── Prior specification ────────────────────────────────────────────────────
-  b_sd     <- switch(prior_strength,
-    weakly_informative = 1,
-    informative        = 0.5,
-    diffuse            = 2.5
-  )
-  exp_rate <- switch(prior_strength,
-    weakly_informative = 1,
-    informative        = 2,
-    diffuse            = 0.5
-  )
-
-  selected_priors <- c(
-    brms::prior_string(paste0("normal(0, ", b_sd,        ")"), class = "b"),
-    brms::prior_string(paste0("normal(0, ", b_sd * 2.5,  ")"), class = "Intercept"),
-    brms::prior_string(paste0("exponential(", exp_rate,  ")"), class = "sd"),
-    brms::prior_string(paste0("exponential(", exp_rate,  ")"), class = "sigma")
-  )
+  if (prior_strength == "manual") {
+    if (any(is.null(c(prior_b, prior_intercept, prior_sd, prior_sigma)))) {
+      stop("When prior_strength = 'manual', all four prior_* arguments must be supplied.")
+    }
+    selected_priors <- c(
+      brms::prior_string(prior_b,         class = "b"),
+      brms::prior_string(prior_intercept, class = "Intercept"),
+      brms::prior_string(prior_sd,        class = "sd"),
+      brms::prior_string(prior_sigma,     class = "sigma")
+    )
+  } else {
+    b_sd     <- switch(prior_strength,
+      skeptical          = 0.25,
+      weakly_informative = 1,
+      informative        = 0.5,
+      diffuse            = 2.5
+    )
+    exp_rate <- switch(prior_strength,
+      skeptical          = 2,
+      weakly_informative = 1,
+      informative        = 2,
+      diffuse            = 0.5
+    )
+    selected_priors <- c(
+      brms::prior_string(paste0("normal(0, ", b_sd,        ")"), class = "b"),
+      brms::prior_string(paste0("normal(0, ", b_sd * 2.5,  ")"), class = "Intercept"),
+      brms::prior_string(paste0("exponential(", exp_rate,  ")"), class = "sd"),
+      brms::prior_string(paste0("exponential(", exp_rate,  ")"), class = "sigma")
+    )
+  }
 
   # ── Fit model ──────────────────────────────────────────────────────────────
   if (isTRUE(verbose)) {
@@ -461,10 +496,10 @@ bayesian_tumor_growth <- function(
     methods = list(
       engine          = paste0("brms (", n_chains, " chains × ",
                                n_iter, " iterations, seed = ", seed, ")"),
-      prior_b         = paste0("normal(0, ", b_sd, ")"),
-      prior_intercept = paste0("normal(0, ", round(b_sd * 2.5, 2), ")"),
-      prior_sd        = paste0("exponential(", exp_rate, ")"),
-      prior_sigma     = paste0("exponential(", exp_rate, ")"),
+      prior_b         = if (prior_strength == "manual") prior_b         else paste0("normal(0, ", b_sd, ")"),
+      prior_intercept = if (prior_strength == "manual") prior_intercept else paste0("normal(0, ", round(b_sd * 2.5, 2), ")"),
+      prior_sd        = if (prior_strength == "manual") prior_sd        else paste0("exponential(", exp_rate, ")"),
+      prior_sigma     = if (prior_strength == "manual") prior_sigma     else paste0("exponential(", exp_rate, ")"),
       treatment_effects_note = paste0(
         "Estimated marginal means and 95 % HPD credible intervals ",
         "at mean study day (day ", round(mean(analysis_df[[time_column]]), 1),
