@@ -573,7 +573,8 @@ tumor_growth_server <- function(id, rv) {
         # Extract fixed effects terms and treatment comparisons from emmeans
         treatment_col_name <- col_names$treatment_column
 
-        if (!is.null(result$posthoc) && !is.null(result$posthoc$pairwise)) {
+        if (!is.null(result$posthoc) && !is.null(result$posthoc$pairwise) &&
+            "comparison" %in% colnames(result$posthoc$pairwise)) {
           # --- AUC mode: use pre-computed Welch t-tests (avoids pooled-error bias) ---
           pw <- result$posthoc$pairwise
           # Reformat to emmeans-compatible column names for downstream display/plot code
