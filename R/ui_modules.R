@@ -285,7 +285,15 @@ column_mapping_ui <- function(col_names, detected_cols, ns = NS(NULL)) {
                    tagList("Sex / Gender", help_tip("Optional covariate for mixed models. Accounts for metabolic differences between male and female mice.")),
                    choices = c("None" = "", col_names),
                    selected = detected_cols$sex),
-        tags$p(tags$small("Optional covariate for Toxicity mixed models."))
+        tags$p(tags$small("Optional covariate for Toxicity mixed models.")),
+
+        br(),
+        selectInput(ns("col_necrotic"),
+                   tagList(icon("circle-exclamation"), " Necrotic Flag",
+                           help_tip("Binary column indicating whether a tumor was visually necrotic at each measurement (e.g. Y/N, yes/no, 1/0). When mapped, enables necrosis-aware adjustment in Tumor Growth analysis.")),
+                   choices = c("None" = "", col_names),
+                   selected = detected_cols$necrotic %||% ""),
+        tags$p(tags$small("Optional. Enables necrotic-observation handling in Tumor Growth analysis."))
       )
     )
   )
@@ -439,6 +447,30 @@ tumorGrowthUI <- function(id) {
             div(class = "alert alert-warning", style = "font-size:0.85em; padding:8px; margin-top:6px;",
               icon("clock"), " Bayesian fitting takes ~3–12 minutes. ",
               "The app stays usable while the model runs in the background."
+            )
+          ),
+
+          # Necrotic handling — only shown when a necrotic column is mapped
+          conditionalPanel(
+            ns = ns,
+            condition = sprintf("input['%s-col_necrotic'] !== '' && input['%s-col_necrotic'] !== undefined",
+                                "data", "data"),
+            hr(),
+            h5(strong("Necrotic Observations")),
+            selectInput(ns("tg_necrotic_handling"), NULL,
+              choices = c(
+                "Exclude from analysis"       = "exclude",
+                "Include as covariate"        = "covariate",
+                "No adjustment (raw data)"    = "none"
+              ),
+              selected = "exclude"
+            ),
+            helpText(
+              strong("Exclude"), " — removes flagged observations before fitting the model.",
+              tags$br(),
+              strong("Covariate"), " — adds a 0/1 Necrotic term to the fixed effects.",
+              tags$br(),
+              strong("No adjustment"), " — ignores the flag (keeps all observations)."
             )
           ),
 
@@ -601,6 +633,37 @@ tumorGrowthUI <- function(id) {
                       "Stan compiles the model on the first call with a given formula and caches the result — ",
                       "subsequent calls with the same formula are faster. ",
                       "The dashboard runs fitting in the background; the app stays responsive while the model runs."
+                    )
+                  )
+                ),
+
+                # ── Necrotic Tumor Handling ───────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title",
+                       tags$span(class = "label label-danger", "Necrotic Tumors"),
+                       " — Handling Options")),
+                  div(class = "panel-body",
+                    p("When a ", strong("Necrotic Flag"), " column is mapped in Data Upload, a handling
+                      selector appears in the sidebar. Necrotic tumors have a non-viable core that inflates
+                      caliper-based volume estimates without contributing to proliferating tissue."),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Exclude (recommended)"),
+                      tags$dd("Removes flagged observations from the model input. Conservative and publication-defensible.
+                               The Necrosis tab reports how many observations were flagged and which groups were affected,
+                               regardless of handling mode."),
+                      tags$dt("Covariate"),
+                      tags$dd("Adds a 0/1 ", code(".necrotic_flag"), " fixed effect to the LMM formula. Estimates the
+                               average volume bias attributable to necrosis. Useful when necrosis is approximately
+                               evenly distributed across groups and you want to retain all timepoints."),
+                      tags$dt("No adjustment"),
+                      tags$dd("All observations are used as-is (current default when no necrotic column is mapped).
+                               The Necrosis summary table is still shown for documentation purposes.")
+                    ),
+                    div(class = "alert alert-info", style = "font-size:0.85em; margin-bottom:0;",
+                      icon("circle-info"),
+                      " The Necrosis tab in the results panel is inserted automatically when a necrotic column
+                        is mapped and an analysis has been run."
                     )
                   )
                 ),

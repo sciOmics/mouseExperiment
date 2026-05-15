@@ -273,7 +273,10 @@ detect_columns <- function(col_names) {
                            c("weight", "body_weight", "body weight", "mouse_weight",
                              "mouse weight", "mass", "body_mass", "body mass", "bw")),
     sex    = detect_column(col_names, col_names_lower,
-                           c("sex", "gender", "m/f"))
+                           c("sex", "gender", "m/f")),
+    necrotic = detect_column(col_names, col_names_lower,
+                             c("necrotic", "necrosis", "necr",
+                               "is_necrotic", "necrotic_flag"))
   )
 
   detected

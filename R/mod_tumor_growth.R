@@ -128,8 +128,9 @@ tumor_growth_server <- function(id, rv) {
     rv$vol_col        <- vol_col
     rv$tx_col         <- rv$settings$col_treatment
     rv$id_col         <- rv$settings$col_id
-    rv$cage_col       <- if (!is.null(rv$settings$col_cage) && rv$settings$col_cage != "") rv$settings$col_cage else NULL
-    rv$dose_col       <- if (!is.null(rv$settings$col_dose) && rv$settings$col_dose != "") rv$settings$col_dose else NULL
+    rv$cage_col       <- if (!is.null(rv$settings$col_cage)     && rv$settings$col_cage != "")     rv$settings$col_cage     else NULL
+    rv$dose_col       <- if (!is.null(rv$settings$col_dose)     && rv$settings$col_dose != "")     rv$settings$col_dose     else NULL
+    rv$necrotic_col   <- if (!is.null(rv$settings$col_necrotic) && rv$settings$col_necrotic != "") rv$settings$col_necrotic else NULL
 
     # When a dose column is mapped, combine treatment + dose into a single
     # group label so each dose level is treated as its own group by all analyses.
@@ -196,9 +197,11 @@ tumor_growth_server <- function(id, rv) {
         prior_strength   = input$tg_prior_strength   %||% "weakly_informative",
         n_chains         = as.integer(input$tg_bayes_chains %||% 4L),
         n_iter           = as.integer(input$tg_bayes_iter   %||% 2000L),
-        extrap_pts       = as.integer(input$tg_extrapolation_points %||% 0L),
-        dose_col         = rv$dose_col,
-        plot_groups      = rv$tg_plot_groups
+        extrap_pts        = as.integer(input$tg_extrapolation_points %||% 0L),
+        dose_col          = rv$dose_col,
+        necrotic_col      = rv$necrotic_col,
+        necrotic_handling = input$tg_necrotic_handling %||% "none",
+        plot_groups       = rv$tg_plot_groups
       )
 
       notif_id <- paste0("bayes_run_", as.integer(Sys.time()))
@@ -224,6 +227,8 @@ tumor_growth_server <- function(id, rv) {
           prior_strength               = bayes_params$prior_strength,
           n_chains                     = bayes_params$n_chains,
           n_iter                       = bayes_params$n_iter,
+          necrotic_column              = bayes_params$necrotic_col,
+          necrotic_handling            = bayes_params$necrotic_handling,
           return_model                 = TRUE,
           plots                        = FALSE,
           verbose                      = FALSE
@@ -280,6 +285,8 @@ tumor_growth_server <- function(id, rv) {
         extrapolation_points = if (!is.null(input$tg_extrapolation_points) &&
                                     !is.na(input$tg_extrapolation_points))
                                  as.integer(input$tg_extrapolation_points) else 0L,
+        necrotic_column   = rv$necrotic_col,
+        necrotic_handling = input$tg_necrotic_handling %||% "none",
         return_model = TRUE,
         include_diagnostics = TRUE,
         plots = FALSE
@@ -964,6 +971,43 @@ tumor_growth_server <- function(id, rv) {
       bayes_tabs_inserted(FALSE)
     }
   }, ignoreNULL = FALSE)
+
+  # Dynamically insert / remove Necrosis results tab when necrosis_summary is available
+  necrosis_tab_inserted <- reactiveVal(FALSE)
+
+  observe({
+    has_necrotic <- !is.null(rv$tg_results) && !isTRUE(rv$tg_results$error) &&
+                   !is.null(rv$tg_results$necrosis_summary)
+    if (isTRUE(has_necrotic) && !isTRUE(necrosis_tab_inserted())) {
+      appendTab(inputId = "tg_results_tabs",
+        tabPanel("Necrosis",
+          tab_info(
+            strong("Per-group necrosis summary"), " — counts and percentages of necrotic
+            observations, number of affected mice, and the first day necrosis was observed.
+            The summary always reflects the full uploaded dataset, regardless of which
+            handling mode was selected.",
+            tags$ul(
+              tags$li(strong("N_Observations"), " — total measurement rows for this group."),
+              tags$li(strong("N_Necrotic"), " — number flagged as necrotic."),
+              tags$li(strong("Pct_Necrotic"), " — percentage of observations that were necrotic."),
+              tags$li(strong("N_Mice_Total"), " — total animals in this group."),
+              tags$li(strong("N_Mice_With_Necrosis"), " — animals with at least one necrotic observation."),
+              tags$li(strong("First_Necrotic_Day"), " — earliest day a necrotic observation was recorded.")
+            )
+          ),
+          shinycssloaders::withSpinner(
+            DTOutput(session$ns("tg_necrosis_table"))
+          ),
+          downloadButton(session$ns("download_tg_necrosis"), "Download Necrosis Summary")
+        ),
+        select = FALSE
+      )
+      necrosis_tab_inserted(TRUE)
+    } else if (!isTRUE(has_necrotic) && isTRUE(necrosis_tab_inserted())) {
+      removeTab(inputId = "tg_results_tabs", target = "Necrosis")
+      necrosis_tab_inserted(FALSE)
+    }
+  })
 
   # Track plot type switching
   observeEvent(input$tg_plot_selector, {
@@ -2022,6 +2066,27 @@ tumor_growth_server <- function(id, rv) {
       req(!is.null(rv$tg_results$model))
       p <- brms::pp_check(rv$tg_results$model, type = "dens_overlay", ndraws = 50)
       ggplot2::ggsave(file, plot = p, width = 8, height = 5, dpi = 150)
+    }
+  )
+
+  # --- Necrosis summary renderer and download ---
+
+  output$tg_necrosis_table <- renderDT({
+    req(rv$tg_results)
+    req(!isTRUE(rv$tg_results$error))
+    ns_df <- rv$tg_results$necrosis_summary
+    req(!is.null(ns_df))
+    datatable(
+      format_df_for_display(as.data.frame(ns_df)),
+      options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)
+    )
+  })
+
+  output$download_tg_necrosis <- downloadHandler(
+    filename = "necrosis_summary.csv",
+    content = function(file) {
+      req(!is.null(rv$tg_results$necrosis_summary))
+      write.csv(rv$tg_results$necrosis_summary, file, row.names = FALSE)
     }
   )
 
