@@ -4,6 +4,13 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.017] 2026 May 20th
+
+### Added
+- **Synergy — Bayesian Combination Synergy (brms)** — new `"Bayesian (brms)"` option in the Drug Synergy analysis mode (uses `bayesian_synergy()` v0.4.2). Sidebar controls: Transform (log / sqrt / none), Prior Strength preset, Chains, Iterations. Result tabs: TGI Summary (per-group posterior median ± 95 % CrI), Bliss Summary (excess posterior distribution + P(synergy)), Loewe Summary (CI posterior distribution + P(CI < 1) + interpretation string), Synergy Table (all six rows including Bliss-expected and Loewe-expected), MCMC Diagnostics, Synergy Plot (bar chart with Bliss/Loewe reference lines), Posterior Distribution (density overlays for Bliss excess and Loewe CI).
+- **Toxicity — Bayesian Therapeutic Window (brms)** — new `"Bayesian TWM (brms)"` option in the Therapeutic Window Metric mode (uses `bayesian_therapeutic_window()` v0.4.1). Requires both a Bayesian tumor growth result (`return_model = TRUE`) and a Bayesian body weight result (`return_model = TRUE`) to already be available in the session. Result tabs: TWM Table (per-group TWM median + 95 % CrI), TGI Summary, Weight-Loss Summary, TWM Plot (forest plot with break-even reference line at TWM = 1), Efficacy vs Safety Scatter (TGI vs weight-loss % with TWM = 1 isoline).
+- **Tumor Growth — Bayesian Dose-Response (brms)** — new `"Bayesian Hill/Emax (brms)"` option in the Dose-Response analysis mode (uses `bayesian_dose_response()` v0.4.0). Sidebar controls: Prior Strength, Chains, Iterations. Result tabs: DR Parameters (EC50/Emax/Hill posterior median + 95 % CrI), Dose-Response Summary, MCMC Diagnostics, Dose-Response Curve (posterior median ± CrI ribbon + EC50 line), Prior vs Posterior.
+
 ## [v26.05.016] 2026 May 19th
 
 ### Changed
