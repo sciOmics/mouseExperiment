@@ -1018,60 +1018,136 @@ helpUI <- function() {
 
     hr(),
 
-    fluidRow(
-      column(6,
-        wellPanel(
-          h3(icon("book"), " Documentation"),
-          p("Full documentation, tutorials, and function reference for the ",
-            strong("mouseExperiment"), " package:"),
-          tags$a(
-            href  = "https://github.com/sciOmics/mouseExperiment",
-            target = "_blank",
-            class = "btn btn-primary btn-lg",
-            icon("github"), " GitHub Repository"
-          )
-        )
+    # \u2500\u2500 Workflow overview \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    h3(icon("arrows-turn-right"), " Basic Workflow"),
+    tags$ol(
+      tags$li(strong("Data tab"), " \u2014 upload a CSV or RDA file and map your columns (ID, time, volume, treatment). Optional columns: cage, dose, body weight, survival/censor indicator."),
+      tags$li(strong("Analysis tabs"), " \u2014 each tab activates once the required columns are mapped:"),
+      tags$ul(
+        tags$li(strong("Tumor Growth"), " \u2014 always available after upload"),
+        tags$li(strong("Survival"), " \u2014 requires a survival/censor column (or use the volume-threshold derivation)"),
+        tags$li(strong("Toxicity"), " \u2014 requires a body weight column"),
+        tags$li(strong("Dose Response"), " \u2014 requires a dose column"),
+        tags$li(strong("Drug Synergy"), " \u2014 requires control, single-agent A, single-agent B, and combination groups"),
+        tags$li(strong("Power Analysis"), " \u2014 always available; no data upload needed for a priori modes")
       ),
-      column(6,
-        wellPanel(
-          h3(icon("bug"), " Report Issues"),
-          p("Found a bug or want to request a new feature? Open an issue on GitHub:"),
-          tags$a(
-            href  = "https://github.com/sciOmics/mouseExperiment/issues",
-            target = "_blank",
-            class = "btn btn-warning btn-lg",
-            icon("exclamation-circle"), " Submit Issue / Feature Request"
-          )
-        )
-      )
+      tags$li("Select the statistical ", strong("method"), " in the sidebar, configure parameters, and click ", strong("Run Analysis"), "."),
+      tags$li("Explore results across sub-tabs (summary, plots, pairwise comparisons, model output)."),
+      tags$li("Download plots (PNG) and tables (CSV) from the per-tab download buttons.")
     ),
 
     hr(),
 
-    h3("Column Naming"),
-    p("The dashboard looks for common column names like:"),
-    tags$ul(
-      tags$li(strong("ID:"), "ID, Mouse_ID, Animal_ID, Subject"),
-      tags$li(strong("Time:"), "Day, Time, Timepoint"),
-      tags$li(strong("Volume:"), "Volume, Tumor_Volume"),
-      tags$li(strong("Treatment:"), "Treatment, Group"),
-      tags$li(strong("Cage:"), "Cage, Cage_ID"),
-      tags$li(strong("Dose (optional):"), "Dose, dose, DoseLevel"),
-      tags$li(strong("Survival/Censor (optional):"), "Survival_Censor, Censor, Event \u2014 numeric column coded as ", strong("1 = endpoint reached (e.g. tumour exceeded IACUC volume limit, or death)"), " and ", strong("0 = censored (did not reach endpoint by study end)"), ". Alternatively, leave unset and use the volume-threshold derivation option in the Survival tab sidebar.")
+    # \u2500\u2500 Data format \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    h3(icon("table"), " Data Format"),
+    p("Upload data in ", strong("long format"), ": one row per measurement per animal. Accepted formats: CSV (.csv) or R data file (.rda / .rds)."),
+
+    h4("Column auto-detection"),
+    p("The dashboard detects columns by name. Recognised patterns (case-insensitive):"),
+    tags$table(
+      class = "table table-condensed table-bordered",
+      style = "max-width:680px;",
+      tags$thead(
+        tags$tr(tags$th("Role"), tags$th("Recognised names"), tags$th("Required?"))
+      ),
+      tags$tbody(
+        tags$tr(tags$td("Animal ID"),         tags$td("ID, Mouse_ID, Animal_ID, Subject"),  tags$td("Yes")),
+        tags$tr(tags$td("Time / Day"),        tags$td("Day, Time, Timepoint"),              tags$td("Yes")),
+        tags$tr(tags$td("Tumor volume"),      tags$td("Volume, Tumor_Volume"),              tags$td("Yes \u2020")),
+        tags$tr(tags$td("Tumor length"),      tags$td("Length, Tumor_Length"),             tags$td("Yes \u2020")),
+        tags$tr(tags$td("Tumor width"),       tags$td("Width, Tumor_Width"),               tags$td("Yes \u2020")),
+        tags$tr(tags$td("Treatment / Group"), tags$td("Treatment, Group"),                 tags$td("Yes")),
+        tags$tr(tags$td("Cage"),              tags$td("Cage, Cage_ID"),                    tags$td("No")),
+        tags$tr(tags$td("Dose"),              tags$td("Dose, dose, DoseLevel"),            tags$td("No")),
+        tags$tr(tags$td("Body weight"),       tags$td("Weight, Mass, Body_Weight"),        tags$td("No")),
+        tags$tr(tags$td("Survival / Censor"), tags$td("Survival_Censor, Censor, Event"),   tags$td("No"))
+      )
+    ),
+    p(tags$em("\u2020 Provide either a pre-calculated Volume column, or Length + Width columns (volume calculated automatically as V = \u03c0\u00b7L\u00b7W\u00b2/6).")),
+    p("Survival/Censor must be numeric: ", strong("1 = endpoint reached"), " (e.g. tumour exceeded IACUC volume limit), ",
+      strong("0 = censored"), " (alive or study-end censored). If absent, use the volume-threshold derivation in the Survival tab sidebar."),
+
+    hr(),
+
+    # \u2500\u2500 Analysis modules \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    h3(icon("flask"), " Analysis Modules"),
+
+    h4("Tumor Growth"),
+    tags$dl(
+      tags$dt("LME4 (linear mixed-effects)"),
+      tags$dd("Log-transforms tumor volume and fits a linear mixed model with a Treatment \u00d7 Day interaction. Mouse ID is a random intercept; cage (if provided) is an additional random intercept. Pairwise contrasts via emmeans with Tukey adjustment. TGI (tumor growth inhibition) is derived from the estimated slopes."),
+      tags$dt("AUC (area under the curve)"),
+      tags$dd("Computes per-mouse AUC by trapezoidal integration, then compares groups by Kruskal-Wallis / pairwise Wilcoxon tests."),
+      tags$dt("Bayesian LMM (brms)"),
+      tags$dd("Same structure as the LME4 model fitted via MCMC (Stan). Returns posterior distributions for treatment slopes, credible intervals, probability of direction, and ROPE analysis. Requires the brms package.")
     ),
 
-    h3("Statistical Methods"),
-    p("The analysis uses linear mixed-effects models (lme4) or area under the curve (AUC) methods."),
-    p("Consult the ",
-      tags$a("mouseExperiment documentation",
-             href = "https://github.com/sciOmics/mouseExperiment", target = "_blank"),
-      " for detailed method information."),
+    h4("Survival Analysis"),
+    tags$dl(
+      tags$dt("Kaplan-Meier"),
+      tags$dd("Non-parametric survival estimates with 95% confidence bands. Log-rank test for group differences."),
+      tags$dt("Cox proportional hazards"),
+      tags$dd("Semi-parametric Cox PH model. Hazard ratios with 95% CI for each treatment vs. reference."),
+      tags$dt("Bayesian AFT (brms)"),
+      tags$dd("Accelerated failure time model with choice of Weibull, log-normal, exponential, or gamma distribution. Returns time ratios and derived hazard ratios with credible intervals.")
+    ),
 
-    h3("Troubleshooting"),
-    p(strong("File won't upload:"), "Ensure it is a CSV or RDA file."),
-    p(strong("Columns not detected:"), "Check that column names match expected patterns above."),
-    p(strong("Analysis tab greyed out:"), "Upload and configure data first. Survival requires a censor column; Dose Response requires a dose column; Drug Synergy requires at least 3 treatment groups (e.g. control, Drug A, and combination)."),
-    p(strong("Analysis fails:"), "Check that required columns are selected and contain valid data.")
+    h4("Toxicity (Body Weight)"),
+    tags$dl(
+      tags$dt("LME4 body weight model"),
+      tags$dd("Linear mixed model on body weight over time. Treatment \u00d7 Day interaction identifies groups with significant weight-change trajectories."),
+      tags$dt("Bayesian body weight model"),
+      tags$dd("Bayesian LMM for body weight via brms; same structure as the frequentist model."),
+      tags$dt("Therapeutic Window Metric (TWM)"),
+      tags$dd("Combines tumor growth inhibition and body weight change into a single efficacy-toxicity ratio. Available in both frequentist and Bayesian variants.")
+    ),
+
+    h4("Drug Synergy"),
+    tags$dl(
+      tags$dt("Bliss Independence"),
+      tags$dd("Calculates the expected additive effect from two monotherapies at a chosen time point, then tests whether the observed combination effect exceeds it. Positive excess = synergy; negative excess = antagonism."),
+      tags$dt("Loewe Combination Index (CI)"),
+      tags$dd("CI < 1 synergy, CI = 1 additivity, CI > 1 antagonism. Requires four groups: control, drug A alone, drug B alone, and combination."),
+      tags$dt("Bayesian synergy"),
+      tags$dd("Propagates uncertainty from the growth model through Bliss and Loewe calculations, yielding posterior distributions for synergy metrics.")
+    ),
+
+    h4("Dose-Response"),
+    tags$dl(
+      tags$dt("Frequentist Hill / Emax"),
+      tags$dd("Fits a four-parameter log-logistic (4PL) dose-response curve via nonlinear least squares. Reports IC50, Hill slope, and fitted curve."),
+      tags$dt("Bayesian Hill / Emax"),
+      tags$dd("Same model fitted by MCMC with weakly informative priors. Returns posterior distributions for all curve parameters.")
+    ),
+
+    h4("Power Analysis"),
+    tags$dl(
+      tags$dt("Analytic (a priori)"),
+      tags$dd("Classical power calculation for t-test or one-way ANOVA across a range of effect sizes and sample sizes."),
+      tags$dt("LMM simulation"),
+      tags$dd("Simulates repeated-measures data under a linear mixed model and estimates power empirically across a grid of sample sizes."),
+      tags$dt("Bayesian simulation"),
+      tags$dd("Simulates data, fits a Bayesian model to each replicate, and reports the proportion of replicates where the posterior probability of a directional effect exceeds a target threshold.")
+    ),
+
+    hr(),
+
+    # \u2500\u2500 Troubleshooting \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    h3(icon("wrench"), " Troubleshooting"),
+    tags$dl(
+      tags$dt("File won't upload"),
+      tags$dd("Ensure the file is CSV (.csv) or an R data file (.rda / .rds)."),
+      tags$dt("Columns not auto-detected"),
+      tags$dd("Use the column mapping dropdowns in the Data tab to assign columns manually."),
+      tags$dt("Analysis tab is greyed out"),
+      tags$dd("Upload and configure data first. Survival requires a censor column (or enable volume-threshold derivation). Toxicity requires a body weight column. Dose Response requires a dose column. Drug Synergy requires at least four treatment groups."),
+      tags$dt("Analysis fails or produces no output"),
+      tags$dd("Verify that the selected columns contain valid, non-missing data. Tumor volumes must be positive. Time points must be numeric. At least two groups must be present for any comparison."),
+      tags$dt("Bayesian model is slow to start"),
+      tags$dd("The first run compiles the Stan model (\u223c30\u201360 s). Subsequent runs with the same model family reuse the compiled binary and start faster. Bayesian fits run asynchronously \u2014 the app remains usable while MCMC sampling proceeds."),
+      tags$dt("Plot download produces a blank file"),
+      tags$dd("Run the analysis first so the plot is rendered, then click the download button.")
+    )
   )
 }
 
@@ -1136,40 +1212,6 @@ citationUI <- function() {
             )
           )
         )
-      )
-    )
-  )
-}
-
-#' Analysis Log UI
-#'
-#' Displays a live panel of analysis log entries emitted during the session.
-#' @param id Shiny module id.
-#' @keywords internal
-analysisLogUI <- function(id) {
-  ns <- NS(id)
-  fluidPage(
-    h2(icon("clipboard-list"), " Analysis Log"),
-    tab_info(
-      "Events logged during your session (data uploads, analysis runs, errors).",
-      " Logs are stored in memory and cleared when the session ends."
-    ),
-
-    fluidRow(
-      column(12,
-        wellPanel(
-          fluidRow(
-            column(3, actionButton(ns("refresh_log"), "Refresh",
-                                   icon = icon("arrows-rotate"),
-                                   class = "btn-sm btn-default")),
-            column(3, actionButton(ns("clear_log"), "Clear log",
-                                   icon = icon("trash"),
-                                   class = "btn-sm btn-danger")),
-            column(6, downloadButton(ns("download_log"), "Download log",
-                                     class = "btn-sm btn-info"))
-          )
-        ),
-        verbatimTextOutput(ns("log_output"))
       )
     )
   )

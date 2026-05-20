@@ -106,7 +106,6 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     tabPanel("Toxicity",            toxicityUI("tox")),
     tabPanel("Dose Response",       doseResponseUI("dr")),
     tabPanel("Drug Synergy",        synergyUI("syn")),
-    tabPanel("Log",           analysisLogUI("log")),
     tabPanel("Help",          helpUI()),
     tabPanel("About",          citationUI())
   )
@@ -154,7 +153,6 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     synergy_server("syn", rv)
     power_server("pw", rv)
     dose_response_server("dr", rv)
-    analysis_log_server("log", rv)
 
     # Guard: redirect away from placeholder tabs if reached via keyboard
     observeEvent(input$main_nav, {
