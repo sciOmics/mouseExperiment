@@ -21,11 +21,54 @@ synergyUI <- function(id) {
           hr(),
           
           h4("Analysis Options"),
-          
-          uiOutput(ns("syn_time_point_ui")),
-          
+
+          selectInput(ns("syn_model_type"), "Statistical Model",
+            choices = c(
+              "Frequentist (Bliss/Loewe)" = "frequentist",
+              "Bayesian LMM (brms)"       = "bayes"
+            ),
+            selected = "frequentist"
+          ),
+          helpText("Frequentist computes Bliss/Loewe synergy scores. Bayesian fits a ",
+                   "linear mixed-effects model with brms and reports posterior credible ",
+                   "intervals; computation takes 3–12 minutes."),
+
+          conditionalPanel(ns = ns, "input.syn_model_type == 'frequentist'",
+            uiOutput(ns("syn_time_point_ui"))
+          ),
+
+          conditionalPanel(ns = ns, "input.syn_model_type == 'bayes'",
+            hr(),
+            h5(strong("Bayesian Settings")),
+            selectInput(ns("syn_prior_strength"), "Prior Strength",
+              choices = c(
+                "Skeptical (recommended)" = "skeptical",
+                "Weakly informative"      = "weakly_informative",
+                "Informative"             = "informative",
+                "Diffuse"                 = "diffuse"
+              ),
+              selected = "skeptical"
+            ),
+            selectInput(ns("syn_random_effects"), "Random Effects",
+              choices = c(
+                "Intercept only"    = "intercept_only",
+                "Intercept + Slope" = "slope"
+              ),
+              selected = "intercept_only"
+            ),
+            numericInput(ns("syn_bayes_chains"), "MCMC chains",
+                         value = 4, min = 1, max = 8, step = 1),
+            numericInput(ns("syn_bayes_iter"), "Iterations per chain",
+                         value = 2000, min = 500, max = 10000, step = 500),
+            div(class = "alert alert-warning",
+                style = "font-size:0.85em; padding:8px; margin-top:6px;",
+              icon("clock"), " Bayesian fitting takes ~3–12 minutes. ",
+              "The app stays usable while the model runs in the background."
+            )
+          ),
+
           br(),
-          
+
           actionButton(ns("run_syn_analysis"),
                       "Run Analysis",
                       class = "btn-lg btn-primary btn-block"),
@@ -158,10 +201,12 @@ synergyUI <- function(id) {
                 tags$li(strong("Synergy_Assessment"), " \u2014 plain-language classification at each timepoint.")
               )
             ),
+            div(class = "text-right", style = "margin-bottom: 6px;",
+              downloadButton(ns("download_syn_metrics"), "Download Results")
+            ),
             shinycssloaders::withSpinner(
               DTOutput(ns("syn_metrics_table"))
-            ),
-            downloadButton(ns("download_syn_metrics"), "Download Results")
+            )
           ),
           
           tabPanel("Plots",
@@ -267,11 +312,106 @@ synergy_server <- function(id, rv) {
   rv$syn_results <- NULL
   rv$syn_over_time <- FALSE
 
+  observe({
+    toggle_downloads(
+      session,
+      c("download_syn_metrics"),
+      enabled = !is.null(rv$syn_results) && !isTRUE(rv$syn_results$error)
+    )
+  })
+
   # ReactiveVals to hold the current rendered plot (for download fidelity — D4, D5)
   current_syn_main_plot  <- reactiveVal(NULL)
   current_syn_trend_plot <- reactiveVal(NULL)
   current_syn_ci_plot    <- reactiveVal(NULL)
   current_syn_tgi_plot   <- reactiveVal(NULL)
+
+  # ── Bayesian synergy tab management ───────────────────────────────────────
+  bayes_syn_tabs_inserted <- reactiveVal(FALSE)
+
+  observeEvent(input$syn_model_type, {
+    tabs_id <- "syn_results_tabs"
+    if (isTRUE(input$syn_model_type == "bayes") && !isTRUE(bayes_syn_tabs_inserted())) {
+      appendTab(inputId = tabs_id,
+        tabPanel("Posterior Check",
+          tab_info(
+            strong("Posterior predictive check (PPC)"), " — model-simulated distributions overlaid on observed data.",
+            em("Good fit: simulated densities envelope the observed density.")
+          ),
+          div(class = "text-right", style = "margin-bottom: 6px;",
+            downloadButton(session$ns("download_syn_pp_check"), "Download Plot")
+          ),
+          shinycssloaders::withSpinner(
+            plotOutput(session$ns("syn_pp_check_plot"), height = "450px")
+          )
+        ),
+        select = FALSE
+      )
+      appendTab(inputId = tabs_id,
+        tabPanel("MCMC Diagnostics",
+          tab_info(
+            strong("MCMC convergence diagnostics. "),
+            "All Rhat values should be ≤ 1.01 before interpreting results."
+          ),
+          shinycssloaders::withSpinner(
+            DTOutput(session$ns("syn_mcmc_diag_table"))
+          ),
+          br(),
+          shinycssloaders::withSpinner(
+            plotOutput(session$ns("syn_mcmc_trace_plot"), height = "500px")
+          )
+        ),
+        select = FALSE
+      )
+      bayes_syn_tabs_inserted(TRUE)
+    } else if (!isTRUE(input$syn_model_type == "bayes") && isTRUE(bayes_syn_tabs_inserted())) {
+      removeTab(inputId = tabs_id, target = "Posterior Check")
+      removeTab(inputId = tabs_id, target = "MCMC Diagnostics")
+      bayes_syn_tabs_inserted(FALSE)
+    }
+  }, ignoreNULL = FALSE)
+
+  output$syn_pp_check_plot <- renderPlot({
+    req(rv$syn_results)
+    req(isTRUE(rv$syn_results$model_type_used == "bayes_synergy"))
+    req(!isTRUE(rv$syn_results$error), !is.null(rv$bayes_models$syn))
+    brms::pp_check(rv$bayes_models$syn, type = "dens_overlay", ndraws = 50)
+  })
+
+  output$syn_mcmc_diag_table <- renderDT({
+    req(rv$syn_results)
+    req(isTRUE(rv$syn_results$model_type_used == "bayes_synergy"))
+    req(!isTRUE(rv$syn_results$error))
+    diag <- rv$syn_results$mcmc_diagnostics
+    req(!is.null(diag))
+    datatable(format_df_for_display(as.data.frame(diag)),
+              options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+  })
+
+  output$syn_mcmc_trace_plot <- renderPlot({
+    req(rv$syn_results)
+    req(isTRUE(rv$syn_results$model_type_used == "bayes_synergy"))
+    req(!isTRUE(rv$syn_results$error), !is.null(rv$bayes_models$syn))
+    bayesplot::mcmc_trace(brms::as.array(rv$bayes_models$syn))
+  })
+
+  output$download_syn_pp_check <- downloadHandler(
+    filename = function() paste0("syn_posterior_check_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
+    content = function(file) {
+      req(!is.null(rv$bayes_models$syn))
+      p <- brms::pp_check(rv$bayes_models$syn, type = "dens_overlay", ndraws = 50)
+      ggplot2::ggsave(file, plot = p, width = 8, height = 5, dpi = 150)
+    }
+  )
+
+  syn_colors <- reactive({
+    list(
+      A     = input$syn_color_A     %||% "#2166AC",
+      B     = input$syn_color_B     %||% "#D6604D",
+      combo = input$syn_color_combo %||% "#762A83",
+      ctrl  = input$syn_color_ctrl  %||% "#999999"
+    )
+  })
   
   # Dynamically render group selector dropdowns from treatment column
   output$syn_group_selectors_ui <- renderUI({
@@ -300,7 +440,7 @@ synergy_server <- function(id, rv) {
                  choices = choices,
                  selected = if (length(groups) >= 4) groups[4] else groups[1]),
       
-      selectInput(session$ns("syn_control"), "Control Group",
+      selectInput(session$ns("syn_control"), "Reference Group",
                  choices = choices,
                  selected = pick_reference_group(groups))
     )
@@ -364,6 +504,9 @@ synergy_server <- function(id, rv) {
       return(NULL)
     })
     if (is.null(pp)) return()
+    if (!is.null(pp$date_fmt_warning)) {
+      showNotification(pp$date_fmt_warning, type = "warning", duration = 8)
+    }
     analysis_data <- pp$data
     vol_col  <- pp$vol_col
     time_col <- pp$time_col
@@ -383,10 +526,117 @@ synergy_server <- function(id, rv) {
 
     rv$syn_over_time <- is.null(eval_tp)
 
+    # ── Bayesian async path ────────────────────────────────────────────────────
+    if (isTRUE(input$syn_model_type == "bayes")) {
+      if (!all(c(requireNamespace("brms",     quietly = TRUE),
+                 requireNamespace("future",   quietly = TRUE),
+                 requireNamespace("promises", quietly = TRUE)))) {
+        output$syn_status_msg <- renderUI({
+          status_alert(paste0("Bayesian mode requires 'brms', 'future', and 'promises'. ",
+                              "Install with: install.packages(c('brms', 'future', 'promises'))"),
+                       "danger")
+        })
+        return()
+      }
+
+      syn_bayes_params <- list(
+        data       = analysis_data,
+        vol_col    = vol_col,
+        time_col   = time_col,
+        tx_col     = tx_col,
+        drug_a     = input$syn_drug_a,
+        drug_b     = input$syn_drug_b,
+        combo      = input$syn_combo,
+        control    = input$syn_control,
+        endpoint_day = eval_tp,
+        id_col     = rv$id_col,
+        cage_col   = rv$cage_col,
+        prior_str  = input$syn_prior_strength  %||% "skeptical",
+        re_spec    = input$syn_random_effects   %||% "intercept_only",
+        n_chains   = as.integer(input$syn_bayes_chains %||% 4L),
+        n_iter     = as.integer(input$syn_bayes_iter   %||% 2000L)
+      )
+
+      progress_syn <- shiny::Progress$new(session, min = 0, max = 1)
+      progress_syn$set(message = "Starting Bayesian synergy fit…", value = 0.05)
+
+      output$syn_status_msg <- renderUI({
+        tagList(
+          h4("Bayesian model running…",
+             style = "margin-top: 18px; font-weight: 600;"),
+          p("Fitting synergy model with brms. This may take 3–12 minutes.",
+            style = "color:#666;"),
+          shinycssloaders::withSpinner(div())
+        )
+      })
+
+      shinyjs::runjs("window.trackAnalysisStart('drug_synergy', 'bayes', 'combo_vs_monotherapy');")
+
+      promises::future_promise({
+        mouseExperiment::bayesian_synergy(
+          df                           = syn_bayes_params$data,
+          volume_column                = syn_bayes_params$vol_col,
+          time_column                  = syn_bayes_params$time_col,
+          treatment_column             = syn_bayes_params$tx_col,
+          id_column                    = syn_bayes_params$id_col,
+          cage_column                  = syn_bayes_params$cage_col,
+          drug_a_name                  = syn_bayes_params$drug_a,
+          drug_b_name                  = syn_bayes_params$drug_b,
+          combo_name                   = syn_bayes_params$combo,
+          control_name                 = syn_bayes_params$control,
+          endpoint_day                 = syn_bayes_params$endpoint_day,
+          random_effects_specification = syn_bayes_params$re_spec,
+          prior_strength               = syn_bayes_params$prior_str,
+          n_chains                     = syn_bayes_params$n_chains,
+          n_iter                       = syn_bayes_params$n_iter,
+          return_model                 = TRUE,
+          plots                        = TRUE
+        )
+      }) %...>% (function(result) {
+        progress_syn$close()
+        if (!is.null(rv$bayes_models)) rv$bayes_models$syn <- result$model
+        else                           rv$bayes_models <- list(syn = result$model)
+        result$model <- NULL
+        gc()
+        rv$syn_results   <- result
+        rv$syn_over_time <- FALSE
+        rv$syn_plot_inputs <- list(
+          drug_a  = syn_bayes_params$drug_a,
+          drug_b  = syn_bayes_params$drug_b,
+          combo   = syn_bayes_params$combo,
+          control = syn_bayes_params$control
+        )
+        if (isTRUE(result$error)) {
+          err_msg <- result$message
+          shinyjs::runjs(sprintf("window.trackAnalysisComplete('drug_synergy', false, %s);",
+                                 js_string(err_msg)))
+          output$syn_status_msg <- renderUI({
+            status_alert(paste("Bayesian synergy failed:", err_msg), "danger")
+          })
+        } else {
+          shinyjs::runjs("window.trackAnalysisComplete('drug_synergy', true);")
+          output$syn_status_msg <- renderUI({
+            status_alert("Bayesian synergy analysis completed!", "success")
+          })
+        }
+      }) %...!% (function(err) {
+        progress_syn$close()
+        err_msg <- translate_error(conditionMessage(err))
+        shinyjs::runjs(sprintf("window.trackAnalysisComplete('drug_synergy', false, %s);",
+                               js_string(err_msg)))
+        output$syn_status_msg <- renderUI({
+          status_alert(paste("Bayesian synergy failed:", err_msg), "danger")
+        })
+      })
+      return()
+    }
+
+    # ── Frequentist path ───────────────────────────────────────────────────────
     progress <- shiny::Progress$new(session, min = 0, max = 1)
-    progress$set(message = "Running synergy analysis...", value = 0.2)
+    progress$set(message = "Validating data...", value = 0.1)
     on.exit(progress$close(), add = TRUE)
-    
+
+    progress$set(message = "Fitting synergy model...", value = 0.6)
     if (rv$syn_over_time) {
       result <- safe_analysis(module = "synergy_over_time", {
         mouseExperiment::analyze_drug_synergy_over_time(
@@ -466,12 +716,13 @@ synergy_server <- function(id, rv) {
       }
     }
     
+    progress$set(message = "Preparing results...", value = 0.95)
     rv$syn_results <- result
 
     # Track analysis completion with Umami
     if (isTRUE(result$error)) {
-      shinyjs::runjs(sprintf("window.trackAnalysisComplete('drug_synergy', false, '%s');",
-                             gsub("'", "\\\\'", result$message)))
+      shinyjs::runjs(sprintf("window.trackAnalysisComplete('drug_synergy', false, %s);",
+                             js_string(result$message)))
     } else {
       shinyjs::runjs("window.trackAnalysisComplete('drug_synergy', true);")
     }
@@ -599,10 +850,11 @@ synergy_server <- function(id, rv) {
     if (isTRUE(rv$syn_results$error)) return(NULL)
 
     # Build colour vector matching the 4 synergy roles
-    col_A     <- input$syn_color_A     %||% "#2166AC"
-    col_B     <- input$syn_color_B     %||% "#D6604D"
-    col_combo <- input$syn_color_combo %||% "#762A83"
-    col_ctrl  <- input$syn_color_ctrl  %||% "#999999"
+    cols      <- syn_colors()
+    col_A     <- cols$A
+    col_B     <- cols$B
+    col_combo <- cols$combo
+    col_ctrl  <- cols$ctrl
     text_sz   <- input$syn_opt_text_size %||% 16
 
     final_p <- if (isTRUE(rv$syn_over_time)) {
@@ -653,10 +905,11 @@ synergy_server <- function(id, rv) {
     grps        <- rv$syn_plot_inputs %||%
                    list(drug_a = "Drug A", drug_b = "Drug B",
                         combo = "Combination", control = "Control")
-    col_A       <- input$syn_color_A     %||% "#2166AC"
-    col_B       <- input$syn_color_B     %||% "#D6604D"
-    col_combo   <- input$syn_color_combo %||% "#762A83"
-    col_ctrl    <- input$syn_color_ctrl  %||% "#999999"
+    cols        <- syn_colors()
+    col_A       <- cols$A
+    col_B       <- cols$B
+    col_combo   <- cols$combo
+    col_ctrl    <- cols$ctrl
     text_sz     <- input$syn_opt_text_size  %||% 16
     leg_pos     <- input$syn_opt_legend_pos %||% "right"
     show_shade  <- isTRUE(input$syn_opt_show_shading)
@@ -765,7 +1018,7 @@ synergy_server <- function(id, rv) {
      height = function() input$syn_plot_height %||% 600)
   
   output$download_syn_metrics <- downloadHandler(
-    filename = "synergy_metrics.csv",
+    filename = function() paste0("synergy_metrics_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv"),
     content = function(file) {
       df <- if (isTRUE(rv$syn_over_time) && !is.null(rv$syn_results$synergy_summary)) {
         rv$syn_results$synergy_summary
@@ -777,41 +1030,47 @@ synergy_server <- function(id, rv) {
   )
   
   output$download_syn_plot_main <- downloadHandler(
-    filename = "synergy_plot.png",
+    filename = function() paste0("synergy_plot_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content = function(file) {
       p <- current_syn_main_plot()
-      if (!is.null(p)) {
-        png(file, width = input$syn_plot_width %||% 900,
-                  height = input$syn_plot_height %||% 600,
-                  units = "px", res = input$syn_plot_dpi %||% 100)
-        print(p); dev.off()
+      if (is.null(p)) {
+        showNotification("Plot is not available.", type = "warning")
+        return(invisible(NULL))
       }
+      png(file, width = input$syn_plot_width %||% 900,
+                height = input$syn_plot_height %||% 600,
+                units = "px", res = input$syn_plot_dpi %||% 100)
+      print(p); dev.off()
     }
   )
-  
+
   output$download_syn_plot_trend <- downloadHandler(
-    filename = "synergy_trend.png",
+    filename = function() paste0("synergy_trend_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content = function(file) {
       p <- current_syn_trend_plot()
-      if (!is.null(p)) {
-        png(file, width = input$syn_plot_width %||% 900,
-                  height = input$syn_plot_height %||% 600,
-                  units = "px", res = input$syn_plot_dpi %||% 100)
-        print(p); dev.off()
+      if (is.null(p)) {
+        showNotification("Plot is not available.", type = "warning")
+        return(invisible(NULL))
       }
+      png(file, width = input$syn_plot_width %||% 900,
+                height = input$syn_plot_height %||% 600,
+                units = "px", res = input$syn_plot_dpi %||% 100)
+      print(p); dev.off()
     }
   )
-  
+
   output$download_syn_plot_ci <- downloadHandler(
-    filename = "combination_index.png",
+    filename = function() paste0("combination_index_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content = function(file) {
       p <- current_syn_ci_plot()
-      if (!is.null(p)) {
-        png(file, width = input$syn_plot_width %||% 900,
-                  height = input$syn_plot_height %||% 600,
-                  units = "px", res = input$syn_plot_dpi %||% 100)
-        print(p); dev.off()
+      if (is.null(p)) {
+        showNotification("Plot is not available.", type = "warning")
+        return(invisible(NULL))
       }
+      png(file, width = input$syn_plot_width %||% 900,
+                height = input$syn_plot_height %||% 600,
+                units = "px", res = input$syn_plot_dpi %||% 100)
+      print(p); dev.off()
     }
   )
   
@@ -829,6 +1088,9 @@ synergy_server <- function(id, rv) {
 
     # Retrieve the preprocessed data and column names
     pp <- tryCatch(ensure_preprocessed(rv), error = function(e) NULL)
+    if (!is.null(pp) && !is.null(pp$date_fmt_warning)) {
+      showNotification(pp$date_fmt_warning, type = "warning", duration = 8)
+    }
     req(pp)
     analysis_data <- pp$data
     vol_col  <- pp$vol_col
@@ -891,9 +1153,10 @@ synergy_server <- function(id, rv) {
                              levels = c(grps$drug_a, grps$drug_b, grps$combo))
 
     # Colours and linetypes
-    col_A     <- input$syn_color_A     %||% "#2166AC"
-    col_B     <- input$syn_color_B     %||% "#D6604D"
-    col_combo <- input$syn_color_combo %||% "#762A83"
+    cols      <- syn_colors()
+    col_A     <- cols$A
+    col_B     <- cols$B
+    col_combo <- cols$combo
     text_sz   <- input$syn_opt_text_size  %||% 16
     leg_pos   <- input$syn_opt_legend_pos %||% "right"
 
@@ -935,7 +1198,7 @@ synergy_server <- function(id, rv) {
      height = function() input$syn_plot_height %||% 600)
   
   output$download_syn_plot_tgi <- downloadHandler(
-    filename = "synergy_tgi.png",
+    filename = function() paste0("synergy_tgi_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content = function(file) {
       p <- current_syn_tgi_plot()
       if (!is.null(p)) {

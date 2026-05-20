@@ -104,9 +104,17 @@ ensure_preprocessed <- function(rv) {
   settings <- rv$settings
 
   # Date → Day
+  date_fmt_warning <- NULL
   if (!is.null(settings$time_method) && settings$time_method == "from_date") {
     date_info <- detect_date_format(data, settings$col_date_for_day,
                                     settings$reference_date)
+    if (is.null(date_info$date_format)) {
+      date_fmt_warning <- paste0(
+        "Could not auto-detect date format in column '",
+        settings$col_date_for_day,
+        "'. Please verify your date column or pre-compute the Day column."
+      )
+    }
     data <- mouseExperiment::calculate_dates(
       date_info$data,
       start_date  = date_info$start_date,
@@ -155,7 +163,8 @@ ensure_preprocessed <- function(rv) {
   rv$vol_col        <- vol_col
   rv$tx_col         <- tx_col
 
-  list(data = data, time_col = time_col, vol_col = vol_col, tx_col = tx_col)
+  list(data = data, time_col = time_col, vol_col = vol_col, tx_col = tx_col,
+       date_fmt_warning = date_fmt_warning)
 }
 
 #' Pick the best default reference group
@@ -318,6 +327,34 @@ format_number <- function(x, digits = 3) {
 #'
 #' @return Result or error message
 #' @keywords internal
+translate_error <- function(msg) {
+  if (grepl("not found in|not found$|object .* not found", msg, perl = TRUE))
+    return("A required column was not found. Check your column mappings in Data Upload.")
+  if (grepl("singular|singular fit", msg, ignore.case = TRUE))
+    return(paste0(
+      "Model fitting failed (singular fit). ",
+      "Try increasing sample size or simplifying the random effects structure."
+    ))
+  if (grepl("subscript out of bounds", msg, fixed = TRUE))
+    return(paste0(
+      "An internal indexing error occurred. ",
+      "Check that your data is complete and all required columns are mapped."
+    ))
+  if (grepl("non-conformable", msg, fixed = TRUE))
+    return("Matrix dimension mismatch — check that all treatment groups have sufficient observations.")
+  if (grepl("NaN|NA|missing values", msg, ignore.case = TRUE))
+    return(paste0(
+      "The model encountered missing or invalid values. ",
+      "Check your data for NA values or zero-variance groups."
+    ))
+  msg
+}
+
+toggle_downloads <- function(session, ids, enabled) {
+  fn <- if (isTRUE(enabled)) shinyjs::enable else shinyjs::disable
+  invisible(lapply(ids, function(id) fn(session$ns(id))))
+}
+
 safe_analysis <- function(expr, module = "unknown") {
   t0 <- proc.time()[["elapsed"]]
   tryCatch(
@@ -329,9 +366,10 @@ safe_analysis <- function(expr, module = "unknown") {
     },
     error = function(e) {
       elapsed <- proc.time()[["elapsed"]] - t0
+      raw_msg <- conditionMessage(e)
       log_error(sprintf("analysis_failed | module=%s | elapsed_s=%.2f | error=%s",
-                        module, round(elapsed, 2), conditionMessage(e)))
-      list(error = TRUE, message = conditionMessage(e))
+                        module, round(elapsed, 2), raw_msg))
+      list(error = TRUE, message = translate_error(raw_msg))
     }
   )
 }
@@ -352,6 +390,10 @@ safe_analysis <- function(expr, module = "unknown") {
 #' @keywords internal
 has_col <- function(data, col) {
   !is.null(col) && nzchar(col) && col %in% colnames(data)
+}
+
+js_string <- function(x) {
+  jsonlite::toJSON(as.character(x %||% ""), auto_unbox = TRUE)
 }
 
 #' Validate that required columns exist in a data frame

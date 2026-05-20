@@ -148,8 +148,8 @@ setup_session_save_restore <- function(input, output, session, rv) {
       log_info(sprintf("session_restore | saved_at=%s", snapshot$saved_at))
     }, error = function(e) {
       showNotification(paste("Failed to restore session:", e$message), type = "error")
-      shinyjs::runjs(sprintf("window.trackError('session', '%s', 'session_restore');",
-                             gsub("'", "\\\\'", e$message)))
+      shinyjs::runjs(sprintf("window.trackError('session', %s, 'session_restore');",
+                             js_string(e$message)))
       log_caught_error("session", "restore", e)
     })
   })

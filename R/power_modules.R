@@ -582,8 +582,8 @@ power_server <- function(id, rv) {
       progress$set(value = 1)
 
       if (isTRUE(result_lmm$error)) {
-        shinyjs::runjs(sprintf("window.trackAnalysisComplete('power', false, '%s');",
-                               gsub("'", "\\\\'", result_lmm$message)))
+        shinyjs::runjs(sprintf("window.trackAnalysisComplete('power', false, %s);",
+                               js_string(result_lmm$message)))
         output$pw_status_msg <- renderUI({
           status_alert(paste("Error:", result_lmm$message), "danger")
         })

@@ -21,9 +21,53 @@ doseResponseUI <- function(id) {
             condition = "output.dr_dose_available == true",
 
             selectInput(ns("dr_control_group"),
-                       "Control Group Name",
+                       "Reference Group",
                        choices = "",
                        selected = ""),
+
+            selectInput(ns("dr_model_type"), "Statistical Model",
+              choices = c(
+                "Frequentist (ANOVA/regression)" = "frequentist",
+                "Bayesian Hill/Emax (brms)"      = "bayes"
+              ),
+              selected = "frequentist"
+            ),
+            helpText("Frequentist fits ANOVA with Tukey HSD and linear/non-linear ",
+                     "regression. Bayesian fits a Hill/Emax concentration-response model ",
+                     "with brms; computation takes 3–12 minutes."),
+
+            conditionalPanel(ns = ns, "input.dr_model_type == 'frequentist'",
+              selectInput(ns("dr_comparison_type"),
+                         "Pairwise Comparison Type",
+                         choices = c(
+                           "vs. Reference Group" = "reference",
+                           "All Pairwise (Tukey HSD)" = "all"
+                         ),
+                         selected = "reference")
+            ),
+
+            conditionalPanel(ns = ns, "input.dr_model_type == 'bayes'",
+              hr(),
+              h5(strong("Bayesian Settings")),
+              selectInput(ns("dr_prior_strength"), "Prior Strength",
+                choices = c(
+                  "Skeptical (recommended)" = "skeptical",
+                  "Weakly informative"      = "weakly_informative",
+                  "Informative"             = "informative",
+                  "Diffuse"                 = "diffuse"
+                ),
+                selected = "skeptical"
+              ),
+              numericInput(ns("dr_bayes_chains"), "MCMC chains",
+                           value = 4, min = 1, max = 8, step = 1),
+              numericInput(ns("dr_bayes_iter"), "Iterations per chain",
+                           value = 2000, min = 500, max = 10000, step = 500),
+              div(class = "alert alert-warning",
+                  style = "font-size:0.85em; padding:8px; margin-top:6px;",
+                icon("clock"), " Bayesian fitting takes ~3–12 minutes. ",
+                "The app stays usable while the model runs in the background."
+              )
+            ),
 
             uiOutput(ns("dr_time_point_ui")),
 
@@ -161,10 +205,12 @@ doseResponseUI <- function(id) {
                 tags$li(strong("ci95_lower / ci95_upper"), " \u2014 lower and upper bounds of the 95\u202f% confidence interval for the mean (using the t-distribution). Non-overlapping intervals between adjacent doses suggest a significant dose step.")
               )
             ),
+            div(class = "text-right", style = "margin-bottom: 6px;",
+              downloadButton(ns("download_dr_table"), "Download CSV")
+            ),
             shinycssloaders::withSpinner(
               DTOutput(ns("dr_summary_table"))
-            ),
-            downloadButton(ns("download_dr_table"), "Download CSV")
+            )
           ),
 
           tabPanel("Plots",
@@ -237,7 +283,7 @@ doseResponseUI <- function(id) {
             )
           ),
 
-          tabPanel("Statistical Tests",
+          tabPanel("Model Results",
             tab_info(
               strong("Full statistical test results. "),
               "The text output includes linear regression (slope, intercept, p-value, R\u00b2), one-way ANOVA table, and polynomial trend p-values. Non-linear model AIC/BIC are shown when the drc package fit converges. ",
@@ -249,13 +295,15 @@ doseResponseUI <- function(id) {
                 tags$li(strong("p adj"), " \u2014 Tukey family-wise error rate adjusted p-value. Values below 0.05 indicate a significant difference between that dose pair.")
               )
             ),
+            div(class = "text-right", style = "margin-bottom: 6px;",
+              downloadButton(ns("download_dr_stats"), "Download Results CSV")
+            ),
             shinycssloaders::withSpinner(
               verbatimTextOutput(ns("dr_stat_tests"))
             ),
             shinycssloaders::withSpinner(
               DTOutput(ns("dr_tukey_table"))
-            ),
-            downloadButton(ns("download_dr_stats"), "Download Results CSV")
+            )
           )
         )
       )
@@ -273,6 +321,125 @@ dose_response_server <- function(id, rv) {
 
   rv$dr_results <- NULL
 
+  # ── Bayesian DR tab management ─────────────────────────────────────────────
+  bayes_dr_tabs_inserted <- reactiveVal(FALSE)
+
+  observeEvent(input$dr_model_type, {
+    tabs_id <- "dr_results_tabs"
+    if (isTRUE(input$dr_model_type == "bayes") && !isTRUE(bayes_dr_tabs_inserted())) {
+      appendTab(inputId = tabs_id,
+        tabPanel("Posterior Check",
+          tab_info(
+            strong("Posterior predictive check (PPC)"), " — model-simulated dose-response overlaid on observed data.",
+            em("Good fit: simulated densities envelope the observed density.")
+          ),
+          div(class = "text-right", style = "margin-bottom: 6px;",
+            downloadButton(session$ns("download_dr_pp_check"), "Download Plot")
+          ),
+          shinycssloaders::withSpinner(
+            plotOutput(session$ns("dr_pp_check_plot"), height = "450px")
+          )
+        ),
+        select = FALSE
+      )
+      appendTab(inputId = tabs_id,
+        tabPanel("MCMC Diagnostics",
+          tab_info(
+            strong("MCMC convergence diagnostics. "),
+            "All Rhat values should be ≤ 1.01 before interpreting results."
+          ),
+          shinycssloaders::withSpinner(
+            DTOutput(session$ns("dr_mcmc_diag_table"))
+          ),
+          br(),
+          shinycssloaders::withSpinner(
+            plotOutput(session$ns("dr_mcmc_trace_plot"), height = "500px")
+          )
+        ),
+        select = FALSE
+      )
+      appendTab(inputId = tabs_id,
+        tabPanel("Prior vs Posterior",
+          tab_info(
+            strong("Prior vs Posterior density overlay"), " — shows how much the data have updated the model's prior distributions."
+          ),
+          div(class = "text-right", style = "margin-bottom: 6px;",
+            downloadButton(session$ns("download_dr_prior_posterior"), "Download Plot")
+          ),
+          shinycssloaders::withSpinner(
+            plotOutput(session$ns("dr_prior_posterior_plot"), height = "400px")
+          )
+        ),
+        select = FALSE
+      )
+      bayes_dr_tabs_inserted(TRUE)
+    } else if (!isTRUE(input$dr_model_type == "bayes") && isTRUE(bayes_dr_tabs_inserted())) {
+      removeTab(inputId = tabs_id, target = "Posterior Check")
+      removeTab(inputId = tabs_id, target = "MCMC Diagnostics")
+      removeTab(inputId = tabs_id, target = "Prior vs Posterior")
+      bayes_dr_tabs_inserted(FALSE)
+    }
+  }, ignoreNULL = FALSE)
+
+  output$dr_pp_check_plot <- renderPlot({
+    req(rv$dr_results)
+    req(isTRUE(rv$dr_results$model_type_used == "bayes_dr"))
+    req(!isTRUE(rv$dr_results$error), !is.null(rv$bayes_models$dr))
+    brms::pp_check(rv$bayes_models$dr, type = "dens_overlay", ndraws = 50)
+  })
+
+  output$dr_mcmc_diag_table <- renderDT({
+    req(rv$dr_results)
+    req(isTRUE(rv$dr_results$model_type_used == "bayes_dr"))
+    req(!isTRUE(rv$dr_results$error))
+    diag <- rv$dr_results$mcmc_diagnostics
+    req(!is.null(diag))
+    datatable(format_df_for_display(as.data.frame(diag)),
+              options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+  })
+
+  output$dr_mcmc_trace_plot <- renderPlot({
+    req(rv$dr_results)
+    req(isTRUE(rv$dr_results$model_type_used == "bayes_dr"))
+    req(!isTRUE(rv$dr_results$error), !is.null(rv$bayes_models$dr))
+    bayesplot::mcmc_trace(brms::as.array(rv$bayes_models$dr))
+  })
+
+  output$dr_prior_posterior_plot <- renderPlot({
+    req(rv$dr_results)
+    req(isTRUE(rv$dr_results$model_type_used == "bayes_dr"))
+    req(!isTRUE(rv$dr_results$error))
+    p <- rv$dr_results$prior_posterior_plot
+    req(!is.null(p))
+    print(p)
+  })
+
+  output$download_dr_pp_check <- downloadHandler(
+    filename = function() paste0("dr_posterior_check_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
+    content = function(file) {
+      req(!is.null(rv$bayes_models$dr))
+      p <- brms::pp_check(rv$bayes_models$dr, type = "dens_overlay", ndraws = 50)
+      ggplot2::ggsave(file, plot = p, width = 8, height = 5, dpi = 150)
+    }
+  )
+
+  output$download_dr_prior_posterior <- downloadHandler(
+    filename = function() paste0("dr_prior_posterior_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
+    content = function(file) {
+      req(!is.null(rv$dr_results$prior_posterior_plot))
+      ggplot2::ggsave(file, plot = rv$dr_results$prior_posterior_plot,
+                      width = 8, height = 5, dpi = 150)
+    }
+  )
+
+  observe({
+    toggle_downloads(
+      session,
+      c("download_dr_table", "download_dr_stats"),
+      enabled = !is.null(rv$dr_results) && !isTRUE(rv$dr_results$error)
+    )
+  })
+
   # Reactive: is a dose column configured?
   dr_dose_available <- reactive({
     !is.null(rv$dose_col) && rv$dose_col != ""
@@ -289,7 +456,10 @@ dose_response_server <- function(id, rv) {
     }
     if (is.null(rv$processed_data)) {
       # Attempt to preprocess inline so TG analysis isn't required first
-      tryCatch(ensure_preprocessed(rv), error = function(e) NULL)
+      pp_chk <- tryCatch(ensure_preprocessed(rv), error = function(e) NULL)
+      if (!is.null(pp_chk) && !is.null(pp_chk$date_fmt_warning)) {
+        showNotification(pp_chk$date_fmt_warning, type = "warning", duration = 8)
+      }
     }
     if (is.null(rv$processed_data)) {
       return(status_alert("Could not resolve Volume and Day columns. Please check your column mappings in the Data Upload tab.", "warning"))
@@ -357,11 +527,104 @@ dose_response_server <- function(id, rv) {
       NULL
     }
 
+    # ── Bayesian async path ────────────────────────────────────────────────────
+    if (isTRUE(input$dr_model_type == "bayes")) {
+      if (!all(c(requireNamespace("brms",     quietly = TRUE),
+                 requireNamespace("future",   quietly = TRUE),
+                 requireNamespace("promises", quietly = TRUE)))) {
+        output$dr_status_msg <- renderUI({
+          status_alert(paste0("Bayesian mode requires 'brms', 'future', and 'promises'. ",
+                              "Install with: install.packages(c('brms', 'future', 'promises'))"),
+                       "danger")
+        })
+        return()
+      }
+
+      dr_bayes_params <- list(
+        data          = data,
+        dose_col      = dose_col,
+        vol_col       = vol_col,
+        tx_col        = tx_col,
+        time_col      = time_col,
+        id_col        = id_col,
+        time_point    = time_point_val,
+        ref_group     = input$dr_control_group,
+        prior_str     = input$dr_prior_strength %||% "skeptical",
+        n_chains      = as.integer(input$dr_bayes_chains %||% 4L),
+        n_iter        = as.integer(input$dr_bayes_iter   %||% 2000L)
+      )
+
+      progress_dr <- shiny::Progress$new(session, min = 0, max = 1)
+      progress_dr$set(message = "Starting Bayesian dose-response fit…", value = 0.05)
+
+      output$dr_status_msg <- renderUI({
+        tagList(
+          h4("Bayesian model running…",
+             style = "margin-top: 18px; font-weight: 600;"),
+          p("Fitting Bayesian Hill/Emax model with brms. This may take 3–12 minutes.",
+            style = "color:#666;"),
+          shinycssloaders::withSpinner(div())
+        )
+      })
+
+      shinyjs::runjs("window.trackAnalysisStart('dose_response', 'bayes', 'hill_emax');")
+
+      promises::future_promise({
+        mouseExperiment::bayesian_dose_response(
+          df               = dr_bayes_params$data,
+          dose_column      = dr_bayes_params$dose_col,
+          volume_column    = dr_bayes_params$vol_col,
+          treatment_column = dr_bayes_params$tx_col,
+          day_column       = dr_bayes_params$time_col,
+          id_column        = dr_bayes_params$id_col,
+          endpoint_day     = dr_bayes_params$time_point,
+          reference_group  = dr_bayes_params$ref_group,
+          prior_strength   = dr_bayes_params$prior_str,
+          n_chains         = dr_bayes_params$n_chains,
+          n_iter           = dr_bayes_params$n_iter,
+          return_model     = TRUE,
+          plots            = TRUE
+        )
+      }) %...>% (function(result) {
+        progress_dr$close()
+        result$model_type_used <- "bayes_dr"
+        if (!is.null(rv$bayes_models)) rv$bayes_models$dr <- result$model
+        else                           rv$bayes_models <- list(dr = result$model)
+        result$model <- NULL
+        gc()
+        rv$dr_results <- result
+        if (isTRUE(result$error)) {
+          err_msg <- result$message
+          shinyjs::runjs(sprintf("window.trackAnalysisComplete('dose_response', false, %s);",
+                                 js_string(err_msg)))
+          output$dr_status_msg <- renderUI({
+            status_alert(paste("Bayesian DR failed:", err_msg), "danger")
+          })
+        } else {
+          shinyjs::runjs("window.trackAnalysisComplete('dose_response', true);")
+          output$dr_status_msg <- renderUI({
+            status_alert("Bayesian dose-response analysis completed!", "success")
+          })
+        }
+      }) %...!% (function(err) {
+        progress_dr$close()
+        err_msg <- translate_error(conditionMessage(err))
+        shinyjs::runjs(sprintf("window.trackAnalysisComplete('dose_response', false, %s);",
+                               js_string(err_msg)))
+        output$dr_status_msg <- renderUI({
+          status_alert(paste("Bayesian DR failed:", err_msg), "danger")
+        })
+      })
+      return()
+    }
+
+    # ── Frequentist path ───────────────────────────────────────────────────────
     progress <- shiny::Progress$new(session, min = 0, max = 1)
-    progress$set(message = "Running dose-response analysis...", value = 0.2)
+    progress$set(message = "Validating data...", value = 0.1)
     on.exit(progress$close(), add = TRUE)
 
     result <- safe_analysis(module = "dose_response", {
+      progress$set(value = 0.6, message = "Fitting dose-response model...")
       mouseExperiment::dose_response_statistics(
         df                 = data,
         dose_column        = dose_col,
@@ -397,6 +660,7 @@ dose_response_server <- function(id, rv) {
       })
     }
 
+    progress$set(value = 0.95, message = "Preparing results...")
     rv$dr_results <- result
 
     # Track analysis completion with Umami
@@ -584,8 +848,25 @@ dose_response_server <- function(id, rv) {
     tukey <- rv$dr_results$statistics$tukey_results
     if (is.null(tukey)) return(datatable(data.frame(
       Message = "Tukey HSD not computed (ANOVA p \u2265 0.05 or not available)")))
-    # TukeyHSD returns a list; extract the factor component
     tbl <- as.data.frame(tukey[[1]])
+
+    comp_type <- input$dr_comparison_type %||% "reference"
+    if (comp_type == "reference") {
+      ad  <- rv$dr_results$analysis_data
+      if (!is.null(ad)) {
+        dose_col <- rv$dose_col %||% "Dose"
+        tx_col   <- rv$tx_col   %||% "Treatment"
+        ctrl     <- input$dr_control_group %||% ""
+        ref_doses <- unique(ad[ad[[tx_col]] == ctrl, dose_col])
+        if (length(ref_doses) > 0) {
+          ref_str <- as.character(ref_doses[[1]])
+          keep <- grepl(paste0("^", ref_str, "-"), rownames(tbl)) |
+                  grepl(paste0("-", ref_str, "$"), rownames(tbl))
+          if (any(keep)) tbl <- tbl[keep, , drop = FALSE]
+        }
+      }
+    }
+
     tbl$Comparison <- rownames(tbl)
     tbl <- tbl[, c("Comparison", setdiff(names(tbl), "Comparison"))]
     tbl <- format_df_for_display(tbl)
@@ -594,7 +875,7 @@ dose_response_server <- function(id, rv) {
 
   # ---- Download handlers ----
   output$download_dr_table <- downloadHandler(
-    filename = "dose_response_summary.csv",
+    filename = function() paste0("dose_response_summary_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv"),
     content  = function(file) {
       req(rv$dr_results, !isTRUE(rv$dr_results$error))
       write.csv(as.data.frame(rv$dr_results$summary_table), file, row.names = FALSE)
@@ -602,7 +883,7 @@ dose_response_server <- function(id, rv) {
   )
 
   output$download_dr_scatter <- downloadHandler(
-    filename = "dose_scatter.png",
+    filename = function() paste0("dose_scatter_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content  = function(file) {
       p <- current_dr_scatter()
       req(!is.null(p))
@@ -614,7 +895,7 @@ dose_response_server <- function(id, rv) {
   )
 
   output$download_dr_tgi <- downloadHandler(
-    filename = "dose_tgi.png",
+    filename = function() paste0("dose_tgi_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content  = function(file) {
       p <- current_dr_tgi()
       req(!is.null(p))
@@ -626,7 +907,7 @@ dose_response_server <- function(id, rv) {
   )
 
   output$download_dr_stats <- downloadHandler(
-    filename = "dose_response_stats.csv",
+    filename = function() paste0("dose_response_stats_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv"),
     content  = function(file) {
       req(rv$dr_results, !isTRUE(rv$dr_results$error))
       stats <- rv$dr_results$statistics

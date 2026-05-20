@@ -4,9 +4,14 @@
 tumor_growth_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
   
-  rv$tg_results <- NULL
-  rv$tg_running <- FALSE
-  
+  rv$tg_results    <- NULL
+  rv$tg_running    <- FALSE
+  rv$bayes_models  <- list()
+
+  ordered_tg_grps <- reactive(
+    get_ordered_groups(input, "tg", rv$tg_plot_groups)
+  )
+
   # Update reference group choices when data is available or column mapping changes.
   # When a dose column is also mapped, group choices are shown as "Treatment Dose"
   # combinations so each dose level is independently selectable as the reference.
@@ -234,14 +239,20 @@ tumor_growth_server <- function(id, rv) {
         plot_groups       = rv$tg_plot_groups
       )
 
-      notif_id <- paste0("bayes_run_", as.integer(Sys.time()))
-      shiny::showNotification(
-        ui       = tagList(icon("spinner", class = "fa-spin"),
-                           " Bayesian model running in background (~3–12 min)…"),
-        id       = notif_id,
-        duration = NULL,
-        type     = "message"
-      )
+      shiny::showModal(shiny::modalDialog(
+        title    = NULL,
+        footer   = NULL,
+        easyClose = FALSE,
+        div(
+          style = "text-align: center; padding: 20px 10px;",
+          icon("spinner", class = "fa-spin fa-3x", style = "color: var(--primary-color);"),
+          h4("Bayesian model running…", style = "margin-top: 18px; font-weight: 600;"),
+          p(
+            "This typically takes 3–12 minutes. Results will appear automatically when complete.",
+            style = "color: #666; margin-top: 8px;"
+          )
+        )
+      ))
 
       promises::future_promise({
         mouseExperiment::bayesian_tumor_growth(
@@ -268,8 +279,12 @@ tumor_growth_server <- function(id, rv) {
           verbose                      = FALSE
         )
       }) %...>% (function(result) {
-        shiny::removeNotification(notif_id)
+        shiny::removeModal()
         result$model_type_used <- "bayes"
+        if (!is.null(rv$bayes_models)) rv$bayes_models$tg <- result$model
+        else rv$bayes_models <- list(tg = result$model)
+        result$model <- NULL
+        gc()
         rv$tg_results  <- result
         rv$tg_running  <- FALSE
         rv$tg_plot_data <- bayes_params$data
@@ -280,15 +295,15 @@ tumor_growth_server <- function(id, rv) {
         )
         shinyjs::runjs("window.trackAnalysisComplete('tumor_growth', true);")
       }) %...!% (function(err) {
-        shiny::removeNotification(notif_id)
+        shiny::removeModal()
         rv$tg_running <- FALSE
         err_msg <- conditionMessage(err)
         output$tg_status_msg <- renderUI(
           status_alert(paste("Bayesian analysis failed:", err_msg), "danger")
         )
         shinyjs::runjs(sprintf(
-          "window.trackAnalysisComplete('tumor_growth', false, '%s');",
-          gsub("'", "\\\\'", err_msg)
+          "window.trackAnalysisComplete('tumor_growth', false, %s);",
+          js_string(err_msg)
         ))
       })
 
@@ -791,8 +806,8 @@ tumor_growth_server <- function(id, rv) {
 
     # Track analysis completion with Umami
     if (isTRUE(result$error)) {
-      shinyjs::runjs(sprintf("window.trackAnalysisComplete('tumor_growth', false, '%s');",
-                             gsub("'", "\\\\'", result$message)))
+      shinyjs::runjs(sprintf("window.trackAnalysisComplete('tumor_growth', false, %s);",
+                             js_string(result$message)))
     } else {
       shinyjs::runjs("window.trackAnalysisComplete('tumor_growth', true);")
     }
@@ -1454,7 +1469,7 @@ tumor_growth_server <- function(id, rv) {
     req(rv$tg_plot_data, rv$tg_col_names)
     data      <- rv$tg_plot_data
     col_names <- rv$tg_col_names
-    ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
+    ordered_grps <- ordered_tg_grps()
     colors    <- build_color_vector(input, "tg_color", ordered_grps)
     # For dose data, apply factor level order on the original treatment column;
     # plot_tumor_growth will build Group = 'Treatment - Dose: X' internally.
@@ -1563,7 +1578,7 @@ tumor_growth_server <- function(id, rv) {
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
     req(rv$tg_results$growth_rates)
-    ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
+    ordered_grps <- ordered_tg_grps()
     colors     <- remap_colors_to_treatment(build_color_vector(input, "tg_color", ordered_grps))
     shapes     <- remap_shapes_to_treatment(build_shape_vector(input, "tg_shape", ordered_grps))
     center_bar <- input$tg_opt_center_bar %||% "mean"
@@ -1660,7 +1675,7 @@ tumor_growth_server <- function(id, rv) {
     # Shared controls — remap colours/shapes to treatment-level names
     # so scale_*_manual values match the Treatment column, even when
     # rv$tg_plot_groups contains dose-composite names.
-    ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
+    ordered_grps <- ordered_tg_grps()
     colors     <- remap_colors_to_treatment(build_color_vector(input, "tg_color", ordered_grps))
     shapes     <- remap_shapes_to_treatment(build_shape_vector(input, "tg_shape", ordered_grps))
     center_bar <- input$tg_opt_center_bar %||% "mean"
@@ -1848,7 +1863,7 @@ tumor_growth_server <- function(id, rv) {
       req(nrow(wf_data) > 0)
 
       trt_col      <- "Treatment"
-      ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
+      ordered_grps <- ordered_tg_grps()
       colors       <- remap_colors_to_treatment(build_color_vector(input, "tg_color", ordered_grps))
       text_size    <- input$tg_opt_text_size %||% 16
 
@@ -1907,7 +1922,7 @@ tumor_growth_server <- function(id, rv) {
     if (is.null(pc)) return(NULL)
 
     text_size    <- input$tg_opt_text_size %||% 12
-    ordered_grps <- get_ordered_groups(input, "tg", rv$tg_plot_groups)
+    ordered_grps <- ordered_tg_grps()
     grps_clean   <- unique(gsub(" - Dose: ", " ", ordered_grps))
     colors       <- remap_colors_to_treatment(build_color_vector(input, "tg_color", ordered_grps))
     shapes       <- remap_shapes_to_treatment(build_shape_vector(input, "tg_shape", ordered_grps))
@@ -2105,8 +2120,8 @@ tumor_growth_server <- function(id, rv) {
     req(rv$tg_results)
     req(isTRUE(rv$tg_results$model_type_used == "bayes"))
     req(!isTRUE(rv$tg_results$error))
-    req(!is.null(rv$tg_results$model))
-    brms::pp_check(rv$tg_results$model, type = "dens_overlay", ndraws = 50)
+    req(!is.null(rv$bayes_models$tg))
+    brms::pp_check(rv$bayes_models$tg, type = "dens_overlay", ndraws = 50)
   })
 
   output$tg_mcmc_diag_table <- renderDT({
@@ -2125,15 +2140,15 @@ tumor_growth_server <- function(id, rv) {
     req(rv$tg_results)
     req(isTRUE(rv$tg_results$model_type_used == "bayes"))
     req(!isTRUE(rv$tg_results$error))
-    req(!is.null(rv$tg_results$model))
-    bayesplot::mcmc_trace(brms::as.array(rv$tg_results$model))
+    req(!is.null(rv$bayes_models$tg))
+    bayesplot::mcmc_trace(brms::as.array(rv$bayes_models$tg))
   })
 
   output$download_tg_pp_check <- downloadHandler(
     filename = "posterior_predictive_check.png",
     content = function(file) {
-      req(!is.null(rv$tg_results$model))
-      p <- brms::pp_check(rv$tg_results$model, type = "dens_overlay", ndraws = 50)
+      req(!is.null(rv$bayes_models$tg))
+      p <- brms::pp_check(rv$bayes_models$tg, type = "dens_overlay", ndraws = 50)
       ggplot2::ggsave(file, plot = p, width = 8, height = 5, dpi = 150)
     }
   )

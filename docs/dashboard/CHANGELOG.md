@@ -4,6 +4,42 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.019] 2026 May 20th
+
+### Fixed
+- **Toxicity — cage column fallback** — `cage_column = "Cage"` hardcoded fallback replaced with `NULL`; no longer causes a missing-column error when no cage column is mapped.
+- **All modules — plot download validation** — download handlers now check that the specific plot object is non-NULL before writing the file; a user-visible warning notification is shown if the plot is not available, preventing silent corrupt-file downloads.
+- **Survival — volume-threshold event derivation** — added early guard when `event_src == "volume"` and no volume column is mapped; shows a clear error notification instead of a cryptic internal crash.
+- **All modules — date format detection** — `detect_date_format()` returning `NULL` now emits a warning notification at every call site before analysis proceeds, preventing silently corrupt `Day` values.
+- **Survival — preprocessing consistency** — analysis loop now reads from `pp$processed` throughout rather than mixing `rv$uploaded_data` and preprocessed data.
+- **Synergy — colour vector** — inline colour construction in the synergy module replaced with `build_color_vector()`; user-selected group colours now apply correctly to all synergy plots.
+
+### Changed
+- **All modules — tab naming** — result tab names standardised: primary output tab → "Summary", model detail → "Model Results", pairwise output → "Pairwise Comparisons", across Survival, Toxicity, Synergy, and Dose-Response.
+- **All modules — download button placement** — all download buttons moved to the top-right of their respective tab panels for consistent discoverability.
+- **All modules — reference group label** — standardised to "Reference Group" across Survival, Toxicity, and Synergy sidebar selectors.
+- **Survival / Synergy / Dose-Response — progress steps** — added minimum three progress checkpoints (data validation ~10 %, model fitting ~60 %, results preparation ~95 %) to match Toxicity; progress bar no longer appears stuck at 20 % for most of the run.
+- **All modules — download filenames** — renamed from generic (`kaplan_meier_plot.png`) to date-stamped and reference-group-qualified (`km_plot_Control_20260520.png`) across all download handlers.
+- **All modules — error messages** — raw R error strings passed through `translate_error()` before display; common patterns (missing column, singular fit, convergence failure, insufficient data) produce actionable user-friendly messages.
+- **All modules — download buttons** — buttons are `shinyjs::disable()`d when required analysis results are not yet available, with tooltip copy explaining what must run first; re-enabled on analysis completion.
+- **All modules — JS analytics escaping** — error message strings embedded in `trackAnalysis()` / `trackError()` JS calls now serialised via `jsonlite::toJSON()` (`js_string()` helper), preventing broken JS from multi-line or unicode error messages.
+- **Helpers — preprocessing cache** — `ensure_preprocessed()` cache check replaced by eager preprocessing at upload time in `mod_data_upload.R`; no longer re-runs `calculate_volume()` / `calculate_dates()` on first call from each analysis module.
+- **All modules — group ordering memoization** — `get_ordered_groups()` result wrapped in `reactive()` and called via the reactive reference in all plot renders; no longer re-parses all Shiny input IDs on every render tick.
+- **All modules — brmsfit memory handling** — `brmsfit` objects are now stored exclusively in `rv$bayes_models` (keyed `$tg`, `$surv`, `$bw`, `$syn`, `$dr`); the `$model` field is nulled from result lists and `gc()` called after extraction. This prevents 50–200 MB brmsfit objects accumulating in session reactive values.
+- **Survival — KM plot reactive** — replaced duplicated ~170-line KM build block shared between `renderPlot` and `downloadHandler` with a single `km_plot_r <- reactive({...})`; both outputs now share one code path.
+
+## [v26.05.018] 2026 May 20th
+
+### Changed
+- **Compatibility with mouseExperiment v0.4.3 API changes:**
+  - Bayesian result tables now use `Lower_CrI`/`Upper_CrI` column names instead
+    of `Lower_CL`/`Upper_CL`. The non-`lme4` display path in `mod_tumor_growth.R`
+    renders columns generically — no dashboard code changes required.
+  - `bayesian_survival()` parameter `include_frailty` renamed to
+    `include_cage_effect`. No dashboard module calls this parameter directly.
+  - `model_type_used` for `bayesian_tumor_growth()` changed from `"bayes"` to
+    `"bayes_tg"`. Update any string comparisons on this value accordingly.
+
 ## [v26.05.017] 2026 May 20th
 
 ### Added

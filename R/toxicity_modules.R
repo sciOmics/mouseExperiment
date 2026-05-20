@@ -21,8 +21,9 @@ toxicityUI <- function(id) {
             selectInput(ns("tox_model_type"),
               "Statistical Model",
               choices = c(
-                "Body Weight Analysis"       = "bw",
-                "Efficacy-Toxicity Analysis" = "et"
+                "Body Weight Analysis"            = "bw",
+                "Efficacy-Toxicity Analysis"      = "et",
+                "Bayesian Therapeutic Window (brms)" = "bayes_twm"
               ),
               selected = "bw"
             ),
@@ -30,7 +31,13 @@ toxicityUI <- function(id) {
               "Body Weight Analysis models weight trajectories with mixed-effects models, ",
               "AUC, and time-to-threshold survival. ",
               "Efficacy-Toxicity Analysis also requires a tumor volume column and computes ",
-              "the therapeutic window, safety-efficacy scatter, and total benefit score."
+              "the therapeutic window, safety-efficacy scatter, and total benefit score. ",
+              "Bayesian Therapeutic Window requires Bayesian TG and Bayesian BW analyses ",
+              "to have been run first."
+            ),
+
+            conditionalPanel(ns = ns, "input.tox_model_type == 'bayes_twm'",
+              uiOutput(ns("bayes_twm_readiness_ui"))
             ),
 
             uiOutput(ns("tox_reference_group_ui")),
@@ -48,6 +55,47 @@ toxicityUI <- function(id) {
 
             # Body Weight-specific options
             conditionalPanel(ns = ns, "input.tox_model_type == 'bw'",
+              selectInput(ns("tox_bw_method"), "Statistical Method",
+                choices = c(
+                  "Frequentist (LME4)" = "lme4",
+                  "Bayesian (brms)"    = "bayes"
+                ),
+                selected = "lme4"
+              ),
+              helpText("LME4 fits a linear mixed-effects model. Bayesian reports full ",
+                       "posterior distributions and credible intervals; computation ",
+                       "takes 3–12 minutes."),
+              conditionalPanel(ns = ns,
+                "input.tox_model_type == 'bw' && input.tox_bw_method == 'bayes'",
+                hr(),
+                h5(strong("Bayesian Settings")),
+                selectInput(ns("tox_bw_prior_strength"), "Prior Strength",
+                  choices = c(
+                    "Skeptical (recommended)" = "skeptical",
+                    "Weakly informative"      = "weakly_informative",
+                    "Informative"             = "informative",
+                    "Diffuse"                 = "diffuse"
+                  ),
+                  selected = "skeptical"
+                ),
+                selectInput(ns("tox_bw_random_effects"), "Random Effects",
+                  choices = c(
+                    "Intercept only" = "intercept_only",
+                    "Intercept + Slope" = "slope"
+                  ),
+                  selected = "intercept_only"
+                ),
+                numericInput(ns("tox_bw_bayes_chains"), "MCMC chains",
+                             value = 4, min = 1, max = 8, step = 1),
+                numericInput(ns("tox_bw_bayes_iter"), "Iterations per chain",
+                             value = 2000, min = 500, max = 10000, step = 500),
+                div(class = "alert alert-warning",
+                    style = "font-size:0.85em; padding:8px; margin-top:6px;",
+                  icon("clock"), " Bayesian fitting takes ~3–12 minutes. ",
+                  "The app stays usable while the model runs in the background."
+                )
+              ),
+              hr(),
               h5(strong("Mixed Model Options")),
               checkboxGroupInput(ns("tox_covariates"), "Covariates",
                 choices = c("Tumor Volume" = "volume",
@@ -286,7 +334,7 @@ toxicityUI <- function(id) {
             shinycssloaders::withSpinner(verbatimTextOutput(ns("tox_summary")))
           ),
 
-          tabPanel("Mixed Model",
+          tabPanel("Model Results",
             uiOutput(ns("tox_bw_mixed_model_tab_info")),
             h4("Fixed Effects"),
             shinycssloaders::withSpinner(DTOutput(ns("tox_fixed_effects"))),
@@ -538,6 +586,13 @@ toxicity_server <- function(id, rv) {
 
   rv$tox_results <- NULL
 
+  ordered_tox_grps <- reactive(
+    get_ordered_groups(input, "tox", rv$tox_plot_groups)
+  )
+  ordered_et_grps <- reactive(
+    get_ordered_groups(input, "tox_et", rv$tox_et_plot_groups)
+  )
+
   tox_weight_available <- reactive({
     !is.null(rv$weight_col) && rv$weight_col != ""
   })
@@ -558,7 +613,7 @@ toxicity_server <- function(id, rv) {
 
     if (mt == "et" && !isTRUE(et_tabs_inserted())) {
       if (isTRUE(bw_tabs_inserted())) {
-        removeTab(inputId = tabs_id, target = "Mixed Model")
+        removeTab(inputId = tabs_id, target = "Model Results")
         removeTab(inputId = tabs_id, target = "AUC")
         removeTab(inputId = tabs_id, target = "Weight Loss KM")
         bw_tabs_inserted(FALSE)
@@ -638,7 +693,7 @@ toxicity_server <- function(id, rv) {
         et_tabs_inserted(FALSE)
       }
       insertTab(inputId = tabs_id, target = "Summary", position = "after",
-        tabPanel("Mixed Model",
+        tabPanel("Model Results",
           uiOutput(ns("tox_bw_mixed_model_tab_info")),
           h4("Fixed Effects"),
           shinycssloaders::withSpinner(DTOutput(ns("tox_fixed_effects"))),
@@ -649,7 +704,7 @@ toxicity_server <- function(id, rv) {
           downloadButton(ns("download_tox_emmeans_csv"), "Download EMMs CSV")
         )
       )
-      insertTab(inputId = tabs_id, target = "Mixed Model", position = "after",
+      insertTab(inputId = tabs_id, target = "Model Results", position = "after",
         tabPanel("AUC",
           uiOutput(ns("tox_bw_auc_tab_info")),
           h4("AUC Summary by Group"),
@@ -679,8 +734,208 @@ toxicity_server <- function(id, rv) {
         )
       )
       bw_tabs_inserted(TRUE)
+    } else if (mt == "bayes_twm") {
+      if (isTRUE(bw_tabs_inserted())) {
+        removeTab(inputId = tabs_id, target = "Model Results")
+        removeTab(inputId = tabs_id, target = "AUC")
+        removeTab(inputId = tabs_id, target = "Weight Loss KM")
+        bw_tabs_inserted(FALSE)
+      }
+      if (isTRUE(et_tabs_inserted())) {
+        removeTab(inputId = tabs_id, target = "Therapeutic Window")
+        removeTab(inputId = tabs_id, target = "Safety-Efficacy")
+        removeTab(inputId = tabs_id, target = "Benefit Score")
+        removeTab(inputId = tabs_id, target = "Corrected TGI")
+        removeTab(inputId = tabs_id, target = "Combined Report")
+        et_tabs_inserted(FALSE)
+      }
+      insertTab(inputId = tabs_id, target = "Summary", position = "after",
+        tabPanel("Bayesian TWM Results",
+          tab_info(
+            strong("Bayesian Therapeutic Window Metric. "),
+            "Combines posterior distributions of tumor growth inhibition and body weight change ",
+            "to estimate a credible interval for the therapeutic window."
+          ),
+          div(class = "text-right", style = "margin-bottom: 6px;",
+            downloadButton(ns("download_bayes_twm_csv"), "Download Results CSV")
+          ),
+          shinycssloaders::withSpinner(DTOutput(ns("bayes_twm_table"))),
+          br(),
+          shinycssloaders::withSpinner(
+            plotOutput(ns("bayes_twm_plot"), height = "450px")
+          ),
+          downloadButton(ns("download_bayes_twm_plot"), "Download Plot")
+        )
+      )
     }
   }, ignoreNULL = FALSE)
+
+  # Bayesian TWM readiness banner
+  output$bayes_twm_readiness_ui <- renderUI({
+    has_tg <- !is.null(rv$bayes_models$tg)
+    has_bw <- !is.null(rv$bayes_models$bw)
+    if (has_tg && has_bw) {
+      status_alert("Bayesian TG and BW results available. Click Run Analysis.", "success")
+    } else {
+      missing <- c(if (!has_tg) "Bayesian TG (run in Tumor Growth tab)", if (!has_bw) "Bayesian BW (run above with Bayesian method)")
+      status_alert(paste0("Required: ", paste(missing, collapse = "; ")), "warning")
+    }
+  })
+
+  # ── Bayesian BW tab management ─────────────────────────────────────────────
+  bayes_bw_tabs_inserted <- reactiveVal(FALSE)
+
+  observeEvent(list(input$tox_model_type, input$tox_bw_method), {
+    tabs_id  <- "tox_results_tabs"
+    ns_here  <- session$ns
+    is_bayes <- isTRUE(input$tox_model_type == "bw") &&
+                isTRUE(input$tox_bw_method   == "bayes")
+    if (is_bayes && !isTRUE(bayes_bw_tabs_inserted())) {
+      appendTab(inputId = tabs_id,
+        tabPanel("Posterior Check",
+          tab_info(
+            strong("Posterior predictive check (PPC)"), " — model-simulated weight trajectories overlaid on observed data.",
+            em("Good fit: simulated densities envelope the observed density.")
+          ),
+          div(class = "text-right", style = "margin-bottom: 6px;",
+            downloadButton(ns_here("download_tox_bw_pp_check"), "Download Plot")
+          ),
+          shinycssloaders::withSpinner(
+            plotOutput(ns_here("tox_bw_pp_check_plot"), height = "450px")
+          )
+        ),
+        select = FALSE
+      )
+      appendTab(inputId = tabs_id,
+        tabPanel("MCMC Diagnostics",
+          tab_info(
+            strong("MCMC convergence diagnostics. "),
+            "All Rhat values should be ≤ 1.01 before interpreting results."
+          ),
+          shinycssloaders::withSpinner(
+            DTOutput(ns_here("tox_bw_mcmc_diag_table"))
+          ),
+          br(),
+          shinycssloaders::withSpinner(
+            plotOutput(ns_here("tox_bw_mcmc_trace_plot"), height = "500px")
+          )
+        ),
+        select = FALSE
+      )
+      appendTab(inputId = tabs_id,
+        tabPanel("Prior vs Posterior",
+          tab_info(
+            strong("Prior vs Posterior density overlay"), " — shows how much the data have updated each parameter's prior distribution."
+          ),
+          div(class = "text-right", style = "margin-bottom: 6px;",
+            downloadButton(ns_here("download_tox_bw_prior_posterior"), "Download Plot")
+          ),
+          shinycssloaders::withSpinner(
+            plotOutput(ns_here("tox_bw_prior_posterior_plot"), height = "400px")
+          )
+        ),
+        select = FALSE
+      )
+      bayes_bw_tabs_inserted(TRUE)
+    } else if (!is_bayes && isTRUE(bayes_bw_tabs_inserted())) {
+      removeTab(inputId = tabs_id, target = "Posterior Check")
+      removeTab(inputId = tabs_id, target = "MCMC Diagnostics")
+      removeTab(inputId = tabs_id, target = "Prior vs Posterior")
+      bayes_bw_tabs_inserted(FALSE)
+    }
+  }, ignoreNULL = FALSE)
+
+  output$tox_bw_pp_check_plot <- renderPlot({
+    req(rv$tox_results)
+    req(isTRUE(rv$tox_results$model_type == "bw_bayes"))
+    req(!isTRUE(rv$tox_results$mixed_model$error))
+    req(!is.null(rv$bayes_models$bw))
+    brms::pp_check(rv$bayes_models$bw, type = "dens_overlay", ndraws = 50)
+  })
+
+  output$tox_bw_mcmc_diag_table <- renderDT({
+    req(rv$tox_results)
+    req(isTRUE(rv$tox_results$model_type == "bw_bayes"))
+    diag <- rv$tox_results$mixed_model$mcmc_diagnostics
+    req(!is.null(diag))
+    datatable(format_df_for_display(as.data.frame(diag)),
+              options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+  })
+
+  output$tox_bw_mcmc_trace_plot <- renderPlot({
+    req(rv$tox_results)
+    req(isTRUE(rv$tox_results$model_type == "bw_bayes"))
+    req(!is.null(rv$bayes_models$bw))
+    bayesplot::mcmc_trace(brms::as.array(rv$bayes_models$bw))
+  })
+
+  output$tox_bw_prior_posterior_plot <- renderPlot({
+    req(rv$tox_results)
+    req(isTRUE(rv$tox_results$model_type == "bw_bayes"))
+    p <- rv$tox_results$mixed_model$prior_posterior_plot
+    req(!is.null(p))
+    print(p)
+  })
+
+  output$download_tox_bw_pp_check <- downloadHandler(
+    filename = function() paste0("bw_posterior_check_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
+    content = function(file) {
+      req(!is.null(rv$bayes_models$bw))
+      p <- brms::pp_check(rv$bayes_models$bw, type = "dens_overlay", ndraws = 50)
+      ggplot2::ggsave(file, plot = p, width = 8, height = 5, dpi = 150)
+    }
+  )
+
+  output$download_tox_bw_prior_posterior <- downloadHandler(
+    filename = function() paste0("bw_prior_posterior_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
+    content = function(file) {
+      req(!is.null(rv$tox_results$mixed_model$prior_posterior_plot))
+      ggplot2::ggsave(file, plot = rv$tox_results$mixed_model$prior_posterior_plot,
+                      width = 8, height = 5, dpi = 150)
+    }
+  )
+
+  # ── Bayesian TWM renders ───────────────────────────────────────────────────
+  output$bayes_twm_table <- renderDT({
+    req(rv$tox_results)
+    req(isTRUE(rv$tox_results$model_type == "bayes_twm"))
+    twm <- rv$tox_results$twm
+    req(!is.null(twm), !isTRUE(twm$error))
+    tbl <- tryCatch(as.data.frame(twm$twm_table %||% twm$treatment_effects), error = function(e) NULL)
+    req(!is.null(tbl))
+    datatable(format_df_for_display(tbl),
+              options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+  })
+
+  output$bayes_twm_plot <- renderPlot({
+    req(rv$tox_results)
+    req(isTRUE(rv$tox_results$model_type == "bayes_twm"))
+    twm <- rv$tox_results$twm
+    req(!is.null(twm), !isTRUE(twm$error))
+    p <- twm$twm_plot %||% twm$plot
+    req(!is.null(p))
+    print(p)
+  })
+
+  output$download_bayes_twm_csv <- downloadHandler(
+    filename = function() paste0("bayesian_twm_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv"),
+    content = function(file) {
+      req(!is.null(rv$tox_results$twm))
+      tbl <- rv$tox_results$twm$twm_table %||% rv$tox_results$twm$treatment_effects
+      req(!is.null(tbl))
+      write.csv(as.data.frame(tbl), file, row.names = FALSE)
+    }
+  )
+
+  output$download_bayes_twm_plot <- downloadHandler(
+    filename = function() paste0("bayesian_twm_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
+    content = function(file) {
+      req(!is.null(rv$tox_results$twm))
+      p <- rv$tox_results$twm$twm_plot %||% rv$tox_results$twm$plot
+      req(!is.null(p))
+      ggplot2::ggsave(file, plot = p, width = 8, height = 5, dpi = 150)
+    }
+  )
 
   output$tox_weight_status <- renderUI({
     if (!rv$data_valid) {
@@ -746,6 +1001,84 @@ toxicity_server <- function(id, rv) {
       return()
     }
 
+    if (model_type == "bayes_twm") {
+      has_tg_bayes <- !is.null(rv$bayes_models$tg)
+      has_bw_bayes <- !is.null(rv$bayes_models$bw)
+      if (!has_tg_bayes || !has_bw_bayes) {
+        missing <- c(if (!has_tg_bayes) "Bayesian Tumor Growth", if (!has_bw_bayes) "Bayesian Body Weight")
+        output$tox_status_msg <- renderUI({
+          status_alert(paste0("Run first: ", paste(missing, collapse = " and "), "."), "danger")
+        })
+        return()
+      }
+      if (!all(c(requireNamespace("brms",     quietly = TRUE),
+                 requireNamespace("future",   quietly = TRUE),
+                 requireNamespace("promises", quietly = TRUE)))) {
+        output$tox_status_msg <- renderUI({
+          status_alert(paste0("Bayesian mode requires 'brms', 'future', and 'promises'. ",
+                              "Install with: install.packages(c('brms', 'future', 'promises'))"),
+                       "danger")
+        })
+        return()
+      }
+
+      tg_for_twm <- list(model = rv$bayes_models$tg)
+      bw_for_twm <- list(model = rv$bayes_models$bw)
+      twm_params <- list(
+        tg_result  = tg_for_twm,
+        bw_result  = bw_for_twm,
+        tx_col     = rv$tx_col,
+        time_col   = rv$time_col,
+        ref_group  = input$tox_reference_group %||% NULL
+      )
+
+      progress_twm <- shiny::Progress$new(session, min = 0, max = 1)
+      progress_twm$set(message = "Starting Bayesian TWM fit…", value = 0.05)
+
+      output$tox_status_msg <- renderUI({
+        tagList(
+          h4("Bayesian TWM running…", style = "margin-top: 18px; font-weight: 600;"),
+          p("Combining TG and BW posterior samples. This may take a few minutes.",
+            style = "color:#666;"),
+          shinycssloaders::withSpinner(div())
+        )
+      })
+
+      promises::future_promise({
+        mouseExperiment::bayesian_therapeutic_window(
+          tg_result        = twm_params$tg_result,
+          bw_result        = twm_params$bw_result,
+          treatment_column = twm_params$tx_col,
+          time_column      = twm_params$time_col,
+          reference_group  = twm_params$ref_group,
+          plots            = TRUE
+        )
+      }) %...>% (function(result) {
+        progress_twm$close()
+        result$model_type <- "bayes_twm"
+        rv$tox_results <- list(
+          model_type = "bayes_twm",
+          twm        = result
+        )
+        if (isTRUE(result$error)) {
+          output$tox_status_msg <- renderUI({
+            status_alert(paste("Bayesian TWM failed:", result$message), "danger")
+          })
+        } else {
+          output$tox_status_msg <- renderUI({
+            status_alert("Bayesian Therapeutic Window analysis completed!", "success")
+          })
+        }
+      }) %...!% (function(err) {
+        progress_twm$close()
+        err_msg <- translate_error(conditionMessage(err))
+        output$tox_status_msg <- renderUI({
+          status_alert(paste("Bayesian TWM failed:", err_msg), "danger")
+        })
+      })
+      return()
+    }
+
     output$tox_status_msg <- renderUI({ status_alert("Running analysis...", "info") })
 
     data      <- rv$processed_data
@@ -762,11 +1095,110 @@ toxicity_server <- function(id, rv) {
     density   <- input$tox_tumor_density %||% 1.0
 
     progress <- shiny::Progress$new(session, min = 0, max = 1)
-    progress$set(message = "Running analysis...", value = 0.05)
+    progress$set(message = "Validating data...", value = 0.1)
     on.exit(progress$close(), add = TRUE)
 
     results            <- list()
     results$model_type <- model_type
+
+    if (model_type == "bw" && isTRUE(input$tox_bw_method == "bayes")) {
+      if (!all(c(requireNamespace("brms",     quietly = TRUE),
+                 requireNamespace("future",   quietly = TRUE),
+                 requireNamespace("promises", quietly = TRUE)))) {
+        output$tox_status_msg <- renderUI({
+          status_alert(paste0("Bayesian mode requires 'brms', 'future', and 'promises'. ",
+                              "Install with: install.packages(c('brms', 'future', 'promises'))"),
+                       "danger")
+        })
+        return()
+      }
+      progress$close()
+
+      bw_bayes_params <- list(
+        data          = data,
+        wt_col        = wt_col,
+        time_col      = time_col,
+        tx_col        = tx_col,
+        id_col        = id_col,
+        cage_col      = cage_col,
+        vol_col       = if (has_vol) vol_col else NULL,
+        ref_group     = ref_group,
+        adjust        = adjust,
+        density       = density,
+        prior_str     = input$tox_bw_prior_strength %||% "skeptical",
+        re_spec       = input$tox_bw_random_effects %||% "intercept_only",
+        n_chains      = as.integer(input$tox_bw_bayes_chains %||% 4L),
+        n_iter        = as.integer(input$tox_bw_bayes_iter   %||% 2000L)
+      )
+
+      progress_bw <- shiny::Progress$new(session, min = 0, max = 1)
+      progress_bw$set(message = "Starting Bayesian body weight fit…", value = 0.05)
+
+      output$tox_status_msg <- renderUI({
+        tagList(
+          h4("Bayesian model running…",
+             style = "margin-top: 18px; font-weight: 600;"),
+          p("Fitting Bayesian body weight model with brms. This may take 3–12 minutes.",
+            style = "color:#666;"),
+          shinycssloaders::withSpinner(div())
+        )
+      })
+
+      promises::future_promise({
+        mouseExperiment::bayesian_body_weight(
+          df                           = bw_bayes_params$data,
+          weight_column                = bw_bayes_params$wt_col,
+          time_column                  = bw_bayes_params$time_col,
+          treatment_column             = bw_bayes_params$tx_col,
+          id_column                    = bw_bayes_params$id_col,
+          cage_column                  = bw_bayes_params$cage_col,
+          volume_column                = bw_bayes_params$vol_col,
+          adjust_tumor_weight          = bw_bayes_params$adjust,
+          tumor_density                = bw_bayes_params$density,
+          random_effects_specification = bw_bayes_params$re_spec,
+          reference_group              = bw_bayes_params$ref_group,
+          prior_strength               = bw_bayes_params$prior_str,
+          n_chains                     = bw_bayes_params$n_chains,
+          n_iter                       = bw_bayes_params$n_iter,
+          return_model                 = TRUE,
+          plots                        = TRUE
+        )
+      }) %...>% (function(result) {
+        progress_bw$close()
+        result$model_type  <- "bw_bayes"
+        if (!is.null(rv$bayes_models)) rv$bayes_models$bw <- result$model
+        else                           rv$bayes_models <- list(bw = result$model)
+        result$model <- NULL
+        gc()
+        rv$tox_results <- list(
+          model_type    = "bw_bayes",
+          mixed_model   = result,
+          bw_auc        = NULL,
+          weight_loss   = NULL
+        )
+        rv$tox_plot_groups <- if (!is.null(result$treatment_effects) &&
+                                   has_col(as.data.frame(result$treatment_effects), "Group")) {
+          unique(as.character(as.data.frame(result$treatment_effects)$Group))
+        } else NULL
+        if (isTRUE(result$error)) {
+          err_msg <- result$message
+          output$tox_status_msg <- renderUI({
+            status_alert(paste("Bayesian BW failed:", err_msg), "danger")
+          })
+        } else {
+          output$tox_status_msg <- renderUI({
+            status_alert("Bayesian body weight analysis completed!", "success")
+          })
+        }
+      }) %...!% (function(err) {
+        progress_bw$close()
+        err_msg <- translate_error(conditionMessage(err))
+        output$tox_status_msg <- renderUI({
+          status_alert(paste("Bayesian BW failed:", err_msg), "danger")
+        })
+      })
+      return()
+    }
 
     if (model_type == "bw") {
       covs         <- input$tox_covariates   %||% character(0)
@@ -1191,7 +1623,7 @@ toxicity_server <- function(id, rv) {
     traj_type    <- input$tox_traj_type %||% "spaghetti"
     text_sz      <- input$tox_plot_text_size %||% 14
     line_w       <- input$tox_traj_line_width %||% 1
-    ordered_grps <- get_ordered_groups(input, "tox", rv$tox_plot_groups)
+    ordered_grps <- ordered_tox_grps()
     colors       <- build_color_vector(input, "tox_color", ordered_grps)
 
     if (traj_type %in% c("spaghetti", "mean_spaghetti")) {
@@ -1254,7 +1686,7 @@ toxicity_server <- function(id, rv) {
     err_bars     <- input$tox_auc_error_bar  %||% "SEM"
     pt_sz        <- input$tox_auc_pt_size    %||% 2
     jitter_w     <- input$tox_auc_jitter_width %||% 0.15
-    ordered_grps <- get_ordered_groups(input, "tox", rv$tox_plot_groups)
+    ordered_grps <- ordered_tox_grps()
     colors       <- build_color_vector(input, "tox_color", ordered_grps)
     auc_df       <- auc$auc_per_mouse
     if (!is.null(ordered_grps))
@@ -1319,7 +1751,7 @@ toxicity_server <- function(id, rv) {
     wl <- rv$tox_results$weight_loss
     if (isTRUE(wl$error)) return(NULL)
     text_sz      <- input$tox_plot_text_size %||% 14
-    ordered_grps <- get_ordered_groups(input, "tox", rv$tox_plot_groups)
+    ordered_grps <- ordered_tox_grps()
     colors       <- build_color_vector(input, "tox_color", ordered_grps)
     # Apply group order to event_data so ggsurvplot respects it
     event_df <- wl$event_data
@@ -1349,7 +1781,7 @@ toxicity_server <- function(id, rv) {
     twm <- rv$tox_results$twm
     if (isTRUE(twm$error)) return(NULL)
     text_sz      <- input$tox_plot_text_size %||% 14
-    ordered_grps <- get_ordered_groups(input, "tox_et", rv$tox_et_plot_groups)
+    ordered_grps <- ordered_et_grps()
     colors       <- build_color_vector(input, "tox_et_color", ordered_grps)
     tbl <- twm$twm_table
     if (!is.null(ordered_grps))
@@ -1385,7 +1817,7 @@ toxicity_server <- function(id, rv) {
     show_ell     <- isTRUE(input$tox_et_show_ellipses)
     show_cent    <- isTRUE(input$tox_et_show_centroids)
     shape_by_grp <- isTRUE(input$tox_et_shape_by_group)
-    ordered_grps <- get_ordered_groups(input, "tox_et", rv$tox_et_plot_groups)
+    ordered_grps <- ordered_et_grps()
     colors       <- build_color_vector(input, "tox_et_color", ordered_grps)
     if (!is.null(ordered_grps))
       pm$Treatment <- factor(pm$Treatment, levels = ordered_grps)
@@ -1428,7 +1860,7 @@ toxicity_server <- function(id, rv) {
     ben <- rv$tox_results$benefit
     if (isTRUE(ben$error)) return(NULL)
     text_sz      <- input$tox_plot_text_size %||% 14
-    ordered_grps <- get_ordered_groups(input, "tox_et", rv$tox_et_plot_groups)
+    ordered_grps <- ordered_et_grps()
     bt <- ben$benefit_table
     if (!is.null(ordered_grps))
       bt$Treatment <- factor(bt$Treatment, levels = ordered_grps)
@@ -1456,7 +1888,7 @@ toxicity_server <- function(id, rv) {
     wc <- rv$tox_results$wctgi
     if (isTRUE(wc$error)) return(NULL)
     text_sz      <- input$tox_plot_text_size %||% 14
-    ordered_grps <- get_ordered_groups(input, "tox_et", rv$tox_et_plot_groups)
+    ordered_grps <- ordered_et_grps()
     comp <- wc$comparison
     if (!is.null(ordered_grps))
       comp$Treatment <- factor(comp$Treatment, levels = ordered_grps)
@@ -1498,15 +1930,10 @@ toxicity_server <- function(id, rv) {
       dpi <- input$tox_plot_dpi    %||% 100
       model <- input$tox_model_type %||% "bw"
       if (model == "bw" && (input$tox_bw_plot_selector %||% "") == "km") {
-        req(rv$tox_results, rv$tox_results$weight_loss)
-        wl <- rv$tox_results$weight_loss
-        if (isTRUE(wl$error)) return()
+        p <- tryCatch(output$tox_km_plot(), error = function(e) NULL)
+        if (is.null(p)) { showNotification("Plot is not available.", type = "warning"); return(invisible(NULL)) }
         png(file, width = w, height = h, units = "px", res = dpi)
-        km_p <- survminer::ggsurvplot(wl$km_fit, data = wl$event_data,
-          risk.table = TRUE, pval = TRUE, conf.int = TRUE,
-          title = paste0("Time to ", round(wl$threshold*100), "% Weight Loss"),
-          ggtheme = ggplot2::theme_classic())
-        print(km_p); dev.off(); return()
+        print(p); dev.off(); return()
       }
       plot_id <- if (model == "bw") {
         switch(input$tox_bw_plot_selector %||% "trajectory",
@@ -1517,11 +1944,14 @@ toxicity_server <- function(id, rv) {
           benefit = "tox_et_benefit_plot", wctgi = "tox_et_wctgi_plot",
           "tox_et_twm_plot")
       }
-      tryCatch({
-        png(file, width = w, height = h, units = "px", res = dpi)
-        print(output[[plot_id]]())
-        dev.off()
-      }, error = function(e) dev.off())
+      p <- tryCatch(output[[plot_id]](), error = function(e) NULL)
+      if (is.null(p)) {
+        showNotification("Plot is not available.", type = "warning")
+        return(invisible(NULL))
+      }
+      png(file, width = w, height = h, units = "px", res = dpi)
+      print(p)
+      dev.off()
     }
   )
 

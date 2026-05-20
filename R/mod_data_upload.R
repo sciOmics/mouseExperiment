@@ -19,6 +19,8 @@ data_upload_server <- function(id, rv) {
     rv$surv_plot_groups <- NULL
     rv$syn_plot_inputs  <- NULL
     rv$syn_over_time    <- FALSE
+    rv$bayes_models     <- list()
+    gc()
   }
 
   # Reactive value to store uploaded data
@@ -81,8 +83,8 @@ data_upload_server <- function(id, rv) {
       output$demo_load_msg <- renderUI({
         status_alert(result$message, "danger")
       })
-      shinyjs::runjs(sprintf("window.trackError('validation', '%s', 'demo_data_load');",
-                             gsub("'", "\\\\'", result$message)))
+      shinyjs::runjs(sprintf("window.trackError('validation', %s, 'demo_data_load');",
+                             js_string(result$message)))
       return()
     }
 
@@ -149,8 +151,8 @@ data_upload_server <- function(id, rv) {
         status_alert(result$message, "danger")
       })
       # Track file upload error
-      shinyjs::runjs(sprintf("window.trackError('validation', '%s', 'data_upload');",
-                             gsub("'", "\\\\'", result$message)))
+      shinyjs::runjs(sprintf("window.trackError('validation', %s, 'data_upload');",
+                             js_string(result$message)))
     }
   })
   
@@ -611,20 +613,38 @@ data_upload_server <- function(id, rv) {
         nzchar(rv$settings$col_treatment) &&
         nzchar(rv$settings$col_id) &&
         (nzchar(rv$settings$col_day) || nzchar(rv$settings$col_date_for_day)) &&
-        (nzchar(rv$settings$col_volume) || 
+        (nzchar(rv$settings$col_volume) ||
          (nzchar(rv$settings$col_length) && nzchar(rv$settings$col_width)))) {
-      
-      # Track mapping completion
+
       shinyjs::runjs(sprintf(
         "window.trackColumnMapping('%s', '%s', '%s', %s);",
         rv$settings$col_treatment,
         rv$settings$col_day %||% rv$settings$col_date_for_day,
         rv$settings$col_volume %||% paste0(rv$settings$col_length, "+", rv$settings$col_width),
-        tolower(as.character(!is.null(rv$settings$col_survival_event) && 
+        tolower(as.character(!is.null(rv$settings$col_survival_event) &&
                 nzchar(rv$settings$col_survival_event)))
       ))
+
+      # Eagerly cache preprocessing so the first analysis run doesn't stall.
+      # rv$processed_data is already NULL here when settings change (cleared
+      # by the observeEvent below), so ensure_preprocessed() will re-run.
+      if (is.null(rv$processed_data)) {
+        tryCatch(ensure_preprocessed(rv), error = function(e) NULL)
+      }
     }
   })
+
+  # Invalidate preprocessing cache whenever column mappings change so that
+  # stale results from a previous mapping are not silently reused.
+  observeEvent(
+    list(input$col_treatment, input$col_id, input$col_day,
+         input$col_date_for_day, input$col_volume, input$col_length,
+         input$col_width, input$volume_method, input$time_method),
+    {
+      rv$processed_data <- NULL
+    },
+    ignoreInit = TRUE
+  )
 
   # Session save / restore handlers
   setup_session_save_restore(input, output, session, rv)

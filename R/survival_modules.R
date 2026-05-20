@@ -32,7 +32,50 @@ survivalUI <- function(id) {
         wellPanel(
           h4("Analysis Parameters"),
 
+          selectInput(ns("surv_model_type"), "Statistical Model",
+            choices = c(
+              "Frequentist (Cox PH)"    = "frequentist",
+              "Bayesian (Weibull/brms)" = "bayes"
+            ),
+            selected = "frequentist"
+          ),
+          helpText("Cox PH fits a proportional-hazards model. Bayesian Weibull ",
+                   "models the full survival time distribution and reports posterior ",
+                   "credible intervals; computation takes 3–12 minutes."),
+
           uiOutput(ns("surv_reference_group_ui")),
+
+          conditionalPanel(ns = ns, "input.surv_model_type == 'bayes'",
+            hr(),
+            h5(strong("Bayesian Settings")),
+            selectInput(ns("surv_bayes_family"), "Survival family",
+              choices = c(
+                "Weibull"     = "weibull",
+                "Log-normal"  = "lognormal",
+                "Exponential" = "exponential",
+                "Gamma"       = "gamma"
+              ),
+              selected = "weibull"
+            ),
+            selectInput(ns("surv_prior_strength"), "Prior Strength",
+              choices = c(
+                "Skeptical (recommended)" = "skeptical",
+                "Weakly informative"      = "weakly_informative",
+                "Informative"             = "informative",
+                "Diffuse"                 = "diffuse"
+              ),
+              selected = "skeptical"
+            ),
+            numericInput(ns("surv_bayes_chains"), "MCMC chains",
+                         value = 4, min = 1, max = 8, step = 1),
+            numericInput(ns("surv_bayes_iter"), "Iterations per chain",
+                         value = 2000, min = 500, max = 10000, step = 500),
+            div(class = "alert alert-warning",
+                style = "font-size:0.85em; padding:8px; margin-top:6px;",
+              icon("clock"), " Bayesian fitting takes ~3–12 minutes. ",
+              "The app stays usable while the model runs in the background."
+            )
+          ),
 
           hr(),
           h5(strong("Endpoint")),
@@ -168,7 +211,7 @@ survivalUI <- function(id) {
             )
           ),
           
-          tabPanel("Cox Model",
+          tabPanel("Model Results",
             tab_info(
               strong("Cox proportional hazards model. "),
               "Hazard Ratios (HR) are computed relative to the reference group. Firth\u2019s bias-reduced method is applied automatically when a group has zero events.",
@@ -184,13 +227,15 @@ survivalUI <- function(id) {
                 tags$li(strong("Note"), " \u2014 flags the reference group row.")
               )
             ),
+            div(class = "text-right", style = "margin-bottom: 6px;",
+              downloadButton(ns("download_surv_cox"), "Download Results")
+            ),
             shinycssloaders::withSpinner(
               verbatimTextOutput(ns("surv_cox_summary"))
             ),
             shinycssloaders::withSpinner(
               DTOutput(ns("surv_cox_table"))
-            ),
-            downloadButton(ns("download_surv_cox"), "Download Results")
+            )
           ),
           
           tabPanel("Plots",
@@ -302,10 +347,12 @@ survivalUI <- function(id) {
               ),
               "N_Risk decreases over time as events and censoring accumulate; a rapid drop indicates many events in a short window."
             ),
+            div(class = "text-right", style = "margin-bottom: 6px;",
+              downloadButton(ns("download_surv_risk_table"), "Download Table")
+            ),
             shinycssloaders::withSpinner(
               DTOutput(ns("surv_risk_table"))
-            ),
-            downloadButton(ns("download_surv_risk_table"), "Download Table")
+            )
           )
         )
       )
@@ -320,7 +367,19 @@ survival_server <- function(id, rv) {
   
   rv$surv_results <- NULL
   rv$surv_running <- FALSE
-  
+
+  ordered_surv_grps <- reactive(
+    get_ordered_groups(input, "surv", rv$surv_plot_groups)
+  )
+
+  observe({
+    toggle_downloads(
+      session,
+      c("download_surv_cox", "download_surv_risk_table"),
+      enabled = !is.null(rv$surv_results) && !isTRUE(rv$surv_results$error)
+    )
+  })
+
   # Dynamically generate reference group dropdown based on treatment groups
   output$surv_reference_group_ui <- renderUI({
     req(rv$uploaded_data, rv$data_valid)
@@ -459,6 +518,9 @@ survival_server <- function(id, rv) {
     
     # Prepare data — reuse canonical preprocessing if available
     pp <- ensure_preprocessed(rv)
+    if (!is.null(pp$date_fmt_warning)) {
+      showNotification(pp$date_fmt_warning, type = "warning", duration = 8)
+    }
     data <- pp$data
 
     # Resolve dose column from UI input directly — do NOT use rv$dose_col which
@@ -539,6 +601,14 @@ survival_server <- function(id, rv) {
     # Resolve event/time columns: either from user-supplied censor column or derived
     # by finding the first day each animal's tumour exceeded the volume threshold
     if (event_src == "volume") {
+      if (is.null(pp$vol_col) || !pp$vol_col %in% names(full_data)) {
+        showNotification(
+          "Volume column not mapped. Cannot derive survival events from volume threshold.",
+          type = "error"
+        )
+        rv$surv_running <- FALSE
+        return(NULL)
+      }
       vol_threshold <- as.numeric(input$surv_vol_threshold %||% 2000)
       vol_col_surv  <- pp$vol_col  # uses calculated 'Volume' col when volume_method == 'calculate'
 
@@ -583,23 +653,144 @@ survival_server <- function(id, rv) {
       return()
     }
 
+    # ── Bayesian async path ────────────────────────────────────────────────────
+    if (isTRUE(input$surv_model_type == "bayes")) {
+      if (!all(c(requireNamespace("brms",     quietly = TRUE),
+                 requireNamespace("future",   quietly = TRUE),
+                 requireNamespace("promises", quietly = TRUE)))) {
+        output$surv_status_msg <- renderUI({
+          status_alert(paste0("Bayesian mode requires 'brms', 'future', and 'promises'. ",
+                              "Install with: install.packages(c('brms', 'future', 'promises'))"),
+                       "danger")
+        })
+        rv$surv_running <- FALSE
+        return()
+      }
+
+      bayes_params <- list(
+        data           = data,
+        time_col       = time_col_use,
+        event_col      = censor_col_use,
+        tx_col         = tx_col_surv,
+        id_col         = id_col_surv,
+        cage_col       = cage_col_surv,
+        ref_group      = input$surv_reference_group,
+        family         = input$surv_bayes_family    %||% "weibull",
+        prior_str      = input$surv_prior_strength  %||% "skeptical",
+        n_chains       = as.integer(input$surv_bayes_chains %||% 4L),
+        n_iter         = as.integer(input$surv_bayes_iter   %||% 2000L),
+        event_src      = event_src,
+        vol_threshold  = if (event_src == "volume") as.numeric(input$surv_vol_threshold %||% 2000) else NA_real_,
+        time_method    = rv$settings$time_method,
+        time_col_orig  = time_col,
+        ref_date       = rv$settings$reference_date
+      )
+
+      progress_bayes <- shiny::Progress$new(session, min = 0, max = 1)
+      progress_bayes$set(message = "Starting Bayesian fit…", value = 0.05)
+
+      output$surv_status_msg <- renderUI({
+        tagList(
+          h4("Bayesian model running…",
+             style = "margin-top: 18px; font-weight: 600;"),
+          p("Fitting Weibull survival model with brms. This may take 3–12 minutes.",
+            style = "color:#666;"),
+          shinycssloaders::withSpinner(div())
+        )
+      })
+
+      shinyjs::runjs(sprintf(
+        "window.trackAnalysisStart('survival', 'bayes', '%s');",
+        bayes_params$ref_group
+      ))
+
+      promises::future_promise({
+        mouseExperiment::bayesian_survival(
+          df               = bayes_params$data,
+          time_column      = bayes_params$time_col,
+          event_column     = bayes_params$event_col,
+          treatment_column = bayes_params$tx_col,
+          id_column        = bayes_params$id_col,
+          cage_column      = bayes_params$cage_col,
+          family           = bayes_params$family,
+          reference_group  = bayes_params$ref_group,
+          prior_strength   = bayes_params$prior_str,
+          n_chains         = bayes_params$n_chains,
+          n_iter           = bayes_params$n_iter,
+          return_model     = TRUE,
+          plots            = TRUE
+        )
+      }) %...>% (function(result) {
+        progress_bayes$close()
+        result$model_type_used    <- "bayes"
+        result$event_src_used     <- bayes_params$event_src
+        result$vol_threshold_used <- bayes_params$vol_threshold
+        result$time_method        <- bayes_params$time_method
+        result$time_column_used   <- bayes_params$time_col_orig
+        result$reference_date     <- bayes_params$ref_date
+        # Build km_fit from survival_data for risk table / KM reactive
+        if (!isTRUE(result$error) && !is.null(result$survival_data)) {
+          tryCatch({
+            sd <- result$survival_data
+            result$km_fit <- survival::survfit(
+              survival::Surv(Time, Event) ~ Treatment, data = sd)
+          }, error = function(e) NULL)
+        }
+        if (!is.null(rv$bayes_models)) rv$bayes_models$surv <- result$model
+        else                           rv$bayes_models <- list(surv = result$model)
+        result$model <- NULL
+        gc()
+        rv$surv_results <- result
+        rv$surv_running <- FALSE
+        rv$surv_plot_groups <- if (!is.null(result$survival_data) &&
+                                   has_col(result$survival_data, "Treatment")) {
+          unique(as.character(result$survival_data$Treatment))
+        } else NULL
+        if (isTRUE(result$error)) {
+          err_msg <- result$message
+          shinyjs::runjs(sprintf(
+            "window.trackAnalysisComplete('survival', false, %s);", js_string(err_msg)))
+          output$surv_status_msg <- renderUI({
+            status_alert(paste("Bayesian analysis failed:", err_msg), "danger")
+          })
+        } else {
+          shinyjs::runjs("window.trackAnalysisComplete('survival', true);")
+          output$surv_status_msg <- renderUI({
+            status_alert("Bayesian survival analysis completed!", "success")
+          })
+        }
+      }) %...!% (function(err) {
+        progress_bayes$close()
+        err_msg <- translate_error(conditionMessage(err))
+        rv$surv_running <- FALSE
+        shinyjs::runjs(sprintf(
+          "window.trackAnalysisComplete('survival', false, %s);", js_string(err_msg)))
+        output$surv_status_msg <- renderUI({
+          status_alert(paste("Bayesian analysis failed:", err_msg), "danger")
+        })
+      })
+      return()
+    }
+
+    # ── Frequentist (Cox) path ─────────────────────────────────────────────────
     progress <- shiny::Progress$new(session, min = 0, max = 1)
-    progress$set(message = "Running survival analysis...", value = 0.2)
+    progress$set(message = "Validating data...", value = 0.1)
     on.exit(progress$close(), add = TRUE)
 
+    progress$set(message = "Fitting survival model...", value = 0.6)
     result <- safe_analysis(module = "survival", {
       mouseExperiment::survival_statistics(
         df = data,
         time_column = time_col_use,
         censor_column = censor_col_use,
         treatment_column = tx_col_surv,
-        cage_column = if (!is.null(rv$settings$col_cage) && nzchar(rv$settings$col_cage)) rv$settings$col_cage else "Cage",
+        cage_column = if (!is.null(rv$settings$col_cage) && nzchar(rv$settings$col_cage)) rv$settings$col_cage else NULL,
         dose_column = dose_col_surv,
         reference_group = input$surv_reference_group,
         firth_correction = TRUE
       )
     })
-    progress$set(value = 0.9, detail = "Preparing results")
+    progress$set(message = "Preparing results...", value = 0.9)
 
     # Store event source for downstream use (KM plot titles, summary text)
     result$event_src_used     <- event_src
@@ -665,8 +856,8 @@ survival_server <- function(id, rv) {
 
     # Track analysis completion with Umami
     if (isTRUE(result$error)) {
-      shinyjs::runjs(sprintf("window.trackAnalysisComplete('survival', false, '%s');",
-                             gsub("'", "\\\\'", result$message)))
+      shinyjs::runjs(sprintf("window.trackAnalysisComplete('survival', false, %s);",
+                             js_string(result$message)))
     } else {
       shinyjs::runjs("window.trackAnalysisComplete('survival', true);")
     }
@@ -687,13 +878,140 @@ survival_server <- function(id, rv) {
     }
   })
   
+  # ── Bayesian tab management ────────────────────────────────────────────────
+  bayes_surv_tabs_inserted <- reactiveVal(FALSE)
+
+  observeEvent(input$surv_model_type, {
+    tabs_id <- "surv_results_tabs"
+    if (isTRUE(input$surv_model_type == "bayes") && !isTRUE(bayes_surv_tabs_inserted())) {
+      appendTab(inputId = tabs_id,
+        tabPanel("Posterior Check",
+          tab_info(
+            strong("Posterior predictive check (PPC)"), " — the model generates new datasets from the posterior and overlays their densities on the observed data.",
+            tags$ul(
+              tags$li(strong("y"), " — observed survival times."),
+              tags$li(strong("y_rep"), " — simulated datasets from the posterior predictive distribution.")
+            ),
+            em("Good model fit: simulated densities closely envelope the observed density.")
+          ),
+          div(class = "text-right", style = "margin-bottom: 6px;",
+            downloadButton(session$ns("download_surv_pp_check"), "Download Plot")
+          ),
+          shinycssloaders::withSpinner(
+            plotOutput(session$ns("surv_pp_check_plot"), height = "450px")
+          )
+        ),
+        select = FALSE
+      )
+      appendTab(inputId = tabs_id,
+        tabPanel("MCMC Diagnostics",
+          tab_info(
+            strong("MCMC convergence diagnostics"), " for all fixed-effect parameters. All chains should have converged (R̂ ≈ 1.00) and have sufficient effective samples before interpreting results.",
+            tags$ul(
+              tags$li(strong("Rhat"), " — potential scale-reduction factor; values > 1.01 indicate non-convergence."),
+              tags$li(strong("Bulk_ESS"), " — bulk effective sample size; aim for > 400 per chain."),
+              tags$li(strong("Tail_ESS"), " — tail ESS; important for credible interval accuracy."),
+              tags$li(strong("Converged"), " — TRUE when R̂ ≤ 1.01.")
+            ),
+            em("If Rhat > 1.01, try increasing iterations or chains before reporting results.")
+          ),
+          shinycssloaders::withSpinner(
+            DTOutput(session$ns("surv_mcmc_diag_table"))
+          ),
+          br(),
+          shinycssloaders::withSpinner(
+            plotOutput(session$ns("surv_mcmc_trace_plot"), height = "500px")
+          )
+        ),
+        select = FALSE
+      )
+      appendTab(inputId = tabs_id,
+        tabPanel("Prior vs Posterior",
+          tab_info(
+            strong("Prior vs Posterior density overlay"), " — shows how much the data have updated each parameter's prior distribution.",
+            em("Parameters whose posterior is similar to the prior are not well identified by the data; consider collecting more data or using an informative prior.")
+          ),
+          div(class = "text-right", style = "margin-bottom: 6px;",
+            downloadButton(session$ns("download_surv_prior_posterior"), "Download Plot")
+          ),
+          shinycssloaders::withSpinner(
+            plotOutput(session$ns("surv_prior_posterior_plot"), height = "400px")
+          )
+        ),
+        select = FALSE
+      )
+      bayes_surv_tabs_inserted(TRUE)
+    } else if (!isTRUE(input$surv_model_type == "bayes") && isTRUE(bayes_surv_tabs_inserted())) {
+      removeTab(inputId = tabs_id, target = "Posterior Check")
+      removeTab(inputId = tabs_id, target = "MCMC Diagnostics")
+      removeTab(inputId = tabs_id, target = "Prior vs Posterior")
+      bayes_surv_tabs_inserted(FALSE)
+    }
+  }, ignoreNULL = FALSE)
+
+  # ── Bayesian render outputs ────────────────────────────────────────────────
+  output$surv_pp_check_plot <- renderPlot({
+    req(rv$surv_results)
+    req(isTRUE(rv$surv_results$model_type_used == "bayes"))
+    req(!isTRUE(rv$surv_results$error), !is.null(rv$bayes_models$surv))
+    brms::pp_check(rv$bayes_models$surv, type = "dens_overlay", ndraws = 50)
+  })
+
+  output$surv_mcmc_diag_table <- renderDT({
+    req(rv$surv_results)
+    req(isTRUE(rv$surv_results$model_type_used == "bayes"))
+    req(!isTRUE(rv$surv_results$error))
+    diag <- rv$surv_results$mcmc_diagnostics
+    req(!is.null(diag))
+    datatable(
+      format_df_for_display(as.data.frame(diag)),
+      options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)
+    )
+  })
+
+  output$surv_mcmc_trace_plot <- renderPlot({
+    req(rv$surv_results)
+    req(isTRUE(rv$surv_results$model_type_used == "bayes"))
+    req(!isTRUE(rv$surv_results$error), !is.null(rv$bayes_models$surv))
+    bayesplot::mcmc_trace(brms::as.array(rv$bayes_models$surv))
+  })
+
+  output$surv_prior_posterior_plot <- renderPlot({
+    req(rv$surv_results)
+    req(isTRUE(rv$surv_results$model_type_used == "bayes"))
+    req(!isTRUE(rv$surv_results$error))
+    p <- rv$surv_results$prior_posterior_plot
+    req(!is.null(p))
+    print(p)
+  })
+
+  output$download_surv_pp_check <- downloadHandler(
+    filename = function() paste0("surv_posterior_check_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
+    content = function(file) {
+      req(!is.null(rv$bayes_models$surv))
+      p <- brms::pp_check(rv$bayes_models$surv, type = "dens_overlay", ndraws = 50)
+      ggplot2::ggsave(file, plot = p, width = 8, height = 5, dpi = 150)
+    }
+  )
+
+  output$download_surv_prior_posterior <- downloadHandler(
+    filename = function() paste0("surv_prior_posterior_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
+    content = function(file) {
+      req(!is.null(rv$surv_results$prior_posterior_plot))
+      ggplot2::ggsave(file, plot = rv$surv_results$prior_posterior_plot, width = 8, height = 5, dpi = 150)
+    }
+  )
+
+  # Also update the Model Results tab rendering to show treatment_effects for Bayesian
+  # (surv_cox_table already handles null results gracefully; Bayesian summary handled below)
+
   # Summary output
   output$surv_summary <- renderText({
     req(rv$surv_results)
     if (isTRUE(rv$surv_results$error)) {
       return(paste("Error:", rv$surv_results$message))
     }
-    
+
     summary_text <- capture.output({
       cat("=== SURVIVAL ANALYSIS SUMMARY ===\n\n")
       
@@ -750,50 +1068,43 @@ survival_server <- function(id, rv) {
     downloadButton(session$ns(btn_id), "Download Plot")
   })
 
-  # Kaplan-Meier plot — re-renders live when colour pickers, order, or conf.int option change
-  output$surv_plot_km <- renderPlot({
+  # KM plot builder — shared by renderPlot and download handler
+  km_plot_r <- reactive({
     req(rv$surv_results)
     if (isTRUE(rv$surv_results$error)) return(NULL)
     req(rv$surv_results$km_fit, rv$surv_results$survival_data)
 
-    surv_df <- rv$surv_results$survival_data
-
-    # Apply user group order as factor levels and refit KM so strata follow that order
-    ordered_grps <- get_ordered_groups(input, "surv", rv$surv_plot_groups)
-    if (!is.null(ordered_grps) && has_col(surv_df, "Treatment")) {
+    surv_df      <- rv$surv_results$survival_data
+    ordered_grps <- ordered_surv_grps()
+    if (!is.null(ordered_grps) && has_col(surv_df, "Treatment"))
       surv_df$Treatment <- factor(surv_df$Treatment, levels = ordered_grps)
-    }
     km_fit <- tryCatch(
       survival::survfit(survival::Surv(Time, Event) ~ Treatment, data = surv_df),
       error = function(e) {
-        log_caught_error("survival", "KM refit for colour/order", e)
+        log_caught_error("survival", "KM refit", e)
         rv$surv_results$km_fit
       }
     )
-
-    # Build colour vector from per-group colourInputs (ordered to match strata)
     groups  <- if (!is.null(ordered_grps)) ordered_grps else rv$surv_plot_groups
     pal     <- build_color_vector(input, "surv_color", groups)
-    # unname so ggsurvplot assigns colours positionally (strata are "Treatment=X", not "X")
     if (!is.null(pal)) pal <- unname(pal)
     if (is.null(pal)) pal <- "hue"
 
-    # X-axis start
-    x_start <- if (!is.null(input$surv_km_xstart) && !is.na(input$surv_km_xstart))
-                  as.numeric(input$surv_km_xstart) else 0
+    x_start       <- if (!is.null(input$surv_km_xstart) && !is.na(input$surv_km_xstart))
+                       as.numeric(input$surv_km_xstart) else 0
     text_size     <- input$surv_opt_text_size %||% 16
     event_src_km  <- rv$surv_results$event_src_used %||% "column"
     default_title <- if (event_src_km == "volume") "Time-to-Tumour-Volume-Threshold by Treatment"
                      else                          "Kaplan-Meier Survival Curves by Treatment"
     plot_title    <- if (nzchar(trimws(input$surv_plot_title %||% "")))
                        input$surv_plot_title else default_title
-    plot_sub    <- input$surv_plot_subtitle %||% ""
-    title_hjust <- switch(input$surv_plot_title_align %||% "center",
-                          left = 0, center = 0.5, right = 1, 0.5)
-    xlab_custom <- trimws(input$surv_plot_xaxis_label  %||% "")
-    ylab_custom <- trimws(input$surv_plot_yaxis_label  %||% "")
-    leg_label   <- trimws(input$surv_plot_legend_label %||% "")
-    legend_pos  <- input$surv_opt_legend_pos %||% "right"
+    plot_sub      <- input$surv_plot_subtitle %||% ""
+    title_hjust   <- switch(input$surv_plot_title_align %||% "center",
+                            left = 0, center = 0.5, right = 1, 0.5)
+    xlab_custom   <- trimws(input$surv_plot_xaxis_label  %||% "")
+    ylab_custom   <- trimws(input$surv_plot_yaxis_label  %||% "")
+    leg_label     <- trimws(input$surv_plot_legend_label %||% "")
+    legend_pos    <- input$surv_opt_legend_pos %||% "right"
 
     tryCatch({
       km_obj <- survminer::ggsurvplot(
@@ -812,7 +1123,6 @@ survival_server <- function(id, rv) {
         title                 = plot_title,
         ggtheme               = ggplot2::theme_classic(base_size = text_size)
       )
-      # Apply title alignment and optional subtitle
       km_obj$plot <- km_obj$plot +
         ggplot2::theme(plot.title = ggplot2::element_text(hjust = title_hjust))
       if (nzchar(trimws(plot_sub))) {
@@ -820,8 +1130,7 @@ survival_server <- function(id, rv) {
           ggplot2::labs(subtitle = plot_sub) +
           ggplot2::theme(plot.subtitle = ggplot2::element_text(hjust = title_hjust))
       }
-      # Apply legend position (ggsurvplot returns a list; position touches the plot component)
-      lp <- if (startsWith(legend_pos, "inplot_")) {
+      if (startsWith(legend_pos, "inplot_")) {
         coord <- switch(legend_pos,
           inplot_tl = c(0.02, 0.98), inplot_tr = c(0.98, 0.98),
           inplot_bl = c(0.02, 0.02), inplot_br = c(0.98, 0.02), c(0.5, 0.5))
@@ -831,45 +1140,53 @@ survival_server <- function(id, rv) {
           c("center","center"))
         km_obj$plot <- km_obj$plot +
           ggplot2::theme(
-            legend.position    = coord,
+            legend.position      = coord,
             legend.justification = just,
-            legend.background  = ggplot2::element_rect(
+            legend.background    = ggplot2::element_rect(
               fill = scales::alpha("white", 0.8), colour = NA))
       } else {
         km_obj$plot <- km_obj$plot + ggplot2::theme(legend.position = legend_pos)
       }
-      print(km_obj)
-    }, error = function(e) {
-      # Fallback: print pre-generated stored KM plot
-      if (!is.null(rv$surv_results$km_plot)) {
-        print(rv$surv_results$km_plot)
-      } else {
-        plot(1, 1, type = "n", main = "KM plot not available", xlab = "", ylab = "")
-      }
-    })  
+      km_obj
+    }, error = function(e) rv$surv_results$km_plot)
+  })
+
+  output$surv_plot_km <- renderPlot({
+    km_obj <- km_plot_r()
+    req(!is.null(km_obj))
+    print(km_obj)
   }, width = function() input$surv_plot_width %||% 800,
      height = function() input$surv_plot_height %||% 600)
   
   # Cox model summary
   output$surv_cox_summary <- renderText({
     req(rv$surv_results)
-    if (isTRUE(rv$surv_results$error) || is.null(rv$surv_results$model)) {
-      return("Model not available")
+    if (isTRUE(rv$surv_results$error)) return("Analysis error — see Status.")
+    if (isTRUE(rv$surv_results$model_type_used == "bayes")) {
+      ps <- rv$surv_results$posterior_summary
+      if (is.null(ps)) return("Posterior summary not available.")
+      return(paste(capture.output(print(as.data.frame(ps))), collapse = "\n"))
     }
-    
+    if (is.null(rv$surv_results$model)) return("Model not available")
     paste(capture.output(summary(rv$surv_results$model)), collapse = "\n")
   })
-  
-  # Results table
+
+  # Results table — Cox HR table (frequentist) or treatment effects (Bayesian)
   output$surv_cox_table <- renderDT({
     req(rv$surv_results)
-    if (isTRUE(rv$surv_results$error) || is.null(rv$surv_results$results)) {
+    if (isTRUE(rv$surv_results$error)) {
       return(datatable(data.frame(Message = "Results not available")))
     }
-    
-    results_df <- rv$surv_results$results
-    results_df <- format_df_for_display(results_df)
-    
+    if (isTRUE(rv$surv_results$model_type_used == "bayes")) {
+      te <- rv$surv_results$treatment_effects
+      if (is.null(te)) return(datatable(data.frame(Message = "Treatment effects not available")))
+      return(datatable(format_df_for_display(as.data.frame(te)),
+                       options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)))
+    }
+    if (is.null(rv$surv_results$results)) {
+      return(datatable(data.frame(Message = "Results not available")))
+    }
+    results_df <- format_df_for_display(rv$surv_results$results)
     datatable(results_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
@@ -1021,79 +1338,11 @@ survival_server <- function(id, rv) {
   
   # Download handlers
   output$download_surv_plot_km <- downloadHandler(
-    filename = "kaplan_meier_plot.png",
+    filename = function() paste0("kaplan_meier_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content = function(file) {
       shinyjs::runjs("window.trackDownload('survival', 'plot', 'png');")
-      req(rv$surv_results)
-      surv_df <- rv$surv_results$survival_data
-      ordered_grps <- get_ordered_groups(input, "surv", rv$surv_plot_groups)
-      if (!is.null(ordered_grps) && has_col(surv_df, "Treatment"))
-        surv_df$Treatment <- factor(surv_df$Treatment, levels = ordered_grps)
-      km_fit <- tryCatch(
-        survival::survfit(survival::Surv(Time, Event) ~ Treatment, data = surv_df),
-        error = function(e) {
-          log_caught_error("survival", "KM refit for download", e)
-          rv$surv_results$km_fit
-        }
-      )
-      groups <- if (!is.null(ordered_grps)) ordered_grps else rv$surv_plot_groups
-      pal <- build_color_vector(input, "surv_color", groups)
-      if (!is.null(pal)) pal <- unname(pal)
-      if (is.null(pal)) pal <- "hue"
-      x_start     <- if (!is.null(input$surv_km_xstart) && !is.na(input$surv_km_xstart))
-                       as.numeric(input$surv_km_xstart) else 0
-      xlab_custom <- trimws(input$surv_plot_xaxis_label  %||% "")
-      ylab_custom <- trimws(input$surv_plot_yaxis_label  %||% "")
-      leg_label   <- trimws(input$surv_plot_legend_label %||% "")
-      legend_pos  <- input$surv_opt_legend_pos %||% "right"
-      plot_title  <- if (nzchar(trimws(input$surv_plot_title %||% "")))
-                       input$surv_plot_title else "Kaplan-Meier Survival Curves by Treatment"
-      plot_sub    <- input$surv_plot_subtitle %||% ""
-      title_hjust <- switch(input$surv_plot_title_align %||% "center",
-                            left = 0, center = 0.5, right = 1, 0.5)
-      km_obj <- tryCatch(
-        survminer::ggsurvplot(
-          km_fit,
-          data                  = surv_df,
-          palette               = pal,
-          risk.table            = isTRUE(input$surv_opt_risk_table),
-          risk.table.y.text.col = TRUE,
-          conf.int              = isTRUE(input$surv_opt_conf_int),
-          xlim                  = c(x_start, NA),
-          xlab                  = if (nzchar(xlab_custom)) xlab_custom else "Time (Days)",
-          ylab                  = if (nzchar(ylab_custom)) ylab_custom else "Survival Probability",
-          legend.title          = if (nzchar(leg_label)) leg_label else "Treatment",
-          title                 = plot_title
-        ),
-        error = function(e) rv$surv_results$km_plot
-      )
+      km_obj <- isolate(km_plot_r())
       req(!is.null(km_obj))
-      if (inherits(km_obj, "ggsurvplot")) {
-        km_obj$plot <- km_obj$plot +
-          ggplot2::theme(plot.title = ggplot2::element_text(hjust = title_hjust))
-        if (nzchar(trimws(plot_sub))) {
-          km_obj$plot <- km_obj$plot +
-            ggplot2::labs(subtitle = plot_sub) +
-            ggplot2::theme(plot.subtitle = ggplot2::element_text(hjust = title_hjust))
-        }
-        if (startsWith(legend_pos, "inplot_")) {
-          coord <- switch(legend_pos,
-            inplot_tl = c(0.02, 0.98), inplot_tr = c(0.98, 0.98),
-            inplot_bl = c(0.02, 0.02), inplot_br = c(0.98, 0.02), c(0.5, 0.5))
-          just <- switch(legend_pos,
-            inplot_tl = c("left","top"),  inplot_tr = c("right","top"),
-            inplot_bl = c("left","bottom"), inplot_br = c("right","bottom"),
-            c("center","center"))
-          km_obj$plot <- km_obj$plot +
-            ggplot2::theme(
-              legend.position    = coord,
-              legend.justification = just,
-              legend.background  = ggplot2::element_rect(
-                fill = scales::alpha("white", 0.8), colour = NA))
-        } else {
-          km_obj$plot <- km_obj$plot + ggplot2::theme(legend.position = legend_pos)
-        }
-      }
       png(file, width  = input$surv_plot_width  %||% 800,
                 height = input$surv_plot_height %||% 600,
                 units  = "px", res = input$surv_plot_dpi %||% 100)
@@ -1103,7 +1352,7 @@ survival_server <- function(id, rv) {
   )
   
   output$download_surv_cox <- downloadHandler(
-    filename = "survival_results.csv",
+    filename = function() paste0("survival_results_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv"),
     content = function(file) {
       shinyjs::runjs("window.trackDownload('survival', 'table', 'csv');")
       if (!is.null(rv$surv_results$results)) {
@@ -1113,7 +1362,7 @@ survival_server <- function(id, rv) {
   )
   
   output$download_surv_risk_table <- downloadHandler(
-    filename = "survival_risk_table.csv",
+    filename = function() paste0("survival_risk_table_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv"),
     content = function(file) {
       shinyjs::runjs("window.trackDownload('survival', 'table', 'csv');")
       req(rv$surv_results$km_fit)
@@ -1131,7 +1380,7 @@ survival_server <- function(id, rv) {
   )
   
   output$download_surv_forest_plot <- downloadHandler(
-    filename = "forest_plot.png",
+    filename = function() paste0("forest_plot_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content = function(file) {
       shinyjs::runjs("window.trackDownload('survival', 'plot', 'png');")
       req(rv$surv_results, !isTRUE(rv$surv_results$error), rv$surv_results$results)

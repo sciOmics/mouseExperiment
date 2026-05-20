@@ -2,8 +2,12 @@
 
 **Reviewer:** Claude Code
 **Date:** 2026-05-20
-**Version reviewed:** v26.05.017
+**Version reviewed:** v26.05.019
 **Scope:** All Shiny module R files, server logic, and UI definitions
+
+**Resolution status:** 24/25 items resolved. Two items remain open:
+- **2.4** — Dose-Response plot customization controls (scope expansion; not a bug)
+- **6.1** — Server function length (architectural recommendation; ongoing)
 
 ---
 
@@ -363,32 +367,32 @@ filename = function() {
 
 | # | Issue | Type | File | Status |
 |---|-------|------|------|--------|
-| 1.1 | Hardcoded `"Cage"` fallback instead of `NULL` | Bug | `toxicity_modules.R:596` | Open |
-| 1.2 | Plot download handlers do not validate plot object | Bug | Multiple | Open |
-| 1.3 | Volume column not guarded in event-from-volume path | Bug | `survival_modules.R:556` | Open |
-| 1.4 | `detect_date_format()` NULL return not caught | Bug | `helpers.R:44` | Open |
-| 1.5 | Survival loop reads raw data instead of `pp$processed` | Bug | `survival_modules.R:545` | Open |
-| 2.1 | Tab names differ across modules for the same concept | Inconsistency | Multiple | Open |
-| 2.2 | Download button placement not consistent | Inconsistency | Multiple | Open |
-| 2.3 | Reference group label: "Reference Group" vs "Control Group" vs "Control / Reference Group" | Inconsistency | Multiple | Open |
+| 1.1 | Hardcoded `"Cage"` fallback instead of `NULL` | Bug | `toxicity_modules.R:596` | Done |
+| 1.2 | Plot download handlers do not validate plot object | Bug | Multiple | Done |
+| 1.3 | Volume column not guarded in event-from-volume path | Bug | `survival_modules.R:556` | Done |
+| 1.4 | `detect_date_format()` NULL return not caught | Bug | `helpers.R:44` | Done |
+| 1.5 | Survival loop reads raw data instead of `pp$processed` | Bug | `survival_modules.R:545` | Done |
+| 2.1 | Tab names differ across modules for the same concept | Inconsistency | Multiple | Done |
+| 2.2 | Download button placement not consistent | Inconsistency | Multiple | Done |
+| 2.3 | Reference group label: "Reference Group" vs "Control Group" vs "Control / Reference Group" | Inconsistency | Multiple | Done |
 | 2.4 | Plot customization controls differ substantially between modules | Inconsistency | Multiple | Open |
-| 2.5 | Progress feedback: Toxicity has 6 steps, Synergy has 1 | Inconsistency | Multiple | Open |
-| 3.1 | `ensure_preprocessed()` may re-run preprocessing for each module | Performance | `helpers.R` | Open |
-| 3.2 | `get_ordered_groups()` runs on every render; not memoized | Performance | Multiple | Open |
-| 3.3 | Full `brmsfit` objects stored in session reactive values | Performance | Multiple | Open |
-| 4.1 | No plot export in Dose-Response module | Missing | `dose_response_modules.R` | Open |
-| 4.2 | No comparison type selector in Dose-Response | Missing | `dose_response_modules.R` | Open |
-| 4.3 | Bayesian MCMC diagnostic plots not in Survival/Toxicity Bayesian panels | Missing | Multiple | Open |
-| 4.4 | Prior vs Posterior plot not shown for Bayesian Body Weight | Missing | `toxicity_modules.R` | Open |
-| 4.5 | No UI for `bayesian_therapeutic_window()` | Missing | `toxicity_modules.R` | Open |
-| 4.6 | No UI for `bayesian_synergy()` | Missing | `synergy_modules.R` | Open |
-| 4.7 | No UI for `bayesian_dose_response()` | Missing | `dose_response_modules.R` | Open |
-| 5.1 | Raw R error messages surface to users | Error handling | Multiple | Open |
-| 5.2 | Silent failures in download handlers (no user feedback) | Error handling | Multiple | Open |
-| 5.3 | Analytics JS escaping incomplete for multiline/unicode errors | Error handling | Multiple | Open |
+| 2.5 | Progress feedback: Toxicity has 6 steps, Synergy has 1 | Inconsistency | Multiple | Done |
+| 3.1 | `ensure_preprocessed()` may re-run preprocessing for each module | Performance | `helpers.R` | Done |
+| 3.2 | `get_ordered_groups()` runs on every render; not memoized | Performance | Multiple | Done |
+| 3.3 | Full `brmsfit` objects stored in session reactive values | Performance | Multiple | Done |
+| 4.1 | No plot export in Dose-Response module | Missing | `dose_response_modules.R` | Done |
+| 4.2 | No comparison type selector in Dose-Response | Missing | `dose_response_modules.R` | Done |
+| 4.3 | Bayesian MCMC diagnostic plots not in Survival/Toxicity Bayesian panels | Missing | Multiple | Done |
+| 4.4 | Prior vs Posterior plot not shown for Bayesian Body Weight | Missing | `toxicity_modules.R` | Done |
+| 4.5 | No UI for `bayesian_therapeutic_window()` | Missing | `toxicity_modules.R` | Done |
+| 4.6 | No UI for `bayesian_synergy()` | Missing | `synergy_modules.R` | Done |
+| 4.7 | No UI for `bayesian_dose_response()` | Missing | `dose_response_modules.R` | Done |
+| 5.1 | Raw R error messages surface to users | Error handling | Multiple | Done |
+| 5.2 | Silent failures in download handlers (no user feedback) | Error handling | Multiple | Done |
+| 5.3 | Analytics JS escaping incomplete for multiline/unicode errors | Error handling | Multiple | Done |
 | 6.1 | Server functions 800+ lines; hard to maintain | Structure | Multiple | Open |
-| 6.2 | Plot code duplicated in renderPlot + downloadHandler | Structure | Multiple | Open |
-| 6.3 | Synergy inline colour construction bypasses `build_color_vector()` | Structure / Bug | `synergy_modules.R:619` | Open |
-| 7.1 | Bayesian analysis pattern not yet implemented for Synergy / DR / TWM | Harmonization | Multiple | Open |
-| 7.2 | MCMC Diagnostics tab layout differs: TG shows trace plot, others don't | Harmonization | Multiple | Open |
-| 7.3 | Download filenames are generic; no date/reference context | Enhancement | Multiple | Open |
+| 6.2 | Plot code duplicated in renderPlot + downloadHandler | Structure | Multiple | Done |
+| 6.3 | Synergy inline colour construction bypasses `build_color_vector()` | Structure / Bug | `synergy_modules.R:619` | Done |
+| 7.1 | Bayesian analysis pattern not yet implemented for Synergy / DR / TWM | Harmonization | Multiple | Done |
+| 7.2 | MCMC Diagnostics tab layout differs: TG shows trace plot, others don't | Harmonization | Multiple | Done |
+| 7.3 | Download filenames are generic; no date/reference context | Enhancement | Multiple | Done |
