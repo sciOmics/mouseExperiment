@@ -21,8 +21,9 @@
 #'   \code{"Treatment"}.
 #' @param id_column Column name for animal ID. Default \code{"ID"}.
 #' @param cage_column Column name for cage ID, or \code{NULL} (default).
-#'   When supplied and \code{include_frailty = TRUE}, a cage-level frailty
-#'   (\code{(1 | cage)}) is added to account for between-cage heterogeneity.
+#'   When supplied and \code{include_cage_effect = TRUE}, a cage-level
+#'   frailty (\code{(1 | cage)}) is added to account for between-cage
+#'   heterogeneity.
 #' @param dose_column Reserved for future use; currently ignored.
 #' @param family Parametric distribution for event times:
 #'   \describe{
@@ -36,7 +37,7 @@
 #'     \item{\code{"gamma"}}{Gamma AFT. More flexible tail than Weibull; good
 #'       alternative when Weibull does not fit well.}
 #'   }
-#' @param include_frailty Logical. When \code{TRUE} (default) and
+#' @param include_cage_effect Logical. When \code{TRUE} (default) and
 #'   \code{cage_column} is supplied, a cage-level random intercept (frailty)
 #'   is added: \code{(1 | cage)}.
 #' @param reference_group Treatment group used as the reference level.
@@ -81,7 +82,7 @@
 #'   \item{\code{frailty_used}}{Logical — whether cage frailty was modelled.}
 #'   \item{\code{summary}}{Named list of analysis metadata.}
 #'   \item{\code{treatment_effects}}{Data frame with columns \code{Group},
-#'     \code{Time_Ratio}, \code{Lower_CL}, \code{Upper_CL}, \code{HR}
+#'     \code{Time_Ratio}, \code{Lower_CrI}, \code{Upper_CrI}, \code{HR}
 #'     (hazard ratio; Weibull and exponential only, \code{NA} otherwise),
 #'     \code{Median_Survival}, \code{Events}, \code{Total}, \code{Event_Rate},
 #'     \code{Note}. Output schema mirrors \code{\link{survival_statistics}}.}
@@ -145,8 +146,8 @@ bayesian_survival <- function(
   id_column        = "ID",
   cage_column      = NULL,
   dose_column      = NULL,
-  family           = c("weibull", "lognormal", "exponential", "gamma"),
-  include_frailty  = TRUE,
+  family              = c("weibull", "lognormal", "exponential", "gamma"),
+  include_cage_effect = TRUE,
   reference_group  = NULL,
   prior_strength   = c("skeptical", "weakly_informative", "informative",
                        "diffuse", "manual"),
@@ -182,19 +183,19 @@ bayesian_survival <- function(
   }
 
   # ── Cage setup ─────────────────────────────────────────────────────────────
-  no_cage_mode <- is.null(cage_column) || !cage_column %in% colnames(df)
-  if (no_cage_mode) {
-    cage_column       <- ".cage_placeholder"
-    df[[cage_column]] <- "1"
-  }
-  use_frailty <- isTRUE(include_frailty) && !no_cage_mode
+  cage_setup   <- setup_cage_column(df, cage_column)
+  df           <- cage_setup$df
+  cage_column  <- cage_setup$cage_column
+  no_cage_mode <- cage_setup$no_cage_mode
+  use_cage_re  <- isTRUE(include_cage_effect) && !no_cage_mode
 
   # ── Reference group ────────────────────────────────────────────────────────
   treatment_groups <- unique(as.character(df[[treatment_column]]))
   if (is.null(reference_group)) {
     reference_group <- sort(treatment_groups)[1]
   } else if (!reference_group %in% treatment_groups) {
-    stop("Reference group '", reference_group, "' not found in treatment column.")
+    stop("Reference group '", reference_group,
+         "' not found in treatment column.")
   }
 
   df[[treatment_column]] <- stats::relevel(
@@ -209,7 +210,7 @@ bayesian_survival <- function(
   analysis_df$.brms_cens <- 1L - as.integer(analysis_df[[event_column]])
 
   # ── Formula ────────────────────────────────────────────────────────────────
-  re_term  <- if (use_frailty) paste0(" + (1 | ", cage_column, ")") else ""
+  re_term  <- if (use_cage_re) paste0(" + (1 | ", cage_column, ")") else ""
   brms_lhs <- paste0(time_column, " | cens(.brms_cens)")
   brms_formula <- stats::as.formula(
     paste(brms_lhs, "~", treatment_column, re_term)
@@ -242,34 +243,29 @@ bayesian_survival <- function(
       )
     }
   } else {
-    b_sd     <- switch(prior_strength,
-      skeptical          = 0.25,
-      weakly_informative = 1,
-      informative        = 0.5,
-      diffuse            = 2.5
-    )
-    exp_rate <- switch(prior_strength,
-      skeptical          = 2,
-      weakly_informative = 1,
-      informative        = 2,
-      diffuse            = 0.5
-    )
+    pp       <- bayes_prior_params(prior_strength)
+    b_sd     <- pp$b_sd
+    exp_rate <- pp$exp_rate
     selected_priors <- c(
-      brms::prior_string(
-        paste0("normal(0, ", b_sd, ")"), class = "b"),
-      brms::prior_string(
-        paste0("normal(0, ", b_sd * 2.5, ")"), class = "Intercept"),
-      brms::prior_string(
-        paste0("exponential(", exp_rate, ")"), class = "sd")
+      brms::prior_string(paste0("normal(0, ", b_sd, ")"),
+                         class = "b"),
+      brms::prior_string(paste0("normal(0, ", b_sd * 2.5, ")"),
+                         class = "Intercept"),
+      brms::prior_string(paste0("exponential(", exp_rate, ")"),
+                         class = "sd")
     )
-    aux_class <- if (family == "lognormal") "sigma"
-                 else if (family != "exponential") "shape"
-                 else NULL
+    if (family == "lognormal") {
+      aux_class <- "sigma"
+    } else if (family != "exponential") {
+      aux_class <- "shape"
+    } else {
+      aux_class <- NULL
+    }
     if (!is.null(aux_class)) {
       selected_priors <- c(
         selected_priors,
-        brms::prior_string(
-          paste0("exponential(", exp_rate, ")"), class = aux_class)
+        brms::prior_string(paste0("exponential(", exp_rate, ")"),
+                           class = aux_class)
       )
     }
   }
@@ -305,14 +301,7 @@ bayesian_survival <- function(
   posterior_summary <- fixed_df
 
   # ── MCMC diagnostics ───────────────────────────────────────────────────────
-  mcmc_diagnostics <- data.frame(
-    Parameter = posterior_summary$Parameter,
-    Rhat      = round(posterior_summary$Rhat,     4),
-    Bulk_ESS  = round(posterior_summary$Bulk_ESS, 0),
-    Tail_ESS  = round(posterior_summary$Tail_ESS, 0),
-    Converged = posterior_summary$Rhat <= 1.01,
-    stringsAsFactors = FALSE
-  )
+  mcmc_diagnostics <- make_mcmc_diagnostics(posterior_summary)
 
   # ── Treatment effects table ────────────────────────────────────────────────
   treatment_effects <- bs_build_treatment_table(
@@ -370,6 +359,12 @@ bayesian_survival <- function(
   }
 
   # ── Analysis summary metadata ──────────────────────────────────────────────
+  frailty_term_str <- if (use_cage_re) paste0("(1 | ", cage_column, ")") else
+    "none"
+  prior_b_label <- if (prior_strength == "manual") prior_b else
+    paste0("normal(0, ", b_sd, ")")
+  prior_int_label <- if (prior_strength == "manual") prior_intercept else
+    paste0("normal(0, ", round(b_sd * 2.5, 2), ")")
   analysis_summary <- list(
     analysis_type = paste0("Bayesian Parametric Survival (", family, ", brms)"),
     data_description = list(
@@ -381,19 +376,16 @@ bayesian_survival <- function(
     model_specification = list(
       formula        = deparse(brms_formula),
       family         = family,
-      frailty        = use_frailty,
-      frailty_term   = if (use_frailty)
-                         paste0("(1 | ", cage_column, ")") else "none",
+      frailty        = use_cage_re,
+      frailty_term   = frailty_term_str,
       prior_strength = prior_strength
     ),
     methods = list(
       engine          = paste0("brms (", n_chains, " chains × ",
                                n_iter, " iterations, seed = ", seed, ")"),
       effect_type     = "Time_Ratio (AFT parameterisation)",
-      prior_b         = if (prior_strength == "manual") prior_b
-        else paste0("normal(0, ", b_sd, ")"),
-      prior_intercept = if (prior_strength == "manual") prior_intercept
-        else paste0("normal(0, ", round(b_sd * 2.5, 2), ")")
+      prior_b         = prior_b_label,
+      prior_intercept = prior_int_label
     )
   )
 
@@ -402,7 +394,7 @@ bayesian_survival <- function(
     model               = if (isTRUE(return_model)) model else NULL,
     model_type_used     = "bayes_survival",
     family_used         = family,
-    frailty_used        = use_frailty,
+    frailty_used        = use_cage_re,
     summary             = analysis_summary,
     treatment_effects   = treatment_effects,
     posterior_summary   = posterior_summary,
@@ -461,8 +453,8 @@ bs_build_treatment_table <- function(
   results <- data.frame(
     Group           = treatment_levels,
     Time_Ratio      = NA_real_,
-    Lower_CL        = NA_real_,
-    Upper_CL        = NA_real_,
+    Lower_CrI       = NA_real_,
+    Upper_CrI       = NA_real_,
     HR              = NA_real_,
     Median_Survival = NA_real_,
     Events          = NA_integer_,
@@ -475,8 +467,8 @@ bs_build_treatment_table <- function(
   # Reference group
   ref_idx <- which(results$Group == reference_group)
   results$Time_Ratio[ref_idx] <- 1
-  results$Lower_CL[ref_idx]   <- 1
-  results$Upper_CL[ref_idx]   <- 1
+  results$Lower_CrI[ref_idx]  <- 1
+  results$Upper_CrI[ref_idx]  <- 1
   results$HR[ref_idx]          <- 1
   results$Note[ref_idx]        <- "Reference group"
   if (!is.null(intercept_draws)) {
@@ -495,8 +487,8 @@ bs_build_treatment_table <- function(
       tr_draws   <- exp(coef_draws)
 
       results$Time_Ratio[idx] <- round(stats::median(tr_draws), 4)
-      results$Lower_CL[idx]   <- round(stats::quantile(tr_draws, 0.025), 4)
-      results$Upper_CL[idx]   <- round(stats::quantile(tr_draws, 0.975), 4)
+      results$Lower_CrI[idx]  <- round(stats::quantile(tr_draws, 0.025), 4)
+      results$Upper_CrI[idx]  <- round(stats::quantile(tr_draws, 0.975), 4)
 
       # Hazard ratio: only meaningful for PH-compatible families
       if (family == "weibull" && !is.null(shape_draws)) {
@@ -543,7 +535,7 @@ bs_build_treatment_table <- function(
 #' Compute posterior-median survival time from linear-predictor draws
 #' @noRd
 bs_median_from_draws <- function(linpred_draws, shape_draws,
-                                  sigma_draws, family) {
+                                 sigma_draws, family) {
   tryCatch({
     med_draws <- switch(family,
       lognormal = {

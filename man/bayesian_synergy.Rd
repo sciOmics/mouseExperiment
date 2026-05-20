@@ -150,6 +150,27 @@ The model formula is \code{Volume_transformed ~ Treatment * Day + re},
 where \code{re} is the random-effects term for animal-level intercepts (or
 slopes). A single model is fitted on all four groups simultaneously so
 group-specific uncertainty is fully propagated.
+}
+\section{Assumptions and Limitations}{
+
+\itemize{
+\item \strong{Bliss Independence on TGI:} Bliss Independence was
+formulated for probability of cell death, not for proportional
+inhibition (TGI). When individual drug effects are large (TGI > 0.5
+each), the expected combined effect can approach 1, making it nearly
+impossible to detect synergy by the Bliss criterion regardless of
+actual biological interaction.
+\item \strong{Loewe single-dose approximation:} The Loewe CI formula
+\eqn{\min(FE_A + FE_B, 1) / FE_{\text{combo}}} assumes a linear
+dose-response relationship. Without EC50 estimates for each drug, this
+is a single-dose approximation only. Results should be interpreted
+directionally rather than as a precise pharmacological CI.
+\item \strong{Posterior independence assumption:} Draws from the TG
+model are paired draw-by-draw to propagate uncertainty through the
+synergy metrics. This is exact (the model is fitted on all four groups
+jointly), but the derived FE values are computed from population-level
+predictions that marginalise over animal-level random effects.
+}
 
 At \code{endpoint_day}, \code{brms::posterior_epred(..., re_formula = NA)}
 yields an \eqn{S \times 4} matrix of population-level predictive draws
@@ -176,3 +197,4 @@ reported as the posterior probability of Bliss synergy.
 CI < 1 indicates synergy; CI > 1 indicates antagonism.
 \eqn{P(\text{CI} < 1)} is reported.
 }
+

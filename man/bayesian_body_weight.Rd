@@ -17,7 +17,7 @@ bayesian_body_weight(
   transform = c("none", "log", "sqrt"),
   random_effects_specification = c("intercept_only", "slope"),
   reference_group = NULL,
-  prior_strength = c("weakly_informative", "skeptical", "informative", "diffuse",
+  prior_strength = c("skeptical", "weakly_informative", "informative", "diffuse",
     "manual"),
   prior_b = NULL,
   prior_intercept = NULL,
@@ -73,11 +73,10 @@ values), \code{"log"}, or \code{"sqrt"}.}
 
 \item{prior_strength}{Prior preset:
 \describe{
-\item{\code{"weakly_informative"}}{(default)
-\eqn{b \sim N(0, 1)};
-\eqn{\text{sd}, \sigma \sim \text{Exponential}(1)}.}
-\item{\code{"skeptical"}}{\eqn{b \sim N(0, 0.25)};
+\item{\code{"skeptical"}}{(default) \eqn{b \sim N(0, 0.25)};
 \eqn{\text{sd}, \sigma \sim \text{Exponential}(2)}.}
+\item{\code{"weakly_informative"}}{\eqn{b \sim N(0, 1)};
+\eqn{\text{sd}, \sigma \sim \text{Exponential}(1)}.}
 \item{\code{"informative"}}{\eqn{b \sim N(0, 0.5)};
 \eqn{\text{sd}, \sigma \sim \text{Exponential}(2)}.}
 \item{\code{"diffuse"}}{\eqn{b \sim N(0, 2.5)};
@@ -116,14 +115,18 @@ A named list:
 \item{\code{summary}}{Named list of analysis metadata.}
 \item{\code{posterior_summary}}{Data frame of fixed-effect posterior
 summaries (median, 95 \% CrI, Rhat, Bulk_ESS, Tail_ESS).}
-\item{\code{treatment_effects}}{Posterior EMMs per group (compatible with
-\code{analyze_body_weight} emmeans table).}
+\item{\code{treatment_effects}}{Posterior EMMs per group with columns
+\code{Group}, \code{Adjusted_Mean}, \code{SE}, \code{DF},
+\code{Lower_CrI}, \code{Upper_CrI}, \code{Note}.}
 \item{\code{pairwise_comparisons}}{Posterior contrasts vs reference.}
 \item{\code{mcmc_diagnostics}}{Data frame with Rhat and convergence flag
 per parameter.}
 \item{\code{weight_loss_summary}}{Data frame: per-group posterior
 percentage weight change from first to last study day (median, 95 \%
-CrI).}
+CrI). Weight-loss percentages are computed from the earliest to the
+latest study day present in the model data. This is a population-level
+prediction; individual dropout patterns do not affect the endpoint
+days used.}
 \item{\code{pp_check_plot}}{Posterior predictive density overlay.}
 \item{\code{posterior_dist_plot}}{Treatment-parameter posterior areas.}
 \item{\code{prior_posterior_plot}}{Prior vs posterior density overlay.}

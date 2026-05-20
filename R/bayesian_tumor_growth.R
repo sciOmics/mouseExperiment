@@ -31,7 +31,10 @@
 #'   \code{"intercept_only"} (default, \code{(1 | ID)}) or
 #'   \code{"slope"} (\code{(Day | ID)}, adds per-animal random slopes).
 #' @param reference_group Treatment group used as the reference (Intercept)
-#'   level. Auto-detected from common control names if \code{NULL}.
+#'   level. Auto-detected if \code{NULL}: checks for common control-group
+#'   names (\code{Control}, \code{Vehicle}, \code{control}, \code{vehicle},
+#'   \code{CTRL}, \code{ctrl}) before falling back to the first level
+#'   alphabetically.
 #' @param prior_strength Prior preset applied to all fixed effects:
 #'   \describe{
 #'     \item{\code{"skeptical"}}{(default) \eqn{b \sim N(0, 0.25)};
@@ -76,7 +79,7 @@
 #' \describe{
 #'   \item{\code{model}}{\code{brmsfit} object, or \code{NULL} when
 #'     \code{return_model = FALSE}.}
-#'   \item{\code{model_type_used}}{Character \code{"bayes"}.}
+#'   \item{\code{model_type_used}}{Character \code{"bayes_tg"}.}
 #'   \item{\code{transform_used}}{Transformation applied.}
 #'   \item{\code{summary}}{Named list of analysis metadata (analysis_type,
 #'     data_description, model_specification, methods).}
@@ -85,12 +88,12 @@
 #'     parameters.}
 #'   \item{\code{treatment_effects}}{Data frame with columns
 #'     \code{Group}, \code{Adjusted_Mean}, \code{SE}, \code{DF},
-#'     \code{Lower_CL}, \code{Upper_CL}, \code{Note} — compatible with the
+#'     \code{Lower_CrI}, \code{Upper_CrI}, \code{Note} — compatible with the
 #'     \code{lme4} path. Values are posterior medians and 95 % HPD CrI of
 #'     group-level EMMs at the mean study day.}
 #'   \item{\code{pairwise_comparisons}}{Data frame of posterior contrasts vs
 #'     the reference group (columns: \code{contrast}, \code{estimate},
-#'     \code{Lower_CL}, \code{Upper_CL}).}
+#'     \code{Lower_CrI}, \code{Upper_CrI}).}
 #'   \item{\code{mcmc_diagnostics}}{Data frame with \code{Parameter},
 #'     \code{Rhat}, \code{Bulk_ESS}, \code{Tail_ESS}, \code{Converged}
 #'     per fixed-effect parameter. Rhat > 1.01 is flagged as not converged.}
@@ -203,11 +206,10 @@ bayesian_tumor_growth <- function(
   }
 
   # Cage placeholder — mirrors lme4 path so make_mouse_key() always works
-  no_cage_mode <- is.null(cage_column) || !cage_column %in% colnames(df)
-  if (no_cage_mode) {
-    cage_column       <- ".cage_placeholder"
-    df[[cage_column]] <- "1"
-  }
+  cage_setup   <- setup_cage_column(df, cage_column)
+  df           <- cage_setup$df
+  cage_column  <- cage_setup$cage_column
+  no_cage_mode <- cage_setup$no_cage_mode
 
   # ── Reference group resolution ─────────────────────────────────────────────
   treatment_groups <- unique(as.character(df[[treatment_column]]))
@@ -238,8 +240,15 @@ bayesian_tumor_growth <- function(
   }
 
   if (transform == "log") {
-    vol <- analysis_df[[volume_column]]
-    vol[vol <= 0] <- min(vol[vol > 0], na.rm = TRUE) / 2
+    vol           <- analysis_df[[volume_column]]
+    positive_vals <- vol[is.finite(vol) & vol > 0]
+    if (length(positive_vals) == 0L) {
+      stop(
+        "No positive values in '", volume_column,
+        "' after filtering. Cannot apply log transform."
+      )
+    }
+    vol[vol <= 0] <- min(positive_vals, na.rm = TRUE) / 2
     analysis_df[[volume_column]] <- log(vol)
   } else if (transform == "sqrt") {
     analysis_df[[volume_column]] <- sqrt(analysis_df[[volume_column]])
@@ -282,18 +291,9 @@ bayesian_tumor_growth <- function(
       brms::prior_string(prior_sigma,     class = "sigma")
     )
   } else {
-    b_sd     <- switch(prior_strength,
-      skeptical          = 0.25,
-      weakly_informative = 1,
-      informative        = 0.5,
-      diffuse            = 2.5
-    )
-    exp_rate <- switch(prior_strength,
-      skeptical          = 2,
-      weakly_informative = 1,
-      informative        = 2,
-      diffuse            = 0.5
-    )
+    pp       <- bayes_prior_params(prior_strength)
+    b_sd     <- pp$b_sd
+    exp_rate <- pp$exp_rate
     selected_priors <- c(
       brms::prior_string(paste0("normal(0, ", b_sd,        ")"), class = "b"),
       brms::prior_string(paste0("normal(0, ", b_sd * 2.5,  ")"), class = "Intercept"),
@@ -332,14 +332,7 @@ bayesian_tumor_growth <- function(
   posterior_summary <- fixed_df
 
   # ── MCMC diagnostics ───────────────────────────────────────────────────────
-  mcmc_diagnostics <- data.frame(
-    Parameter = posterior_summary$Parameter,
-    Rhat      = round(posterior_summary$Rhat,     4),
-    Bulk_ESS  = round(posterior_summary$Bulk_ESS, 0),
-    Tail_ESS  = round(posterior_summary$Tail_ESS, 0),
-    Converged = posterior_summary$Rhat <= 1.01,
-    stringsAsFactors = FALSE
-  )
+  mcmc_diagnostics <- make_mcmc_diagnostics(posterior_summary)
 
   # ── Treatment effects and pairwise comparisons via emmeans ─────────────────
   treatment_effects    <- NULL
@@ -372,8 +365,8 @@ bayesian_tumor_growth <- function(
         Adjusted_Mean = round(emm_df$emmean,          3),
         SE            = round(emm_df$SE,               3),
         DF            = NA_real_,
-        Lower_CL      = round(emm_df[[lower_col]],     3),
-        Upper_CL      = round(emm_df[[upper_col]],     3),
+        Lower_CrI     = round(emm_df[[lower_col]],    3),
+        Upper_CrI     = round(emm_df[[upper_col]],    3),
         Note          = ifelse(
           as.character(emm_df[[treatment_column]]) == reference_group,
           "Reference group", ""
@@ -404,8 +397,8 @@ bayesian_tumor_growth <- function(
           contrast  = as.character(pc_df$contrast),
           estimate  = round(pc_df$estimate,    4),
           SE        = if ("SE" %in% names(pc_df)) round(pc_df$SE, 4) else NA_real_,
-          Lower_CL  = round(pc_df[[lower_pc]], 4),
-          Upper_CL  = round(pc_df[[upper_pc]], 4),
+          Lower_CrI = round(pc_df[[lower_pc]], 4),
+          Upper_CrI = round(pc_df[[upper_pc]], 4),
           stringsAsFactors = FALSE
         )
       }
@@ -481,8 +474,8 @@ bayesian_tumor_growth <- function(
           ggplot2::aes(
             x    = .data[["Adjusted_Mean"]],
             y    = .data[["Group"]],
-            xmin = .data[["Lower_CL"]],
-            xmax = .data[["Upper_CL"]],
+            xmin = .data[["Lower_CrI"]],
+            xmax = .data[["Upper_CrI"]],
             colour = is_ref
           )
         ) +
@@ -576,7 +569,7 @@ bayesian_tumor_growth <- function(
   # ── Return ─────────────────────────────────────────────────────────────────
   list(
     model                   = if (isTRUE(return_model)) model else NULL,
-    model_type_used         = "bayes",
+    model_type_used         = "bayes_tg",
     transform_used          = transform,
     summary                 = analysis_summary,
     posterior_summary       = posterior_summary,
@@ -593,69 +586,4 @@ bayesian_tumor_growth <- function(
     data_summary            = data_summary,
     necrosis_summary        = necrosis_summary
   )
-}
-
-
-#' Prior vs posterior density overlay for treatment-effect coefficients
-#'
-#' Shared by bayesian_tumor_growth() and bayesian_survival(). Requires the
-#' model to have been fitted with sample_prior = "yes".
-#' @noRd
-bayes_prior_posterior_plot <- function(model, treatment_column) {
-  post <- tryCatch(brms::as_draws_df(model), error = function(e) NULL)
-  if (is.null(post)) return(NULL)
-
-  safe_tx <- gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1", treatment_column)
-  tx_cols <- grep(paste0("^b_", safe_tx), names(post), value = TRUE)
-  if (length(tx_cols) == 0) return(NULL)
-
-  # brms stores class-level "b" prior draws as "prior_b"
-  prior_col <- if ("prior_b" %in% names(post)) post$prior_b else NULL
-
-  clean <- function(x) sub(paste0("^b_", treatment_column), "", x)
-
-  post_long <- do.call(rbind, lapply(tx_cols, function(col) {
-    data.frame(Parameter = clean(col), Value = post[[col]],
-               Source = "Posterior", stringsAsFactors = FALSE)
-  }))
-
-  plot_df <- if (!is.null(prior_col)) {
-    prior_long <- do.call(rbind, lapply(tx_cols, function(col) {
-      data.frame(Parameter = clean(col), Value = prior_col,
-                 Source = "Prior", stringsAsFactors = FALSE)
-    }))
-    rbind(post_long, prior_long)
-  } else {
-    post_long
-  }
-
-  plot_df$Source <- factor(plot_df$Source, levels = c("Prior", "Posterior"))
-
-  ggplot2::ggplot(
-    plot_df,
-    ggplot2::aes(x      = .data[["Value"]],
-                 fill   = .data[["Source"]],
-                 colour = .data[["Source"]])
-  ) +
-    ggplot2::geom_density(alpha = 0.35, linewidth = 0.6) +
-    ggplot2::geom_vline(xintercept = 0, linetype = "dashed",
-                        colour = "grey30", linewidth = 0.5) +
-    ggplot2::facet_wrap(~ Parameter, scales = "free_y") +
-    ggplot2::scale_fill_manual(
-      values = c(Prior = "grey60", Posterior = "steelblue")
-    ) +
-    ggplot2::scale_colour_manual(
-      values = c(Prior = "grey40", Posterior = "steelblue4")
-    ) +
-    ggplot2::labs(
-      title    = "Prior vs. Posterior Distributions",
-      subtitle = paste0("Treatment-effect coefficients; ",
-                        "dashed line = no effect (0)"),
-      x        = "Coefficient value",
-      y        = "Density",
-      fill     = NULL,
-      colour   = NULL
-    ) +
-    ggplot2::theme_classic(base_size = 14) +
-    ggplot2::theme(legend.position = "top")
 }

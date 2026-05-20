@@ -13,7 +13,8 @@ bayesian_dose_response(
   day_column = "Day",
   endpoint_day = NULL,
   reference_group = NULL,
-  prior_strength = c("skeptical", "weakly_informative", "diffuse", "manual"),
+  prior_strength = c("skeptical", "weakly_informative", "informative", "diffuse",
+    "manual"),
   prior_emax = NULL,
   prior_ec50 = NULL,
   prior_hill = NULL,
@@ -56,6 +57,8 @@ Auto-detected from common control names if \code{NULL}.}
 scale.}
 \item{\code{"weakly_informative"}}{Emax ~ N(1.5, 1.5), Hill ~ N(0, 0.8),
 EC50 centred at geometric mean dose ± 2 SD.}
+\item{\code{"informative"}}{Emax ~ N(1.5, 1.0), Hill ~ N(0, 0.6),
+EC50 centred at geometric mean dose ± 1.75 SD.}
 \item{\code{"diffuse"}}{Very wide priors for exploratory analysis.}
 \item{\code{"manual"}}{Use \code{prior_emax}, \code{prior_ec50},
 \code{prior_hill}, and \code{prior_sigma} directly.}

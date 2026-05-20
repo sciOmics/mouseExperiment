@@ -5,6 +5,84 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-05-20
+
+### Added
+- `R/utils_bayes.R` — new internal module centralising shared Bayesian helpers
+  (B2.1–B2.4, B4.4):
+  - `bayes_backtransform(x, transform)` — single back-transform helper replacing
+    three identical `bt()` closures in `bayesian_body_weight`, `bayesian_synergy`,
+    and `bayesian_therapeutic_window`.
+  - `make_mcmc_diagnostics(posterior_summary_df)` — standardised MCMC diagnostic
+    data frame builder (Rhat, Bulk_ESS, Tail_ESS, Converged); replaces duplicated
+    inline construction in five functions.
+  - `bayes_prior_params(prior_strength)` — centralised prior-hyperparameter lookup
+    (`b_sd`, `exp_rate`) replacing five independent `switch()` blocks.
+  - `setup_cage_column(df, cage_column)` — cage placeholder setup (returns
+    `list(df, cage_column, no_cage_mode)`); replaces duplicated inline logic in
+    four functions.
+  - `build_posterior_summary(model)` — standardised `summary(model)$fixed`
+    extractor with `Lower_95_CrI`/`Upper_95_CrI` column renaming.
+  - `bayes_prior_posterior_plot(model, treatment_column)` — moved from
+    `bayesian_tumor_growth.R`; prior vs posterior density overlay shared by all
+    Bayesian functions.
+- `bayesian_power_analysis()` — simulation-based Bayesian a priori power analysis
+  (B6.1). Estimates Bayesian power (fraction of simulated experiments where
+  `P(β_trt:Day < -δ | data) > target_prob`) across a grid of sample sizes.
+  Uses `brms::update()` to reuse compiled Stan programs across simulations.
+  Returns `power_table`, `power_curve_data`, `params`, and `power_curve_plot`.
+- `bayesian_twm_from_data()` — single-call convenience wrapper for the
+  Therapeutic Window Metric (B6.2). Internally fits `bayesian_tumor_growth()`
+  and `bayesian_body_weight()` then passes results to
+  `bayesian_therapeutic_window()`. Returns the full TWM result list plus
+  `tg_result` and `bw_result` sub-model outputs.
+- `bayesian_synergy_over_time()` — time-series extension of `bayesian_synergy()`
+  (B6.3). Fits the same `Treatment × Day` brms model then evaluates draw-wise
+  Bliss excess and Loewe CI at every study day via a single
+  `posterior_epred()` call on the full day-by-group grid. Returns
+  `synergy_by_day`, `tgi_by_day`, `peak_bliss_day`, `peak_loewe_day`, and
+  `synergy_time_plot` (faceted ribbon plot).
+
+### Fixed
+- **B1.1** `model_type_used` in `bayesian_tumor_growth()` changed from `"bayes"`
+  to `"bayes_tg"` for consistency with `"bayes_bw"`, `"bayes_survival"`, etc.
+- **B1.2** `prior_strength` default in `bayesian_body_weight()` aligned to
+  `"skeptical"` (was `"weakly_informative"`).
+- **B1.3** `"informative"` prior preset added to `bayesian_dose_response()`.
+- **B1.4** `Lower_CL`/`Upper_CL` renamed to `Lower_CrI`/`Upper_CrI` throughout
+  all Bayesian function outputs (`bayesian_tumor_growth`, `bayesian_body_weight`,
+  `bayesian_survival`). "CL" (confidence limit) is frequentist terminology;
+  "CrI" (credible interval) is correct for Bayesian posteriors.
+- **B1.5** `include_frailty` parameter in `bayesian_survival()` renamed to
+  `include_cage_effect` for consistency with all other Bayesian functions.
+- **B1.6** Intercept prior width in `bayesian_synergy()` corrected from
+  `b_sd * 2.0` to `b_sd * 2.5` to match all other Bayesian functions.
+- **B1.7** `set_prior()` in `bayesian_synergy()` replaced with `prior_string()`
+  (matching the brms API used everywhere else).
+- **B3.1** Loewe floor in `bayesian_synergy()` changed from a fixed `1e-6` to a
+  data-relative `max(max(FE_combo) * 1e-4, 1e-4)`. `Floor_Applied` flag added to
+  `loewe_summary`.
+- **B3.2** `bayesian_synergy()` MCMC diagnostics now include Bulk_ESS and
+  Tail_ESS (previously missing; only Rhat was reported via `neff_ratio`).
+- **B3.3** All-zero/negative volume guard added before log transform in
+  `bayesian_tumor_growth()`, `bayesian_body_weight()`, and `bayesian_synergy()`.
+  Stops with an informative error instead of silently producing `log(Inf)`.
+- **B3.4** TWM group-name intersection in `bayesian_therapeutic_window()`
+  normalised with `trimws()` to prevent mismatches from leading/trailing
+  whitespace.
+- **B3.5** `bliss_summary` rounding standardised to 3 dp throughout
+  `bayesian_synergy()` (was inconsistently 3 vs 4 dp).
+- **B4.1** `@param reference_group` in `bayesian_tumor_growth()` now documents
+  the alphabetical auto-detection strategy.
+- **B4.2** `@return` for `bayesian_body_weight()` now documents that weight-loss
+  percentages use the earliest/latest day in the model data and are
+  population-level predictions.
+- **B4.3** `@section Assumptions and Limitations:` added to `bayesian_synergy()`
+  documenting the Bliss ceiling effect and Loewe linear-dose approximation.
+- **B5.1** `bayesian_body_weight()` endpoint weight-loss computation reduced from
+  three `posterior_epred()` calls to two by batching first-day and last-day
+  prediction grids into a single call.
+
 ## [0.4.2] - 2026-05-20
 
 ### Added

@@ -803,30 +803,30 @@ All other Bayesian functions return `transform_used` in the result list. `bayesi
 
 | # | Issue | Severity | File(s) | Status |
 |---|-------|----------|---------|--------|
-| B1.1 | `model_type_used = "bayes"` should be `"bayes_tg"` | Major | `bayesian_tumor_growth.R:579` | Open |
-| B1.2 | `prior_strength` default is `"weakly_informative"` in body_weight, `"skeptical"` elsewhere | Major | `bayesian_body_weight.R:116` | Open |
-| B1.3 | `"informative"` preset missing from `bayesian_dose_response` | Major | `bayesian_dose_response.R:123` | Open |
-| B1.4 | `Lower_CL`/`Upper_CL` should be `Lower_CrI`/`Upper_CrI` in Bayesian functions | Major | TG, BW, Survival | Open |
-| B1.5 | `include_frailty` vs `include_cage_effect` — same concept, different name | Minor | `bayesian_survival.R:149` | Open |
-| B1.6 | Intercept prior width: `b_sd * 2.5` in 3 files, `b_sd * 2.0` in synergy | Minor | `bayesian_synergy.R:287` | Open |
-| B1.7 | `set_prior()` in synergy vs `prior_string()` everywhere else | Minor | `bayesian_synergy.R:276` | Open |
-| B2.1 | `bt()` back-transform helper duplicated in 3 files | Minor | BW, Synergy, TWM | Open |
-| B2.2 | MCMC diagnostics DF construction duplicated in 4+ files; schema differs in synergy | Minor | Multiple | Open |
-| B2.3 | Prior specification switch duplicated in 5 files | Minor | Multiple | Open |
-| B2.4 | Cage placeholder setup duplicated in 4 files | Minor | Multiple | Open |
-| B3.1 | Loewe 1e-6 floor arbitrary and undocumented; produces huge CI for near-zero combo effects | Major | `bayesian_synergy.R:413` | Open |
-| B3.2 | `bayesian_synergy` MCMC diagnostics missing Bulk_ESS and Tail_ESS | Minor | `bayesian_synergy.R:317` | Open |
-| B3.3 | All-zero/negative volume with log transform silently produces `log(Inf)` | Major | TG, BW, Synergy | Open |
-| B3.4 | TWM group-name intersection not normalised for whitespace/case | Minor | `bayesian_therapeutic_window.R:225` | Open |
-| B3.5 | `bliss_summary` inconsistent rounding (3 vs 4 dp) | Minor | `bayesian_synergy.R:402` | Open |
-| B4.1 | Reference-group auto-detection not documented | Minor | `bayesian_tumor_growth.R` | Open |
-| B4.2 | Weight-loss endpoints not documented in `bayesian_body_weight` | Minor | `bayesian_body_weight.R` | Open |
-| B4.3 | `bayesian_synergy` missing `@section Assumptions and Limitations:` | Minor | `bayesian_synergy.R` | Open |
-| B4.4 | `bayes_prior_posterior_plot()` cross-file dependency not indicated | Minor | `bayesian_tumor_growth.R` | Open |
-| B5.1 | `bayesian_body_weight` calls `posterior_epred()` 3× instead of 2× | Minor | `bayesian_body_weight.R:416` | Open |
-| B6.1 | No `bayesian_power_analysis()` function | Enhancement | — | Open |
-| B6.2 | No single-call wrapper for TWM (requires two pre-fitted models) | Enhancement | `bayesian_therapeutic_window.R` | Open |
-| B6.3 | No `bayesian_synergy_over_time()` | Enhancement | — | Open |
+| B1.1 | `model_type_used = "bayes"` should be `"bayes_tg"` | Major | `bayesian_tumor_growth.R:579` | ✅ Fixed |
+| B1.2 | `prior_strength` default is `"weakly_informative"` in body_weight, `"skeptical"` elsewhere | Major | `bayesian_body_weight.R:116` | ✅ Fixed |
+| B1.3 | `"informative"` preset missing from `bayesian_dose_response` | Major | `bayesian_dose_response.R:123` | ✅ Fixed |
+| B1.4 | `Lower_CL`/`Upper_CL` should be `Lower_CrI`/`Upper_CrI` in Bayesian functions | Major | TG, BW, Survival | ✅ Fixed |
+| B1.5 | `include_frailty` vs `include_cage_effect` — same concept, different name | Minor | `bayesian_survival.R:149` | ✅ Fixed |
+| B1.6 | Intercept prior width: `b_sd * 2.5` in 3 files, `b_sd * 2.0` in synergy | Minor | `bayesian_synergy.R:287` | ✅ Fixed |
+| B1.7 | `set_prior()` in synergy vs `prior_string()` everywhere else | Minor | `bayesian_synergy.R:276` | ✅ Fixed |
+| B2.1 | `bt()` back-transform helper duplicated in 3 files | Minor | BW, Synergy, TWM | ✅ Fixed — `R/utils_bayes.R` |
+| B2.2 | MCMC diagnostics DF construction duplicated in 4+ files; schema differs in synergy | Minor | Multiple | ✅ Fixed — `R/utils_bayes.R` |
+| B2.3 | Prior specification switch duplicated in 5 files | Minor | Multiple | ✅ Fixed — `R/utils_bayes.R` |
+| B2.4 | Cage placeholder setup duplicated in 4 files | Minor | Multiple | ✅ Fixed — `R/utils_bayes.R` |
+| B3.1 | Loewe 1e-6 floor arbitrary and undocumented; produces huge CI for near-zero combo effects | Major | `bayesian_synergy.R:413` | ✅ Fixed |
+| B3.2 | `bayesian_synergy` MCMC diagnostics missing Bulk_ESS and Tail_ESS | Minor | `bayesian_synergy.R:317` | ✅ Fixed |
+| B3.3 | All-zero/negative volume with log transform silently produces `log(Inf)` | Major | TG, BW, Synergy | ✅ Fixed |
+| B3.4 | TWM group-name intersection not normalised for whitespace/case | Minor | `bayesian_therapeutic_window.R:225` | ✅ Fixed |
+| B3.5 | `bliss_summary` inconsistent rounding (3 vs 4 dp) | Minor | `bayesian_synergy.R:402` | ✅ Fixed |
+| B4.1 | Reference-group auto-detection not documented | Minor | `bayesian_tumor_growth.R` | ✅ Fixed |
+| B4.2 | Weight-loss endpoints not documented in `bayesian_body_weight` | Minor | `bayesian_body_weight.R` | ✅ Fixed |
+| B4.3 | `bayesian_synergy` missing `@section Assumptions and Limitations:` | Minor | `bayesian_synergy.R` | ✅ Fixed |
+| B4.4 | `bayes_prior_posterior_plot()` cross-file dependency not indicated | Minor | `bayesian_tumor_growth.R` | ✅ Fixed — moved to `R/utils_bayes.R` |
+| B5.1 | `bayesian_body_weight` calls `posterior_epred()` 3× instead of 2× | Minor | `bayesian_body_weight.R:416` | ✅ Fixed |
+| B6.1 | No `bayesian_power_analysis()` function | Enhancement | — | ✅ Fixed — `R/bayesian_power_analysis.R` |
+| B6.2 | No single-call wrapper for TWM (requires two pre-fitted models) | Enhancement | `bayesian_therapeutic_window.R` | ✅ Fixed — `bayesian_twm_from_data()` |
+| B6.3 | No `bayesian_synergy_over_time()` | Enhancement | — | ✅ Fixed — `R/bayesian_synergy.R` |
 | B7.1 | Treatment effects table schema not consistent across Bayesian/frequentist | Minor | Multiple | Open |
 | B7.2 | `bayesian_survival` does not return `transform_used` | Minor | `bayesian_survival.R` | Open |
 

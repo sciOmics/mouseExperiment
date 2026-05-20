@@ -60,7 +60,10 @@ The column is also used for composite mouse-key construction.}
 \code{"slope"} (\code{(Day | ID)}, adds per-animal random slopes).}
 
 \item{reference_group}{Treatment group used as the reference (Intercept)
-level. Auto-detected from common control names if \code{NULL}.}
+level. Auto-detected if \code{NULL}: checks for common control-group
+names (\code{Control}, \code{Vehicle}, \code{control}, \code{vehicle},
+\code{CTRL}, \code{ctrl}) before falling back to the first level
+alphabetically.}
 
 \item{prior_strength}{Prior preset applied to all fixed effects:
 \describe{
@@ -122,7 +125,7 @@ A named list:
 \describe{
 \item{\code{model}}{\code{brmsfit} object, or \code{NULL} when
 \code{return_model = FALSE}.}
-\item{\code{model_type_used}}{Character \code{"bayes"}.}
+\item{\code{model_type_used}}{Character \code{"bayes_tg"}.}
 \item{\code{transform_used}}{Transformation applied.}
 \item{\code{summary}}{Named list of analysis metadata (analysis_type,
 data_description, model_specification, methods).}
@@ -131,12 +134,12 @@ medians, 2.5 \%–97.5 \% CrI, Rhat, Bulk_ESS, Tail_ESS for all
 parameters.}
 \item{\code{treatment_effects}}{Data frame with columns
 \code{Group}, \code{Adjusted_Mean}, \code{SE}, \code{DF},
-\code{Lower_CL}, \code{Upper_CL}, \code{Note} — compatible with the
+\code{Lower_CrI}, \code{Upper_CrI}, \code{Note} — compatible with the
 \code{lme4} path. Values are posterior medians and 95 \% HPD CrI of
 group-level EMMs at the mean study day.}
 \item{\code{pairwise_comparisons}}{Data frame of posterior contrasts vs
 the reference group (columns: \code{contrast}, \code{estimate},
-\code{Lower_CL}, \code{Upper_CL}).}
+\code{Lower_CrI}, \code{Upper_CrI}).}
 \item{\code{mcmc_diagnostics}}{Data frame with \code{Parameter},
 \code{Rhat}, \code{Bulk_ESS}, \code{Tail_ESS}, \code{Converged}
 per fixed-effect parameter. Rhat > 1.01 is flagged as not converged.}

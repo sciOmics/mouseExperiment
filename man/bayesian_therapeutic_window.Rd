@@ -80,10 +80,14 @@ between X and Y."
 The joint posterior TWM for group \eqn{g} at draw \eqn{d} is:
 \deqn{
   \mathrm{TWM}_g^{(d)} =
-  \frac{\mathrm{TGI}_g^{(d)}}{\max(|WL_g^{(d)}\%|, \text{noise\_floor}) / 100}
+  \frac{\mathrm{TGI}_g^{(d)}}{
+    \max(|WL_g^{(d)}\%|, \text{noise\_floor}) / 100}
 }
 where
-\eqn{\mathrm{TGI}_g^{(d)} = 1 - \hat{V}_g^{(d)} / \hat{V}_{\text{ctrl}}^{(d)}}
+\eqn{
+  \mathrm{TGI}_g^{(d)} =
+  1 - \hat{V}_g^{(d)} / \hat{V}_{\text{ctrl}}^{(d)}
+}
 (population-level posterior predictive volume at the endpoint day,
 back-transformed from the model scale), and
 \eqn{WL_g^{(d)}} is the posterior predictive percentage weight change from

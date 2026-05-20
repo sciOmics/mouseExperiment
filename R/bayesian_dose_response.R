@@ -30,6 +30,8 @@
 #'       scale.}
 #'     \item{\code{"weakly_informative"}}{Emax ~ N(1.5, 1.5), Hill ~ N(0, 0.8),
 #'       EC50 centred at geometric mean dose ± 2 SD.}
+#'     \item{\code{"informative"}}{Emax ~ N(1.5, 1.0), Hill ~ N(0, 0.6),
+#'       EC50 centred at geometric mean dose ± 1.75 SD.}
 #'     \item{\code{"diffuse"}}{Very wide priors for exploratory analysis.}
 #'     \item{\code{"manual"}}{Use \code{prior_emax}, \code{prior_ec50},
 #'       \code{prior_hill}, and \code{prior_sigma} directly.}
@@ -120,7 +122,8 @@ bayesian_dose_response <- function(
   day_column       = "Day",
   endpoint_day     = NULL,
   reference_group  = NULL,
-  prior_strength   = c("skeptical", "weakly_informative", "diffuse", "manual"),
+  prior_strength   = c("skeptical", "weakly_informative",
+                       "informative", "diffuse", "manual"),
   prior_emax       = NULL,
   prior_ec50       = NULL,
   prior_hill       = NULL,
@@ -238,21 +241,25 @@ bayesian_dose_response <- function(
     emax_sd  <- switch(prior_strength,
       skeptical          = 0.75,
       weakly_informative = 1.5,
+      informative        = 1.0,
       diffuse            = 3.0
     )
     ec50_sd  <- switch(prior_strength,
       skeptical          = 1.5,
       weakly_informative = 2.0,
+      informative        = 1.75,
       diffuse            = 4.0
     )
     hill_sd  <- switch(prior_strength,
       skeptical          = 0.4,
       weakly_informative = 0.8,
+      informative        = 0.6,
       diffuse            = 2.0
     )
     sig_rate <- switch(prior_strength,
       skeptical          = 4,
       weakly_informative = 2,
+      informative        = 3,
       diffuse            = 0.5
     )
     selected_priors <- c(
@@ -316,14 +323,7 @@ bayesian_dose_response <- function(
   posterior_summary <- fixed_df
 
   # ── MCMC diagnostics ───────────────────────────────────────────────────────
-  mcmc_diagnostics <- data.frame(
-    Parameter = posterior_summary$Parameter,
-    Rhat      = round(posterior_summary$Rhat,     4),
-    Bulk_ESS  = round(posterior_summary$Bulk_ESS, 0),
-    Tail_ESS  = round(posterior_summary$Tail_ESS, 0),
-    Converged = posterior_summary$Rhat <= 1.01,
-    stringsAsFactors = FALSE
-  )
+  mcmc_diagnostics <- make_mcmc_diagnostics(posterior_summary)
 
   # ── Back-transformed parameter posteriors ──────────────────────────────────
   draws <- tryCatch(brms::as_draws_df(model), error = function(e) NULL)

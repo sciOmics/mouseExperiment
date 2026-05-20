@@ -13,7 +13,7 @@ bayesian_survival(
   cage_column = NULL,
   dose_column = NULL,
   family = c("weibull", "lognormal", "exponential", "gamma"),
-  include_frailty = TRUE,
+  include_cage_effect = TRUE,
   reference_group = NULL,
   prior_strength = c("skeptical", "weakly_informative", "informative", "diffuse",
     "manual"),
@@ -47,8 +47,9 @@ Matches the convention used by \code{\link{survival_statistics}}.}
 \item{id_column}{Column name for animal ID. Default \code{"ID"}.}
 
 \item{cage_column}{Column name for cage ID, or \code{NULL} (default).
-When supplied and \code{include_frailty = TRUE}, a cage-level frailty
-(\code{(1 | cage)}) is added to account for between-cage heterogeneity.}
+When supplied and \code{include_cage_effect = TRUE}, a cage-level
+frailty (\code{(1 | cage)}) is added to account for between-cage
+heterogeneity.}
 
 \item{dose_column}{Reserved for future use; currently ignored.}
 
@@ -65,7 +66,7 @@ with shape = 1; use when a memoryless process is plausible.}
 alternative when Weibull does not fit well.}
 }}
 
-\item{include_frailty}{Logical. When \code{TRUE} (default) and
+\item{include_cage_effect}{Logical. When \code{TRUE} (default) and
 \code{cage_column} is supplied, a cage-level random intercept (frailty)
 is added: \code{(1 | cage)}.}
 
@@ -123,7 +124,7 @@ A named list:
 \item{\code{frailty_used}}{Logical — whether cage frailty was modelled.}
 \item{\code{summary}}{Named list of analysis metadata.}
 \item{\code{treatment_effects}}{Data frame with columns \code{Group},
-\code{Time_Ratio}, \code{Lower_CL}, \code{Upper_CL}, \code{HR}
+\code{Time_Ratio}, \code{Lower_CrI}, \code{Upper_CrI}, \code{HR}
 (hazard ratio; Weibull and exponential only, \code{NA} otherwise),
 \code{Median_Survival}, \code{Events}, \code{Total}, \code{Event_Rate},
 \code{Note}. Output schema mirrors \code{\link{survival_statistics}}.}

@@ -203,15 +203,9 @@ bayesian_therapeutic_window <- function(
   )
 
   # ── Back-transform to original scale ──────────────────────────────────────
-  bt <- function(x, transform) {
-    if (transform == "log")  return(exp(x))
-    if (transform == "sqrt") return(x ^ 2)
-    x
-  }
-
-  vols_mat   <- bt(epred_tg,        tg_result$transform_used)
-  wts_first  <- bt(epred_bw_first,  bw_result$transform_used)
-  wts_last   <- bt(epred_bw_last,   bw_result$transform_used)
+  vols_mat   <- bayes_backtransform(epred_tg,       tg_result$transform_used)
+  wts_first  <- bayes_backtransform(epred_bw_first, bw_result$transform_used)
+  wts_last   <- bayes_backtransform(epred_bw_last,  bw_result$transform_used)
 
   # ── TGI matrix [n_draws × n_tg_groups] ────────────────────────────────────
   ref_col_tg <- which(tg_groups == reference_group)
@@ -226,7 +220,12 @@ bayesian_therapeutic_window <- function(
   # ── Align draws and compute TWM for treated groups ────────────────────────
   treated_tg <- tg_groups[tg_groups != reference_group]
   treated_bw <- bw_groups[bw_groups != reference_group]
-  common     <- intersect(treated_tg, treated_bw)
+  # Normalise for whitespace/case differences before intersection (B3.4)
+  common <- intersect(
+    trimws(treated_tg), trimws(treated_bw)
+  )
+  # Resolve back to original names from the TG model
+  common <- treated_tg[trimws(treated_tg) %in% common]
 
   if (length(common) == 0L) {
     stop(
@@ -411,4 +410,151 @@ bayesian_therapeutic_window <- function(
     twm_plot        = twm_plot,
     tgi_wl_plot     = tgi_wl_plot
   )
+}
+
+
+#' Fit and Compute Bayesian Therapeutic Window from Raw Data
+#'
+#' Convenience wrapper that fits a \code{\link{bayesian_tumor_growth}} model
+#' and a \code{\link{bayesian_body_weight}} model from raw data frames in a
+#' single call, then passes both fitted results to
+#' \code{\link{bayesian_therapeutic_window}} to compute the posterior TWM
+#' distribution. All arguments that control the fitting of both sub-models are
+#' exposed directly; see the individual function documentation for details.
+#'
+#' @param tg_df Data frame of tumor-growth observations. Must contain
+#'   \code{time_column}, \code{treatment_column}, \code{id_column}, and
+#'   \code{volume_column}.
+#' @param bw_df Data frame of body-weight observations. Must contain
+#'   \code{time_column}, \code{treatment_column}, \code{id_column}, and
+#'   \code{weight_column}.
+#' @param time_column Name of the study-day column present in both data frames.
+#'   Default \code{"Day"}.
+#' @param treatment_column Name of the treatment-group column present in both
+#'   data frames. Default \code{"Treatment"}.
+#' @param id_column Name of the animal-ID column present in both data frames.
+#'   Default \code{"ID"}.
+#' @param cage_column Name of the cage column present in both data frames.
+#'   \code{NULL} (default) omits cage random effects.
+#' @param reference_group Name of the vehicle/control group. \code{NULL}
+#'   (default) auto-detects from factor levels.
+#' @param volume_column Name of the tumor-volume column in \code{tg_df}.
+#'   Default \code{"Volume"}.
+#' @param tg_transform Variance-stabilising transform applied to tumor volume
+#'   before fitting. One of \code{"log"} (default), \code{"sqrt"},
+#'   \code{"none"}.
+#' @param necrotic_column Optional column in \code{tg_df} flagging necrotic
+#'   observations. Passed to \code{bayesian_tumor_growth()}.
+#' @param weight_column Name of the body-weight column in \code{bw_df}.
+#'   Default \code{"Weight"}.
+#' @param bw_transform Variance-stabilising transform applied to body weight
+#'   before fitting. One of \code{"none"} (default), \code{"log"},
+#'   \code{"sqrt"}.
+#' @param prior_strength Prior strength used for both sub-models. One of
+#'   \code{"skeptical"} (default), \code{"weakly_informative"},
+#'   \code{"informative"}, \code{"diffuse"}, \code{"manual"}.
+#' @param n_chains Number of MCMC chains. Default \code{4L}.
+#' @param n_iter Iterations per chain (including warm-up). Default \code{2000L}.
+#' @param seed Random seed for reproducibility. Default \code{42L}.
+#' @param include_cage_effect Logical. Include cage-level random intercept in
+#'   both sub-models when \code{cage_column} is supplied? Default \code{TRUE}.
+#' @param noise_floor Minimum absolute weight-loss percentage used as the TWM
+#'   denominator (passed to \code{bayesian_therapeutic_window()}). Default
+#'   \code{1.0}.
+#' @param tg_endpoint_day Study day for TGI computation. \code{NULL} (default)
+#'   uses the last observed day in the TG model data.
+#' @param plots Logical. Return \pkg{ggplot2} plot objects? Default \code{TRUE}.
+#' @param verbose Logical. Print progress messages? Default \code{FALSE}.
+#'
+#' @return The same named list as \code{\link{bayesian_therapeutic_window}},
+#'   with an additional element \code{tg_result} and \code{bw_result} holding
+#'   the full outputs of the two sub-model fits.
+#'
+#' @seealso \code{\link{bayesian_therapeutic_window}},
+#'   \code{\link{bayesian_tumor_growth}}, \code{\link{bayesian_body_weight}}
+#'
+#' @export
+bayesian_twm_from_data <- function(
+  tg_df,
+  bw_df,
+  time_column         = "Day",
+  treatment_column    = "Treatment",
+  id_column           = "ID",
+  cage_column         = NULL,
+  reference_group     = NULL,
+  volume_column       = "Volume",
+  tg_transform        = c("log", "sqrt", "none"),
+  necrotic_column     = NULL,
+  weight_column       = "Weight",
+  bw_transform        = c("none", "log", "sqrt"),
+  prior_strength      = c("skeptical", "weakly_informative",
+                          "informative", "diffuse", "manual"),
+  n_chains            = 4L,
+  n_iter              = 2000L,
+  seed                = 42L,
+  include_cage_effect = TRUE,
+  noise_floor         = 1.0,
+  tg_endpoint_day     = NULL,
+  plots               = TRUE,
+  verbose             = FALSE
+) {
+  tg_transform   <- match.arg(tg_transform)
+  bw_transform   <- match.arg(bw_transform)
+  prior_strength <- match.arg(prior_strength)
+
+  if (isTRUE(verbose)) message("Fitting Bayesian tumor-growth model...")
+  tg_result <- bayesian_tumor_growth(
+    df               = tg_df,
+    time_column      = time_column,
+    volume_column    = volume_column,
+    treatment_column = treatment_column,
+    id_column        = id_column,
+    cage_column      = cage_column,
+    transform        = tg_transform,
+    reference_group  = reference_group,
+    prior_strength   = prior_strength,
+    n_chains         = n_chains,
+    n_iter           = n_iter,
+    seed             = seed,
+    include_cage_effect = include_cage_effect,
+    return_model     = TRUE,
+    plots            = plots,
+    verbose          = verbose,
+    necrotic_column  = necrotic_column
+  )
+
+  if (isTRUE(verbose)) message("Fitting Bayesian body-weight model...")
+  bw_result <- bayesian_body_weight(
+    df               = bw_df,
+    weight_column    = weight_column,
+    time_column      = time_column,
+    treatment_column = treatment_column,
+    id_column        = id_column,
+    cage_column      = cage_column,
+    transform        = bw_transform,
+    reference_group  = reference_group,
+    prior_strength   = prior_strength,
+    n_chains         = n_chains,
+    n_iter           = n_iter,
+    seed             = seed,
+    include_cage_effect = include_cage_effect,
+    return_model     = TRUE,
+    plots            = plots,
+    verbose          = verbose
+  )
+
+  if (isTRUE(verbose)) message("Computing therapeutic window metric...")
+  twm_result <- bayesian_therapeutic_window(
+    tg_result        = tg_result,
+    bw_result        = bw_result,
+    treatment_column = treatment_column,
+    time_column      = time_column,
+    reference_group  = reference_group,
+    noise_floor      = noise_floor,
+    tg_endpoint_day  = tg_endpoint_day,
+    plots            = plots,
+    verbose          = verbose
+  )
+
+  c(twm_result, list(tg_result = tg_result, bw_result = bw_result))
 }

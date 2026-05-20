@@ -37,11 +37,10 @@
 #'   (first alphabetically) if \code{NULL}.
 #' @param prior_strength Prior preset:
 #'   \describe{
-#'     \item{\code{"weakly_informative"}}{(default)
-#'       \eqn{b \sim N(0, 1)};
-#'       \eqn{\text{sd}, \sigma \sim \text{Exponential}(1)}.}
-#'     \item{\code{"skeptical"}}{\eqn{b \sim N(0, 0.25)};
+#'     \item{\code{"skeptical"}}{(default) \eqn{b \sim N(0, 0.25)};
 #'       \eqn{\text{sd}, \sigma \sim \text{Exponential}(2)}.}
+#'     \item{\code{"weakly_informative"}}{\eqn{b \sim N(0, 1)};
+#'       \eqn{\text{sd}, \sigma \sim \text{Exponential}(1)}.}
 #'     \item{\code{"informative"}}{\eqn{b \sim N(0, 0.5)};
 #'       \eqn{\text{sd}, \sigma \sim \text{Exponential}(2)}.}
 #'     \item{\code{"diffuse"}}{\eqn{b \sim N(0, 2.5)};
@@ -71,14 +70,18 @@
 #'   \item{\code{summary}}{Named list of analysis metadata.}
 #'   \item{\code{posterior_summary}}{Data frame of fixed-effect posterior
 #'     summaries (median, 95 % CrI, Rhat, Bulk_ESS, Tail_ESS).}
-#'   \item{\code{treatment_effects}}{Posterior EMMs per group (compatible with
-#'     \code{analyze_body_weight} emmeans table).}
+#'   \item{\code{treatment_effects}}{Posterior EMMs per group with columns
+#'     \code{Group}, \code{Adjusted_Mean}, \code{SE}, \code{DF},
+#'     \code{Lower_CrI}, \code{Upper_CrI}, \code{Note}.}
 #'   \item{\code{pairwise_comparisons}}{Posterior contrasts vs reference.}
 #'   \item{\code{mcmc_diagnostics}}{Data frame with Rhat and convergence flag
 #'     per parameter.}
 #'   \item{\code{weight_loss_summary}}{Data frame: per-group posterior
 #'     percentage weight change from first to last study day (median, 95 %
-#'     CrI).}
+#'     CrI). Weight-loss percentages are computed from the earliest to the
+#'     latest study day present in the model data. This is a population-level
+#'     prediction; individual dropout patterns do not affect the endpoint
+#'     days used.}
 #'   \item{\code{pp_check_plot}}{Posterior predictive density overlay.}
 #'   \item{\code{posterior_dist_plot}}{Treatment-parameter posterior areas.}
 #'   \item{\code{prior_posterior_plot}}{Prior vs posterior density overlay.}
@@ -113,7 +116,7 @@ bayesian_body_weight <- function(
   transform                    = c("none", "log", "sqrt"),
   random_effects_specification = c("intercept_only", "slope"),
   reference_group              = NULL,
-  prior_strength               = c("weakly_informative", "skeptical",
+  prior_strength               = c("skeptical", "weakly_informative",
                                    "informative", "diffuse", "manual"),
   prior_b                      = NULL,
   prior_intercept              = NULL,
@@ -148,11 +151,10 @@ bayesian_body_weight <- function(
   }
 
   # ── Cage placeholder ───────────────────────────────────────────────────────
-  no_cage_mode <- is.null(cage_column) || !cage_column %in% colnames(df)
-  if (no_cage_mode) {
-    cage_column       <- ".cage_placeholder"
-    df[[cage_column]] <- "1"
-  }
+  cage_setup   <- setup_cage_column(df, cage_column)
+  df           <- cage_setup$df
+  cage_column  <- cage_setup$cage_column
+  no_cage_mode <- cage_setup$no_cage_mode
 
   # ── Reference group ────────────────────────────────────────────────────────
   treatment_groups <- unique(as.character(df[[treatment_column]]))
@@ -192,8 +194,15 @@ bayesian_body_weight <- function(
 
   # Apply transform
   if (transform == "log") {
-    wt <- analysis_df$Net_Weight
-    wt[wt <= 0] <- min(wt[wt > 0], na.rm = TRUE) / 2
+    wt            <- analysis_df$Net_Weight
+    positive_vals <- wt[is.finite(wt) & wt > 0]
+    if (length(positive_vals) == 0L) {
+      stop(
+        "No positive values in '", weight_column,
+        "' after filtering. Cannot apply log transform."
+      )
+    }
+    wt[wt <= 0] <- min(positive_vals, na.rm = TRUE) / 2
     analysis_df$Net_Weight <- log(wt)
   } else if (transform == "sqrt") {
     analysis_df$Net_Weight <- sqrt(analysis_df$Net_Weight)
@@ -241,18 +250,9 @@ bayesian_body_weight <- function(
       brms::prior_string(prior_sigma,     class = "sigma")
     )
   } else {
-    b_sd     <- switch(prior_strength,
-      weakly_informative = 1,
-      skeptical          = 0.25,
-      informative        = 0.5,
-      diffuse            = 2.5
-    )
-    exp_rate <- switch(prior_strength,
-      weakly_informative = 1,
-      skeptical          = 2,
-      informative        = 2,
-      diffuse            = 0.5
-    )
+    pp       <- bayes_prior_params(prior_strength)
+    b_sd     <- pp$b_sd
+    exp_rate <- pp$exp_rate
     selected_priors <- c(
       brms::prior_string(
         paste0("normal(0, ", b_sd, ")"),        class = "b"
@@ -301,14 +301,7 @@ bayesian_body_weight <- function(
   posterior_summary <- fixed_df
 
   # ── MCMC diagnostics ───────────────────────────────────────────────────────
-  mcmc_diagnostics <- data.frame(
-    Parameter = posterior_summary$Parameter,
-    Rhat      = round(posterior_summary$Rhat,     4),
-    Bulk_ESS  = round(posterior_summary$Bulk_ESS, 0),
-    Tail_ESS  = round(posterior_summary$Tail_ESS, 0),
-    Converged = posterior_summary$Rhat <= 1.01,
-    stringsAsFactors = FALSE
-  )
+  mcmc_diagnostics <- make_mcmc_diagnostics(posterior_summary)
 
   # ── Treatment effects (emmeans) ────────────────────────────────────────────
   treatment_effects    <- NULL
@@ -349,8 +342,8 @@ bayesian_body_weight <- function(
         Adjusted_Mean = round(emm_df$emmean,         3),
         SE            = round(emm_df$SE,              3),
         DF            = NA_real_,
-        Lower_CL      = round(emm_df[[lower_col]],   3),
-        Upper_CL      = round(emm_df[[upper_col]],   3),
+        Lower_CrI     = round(emm_df[[lower_col]],   3),
+        Upper_CrI     = round(emm_df[[upper_col]],   3),
         Note          = ifelse(
           as.character(emm_df[[treatment_column]]) == reference_group,
           "Reference group", ""
@@ -385,11 +378,11 @@ bayesian_body_weight <- function(
         }
         se_col <- if ("SE" %in% names(pc_df)) round(pc_df$SE, 4) else NA_real_
         pairwise_comparisons <- data.frame(
-          contrast = as.character(pc_df$contrast),
-          estimate = round(pc_df$estimate,    4),
-          SE       = se_col,
-          Lower_CL = round(pc_df[[lower_pc]], 4),
-          Upper_CL = round(pc_df[[upper_pc]], 4),
+          contrast  = as.character(pc_df$contrast),
+          estimate  = round(pc_df$estimate,    4),
+          SE        = se_col,
+          Lower_CrI = round(pc_df[[lower_pc]], 4),
+          Upper_CrI = round(pc_df[[upper_pc]], 4),
           stringsAsFactors = FALSE
         )
       }
@@ -412,30 +405,31 @@ bayesian_body_weight <- function(
     nd
   }
 
-  epred_base <- tryCatch(
+  # Combine first-day and last-day prediction into a single posterior_epred
+  # call (B5.1): halves one brms round-trip.
+  n_groups     <- length(tx_groups)
+  nd_endpoints <- rbind(make_pred_nd(first_day), make_pred_nd(last_day))
+  epred_endpts <- tryCatch(
     brms::posterior_epred(
-      model, newdata = make_pred_nd(first_day),
+      model, newdata = nd_endpoints,
       re_formula = NA, allow_new_levels = TRUE
     ),
     error = function(e) NULL
   )
-  epred_end <- tryCatch(
-    brms::posterior_epred(
-      model, newdata = make_pred_nd(last_day),
-      re_formula = NA, allow_new_levels = TRUE
-    ),
-    error = function(e) NULL
-  )
-
-  bt <- function(x) {
-    if (transform == "log")  return(exp(x))
-    if (transform == "sqrt") return(x ^ 2)
-    x
+  epred_base <- if (!is.null(epred_endpts)) {
+    epred_endpts[, seq_len(n_groups), drop = FALSE]
+  } else {
+    NULL
+  }
+  epred_end  <- if (!is.null(epred_endpts)) {
+    epred_endpts[, seq_len(n_groups) + n_groups, drop = FALSE]
+  } else {
+    NULL
   }
 
   if (!is.null(epred_base) && !is.null(epred_end)) {
-    eb  <- bt(epred_base)
-    ee  <- bt(epred_end)
+    eb  <- bayes_backtransform(epred_base, transform)
+    ee  <- bayes_backtransform(epred_end,  transform)
     pct <- (ee - eb) / eb * 100
 
     weight_loss_summary <- do.call(rbind, lapply(
@@ -445,8 +439,8 @@ bayesian_body_weight <- function(
         data.frame(
           Group        = tx_groups[i],
           Pct_Change   = round(q["50%"],   1),
-          Lower_CL     = round(q["2.5%"],  1),
-          Upper_CL     = round(q["97.5%"], 1),
+          Lower_CrI    = round(q["2.5%"],  1),
+          Upper_CrI    = round(q["97.5%"], 1),
           Day_Baseline = first_day,
           Day_End      = last_day,
           stringsAsFactors = FALSE
@@ -513,8 +507,8 @@ bayesian_body_weight <- function(
         ggplot2::aes(
           x      = .data[["Adjusted_Mean"]],
           y      = .data[["Group"]],
-          xmin   = .data[["Lower_CL"]],
-          xmax   = .data[["Upper_CL"]],
+          xmin   = .data[["Lower_CrI"]],
+          xmax   = .data[["Upper_CrI"]],
           colour = is_ref
         )
       ) +
@@ -578,7 +572,7 @@ bayesian_body_weight <- function(
         model, newdata = traj_nd,
         re_formula = NA, allow_new_levels = TRUE
       )
-      ep_traj  <- bt(ep_traj)
+      ep_traj  <- bayes_backtransform(ep_traj, transform)
       traj_nd$Median <- apply(ep_traj, 2L, stats::median)
       traj_nd$Lower  <- apply(
         ep_traj, 2L, function(x) stats::quantile(x, 0.025)
@@ -588,7 +582,7 @@ bayesian_body_weight <- function(
       )
       traj_nd$Trt_label <- as.character(traj_nd[[treatment_column]])
 
-      obs_y  <- bt(analysis_df$Net_Weight)
+      obs_y  <- bayes_backtransform(analysis_df$Net_Weight, transform)
       obs_df <- data.frame(
         Day_obs   = analysis_df[[time_column]],
         Trt_label = as.character(analysis_df[[treatment_column]]),
