@@ -176,6 +176,48 @@ make_synergy_base <- function(combo_mean) {
   )
 }
 
+# -----------------------------------------------------------------------------
+# Body weight: two groups with diverging weight trajectories
+#
+# Ground-truth design:
+#   - 2 groups × 5 mice × 5 time-points (days 0, 7, 14, 21, 28)
+#   - 2 cages per group
+#   - Control: stable weight at ~22 g (slope = 0.0 g/day)
+#   - TreatmentA: progressive weight loss (slope = -0.08 g/day ≈ -2.2 g by day 28)
+#   - Within-mouse noise SD = 0.3 g
+#   → LMM Treatment × Day interaction should be clearly significant
+# -----------------------------------------------------------------------------
+make_bw_simple <- function() {
+  set.seed(42)
+  days <- c(0, 7, 14, 21, 28)
+
+  make_mouse <- function(id, cage, treatment, slope) {
+    noise  <- rnorm(5, mean = 0, sd = 0.3)
+    weight <- 22 + slope * days + noise
+    data.frame(
+      ID        = id,
+      Cage      = cage,
+      Treatment = treatment,
+      Day       = days,
+      Weight    = round(weight, 1),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  rbind(
+    make_mouse("C01", "C1", "Control",    0.00),
+    make_mouse("C02", "C1", "Control",    0.00),
+    make_mouse("C03", "C2", "Control",    0.00),
+    make_mouse("C04", "C2", "Control",    0.00),
+    make_mouse("C05", "C2", "Control",    0.00),
+    make_mouse("T01", "T1", "TreatmentA", -0.08),
+    make_mouse("T02", "T1", "TreatmentA", -0.08),
+    make_mouse("T03", "T2", "TreatmentA", -0.08),
+    make_mouse("T04", "T2", "TreatmentA", -0.08),
+    make_mouse("T05", "T2", "TreatmentA", -0.08)
+  )
+}
+
 make_synergy_additive    <- function() make_synergy_base(150)   # Bliss-neutral
 make_synergy_synergistic <- function() make_synergy_base(25)    # FE > Loewe expected → CI < 1
 make_synergy_antagonist  <- function() make_synergy_base(325)   # Worse than additive
