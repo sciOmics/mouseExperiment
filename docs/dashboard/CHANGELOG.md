@@ -4,6 +4,19 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.016] 2026 May 19th
+
+### Changed
+- **Tumor Growth — Bayesian LMM: cage random-intercept and prior controls** — updated to reflect `bayesian_tumor_growth()` v0.3.7 changes:
+  - Prior Strength selector now includes `"Skeptical"` as a new option and sets it as the default (replaces `"Weakly informative"`). A `"Manual"` option is reserved for future sidebar expansion.
+  - New **Cage Effects** checkbox (default: on) in the Bayesian sidebar, wired to the `include_cage_effect` argument. Displayed only when a cage column is mapped in Data Upload.
+  - **Prior vs Posterior** plot tab dynamically populated from `res$prior_posterior_plot` (available when `plots = TRUE`); shows density overlay of prior (grey) and posterior (blue) per treatment coefficient.
+  - **Residuals vs Day** plot tab dynamically populated from `res$residuals_plot`; faceted by treatment group with loess smoother.
+
+### Added
+- **Survival — Bayesian AFT (brms)** — new `"Bayesian AFT (brms)"` option in the Survival Statistical Model selector (uses `bayesian_survival()` v0.3.8). Sidebar controls: Family (Weibull / Log-normal / Exponential / Gamma), Prior Strength, Chains, Iterations, Include Cage Frailty checkbox. Result tabs: Treatment Effects (Time Ratio + HR), Posterior Summary, MCMC Diagnostics, Survival Curves (posterior credible bands + KM), Prior vs Posterior.
+- **Toxicity — Bayesian Body Weight (brms)** — new `"Bayesian Body Weight (brms)"` option under Toxicity → Body Weight mode (uses `bayesian_body_weight()` v0.3.9). Result tabs: Treatment Effects, Weight Loss Summary (posterior % change first-to-last day with 95 % CrI), Weight Trajectory (posterior median ± CrI ribbon + observed points), MCMC Diagnostics, Prior vs Posterior.
+
 ## [v26.05.015] 2026 May 14th
 
 ### Added
