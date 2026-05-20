@@ -482,6 +482,356 @@ This is dead code (the body does nothing) referencing specific drug names from w
 
 ---
 
+---
+
+## Bayesian Analysis Functions Review (v0.3.7 – v0.4.2)
+
+**Reviewer:** Claude Code
+**Date:** 2026-05-20
+**Scope:** `bayesian_tumor_growth()`, `bayesian_survival()`, `bayesian_body_weight()`, `bayesian_dose_response()`, `bayesian_therapeutic_window()`, `bayesian_synergy()`
+
+---
+
+### B1. API Inconsistencies
+
+#### B1.1 `model_type_used` is not consistent across functions
+**File:** `R/bayesian_tumor_growth.R:579`
+
+`bayesian_tumor_growth()` returns `model_type_used = "bayes"` while all other Bayesian functions return `"bayes_bw"`, `"bayes_survival"`, `"bayes_dr"`, `"bayes_twm"`, `"bayes_synergy"`. Dashboard and any downstream code that dispatch on `model_type_used` must special-case tumor growth. Should be `"bayes_tg"` to complete the pattern.
+
+**Fix:** Change line 579 of `bayesian_tumor_growth.R` from `"bayes"` to `"bayes_tg"` and update the dashboard handler that checks this value.
+
+---
+
+#### B1.2 `prior_strength` default differs: `bayesian_body_weight` defaults to `"weakly_informative"`
+**File:** `R/bayesian_body_weight.R:116`
+
+```r
+# body_weight — "weakly_informative" is first (and therefore the match.arg default):
+prior_strength = c("weakly_informative", "skeptical", "informative", "diffuse", "manual")
+
+# all other Bayesian functions — "skeptical" is first:
+prior_strength = c("skeptical", "weakly_informative", "informative", "diffuse", "manual")
+```
+
+A user calling both `bayesian_tumor_growth()` and `bayesian_body_weight()` with all defaults gets different priors without any indication. Produces a subtle systematic difference in results.
+
+**Fix:** Reorder the body_weight default to put `"skeptical"` first, matching the rest of the family.
+
+---
+
+#### B1.3 `"informative"` preset missing from `bayesian_dose_response`
+**File:** `R/bayesian_dose_response.R:123`
+
+`prior_strength` options are `c("skeptical", "weakly_informative", "diffuse", "manual")` — `"informative"` is absent. All other Bayesian functions include it. Calling `bayesian_dose_response(..., prior_strength = "informative")` throws a cryptic `match.arg` error rather than a helpful message.
+
+**Fix:** Add `"informative"` to the choice vector and to the switch statement at line ~208.
+
+---
+
+#### B1.4 Credible interval columns named `Lower_CL`/`Upper_CL` in most functions, `Lower_CrI`/`Upper_CrI` in `bayesian_dose_response`
+**Files:** `bayesian_tumor_growth.R:375`, `bayesian_body_weight.R:352`, `bayesian_survival.R:464`, `bayesian_dose_response.R:345`
+
+`CL` is "confidence limit" — frequentist terminology. `CrI` is "credible interval" — the correct Bayesian term. `bayesian_dose_response` got it right; the others did not. Dashboard code that accesses these columns by name will break if column names are ever harmonised.
+
+**Fix:** Rename to `Lower_CrI`/`Upper_CrI` across `bayesian_tumor_growth`, `bayesian_body_weight`, and `bayesian_survival`.
+
+---
+
+#### B1.5 `include_cage_effect` vs `include_frailty` — same concept, different argument name
+**Files:** `bayesian_tumor_growth.R:177`, `bayesian_body_weight.R:125`, `bayesian_synergy.R:154` vs `bayesian_survival.R:149`
+
+The survival function uses `include_frailty` for what is conceptually the same feature (cage random intercept). Users must remember a different parameter name for one function.
+
+**Fix:** Rename `include_frailty` to `include_cage_effect` in `bayesian_survival.R` and update documentation.
+
+---
+
+#### B1.6 Intercept prior scaling inconsistent: `b_sd * 2.5` vs `b_sd * 2.0`
+**Files:** `bayesian_tumor_growth.R:299`, `bayesian_body_weight.R:261`, `bayesian_survival.R` vs `bayesian_synergy.R:287`
+
+`bayesian_tumor_growth`, `bayesian_body_weight`, and `bayesian_survival` set the intercept prior width to `b_sd * 2.5`. `bayesian_synergy` uses `b_sd * 2`. This creates a slightly different effective prior on the intercept scale for no documented reason.
+
+**Fix:** Standardise to `b_sd * 2.5` in `bayesian_synergy.R:287`.
+
+---
+
+#### B1.7 `bayesian_synergy` uses `brms::set_prior()` while all other functions use `brms::prior_string()`
+**Files:** `bayesian_synergy.R:276-293` vs all other `bayesian_*.R`
+
+Both work, but the inconsistency is confusing in code review and increases the diff noise for future maintenance. `prior_string()` is the simpler, string-only variant; `set_prior()` is an alias for the more flexible `prior()`. There is no reason to use the more complex form here.
+
+**Fix:** Replace `brms::set_prior(...)` with `brms::prior_string(...)` in `bayesian_synergy.R`.
+
+---
+
+### B2. Code Redundancy
+
+#### B2.1 Back-transform helper `bt()` defined independently in three files
+**Files:** `bayesian_body_weight.R:430`, `bayesian_synergy.R:346`, `bayesian_therapeutic_window.R:206`
+
+All three define a local function:
+```r
+bt <- function(x) { if (transform == "log") exp(x) else if (transform == "sqrt") x^2 else x }
+```
+The therapeutic_window version additionally accepts a `transform` argument (the others close over it). Three copies to maintain.
+
+**Fix:** Extract to `R/utils_bayes.R` as an exported-internal helper:
+```r
+#' @noRd
+bayes_backtransform <- function(x, transform) {
+  switch(transform, log = exp(x), sqrt = x^2, x)
+}
+```
+
+---
+
+#### B2.2 MCMC diagnostics data frame constructed identically in four files
+**Files:** `bayesian_tumor_growth.R:334`, `bayesian_body_weight.R:304`, `bayesian_survival.R:308`, `bayesian_dose_response.R:319`
+
+```r
+mcmc_diagnostics <- data.frame(
+  Parameter = posterior_summary$Parameter,
+  Rhat      = round(posterior_summary$Rhat,     4),
+  Bulk_ESS  = round(posterior_summary$Bulk_ESS, 0),
+  Tail_ESS  = round(posterior_summary$Tail_ESS, 0),
+  Converged = posterior_summary$Rhat <= 1.01,
+  stringsAsFactors = FALSE
+)
+```
+`bayesian_synergy` uses a different approach (`brms::rhat()` + `brms::neff_ratio()` separately, lines 322-337) and produces an inconsistent `mcmc_diagnostics` schema that lacks `Bulk_ESS` and `Tail_ESS` columns.
+
+**Fix:** Extract to `R/utils_bayes.R`:
+```r
+#' @noRd
+make_mcmc_diagnostics <- function(posterior_summary_df) { ... }
+```
+Use it in all six functions.
+
+---
+
+#### B2.3 Prior specification switch duplicated across five files
+**Files:** `bayesian_tumor_growth.R:285`, `bayesian_body_weight.R:244`, `bayesian_survival.R:247`, `bayesian_synergy.R:259`, `bayesian_dose_response.R:208`
+
+Each function contains the same lookup table:
+```r
+list(
+  skeptical          = list(b_sd = 0.25, exp_rate = 2),
+  weakly_informative = list(b_sd = 1.0,  exp_rate = 1),
+  informative        = list(b_sd = 0.5,  exp_rate = 2),
+  diffuse            = list(b_sd = 2.5,  exp_rate = 0.5)
+)
+```
+Changing a default (e.g., tightening the skeptical prior) requires touching five files and risks drift.
+
+**Fix:** Centralise as `bayes_prior_params(prior_strength)` in `R/utils_bayes.R`.
+
+---
+
+#### B2.4 Cage placeholder setup repeated in four files
+**Files:** `bayesian_tumor_growth.R:206`, `bayesian_body_weight.R:151`, `bayesian_survival.R:185`, `bayesian_synergy.R:227`
+
+All four check for a cage column, fall back to `id_column` as a placeholder, and construct `id_var` as `cage_var + "__" + id`. The pattern is identical except for variable names used.
+
+**Fix:** Extract to `R/utils_bayes.R`:
+```r
+#' @noRd
+setup_cage_vars <- function(df, cage_column, id_column) { ... }
+```
+
+---
+
+### B3. Bugs and Correctness Issues
+
+#### B3.1 Loewe denominator floor (1e-6) is arbitrary and undocumented
+**File:** `bayesian_synergy.R:413`
+
+```r
+loewe_ci <- loewe_num / pmax(fe_combo, 1e-6)
+```
+
+When `fe_combo` is near zero (minimal combo efficacy), CI values reach ~1e6 — technically not infinity but practically meaningless. No documentation explains why 1e-6 was chosen or how to interpret CI when combo effect is near zero. This will silently produce enormous CI values in negative-result studies.
+
+**Fix:** Replace with a threshold relative to the maximum observed FE:
+```r
+fe_floor <- max(fe_combo) * 1e-4
+fe_floor <- max(fe_floor, 1e-4)   # absolute minimum guard
+loewe_ci <- loewe_num / pmax(fe_combo, fe_floor)
+```
+Document the threshold and add a note to `loewe_summary` when floor was applied.
+
+---
+
+#### B3.2 `bayesian_synergy` MCMC diagnostics lack `Bulk_ESS` and `Tail_ESS`
+**File:** `bayesian_synergy.R:317-337`
+
+All other Bayesian functions derive `mcmc_diagnostics` from `fixed_df` (the formatted posterior summary that includes Rhat, Bulk_ESS, Tail_ESS). `bayesian_synergy` instead calls `brms::rhat()` and `brms::neff_ratio()` separately and only appends `ESS_Bulk` (singular) — `Tail_ESS` is never populated. The schema differs from every other function's `mcmc_diagnostics`.
+
+**Fix:** Follow the same pattern as the other functions: extract `fixed_df` from the brms summary, build `mcmc_diagnostics` from it with the shared helper (see B2.2).
+
+---
+
+#### B3.3 Zero/negative volume input with log transform: no guard against all-negative data
+**Files:** `bayesian_tumor_growth.R:240`, `bayesian_body_weight.R:194`, `bayesian_synergy.R:202`
+
+The zero-fill pattern (`vol[vol <= 0] <- min(vol[vol > 0], na.rm = TRUE) / 2`) will set `vol` to `Inf / 2 = Inf` if all values are ≤ 0, because `min(numeric(0)) = Inf`. The resulting `log(Inf)` will silently corrupt the model fit.
+
+**Fix:** Add a guard before the fill:
+```r
+positive_vals <- vol[is.finite(vol) & vol > 0]
+if (length(positive_vals) == 0L) {
+  stop("No positive values found in '", volume_column,
+       "' after filtering. Cannot apply log transform.")
+}
+```
+
+---
+
+#### B3.4 `bayesian_therapeutic_window`: common groups check uses `intersect(treated_tg, treated_bw)` but does not verify alignment of `bw_groups` factor levels
+**File:** `bayesian_therapeutic_window.R:225`
+
+The function assumes that group names from the TG model (`tg_groups`) and BW model (`bw_groups`) are in directly comparable character form. If one model was fitted on a data frame where a group name has trailing whitespace or different capitalisation, `intersect()` returns an empty vector and the function stops with a misleading message about "no common treated groups." There is no normalisation step.
+
+**Fix:** Trim and `tolower()` both name vectors before the `intersect()` call (or warn early that names differ only in whitespace/case).
+
+---
+
+#### B3.5 Rounding inconsistency in `bliss_summary` return: excess uses 4 decimal places, FE medians use 3
+**File:** `bayesian_synergy.R:402-409`
+
+```r
+Excess_Median      = round(bliss_q["50%"],       4),   # 4 dp
+Expected_FE_Median = round(bliss_fe_q["50%"],    3),   # 3 dp
+Observed_FE_Median = round(obs_fe_med,           3)    # 3 dp
+```
+
+A user comparing `Excess_Median` with `Observed_FE_Median - Expected_FE_Median` will get different values at the 4th decimal place, which is confusing.
+
+**Fix:** Use 4 decimal places consistently throughout `bliss_summary` (or 3 — pick one and be consistent).
+
+---
+
+### B4. Documentation Gaps
+
+#### B4.1 `bayesian_tumor_growth` reference group auto-detection logic is not documented
+**File:** `R/bayesian_tumor_growth.R`
+
+The `@param reference_group` line says "Auto-detected if NULL" but does not describe the detection strategy (check for "Control"/"Vehicle"/"control" etc., then first alphabetically). Users cannot predict which group will be the reference without reading source code.
+
+**Fix:** Add to `@param reference_group`: "Auto-detection checks for common control-group names (`Control`, `Vehicle`, `control`, `vehicle`, `CTRL`, `ctrl`) before falling back to the first level alphabetically."
+
+---
+
+#### B4.2 `bayesian_body_weight` does not document the weight-loss calculation endpoints
+**File:** `R/bayesian_body_weight.R`
+
+`weight_loss_summary` is computed as percentage change from the first to last study day in the model data. This is not stated explicitly — users may not realise that animals with different dropout patterns will have different "first day" or "last day" references, and that the summary always uses the overall study start and end days, not individual animal endpoints.
+
+**Fix:** Add to `@return` documentation: "Weight-loss percentages are computed from the earliest to the latest study day present in the model data. This is a population-level prediction; individual dropout patterns do not affect the endpoint days used."
+
+---
+
+#### B4.3 `bayesian_synergy` Loewe CI limitations are less prominently documented than in `analyze_drug_synergy`
+**File:** `R/bayesian_synergy.R`
+
+`analyze_drug_synergy()` has a full `@section Assumptions and Limitations:` added in the prior code review. `bayesian_synergy()` describes the formula in `@details` but does not carry the same explicit "single-dose approximation assumes linear dose-response" warning. The Bayesian wrapper adds credible intervals to the CI but the underlying approximation is the same.
+
+**Fix:** Add a matching `@section Assumptions and Limitations:` to `bayesian_synergy()`, referencing the same Bliss ceiling and Loewe linear-assumption caveats.
+
+---
+
+#### B4.4 `bayes_prior_posterior_plot()` is internal but used by three functions; its location is not obvious
+**File:** `R/bayesian_tumor_growth.R` (end of file)
+
+The helper is defined at the bottom of `bayesian_tumor_growth.R` with `@noRd`. Both `bayesian_body_weight` and `bayesian_survival` call it, so it is effectively a cross-file dependency. A developer reading `bayesian_body_weight.R` has no indication where `bayes_prior_posterior_plot()` is defined.
+
+**Fix:** Move to `R/utils_bayes.R` with a comment indicating its consumers, and add a comment in each consumer file pointing to `utils_bayes.R`.
+
+---
+
+### B5. Performance
+
+#### B5.1 `bayesian_body_weight` calls `posterior_epred()` three times
+**File:** `R/bayesian_body_weight.R:416-428` and `:577-583`
+
+Three separate `posterior_epred()` calls are made: first day weights, last day weights, and full trajectory. Each call re-runs Stan memory allocation and prediction. The first two could be combined into a single call with a two-row `newdata` matrix, halving one brms round-trip.
+
+**Fix:**
+```r
+nd_endpoints <- rbind(
+  make_nd(bw_groups, study_days[1L]),
+  make_nd(bw_groups, study_days[length(study_days)])
+)
+ep_ends <- brms::posterior_epred(model, newdata = nd_endpoints,
+                                  re_formula = NA, ...)
+ep_first <- ep_ends[, seq_len(n_groups)]
+ep_last  <- ep_ends[, seq_len(n_groups) + n_groups]
+```
+
+---
+
+### B6. Missing Functionality
+
+#### B6.1 No `bayesian_power_analysis()` function
+The package has both analytic (`apriori_power_analysis`) and simulation (`apriori_power_simulation`) frequentist power analyses. There is no Bayesian equivalent — no way to estimate the required N to achieve a target posterior probability of a given effect size exceeding a threshold. This is the natural next step for a fully Bayesian workflow.
+
+#### B6.2 `bayesian_therapeutic_window` cannot be used without two separately fitted models
+**File:** `R/bayesian_therapeutic_window.R`
+
+`bayesian_therapeutic_window()` requires pre-fitted `brmsfit` objects from `bayesian_tumor_growth()` and `bayesian_body_weight()`. There is no convenience wrapper that fits both from a combined data frame. This is a high friction path for exploratory analysis.
+
+**Suggestion:** Add a `bayesian_therapeutic_window_from_data()` convenience function, or add a `tg_df` + `bw_df` path that internally calls both fitting functions before computing TWM.
+
+#### B6.3 No uncertainty-aware version of `analyze_drug_synergy_over_time()`
+`bayesian_synergy()` computes synergy at a single endpoint day. The time-series counterpart (`bayesian_synergy_over_time()`) would compute draw-wise Bliss and Loewe CIs at each study day, showing how synergy evolves. This is directly analogous to `analyze_drug_synergy_over_time()`.
+
+---
+
+### B7. Harmonization Opportunities
+
+#### B7.1 Treatment effects table schema is not consistent between Bayesian and frequentist functions
+`bayesian_tumor_growth()` and `bayesian_body_weight()` return `treatment_effects` with columns `Adjusted_Mean`, `SE`, `DF`, `Lower_CL`, `Upper_CL`, `Note` — sourced from `emmeans`. The frequentist `tumor_growth_statistics()` returns the same schema. However, `bayesian_survival()` returns `Time_Ratio`, `Lower_CL`, `Upper_CL`, `HR`, `Median_Survival` — a completely different schema. Dashboard modules that render treatment_effects tables must handle each function type separately.
+
+**Suggestion:** Define a canonical schema document and have each function document its deviations explicitly.
+
+#### B7.2 `bayesian_survival` is the only Bayesian function not returning `transform_used`
+All other Bayesian functions return `transform_used` in the result list. `bayesian_survival` does not — it has `family_used` and `frailty_used` instead. This is appropriate since survival models do not use a volume transform, but the absence of the field means `bayesian_therapeutic_window` cannot be applied to survival results (and the documentation should make this explicit).
+
+---
+
+### B8. Quick-Reference Checklist — Bayesian Functions
+
+| # | Issue | Severity | File(s) | Status |
+|---|-------|----------|---------|--------|
+| B1.1 | `model_type_used = "bayes"` should be `"bayes_tg"` | Major | `bayesian_tumor_growth.R:579` | Open |
+| B1.2 | `prior_strength` default is `"weakly_informative"` in body_weight, `"skeptical"` elsewhere | Major | `bayesian_body_weight.R:116` | Open |
+| B1.3 | `"informative"` preset missing from `bayesian_dose_response` | Major | `bayesian_dose_response.R:123` | Open |
+| B1.4 | `Lower_CL`/`Upper_CL` should be `Lower_CrI`/`Upper_CrI` in Bayesian functions | Major | TG, BW, Survival | Open |
+| B1.5 | `include_frailty` vs `include_cage_effect` — same concept, different name | Minor | `bayesian_survival.R:149` | Open |
+| B1.6 | Intercept prior width: `b_sd * 2.5` in 3 files, `b_sd * 2.0` in synergy | Minor | `bayesian_synergy.R:287` | Open |
+| B1.7 | `set_prior()` in synergy vs `prior_string()` everywhere else | Minor | `bayesian_synergy.R:276` | Open |
+| B2.1 | `bt()` back-transform helper duplicated in 3 files | Minor | BW, Synergy, TWM | Open |
+| B2.2 | MCMC diagnostics DF construction duplicated in 4+ files; schema differs in synergy | Minor | Multiple | Open |
+| B2.3 | Prior specification switch duplicated in 5 files | Minor | Multiple | Open |
+| B2.4 | Cage placeholder setup duplicated in 4 files | Minor | Multiple | Open |
+| B3.1 | Loewe 1e-6 floor arbitrary and undocumented; produces huge CI for near-zero combo effects | Major | `bayesian_synergy.R:413` | Open |
+| B3.2 | `bayesian_synergy` MCMC diagnostics missing Bulk_ESS and Tail_ESS | Minor | `bayesian_synergy.R:317` | Open |
+| B3.3 | All-zero/negative volume with log transform silently produces `log(Inf)` | Major | TG, BW, Synergy | Open |
+| B3.4 | TWM group-name intersection not normalised for whitespace/case | Minor | `bayesian_therapeutic_window.R:225` | Open |
+| B3.5 | `bliss_summary` inconsistent rounding (3 vs 4 dp) | Minor | `bayesian_synergy.R:402` | Open |
+| B4.1 | Reference-group auto-detection not documented | Minor | `bayesian_tumor_growth.R` | Open |
+| B4.2 | Weight-loss endpoints not documented in `bayesian_body_weight` | Minor | `bayesian_body_weight.R` | Open |
+| B4.3 | `bayesian_synergy` missing `@section Assumptions and Limitations:` | Minor | `bayesian_synergy.R` | Open |
+| B4.4 | `bayes_prior_posterior_plot()` cross-file dependency not indicated | Minor | `bayesian_tumor_growth.R` | Open |
+| B5.1 | `bayesian_body_weight` calls `posterior_epred()` 3× instead of 2× | Minor | `bayesian_body_weight.R:416` | Open |
+| B6.1 | No `bayesian_power_analysis()` function | Enhancement | — | Open |
+| B6.2 | No single-call wrapper for TWM (requires two pre-fitted models) | Enhancement | `bayesian_therapeutic_window.R` | Open |
+| B6.3 | No `bayesian_synergy_over_time()` | Enhancement | — | Open |
+| B7.1 | Treatment effects table schema not consistent across Bayesian/frequentist | Minor | Multiple | Open |
+| B7.2 | `bayesian_survival` does not return `transform_used` | Minor | `bayesian_survival.R` | Open |
+
+---
+
 ## 5. Quick-Reference Checklist
 
 | # | Issue | Severity | File | Status |
