@@ -5,6 +5,20 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-05-19
+
+### Added
+- `bayesian_dose_response()` — new exported function for Bayesian Hill/Emax dose-response modelling via `brms`. Fits the nonlinear inhibition model TGI = Emax / (1 + (EC50/Dose)^Hill) to per-mouse Tumour Growth Inhibition values computed relative to the vehicle control mean at the endpoint day. Key features:
+  - Log/logit reparameterisation ensures positivity constraints without hard bounds: Emax = inv_logit(logEmax) ∈ (0,1), EC50 = exp(logEC50) > 0, Hill = exp(logHill) > 0. The model is fitted on treated animals only (Dose > 0); the reference group defines TGI = 0 at Dose = 0 by construction.
+  - Data-adaptive EC50 prior centred at the log geometric mean of the observed non-zero doses, so the prior is automatically reasonable across different dose scales.
+  - Prior-strength presets: `"skeptical"` (default; narrow priors centred at Emax ≈ 0.82, Hill = 1, EC50 at geometric mean dose), `"weakly_informative"`, `"diffuse"`, and `"manual"` (supply `prior_emax`, `prior_ec50`, `prior_hill`, `prior_sigma` directly as brms prior strings on the log/logit scale).
+  - `dr_parameters` table: EC50, Emax, and Hill back-transformed to interpretable scale with posterior median and 95 % CrI.
+  - `dose_response_summary`: per-dose observed TGI mean/SD alongside posterior-predicted median and 95 % CrI.
+  - `dose_response_curve_plot`: posterior median ± 95 % CrI ribbon over a dense dose grid with observed points; vertical red dashed line at the posterior median EC50 and horizontal reference at TGI = 0.5.
+  - `prior_posterior_plot`, `pp_check_plot`, `mcmc_trace_plot` all returned when `plots = TRUE`.
+  - Returns `model_type_used = "bayes_dr"`, `tgi_data` (analysis data frame), and `control_mean_volume`.
+- Tests for `bayesian_dose_response()` in `tests/testthat/test-bayesian_dose_response.R` (17 tests): return structure, `model_type_used`, `brmsfit` class, EC50/Emax/Hill presence and biological validity (Emax ∈ (0,1), EC50 > 0, Hill > 0, CI brackets median), dose-response summary columns and row count, monotone observed TGI with dose, `tgi_data` content, `control_mean_volume` finiteness, MCMC diagnostics, summary metadata, input-validation errors, `return_model = FALSE`, and `dose_response_curve_plot` ggplot class.
+
 ## [0.3.9] - 2026-05-19
 
 ### Added
