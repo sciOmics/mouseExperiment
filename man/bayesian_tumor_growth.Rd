@@ -24,6 +24,7 @@ bayesian_tumor_growth(
   n_chains = 4L,
   n_iter = 2000L,
   seed = 42L,
+  include_cage_effect = TRUE,
   return_model = TRUE,
   plots = TRUE,
   verbose = FALSE,
@@ -43,8 +44,10 @@ bayesian_tumor_growth(
 \item{id_column}{Column name for individual animal ID. Default \code{"ID"}.}
 
 \item{cage_column}{Column name for cage ID, or \code{NULL} (default).
-When supplied, cage effects are not modelled but the column is used for
-composite mouse-key construction (consistent with the \code{lme4} path).}
+When supplied and \code{include_cage_effect = TRUE}, a cage-level random
+intercept is added to the model (\code{(1|cage/ID)} for intercept-only
+random effects, \code{(Day|ID) + (1|cage)} for random slopes).
+The column is also used for composite mouse-key construction.}
 
 \item{dose_column}{Reserved for future use; currently ignored.}
 
@@ -98,6 +101,11 @@ Only used when \code{prior_strength = "manual"}.}
 
 \item{seed}{Integer random seed for reproducibility. Default \code{42}.}
 
+\item{include_cage_effect}{Logical. When \code{TRUE} (default) and
+\code{cage_column} is supplied, a cage random intercept is included in the
+random-effects structure. Set \code{FALSE} to use cage only for key
+construction without modelling it.}
+
 \item{return_model}{Logical. Return the \code{brmsfit} object? Default
 \code{TRUE}. Set \code{FALSE} to reduce memory when only summaries are
 needed.}
@@ -136,10 +144,19 @@ per fixed-effect parameter. Rhat > 1.01 is flagged as not converged.}
 or \code{NULL} when \code{plots = FALSE}.}
 \item{\code{posterior_dist_plot}}{Posterior density areas for treatment
 parameters (bayesplot), or \code{NULL} when \code{plots = FALSE}.}
+\item{\code{prior_posterior_plot}}{Density overlay of prior (grey) and
+posterior (blue) for each treatment-effect coefficient. A vertical
+dashed line marks zero (no effect). Useful for assessing how much the
+data updated the prior. \code{NULL} when \code{plots = FALSE}.}
 \item{\code{credible_intervals_plot}}{Forest plot of group EMMs with
 95 \% CrI, or \code{NULL} when \code{plots = FALSE}.}
 \item{\code{mcmc_trace_plot}}{MCMC trace plot for treatment parameters,
 or \code{NULL} when \code{plots = FALSE}.}
+\item{\code{residuals_plot}}{Posterior mean residuals vs. study day,
+faceted by treatment group with a loess smoother. Systematic curvature
+indicates that the log-linear time assumption is violated and a GAM or
+nonlinear model should be considered. \code{NULL} when
+\code{plots = FALSE}.}
 \item{\code{growth_rates}}{Per-animal exponential growth rates (same
 structure as the \code{lme4} path; estimated by log-linear OLS, not
 MCMC).}

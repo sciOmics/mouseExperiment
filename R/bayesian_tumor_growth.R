@@ -15,8 +15,14 @@
 #' @param treatment_column Column name for treatment group. Default \code{"Treatment"}.
 #' @param id_column Column name for individual animal ID. Default \code{"ID"}.
 #' @param cage_column Column name for cage ID, or \code{NULL} (default).
-#'   When supplied, cage effects are not modelled but the column is used for
-#'   composite mouse-key construction (consistent with the \code{lme4} path).
+#'   When supplied and \code{include_cage_effect = TRUE}, a cage-level random
+#'   intercept is added to the model (\code{(1|cage/ID)} for intercept-only
+#'   random effects, \code{(Day|ID) + (1|cage)} for random slopes).
+#'   The column is also used for composite mouse-key construction.
+#' @param include_cage_effect Logical. When \code{TRUE} (default) and
+#'   \code{cage_column} is supplied, a cage random intercept is included in the
+#'   random-effects structure. Set \code{FALSE} to use cage only for key
+#'   construction without modelling it.
 #' @param dose_column Reserved for future use; currently ignored.
 #' @param transform Volume transformation applied before modelling:
 #'   \code{"log"} (default, recommended for exponential growth),
@@ -92,10 +98,19 @@
 #'     or \code{NULL} when \code{plots = FALSE}.}
 #'   \item{\code{posterior_dist_plot}}{Posterior density areas for treatment
 #'     parameters (bayesplot), or \code{NULL} when \code{plots = FALSE}.}
+#'   \item{\code{prior_posterior_plot}}{Density overlay of prior (grey) and
+#'     posterior (blue) for each treatment-effect coefficient. A vertical
+#'     dashed line marks zero (no effect). Useful for assessing how much the
+#'     data updated the prior. \code{NULL} when \code{plots = FALSE}.}
 #'   \item{\code{credible_intervals_plot}}{Forest plot of group EMMs with
 #'     95 % CrI, or \code{NULL} when \code{plots = FALSE}.}
 #'   \item{\code{mcmc_trace_plot}}{MCMC trace plot for treatment parameters,
 #'     or \code{NULL} when \code{plots = FALSE}.}
+#'   \item{\code{residuals_plot}}{Posterior mean residuals vs. study day,
+#'     faceted by treatment group with a loess smoother. Systematic curvature
+#'     indicates that the log-linear time assumption is violated and a GAM or
+#'     nonlinear model should be considered. \code{NULL} when
+#'     \code{plots = FALSE}.}
 #'   \item{\code{growth_rates}}{Per-animal exponential growth rates (same
 #'     structure as the \code{lme4} path; estimated by log-linear OLS, not
 #'     MCMC).}
@@ -136,8 +151,9 @@
 #' \doi{10.18637/jss.v080.i01}
 #'
 #' @importFrom stats as.formula relevel
-#' @importFrom ggplot2 ggplot aes geom_pointrange geom_vline scale_colour_manual
-#'   labs theme_classic
+#' @importFrom ggplot2 ggplot aes geom_density geom_point geom_pointrange
+#'   geom_smooth geom_vline geom_hline scale_colour_manual scale_fill_manual
+#'   facet_wrap labs theme theme_classic
 #' @export
 bayesian_tumor_growth <- function(
   df,
@@ -158,6 +174,7 @@ bayesian_tumor_growth <- function(
   n_chains                     = 4L,
   n_iter                       = 2000L,
   seed                         = 42L,
+  include_cage_effect          = TRUE,
   return_model                 = TRUE,
   plots                        = TRUE,
   verbose                      = FALSE,
@@ -229,10 +246,22 @@ bayesian_tumor_growth <- function(
   }
 
   # ── Formula ────────────────────────────────────────────────────────────────
-  re_term <- if (random_effects_specification == "slope") {
-    paste0("(", time_column, " | ", id_column, ")")
+  use_cage_re <- isTRUE(include_cage_effect) && !no_cage_mode
+
+  re_term <- if (use_cage_re) {
+    if (random_effects_specification == "slope") {
+      # Random slopes per animal + random intercept per cage (crossed)
+      paste0("(", time_column, " | ", id_column, ") + (1 | ", cage_column, ")")
+    } else {
+      # Animals nested within cages: (1|cage) + (1|cage:ID)
+      paste0("(1 | ", cage_column, "/", id_column, ")")
+    }
   } else {
-    paste0("(1 | ", id_column, ")")
+    if (random_effects_specification == "slope") {
+      paste0("(", time_column, " | ", id_column, ")")
+    } else {
+      paste0("(1 | ", id_column, ")")
+    }
   }
 
   fixed_part <- paste(volume_column, "~", treatment_column, "*", time_column)
@@ -280,14 +309,15 @@ bayesian_tumor_growth <- function(
   }
 
   model <- brms::brm(
-    formula = brms_formula,
-    data    = analysis_df,
-    prior   = selected_priors,
-    chains  = as.integer(n_chains),
-    iter    = as.integer(n_iter),
-    seed    = as.integer(seed),
-    silent  = if (isTRUE(verbose)) 0L else 2L,
-    refresh = if (isTRUE(verbose)) 100L else 0L
+    formula      = brms_formula,
+    data         = analysis_df,
+    prior        = selected_priors,
+    sample_prior = "yes",
+    chains       = as.integer(n_chains),
+    iter         = as.integer(n_iter),
+    seed         = as.integer(seed),
+    silent       = if (isTRUE(verbose)) 0L else 2L,
+    refresh      = if (isTRUE(verbose)) 100L else 0L
   )
 
   # ── Posterior summary (fixed effects) ──────────────────────────────────────
@@ -396,8 +426,10 @@ bayesian_tumor_growth <- function(
   # ── Plots ──────────────────────────────────────────────────────────────────
   pp_check_plot           <- NULL
   posterior_dist_plot     <- NULL
+  prior_posterior_plot    <- NULL
   credible_intervals_plot <- NULL
   mcmc_trace_plot         <- NULL
+  residuals_plot          <- NULL
 
   if (isTRUE(plots)) {
 
@@ -430,6 +462,12 @@ bayesian_tumor_growth <- function(
         }
       }
     }
+
+    # Prior vs posterior overlay
+    prior_posterior_plot <- tryCatch(
+      bayes_prior_posterior_plot(model, treatment_column),
+      error = function(e) NULL
+    )
 
     # Credible intervals forest plot from treatment_effects
     if (!is.null(treatment_effects) && nrow(treatment_effects) > 0) {
@@ -465,15 +503,41 @@ bayesian_tumor_growth <- function(
         ) +
         ggplot2::theme_classic(base_size = 14)
     }
+
+    # Residuals vs Day — curvature diagnostic
+    residuals_plot <- tryCatch({
+      resids   <- residuals(model, type = "ordinary")[, "Estimate"]
+      resid_df <- data.frame(
+        study_day = analysis_df[[time_column]],
+        Residual  = resids,
+        Treatment = analysis_df[[treatment_column]]
+      )
+      ggplot2::ggplot(
+          resid_df,
+          ggplot2::aes(x = .data[["study_day"]], y = .data[["Residual"]])
+        ) +
+        ggplot2::geom_point(alpha = 0.35, size = 1.5) +
+        ggplot2::geom_smooth(
+          method   = "loess", se = TRUE, formula = y ~ x,
+          colour   = "steelblue", linewidth = 0.8,
+          fill     = "steelblue", alpha = 0.15
+        ) +
+        ggplot2::geom_hline(
+          yintercept = 0, linetype = "dashed",
+          colour = "grey50", linewidth = 0.5
+        ) +
+        ggplot2::facet_wrap(~ Treatment) +
+        ggplot2::labs(
+          title    = "Residuals vs. Study Day",
+          subtitle = "Curvature indicates non-linear growth — consider a GAM or nonlinear model",
+          x        = time_column,
+          y        = paste0("Residual (", transform, " scale)")
+        ) +
+        ggplot2::theme_classic(base_size = 14)
+    }, error = function(e) NULL)
   }
 
   # ── Analysis summary metadata ──────────────────────────────────────────────
-  re_label <- if (random_effects_specification == "slope") {
-    paste0("(", time_column, " | ", id_column, ")")
-  } else {
-    paste0("(1 | ", id_column, ")")
-  }
-
   analysis_summary <- list(
     analysis_type = "Bayesian Linear Mixed-Effects Model (brms)",
     data_description = list(
@@ -487,11 +551,12 @@ bayesian_tumor_growth <- function(
       reference_group  = reference_group
     ),
     model_specification = list(
-      fixed_effects  = paste(volume_column, "~",
-                             treatment_column, "*", time_column),
-      random_effects = re_label,
-      prior_strength = prior_strength,
-      transform      = transform
+      fixed_effects      = paste(volume_column, "~",
+                                 treatment_column, "*", time_column),
+      random_effects     = re_term,
+      cage_effect_modelled = use_cage_re,
+      prior_strength     = prior_strength,
+      transform          = transform
     ),
     methods = list(
       engine          = paste0("brms (", n_chains, " chains × ",
@@ -520,10 +585,77 @@ bayesian_tumor_growth <- function(
     mcmc_diagnostics        = mcmc_diagnostics,
     pp_check_plot           = pp_check_plot,
     posterior_dist_plot     = posterior_dist_plot,
+    prior_posterior_plot    = prior_posterior_plot,
     credible_intervals_plot = credible_intervals_plot,
     mcmc_trace_plot         = mcmc_trace_plot,
+    residuals_plot          = residuals_plot,
     growth_rates            = growth_rates,
     data_summary            = data_summary,
     necrosis_summary        = necrosis_summary
   )
+}
+
+
+#' Prior vs posterior density overlay for treatment-effect coefficients
+#'
+#' Shared by bayesian_tumor_growth() and bayesian_survival(). Requires the
+#' model to have been fitted with sample_prior = "yes".
+#' @noRd
+bayes_prior_posterior_plot <- function(model, treatment_column) {
+  post <- tryCatch(brms::as_draws_df(model), error = function(e) NULL)
+  if (is.null(post)) return(NULL)
+
+  safe_tx <- gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1", treatment_column)
+  tx_cols <- grep(paste0("^b_", safe_tx), names(post), value = TRUE)
+  if (length(tx_cols) == 0) return(NULL)
+
+  # brms stores class-level "b" prior draws as "prior_b"
+  prior_col <- if ("prior_b" %in% names(post)) post$prior_b else NULL
+
+  clean <- function(x) sub(paste0("^b_", treatment_column), "", x)
+
+  post_long <- do.call(rbind, lapply(tx_cols, function(col) {
+    data.frame(Parameter = clean(col), Value = post[[col]],
+               Source = "Posterior", stringsAsFactors = FALSE)
+  }))
+
+  plot_df <- if (!is.null(prior_col)) {
+    prior_long <- do.call(rbind, lapply(tx_cols, function(col) {
+      data.frame(Parameter = clean(col), Value = prior_col,
+                 Source = "Prior", stringsAsFactors = FALSE)
+    }))
+    rbind(post_long, prior_long)
+  } else {
+    post_long
+  }
+
+  plot_df$Source <- factor(plot_df$Source, levels = c("Prior", "Posterior"))
+
+  ggplot2::ggplot(
+    plot_df,
+    ggplot2::aes(x      = .data[["Value"]],
+                 fill   = .data[["Source"]],
+                 colour = .data[["Source"]])
+  ) +
+    ggplot2::geom_density(alpha = 0.35, linewidth = 0.6) +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed",
+                        colour = "grey30", linewidth = 0.5) +
+    ggplot2::facet_wrap(~ Parameter, scales = "free_y") +
+    ggplot2::scale_fill_manual(
+      values = c(Prior = "grey60", Posterior = "steelblue")
+    ) +
+    ggplot2::scale_colour_manual(
+      values = c(Prior = "grey40", Posterior = "steelblue4")
+    ) +
+    ggplot2::labs(
+      title    = "Prior vs. Posterior Distributions",
+      subtitle = paste0("Treatment-effect coefficients; ",
+                        "dashed line = no effect (0)"),
+      x        = "Coefficient value",
+      y        = "Density",
+      fill     = NULL,
+      colour   = NULL
+    ) +
+    ggplot2::theme_classic(base_size = 14) +
+    ggplot2::theme(legend.position = "top")
 }

@@ -5,6 +5,45 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.9] - 2026-05-19
+
+### Added
+- `bayesian_body_weight()` — new exported function for Bayesian linear mixed-effects analysis of longitudinal body weight data using `brms`. Mirrors the `analyze_body_weight()` API with Bayesian-specific additions:
+  - Default `transform = "none"` (body weight is approximately normal; `"log"` and `"sqrt"` also supported).
+  - Optional tumor weight subtraction: `adjust_tumor_weight = TRUE` subtracts `Volume / 1000 × tumor_density` from gross body weight before modelling.
+  - `weight_loss_summary` — per-group posterior percentage weight change from the first to last study day (median + 95 % CrI), computed via `brms::posterior_epred(..., re_formula = NA)` and back-transformed to the original weight scale.
+  - `weight_trajectory_plot` — population-level posterior median ± 95 % CrI ribbon over the full study timeline with observed data points overlaid per treatment group.
+  - Same prior-strength presets as `bayesian_tumor_growth()` (default `"weakly_informative"`), cage random-intercept support (`include_cage_effect`), `prior_posterior_plot`, `residuals_plot`, `pp_check_plot`, `posterior_dist_plot`, `credible_intervals_plot`, and `mcmc_trace_plot`.
+  - Returns `model_type_used = "bayes_bw"` and `weight_data` (prepared analysis data frame, analogous to `analyze_body_weight()$weight_data`).
+- `make_bw_simple()` test fixture added to `tests/testthat/helper-fixtures.R`: 2 groups × 5 mice × 5 time-points (days 0, 7, 14, 21, 28); Control stable at 22 g, TreatmentA losing −0.08 g/day (≈−10 % by day 28).
+- Tests for `bayesian_body_weight()` in `tests/testthat/test-bayesian_body_weight.R` (15 tests): return structure, `model_type_used`, transform, `brmsfit` class, treatment-effects columns, reference-group labelling, MCMC diagnostics, `weight_loss_summary` columns and sign-check for the treated group, `weight_data` row count, summary metadata, input-validation errors, `return_model = FALSE`, and `weight_trajectory_plot` ggplot class.
+
+## [0.3.8] - 2026-05-19
+
+### Added
+- `bayesian_survival()` — new exported function for Bayesian parametric survival / accelerated-failure-time (AFT) analysis using `brms`. Key features:
+  - Families: `"weibull"` (default), `"lognormal"`, `"exponential"`, `"gamma"` — all fitted in AFT parameterisation.
+  - Effect metric: Time Ratio (TR = exp(coef)); for Weibull and exponential, a Hazard Ratio (HR = TR^(−shape)) is also computed draw-wise from the joint posterior and summarised as a posterior median.
+  - Frailty model: optional cage-level random intercept (`include_frailty = TRUE`) when `cage_column` is supplied, modelling inter-cage heterogeneity in baseline survival.
+  - `treatment_effects` table schema is compatible with `survival_statistics()`: columns `Group`, `Time_Ratio`, `Lower_CL`, `Upper_CL`, `HR`, `Median_Survival`, `Events`, `Total`, `Event_Rate`, `Note`.
+  - Censoring: automatically handles the brms censoring convention inversion (`event = 1` → `brms_cens = 0`; censored = 0 → `brms_cens = 1`).
+  - Prior-strength presets (`"skeptical"` default through `"diffuse"`) with auxiliary-class priors (`"shape"` for Weibull/gamma, `"sigma"` for lognormal, none for exponential); manual prior specification via `prior_b`, `prior_intercept`, `prior_sd`, `prior_aux`.
+  - `sample_prior = "yes"` enables `prior_posterior_plot` (grey prior vs blue posterior density overlay for each treatment coefficient).
+  - Plots: `pp_check_plot`, `posterior_dist_plot`, `prior_posterior_plot`, `mcmc_trace_plot`, `survival_curve_plot` (200-draw posterior credible bands with KM overlay).
+  - Returns `model_type_used = "bayes_survival"`, `family_used`, `frailty_used`, `survival_data` (standardised analysis data frame).
+- Tests for `bayesian_survival()` in `tests/testthat/test-bayesian_survival.R` (13 tests plus 2 standalone): return structure, `model_type_used`, family, treatment-effects columns, reference TR = 1 and HR = 1, non-reference TR < 1 and Upper_CL < 1, event counts, positive-finite median survival, posterior_summary Rhat, MCMC diagnostics Converged logical, survival_data row count, missing-column error, invalid reference-group error, summary metadata, lognormal HR = NA, frailty_used = FALSE without cage column.
+
+## [0.3.7] - 2026-05-19
+
+### Added
+- `bayesian_tumor_growth()` — cage random-intercept modelling via new `include_cage_effect` parameter (default `TRUE`). When a `cage_column` is supplied and `include_cage_effect = TRUE`, the random-effects structure is `(1|cage/ID)` for intercept-only or `(Day|ID) + (1|cage)` for random slopes, capturing between-cage heterogeneity. Set `include_cage_effect = FALSE` to use `cage_column` solely for composite mouse-key construction without modelling it.
+- `bayesian_tumor_growth()` — `"skeptical"` prior preset added and set as the new default (`b ~ N(0, 0.25)`, `sd/σ ~ Exponential(2)`). Expresses the scientifically motivated belief that treatment effects are small and requires stronger evidence to support large posterior differences. Previous default `"weakly_informative"` remains available.
+- `bayesian_tumor_growth()` — `"manual"` prior-strength option: supply `prior_b`, `prior_intercept`, `prior_sd`, and `prior_sigma` as brms prior strings for full control over the prior specification.
+- `bayesian_tumor_growth()` — `prior_posterior_plot` in the return list: overlaid density plot of prior (grey) and posterior (blue) for each treatment-effect coefficient, with a dashed zero-effect reference line. Produced by fitting with `sample_prior = "yes"` and calling the new internal helper `bayes_prior_posterior_plot()`.
+- `bayesian_tumor_growth()` — `residuals_plot` in the return list: posterior-mean residuals vs study day, faceted by treatment group with a loess smoother. Systematic curvature flags violations of the log-linear time assumption.
+- Internal helper `bayes_prior_posterior_plot(model, treatment_column)` defined at the bottom of `R/bayesian_tumor_growth.R` (`@noRd`); shared by `bayesian_survival()` and `bayesian_body_weight()`.
+- `summary$model_specification` now includes `random_effects` (the RE formula term) and `cage_effect_modelled` (logical).
+
 ## [0.3.6] - 2026-05-14
 
 ### Added
