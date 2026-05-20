@@ -5,6 +5,23 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-05-20
+
+### Added
+- `bayesian_therapeutic_window()` — new exported function that propagates full posterior uncertainty through the Therapeutic Window Metric (TWM = TGI / |weight-loss %|) via draw-wise arithmetic on posterior predictive samples from `bayesian_tumor_growth()` and `bayesian_body_weight()` results. Key features:
+  - Accepts `tg_result` (from `bayesian_tumor_growth(return_model = TRUE)`) and `bw_result` (from `bayesian_body_weight(return_model = TRUE)`); validates that both contain a `brmsfit` object.
+  - Calls `brms::posterior_epred(..., re_formula = NA)` on each model for population-level predictions, back-transforms from the model scale using each model's `transform_used` field (`log` → `exp`, `sqrt` → `x^2`, otherwise identity).
+  - TGI per draw: `1 - V_trt^(d) / V_ctrl^(d)` using the posterior predictive volume at the endpoint day. Weight-loss % per draw: `(W_last^(d) - W_first^(d)) / W_first^(d) × 100`.
+  - `noise_floor` (default 1 %) clamps the TWM denominator so that near-zero weight-loss values do not inflate the metric to infinity: `TWM^(d) = TGI^(d) / max(|WL%^(d)|, noise_floor) / 100`.
+  - Draws from the two independently fitted models are aligned draw-by-draw (using the minimum draw count when chains differ), yielding a proper posterior distribution of TWM with a direct probability interpretation.
+  - `twm_table`: one row per treated group with `TWM_Median`, `TWM_Lower` (2.5 % CrI), `TWM_Upper` (97.5 % CrI), `TGI_Median`, `WL_Pct_Median`, `N_Draws`.
+  - `tgi_summary` and `wl_summary`: per-group posterior medians and 95 % CrI for TGI and weight-loss % respectively, including the reference group.
+  - `twm_plot`: forest plot of TWM ± 95 % CrI per treated group; vertical dashed line at TWM = 1 (break-even efficacy-safety boundary).
+  - `tgi_wl_plot`: scatter of posterior-median TGI vs weight-loss % per group with the TWM = 1 isoline (dotted red) and the noise-floor vertical dashed reference.
+  - Returns `model_type_used = "bayes_twm"`.
+- `make_tg_for_twm()` test fixture added to `tests/testthat/test-bayesian_therapeutic_window.R`: 2 groups × 5 mice × 4 time-points (days 0, 7, 14, 21); Control log_slope = 0.12 (fast growth), TreatmentA log_slope = 0.03 (strongly inhibited), yielding positive TGI > 0 for TreatmentA. Combined with `make_bw_simple()` for weight-loss data.
+- Tests for `bayesian_therapeutic_window()` in `tests/testthat/test-bayesian_therapeutic_window.R` (18 tests): return structure, `model_type_used`, `twm_table` columns and row count, exclusion of reference group, `TWM_Median` finiteness, positive `TGI_Median`, CrI brackets median, `N_Draws` positive integer, `tgi_summary` and `wl_summary` row count and columns, control TGI near zero, TreatmentA negative weight loss, summary metadata, `twm_plot`/`tgi_wl_plot` ggplot class, input-validation errors (NULL model, invalid reference group), and `plots = FALSE` returns NULL plots.
+
 ## [0.4.0] - 2026-05-19
 
 ### Added
