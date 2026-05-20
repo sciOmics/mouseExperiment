@@ -5,6 +5,19 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-05-20
+
+### Added
+- `bayesian_synergy()` — new exported function for Bayesian drug combination synergy analysis with full posterior uncertainty quantification. Fits a single Bayesian linear mixed-effects model (Treatment × Day) on all four groups (control, drug A, drug B, combination) using `brms`, then propagates posterior uncertainty through both Bliss Independence and Loewe Combination Index metrics via draw-wise arithmetic on `posterior_epred` samples. Key features:
+  - `tgi_summary`: per-group posterior median TGI with 95 % CrI at the endpoint day.
+  - `bliss_summary`: posterior distribution of Bliss excess (Δ = observed FE_combo − Bliss expected FE); `P_Synergy = P(Δ > 0)` directly interpretable as the probability that the combination exceeds Bliss-independence additivity. Includes `Expected_FE_Median` and `Observed_FE_Median` for direct comparison.
+  - `loewe_summary`: posterior distribution of Loewe CI (single-dose approximation: CI = min(FE_A + FE_B, 1) / max(FE_combo, ε)); `P_Synergy = P(CI < 1)`; `Interpretation` string ("Synergistic", "Additive", or "Antagonistic") based on the posterior-median CI.
+  - `synergy_table`: combined six-row summary (four observed groups + Bliss-expected + Loewe-expected) with posterior median volumes, TGI %, and 95 % CrI.
+  - `synergy_plot`: bar chart of observed TGI per group with 95 % CrI error bars; dashed blue line = Bliss expected TGI; dotted red line = Loewe expected TGI.
+  - `posterior_dist_plot`: side-by-side density overlays of Bliss excess and Loewe CI draw distributions with reference lines at 0 / 1 respectively and P(synergy) annotation.
+  - Same prior-strength presets, transform options, and cage random-intercept support as `bayesian_tumor_growth()`. Returns `model_type_used = "bayes_synergy"`, `transform_used`, `posterior_summary`, and `mcmc_diagnostics`.
+- Tests for `bayesian_synergy()` in `tests/testthat/test-bayesian_synergy.R` (22 tests): return structure, `model_type_used`, `transform_used`, `brmsfit` class, `tgi_summary` row count and columns, control TGI near zero, treated groups positive TGI, `bliss_summary` fields, Bliss P_Synergy ∈ [0,1], CrI brackets median, `loewe_summary` fields, Loewe CI positive and finite, Loewe P_Synergy ∈ [0,1], Interpretation string, `synergy_table` row count and Type column, MCMC diagnostics, summary metadata, `synergy_plot`/`posterior_dist_plot` ggplot class, input-validation errors, `return_model = FALSE`, `plots = FALSE`.
+
 ## [0.4.1] - 2026-05-20
 
 ### Added
