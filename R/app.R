@@ -92,8 +92,8 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
         )),
         tags$script(
           async = NA,
-          src = "https://analytics.headpudding.com/script.js",
-          `data-website-id` = "2bab3ca9-ec31-4ff2-9492-bd261dbedd48"
+          src = "https://analytics.mouseexperiment.com/script.js",
+          `data-website-id` = "f820d0f9-9d2b-4048-b34f-078aa2fea7da"
         ),
         tags$script(src = "js/umami-events.js")
       )
