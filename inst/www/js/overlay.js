@@ -20,3 +20,28 @@ $(document).ready(function() {
   }
   $(document).one('shiny:sessioninitialized', disableDiagnosticsTab);
 });
+
+window.showAnalysisProgress = function(message, detail) {
+  var el = document.getElementById('analysis-progress-overlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'analysis-progress-overlay';
+    el.innerHTML =
+      '<div id="analysis-progress-card">' +
+        '<div id="analysis-progress-message"></div>' +
+        '<div id="analysis-progress-bar-wrap">' +
+          '<div id="analysis-progress-bar"></div>' +
+        '</div>' +
+        '<div id="analysis-progress-detail"></div>' +
+      '</div>';
+    document.body.appendChild(el);
+  }
+  document.getElementById('analysis-progress-message').textContent = message || '';
+  document.getElementById('analysis-progress-detail').textContent  = detail  || '';
+  el.style.display = 'flex';
+};
+
+window.hideAnalysisProgress = function() {
+  var el = document.getElementById('analysis-progress-overlay');
+  if (el) el.style.display = 'none';
+};

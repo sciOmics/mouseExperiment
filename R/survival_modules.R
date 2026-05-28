@@ -689,8 +689,7 @@ survival_server <- function(id, rv) {
         ref_date       = rv$settings$reference_date
       )
 
-      progress_bayes <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
-      progress_bayes$set(message = "Starting Bayesian fit…", value = 0.05)
+      shinyjs::runjs("window.showAnalysisProgress('Bayesian survival fit running...', 'Fitting Weibull model with brms. This may take 3-12 minutes.')")
 
       output$surv_status_msg <- renderUI({
         tagList(
@@ -725,7 +724,7 @@ survival_server <- function(id, rv) {
           plots            = TRUE
         )
       }) %...>% (function(result) {
-        progress_bayes$close()
+        shinyjs::runjs("window.hideAnalysisProgress()")
         result$model_type_used    <- "bayes"
         result$event_src_used     <- bayes_params$event_src
         result$vol_threshold_used <- bayes_params$vol_threshold
@@ -764,7 +763,7 @@ survival_server <- function(id, rv) {
           })
         }
       }) %...!% (function(err) {
-        progress_bayes$close()
+        shinyjs::runjs("window.hideAnalysisProgress()")
         err_msg <- translate_error(conditionMessage(err))
         rv$surv_running <- FALSE
         shinyjs::runjs(sprintf(
@@ -777,7 +776,7 @@ survival_server <- function(id, rv) {
     }
 
     # ── Frequentist (Cox) path ─────────────────────────────────────────────────
-    progress <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
+    progress <- shiny::Progress$new(session, min = 0, max = 1)
     progress$set(message = "Validating data...", value = 0.1)
     on.exit(progress$close(), add = TRUE)
 

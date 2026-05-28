@@ -384,51 +384,57 @@ body {
 }
 
 /* -------------------------------------------------------
-   Analysis-running overlay — restyle Shiny's Progress widget
-   as a full-screen blocking backdrop with a centered dialog.
+   Long-running analysis overlay
+   Custom full-screen dialog for Bayesian async analyses.
+   Controlled via window.showAnalysisProgress() / hideAnalysisProgress()
+   defined in overlay.js.
    ------------------------------------------------------- */
-.shiny-progress-container {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  background: rgba(0, 0, 0, 0.55) !important;
-  z-index: 99990 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  pointer-events: all !important;
+#analysis-progress-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 99990;
+  display: none;
+  align-items: center;
+  justify-content: center;
 }
 
-.shiny-progress {
-  position: relative !important;
-  top: auto !important;
-  right: auto !important;
-  width: auto !important;
-  background: white !important;
-  border-radius: 12px !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35) !important;
-  padding: 36px 48px !important;
-  min-width: 340px !important;
-  text-align: center !important;
+#analysis-progress-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  padding: 36px 48px;
+  min-width: 400px;
+  max-width: 540px;
+  text-align: center;
 }
 
-.shiny-progress .progress {
-  position: relative !important;
-  top: auto !important;
-  width: 100% !important;
-  margin-top: 16px !important;
-  margin-bottom: 0 !important;
-  height: 6px !important;
-  border-radius: 3px !important;
+#analysis-progress-message {
+  font-size: 1.15em;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 16px;
 }
 
-.shiny-progress .progress-bar {
-  background-color: var(--primary-color) !important;
-  transition: width 0.4s ease !important;
-  position: relative !important;
-  overflow: hidden !important;
+#analysis-progress-bar-wrap {
+  height: 6px;
+  background: #e9ecef;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+#analysis-progress-bar {
+  height: 100%;
+  width: 5%;
+  background-color: var(--primary-color, #2d6a4f);
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
 }
 
 @keyframes progress-shimmer {
@@ -436,38 +442,18 @@ body {
   100% { transform: translateX(200%); }
 }
 
-.shiny-progress .progress-bar::after {
-  content: "" !important;
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 50% !important;
-  height: 100% !important;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent) !important;
-  animation: progress-shimmer 1.6s ease-in-out infinite !important;
+#analysis-progress-bar::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: progress-shimmer 1.6s ease-in-out infinite;
 }
 
-.shiny-progress .progress-text {
-  position: relative !important;
-  right: auto !important;
-  width: auto !important;
-  background: none !important;
-  opacity: 1 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  text-align: center !important;
-}
-
-.shiny-progress .progress-text .progress-message {
-  font-size: 1.1em !important;
-  font-weight: 600 !important;
-  color: #333 !important;
-  margin-bottom: 4px !important;
-  display: block !important;
-}
-
-.shiny-progress .progress-text .progress-detail {
-  font-size: 0.9em !important;
-  color: #666 !important;
-  display: block !important;
+#analysis-progress-detail {
+  font-size: 0.9em;
+  color: #666;
 }

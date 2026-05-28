@@ -560,8 +560,7 @@ synergy_server <- function(id, rv) {
         n_iter     = as.integer(input$syn_bayes_iter    %||% 500L)
       )
 
-      progress_syn <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
-      progress_syn$set(message = "Starting Bayesian synergy fit…", value = 0.05)
+      shinyjs::runjs("window.showAnalysisProgress('Bayesian synergy fit running...', 'Fitting synergy model with brms. This may take 3-12 minutes.')")
 
       output$syn_status_msg <- renderUI({
         tagList(
@@ -597,7 +596,7 @@ synergy_server <- function(id, rv) {
           plots                        = TRUE
         )
       }) %...>% (function(result) {
-        progress_syn$close()
+        shinyjs::runjs("window.hideAnalysisProgress()")
         if (!is.null(rv$bayes_models)) rv$bayes_models$syn <- result$model
         else                           rv$bayes_models <- list(syn = result$model)
         result$model <- NULL
@@ -624,7 +623,7 @@ synergy_server <- function(id, rv) {
           })
         }
       }) %...!% (function(err) {
-        progress_syn$close()
+        shinyjs::runjs("window.hideAnalysisProgress()")
         err_msg <- translate_error(conditionMessage(err))
         shinyjs::runjs(sprintf("window.trackAnalysisComplete('drug_synergy', false, %s);",
                                js_string(err_msg)))
@@ -636,7 +635,7 @@ synergy_server <- function(id, rv) {
     }
 
     # ── Frequentist path ───────────────────────────────────────────────────────
-    progress <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
+    progress <- shiny::Progress$new(session, min = 0, max = 1)
     progress$set(message = "Validating data...", value = 0.1)
     on.exit(progress$close(), add = TRUE)
 

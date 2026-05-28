@@ -557,8 +557,7 @@ dose_response_server <- function(id, rv) {
         n_iter        = as.integer(input$dr_bayes_iter    %||% 500L)
       )
 
-      progress_dr <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
-      progress_dr$set(message = "Starting Bayesian dose-response fit…", value = 0.05)
+      shinyjs::runjs("window.showAnalysisProgress('Bayesian dose-response fit running...', 'Fitting Bayesian Hill/Emax model with brms. This may take 3-12 minutes.')")
 
       output$dr_status_msg <- renderUI({
         tagList(
@@ -590,7 +589,7 @@ dose_response_server <- function(id, rv) {
           plots            = TRUE
         )
       }) %...>% (function(result) {
-        progress_dr$close()
+        shinyjs::runjs("window.hideAnalysisProgress()")
         result$model_type_used <- "bayes_dr"
         if (!is.null(rv$bayes_models)) rv$bayes_models$dr <- result$model
         else                           rv$bayes_models <- list(dr = result$model)
@@ -611,7 +610,7 @@ dose_response_server <- function(id, rv) {
           })
         }
       }) %...!% (function(err) {
-        progress_dr$close()
+        shinyjs::runjs("window.hideAnalysisProgress()")
         err_msg <- translate_error(conditionMessage(err))
         shinyjs::runjs(sprintf("window.trackAnalysisComplete('dose_response', false, %s);",
                                js_string(err_msg)))
@@ -623,7 +622,7 @@ dose_response_server <- function(id, rv) {
     }
 
     # ── Frequentist path ───────────────────────────────────────────────────────
-    progress <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
+    progress <- shiny::Progress$new(session, min = 0, max = 1)
     progress$set(message = "Validating data...", value = 0.1)
     on.exit(progress$close(), add = TRUE)
 
