@@ -1036,15 +1036,6 @@ toxicity_server <- function(id, rv) {
 
       show_analysis_modal("Bayesian TWM running…", "Combining TG and BW posterior samples. This may take a few minutes.")
 
-      output$tox_status_msg <- renderUI({
-        tagList(
-          h4("Bayesian TWM running…", style = "margin-top: 18px; font-weight: 600;"),
-          p("Combining TG and BW posterior samples. This may take a few minutes.",
-            style = "color:#666;"),
-          shinycssloaders::withSpinner(div())
-        )
-      })
-
       promises::future_promise({
         mouseExperiment::bayesian_therapeutic_window(
           tg_result        = twm_params$tg_result,
@@ -1133,16 +1124,6 @@ toxicity_server <- function(id, rv) {
       )
 
       show_analysis_modal("Bayesian body weight fit running…", "Fitting body weight model with brms. This may take 3–12 minutes.")
-
-      output$tox_status_msg <- renderUI({
-        tagList(
-          h4("Bayesian model running…",
-             style = "margin-top: 18px; font-weight: 600;"),
-          p("Fitting Bayesian body weight model with brms. This may take 3–12 minutes.",
-            style = "color:#666;"),
-          shinycssloaders::withSpinner(div())
-        )
-      })
 
       promises::future_promise({
         mouseExperiment::bayesian_body_weight(

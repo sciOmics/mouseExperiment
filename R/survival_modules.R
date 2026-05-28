@@ -691,16 +691,6 @@ survival_server <- function(id, rv) {
 
       show_analysis_modal("Bayesian survival fit running…", "Fitting Weibull model with brms. This may take 3–12 minutes.")
 
-      output$surv_status_msg <- renderUI({
-        tagList(
-          h4("Bayesian model running…",
-             style = "margin-top: 18px; font-weight: 600;"),
-          p("Fitting Weibull survival model with brms. This may take 3–12 minutes.",
-            style = "color:#666;"),
-          shinycssloaders::withSpinner(div())
-        )
-      })
-
       shinyjs::runjs(sprintf(
         "window.trackAnalysisStart('survival', 'bayes', '%s');",
         bayes_params$ref_group

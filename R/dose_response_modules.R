@@ -559,16 +559,6 @@ dose_response_server <- function(id, rv) {
 
       show_analysis_modal("Bayesian dose-response fit running…", "Fitting Bayesian Hill/Emax model with brms. This may take 3–12 minutes.")
 
-      output$dr_status_msg <- renderUI({
-        tagList(
-          h4("Bayesian model running…",
-             style = "margin-top: 18px; font-weight: 600;"),
-          p("Fitting Bayesian Hill/Emax model with brms. This may take 3–12 minutes.",
-            style = "color:#666;"),
-          shinycssloaders::withSpinner(div())
-        )
-      })
-
       shinyjs::runjs("window.trackAnalysisStart('dose_response', 'bayes', 'hill_emax');")
 
       promises::future_promise({

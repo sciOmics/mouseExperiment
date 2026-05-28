@@ -562,16 +562,6 @@ synergy_server <- function(id, rv) {
 
       show_analysis_modal("Bayesian synergy fit running…", "Fitting synergy model with brms. This may take 3–12 minutes.")
 
-      output$syn_status_msg <- renderUI({
-        tagList(
-          h4("Bayesian model running…",
-             style = "margin-top: 18px; font-weight: 600;"),
-          p("Fitting synergy model with brms. This may take 3–12 minutes.",
-            style = "color:#666;"),
-          shinycssloaders::withSpinner(div())
-        )
-      })
-
       shinyjs::runjs("window.trackAnalysisStart('drug_synergy', 'bayes', 'combo_vs_monotherapy');")
 
       promises::future_promise({
