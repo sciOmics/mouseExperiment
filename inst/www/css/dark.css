@@ -214,3 +214,20 @@ body.dark-mode a[data-toggle="collapse"]:hover {
   background-color: rgba(255,255,255,0.07) !important;
 }
 
+/* ---- Bayesian analysis overlay in dark mode ---- */
+body.dark-mode #analysis-progress-card {
+  background: #2a2a2a !important;
+}
+
+body.dark-mode #analysis-progress-message {
+  color: #e0e0e0 !important;
+}
+
+body.dark-mode #analysis-progress-bar-wrap {
+  background: #444 !important;
+}
+
+body.dark-mode #analysis-progress-detail {
+  color: #aaa !important;
+}
+
