@@ -19,5 +19,10 @@ $(document).ready(function() {
     }
   }
   $(document).one('shiny:sessioninitialized', disableDiagnosticsTab);
+
+  // Remove Bootstrap modal backdrop so Bayesian progress modal appears without a dark overlay
+  $(document).on('show.bs.modal', '.modal', function() {
+    setTimeout(function() { $('.modal-backdrop').remove(); }, 0);
+  });
 });
 
