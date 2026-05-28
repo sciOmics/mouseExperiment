@@ -20,15 +20,5 @@ $(document).ready(function() {
   }
   $(document).one('shiny:sessioninitialized', disableDiagnosticsTab);
 
-  // Remove Bootstrap modal backdrop so Bayesian progress modal appears without a dark overlay.
-  // Use 'shown' (post-animation) so the backdrop exists in DOM when we remove it.
-  $(document).on('shown.bs.modal', '.modal', function() {
-    $('.modal-backdrop').remove();
-  });
-  // Bootstrap removes modal-open from body as part of backdrop fadeOut; since we removed
-  // the backdrop ourselves, force cleanup so scrolling is restored after modal closes.
-  $(document).on('hidden.bs.modal', '.modal', function() {
-    $('body').removeClass('modal-open');
-  });
 });
 

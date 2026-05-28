@@ -386,6 +386,14 @@ body {
 /* -------------------------------------------------------
    Bayesian progress modal — Bootstrap striped animated bar
    ------------------------------------------------------- */
+
+/* Hide the dark backdrop without removing it from the DOM — keeping Bootstrap's
+   lifecycle intact so it correctly removes modal-open from body on modal close. */
+.modal-backdrop {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 .modal .progress-bar-striped.active {
   background-color: var(--primary-color, #2d6a4f);
 }
