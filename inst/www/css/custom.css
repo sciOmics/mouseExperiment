@@ -386,6 +386,10 @@ body {
 /* -------------------------------------------------------
    Bayesian progress modal — Bootstrap striped animated bar
    ------------------------------------------------------- */
+.modal-backdrop {
+  display: none !important;
+}
+
 .modal .progress-bar-striped.active {
   background-color: var(--primary-color, #2d6a4f);
 }
