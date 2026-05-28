@@ -394,7 +394,7 @@ body {
   width: 100% !important;
   height: 100% !important;
   background: rgba(0, 0, 0, 0.55) !important;
-  z-index: 9998 !important;
+  z-index: 99990 !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -424,6 +424,24 @@ body {
 .shiny-progress .progress-bar {
   background-color: var(--primary-color) !important;
   transition: width 0.4s ease !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+@keyframes progress-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.shiny-progress .progress-bar::after {
+  content: "" !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 50% !important;
+  height: 100% !important;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent) !important;
+  animation: progress-shimmer 1.6s ease-in-out infinite !important;
 }
 
 .shiny-progress .shiny-progress-message {

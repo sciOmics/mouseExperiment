@@ -240,20 +240,12 @@ tumor_growth_server <- function(id, rv) {
         plot_groups       = rv$tg_plot_groups
       )
 
-      shiny::showModal(shiny::modalDialog(
-        title    = NULL,
-        footer   = NULL,
-        easyClose = FALSE,
-        div(
-          style = "text-align: center; padding: 20px 10px;",
-          icon("spinner", class = "fa-spin fa-3x", style = "color: var(--primary-color);"),
-          h4("Bayesian model running…", style = "margin-top: 18px; font-weight: 600;"),
-          p(
-            "This typically takes 3–12 minutes. Results will appear automatically when complete.",
-            style = "color: #666; margin-top: 8px;"
-          )
-        )
-      ))
+      progress_bayes <- shiny::Progress$new(session, min = 0, max = 1)
+      progress_bayes$set(
+        message = "Bayesian model running…",
+        value   = 0.05,
+        detail  = "This typically takes 3–12 minutes. Results will appear automatically when complete."
+      )
 
       promises::future_promise({
         mouseExperiment::bayesian_tumor_growth(
@@ -281,7 +273,7 @@ tumor_growth_server <- function(id, rv) {
           verbose                      = FALSE
         )
       }) %...>% (function(result) {
-        shiny::removeModal()
+        progress_bayes$close()
         result$model_type_used <- "bayes"
         if (!is.null(rv$bayes_models)) rv$bayes_models$tg <- result$model
         else rv$bayes_models <- list(tg = result$model)
@@ -297,7 +289,7 @@ tumor_growth_server <- function(id, rv) {
         )
         shinyjs::runjs("window.trackAnalysisComplete('tumor_growth', true);")
       }) %...!% (function(err) {
-        shiny::removeModal()
+        progress_bayes$close()
         rv$tg_running <- FALSE
         err_msg <- conditionMessage(err)
         output$tg_status_msg <- renderUI(
