@@ -557,7 +557,7 @@ dose_response_server <- function(id, rv) {
         n_iter        = as.integer(input$dr_bayes_iter    %||% 500L)
       )
 
-      progress_dr <- shiny::Progress$new(session, min = 0, max = 1)
+      progress_dr <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
       progress_dr$set(message = "Starting Bayesian dose-response fit…", value = 0.05)
 
       output$dr_status_msg <- renderUI({
@@ -623,7 +623,7 @@ dose_response_server <- function(id, rv) {
     }
 
     # ── Frequentist path ───────────────────────────────────────────────────────
-    progress <- shiny::Progress$new(session, min = 0, max = 1)
+    progress <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
     progress$set(message = "Validating data...", value = 0.1)
     on.exit(progress$close(), add = TRUE)
 

@@ -415,6 +415,9 @@ body {
 }
 
 .shiny-progress .progress {
+  position: relative !important;
+  top: auto !important;
+  width: 100% !important;
   margin-top: 16px !important;
   margin-bottom: 0 !important;
   height: 6px !important;
@@ -444,14 +447,27 @@ body {
   animation: progress-shimmer 1.6s ease-in-out infinite !important;
 }
 
-.shiny-progress .shiny-progress-message {
+.shiny-progress .progress-text {
+  position: relative !important;
+  right: auto !important;
+  width: auto !important;
+  background: none !important;
+  opacity: 1 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  text-align: center !important;
+}
+
+.shiny-progress .progress-text .progress-message {
   font-size: 1.1em !important;
   font-weight: 600 !important;
   color: #333 !important;
   margin-bottom: 4px !important;
+  display: block !important;
 }
 
-.shiny-progress .shiny-progress-detail {
+.shiny-progress .progress-text .progress-detail {
   font-size: 0.9em !important;
   color: #666 !important;
+  display: block !important;
 }

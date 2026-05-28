@@ -560,7 +560,7 @@ synergy_server <- function(id, rv) {
         n_iter     = as.integer(input$syn_bayes_iter    %||% 500L)
       )
 
-      progress_syn <- shiny::Progress$new(session, min = 0, max = 1)
+      progress_syn <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
       progress_syn$set(message = "Starting Bayesian synergy fit…", value = 0.05)
 
       output$syn_status_msg <- renderUI({
@@ -636,7 +636,7 @@ synergy_server <- function(id, rv) {
     }
 
     # ── Frequentist path ───────────────────────────────────────────────────────
-    progress <- shiny::Progress$new(session, min = 0, max = 1)
+    progress <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
     progress$set(message = "Validating data...", value = 0.1)
     on.exit(progress$close(), add = TRUE)
 

@@ -240,7 +240,7 @@ tumor_growth_server <- function(id, rv) {
         plot_groups       = rv$tg_plot_groups
       )
 
-      progress_bayes <- shiny::Progress$new(session, min = 0, max = 1)
+      progress_bayes <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
       progress_bayes$set(
         message = "Bayesian model running…",
         value   = 0.05,
@@ -305,7 +305,7 @@ tumor_growth_server <- function(id, rv) {
     }
 
     # Run analysis with progress indicator
-    progress <- shiny::Progress$new(session, min = 0, max = 1)
+    progress <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
     progress$set(message = "Running tumor growth analysis...", value = 0.1)
     on.exit(progress$close(), add = TRUE)
 

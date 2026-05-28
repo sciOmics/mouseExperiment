@@ -1034,7 +1034,7 @@ toxicity_server <- function(id, rv) {
         ref_group  = input$tox_reference_group %||% NULL
       )
 
-      progress_twm <- shiny::Progress$new(session, min = 0, max = 1)
+      progress_twm <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
       progress_twm$set(message = "Starting Bayesian TWM fit…", value = 0.05)
 
       output$tox_status_msg <- renderUI({
@@ -1096,7 +1096,7 @@ toxicity_server <- function(id, rv) {
     adjust    <- isTRUE(input$tox_adjust_tumor) && has_vol
     density   <- input$tox_tumor_density %||% 1.0
 
-    progress <- shiny::Progress$new(session, min = 0, max = 1)
+    progress <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
     progress$set(message = "Validating data...", value = 0.1)
     on.exit(progress$close(), add = TRUE)
 
@@ -1134,7 +1134,7 @@ toxicity_server <- function(id, rv) {
         n_iter        = as.integer(input$tox_bw_bayes_iter    %||% 500L)
       )
 
-      progress_bw <- shiny::Progress$new(session, min = 0, max = 1)
+      progress_bw <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
       progress_bw$set(message = "Starting Bayesian body weight fit…", value = 0.05)
 
       output$tox_status_msg <- renderUI({

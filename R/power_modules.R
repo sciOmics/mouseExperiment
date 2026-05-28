@@ -449,7 +449,7 @@ power_server <- function(id, rv) {
 
       n_groups <- as.integer(input$pw_ap_n_groups %||% 2)
 
-      progress <- shiny::Progress$new(session, min = 0, max = 1)
+      progress <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
       progress$set(message = "Computing a priori power…", value = 0.1)
       on.exit(progress$close(), add = TRUE)
 
@@ -548,7 +548,7 @@ power_server <- function(id, rv) {
       n_tp        <- input$pw_lmm_n_timepoints %||% 15
       timepoints  <- seq(tp_start, by = tp_interval, length.out = n_tp)
 
-      progress <- shiny::Progress$new(session, min = 0, max = 1)
+      progress <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
       progress$set(message = "Running LMM simulation… (this may take a while)", value = 0.05)
       on.exit(progress$close(), add = TRUE)
 

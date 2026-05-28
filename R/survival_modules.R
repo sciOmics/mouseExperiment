@@ -689,7 +689,7 @@ survival_server <- function(id, rv) {
         ref_date       = rv$settings$reference_date
       )
 
-      progress_bayes <- shiny::Progress$new(session, min = 0, max = 1)
+      progress_bayes <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
       progress_bayes$set(message = "Starting Bayesian fit…", value = 0.05)
 
       output$surv_status_msg <- renderUI({
@@ -777,7 +777,7 @@ survival_server <- function(id, rv) {
     }
 
     # ── Frequentist (Cox) path ─────────────────────────────────────────────────
-    progress <- shiny::Progress$new(session, min = 0, max = 1)
+    progress <- shiny::Progress$new(session, min = 0, max = 1, style = "old")
     progress$set(message = "Validating data...", value = 0.1)
     on.exit(progress$close(), add = TRUE)
 
