@@ -689,7 +689,7 @@ survival_server <- function(id, rv) {
         ref_date       = rv$settings$reference_date
       )
 
-      show_bayes_modal("Bayesian survival fit running…", "Fitting Weibull model with brms. This may take 3–12 minutes.")
+      show_analysis_modal("Bayesian survival fit running…", "Fitting Weibull model with brms. This may take 3–12 minutes.")
 
       output$surv_status_msg <- renderUI({
         tagList(
@@ -776,11 +776,9 @@ survival_server <- function(id, rv) {
     }
 
     # ── Frequentist (Cox) path ─────────────────────────────────────────────────
-    progress <- shiny::Progress$new(session, min = 0, max = 1)
-    progress$set(message = "Validating data...", value = 0.1)
-    on.exit(progress$close(), add = TRUE)
+    show_analysis_modal("Fitting survival model…", "Results will appear automatically when complete.")
+    on.exit(shiny::removeModal(), add = TRUE)
 
-    progress$set(message = "Fitting survival model...", value = 0.6)
     result <- safe_analysis(module = "survival", {
       mouseExperiment::survival_statistics(
         df = data,

@@ -1034,7 +1034,7 @@ toxicity_server <- function(id, rv) {
         ref_group  = input$tox_reference_group %||% NULL
       )
 
-      show_bayes_modal("Bayesian TWM running…", "Combining TG and BW posterior samples. This may take a few minutes.")
+      show_analysis_modal("Bayesian TWM running…", "Combining TG and BW posterior samples. This may take a few minutes.")
 
       output$tox_status_msg <- renderUI({
         tagList(
@@ -1095,9 +1095,8 @@ toxicity_server <- function(id, rv) {
     adjust    <- isTRUE(input$tox_adjust_tumor) && has_vol
     density   <- input$tox_tumor_density %||% 1.0
 
-    progress <- shiny::Progress$new(session, min = 0, max = 1)
-    progress$set(message = "Validating data...", value = 0.1)
-    on.exit(progress$close(), add = TRUE)
+    show_analysis_modal("Running toxicity analysis…", "Results will appear automatically when complete.")
+    on.exit(shiny::removeModal(), add = TRUE)
 
     results            <- list()
     results$model_type <- model_type
@@ -1113,7 +1112,7 @@ toxicity_server <- function(id, rv) {
         })
         return()
       }
-      progress$close()
+      shiny::removeModal()
 
       bw_bayes_params <- list(
         data          = data,
@@ -1133,7 +1132,7 @@ toxicity_server <- function(id, rv) {
         n_iter        = as.integer(input$tox_bw_bayes_iter    %||% 500L)
       )
 
-      show_bayes_modal("Bayesian body weight fit running…", "Fitting body weight model with brms. This may take 3–12 minutes.")
+      show_analysis_modal("Bayesian body weight fit running…", "Fitting body weight model with brms. This may take 3–12 minutes.")
 
       output$tox_status_msg <- renderUI({
         tagList(

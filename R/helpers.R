@@ -13,9 +13,9 @@
 #' @param message Title line shown in the dialog.
 #' @param detail  Subtitle / detail line.
 #' @keywords internal
-show_bayes_modal <- function(
-    message = "Bayesian model running…",
-    detail  = "This typically takes 3–12 minutes. Results will appear automatically when complete.") {
+show_analysis_modal <- function(
+    message = "Analysis running…",
+    detail  = "Results will appear automatically when complete.") {
   shiny::showModal(shiny::modalDialog(
     title     = NULL,
     footer    = NULL,

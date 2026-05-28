@@ -557,7 +557,7 @@ dose_response_server <- function(id, rv) {
         n_iter        = as.integer(input$dr_bayes_iter    %||% 500L)
       )
 
-      show_bayes_modal("Bayesian dose-response fit running…", "Fitting Bayesian Hill/Emax model with brms. This may take 3–12 minutes.")
+      show_analysis_modal("Bayesian dose-response fit running…", "Fitting Bayesian Hill/Emax model with brms. This may take 3–12 minutes.")
 
       output$dr_status_msg <- renderUI({
         tagList(
@@ -622,12 +622,10 @@ dose_response_server <- function(id, rv) {
     }
 
     # ── Frequentist path ───────────────────────────────────────────────────────
-    progress <- shiny::Progress$new(session, min = 0, max = 1)
-    progress$set(message = "Validating data...", value = 0.1)
-    on.exit(progress$close(), add = TRUE)
+    show_analysis_modal("Fitting dose-response model…", "Results will appear automatically when complete.")
+    on.exit(shiny::removeModal(), add = TRUE)
 
     result <- safe_analysis(module = "dose_response", {
-      progress$set(value = 0.6, message = "Fitting dose-response model...")
       mouseExperiment::dose_response_statistics(
         df                 = data,
         dose_column        = dose_col,

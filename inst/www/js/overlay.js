@@ -20,19 +20,23 @@ $(document).ready(function() {
   }
   $(document).one('shiny:sessioninitialized', disableDiagnosticsTab);
 
-  // Force backdrop transparent via inline !important (highest CSS priority, defeats any cascade).
-  // Backdrop stays in DOM so Bootstrap's modal-open cleanup runs normally on close.
-  function clearBackdrop() {
-    $('.modal-backdrop').each(function() {
-      this.style.setProperty('background-color', 'transparent', 'important');
-      this.style.setProperty('pointer-events', 'none', 'important');
-    });
-  }
-  $(document).on('show.bs.modal shown.bs.modal', '.modal', function() {
-    clearBackdrop();
-    setTimeout(clearBackdrop, 0);
-    setTimeout(clearBackdrop, 150);  // catch post-fade-in state
+  // MutationObserver fires synchronously the moment Bootstrap appends .modal-backdrop
+  // to the body — before any CSS transition has a chance to render — and applies
+  // inline !important styles (highest possible CSS priority).
+  // The backdrop stays in the DOM so Bootstrap's modal-open cleanup runs normally.
+  var backdropObserver = new MutationObserver(function(mutations) {
+    for (var i = 0; i < mutations.length; i++) {
+      var nodes = mutations[i].addedNodes;
+      for (var j = 0; j < nodes.length; j++) {
+        var node = nodes[j];
+        if (node.nodeType === 1 && node.classList && node.classList.contains('modal-backdrop')) {
+          node.style.setProperty('background-color', 'transparent', 'important');
+          node.style.setProperty('pointer-events', 'none', 'important');
+        }
+      }
+    }
   });
+  backdropObserver.observe(document.body, { childList: true });
 
 });
 

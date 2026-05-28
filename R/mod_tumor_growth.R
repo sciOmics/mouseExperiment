@@ -240,7 +240,7 @@ tumor_growth_server <- function(id, rv) {
         plot_groups       = rv$tg_plot_groups
       )
 
-      show_bayes_modal()
+      show_analysis_modal("Bayesian tumor growth fit running…", "Fitting Bayesian LMM with brms. This may take 3–12 minutes.")
 
       promises::future_promise({
         mouseExperiment::bayesian_tumor_growth(
@@ -299,13 +299,10 @@ tumor_growth_server <- function(id, rv) {
       return(NULL)   # return immediately — Shiny knows this is non-blocking
     }
 
-    # Run analysis with progress indicator
-    progress <- shiny::Progress$new(session, min = 0, max = 1)
-    progress$set(message = "Running tumor growth analysis...", value = 0.1)
-    on.exit(progress$close(), add = TRUE)
+    show_analysis_modal("Fitting tumor growth model…", "Results will appear automatically when complete.")
+    on.exit(shiny::removeModal(), add = TRUE)
 
     result <- safe_analysis(module = "tumor_growth", {
-      progress$set(value = 0.3, detail = "Fitting model")
       res <- mouseExperiment::tumor_growth_statistics(
         df = data,
         time_column = col_names$time_column,

@@ -449,9 +449,8 @@ power_server <- function(id, rv) {
 
       n_groups <- as.integer(input$pw_ap_n_groups %||% 2)
 
-      progress <- shiny::Progress$new(session, min = 0, max = 1)
-      progress$set(message = "Computing a priori power…", value = 0.1)
-      on.exit(progress$close(), add = TRUE)
+      show_analysis_modal("Computing a priori power…", "Results will appear automatically when complete.")
+      on.exit(shiny::removeModal(), add = TRUE)
 
       # Call apriori_power_analysis() once per effect size; combine results
       if (input$pw_ap_es_mode == "cohens_d") {
@@ -548,18 +547,8 @@ power_server <- function(id, rv) {
       n_tp        <- input$pw_lmm_n_timepoints %||% 15
       timepoints  <- seq(tp_start, by = tp_interval, length.out = n_tp)
 
-      progress <- shiny::Progress$new(session, min = 0, max = 1)
-      progress$set(message = "Running LMM simulation… (this may take a while)", value = 0.05)
-      on.exit(progress$close(), add = TRUE)
-
-      total_scenarios  <- length(n_per_grp_lmm) * length(alpha_vals)
-      completed_scens  <- 0L
-      progress_fn_shiny <- function(prop) {
-        completed_scens <<- completed_scens + 1L
-        progress$set(value = 0.05 + 0.90 * prop,
-                     message = sprintf("LMM simulation: scenario %d / %d…",
-                                       completed_scens, total_scenarios))
-      }
+      show_analysis_modal("Running LMM power simulation…", "This may take several minutes depending on simulation count.")
+      on.exit(shiny::removeModal(), add = TRUE)
 
       result_lmm <- safe_analysis(module = "power_lmm", {
         mouseExperiment::apriori_power_simulation(
@@ -574,12 +563,9 @@ power_server <- function(id, rv) {
           residual_sd         = input$pw_lmm_resid_sd      %||% 10,
           timepoints          = timepoints,
           alpha               = alpha_vals,
-          n_simulations       = as.integer(input$pw_lmm_n_sims %||% 500),
-          progress_fn         = progress_fn_shiny
+          n_simulations       = as.integer(input$pw_lmm_n_sims %||% 500)
         )
       })
-
-      progress$set(value = 1)
 
       if (isTRUE(result_lmm$error)) {
         shinyjs::runjs(sprintf("window.trackAnalysisComplete('power', false, %s);",
