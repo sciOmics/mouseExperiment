@@ -64,7 +64,8 @@
 #'   (class \code{"sigma"}), e.g. \code{"exponential(2)"}.
 #'   Only used when \code{prior_strength = "manual"}.
 #' @param n_chains Number of MCMC chains. Default \code{4}.
-#' @param n_iter Total iterations per chain (including warmup). Default \code{2000}.
+#' @param n_warmup Warm-up (burn-in) iterations per chain. Default \code{1000}.
+#' @param n_iter Post-warmup draws per chain. Default \code{500}.
 #' @param seed Integer random seed for reproducibility. Default \code{42}.
 #' @param return_model Logical. Return the \code{brmsfit} object? Default
 #'   \code{TRUE}. Set \code{FALSE} to reduce memory when only summaries are
@@ -175,7 +176,8 @@ bayesian_tumor_growth <- function(
   prior_sd                     = NULL,
   prior_sigma                  = NULL,
   n_chains                     = 4L,
-  n_iter                       = 2000L,
+  n_warmup                     = 1000L,
+  n_iter                       = 500L,
   seed                         = 42L,
   include_cage_effect          = TRUE,
   return_model                 = TRUE,
@@ -305,7 +307,8 @@ bayesian_tumor_growth <- function(
   # ── Fit model ──────────────────────────────────────────────────────────────
   if (isTRUE(verbose)) {
     message("Fitting Bayesian LMM via brms (",
-            n_chains, " chains × ", n_iter, " iter)...")
+            n_chains, " chains × ", n_iter, " post-warmup draws, ",
+            n_warmup, " warmup)...")
   }
 
   model <- brms::brm(
@@ -314,7 +317,9 @@ bayesian_tumor_growth <- function(
     prior        = selected_priors,
     sample_prior = "yes",
     chains       = as.integer(n_chains),
-    iter         = as.integer(n_iter),
+    cores        = as.integer(n_chains),
+    iter         = as.integer(n_warmup + n_iter),
+    warmup       = as.integer(n_warmup),
     seed         = as.integer(seed),
     silent       = if (isTRUE(verbose)) 0L else 2L,
     refresh      = if (isTRUE(verbose)) 100L else 0L
@@ -553,7 +558,8 @@ bayesian_tumor_growth <- function(
     ),
     methods = list(
       engine          = paste0("brms (", n_chains, " chains × ",
-                               n_iter, " iterations, seed = ", seed, ")"),
+                               n_iter, " draws + ", n_warmup,
+                               " warmup, seed = ", seed, ")"),
       prior_b         = if (prior_strength == "manual") prior_b         else paste0("normal(0, ", b_sd, ")"),
       prior_intercept = if (prior_strength == "manual") prior_intercept else paste0("normal(0, ", round(b_sd * 2.5, 2), ")"),
       prior_sd        = if (prior_strength == "manual") prior_sd        else paste0("exponential(", exp_rate, ")"),

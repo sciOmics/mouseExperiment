@@ -49,8 +49,8 @@
 #' @param prior_b,prior_intercept,prior_sd,prior_sigma brms prior strings
 #'   (used only when \code{prior_strength = "manual"}).
 #' @param n_chains Number of MCMC chains. Default \code{4}.
-#' @param n_iter Total iterations per chain (including warmup). Default
-#'   \code{2000}.
+#' @param n_warmup Warm-up (burn-in) iterations per chain. Default \code{1000}.
+#' @param n_iter Post-warmup draws per chain. Default \code{500}.
 #' @param seed Integer random seed. Default \code{42}.
 #' @param include_cage_effect Logical. Include cage random intercept when
 #'   \code{cage_column} is supplied? Default \code{TRUE}.
@@ -169,7 +169,8 @@ bayesian_synergy <- function(
   prior_sd                    = NULL,
   prior_sigma                 = NULL,
   n_chains                    = 4L,
-  n_iter                      = 2000L,
+  n_warmup                    = 1000L,
+  n_iter                      = 500L,
   seed                        = 42L,
   include_cage_effect         = TRUE,
   return_model                = TRUE,
@@ -329,7 +330,9 @@ bayesian_synergy <- function(
       data         = analysis_df,
       prior        = priors,
       chains       = n_chains,
-      iter         = n_iter,
+      cores        = n_chains,
+      iter         = n_warmup + n_iter,
+      warmup       = n_warmup,
       seed         = seed,
       sample_prior = "yes",
       silent       = if (isTRUE(verbose)) 0L else 2L,
@@ -580,6 +583,7 @@ bayesian_synergy <- function(
       transform       = transform,
       prior_strength  = prior_str,
       n_chains        = n_chains,
+      n_warmup        = n_warmup,
       n_iter          = n_iter,
       seed            = seed,
       random_effects  = re_term
@@ -679,7 +683,8 @@ bayesian_synergy_over_time <- function(
   prior_sd                     = NULL,
   prior_sigma                  = NULL,
   n_chains                     = 4L,
-  n_iter                       = 2000L,
+  n_warmup                     = 1000L,
+  n_iter                       = 500L,
   seed                         = 42L,
   include_cage_effect          = TRUE,
   return_model                 = TRUE,
@@ -827,7 +832,9 @@ bayesian_synergy_over_time <- function(
       data         = analysis_df,
       prior        = priors,
       chains       = n_chains,
-      iter         = n_iter,
+      cores        = n_chains,
+      iter         = n_warmup + n_iter,
+      warmup       = n_warmup,
       seed         = seed,
       sample_prior = "yes",
       silent       = if (isTRUE(verbose)) 0L else 2L,

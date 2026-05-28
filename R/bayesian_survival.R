@@ -63,8 +63,8 @@
 #'   for Weibull and Gamma; \code{sigma} for log-normal; ignored for
 #'   exponential. Only used when \code{prior_strength = "manual"}.
 #' @param n_chains Number of MCMC chains. Default \code{4}.
-#' @param n_iter Total iterations per chain (including warmup). Default
-#'   \code{2000}.
+#' @param n_warmup Warm-up (burn-in) iterations per chain. Default \code{1000}.
+#' @param n_iter Post-warmup draws per chain. Default \code{500}.
 #' @param seed Integer random seed for reproducibility. Default \code{42}.
 #' @param return_model Logical. Return the \code{brmsfit} object? Default
 #'   \code{TRUE}.
@@ -156,7 +156,8 @@ bayesian_survival <- function(
   prior_sd         = NULL,
   prior_aux        = NULL,
   n_chains         = 4L,
-  n_iter           = 2000L,
+  n_warmup         = 1000L,
+  n_iter           = 500L,
   seed             = 42L,
   return_model     = TRUE,
   plots            = TRUE,
@@ -274,7 +275,8 @@ bayesian_survival <- function(
   if (isTRUE(verbose)) {
     message("Fitting Bayesian parametric survival model (",
             family, ") via brms (",
-            n_chains, " chains × ", n_iter, " iter)...")
+            n_chains, " chains × ", n_iter, " post-warmup draws, ",
+            n_warmup, " warmup)...")
   }
 
   model <- brms::brm(
@@ -284,7 +286,9 @@ bayesian_survival <- function(
     prior        = selected_priors,
     sample_prior = "yes",
     chains       = as.integer(n_chains),
-    iter         = as.integer(n_iter),
+    cores        = as.integer(n_chains),
+    iter         = as.integer(n_warmup + n_iter),
+    warmup       = as.integer(n_warmup),
     seed         = as.integer(seed),
     silent       = if (isTRUE(verbose)) 0L else 2L,
     refresh      = if (isTRUE(verbose)) 100L else 0L
@@ -382,7 +386,8 @@ bayesian_survival <- function(
     ),
     methods = list(
       engine          = paste0("brms (", n_chains, " chains × ",
-                               n_iter, " iterations, seed = ", seed, ")"),
+                               n_iter, " draws + ", n_warmup,
+                               " warmup, seed = ", seed, ")"),
       effect_type     = "Time_Ratio (AFT parameterisation)",
       prior_b         = prior_b_label,
       prior_intercept = prior_int_label

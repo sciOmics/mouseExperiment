@@ -42,8 +42,8 @@
 #'   \code{"skeptical"} (default), \code{"weakly_informative"},
 #'   \code{"informative"}, \code{"diffuse"}.
 #' @param n_chains Number of MCMC chains per fit. Default \code{2L} for speed.
-#' @param n_iter Iterations per chain (including warm-up). Default \code{1000L}
-#'   for speed.
+#' @param n_warmup Warm-up (burn-in) iterations per chain. Default \code{500L}.
+#' @param n_iter Post-warmup draws per chain. Default \code{500L} for speed.
 #' @param seed Integer random seed for reproducibility. Default \code{42L}.
 #' @param progress_fn Optional callback \code{function(n, sim_i, n_sims)}
 #'   called after each simulation fit. Useful for Shiny progress bars.
@@ -77,7 +77,8 @@ bayesian_power_analysis <- function(
     "skeptical", "weakly_informative", "informative", "diffuse"
   ),
   n_chains            = 2L,
-  n_iter              = 1000L,
+  n_warmup            = 500L,
+  n_iter              = 500L,
   seed                = 42L,
   progress_fn         = NULL
 ) {
@@ -93,6 +94,7 @@ bayesian_power_analysis <- function(
   n_per_group   <- as.integer(n_per_group)
   n_simulations <- as.integer(n_simulations)
   n_chains      <- as.integer(n_chains)
+  n_warmup      <- as.integer(n_warmup)
   n_iter        <- as.integer(n_iter)
   timepoints    <- as.numeric(timepoints)
 
@@ -170,7 +172,9 @@ bayesian_power_analysis <- function(
             data    = df_sim,
             prior   = priors,
             chains  = n_chains,
-            iter    = n_iter,
+            cores   = n_chains,
+            iter    = n_warmup + n_iter,
+            warmup  = n_warmup,
             seed    = seed,
             silent  = 2L,
             refresh = 0L
@@ -279,6 +283,7 @@ bayesian_power_analysis <- function(
       effect_threshold    = effect_threshold,
       prior_strength      = prior_str,
       n_chains            = n_chains,
+      n_warmup            = n_warmup,
       n_iter              = n_iter,
       seed                = seed
     ),

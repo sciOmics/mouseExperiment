@@ -454,7 +454,8 @@ bayesian_therapeutic_window <- function(
 #'   \code{"skeptical"} (default), \code{"weakly_informative"},
 #'   \code{"informative"}, \code{"diffuse"}, \code{"manual"}.
 #' @param n_chains Number of MCMC chains. Default \code{4L}.
-#' @param n_iter Iterations per chain (including warm-up). Default \code{2000L}.
+#' @param n_warmup Warm-up (burn-in) iterations per chain. Default \code{1000L}.
+#' @param n_iter Post-warmup draws per chain. Default \code{500L}.
 #' @param seed Random seed for reproducibility. Default \code{42L}.
 #' @param include_cage_effect Logical. Include cage-level random intercept in
 #'   both sub-models when \code{cage_column} is supplied? Default \code{TRUE}.
@@ -490,7 +491,8 @@ bayesian_twm_from_data <- function(
   prior_strength      = c("skeptical", "weakly_informative",
                           "informative", "diffuse", "manual"),
   n_chains            = 4L,
-  n_iter              = 2000L,
+  n_warmup            = 1000L,
+  n_iter              = 500L,
   seed                = 42L,
   include_cage_effect = TRUE,
   noise_floor         = 1.0,
@@ -514,6 +516,7 @@ bayesian_twm_from_data <- function(
     reference_group  = reference_group,
     prior_strength   = prior_strength,
     n_chains         = n_chains,
+    n_warmup         = n_warmup,
     n_iter           = n_iter,
     seed             = seed,
     include_cage_effect = include_cage_effect,
@@ -535,6 +538,7 @@ bayesian_twm_from_data <- function(
     reference_group  = reference_group,
     prior_strength   = prior_strength,
     n_chains         = n_chains,
+    n_warmup         = n_warmup,
     n_iter           = n_iter,
     seed             = seed,
     include_cage_effect = include_cage_effect,
