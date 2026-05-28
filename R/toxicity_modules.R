@@ -1034,7 +1034,7 @@ toxicity_server <- function(id, rv) {
         ref_group  = input$tox_reference_group %||% NULL
       )
 
-      shinyjs::runjs("window.showAnalysisProgress('Bayesian TWM running...', 'Combining TG and BW posterior samples. This may take a few minutes.')")
+      show_bayes_modal("Bayesian TWM running…", "Combining TG and BW posterior samples. This may take a few minutes.")
 
       output$tox_status_msg <- renderUI({
         tagList(
@@ -1055,7 +1055,7 @@ toxicity_server <- function(id, rv) {
           plots            = TRUE
         )
       }) %...>% (function(result) {
-        shinyjs::runjs("window.hideAnalysisProgress()")
+        shiny::removeModal()
         result$model_type <- "bayes_twm"
         rv$tox_results <- list(
           model_type = "bayes_twm",
@@ -1071,7 +1071,7 @@ toxicity_server <- function(id, rv) {
           })
         }
       }) %...!% (function(err) {
-        shinyjs::runjs("window.hideAnalysisProgress()")
+        shiny::removeModal()
         err_msg <- translate_error(conditionMessage(err))
         output$tox_status_msg <- renderUI({
           status_alert(paste("Bayesian TWM failed:", err_msg), "danger")
@@ -1133,7 +1133,7 @@ toxicity_server <- function(id, rv) {
         n_iter        = as.integer(input$tox_bw_bayes_iter    %||% 500L)
       )
 
-      shinyjs::runjs("window.showAnalysisProgress('Bayesian body weight fit running...', 'Fitting body weight model with brms. This may take 3-12 minutes.')")
+      show_bayes_modal("Bayesian body weight fit running…", "Fitting body weight model with brms. This may take 3–12 minutes.")
 
       output$tox_status_msg <- renderUI({
         tagList(
@@ -1166,7 +1166,7 @@ toxicity_server <- function(id, rv) {
           plots                        = TRUE
         )
       }) %...>% (function(result) {
-        shinyjs::runjs("window.hideAnalysisProgress()")
+        shiny::removeModal()
         result$model_type  <- "bw_bayes"
         if (!is.null(rv$bayes_models)) rv$bayes_models$bw <- result$model
         else                           rv$bayes_models <- list(bw = result$model)
@@ -1193,7 +1193,7 @@ toxicity_server <- function(id, rv) {
           })
         }
       }) %...!% (function(err) {
-        shinyjs::runjs("window.hideAnalysisProgress()")
+        shiny::removeModal()
         err_msg <- translate_error(conditionMessage(err))
         output$tox_status_msg <- renderUI({
           status_alert(paste("Bayesian BW failed:", err_msg), "danger")

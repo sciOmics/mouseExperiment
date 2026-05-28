@@ -689,7 +689,7 @@ survival_server <- function(id, rv) {
         ref_date       = rv$settings$reference_date
       )
 
-      shinyjs::runjs("window.showAnalysisProgress('Bayesian survival fit running...', 'Fitting Weibull model with brms. This may take 3-12 minutes.')")
+      show_bayes_modal("Bayesian survival fit running…", "Fitting Weibull model with brms. This may take 3–12 minutes.")
 
       output$surv_status_msg <- renderUI({
         tagList(
@@ -724,7 +724,7 @@ survival_server <- function(id, rv) {
           plots            = TRUE
         )
       }) %...>% (function(result) {
-        shinyjs::runjs("window.hideAnalysisProgress()")
+        shiny::removeModal()
         result$model_type_used    <- "bayes"
         result$event_src_used     <- bayes_params$event_src
         result$vol_threshold_used <- bayes_params$vol_threshold
@@ -763,7 +763,7 @@ survival_server <- function(id, rv) {
           })
         }
       }) %...!% (function(err) {
-        shinyjs::runjs("window.hideAnalysisProgress()")
+        shiny::removeModal()
         err_msg <- translate_error(conditionMessage(err))
         rv$surv_running <- FALSE
         shinyjs::runjs(sprintf(

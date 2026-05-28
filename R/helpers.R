@@ -3,6 +3,45 @@
 #' Utility functions for data validation, formatting, and processing
 #'
 
+# ---- Bayesian progress modal ------------------------------------------------
+
+#' Show a modal dialog while a Bayesian fit is running
+#'
+#' Uses shiny::showModal() which flushes to the browser immediately, before
+#' the future_promise() computation starts. Dismiss with shiny::removeModal().
+#'
+#' @param message Title line shown in the dialog.
+#' @param detail  Subtitle / detail line.
+#' @keywords internal
+show_bayes_modal <- function(
+    message = "Bayesian model running…",
+    detail  = "This typically takes 3–12 minutes. Results will appear automatically when complete.") {
+  shiny::showModal(shiny::modalDialog(
+    title     = NULL,
+    footer    = NULL,
+    easyClose = FALSE,
+    size      = "s",
+    shiny::tags$div(
+      style = "text-align:center; padding:24px 8px 16px;",
+      shiny::tags$i(
+        class = "fa fa-spinner fa-spin fa-2x",
+        style = "color:var(--primary-color); margin-bottom:16px; display:block;"
+      ),
+      shiny::tags$h4(message, style = "font-weight:600; margin-bottom:16px;"),
+      shiny::tags$div(
+        class = "progress",
+        style = "height:6px; border-radius:3px; margin-bottom:16px;",
+        shiny::tags$div(
+          class = "progress-bar progress-bar-striped active",
+          role  = "progressbar",
+          style = "width:100%;"
+        )
+      ),
+      shiny::tags$p(detail, style = "color:#888; font-size:0.9em; margin-bottom:0;")
+    )
+  ))
+}
+
 # ---- Alert helpers (consolidated validate/need pattern) ----------------------
 
 #' Create a Bootstrap alert div for module status messages

@@ -560,7 +560,7 @@ synergy_server <- function(id, rv) {
         n_iter     = as.integer(input$syn_bayes_iter    %||% 500L)
       )
 
-      shinyjs::runjs("window.showAnalysisProgress('Bayesian synergy fit running...', 'Fitting synergy model with brms. This may take 3-12 minutes.')")
+      show_bayes_modal("Bayesian synergy fit running…", "Fitting synergy model with brms. This may take 3–12 minutes.")
 
       output$syn_status_msg <- renderUI({
         tagList(
@@ -596,7 +596,7 @@ synergy_server <- function(id, rv) {
           plots                        = TRUE
         )
       }) %...>% (function(result) {
-        shinyjs::runjs("window.hideAnalysisProgress()")
+        shiny::removeModal()
         if (!is.null(rv$bayes_models)) rv$bayes_models$syn <- result$model
         else                           rv$bayes_models <- list(syn = result$model)
         result$model <- NULL
@@ -623,7 +623,7 @@ synergy_server <- function(id, rv) {
           })
         }
       }) %...!% (function(err) {
-        shinyjs::runjs("window.hideAnalysisProgress()")
+        shiny::removeModal()
         err_msg <- translate_error(conditionMessage(err))
         shinyjs::runjs(sprintf("window.trackAnalysisComplete('drug_synergy', false, %s);",
                                js_string(err_msg)))

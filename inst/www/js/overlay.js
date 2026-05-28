@@ -21,17 +21,3 @@ $(document).ready(function() {
   $(document).one('shiny:sessioninitialized', disableDiagnosticsTab);
 });
 
-window.showAnalysisProgress = function(message, detail) {
-  var overlay = document.getElementById('analysis-progress-overlay');
-  if (!overlay) return;
-  var msg = document.getElementById('analysis-progress-message');
-  var det = document.getElementById('analysis-progress-detail');
-  if (msg) msg.textContent = message || '';
-  if (det) det.textContent = detail  || '';
-  overlay.style.display = 'flex';
-};
-
-window.hideAnalysisProgress = function() {
-  var overlay = document.getElementById('analysis-progress-overlay');
-  if (overlay) overlay.style.display = 'none';
-};

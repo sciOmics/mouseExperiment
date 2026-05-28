@@ -53,23 +53,6 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
       shinyjs::useShinyjs(),
       shinyFeedback::useShinyFeedback(),
 
-      # Bayesian analysis progress overlay — hidden by default; toggled by
-      # window.showAnalysisProgress() / hideAnalysisProgress() in overlay.js.
-      # Must be in the static DOM so CSS and dark-mode rules apply reliably.
-      tags$div(
-        id = "analysis-progress-overlay",
-        style = "display:none;",
-        tags$div(
-          id = "analysis-progress-card",
-          tags$div(id = "analysis-progress-message"),
-          tags$div(
-            id = "analysis-progress-bar-wrap",
-            tags$div(id = "analysis-progress-bar")
-          ),
-          tags$div(id = "analysis-progress-detail")
-        )
-      ),
-
       tags$head(
         tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
         tags$meta(property = "og:type",        content = "website"),
