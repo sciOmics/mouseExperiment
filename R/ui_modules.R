@@ -494,8 +494,10 @@ tumorGrowthUI <- function(id) {
             ),
             numericInput(ns("tg_bayes_chains"), "MCMC chains",
                          value = 4, min = 1, max = 8, step = 1),
-            numericInput(ns("tg_bayes_iter"), "Iterations per chain",
-                         value = 2000, min = 500, max = 10000, step = 500),
+            numericInput(ns("tg_bayes_warmup"), "Warmup per chain",
+                         value = 1000, min = 200, max = 5000, step = 100),
+            numericInput(ns("tg_bayes_iter"), "Post-warmup draws per chain",
+                         value = 500, min = 200, max = 5000, step = 100),
             div(class = "alert alert-warning", style = "font-size:0.85em; padding:8px; margin-top:6px;",
               icon("clock"), " Bayesian fitting takes ~3–12 minutes. ",
               "The app stays usable while the model runs in the background."
