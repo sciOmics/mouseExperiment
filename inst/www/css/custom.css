@@ -389,8 +389,11 @@ body {
 
 /* Hide the dark backdrop without removing it from the DOM — keeping Bootstrap's
    lifecycle intact so it correctly removes modal-open from body on modal close. */
-.modal-backdrop {
-  opacity: 0 !important;
+.modal-backdrop,
+.modal-backdrop.fade,
+.modal-backdrop.in {
+  background-color: transparent !important;
+  opacity: 1 !important;
   pointer-events: none !important;
 }
 

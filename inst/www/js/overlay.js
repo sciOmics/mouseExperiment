@@ -20,5 +20,19 @@ $(document).ready(function() {
   }
   $(document).one('shiny:sessioninitialized', disableDiagnosticsTab);
 
+  // Force backdrop transparent via inline !important (highest CSS priority, defeats any cascade).
+  // Backdrop stays in DOM so Bootstrap's modal-open cleanup runs normally on close.
+  function clearBackdrop() {
+    $('.modal-backdrop').each(function() {
+      this.style.setProperty('background-color', 'transparent', 'important');
+      this.style.setProperty('pointer-events', 'none', 'important');
+    });
+  }
+  $(document).on('show.bs.modal shown.bs.modal', '.modal', function() {
+    clearBackdrop();
+    setTimeout(clearBackdrop, 0);
+    setTimeout(clearBackdrop, 150);  // catch post-fade-in state
+  });
+
 });
 
