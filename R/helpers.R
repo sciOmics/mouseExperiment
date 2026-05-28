@@ -299,10 +299,10 @@ detect_column <- function(col_names, col_names_lower, patterns) {
     match_idx <- which(col_names_lower == pattern)
     if (length(match_idx) > 0) return(col_names[match_idx[1]])
   }
-  # 2. startsWith match — handles columns with appended units, e.g.
-  #    "Tumor Length (mm)" matches pattern "tumor length"
+  # 2. Contains match — handles columns with prefixes/suffixes/units, e.g.
+  #    "Tumor Length (mm)" or "Mean Tumor Volume" match their respective patterns
   for (pattern in patterns) {
-    match_idx <- which(startsWith(col_names_lower, pattern))
+    match_idx <- which(grepl(pattern, col_names_lower, fixed = TRUE))
     if (length(match_idx) > 0) return(col_names[match_idx[1]])
   }
   NULL
