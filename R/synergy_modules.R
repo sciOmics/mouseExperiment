@@ -707,7 +707,6 @@ synergy_server <- function(id, rv) {
       }
     }
     
-    progress$set(message = "Preparing results...", value = 0.95)
     rv$syn_results <- result
 
     # Track analysis completion with Umami

@@ -518,7 +518,6 @@ power_server <- function(id, rv) {
         ap_submode        = input$pw_ap_submode
       )
 
-      progress$set(value = 1)
       shinyjs::runjs("window.trackAnalysisComplete('power', true);")
       output$pw_status_msg <- renderUI({
         status_alert("A priori power analysis completed.", "success")

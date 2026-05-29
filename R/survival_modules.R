@@ -781,7 +781,6 @@ survival_server <- function(id, rv) {
         firth_correction = TRUE
       )
     })
-    progress$set(message = "Preparing results...", value = 0.9)
 
     # Store event source for downstream use (KM plot titles, summary text)
     result$event_src_used     <- event_src

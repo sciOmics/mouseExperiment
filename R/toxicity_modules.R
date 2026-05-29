@@ -1103,7 +1103,10 @@ toxicity_server <- function(id, rv) {
         })
         return()
       }
-      shiny::removeModal()
+      # Cancel the frequentist on.exit(removeModal) registered above — otherwise it
+      # tears down the Bayesian modal shown below the moment this branch returns.
+      # The future_promise callbacks remove the modal when the fit completes.
+      on.exit()
 
       bw_bayes_params <- list(
         data          = data,
@@ -1189,7 +1192,6 @@ toxicity_server <- function(id, rv) {
       baseline_raw <- input$tox_baseline_day %||% "first"
       baseline_day <- if (baseline_raw == "first") NULL else as.numeric(baseline_raw)
 
-      progress$set(value = 0.2, message = "Fitting mixed model...")
       results$mixed_model <- safe_analysis(module = "tox_mixed_model", {
         mouseExperiment::analyze_body_weight(
           df = data, weight_column = wt_col, time_column = time_col,
@@ -1201,7 +1203,6 @@ toxicity_server <- function(id, rv) {
         )
       })
 
-      progress$set(value = 0.5, message = "Computing AUC...")
       results$bw_auc <- safe_analysis(module = "tox_auc", {
         mouseExperiment::body_weight_auc(
           df = data, weight_column = wt_col, time_column = time_col,
@@ -1211,7 +1212,6 @@ toxicity_server <- function(id, rv) {
         )
       })
 
-      progress$set(value = 0.75, message = "Time-to-threshold analysis...")
       results$weight_loss <- safe_analysis(module = "tox_threshold", {
         mouseExperiment::weight_loss_threshold(
           df = data, weight_column = wt_col, time_column = time_col,
@@ -1244,7 +1244,6 @@ toxicity_server <- function(id, rv) {
       lambda     <- input$tox_et_lambda            %||% 1
       threshold  <- (input$tox_et_safety_threshold %||% 20) / 100
 
-      progress$set(value = 0.2, message = "Computing Therapeutic Window Metric...")
       results$twm <- safe_analysis(module = "et_twm", {
         mouseExperiment::therapeutic_window_metric(
           df = data, volume_column = vol_col, weight_column = wt_col,
@@ -1253,7 +1252,6 @@ toxicity_server <- function(id, rv) {
         )
       })
 
-      progress$set(value = 0.4, message = "Computing bivariate data...")
       results$bivariate <- safe_analysis(module = "et_bivariate", {
         mouseExperiment::efficacy_toxicity_bivariate(
           df = data, volume_column = vol_col, weight_column = wt_col,
@@ -1263,7 +1261,6 @@ toxicity_server <- function(id, rv) {
         )
       })
 
-      progress$set(value = 0.65, message = "Computing Total Benefit Score...")
       results$benefit <- safe_analysis(module = "et_benefit", {
         mouseExperiment::total_benefit_area(
           df = data, volume_column = vol_col, weight_column = wt_col,
@@ -1273,7 +1270,6 @@ toxicity_server <- function(id, rv) {
         )
       })
 
-      progress$set(value = 0.85, message = "Computing Weight-Corrected TGI...")
       results$wctgi <- safe_analysis(module = "et_wctgi", {
         mouseExperiment::weight_corrected_tgi(
           df = data, volume_column = vol_col, weight_column = wt_col,
@@ -1306,8 +1302,6 @@ toxicity_server <- function(id, rv) {
     else if (model_type == "et" && !is.null(tx_col) && has_col(data, tx_col))
       unique(as.character(data[[tx_col]]))
     else NULL
-
-    progress$set(value = 1)
 
     if (n_err == n_total) {
       output$tox_status_msg <- renderUI({

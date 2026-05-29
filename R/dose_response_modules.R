@@ -651,7 +651,6 @@ dose_response_server <- function(id, rv) {
       })
     }
 
-    progress$set(value = 0.95, message = "Preparing results...")
     rv$dr_results <- result
 
     # Track analysis completion with Umami

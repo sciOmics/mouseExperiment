@@ -326,7 +326,6 @@ tumor_growth_server <- function(id, rv) {
         include_diagnostics = TRUE,
         plots = FALSE
       )
-      progress$set(value = 0.7, detail = "Generating plots")
       res
     })
     
