@@ -4,6 +4,19 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.021] 2026 May 29th
+
+### Changed
+- **All modules — analysis progress indicator** — the bottom-right `Progress$new()` notification widget has been replaced with a centered modal dialog (`show_analysis_modal()`), shown for the duration of every analysis (frequentist and Bayesian) for consistent, prominent feedback.
+- **Static assets — cache busting** — CSS/JS includes now carry a `?v=<package-version>` query string so browsers fetch fresh assets after every release instead of serving stale cached `custom.css`/`overlay.js` (which previously kept old styling/behaviour live in clients after a deploy).
+- **Analytics** — Umami tracking repointed to the new `analytics.mouseexperiment.com` instance.
+
+### Fixed
+- **All modules — spurious "required column" error / stuck overlay** — removed `progress$set()` calls left orphaned after the progress-widget-to-modal migration. These threw `object 'progress' not found`, which surfaced as a misleading "A required column was not found" error in Tumor Growth (LME4/AUC) and, in Survival, Drug Synergy, Power Analysis, and Dose-Response, crashed the analysis observer so the modal never cleared and no results appeared.
+- **Bayesian analyses — full-screen overlay** — removed the redundant in-page `shinycssloaders::withSpinner()` status block from every Bayesian path; an empty, never-completing spinner there produced a loading overlay that covered the whole screen. The centered modal now conveys the running state alone.
+- **Analysis modal — backdrop dimming & scroll lock** — the Bootstrap modal backdrop is now rendered transparent and non-interactive (CSS plus a `MutationObserver` that catches the element the moment Bootstrap inserts it), so the modal no longer dims the page; also fixed a case where `modal-open` could persist on `<body>` and leave the page unscrollable after a modal closed.
+- **Toxicity — Bayesian body-weight modal** — `on.exit(removeModal)` was tearing down the Bayesian modal the instant the branch returned; the `future_promise` callbacks now own the modal lifecycle.
+
 ## [v26.05.019] 2026 May 20th
 
 ### Fixed

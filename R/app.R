@@ -41,6 +41,15 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
 
   # JS files are loaded from www/js/ via tags$script(src = ...) in the UI header
 
+  # Cache-bust static assets per release so browsers never serve stale CSS/JS after
+  # a deploy. Query strings are ignored by the file server but make the URL unique,
+  # forcing a fresh fetch whenever the package version changes.
+  asset_ver <- tryCatch(
+    as.character(utils::packageVersion("mouseExperimentDashboard")),
+    error = function(e) as.character(as.integer(Sys.time()))
+  )
+  v <- function(path) sprintf("%s?v=%s", path, asset_ver)
+
   ui <- navbarPage(
     title = tags$span(id = "nav-brand", "mouseExperiment",
                tags$img(src   = "images/mouse_icon.png",
@@ -66,12 +75,12 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
         tags$meta(name = "twitter:title",       content = "mouseExperiment Dashboard"),
         tags$meta(name = "twitter:description", content = "Interactive survival and phenotype analysis for mouse experiment data."),
         tags$meta(name = "twitter:image",       content = "https://mouseexperiment.com/images/og_preview.png"),
-        tags$link(rel = "stylesheet", href = "css/custom.css"),
-        tags$link(rel = "stylesheet", href = "css/dark.css"),
-        tags$script(src = "js/navbar.js"),
-        tags$script(src = "js/sidebar.js"),
-        tags$script(src = "js/darkmode.js"),
-        tags$script(src = "js/overlay.js"),
+        tags$link(rel = "stylesheet", href = v("css/custom.css")),
+        tags$link(rel = "stylesheet", href = v("css/dark.css")),
+        tags$script(src = v("js/navbar.js")),
+        tags$script(src = v("js/sidebar.js")),
+        tags$script(src = v("js/darkmode.js")),
+        tags$script(src = v("js/overlay.js")),
         tags$script(HTML(
           "$(document).ready(function(){",
           "  if(window.innerWidth>768)return;",
@@ -96,7 +105,7 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
           src = "https://analytics.mouseexperiment.com/script.js",
           `data-website-id` = "f820d0f9-9d2b-4048-b34f-078aa2fea7da"
         ),
-        tags$script(src = "js/umami-events.js")
+        tags$script(src = v("js/umami-events.js"))
       )
     ),
 
