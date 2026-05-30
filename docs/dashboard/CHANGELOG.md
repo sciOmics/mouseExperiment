@@ -4,6 +4,30 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.023] 2026 May 30th
+
+### Added
+- **Tumor Growth — GAMM model option** — new "GAMM (smooth time × treatment)" and
+  "Bayesian GAMM (brms + smoothers)" choices in the Tumor Growth Statistical Model
+  selector. The frequentist GAMM path calls `mouseExperiment::tumor_growth_statistics(model_type = "gam")`
+  (gamm4 backend); the Bayesian GAMM path passes `model_type = "gam"` to
+  `bayesian_tumor_growth()`. Both fit a group-specific smoother on Day with
+  auto-chosen basis dimension. Use these whenever growth is materially non-linear —
+  the GAMM smoother is the principled replacement for fitting higher-order
+  polynomials in time and extrapolates more honestly.
+
+### Changed
+- **Tumor Growth — model summary text** — the "Model summary" tooltip now
+  describes the four model families (LME4 / GAMM / AUC / Bayesian) and reports
+  the smoother basis dimension `k` when GAMM is selected.
+- **Tumor Growth — backend call** — the dashboard no longer passes
+  `polynomial_degree = 1L` to `tumor_growth_statistics()` (the backend argument
+  was removed in mouseExperiment v0.4.4 in favour of `model_type = "gam"`).
+
+### Requires
+- **mouseExperiment >= 0.4.4** (for the new `model_type = "gam"` argument on
+  `tumor_growth_statistics()` and `bayesian_tumor_growth()`).
+
 ## [v26.05.022] 2026 May 29th
 
 ### Changed

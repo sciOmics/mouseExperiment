@@ -1,7 +1,7 @@
 Package: mouseExperimentDashboard
 Title: Interactive Dashboard for mouseExperiment Analysis
-Version: 26.05.022
-Date: 2026-05-29
+Version: 26.05.023
+Date: 2026-05-30
 Authors@R: 
     person("David", "Woods", , "david@sciomics.bio", role = c("aut", "cre"))
 Author: David Woods [aut, cre]
@@ -32,7 +32,7 @@ Imports:
     logger (>= 0.3.0),
     jsonlite (>= 1.8.0),
     wesanderson (>= 0.3.7),
-    mouseExperiment (>= 0.2.0)
+    mouseExperiment (>= 0.4.4)
 Suggests:
     future (>= 1.33.0),
     promises (>= 1.2.0),

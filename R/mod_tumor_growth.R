@@ -173,8 +173,9 @@ tumor_growth_server <- function(id, rv) {
       return()
     }
     
-    # ── Bayesian async branch ────────────────────────────────────────────────
-    if (isTRUE(input$tg_model_type == "bayes")) {
+    # ── Bayesian async branch (covers both bayes-LMM and bayes-GAM) ─────────
+    if (isTRUE(input$tg_model_type == "bayes") ||
+        isTRUE(input$tg_model_type == "bayes_gam")) {
       pkg_ok <- requireNamespace("future",   quietly = TRUE) &&
                 requireNamespace("promises", quietly = TRUE) &&
                 requireNamespace("brms",     quietly = TRUE)
@@ -223,10 +224,13 @@ tumor_growth_server <- function(id, rv) {
         )
       } else NULL
 
+      bayes_model_type <- if (isTRUE(input$tg_model_type == "bayes_gam")) "gam" else "lmm"
+
       bayes_params <- list(
         data              = data,
         col_names         = col_names,
         reference_group   = input$tg_reference,
+        model_type        = bayes_model_type,
         random_effects    = re_spec,
         prior_strength    = prior_str,
         manual_priors     = bayes_manual_priors,
@@ -240,7 +244,14 @@ tumor_growth_server <- function(id, rv) {
         plot_groups       = rv$tg_plot_groups
       )
 
-      show_analysis_modal("Bayesian tumor growth fit running…", "Fitting Bayesian LMM with brms. This may take 3–12 minutes.")
+      show_analysis_modal(
+        if (bayes_model_type == "gam") "Bayesian GAMM tumor growth fit running…"
+        else "Bayesian tumor growth fit running…",
+        if (bayes_model_type == "gam")
+          "Fitting Bayesian GAMM with brms smoothers. This may take 3–12 minutes."
+        else
+          "Fitting Bayesian LMM with brms. This may take 3–12 minutes."
+      )
 
       promises::future_promise({
         mouseExperiment::bayesian_tumor_growth(
@@ -251,6 +262,7 @@ tumor_growth_server <- function(id, rv) {
           treatment_column             = bayes_params$col_names$treatment_column,
           cage_column                  = bayes_params$col_names$cage_column,
           dose_column                  = bayes_params$dose_col,
+          model_type                   = bayes_params$model_type,
           random_effects_specification = bayes_params$random_effects,
           reference_group              = bayes_params$reference_group,
           prior_strength               = bayes_params$prior_strength,
@@ -314,7 +326,6 @@ tumor_growth_server <- function(id, rv) {
         cage_column = col_names$cage_column,
         model_type = input$tg_model_type,
         transform = input$tg_transform,
-        polynomial_degree = 1L,
         random_effects_specification = input$tg_random_effects,
         handle_cage_effects = input$tg_cage_effect,
         reference_group = input$tg_reference,  # Already validated to not be empty
@@ -888,7 +899,7 @@ tumor_growth_server <- function(id, rv) {
         "MODEL DETAILS:",
         paste("  Fixed Effects:", summary_list$model_specification$fixed_effects),
         paste("  Random Effects:", summary_list$model_specification$random_effects),
-        paste("  Polynomial Degree:", summary_list$model_specification$polynomial_degree %||% 1L)
+        paste("  Smoother basis k:", summary_list$model_specification$smoother_k %||% "(linear time — LME4)")
       )
     }
 
@@ -1108,7 +1119,7 @@ tumor_growth_server <- function(id, rv) {
       )
     } else {
       tab_info(
-        strong("LME4 model summary: "), "Reports the fitted linear mixed-effects model including model type (LME4), data transformation applied, polynomial degree, random effects structure (subject and cage), number of subjects and treatment groups, reference group, and any convergence warnings or singular-fit notes."
+        strong("Model summary: "), "Reports the fitted model — model type (LME4 / GAMM / AUC / Bayesian), data transformation applied, random effects structure (subject and cage), number of subjects and treatment groups, reference group, smoother basis dimension when GAMM is selected, and any convergence warnings or singular-fit notes."
       )
     }
   })
