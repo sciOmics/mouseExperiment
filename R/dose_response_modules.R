@@ -586,6 +586,7 @@ dose_response_server <- function(id, rv) {
         result$model <- NULL
         gc()
         rv$dr_results <- result
+        updateTabsetPanel(session, "dr_results_tabs", selected = "Summary")
         if (isTRUE(result$error)) {
           err_msg <- result$message
           shinyjs::runjs(sprintf("window.trackAnalysisComplete('dose_response', false, %s);",
@@ -652,6 +653,7 @@ dose_response_server <- function(id, rv) {
     }
 
     rv$dr_results <- result
+    updateTabsetPanel(session, "dr_results_tabs", selected = "Summary")
 
     # Track analysis completion with Umami
     if (isTRUE(result$error)) {

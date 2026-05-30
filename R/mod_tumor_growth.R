@@ -275,6 +275,7 @@ tumor_growth_server <- function(id, rv) {
         result$model <- NULL
         gc()
         rv$tg_results  <- result
+        updateTabsetPanel(session, "tg_results_tabs", selected = "Summary")
         rv$tg_running  <- FALSE
         rv$tg_plot_data <- bayes_params$data
         rv$tg_col_names <- bayes_params$col_names
@@ -787,6 +788,7 @@ tumor_growth_server <- function(id, rv) {
     result$model_type_used <- input$tg_model_type  %||% "lme4"
 
     rv$tg_results <- result
+    updateTabsetPanel(session, "tg_results_tabs", selected = "Summary")
     rv$tg_running <- FALSE
 
     # Track analysis completion with Umami

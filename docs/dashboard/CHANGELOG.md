@@ -4,6 +4,11 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.05.022] 2026 May 29th
+
+### Changed
+- **All modules — auto-switch to Summary on completion** — when an analysis finishes (frequentist or Bayesian, success or error), the results tabset now jumps to the **Summary** tab automatically via `updateTabsetPanel()`. Applied to Tumor Growth, Survival, Drug Synergy, Dose Response, and Toxicity (TWM Bayesian, BW Bayesian, and frequentist paths). Power Analysis has no Summary tab and was left alone.
+
 ## [v26.05.021] 2026 May 29th
 
 ### Changed

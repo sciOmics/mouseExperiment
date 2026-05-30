@@ -734,6 +734,7 @@ survival_server <- function(id, rv) {
         result$model <- NULL
         gc()
         rv$surv_results <- result
+        updateTabsetPanel(session, "surv_results_tabs", selected = "Summary")
         rv$surv_running <- FALSE
         rv$surv_plot_groups <- if (!is.null(result$survival_data) &&
                                    has_col(result$survival_data, "Treatment")) {
@@ -842,6 +843,7 @@ survival_server <- function(id, rv) {
     }
     
     rv$surv_results <- result
+    updateTabsetPanel(session, "surv_results_tabs", selected = "Summary")
     rv$surv_running <- FALSE
 
     # Track analysis completion with Umami

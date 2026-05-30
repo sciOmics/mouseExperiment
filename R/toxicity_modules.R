@@ -1052,6 +1052,7 @@ toxicity_server <- function(id, rv) {
           model_type = "bayes_twm",
           twm        = result
         )
+        updateTabsetPanel(session, "tox_results_tabs", selected = "Summary")
         if (isTRUE(result$error)) {
           output$tox_status_msg <- renderUI({
             status_alert(paste("Bayesian TWM failed:", result$message), "danger")
@@ -1161,6 +1162,7 @@ toxicity_server <- function(id, rv) {
           bw_auc        = NULL,
           weight_loss   = NULL
         )
+        updateTabsetPanel(session, "tox_results_tabs", selected = "Summary")
         rv$tox_plot_groups <- if (!is.null(result$treatment_effects) &&
                                    has_col(as.data.frame(result$treatment_effects), "Group")) {
           unique(as.character(as.data.frame(result$treatment_effects)$Group))
@@ -1285,6 +1287,7 @@ toxicity_server <- function(id, rv) {
     }
 
     rv$tox_results <- results
+    updateTabsetPanel(session, "tox_results_tabs", selected = "Summary")
 
     # Store reference group and treatment groups for colour/order pickers
     rv$tox_ref_group   <- ref_group

@@ -592,6 +592,7 @@ synergy_server <- function(id, rv) {
         result$model <- NULL
         gc()
         rv$syn_results   <- result
+        updateTabsetPanel(session, "syn_results_tabs", selected = "Summary")
         rv$syn_over_time <- FALSE
         rv$syn_plot_inputs <- list(
           drug_a  = syn_bayes_params$drug_a,
@@ -708,6 +709,7 @@ synergy_server <- function(id, rv) {
     }
     
     rv$syn_results <- result
+    updateTabsetPanel(session, "syn_results_tabs", selected = "Summary")
 
     # Track analysis completion with Umami
     if (isTRUE(result$error)) {
