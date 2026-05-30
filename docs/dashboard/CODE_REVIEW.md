@@ -396,3 +396,249 @@ filename = function() {
 | 7.1 | Bayesian analysis pattern not yet implemented for Synergy / DR / TWM | Harmonization | Multiple | Done |
 | 7.2 | MCMC Diagnostics tab layout differs: TG shows trace plot, others don't | Harmonization | Multiple | Done |
 | 7.3 | Download filenames are generic; no date/reference context | Enhancement | Multiple | Done |
+
+---
+
+# Review Round 2 (v26.05.022 — 2026-05-30)
+
+**Reviewer:** Claude Code
+**Scope:** Items introduced or remaining after the v26.05.019 review, focusing on the modal/progress migration, bugs surfaced during it, deployment correctness, and statistical-diagnostic surface area inherited from the backend.
+
+## Round-1 status
+
+Of the 25 items in the v26.05.019 review, **24 are resolved**. Only item **6.1 (server function length)** remains open and has in fact regressed — see C.1 below. Item 2.4 (Dose-Response plot customization) is a scope expansion rather than a bug and is intentionally deferred.
+
+The Bayesian module pattern (item 7.1) has been fully harmonised: all five analysis modules (Tumor Growth, Survival, Synergy, Dose Response, Toxicity TWM/BW) now share a common `show_analysis_modal()` running indicator, `Posterior Check` / `MCMC Diagnostics` / `Prior vs Posterior` tab structure, and posterior-summary table layout.
+
+---
+
+## A. Bugs found and fixed during this review cycle
+
+The v26.05.020–022 progression surfaced four interacting issues. All four are now fixed but are documented here because they collectively explain a long stretch of confusing behaviour.
+
+### A.1 Orphaned `progress$set()` references after Progress → modal migration — **FIXED (56bfaf5)**
+**Files:** all `*_modules.R`, `mod_tumor_growth.R`
+
+When `Progress$new()` was replaced with `show_analysis_modal()` in v26.05.020, the `progress <-` definition was removed but 13 trailing `progress$set(...)` calls were left scattered through the analysis observers. The TG-LME4 / TG-AUC versions sat inside `safe_analysis()` and were translated by `helpers.R::translate_error()` (which maps `"object .* not found"` to the user-facing "A required column was not found") — making the bug look like a column-mapping problem. The Synergy/Survival/Power/Dose-Response/Toxicity versions sat *after* `safe_analysis()`, so when reached they crashed the observer; Shiny does not flush the queued `removeModal()` on an observer error, so the modal stayed visible while the analysis silently never produced output.
+
+**Lesson:** `translate_error()` should distinguish "missing column in data" from "undefined R object" — the regex `"object .* not found"` is too broad.
+
+### A.2 Toxicity Bayesian BW modal torn down by stray `on.exit()` — **FIXED (56bfaf5)**
+**File:** `toxicity_modules.R`
+
+The frequentist `on.exit(shiny::removeModal())` was registered before the BW Bayesian branch (lines 1090 / 1095). When that branch showed its own `show_analysis_modal("Bayesian body weight fit running…")` and `return()`-ed to start its future, the still-pending `on.exit` fired and removed the just-shown modal. The future ran headless and only displayed once it finished. Fixed by calling `on.exit()` (clear) inside the Bayesian branch.
+
+### A.3 Persistent "overlay on top of everything" was Shiny's `#shiny-disconnected-overlay` — **NOT a UI bug**
+**Root cause:** NPM `proxy_read_timeout` (60 s default) was killing the websocket during long-running Bayesian fits, after which the Shiny client renders its built-in `#shiny-disconnected-overlay` (z-index 99998, position fixed, grey 50% opacity). This survived every CSS/JS backdrop fix because it's emitted by Shiny itself, only after the connection is already dead, and only for analyses long enough to exceed the timeout (Bayesian only — frequentist fits finished under 60 s).
+
+The dashboard-side cache-busting fix in `5e63303` is necessary but **not sufficient**; the root cure is **applying the 1 h `proxy_read_timeout` to the live NPM proxy hosts**. See VPS-repo commit `043419e` and the live-update curl snippet in this conversation. Until the live NPM config is updated, Bayesian fits on staging will continue to drop their connection.
+
+### A.4 Stale browser cache of CSS/JS — **FIXED (5e63303)**
+Every prior fix to `overlay.js` and `custom.css` was deployed correctly but never reached clients running the dashboard, because browsers were holding pre-fix cached assets indefinitely. Cache-busting via a `?v=<package-version>` query string on every local CSS/JS include forces refetch on each release.
+
+---
+
+## B. New deployment-correctness items
+
+These are net-new to this review and live partly in this repo, partly in `mouseExperimentVPS`. The dashboard side is documented here so it's recoverable from this file alone.
+
+### B.1 Silent rebuild failures
+**File (companion repo):** `scripts/webhook-handlers/rebuild-shiny.sh`
+
+`remotes::install_github()` treats a missing CRAN dependency as a warning and exits 0; `docker build` reports success; the rebuild script declared "Build successful" and recreated the container with an image whose `mouseExperimentDashboard` package never installed → R failed at startup → 502 with no signal. **Fixed in VPS commit `d2034c5`** which inserts a verification step (`docker run --rm <image> R -e "library(mouseExperimentDashboard)"`) before swapping the container.
+
+### B.2 NPM proxy host config drift
+**File (companion repo):** `scripts/06-configure-npm.sh`
+
+The canonical provisioner created the Shiny hosts with neither `allow_websocket_upgrade: true` nor any `advanced_config`. A from-scratch reprovision would have produced a non-functional dashboard. **Fixed in VPS commit `043419e`**. Live NPM must still be updated via the API snippet in this conversation.
+
+---
+
+## C. Architecture
+
+### C.1 Server function length (6.1 from v26.05.019 — re-flagged, regressed)
+| File | LOC at v26.05.019 review | LOC at v26.05.022 |
+|---|---|---|
+| `mod_tumor_growth.R` | ~1,800 | **2,367** |
+| `toxicity_modules.R` | ~1,600 | **2,069** |
+| `survival_modules.R` | ~1,200 | **1,405** |
+| `synergy_modules.R` | ~1,100 | **1,205** |
+| `helpers.R` | ~900 | **1,083** (35 helper functions in one file) |
+
+Each module file contains both the UI definition *and* the entire server observeEvent chain for that analysis. Recommended split per module:
+- `mod_<tab>/ui.R` — `tabPanel`, sidebar, results tabsets
+- `mod_<tab>/server_frequentist.R` — frequentist observe* chain
+- `mod_<tab>/server_bayesian.R` — Bayesian path + future callbacks
+- `mod_<tab>/renders.R` — `render*` and `download*` handlers
+- `mod_<tab>/server.R` — top-level module assembling the above
+
+Same split helps `helpers.R` — currently mixes status alerts, formatters, plot helpers, validation, and `show_analysis_modal()`.
+
+### C.2 Module file naming inconsistency
+Only `mod_tumor_growth.R` uses the `mod_` prefix; the others (`survival_modules.R`, `synergy_modules.R`, …) use the `_modules.R` suffix. Pick one convention.
+
+### C.3 `output$` rendering is concentrated in a few mega-files
+`survival_modules.R`, `mod_tumor_growth.R`, and `mod_data_upload.R` each contain dozens of `output$X <- render*()` blocks. Extracting per-tab `*_render_helpers.R` files would let test cases hit them individually.
+
+---
+
+## D. Inherited statistical-diagnostic surface area
+
+The dashboard should surface diagnostic outputs from the backend once they're added (see the companion `mouseExperiment` review, Round 2, sections A–C). Required dashboard work for each:
+
+| Backend addition | Dashboard work |
+|---|---|
+| `cox.zph()` PH check (backend A.1) | New "PH Assumption" tab in Survival results showing the test table + Schoenfeld plot |
+| NUTS divergences / max_treedepth / E-BFMI (backend A.2) | Inline warning banner in MCMC Diagnostics tab when any of these fail |
+| LOO / Pareto-k (backend A.4) | New "Influential Observations" panel listing mice with Pareto-k > 0.7 |
+| `bayes_R2()` (backend C.1) | New row in the Summary table for Bayesian paths |
+| Posterior P(effect > 0) (backend C.2) | Add `P(effect ≠ 0)` column to Bayesian treatment-effects tables |
+| Concordance / C-index (backend E.2) | Add to Survival Summary |
+
+These should land alongside the backend changes — no value in shipping diagnostics that can't be inspected.
+
+---
+
+## E. UX / behavior items
+
+### E.1 Power Analysis has no Summary tab → excluded from auto-switch (v26.05.022)
+The auto-switch-to-Summary behaviour added in `8ee551d` skips Power Analysis because its first tab is "Info" — every other module's first tab is "Summary". Either:
+- Add a Summary tab to Power Analysis (preferred — consistency), or
+- Pick the first existing tab (e.g. "Scenario Table") as Power's "completion landing"
+
+### E.2 CHANGELOG gap: no `v26.05.020` entry
+`DESCRIPTION` was bumped to 26.05.020 (commit `de78be3` — Log tab removal, Help rewrite, Umami repoint) without a CHANGELOG entry. The v26.05.022 review folded forward without back-filling 020; a one-paragraph 020 entry would make the changelog complete.
+
+### E.3 No startup health check for NPM timeout
+Given the disconnect-overlay surprise (A.3), it would be defensible for `runDashboard()` to log a startup warning if `Sys.getenv("SHINY_PORT") != ""` (running under shiny-server) and a known-good proxy doesn't expose long-timeout config. Hard to detect from inside the container; alternatively document the requirement prominently in the deploy README.
+
+---
+
+## F. Recommended Additional Functionality
+
+### F.1 Reproducible analysis report export
+Generate a parameterised Quarto/R Markdown report for any completed analysis (PDF + HTML). All inputs, the modal-side analysis settings, the result tables, plots, and the model diagnostic outputs would be captured. Useful for inclusion in manuscripts and as an audit artifact for regulatory submissions.
+
+### F.2 Save / load analysis presets
+A user who has carefully tuned priors, transforms, random-effects spec, and reference group for one dataset has no way to apply that to a re-run with new data. A "Save Settings" button writing a small JSON blob, plus an "Import Settings" upload, would shorten the iteration loop.
+
+### F.3 Side-by-side frequentist vs Bayesian comparison
+For any analysis with both paths (TG, Survival, Synergy, DR), run both, present the treatment-effects tables side-by-side and the credible-interval forest plot overlaid with the confidence-interval forest plot. Useful pedagogically and for cross-validation.
+
+### F.4 Per-mouse drill-down
+A modal or new tab showing a single mouse's volume trajectory, weight trajectory, censoring, with the model's per-animal predicted curve overlaid. Currently the closest is the caterpillar plot of random effects.
+
+### F.5 Re-run with subset
+Quick filter ("exclude this mouse / cage / treatment group") that re-runs the analysis. Currently requires editing the source data and re-uploading.
+
+### F.6 Cmdstanr backend toggle
+Once the backend exposes it (`backend = c("rstan", "cmdstanr")`), add a checkbox in the Advanced section of every Bayesian sidebar. Will substantially reduce fit time on the VPS.
+
+### F.7 Session resume
+If the user accidentally closes the tab or the connection drops mid-Bayesian-fit, the in-flight future is lost. Storing the future-promise handle keyed by a session-ID cookie would let the user reconnect to a still-running fit.
+
+---
+
+## G. Status Summary — Round 2
+
+| ID | Issue | Severity | File / Area | Status |
+|---|---|---|---|---|
+| A.1 | Orphaned `progress$set()` after modal migration | Critical | All modules | ✅ Fixed (56bfaf5) |
+| A.2 | Toxicity BW `on.exit` removed Bayesian modal | Critical | `toxicity_modules.R` | ✅ Fixed (56bfaf5) |
+| A.3 | Bayesian "overlay" = Shiny disconnect overlay from NPM timeout | Critical | Deployment | ⚠ Partial — script fixed; live NPM still needs PUT |
+| A.4 | Stale browser cache of CSS/JS | Major | `app.R` | ✅ Fixed (5e63303) |
+| B.1 | Silent rebuild failures (CRAN miss → broken image swap) | Critical | VPS `rebuild-shiny.sh` | ✅ Fixed (VPS `d2034c5`) |
+| B.2 | NPM hosts missing websocket + advanced_config | Critical | VPS `06-configure-npm.sh` | ✅ Fixed (VPS `043419e`) |
+| C.1 | Server function length still growing | Architecture | Multiple | ❌ Open — regressed |
+| C.2 | Module file naming inconsistency | Minor | Module files | ❌ Open |
+| C.3 | Mega-files concentrate render handlers | Architecture | Multiple | ❌ Open |
+| D.x | Diagnostic surfacing | Major | All Bayesian / Survival tabs | ❌ Open (blocked on backend) |
+| E.1 | Power Analysis missing Summary tab | Minor | `power_modules.R` | ❌ Open |
+| E.2 | CHANGELOG missing v26.05.020 entry | Minor | `CHANGELOG.md` | ❌ Open |
+| E.3 | No startup warning for missing NPM timeout | Minor | `app.R` | ❌ Open |
+| F.1 | Reproducible report export | Enhancement | New | — |
+| F.2 | Save/load analysis presets | Enhancement | New | — |
+| F.3 | Side-by-side frequentist vs Bayesian | Enhancement | New | — |
+| F.4 | Per-mouse drill-down | Enhancement | New | — |
+| F.5 | Re-run with subset | Enhancement | New | — |
+| F.6 | Cmdstanr backend toggle | Enhancement | All Bayesian sidebars | — |
+| F.7 | Session resume | Enhancement | `app.R` | — |
+
+---
+
+## H. Cross-reference to backend deep audit (2026-05-30)
+
+The backend `mouseExperiment` CODE_REVIEW.md Round 2 includes a Section G "Deep Audit Findings" (added after this review). Three findings there directly affect dashboard behavior:
+
+- **Backend G.1** — `bayesian_synergy()` and `bayesian_synergy_over_time()` wrap `brms::brm()` in `suppressWarnings()`. The dashboard's Synergy "MCMC Diagnostics" tab consequently never displays divergent-transition warnings even when the underlying fit has them. Resolving the dashboard side is blocked on backend G.1.
+- **Backend G.4** — `bayesian_synergy()` doesn't return `pp_check_plot`, `prior_posterior_plot`, or `mcmc_trace_plot`. The dashboard's Synergy "Posterior Check" / "MCMC Diagnostics" / "Prior vs Posterior" tabs are wired up but **empty** because the backend never populates these outputs.
+- **Backend G.5** — `bayesian_therapeutic_window()` returns **none** of the standard Bayesian diagnostic plots. The Toxicity TWM Bayesian results show no diagnostic tabs by design.
+
+When the corresponding backend gaps are filled, the dashboard side requires no code change — the tab wiring is in place and will start populating automatically.
+
+The misleading dose-response model-type label (backend G.2) and the inhibition-only constraint of `bayesian_dose_response()` (backend G.3) propagate directly to the Dose Response module's "Summary" tab — `model_type = "inhibition"` or `"stimulation"` is shown to the user as a categorical result there. These will need a coordinated backend+dashboard fix.
+
+---
+
+## I. Test suite review (2026-05-30)
+
+**Scope:** all 6 files under `tests/testthat/` (895 LOC total, 89 `expect_` calls). Compared to the backend's 4,498 / 458 — the dashboard's test surface is much thinner per LOC of source code.
+
+### I.0 Strengths
+
+1. **`test-shiny_app.R` uses `shinytest2`** — proper headless-browser integration testing with graceful skips when `chromote` / Chrome are unavailable. The infrastructure is in place even if only the Data tab is exercised today.
+2. **`test-helpers.R` exercises internal helpers** through namespace access (`getNamespace("mouseExperimentDashboard")` + `get()`), so private helpers can be tested without exporting them.
+3. **Test fixtures load real demo data** (`combo_treatment_synthetic_data`) — exercises realistic shapes rather than minimal hand-built data frames.
+
+---
+
+### I.1 `expect_true(TRUE)` placeholders pad test counts without testing anything — **Major**
+**File:** `test-module_servers.R` lines 102–142
+
+```r
+test_that("dose_response_server initialises without error", {
+  shiny::testServer(dose_response_server_fn, args = list(rv = make_test_rv()), {
+    expect_true(TRUE)   # ← no assertion about the module's behavior
+  })
+})
+```
+Five module servers (`dose_response`, `power`, `survival`, `synergy`, plus a stub for analysis_log) are "tested" with `expect_true(TRUE)` inside `testServer()`. These pass as long as the module initialises without throwing. They do **not** verify a single reactive value, output, or observer. They inflate the green-check count without checking anything.
+
+**Fix:** for each module, drive `session$setInputs(...)` to simulate the "Run analysis" click and assert `rv$X_results` is populated. The fixtures already include the data needed for this.
+
+### I.2 `tumor_growth_server`, `toxicity_server`, `data_upload_server` not tested — **Major**
+The three largest server modules in the repo (2,367 / 2,069 / 653 LOC) have **zero** `testServer()` entries in `test-module_servers.R`. These contain the bulk of the dashboard's reactive logic, including all of this session's modal / overlay / orphaned-progress bug surface. The auto-switch-to-Summary behaviour added in `8ee551d` could have been broken at any point and the test suite wouldn't notice.
+
+### I.3 No tests for this session's new features — Missing
+- `show_analysis_modal()` ([helpers.R:16](R/helpers.R#L16)) — modal generation, message/detail wiring
+- `updateTabsetPanel(..., selected = "Summary")` auto-switch — assert `session$getReturned()$X_results_tabs == "Summary"` after analysis completes
+- Cache-busting `?v=<version>` query string in static asset includes — assert UI HTML contains the version query
+- MutationObserver in `overlay.js` — untestable from R, but the integration test could assert the rendered DOM has `.modal-backdrop` with `background-color: transparent` after a modal opens
+
+### I.4 `analysis_log_server` tests still present despite Log tab removal — Minor (verify-and-prune)
+**File:** `test-module_servers.R` lines 76–97
+
+`analysis_log_server` is still defined in `R/log_session_modules.R` so the tests still pass — but the Log tab itself was removed in v26.05.020 ("remove Log tab; rewrite Help tab"). Either restore the tab, or delete the unused server module + its tests.
+
+### I.5 `shinytest2` coverage is single-tab — Minor
+`test-shiny_app.R` builds an `AppDriver` and asserts the Data tab renders. It doesn't drive a workflow (upload → configure → run an analysis → inspect results). A second test exercising "upload combo data → click Run on Tumor Growth → verify results panel populates" would catch the entire integration-level bug class that this session has been chasing (modal stuck, no results, etc.).
+
+### I.6 No test asserts the dashboard's NPM-timeout / cache-bust deployment contract — Architecture
+Section A.3 / A.4 of this review document deployment-side bugs that the test suite cannot catch (NPM proxy timeout, browser-cached assets). The companion VPS repo has rebuild and verification scripts; a smoke test that pings `staging.mouseexperiment.com` from CI after a webhook fires and asserts a Bayesian analysis can complete would close that loop. Out of scope for the dashboard test suite proper, but worth tracking.
+
+### I.7 `make_test_rv()` doesn't pre-populate `rv$X_results` — Minor
+The module-server fixture sets `tg_results = NULL`, `surv_results = NULL`, etc. So any test of the **post-completion** UI behaviour (auto-switch to Summary, status alert content, button enable/disable on results-ready) has no way to set up the precondition. A `make_test_rv(with_results = c("tg", "surv"))` variant would unlock those tests.
+
+---
+
+## I summary
+
+| ID | Issue | Severity |
+|---|---|---|
+| I.1 | `expect_true(TRUE)` placeholders in module-server tests | **Major** |
+| I.2 | `tumor_growth_server` / `toxicity_server` / `data_upload_server` untested | **Major** |
+| I.3 | No tests for `show_analysis_modal()`, auto-switch, cache-busting | Missing |
+| I.4 | `analysis_log_server` tests outlive the UI tab | Minor (process) |
+| I.5 | shinytest2 covers only the Data tab | Minor |
+| I.6 | No CI smoke test against deployed staging | Architecture |
+| I.7 | `make_test_rv()` doesn't support `with_results` | Minor |
