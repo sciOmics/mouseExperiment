@@ -416,12 +416,22 @@ plot_combination_index <- function(synergy_results, custom_title = NULL) {
     ggplot2::annotate("point", x = -Inf, y = -Inf, size = 3, color = "green") +
     ggplot2::annotate("point", x = -Inf, y = -Inf, size = 3, color = "red") +
     ggplot2::guides(color = "none") + # Remove automatic color legend
-    ggplot2::annotate("text", x = max(synergy_summary$Time_Point) * 0.15, 
-              y = max(synergy_summary$Combination_Index, na.rm = TRUE) * 0.85,
-              label = "Synergy (CI < 1)", color = "green", hjust = 0) +
-    ggplot2::annotate("text", x = max(synergy_summary$Time_Point) * 0.15, 
-              y = max(synergy_summary$Combination_Index, na.rm = TRUE) * 0.95,
-              label = "Antagonism (CI >= 1)", color = "red", hjust = 0) +
+    # Annotation x-position: additive offset from the time range so the labels
+    # render correctly when Time_Point doesn't start near 0 (same fix as
+    # Round 1 3.9 for plot_synergy_trend).
+    {
+      .tp_lo    <- min(synergy_summary$Time_Point, na.rm = TRUE)
+      .tp_span  <- max(1, diff(range(synergy_summary$Time_Point, na.rm = TRUE)))
+      .ann_x    <- .tp_lo + .tp_span * 0.05
+      list(
+        ggplot2::annotate("text", x = .ann_x,
+            y = max(synergy_summary$Combination_Index, na.rm = TRUE) * 0.85,
+            label = "Synergy (CI < 1)", color = "green", hjust = 0),
+        ggplot2::annotate("text", x = .ann_x,
+            y = max(synergy_summary$Combination_Index, na.rm = TRUE) * 0.95,
+            label = "Antagonism (CI >= 1)", color = "red", hjust = 0)
+      )
+    } +
     ggplot2::labs(
       title = title,
       subtitle = "CI < 1 indicates synergy, CI > 1 indicates antagonism",
