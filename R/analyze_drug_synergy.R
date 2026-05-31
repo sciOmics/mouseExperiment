@@ -148,11 +148,11 @@ analyze_drug_synergy <- function(df,
   fe_b <- tgi_b / 100
   fe_combo <- tgi_combo / 100
   
-  # Calculate expected effect using Bliss Independence model
-  # Bliss Independence: Expected combined effect = EA + EB - (EA * EB)
-  bliss_expected_fe <- fe_a + fe_b - (fe_a * fe_b)
+  # Calculate expected effect using Bliss Independence model.
+  # Shared scalar/vector formula in R/utils_synergy.R.
+  bliss_expected_fe <- synergy_bliss_expected(fe_a, fe_b)
   bliss_expected_tgi <- bliss_expected_fe * 100
-  
+
   # Calculate expected effect using Loewe Additivity model
   # Under a linear dose-response assumption (Berenbaum, 1989), the Loewe expected
   # combination effect equals the sum of individual fractional effects.

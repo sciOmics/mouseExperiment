@@ -395,7 +395,7 @@ bayesian_synergy <- function(
   rownames(tgi_summary) <- NULL
 
   # ── Draw-wise Bliss Independence ──────────────────────────────────────────
-  bliss_expected  <- fe_a + fe_b - fe_a * fe_b
+  bliss_expected  <- synergy_bliss_expected(fe_a, fe_b)
   bliss_excess    <- fe_combo - bliss_expected
 
   bliss_q     <- stats::quantile(bliss_excess,   c(0.025, 0.5, 0.975))
@@ -414,11 +414,12 @@ bayesian_synergy <- function(
   # ── Draw-wise Loewe CI ────────────────────────────────────────────────────
   # Floor is relative to the maximum observed FE to avoid huge CIs when
   # the combo has near-zero effect. A note is added when the floor is applied.
-  loewe_num       <- pmin(fe_a + fe_b, 1)
   fe_max          <- max(fe_combo, na.rm = TRUE)
   fe_floor        <- max(fe_max * 1e-4, 1e-4)
-  floor_applied   <- any(fe_combo < fe_floor)
-  loewe_ci        <- loewe_num / pmax(fe_combo, fe_floor)
+  loewe_res       <- synergy_loewe_ci(fe_a, fe_b, fe_combo, fe_floor = fe_floor)
+  loewe_num       <- loewe_res$loewe_num
+  loewe_ci        <- loewe_res$ci
+  floor_applied   <- any(loewe_res$floor_applied)
 
   loewe_q    <- stats::quantile(loewe_ci, c(0.025, 0.5, 0.975))
   ci_med     <- loewe_q["50%"]
@@ -902,16 +903,17 @@ bayesian_synergy_over_time <- function(
     fe_combo <- fe_mat[, combo_name]
 
     # Bliss
-    bliss_expected <- fe_a + fe_b - fe_a * fe_b
+    bliss_expected <- synergy_bliss_expected(fe_a, fe_b)
     bliss_excess   <- fe_combo - bliss_expected
     bq             <- stats::quantile(bliss_excess, c(0.025, 0.5, 0.975))
 
     # Loewe
-    loewe_num     <- pmin(fe_a + fe_b, 1)
     fe_max        <- max(fe_combo, na.rm = TRUE)
     fe_floor      <- max(fe_max * 1e-4, 1e-4)
-    floor_applied <- any(fe_combo < fe_floor)
-    loewe_ci      <- loewe_num / pmax(fe_combo, fe_floor)
+    loewe_res     <- synergy_loewe_ci(fe_a, fe_b, fe_combo,
+                                       fe_floor = fe_floor)
+    loewe_ci      <- loewe_res$ci
+    floor_applied <- any(loewe_res$floor_applied)
     lq            <- stats::quantile(loewe_ci, c(0.025, 0.5, 0.975))
 
     synergy_rows[[di]] <- data.frame(
