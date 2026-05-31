@@ -9,6 +9,17 @@
 #' posterior estimates of EC50, Emax, and the Hill slope with full credible
 #' intervals.
 #'
+#' \strong{Inhibition-only by construction:} the non-linear formula
+#' \code{TGI ~ inv_logit(logEmax) / (1 + (exp(logEC50)/Dose)^exp(logHill))}
+#' bounds the asymptotic effect in \code{[0, 1]} and constrains the Hill
+#' slope to be positive, so the curve is monotonically increasing in dose
+#' toward a positive ceiling — i.e. inhibitory only. Data that are actually
+#' stimulatory (treatment accelerates growth, negative TGI) cannot be
+#' represented; the function emits a warning at fit time and the resulting
+#' posterior will not be credible. For stimulatory dose-response, model
+#' \eqn{V_{treated}} directly with a stimulatory Hill parameterisation or
+#' invert the TGI sign convention.
+#'
 #' @param df Data frame containing dose-response data.
 #' @param dose_column Column name for dose values (numeric, including 0 for
 #'   control). Default \code{"Dose"}.
@@ -231,6 +242,28 @@ bayesian_dose_response <- function(
 
   non_zero_doses <- tgi_data$Dose[tgi_data$Dose > 0]
   log_median_dose <- median(log(non_zero_doses))
+
+  # ── Direction sanity check ─────────────────────────────────────────────────
+  # The Hill formula used below — TGI ~ inv_logit(logEmax) /
+  # (1 + (exp(logEC50)/Dose)^exp(logHill)) — has inv_logit(logEmax) in [0, 1]
+  # and exp(logHill) > 0, so the curve is *monotonically increasing in dose
+  # toward a positive ceiling*. In TGI space (1 - V_treated/V_control), that
+  # corresponds to inhibitory dose-response only. If the underlying data show
+  # negative-mean TGI across doses (treatment accelerates growth), the model
+  # cannot represent it and the fit will be poor with no clear signal as to
+  # why. Surface this clearly.
+  if (mean(tgi_data$TGI, na.rm = TRUE) < -0.10) {
+    warning(
+      "bayesian_dose_response(): the supplied data have negative mean TGI ",
+      "across doses (treatment appears to accelerate growth). The Hill ",
+      "model used here is *inhibition-only by construction* (Emax bounded ",
+      "in [0, 1] and Hill > 0) and cannot represent stimulatory dose-",
+      "response. The fit will likely be poor with non-credible parameters. ",
+      "Consider modelling V_treated directly with a stimulatory Hill ",
+      "formula or inverting the sign convention.",
+      call. = FALSE
+    )
+  }
 
   # ── Prior specification ────────────────────────────────────────────────────
   if (prior_strength == "manual") {
