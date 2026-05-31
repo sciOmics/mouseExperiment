@@ -187,7 +187,7 @@ export_diagnostics <- function(x, file = NULL) {
 #'
 #' @examples
 #' \dontrun{
-#' dt <- tumor_doubling_time(my_data)
+#' dt <- tumor_doubling_time(master_synthetic_data)
 #' }
 #'
 #' @export
@@ -293,7 +293,7 @@ tumor_doubling_time <- function(df,
 #'
 #' @examples
 #' \dontrun{
-#' result <- repeated_measures_anova(my_data)
+#' result <- repeated_measures_anova(master_synthetic_data)
 #' print(result)
 #' }
 #'

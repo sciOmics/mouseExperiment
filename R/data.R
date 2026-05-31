@@ -20,21 +20,6 @@
 #' head(synthetic_data)
 "synthetic_data"
 
-#' Example data
-#' 
-#' A simple example dataset with x and y coordinates.
-#' 
-#' @format A data frame with 10 rows and 2 variables:
-#' \describe{
-#'   \item{x}{x-coordinate, sequence from 1 to 10}
-#'   \item{y}{y-coordinate, x plus random noise}
-#' }
-#' @source Synthetic data generated using random number generation
-#' @examples
-#' data(my_data)
-#' plot(my_data$x, my_data$y)
-"my_data"
-
 #' Combination treatment synthetic data
 #' 
 #' A dataset containing synthetic tumor volume measurements over time

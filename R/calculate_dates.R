@@ -176,15 +176,16 @@ calculate_dates <- function(df, start_date, date_column = "Date",
   }
   result <- cbind(df_result, Day)
   
-  # If in_place is TRUE and we're in a function, update the original df in the parent environment
-  if (in_place) {
-    parent_frame <- parent.frame()
-    df_name <- deparse(substitute(df))
-    if (exists(df_name, envir = parent_frame)) {
-      assign(df_name, result, envir = parent_frame)
-    }
+  # in_place is deprecated and now a no-op. parent.frame() / assign()
+  # silently failed when calculate_dates() was called from inside another
+  # function (the assignment hit that inner function's frame, not the
+  # user's workspace). Matches the calculate_volume() deprecation.
+  if (isTRUE(in_place)) {
+    warning("`in_place = TRUE` is deprecated and has no effect; ",
+            "use the return value of calculate_dates() instead.",
+            call. = FALSE)
   }
-  
+
   # Return the result
   return(result)
 }
