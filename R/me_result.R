@@ -317,9 +317,16 @@ repeated_measures_anova <- function(df,
     stop("Missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
   }
   
-  # Transform
+  # Transform — log uses log(x) with x[x<=0] replaced by min_positive/2,
+  # matching tumor_growth_statistics() / bayesian_tumor_growth() (was log(x+1),
+  # divergence noted in CODE_REVIEW.md J.10).
   df$y <- switch(transform,
-    "log"  = log(df[[volume_column]] + 1),
+    "log"  = {
+      v <- df[[volume_column]]
+      pos <- v[is.finite(v) & v > 0]
+      if (length(pos) > 0L) v[!(is.finite(v) & v > 0)] <- min(pos) / 2
+      log(v)
+    },
     "sqrt" = sqrt(df[[volume_column]]),
     "none" = df[[volume_column]]
   )

@@ -413,9 +413,19 @@ analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_
   # Only run if we have multiple time points
   if (length(unique(df[[day_column]])) > 1) {
     # Calculate growth rate for each mouse
+    # Zero-handling: use log(x) with x[x<=0] replaced by min_positive/2.
+    # Matches tumor_growth_statistics() / bayesian_tumor_growth() canonical
+    # pattern (was log1p — divergence noted in CODE_REVIEW.md G.8).
     growth_rates <- df %>%
       dplyr::group_by(.data[[dose_column]], .data[[id_column]]) %>%
-      dplyr::mutate(log_volume = log1p(.data[[volume_column]])) %>%
+      dplyr::mutate(
+        log_volume = {
+          v <- .data[[volume_column]]
+          pos <- v[is.finite(v) & v > 0]
+          if (length(pos) > 0L) v[!(is.finite(v) & v > 0)] <- min(pos) / 2
+          log(v)
+        }
+      ) %>%
       dplyr::arrange(.data[[day_column]]) %>%
       dplyr::summarize(
         growth_rate = if(dplyr::n() >= 3) {
