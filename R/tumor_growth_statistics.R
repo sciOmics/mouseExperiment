@@ -569,7 +569,9 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'        "none": No random effects
 #' @param handle_cage_effects Method for handling cage effects: "include_if_not_collinear", "always_include", 
 #'        "never_include", or "as_random_effect". Default is "include_if_not_collinear".
-#' @param auc_method Method for AUC calculation: "trapezoidal" or "last_observation". Default is "trapezoidal".
+#' @param auc_method Removed in v0.4.5. The AUC path now always uses the
+#'   trapezoidal rule. For last-observation-carried-forward (LOCF) AUC, use
+#'   \code{\link{tumor_auc_analysis}(method = "last_observation")} directly.
 #' @param p_adjust_method Method for p-value adjustment in pairwise comparisons:
 #'   "bonferroni" (default, conservative), "holm" (step-down, less conservative),
 #'   "fdr" (Benjamini-Hochberg false discovery rate), or "none" (no adjustment).
@@ -670,7 +672,6 @@ tumor_growth_statistics <- function(df,
                                   random_effects_specification = c("intercept_only", "slope", "none"),
                                   handle_cage_effects = c("include_if_not_collinear", "always_include", 
                                                         "never_include", "as_random_effect"),
-                                  auc_method = c("trapezoidal", "last_observation"),
                                   p_adjust_method = c("bonferroni", "holm", "fdr", "none"),
                                   reference_group = NULL,
                                   return_model = TRUE,
@@ -690,7 +691,6 @@ tumor_growth_statistics <- function(df,
   model_type <- match.arg(model_type, c("lme4", "gam", "auc"))
   random_effects_specification <- match.arg(random_effects_specification)
   handle_cage_effects <- match.arg(handle_cage_effects)
-  auc_method <- match.arg(auc_method)
   p_adjust_method <- match.arg(p_adjust_method)
   necrotic_handling <- match.arg(necrotic_handling)
   
@@ -1087,10 +1087,10 @@ tumor_growth_statistics <- function(df,
       ),
       methods = list(
         volume_transformation = transform,
-        auc_calculation_method = auc_method,
+        auc_calculation_method = "trapezoidal",
         statistical_test = "One-way ANOVA on AUC values",
         posthoc_method = paste0("Welch's t-tests with ", p_adjust_method, " adjustment for multiple comparisons"),
-        individual_calculation = paste("AUC calculated using", auc_method, "method for each subject"),
+        individual_calculation = "AUC calculated using trapezoidal rule for each subject",
         growth_rate_calculation = paste0(
           "Growth rates are calculated by fitting a linear regression model to log1p-transformed volume data over time for each subject. ",
           "The slope coefficient from this model represents the exponential growth rate. ",
