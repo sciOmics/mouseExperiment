@@ -557,6 +557,9 @@ tumor_growth_server <- function(id, rv) {
         }
         
         # Plot 4: QQ-plot + residuals-vs-fitted for diagnostics tab
+        # Diagnostics are inherently on the model scale; the axis labels are
+        # tagged so users don't read raw-volume meaning into them.
+        diag_scale_tag <- scale_suffix(input$tg_transform %||% "none")
         if (!is.null(result$diagnostics) && !is.null(result$diagnostics$residuals)) {
           resid_vec <- result$diagnostics$residuals$residuals
           # QQ plot
@@ -567,7 +570,8 @@ tumor_growth_server <- function(id, rv) {
             ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed", colour = "red") +
             ggplot2::theme_classic() +
             ggplot2::labs(title = "Q-Q Plot of Residuals",
-                         x = "Theoretical Quantiles", y = "Sample Quantiles")
+                         x = "Theoretical Quantiles",
+                         y = paste0("Sample Quantiles", diag_scale_tag))
           result$diag_qq_plot     <- qq_p
         } else if (!is.null(result$model)) {
           tryCatch({
@@ -579,7 +583,8 @@ tumor_growth_server <- function(id, rv) {
               ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed", colour = "red") +
               ggplot2::theme_classic() +
               ggplot2::labs(title = "Q-Q Plot of Residuals",
-                           x = "Theoretical Quantiles", y = "Sample Quantiles")
+                           x = "Theoretical Quantiles",
+                           y = paste0("Sample Quantiles", diag_scale_tag))
             result$diag_qq_plot     <- qq_p
           }, error = function(e) {
             log_caught_error("tumor_growth", "QQ plot from model", e)
@@ -601,7 +606,8 @@ tumor_growth_server <- function(id, rv) {
                                   colour = "steelblue", linewidth = 0.8) +
               ggplot2::theme_classic() +
               ggplot2::labs(title = "Residuals vs Fitted",
-                           x = "Fitted Values", y = "Residuals")
+                           x = paste0("Fitted Values", diag_scale_tag),
+                           y = paste0("Residuals", diag_scale_tag))
           }, error = function(e) {
             log_caught_error("tumor_growth", "residuals-vs-fitted plot", e)
             NULL
@@ -1618,15 +1624,28 @@ tumor_growth_server <- function(id, rv) {
     summ_r <- make_gr_summary(rates, grp_col_r, val_col_r)
     summ_r$grp <- factor(summ_r$grp, levels = if (is.factor(rates[[grp_col_r]])) levels(rates[[grp_col_r]]) else unique(as.character(rates[[grp_col_r]])))
 
+    # Growth rates are slopes of log(Volume) ~ Day, so always on the log scale.
+    # Back-transform to daily fold change when the user has asked for original
+    # units; CIs stay symmetric on the log scale (asymmetric in fold-change space).
+    do_back <- isTRUE(input$tg_opt_backtransform)
+    if (do_back) {
+      rates[[val_col_r]] <- exp(rates[[val_col_r]])
+      summ_r$ctr <- exp(summ_r$ctr)
+      summ_r$lo  <- exp(summ_r$lo)
+      summ_r$hi  <- exp(summ_r$hi)
+    }
+    y_label    <- if (do_back) "Daily Fold Change" else "Growth Rate (log-volume / day)"
+    null_yint  <- if (do_back) 1 else 0
+
     # Build plot from scratch — ensures individual points are drawn LAST (on top)
     p <- ggplot2::ggplot(rates,
            ggplot2::aes(x = .data[[grp_col_r]], y = .data[[val_col_r]],
                         colour = .data[[grp_col_r]], fill = .data[[grp_col_r]],
                         shape = .data[[grp_col_r]])) +
       ggplot2::theme_classic() +
-      ggplot2::labs(x = "Treatment Group", y = "Growth Rate (per day)",
+      ggplot2::labs(x = "Treatment Group", y = y_label,
                     title = "Growth Rates by Treatment Group") +
-      ggplot2::geom_hline(yintercept = 0, linetype = "dashed", colour = "red", linewidth = 0.5)
+      ggplot2::geom_hline(yintercept = null_yint, linetype = "dashed", colour = "red", linewidth = 0.5)
 
     # Error bars
     if (err_type != "none")
@@ -1793,12 +1812,23 @@ tumor_growth_server <- function(id, rv) {
         summ_b <- make_summary(rates, grp_col_b, val_col_b)
         summ_b$grp <- factor(summ_b$grp, levels = if (is.factor(rates[[grp_col_b]])) levels(rates[[grp_col_b]]) else unique(as.character(rates[[grp_col_b]])))
 
+        # Growth rates are always log-volume slopes; back-transform to daily
+        # fold change when the user has asked for original units.
+        do_back_b <- isTRUE(input$tg_opt_backtransform)
+        if (do_back_b) {
+          rates[[val_col_b]] <- exp(rates[[val_col_b]])
+          summ_b$ctr <- exp(summ_b$ctr)
+          summ_b$lo  <- exp(summ_b$lo)
+          summ_b$hi  <- exp(summ_b$hi)
+        }
+        y_label_b <- if (do_back_b) "Daily Fold Change" else "Growth Rate (log-volume / day)"
+
         p <- ggplot2::ggplot(rates,
                ggplot2::aes(x = .data[[grp_col_b]], y = .data[[val_col_b]],
                             colour = .data[[grp_col_b]], fill = .data[[grp_col_b]],
                             shape = .data[[grp_col_b]])) +
           ggplot2::theme_classic() +
-          ggplot2::labs(x = "Treatment", y = "Growth Rate (log-volume / day)",
+          ggplot2::labs(x = "Treatment", y = y_label_b,
                         title = "Growth Rate Comparison") +
           ggplot2::theme(legend.title = ggplot2::element_blank())
 
@@ -1992,12 +2022,31 @@ tumor_growth_server <- function(id, rv) {
     show_ci     <- isTRUE(input$tg_opt_forest_show_ci     %||% FALSE)
     any_ann     <- show_pval || show_effect || show_ci
 
+    # Back-transform to fold change only when the model fit a log transform.
+    # Sqrt back-transform of a difference of sqrt(volume) has no clean
+    # biological interpretation, so we deliberately skip it.
+    transform_used <- rv$tg_results$transform_used %||% "none"
+    do_back        <- isTRUE(input$tg_opt_backtransform) && transform_used == "log"
+
+    if (do_back) {
+      forest_df$Estimate <- exp(forest_df$Estimate)
+      forest_df$Lower    <- exp(forest_df$Lower)
+      forest_df$Upper    <- exp(forest_df$Upper)
+      # Reference row's "Estimate = 0" on log scale becomes 1 (no effect) on
+      # fold-change scale. is_ref rows keep NA CIs so they aren't drawn.
+      forest_df$Estimate[forest_df$is_ref] <- 1
+      non_ref <- forest_df[!forest_df$is_ref, , drop = FALSE]
+    }
+
+    # Effect-size label format depends on scale
+    eff_prefix <- if (do_back) "FC: " else "est: "
+
     # Build per-row annotation label from whichever elements are enabled
     forest_df$Ann_Label <- vapply(seq_len(nrow(forest_df)), function(j) {
       if (forest_df$is_ref[j]) return("")
       parts <- character(0)
       if (show_effect)
-        parts <- c(parts, paste0("est: ", signif(forest_df$Estimate[j], 3)))
+        parts <- c(parts, paste0(eff_prefix, signif(forest_df$Estimate[j], 3)))
       if (show_ci && !is.na(forest_df$Lower[j]))
         parts <- c(parts,
           paste0("[", signif(forest_df$Lower[j], 3), ", ", signif(forest_df$Upper[j], 3), "]"))
@@ -2018,16 +2067,37 @@ tumor_growth_server <- function(id, rv) {
       setNames(as.integer(vals), contrast_lvls)
     } else setNames(rep(16L, length(contrast_lvls)), contrast_lvls)
 
-    all_vals <- c(non_ref$Estimate, non_ref$Lower, non_ref$Upper)
-    max_abs  <- ceiling(max(abs(all_vals), na.rm = TRUE))
-    # Widen right margin when annotations are shown so text is not clipped
-    x_lim    <- c(-max_abs, max_abs * if (any_ann) 1.55 else 1.20)
-    x_breaks <- pretty(c(-max_abs, max_abs), n = 6)
-    x_breaks <- x_breaks[x_breaks >= -max_abs & x_breaks <= max_abs]
+    # x-axis limits & breaks differ between linear (difference) and log10
+    # (fold-change) scales. On fold-change scale, range is centred on 1 in
+    # log space so 0.5x and 2x are equidistant from 1.
+    if (do_back) {
+      all_vals  <- c(non_ref$Estimate, non_ref$Lower, non_ref$Upper)
+      all_vals  <- all_vals[is.finite(all_vals) & all_vals > 0]
+      max_log10 <- max(ceiling(max(abs(log10(all_vals)), na.rm = TRUE)), 1L)
+      # Widen right margin when annotations are shown so text is not clipped
+      right_pad <- if (any_ann) 0.5 else 0.1
+      x_lim     <- c(10^(-max_log10), 10^(max_log10 + right_pad))
+      x_breaks  <- 10^seq(-max_log10, max_log10, by = 1)
+      x_lab     <- if (isTRUE(using_dunnett))
+                     "Fold Change (treatment / reference)"
+                   else "Fold Change"
+    } else {
+      all_vals  <- c(non_ref$Estimate, non_ref$Lower, non_ref$Upper)
+      max_abs   <- ceiling(max(abs(all_vals), na.rm = TRUE))
+      # Widen right margin when annotations are shown so text is not clipped
+      x_lim     <- c(-max_abs, max_abs * if (any_ann) 1.55 else 1.20)
+      x_breaks  <- pretty(c(-max_abs, max_abs), n = 6)
+      x_breaks  <- x_breaks[x_breaks >= -max_abs & x_breaks <= max_abs]
+      scale_tag <- scale_suffix(transform_used)
+      x_lab     <- if (isTRUE(using_dunnett))
+                     paste0("Mean Difference (treatment \u2212 reference)", scale_tag)
+                   else paste0("Mean Difference", scale_tag)
+    }
 
-    x_lab <- if (isTRUE(using_dunnett)) "Mean Difference (treatment \u2212 reference)" else "Mean Difference"
+    null_xint <- if (do_back) 1 else 0
+
     p <- ggplot2::ggplot(forest_df, ggplot2::aes(x = Estimate, y = Contrast)) +
-      ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "red", linewidth = 0.6) +
+      ggplot2::geom_vline(xintercept = null_xint, linetype = "dashed", colour = "red", linewidth = 0.6) +
       ggplot2::geom_errorbarh(
         data = ~ subset(., !is_ref),
         ggplot2::aes(xmin = Lower, xmax = Upper, colour = Contrast),
@@ -2045,7 +2115,10 @@ tumor_growth_server <- function(id, rv) {
         lineheight = 0.9) +
       ggplot2::scale_colour_manual(values = forest_colours, guide = "none") +
       ggplot2::scale_shape_manual(values = forest_shapes, guide = "none") +
-      ggplot2::scale_x_continuous(limits = x_lim, breaks = x_breaks) +
+      (if (do_back)
+         ggplot2::scale_x_log10(limits = x_lim, breaks = x_breaks)
+       else
+         ggplot2::scale_x_continuous(limits = x_lim, breaks = x_breaks)) +
       ggplot2::labs(x = x_lab, y = NULL, title = "Effect Size Forest Plot") +
       ggplot2::theme_classic() +
       ggplot2::theme(axis.text.y = ggplot2::element_text(size = 10))

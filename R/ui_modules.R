@@ -860,6 +860,16 @@ tumorGrowthUI <- function(id) {
                       checkboxInput(ns("tg_opt_forest_show_ci"),
                                     "Show 95% CI",      value = FALSE)
                     ),
+                    conditionalPanel(ns = ns,
+                      "['growth_rate','auc','effect_forest'].indexOf(input.tg_plot_selector) >= 0",
+                      checkboxInput(ns("tg_opt_backtransform"),
+                                    "Display on original scale",
+                                    value = FALSE),
+                      helpText("Back-transforms log-scale model output to original units. ",
+                               "Growth rates and contrasts become daily fold changes (exp(value)); ",
+                               "forest plot uses a log10 axis centred on 1. ",
+                               "Inference is still performed on the log scale.")
+                    ),
                     selectInput(ns("tg_opt_legend_pos"), "Legend position",
                       choices = c("None" = "none",
                                   "Top" = "top", "Bottom" = "bottom",

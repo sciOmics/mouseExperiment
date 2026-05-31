@@ -15,6 +15,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   auto-chosen basis dimension. Use these whenever growth is materially non-linear —
   the GAMM smoother is the principled replacement for fitting higher-order
   polynomials in time and extrapolates more honestly.
+- **Tumor Growth — "Display on original scale" plot toggle** — new checkbox in
+  the Plots-tab Elements panel for Growth Rates, Treatment Effects, and Effect
+  Size Forest plots. Back-transforms log-scale model output to interpretable
+  original units: growth rates become daily fold changes (`exp(rate)`); forest
+  contrasts become fold changes vs. reference rendered on a log10 axis centred
+  on 1. CIs are exponentiated from log-scale bounds (asymmetric in fold-change
+  space, as expected). Inference is still performed on the log scale; the
+  toggle only changes display. For sqrt-transformed fits the toggle is a no-op
+  on the forest plot since back-transforming a difference of √volumes has no
+  clean interpretation.
 
 ### Changed
 - **Tumor Growth — model summary text** — the "Model summary" tooltip now
@@ -23,6 +33,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 - **Tumor Growth — backend call** — the dashboard no longer passes
   `polynomial_degree = 1L` to `tumor_growth_statistics()` (the backend argument
   was removed in mouseExperiment v0.4.4 in favour of `model_type = "gam"`).
+- **Tumor Growth — analysis-scale axis labels** — plots that display values on
+  the model scale now declare it in the axis title so readers don't mistake
+  log/sqrt-scale numbers for raw volumes. Growth Rates and Treatment Effects
+  default y-axis reads "Growth Rate (log-volume / day)" (or "Daily Fold Change"
+  when the new back-transform toggle is on); the Forest plot x-axis appends
+  " (log scale)" / " (sqrt scale)" when a non-trivial transform was used; the
+  Q–Q and residuals-vs-fitted diagnostic axes carry the same suffix.
+
+### Fixed
+- **Tumor Growth — `back_transform()` helper** — the helper claimed to invert
+  `log1p` (via `expm1`), but `tumor_growth_statistics()`, `bayesian_tumor_growth()`,
+  and the GAMM path all transform with plain `log()` (volumes are strictly
+  positive). The helper now uses `exp()` so it matches what the rest of the
+  pipeline does. It had no callers in the dashboard before this release, so no
+  downstream numbers change.
 
 ### Requires
 - **mouseExperiment >= 0.4.4** (for the new `model_type = "gam"` argument on

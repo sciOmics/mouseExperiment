@@ -507,17 +507,38 @@ plot_export_ui <- function(prefix) {
 
 #' Back-transform values from analysis scale to original scale
 #'
+#' Inverse of the transform applied in `tumor_growth_statistics()` and the
+#' Bayesian / GAM tumor-growth fits, which all use `log(Volume)` (not
+#' `log1p`). For `"sqrt"`, returns `x^2`. For `"none"`, returns `x` unchanged.
+#'
 #' @param x Numeric vector on the transformed scale
-#' @param transform One of "log" (log1p), "sqrt", or "none"
+#' @param transform One of "log", "sqrt", or "none"
 #' @return Numeric vector on the original scale
 #' @keywords internal
 back_transform <- function(x, transform) {
   x <- suppressWarnings(as.numeric(x))
   switch(transform,
-    "log"  = expm1(x),   # inverse of log(x + 1)
-    "sqrt" = x ^ 2,      # inverse of sqrt
+    "log"  = exp(x),
+    "sqrt" = x ^ 2,
     "none" = x,
     x
+  )
+}
+
+#' Axis-label suffix for an analysis-scale plot
+#'
+#' Returns " (log scale)", " (sqrt scale)", or "" so plot y-axis labels can
+#' indicate that values are on the transformed scale without overriding any
+#' user-supplied label.
+#'
+#' @param transform One of "log", "sqrt", or "none"
+#' @return Character scalar suitable for appending to an axis label
+#' @keywords internal
+scale_suffix <- function(transform) {
+  switch(transform,
+    "log"  = " (log scale)",
+    "sqrt" = " (sqrt scale)",
+    ""
   )
 }
 
