@@ -79,15 +79,29 @@ local({
     expect_gt(nrow(res$pairwise_comparisons), 0)
   })
 
-  test_that("bayesian_tumor_growth: mcmc_diagnostics has Rhat column with all values < 1.1", {
+  test_that("bayesian_tumor_growth: convergence per current Stan recommendations", {
     skip_bayes()
     res <- get_bayes_result()
     diag <- res$mcmc_diagnostics
     expect_s3_class(diag, "data.frame")
     expect_true("Rhat" %in% colnames(diag),
                 info = "mcmc_diagnostics must contain an Rhat column")
-    expect_true(all(diag$Rhat < 1.1, na.rm = TRUE),
-                info = paste("Non-converged Rhat values:", paste(diag$Rhat[diag$Rhat >= 1.1], collapse = ", ")))
+    # Vehtari et al. 2021 / current Stan recommendation: Rhat <= 1.01
+    expect_true(all(diag$Rhat <= 1.01, na.rm = TRUE),
+                info = paste("Rhat above 1.01:",
+                             paste(round(diag$Rhat[diag$Rhat > 1.01], 4),
+                                   collapse = ", ")))
+    # Bulk / Tail ESS minimum thresholds (Stan default suggestion ~400 each)
+    expect_true("Bulk_ESS" %in% colnames(diag))
+    expect_true("Tail_ESS" %in% colnames(diag))
+    expect_true(all(diag$Bulk_ESS >= 400, na.rm = TRUE),
+                info = paste("Bulk_ESS below 400:",
+                             paste(diag$Bulk_ESS[diag$Bulk_ESS < 400],
+                                   collapse = ", ")))
+    expect_true(all(diag$Tail_ESS >= 400, na.rm = TRUE),
+                info = paste("Tail_ESS below 400:",
+                             paste(diag$Tail_ESS[diag$Tail_ESS < 400],
+                                   collapse = ", ")))
   })
 
   test_that("bayesian_tumor_growth: mcmc_diagnostics has Converged column", {

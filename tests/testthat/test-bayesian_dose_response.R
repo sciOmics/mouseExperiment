@@ -144,13 +144,19 @@ local({
   })
 
   # ── mcmc_diagnostics ───────────────────────────────────────────────────────
-  test_that("bayesian_dose_response: mcmc_diagnostics has Rhat and Converged", {
+  test_that("bayesian_dose_response: convergence per current Stan recommendations", {
     skip_bayes_dr()
     diag <- get_dr_result()$mcmc_diagnostics
     expect_s3_class(diag, "data.frame")
     expect_true("Rhat" %in% colnames(diag))
     expect_true("Converged" %in% colnames(diag))
     expect_type(diag$Converged, "logical")
+    expect_true(all(diag$Rhat <= 1.01, na.rm = TRUE),
+                info = "Rhat above 1.01 (Vehtari 2021 threshold)")
+    expect_true(all(diag$Bulk_ESS >= 400, na.rm = TRUE),
+                info = "Bulk_ESS below 400 (Stan recommendation)")
+    expect_true(all(diag$Tail_ESS >= 400, na.rm = TRUE),
+                info = "Tail_ESS below 400 (Stan recommendation)")
   })
 
   # ── summary metadata ───────────────────────────────────────────────────────
