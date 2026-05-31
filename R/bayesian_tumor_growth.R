@@ -417,11 +417,12 @@ bayesian_tumor_growth <- function(
         lower_pc <- if ("lower.HPD" %in% names(pc_df)) "lower.HPD" else "lower.CL"
         upper_pc <- if ("upper.HPD" %in% names(pc_df)) "upper.HPD" else "upper.CL"
         pairwise_comparisons <- data.frame(
-          contrast  = as.character(pc_df$contrast),
-          estimate  = round(pc_df$estimate,    4),
-          SE        = if ("SE" %in% names(pc_df)) round(pc_df$SE, 4) else NA_real_,
-          Lower_CrI = round(pc_df[[lower_pc]], 4),
-          Upper_CrI = round(pc_df[[upper_pc]], 4),
+          contrast    = as.character(pc_df$contrast),
+          estimate    = round(pc_df$estimate,    4),
+          SE          = if ("SE" %in% names(pc_df)) round(pc_df$SE, 4) else NA_real_,
+          Lower_CrI   = round(pc_df[[lower_pc]], 4),
+          Upper_CrI   = round(pc_df[[upper_pc]], 4),
+          P_direction = emm_p_direction(pc, n_contrasts = nrow(pc_df)),
           stringsAsFactors = FALSE
         )
       }

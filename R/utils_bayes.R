@@ -143,6 +143,35 @@ bayes_prior_params <- function(prior_strength) {
 
 # ── Cage column setup ──────────────────────────────────────────────────────────
 
+#' Posterior probability of direction for emmeans contrasts on a brmsfit
+#'
+#' Returns a numeric vector of length \code{ncol(contrast_draws)} with the
+#' probability that each contrast's effect is in its dominant direction.
+#' Reports \code{max(P(effect > 0), P(effect < 0))} — the directional
+#' posterior probability that replaces the awkward "does the 95\% CrI exclude
+#' zero?" interpretation with a quantitative posterior statement.
+#'
+#' Implementation pulls posterior draws via \code{emmeans::as.mcmc.emmGrid}
+#' (which works for brms emmGrid objects). Falls back to \code{NA_real_}
+#' when draws can't be extracted.
+#' @noRd
+emm_p_direction <- function(emm_or_contrast, n_contrasts = NULL) {
+  default <- if (is.null(n_contrasts)) NA_real_ else rep(NA_real_, n_contrasts)
+  if (!requireNamespace("emmeans", quietly = TRUE) ||
+      is.null(emm_or_contrast)) return(default)
+  draws_mat <- tryCatch({
+    mc <- emmeans::as.mcmc.emmGrid(emm_or_contrast)
+    as.matrix(mc)
+  }, error = function(e) NULL)
+  if (is.null(draws_mat) || !is.matrix(draws_mat)) return(default)
+  vapply(seq_len(ncol(draws_mat)), function(j) {
+    x <- draws_mat[, j]
+    p_pos <- mean(x > 0, na.rm = TRUE)
+    round(max(p_pos, 1 - p_pos), 4)
+  }, numeric(1L))
+}
+
+
 #' Posterior Bayesian R^2 summary for a brmsfit
 #'
 #' Returns the Estimate, Est.Error, and 95\% CrI of \code{brms::bayes_R2}
