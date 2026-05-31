@@ -539,11 +539,13 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
       idx <- which(results$Group == group_name)
       
       if (length(idx) > 0) {
-        # Extract values
-        hr <- exp(model_summary$coefficients[i, "coef"])
-        ci_lower <- exp(model_summary$coefficients[i, "coef"] - 1.96 * model_summary$coefficients[i, "se(coef)"])
-        ci_upper <- exp(model_summary$coefficients[i, "coef"] + 1.96 * model_summary$coefficients[i, "se(coef)"])
-        p_value <- model_summary$coefficients[i, "Pr(>|z|)"]
+        # Use summary(coxph)$conf.int directly — already contains exp(coef),
+        # lower .95, and upper .95 at the proper qnorm(0.975) ≈ 1.959964.
+        ci_row   <- model_summary$conf.int[i, , drop = TRUE]
+        hr       <- unname(ci_row["exp(coef)"])
+        ci_lower <- unname(ci_row["lower .95"])
+        ci_upper <- unname(ci_row["upper .95"])
+        p_value  <- model_summary$coefficients[i, "Pr(>|z|)"]
         
         # Assign values
         results$HR[idx] <- hr
