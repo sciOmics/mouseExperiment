@@ -305,7 +305,9 @@ bayesian_body_weight <- function(
   posterior_summary <- fixed_df
 
   # ── MCMC diagnostics ───────────────────────────────────────────────────────
-  mcmc_diagnostics <- make_mcmc_diagnostics(posterior_summary)
+  mcmc_diagnostics <- make_mcmc_diagnostics(posterior_summary,
+                                            total_draws = n_chains * n_iter)
+  nuts_diagnostics <- make_nuts_diagnostics(model)
 
   # ── Treatment effects (emmeans) ────────────────────────────────────────────
   treatment_effects    <- NULL
@@ -701,6 +703,7 @@ bayesian_body_weight <- function(
     treatment_effects       = treatment_effects,
     pairwise_comparisons    = pairwise_comparisons,
     mcmc_diagnostics        = mcmc_diagnostics,
+    nuts_diagnostics        = nuts_diagnostics,
     weight_loss_summary     = weight_loss_summary,
     pp_check_plot           = pp_check_plot,
     posterior_dist_plot     = posterior_dist_plot,

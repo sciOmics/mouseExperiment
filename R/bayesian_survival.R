@@ -305,7 +305,9 @@ bayesian_survival <- function(
   posterior_summary <- fixed_df
 
   # ── MCMC diagnostics ───────────────────────────────────────────────────────
-  mcmc_diagnostics <- make_mcmc_diagnostics(posterior_summary)
+  mcmc_diagnostics <- make_mcmc_diagnostics(posterior_summary,
+                                            total_draws = n_chains * n_iter)
+  nuts_diagnostics <- make_nuts_diagnostics(model)
 
   # ── Treatment effects table ────────────────────────────────────────────────
   treatment_effects <- bs_build_treatment_table(
@@ -404,6 +406,7 @@ bayesian_survival <- function(
     treatment_effects   = treatment_effects,
     posterior_summary   = posterior_summary,
     mcmc_diagnostics    = mcmc_diagnostics,
+    nuts_diagnostics    = nuts_diagnostics,
     survival_data       = data.frame(
       Time      = df[[time_column]],
       Event     = df[[event_column]],

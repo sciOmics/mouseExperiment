@@ -344,7 +344,9 @@ bayesian_synergy <- function(
   posterior_summary <- build_posterior_summary(model)
 
   # ── MCMC diagnostics ──────────────────────────────────────────────────────
-  mcmc_diagnostics <- make_mcmc_diagnostics(posterior_summary)
+  mcmc_diagnostics <- make_mcmc_diagnostics(posterior_summary,
+                                            total_draws = n_chains * n_iter)
+  nuts_diagnostics <- make_nuts_diagnostics(model)
 
   # ── Posterior predictive draws at endpoint day ─────────────────────────────
   groups <- c(control_name, drug_a_name, drug_b_name, combo_name)
@@ -605,6 +607,7 @@ bayesian_synergy <- function(
     synergy_table       = synergy_table,
     posterior_summary   = posterior_summary,
     mcmc_diagnostics    = mcmc_diagnostics,
+    nuts_diagnostics    = nuts_diagnostics,
     summary             = analysis_summary,
     synergy_plot        = synergy_plot,
     posterior_dist_plot = post_dist_plot
@@ -843,7 +846,9 @@ bayesian_synergy_over_time <- function(
   )
 
   posterior_summary <- build_posterior_summary(model)
-  mcmc_diagnostics  <- make_mcmc_diagnostics(posterior_summary)
+  mcmc_diagnostics  <- make_mcmc_diagnostics(posterior_summary,
+                                             total_draws = n_chains * n_iter)
+  nuts_diagnostics  <- make_nuts_diagnostics(model)
 
   # ── Posterior predictive draws for all (group, day) combinations ──────────
   groups  <- c(control_name, drug_a_name, drug_b_name, combo_name)
@@ -1040,6 +1045,7 @@ bayesian_synergy_over_time <- function(
     peak_loewe_day    = peak_loewe_day,
     posterior_summary = posterior_summary,
     mcmc_diagnostics  = mcmc_diagnostics,
+    nuts_diagnostics  = nuts_diagnostics,
     summary           = analysis_summary,
     synergy_time_plot = synergy_time_plot
   )
