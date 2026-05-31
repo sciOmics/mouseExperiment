@@ -64,13 +64,29 @@ efficacy_toxicity_bivariate <- function(df,
     wt$Net_Weight <- wt$Weight
   }
 
-  baseline_w <- stats::aggregate(Net_Weight ~ ID, data = wt, FUN = function(x) x[1])
+  # Composite key prevents collapsing reused IDs across treatments.
+  # The efficacy arm below already uses make_mouse_key — bring toxicity inline.
+  # Also filter to the earliest study day so x[1] is unambiguous (Round 1 1.7).
+  wt$.MouseKey <- make_mouse_key(wt$Treatment, wt$ID)
+  min_day_w <- min(wt$Day, na.rm = TRUE)
+  baseline_w <- stats::aggregate(
+    Net_Weight ~ .MouseKey,
+    data = wt[wt$Day == min_day_w, ],
+    FUN  = mean, na.rm = TRUE
+  )
   names(baseline_w)[2] <- "Baseline_Weight"
-  wt <- merge(wt, baseline_w, by = "ID", all.x = TRUE)
+  wt <- merge(wt, baseline_w, by = ".MouseKey", all.x = TRUE)
   wt$Pct_Weight_Loss <- (wt$Baseline_Weight - wt$Net_Weight) / wt$Baseline_Weight * 100
 
-  max_wl <- stats::aggregate(Pct_Weight_Loss ~ ID + Treatment, data = wt, FUN = max, na.rm = TRUE)
-  names(max_wl)[3] <- "Max_Pct_Weight_Loss"
+  max_wl <- stats::aggregate(
+    Pct_Weight_Loss ~ .MouseKey + Treatment,
+    data = wt, FUN = max, na.rm = TRUE
+  )
+  names(max_wl)[c(1, 3)] <- c("MouseKey", "Max_Pct_Weight_Loss")
+  # Recover ID for display from the composite key (Treatment|||ID format)
+  max_wl$ID <- vapply(strsplit(max_wl$MouseKey, "\\|\\|\\|"),
+                      function(p) p[2], character(1L))
+  max_wl <- max_wl[, c("ID", "Treatment", "Max_Pct_Weight_Loss")]
   max_wl$Max_Pct_Weight_Loss <- pmax(max_wl$Max_Pct_Weight_Loss, 0)
 
   # --- Efficacy: per mouse ---

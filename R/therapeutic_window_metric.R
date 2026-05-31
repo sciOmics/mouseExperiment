@@ -29,6 +29,7 @@ therapeutic_window_metric <- function(df,
                                       time_column      = "Day",
                                       treatment_column = "Treatment",
                                       id_column        = "ID",
+                                      cage_column      = NULL,
                                       adjust_tumor_weight = TRUE,
                                       tumor_density    = 1.0,
                                       reference_group  = NULL,
@@ -42,14 +43,19 @@ therapeutic_window_metric <- function(df,
   }
 
   # --- Build working data ---
+  cage_col_present <- !is.null(cage_column) && cage_column %in% names(df)
+  cage_vec <- if (cage_col_present) as.character(df[[cage_column]]) else "1"
   wd <- data.frame(
     ID        = as.character(df[[id_column]]),
     Treatment = as.character(df[[treatment_column]]),
+    Cage      = cage_vec,
     Day       = as.numeric(df[[time_column]]),
     Weight    = as.numeric(df[[weight_column]]),
     Volume    = as.numeric(df[[volume_column]]),
     stringsAsFactors = FALSE
   )
+  # Composite mouse key prevents collapsing same-numeric-ID mice across cages
+  wd$MouseKey <- make_mouse_key(wd$ID, wd$Treatment, wd$Cage)
 
   if (adjust_tumor_weight) {
     wd$Weight <- wd$Weight - (wd$Volume / 1000 * tumor_density)
@@ -80,17 +86,19 @@ therapeutic_window_metric <- function(df,
   # --- Max % weight loss per group ---
   # Per mouse: baseline weight, nadir weight, max % loss
   # Filter to the earliest study day before aggregating so x[1] is ordered.
+  # Aggregate by MouseKey (ID|||Treatment|||Cage) so reused IDs across cages
+  # don't collapse — same fix class as Round 1 1.8 for weight_corrected_tgi.
   min_day <- min(wd$Day, na.rm = TRUE)
-  baseline <- stats::aggregate(Weight ~ ID + Treatment,
+  baseline <- stats::aggregate(Weight ~ MouseKey + Treatment,
                                data = wd[wd$Day == min_day, ],
                                FUN = mean, na.rm = TRUE)
   names(baseline)[3] <- "Baseline_Weight"
 
-  nadir <- stats::aggregate(Weight ~ ID + Treatment, data = wd,
+  nadir <- stats::aggregate(Weight ~ MouseKey + Treatment, data = wd,
                             FUN = min, na.rm = TRUE)
   names(nadir)[3] <- "Nadir_Weight"
 
-  mouse_wl <- merge(baseline, nadir, by = c("ID", "Treatment"))
+  mouse_wl <- merge(baseline, nadir, by = c("MouseKey", "Treatment"))
   mouse_wl$Pct_Loss <- (mouse_wl$Baseline_Weight - mouse_wl$Nadir_Weight) /
                         mouse_wl$Baseline_Weight * 100
   mouse_wl$Pct_Loss <- pmax(mouse_wl$Pct_Loss, 0)  # clamp negative (weight gain)
