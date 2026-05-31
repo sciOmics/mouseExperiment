@@ -267,6 +267,11 @@ survival_statistics <- function(df,
     result_list$ph_test <- model_results$ph_test
   }
 
+  # Add concordance / C-index when available (cox path only)
+  if (!is.null(model_results$c_index)) {
+    result_list$c_index <- model_results$c_index
+  }
+
   return(result_list)
 }
 
@@ -508,6 +513,13 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
       }
     }
 
+    # Concordance (C-index) — survival analogue of AUC-ROC; values around
+    # 0.5 indicate no discrimination, 1.0 perfect discrimination.
+    c_index <- tryCatch(
+      survival::concordance(model),
+      error = function(e) NULL
+    )
+
     # Extract the hazard ratios, CIs, and p-values
     model_summary <- summary(model)
     
@@ -560,7 +572,8 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     model = model,
     results = results,
     method_used = method_used,
-    ph_test = if (exists("ph_test", inherits = FALSE)) ph_test else NULL
+    ph_test = if (exists("ph_test", inherits = FALSE)) ph_test else NULL,
+    c_index = if (exists("c_index", inherits = FALSE)) c_index else NULL
   ))
 }
 
