@@ -495,12 +495,26 @@ analyze_polynomial_trends <- function(analysis_data, dose_column = "Dose",
   tryCatch({
     # Check if we have enough dose levels
     if (length(unique(analysis_data[[dose_column]])) >= 3) {
-      # Create categorical factor for dose
-      analysis_data$dose_factor <- factor(analysis_data[[dose_column]], 
-                                       levels = sort(unique(analysis_data[[dose_column]])))
-      
-      # Set up polynomial contrasts
-      stats::contrasts(analysis_data$dose_factor) <- stats::contr.poly(levels(analysis_data$dose_factor))
+      # Create categorical factor for dose. CODE_REVIEW.md G.7: when doses
+      # are unequally spaced (the common preclinical pattern 0, 10, 30, 100
+      # mg/kg etc.), the default contr.poly() generates orthogonal contrasts
+      # for evenly-spaced indices 1, 2, 3, … — NOT for the actual dose
+      # scores. Reported linear / quadratic / cubic p-values would then be
+      # the orthogonal decomposition on the *index axis*, not on the true
+      # dose scale.
+      #
+      # Pass the numeric dose levels as `scores` so contr.poly() builds the
+      # contrast matrix on the actual dose values.
+      sorted_doses <- sort(unique(as.numeric(analysis_data[[dose_column]])))
+      analysis_data$dose_factor <- factor(
+        analysis_data[[dose_column]],
+        levels = sorted_doses
+      )
+
+      stats::contrasts(analysis_data$dose_factor) <- stats::contr.poly(
+        n      = length(sorted_doses),
+        scores = sorted_doses
+      )
       
       # Fit model with polynomial contrasts
       poly_model <- stats::lm(as.formula(paste(volume_column, "~ dose_factor")), data = analysis_data)
