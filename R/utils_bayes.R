@@ -143,6 +143,29 @@ bayes_prior_params <- function(prior_strength) {
 
 # ── Cage column setup ──────────────────────────────────────────────────────────
 
+#' Posterior Bayesian R^2 summary for a brmsfit
+#'
+#' Returns the Estimate, Est.Error, and 95\% CrI of \code{brms::bayes_R2}
+#' as a one-row data frame. The Bayesian analogue of OLS R^2: a posterior
+#' distribution of variance explained, not a point estimate. Returns
+#' \code{NULL} when the model can't be evaluated.
+#' @noRd
+bayes_r2_summary <- function(model) {
+  if (!requireNamespace("brms", quietly = TRUE) || is.null(model)) return(NULL)
+  r2 <- tryCatch(brms::bayes_R2(model, summary = TRUE),
+                 error = function(e) NULL,
+                 warning = function(w) NULL)
+  if (is.null(r2) || !is.matrix(r2)) return(NULL)
+  data.frame(
+    Estimate     = round(unname(r2["R2", "Estimate"]),  4),
+    Est_Error    = round(unname(r2["R2", "Est.Error"]), 4),
+    Lower_95_CrI = round(unname(r2["R2", "Q2.5"]),      4),
+    Upper_95_CrI = round(unname(r2["R2", "Q97.5"]),     4),
+    stringsAsFactors = FALSE
+  )
+}
+
+
 #' PSIS-LOO cross-validation + Pareto-k diagnostics for a brmsfit
 #'
 #' Returns a one-row data frame with the standard summary plus a per-mouse

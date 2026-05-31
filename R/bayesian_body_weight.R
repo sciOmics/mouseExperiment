@@ -309,6 +309,7 @@ bayesian_body_weight <- function(
                                             total_draws = n_chains * n_iter)
   nuts_diagnostics <- make_nuts_diagnostics(model)
   loo_diagnostics  <- bayes_loo(model)
+  bayes_r2         <- bayes_r2_summary(model)
 
   # ── Treatment effects (emmeans) ────────────────────────────────────────────
   treatment_effects    <- NULL
@@ -706,6 +707,7 @@ bayesian_body_weight <- function(
     mcmc_diagnostics        = mcmc_diagnostics,
     nuts_diagnostics        = nuts_diagnostics,
     loo_diagnostics         = loo_diagnostics,
+    bayes_R2                = bayes_r2,
     weight_loss_summary     = weight_loss_summary,
     pp_check_plot           = pp_check_plot,
     posterior_dist_plot     = posterior_dist_plot,

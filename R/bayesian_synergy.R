@@ -348,6 +348,7 @@ bayesian_synergy <- function(
                                             total_draws = n_chains * n_iter)
   nuts_diagnostics <- make_nuts_diagnostics(model)
   loo_diagnostics  <- bayes_loo(model)
+  bayes_r2         <- bayes_r2_summary(model)
 
   # ── Posterior predictive draws at endpoint day ─────────────────────────────
   groups <- c(control_name, drug_a_name, drug_b_name, combo_name)
@@ -610,6 +611,7 @@ bayesian_synergy <- function(
     mcmc_diagnostics    = mcmc_diagnostics,
     nuts_diagnostics    = nuts_diagnostics,
     loo_diagnostics     = loo_diagnostics,
+    bayes_R2            = bayes_r2,
     summary             = analysis_summary,
     synergy_plot        = synergy_plot,
     posterior_dist_plot = post_dist_plot
@@ -852,6 +854,7 @@ bayesian_synergy_over_time <- function(
                                              total_draws = n_chains * n_iter)
   nuts_diagnostics  <- make_nuts_diagnostics(model)
   loo_diagnostics   <- bayes_loo(model)
+  bayes_r2          <- bayes_r2_summary(model)
 
   # ── Posterior predictive draws for all (group, day) combinations ──────────
   groups  <- c(control_name, drug_a_name, drug_b_name, combo_name)
@@ -1050,6 +1053,7 @@ bayesian_synergy_over_time <- function(
     mcmc_diagnostics  = mcmc_diagnostics,
     nuts_diagnostics  = nuts_diagnostics,
     loo_diagnostics   = loo_diagnostics,
+    bayes_R2          = bayes_r2,
     summary           = analysis_summary,
     synergy_time_plot = synergy_time_plot
   )

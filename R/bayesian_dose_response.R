@@ -331,6 +331,7 @@ bayesian_dose_response <- function(
                                             total_draws = n_chains * n_iter)
   nuts_diagnostics <- make_nuts_diagnostics(model)
   loo_diagnostics  <- bayes_loo(model)
+  bayes_r2         <- bayes_r2_summary(model)
 
   # ── Back-transformed parameter posteriors ──────────────────────────────────
   draws <- tryCatch(brms::as_draws_df(model), error = function(e) NULL)
@@ -625,6 +626,7 @@ bayesian_dose_response <- function(
     mcmc_diagnostics         = mcmc_diagnostics,
     nuts_diagnostics         = nuts_diagnostics,
     loo_diagnostics          = loo_diagnostics,
+    bayes_R2                 = bayes_r2,
     dose_response_summary    = dose_response_summary,
     dose_response_curve_plot = dose_response_curve_plot,
     prior_posterior_plot     = prior_posterior_plot_dr,

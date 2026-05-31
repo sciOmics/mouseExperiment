@@ -309,6 +309,7 @@ bayesian_survival <- function(
                                             total_draws = n_chains * n_iter)
   nuts_diagnostics <- make_nuts_diagnostics(model)
   loo_diagnostics  <- bayes_loo(model)
+  bayes_r2         <- bayes_r2_summary(model)
 
   # ── Treatment effects table ────────────────────────────────────────────────
   treatment_effects <- bs_build_treatment_table(
@@ -409,6 +410,7 @@ bayesian_survival <- function(
     mcmc_diagnostics    = mcmc_diagnostics,
     nuts_diagnostics    = nuts_diagnostics,
     loo_diagnostics     = loo_diagnostics,
+    bayes_R2            = bayes_r2,
     survival_data       = data.frame(
       Time      = df[[time_column]],
       Event     = df[[event_column]],

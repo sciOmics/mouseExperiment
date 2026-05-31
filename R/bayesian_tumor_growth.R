@@ -355,6 +355,7 @@ bayesian_tumor_growth <- function(
                                             total_draws = n_chains * n_iter)
   nuts_diagnostics <- make_nuts_diagnostics(model)
   loo_diagnostics  <- bayes_loo(model)
+  bayes_r2         <- bayes_r2_summary(model)
 
   # ── Treatment effects and pairwise comparisons via emmeans ─────────────────
   treatment_effects    <- NULL
@@ -605,6 +606,7 @@ bayesian_tumor_growth <- function(
     mcmc_diagnostics        = mcmc_diagnostics,
     nuts_diagnostics        = nuts_diagnostics,
     loo_diagnostics         = loo_diagnostics,
+    bayes_R2                = bayes_r2,
     pp_check_plot           = pp_check_plot,
     posterior_dist_plot     = posterior_dist_plot,
     prior_posterior_plot    = prior_posterior_plot,
