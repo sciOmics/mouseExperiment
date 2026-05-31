@@ -26,6 +26,10 @@
 #'   \item{results}{Data frame with hazard ratios, confidence intervals, p-values, and median survival times}
 #'   \item{reference_group}{The treatment group used as reference}
 #'   \item{method_used}{The statistical method used ("cox", "coxphf", or "logrank")}
+#'   \item{ph_test}{A \code{cox.zph} object (Schoenfeld-residual proportional-hazards
+#'     test) when the standard Cox path is used; \code{NULL} for the Firth and
+#'     log-rank fallbacks. A small global p-value indicates the PH assumption is
+#'     violated and hazard ratios should be interpreted with caution.}
 #' }
 #'
 #' @details
@@ -257,7 +261,12 @@ survival_statistics <- function(df,
   if (!is.null(model)) {
     result_list$model <- model
   }
-  
+
+  # Add cox.zph proportional-hazards check when available (cox path only)
+  if (!is.null(model_results$ph_test)) {
+    result_list$ph_test <- model_results$ph_test
+  }
+
   return(result_list)
 }
 
@@ -488,7 +497,17 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     # Use standard Cox model
     method_used <- "cox"
     model <- cox_model
-    
+
+    # Proportional-hazards check via Schoenfeld residuals (cox.zph).
+    # Surface global + per-covariate test for downstream display.
+    ph_test <- tryCatch(survival::cox.zph(model), error = function(e) NULL)
+    if (!is.null(ph_test) && isTRUE(verbose)) {
+      global_p <- tryCatch(ph_test$table["GLOBAL", "p"], error = function(e) NA_real_)
+      if (is.finite(global_p) && global_p < 0.05) {
+        message(sprintf("Proportional-hazards check: global p = %.4f (< 0.05) — PH assumption may be violated.", global_p))
+      }
+    }
+
     # Extract the hazard ratios, CIs, and p-values
     model_summary <- summary(model)
     
@@ -538,7 +557,8 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
   return(list(
     model = model,
     results = results,
-    method_used = method_used
+    method_used = method_used,
+    ph_test = if (exists("ph_test", inherits = FALSE)) ph_test else NULL
   ))
 }
 
