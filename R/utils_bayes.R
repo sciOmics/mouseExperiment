@@ -139,6 +139,51 @@ bayes_prior_params <- function(prior_strength) {
 
 # ── Cage column setup ──────────────────────────────────────────────────────────
 
+#' PSIS-LOO cross-validation + Pareto-k diagnostics for a brmsfit
+#'
+#' Returns a one-row data frame with the standard summary plus a per-mouse
+#' \code{pareto_k} vector (\code{NA} when LOO failed). The Bayesian
+#' counterparts of AIC (\code{elpd_loo}) and Cook's distance
+#' (\code{pareto_k > 0.7} flags influential observations). Returns
+#' \code{NULL} on any error so the analysis still returns a result list.
+#'
+#' \itemize{
+#'   \item \code{elpd_loo} — expected log pointwise predictive density.
+#'         Use for model comparison via \code{loo::loo_compare()}.
+#'   \item \code{p_loo} — effective number of parameters; if larger than the
+#'         actual parameter count, the model may be mis-specified.
+#'   \item \code{looic} — \code{-2 * elpd_loo}; on the AIC/BIC scale.
+#'   \item \code{n_high_k} — count of observations with Pareto-k > 0.7.
+#'         These are the mice / data points the LOO approximation can't
+#'         reliably estimate; investigate them individually.
+#'   \item \code{pareto_k} — list-column with the full per-observation
+#'         Pareto-k vector.
+#' }
+#'
+#' @noRd
+bayes_loo <- function(model) {
+  if (!requireNamespace("brms", quietly = TRUE) || is.null(model)) return(NULL)
+  loo_obj <- tryCatch(brms::loo(model, save_psis = TRUE),
+                      error = function(e) NULL,
+                      warning = function(w) NULL)
+  if (is.null(loo_obj) || !is.list(loo_obj)) return(NULL)
+
+  ests <- tryCatch(loo_obj$estimates, error = function(e) NULL)
+  pk   <- tryCatch(loo_obj$diagnostics$pareto_k, error = function(e) NULL)
+  if (is.null(ests) || is.null(pk)) return(NULL)
+
+  data.frame(
+    elpd_loo = round(unname(ests["elpd_loo", "Estimate"]), 3),
+    se_elpd  = round(unname(ests["elpd_loo", "SE"]),       3),
+    p_loo    = round(unname(ests["p_loo",    "Estimate"]), 3),
+    looic    = round(unname(ests["looic",    "Estimate"]), 3),
+    n_high_k = as.integer(sum(pk > 0.7, na.rm = TRUE)),
+    pareto_k = I(list(pk)),
+    stringsAsFactors = FALSE
+  )
+}
+
+
 #' Resolve cage column, inserting a placeholder when none is supplied
 #'
 #' Returns a named list with elements \code{df} (possibly modified data frame),
