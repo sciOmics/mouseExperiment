@@ -132,7 +132,11 @@ bayes_prior_params <- function(prior_strength) {
     skeptical          = list(b_sd = 0.25, exp_rate = 2),
     weakly_informative = list(b_sd = 1.0,  exp_rate = 1),
     informative        = list(b_sd = 0.5,  exp_rate = 2),
-    diffuse            = list(b_sd = 2.5,  exp_rate = 0.5)
+    diffuse            = list(b_sd = 2.5,  exp_rate = 0.5),
+    stop("Unknown prior_strength: '", prior_strength,
+         "'. Expected one of skeptical, weakly_informative, ",
+         "informative, diffuse, or manual (manual is handled by the ",
+         "caller).")
   )
 }
 
