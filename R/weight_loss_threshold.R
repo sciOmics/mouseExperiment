@@ -131,8 +131,15 @@ weight_loss_threshold <- function(df,
   )
 
   # --- Cox PH (if ≥2 groups) ---
+  # Now mirrors survival_statistics(): tries coxph; if rare events / complete
+  # separation prevent convergence, falls back to coxphf (Firth). Also runs
+  # survival::cox.zph() on a successful coxph fit so PH violations are
+  # surfaced for time-to-weight-loss endpoints (where treatment-induced
+  # acute loss followed by recovery routinely violates PH).
   cox_model <- NULL
   cox_summary <- NULL
+  cox_method  <- NA_character_
+  ph_test     <- NULL
   if (length(levels(event_df$Treatment)) >= 2) {
     cox_model <- tryCatch({
       survival::coxph(
@@ -140,19 +147,49 @@ weight_loss_threshold <- function(df,
         data = event_df
       )
     }, error = function(e) NULL)
-    if (!is.null(cox_model)) {
+
+    # Detect complete separation (a group with 0 or all events). Firth
+    # provides bias-reduced estimates when standard Cox is unstable.
+    ev_by_grp <- tapply(event_df$Event, event_df$Treatment,
+                        function(x) sum(x, na.rm = TRUE))
+    n_by_grp  <- tapply(event_df$Event, event_df$Treatment, length)
+    has_separation <- any(ev_by_grp == 0L, na.rm = TRUE) ||
+                      any(ev_by_grp == n_by_grp, na.rm = TRUE)
+
+    needs_firth <- is.null(cox_model) || has_separation
+    if (needs_firth && requireNamespace("coxphf", quietly = TRUE)) {
+      firth_fit <- tryCatch(
+        coxphf::coxphf(
+          survival::Surv(Time, Event) ~ Treatment,
+          data = event_df
+        ),
+        error = function(e) NULL
+      )
+      if (!is.null(firth_fit)) {
+        cox_model   <- firth_fit
+        cox_summary <- firth_fit
+        cox_method  <- "coxphf"
+      }
+    }
+
+    if (!is.null(cox_model) && is.na(cox_method)) {
       cox_summary <- summary(cox_model)
+      cox_method  <- "cox"
+      ph_test <- tryCatch(survival::cox.zph(cox_model),
+                          error = function(e) NULL)
     }
   }
 
   list(
-    event_data  = event_df,
-    km_fit      = km_fit,
-    km_summary  = km_summary,
-    log_rank    = log_rank,
-    cox_model   = cox_model,
-    cox_summary = cox_summary,
-    threshold   = threshold,
+    event_data   = event_df,
+    km_fit       = km_fit,
+    km_summary   = km_summary,
+    log_rank     = log_rank,
+    cox_model    = cox_model,
+    cox_summary  = cox_summary,
+    cox_method   = cox_method,
+    ph_test      = ph_test,
+    threshold    = threshold,
     baseline_day = baseline_day
   )
 }
