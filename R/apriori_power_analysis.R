@@ -15,6 +15,17 @@
 #'   that overestimates f (and therefore power) when all treated groups are
 #'   uniformly reduced relative to control. Supply Cohen's f directly via this
 #'   argument if you have a more accurate estimate of between-group variability.
+#'
+#'   \strong{Effect-size scale:} Cohen's d here is the standardised mean
+#'   difference on the \emph{modelling scale} (\code{log(Volume)} when the
+#'   downstream LMM uses \code{transform = "log"}, the default in this
+#'   package). A user thinking "d = 0.5 corresponds to a 0.5 mm^3 difference"
+#'   will badly mis-specify the analysis — log-scale d = 0.5 corresponds to
+#'   approximately a \code{exp(0.5 * sigma_log)} fold-difference between
+#'   group means, where \code{sigma_log} is the within-group SD of
+#'   log-volume (often ~0.3-0.5 in preclinical TG data, so d = 0.5
+#'   ≈ 1.2-1.3× fold-difference). When in doubt, compute d from pilot data
+#'   on the log scale and pass \code{delta} + \code{pooled_sd} explicitly.
 #' @param delta Numeric scalar. Raw mean difference between groups. Used only
 #'   when \code{pooled_sd} is also supplied. Ignored if \code{effect_size} is
 #'   provided directly.

@@ -22,7 +22,15 @@
 #'   computation. \code{NULL} (default) uses the last observed day.
 #' @param reference_group Name of the vehicle/control group (dose = 0).
 #'   Auto-detected from common control names if \code{NULL}.
-#' @param prior_strength Prior preset:
+#' @param prior_strength Prior preset. The EC50 prior is \strong{data-aware}:
+#'   centred on \code{log(median(non_zero_doses))} so that, regardless of
+#'   the units the user supplies doses in (nM, mg/kg, mM…), the prior puts
+#'   most of its mass in the range the user actually tested. The width
+#'   varies by preset (see below). This is intentionally weakly-informative
+#'   on dose magnitude while preserving a flat prior on relative dose
+#'   spacing. If the experiment didn't span the true EC50, the posterior
+#'   will be pulled toward the median observed dose — supply \code{prior_ec50}
+#'   manually if you have external EC50 knowledge.
 #'   \describe{
 #'     \item{\code{"skeptical"}}{(default) Emax ~ N(1.5, 0.75) on logit scale
 #'       (prior median ≈ 0.82); Hill ~ N(0, 0.4) on log scale (prior median

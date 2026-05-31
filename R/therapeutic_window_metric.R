@@ -14,7 +14,13 @@
 #' @param adjust_tumor_weight Logical; subtract estimated tumor weight.
 #' @param tumor_density Density in g/cm³ (default 1.0).
 #' @param reference_group Name of the control/reference group.
-#' @param noise_floor Minimum weight loss % below which TWM = TGI (default 1.0).
+#' @param noise_floor Minimum group-mean per-mouse maximum weight loss (percent)
+#'   below which the ratio TGI / weight_loss\% is numerically unstable. When
+#'   below this floor, \code{TWM = abs(TGI)} (pure efficacy score) instead of
+#'   the ratio. Default 1.0 — an experimentally pragmatic threshold chosen to
+#'   avoid division by near-zero weight loss in well-tolerated treatments. No
+#'   formal clinical basis; users with experiment-specific noise estimates
+#'   (e.g. scale precision) should tune accordingly.
 #' @return A list with: twm_table, tgi_data, weight_loss_data.
 #' @export
 therapeutic_window_metric <- function(df,

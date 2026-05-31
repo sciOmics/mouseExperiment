@@ -53,6 +53,21 @@
 #' samples from their respective marginal posteriors and paired draw-by-draw
 #' (using the minimum number of available draws if the draw counts differ).
 #'
+#' @section Independence assumption — caveat:
+#' Because the TG and BW models are fitted independently, any biological
+#' correlation between within-animal efficacy and toxicity (an animal that
+#' does poorly on both, or unusually well on both) is \strong{not} captured
+#' in the joint posterior. The paired-draw construction implicitly assumes
+#' the two posteriors are independent. The TWM CrI will be:
+#' \itemize{
+#'   \item too \emph{wide} when TG and BW responses are positively correlated
+#'     within animal (the joint uncertainty would partially cancel);
+#'   \item too \emph{narrow} when they are negatively correlated.
+#' }
+#' A joint multivariate brms model (\code{brms::brm(mvbind(Volume, Weight) ~
+#' ...)}) would resolve this. Until then, treat the TWM CrI as a reasonable
+#' first-order propagation, not a calibrated joint credible interval.
+#'
 #' @return A named list:
 #' \describe{
 #'   \item{\code{model_type_used}}{Character \code{"bayes_twm"}.}
