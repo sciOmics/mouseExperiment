@@ -330,33 +330,53 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
                                        drc_data[[dose_column]])
       }
       
-      # Fit models — decreasing (LL.4) vs increasing (LL.5, 5-param log-logistic)
-      dr_model_decr <- drc::drm(as.formula(paste(volume_column, "~", dose_column)), 
-                              data = drc_data, 
-                              fct = drc::LL.4(names = c("Slope", "Lower Limit", "Upper Limit", "EC50")))
-      
-      dr_model_incr <- drc::drm(as.formula(paste(volume_column, "~", dose_column)), 
-                              data = drc_data, 
-                              fct = drc::LL.5(names = c("Slope", "Lower Limit", "Upper Limit", "EC50", "Asymmetry")))
-      
-      # Compare models
-      model_aic_decr <- AIC(dr_model_decr)
-      model_aic_incr <- AIC(dr_model_incr)
-      
-      # Select better model
-      if (model_aic_decr < model_aic_incr) {
-        dr_model <- dr_model_decr
-        model_type <- "inhibition"
+      # Fit two log-logistic shapes: 4-parameter (symmetric) and 5-parameter
+      # (asymmetric — adds an asymmetry parameter). NEITHER constrains the
+      # direction of effect; both fit inhibition or stimulation via the sign
+      # of the Slope parameter. The previous variable names "decr"/"incr"
+      # and labels "inhibition"/"stimulation" were therefore misleading
+      # (CODE_REVIEW.md G.2).
+      dr_model_4p <- drc::drm(
+        as.formula(paste(volume_column, "~", dose_column)),
+        data = drc_data,
+        fct  = drc::LL.4(names = c("Slope", "Lower Limit", "Upper Limit",
+                                   "EC50"))
+      )
+      dr_model_5p <- drc::drm(
+        as.formula(paste(volume_column, "~", dose_column)),
+        data = drc_data,
+        fct  = drc::LL.5(names = c("Slope", "Lower Limit", "Upper Limit",
+                                   "EC50", "Asymmetry"))
+      )
+
+      # Compare models on shape (symmetric vs asymmetric); select lower AIC.
+      model_aic_4p <- AIC(dr_model_4p)
+      model_aic_5p <- AIC(dr_model_5p)
+      if (model_aic_4p < model_aic_5p) {
+        dr_model   <- dr_model_4p
+        model_type <- "symmetric"      # LL.4 = symmetric 4-parameter
       } else {
-        dr_model <- dr_model_incr
-        model_type <- "stimulation"
+        dr_model   <- dr_model_5p
+        model_type <- "asymmetric"     # LL.5 = asymmetric 5-parameter
       }
-      
+
+      # Derive direction independently from the sign of the Slope parameter
+      # in the selected model. Slope > 0 (LL.4/LL.5 convention) implies
+      # decreasing response with dose → "inhibition"; Slope < 0 → "stimulation".
+      slope_est <- tryCatch(
+        unname(stats::coef(dr_model)["Slope:(Intercept)"]),
+        error = function(e) NA_real_
+      )
+      model_direction <- if (is.finite(slope_est)) {
+        if (slope_est > 0) "inhibition" else "stimulation"
+      } else NA_character_
+
       # Get model summary
       dr_summary <- summary(dr_model)
-      
+
       if (isTRUE(verbose)) {
-        message("Selected dose-response model type: ", model_type)
+        message("Selected dose-response shape: ", model_type)
+        message("Inferred direction (from Slope sign): ", model_direction)
         message("Non-linear dose-response model:")
         message(paste(utils::capture.output(print(dr_summary)), collapse = "\n"))
       }
@@ -368,9 +388,12 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
       statistics$lower_limit <- params["c:(Intercept)"]
       statistics$upper_limit <- params["d:(Intercept)"]
       
-      # Store model
+      # Store model. dr_model_type now reports the *shape* (symmetric or
+      # asymmetric); dr_model_direction reports the inferred direction
+      # (inhibition / stimulation) derived from the Slope sign.
       statistics$dr_model <- dr_model
-      statistics$dr_model_type <- model_type
+      statistics$dr_model_type      <- model_type        # shape
+      statistics$dr_model_direction <- model_direction   # direction
       
       # Store per-model information criteria.
       # WARNING: linear_aic and nonlinear_aic are NOT directly comparable.
