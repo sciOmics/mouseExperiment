@@ -208,9 +208,17 @@ analyze_body_weight <- function(df,
     ))
   }
 
+  # Random-effects spec: per-mouse intercept + slope, plus cage random
+  # intercept when a cage column was supplied. CODE_REVIEW.md J.11 — the
+  # cage column was previously attached to the data frame but never
+  # appeared in the formula, the same silent-ignore bug class as
+  # Round 1 1.1 (handle_cage_effects in tumor_growth_statistics).
+  re_full   <- if (has_cage) "(1 + Day | ID) + (1 | Cage)" else "(1 + Day | ID)"
+  re_simple <- if (has_cage) "(1 | ID) + (1 | Cage)"        else "(1 | ID)"
+
   # Try random slope + intercept first
   formula_full <- stats::as.formula(
-    paste(response_col, "~", fixed_terms, "+ (1 + Day | ID)")
+    paste(response_col, "~", fixed_terms, "+", re_full)
   )
   tryCatch({
     model <- lme4::lmer(formula_full, data = wd, REML = (estimation == "REML"))
@@ -226,10 +234,10 @@ analyze_body_weight <- function(df,
     }
   })
 
-  # Fallback to random intercept only
+  # Fallback to random intercept only (still preserves cage RE when present)
   if (is.null(model)) {
     formula_simple <- stats::as.formula(
-      paste(response_col, "~", fixed_terms, "+ (1 | ID)")
+      paste(response_col, "~", fixed_terms, "+", re_simple)
     )
     tryCatch({
       model <- lme4::lmer(formula_simple, data = wd, REML = (estimation == "REML"))
@@ -275,6 +283,44 @@ analyze_body_weight <- function(df,
 
   summary_text <- paste(lines, collapse = "\n")
 
+  # ── Diagnostic plots (LMM path only) ───────────────────────────────────────
+  # CODE_REVIEW.md J.12 — the Bayesian counterpart returns pp_check_plot,
+  # mcmc_trace_plot, etc. The frequentist version returned just model +
+  # summary_text; users had no way to check residual normality or
+  # heteroscedasticity. Add QQ and residuals-vs-fitted plots.
+  diag_qq_plot <- NULL
+  diag_resid_fitted_plot <- NULL
+  if (model_type == "lmm" && !is.null(model)) {
+    tryCatch({
+      resid_vec <- stats::residuals(model)
+      fit_vec   <- stats::fitted(model)
+      qq_data   <- stats::qqnorm(resid_vec, plot.it = FALSE)
+      qq_df     <- data.frame(theoretical = qq_data$x, sample = qq_data$y)
+      diag_qq_plot <- ggplot2::ggplot(
+        qq_df, ggplot2::aes(x = .data[["theoretical"]], y = .data[["sample"]])
+      ) +
+        ggplot2::geom_point(alpha = 0.6) +
+        ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed",
+                             colour = "red") +
+        ggplot2::theme_classic() +
+        ggplot2::labs(title = "Body-weight LMM: Q-Q Plot of Residuals",
+                      x = "Theoretical Quantiles",
+                      y = "Sample Quantiles")
+      rf_df <- data.frame(Fitted = fit_vec, Residuals = resid_vec)
+      diag_resid_fitted_plot <- ggplot2::ggplot(
+        rf_df, ggplot2::aes(x = .data[["Fitted"]], y = .data[["Residuals"]])
+      ) +
+        ggplot2::geom_point(alpha = 0.5) +
+        ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
+                            colour = "red") +
+        ggplot2::geom_smooth(method = "loess", se = FALSE,
+                             colour = "steelblue", linewidth = 0.8) +
+        ggplot2::theme_classic() +
+        ggplot2::labs(title = "Body-weight LMM: Residuals vs Fitted",
+                      x = "Fitted Values", y = "Residuals")
+    }, error = function(e) NULL)
+  }
+
   list(
     model          = model,
     fixed_effects  = fe,
@@ -287,10 +333,13 @@ analyze_body_weight <- function(df,
       model_simplified = model_simplified,
       adjust_tumor     = adjust_tumor_weight && has_volume,
       tumor_density    = tumor_density,
+      cage_in_model    = has_cage,
       n_obs            = nrow(wd),
       n_subjects       = length(unique(wd$ID)),
       n_groups         = length(levels(wd$Treatment))
     ),
+    diag_qq_plot           = diag_qq_plot,
+    diag_resid_fitted_plot = diag_resid_fitted_plot,
     weight_data    = wd,
     summary_text   = summary_text
   )
