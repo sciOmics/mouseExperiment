@@ -74,7 +74,7 @@ local({
   test_that("bayesian_body_weight: treatment_effects has required columns", {
     skip_bayes_bw()
     te <- get_bw_result()$treatment_effects
-    required_cols <- c("Group", "Adjusted_Mean", "Lower_CL", "Upper_CL", "Note")
+    required_cols <- c("Group", "Adjusted_Mean", "Lower_CrI", "Upper_CrI", "Note")
     expect_s3_class(te, "data.frame")
     expect_true(
       all(required_cols %in% colnames(te)),
@@ -114,7 +114,7 @@ local({
     skip_bayes_bw()
     wls <- get_bw_result()$weight_loss_summary
     expect_s3_class(wls, "data.frame")
-    required_cols <- c("Group", "Pct_Change", "Lower_CL", "Upper_CL",
+    required_cols <- c("Group", "Pct_Change", "Lower_CrI", "Upper_CrI",
                        "Day_Baseline", "Day_End")
     expect_true(
       all(required_cols %in% colnames(wls)),

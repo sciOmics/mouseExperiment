@@ -71,7 +71,7 @@ local({
     skip_bayes_surv()
     te <- get_surv_result()$treatment_effects
     required_cols <- c(
-      "Group", "Time_Ratio", "Lower_CL", "Upper_CL",
+      "Group", "Time_Ratio", "Lower_CrI", "Upper_CrI",
       "HR", "Median_Survival", "Events", "Total", "Event_Rate", "Note"
     )
     expect_s3_class(te, "data.frame")
@@ -97,7 +97,7 @@ local({
     expect_equal(nrow(non_ref), 1L)
     # AggressiveTx has all events; TR should be < 1 (shorter survival)
     expect_lt(non_ref$Time_Ratio, 1)
-    expect_lt(non_ref$Upper_CL,   1)
+    expect_lt(non_ref$Upper_CrI,   1)
   })
 
   test_that("bayesian_survival: event counts match input data", {

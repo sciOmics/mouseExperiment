@@ -54,16 +54,16 @@ local({
     )
   })
 
-  test_that("bayesian_tumor_growth: model_type_used is 'bayes'", {
+  test_that("bayesian_tumor_growth: model_type_used is 'bayes_tg'", {
     skip_bayes()
     res <- get_bayes_result()
-    expect_equal(res$model_type_used, "bayes")
+    expect_equal(res$model_type_used, "bayes_tg")
   })
 
-  test_that("bayesian_tumor_growth: treatment_effects has same column names as lme4 path", {
+  test_that("bayesian_tumor_growth: treatment_effects uses CrI column naming", {
     skip_bayes()
     res <- get_bayes_result()
-    required_cols <- c("Group", "Adjusted_Mean", "Lower_CL", "Upper_CL")
+    required_cols <- c("Group", "Adjusted_Mean", "Lower_CrI", "Upper_CrI")
     te <- res$treatment_effects
     expect_s3_class(te, "data.frame")
     expect_true(
