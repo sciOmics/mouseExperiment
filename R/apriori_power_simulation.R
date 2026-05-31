@@ -33,8 +33,12 @@
 #'   > 2, all non-control groups share the same \code{treatment_effect}.
 #' @param baseline_volume Numeric > 0. Geometric mean tumour volume at Day 0
 #'   in mm³ (default 100).
-#' @param baseline_sd Numeric > 0. SD of baseline volume in mm³ (unused in
-#'   simulation; retained for documentation purposes).
+#' @param baseline_sd Numeric \eqn{\ge} 0. Standard deviation (in mm^3) of the
+#'   raw-scale baseline volume across animals. Converted to a log-scale SD
+#'   via the first-order delta-method approximation
+#'   \code{log_sd \approx baseline_sd / baseline_volume} and added as a
+#'   per-mouse jitter on top of \code{log(baseline_volume)}. Set to 0 to fix
+#'   all animals at exactly \code{baseline_volume} (the original behaviour).
 #' @param control_growth_rate Numeric. Log-scale daily growth rate for the
 #'   control group (default 0.15, ~16\% daily increase).
 #' @param treatment_effect Numeric. Reduction in log-scale daily growth rate
@@ -112,14 +116,24 @@ apriori_power_simulation <- function(n_per_group          = c(5L, 8L, 10L, 12L, 
       for (sim in seq_len(n_simulations)) {
         # ---- Simulate data ---------------------------------------------------
         sim_list <- vector("list", n_groups)
+        # Per-mouse baseline draws (log-scale CV ≈ baseline_sd / baseline_volume
+        # mapped to log-scale SD via the delta-method first-order approximation
+        # log_sd ≈ baseline_sd / baseline_volume for small CVs). This makes the
+        # baseline_sd argument materially affect the simulation; previously
+        # it was stored in params but never read.
+        log_baseline_sd <- if (baseline_sd > 0 && baseline_volume > 0) {
+          baseline_sd / baseline_volume
+        } else 0
         for (g in seq_len(n_groups)) {
           ids <- paste0(group_names[g], "_", seq_len(n))
           b0  <- stats::rnorm(n, 0, random_intercept_sd)
           b1  <- stats::rnorm(n, 0, random_slope_sd)
+          per_mouse_log_baseline <- log(baseline_volume) +
+            stats::rnorm(n, 0, log_baseline_sd)
           for (j in seq_len(n)) {
-            # Log-normal data: log(V) = log(baseline) + b0 + (rate + b1)*t + e
+            # Log-normal data: log(V) = log(baseline_j) + b0 + (rate + b1)*t + e
             # Matches the log(Volume) LMM fitted below.
-            log_vol <- log(baseline_volume) + b0[j] +
+            log_vol <- per_mouse_log_baseline[j] + b0[j] +
               (growth_rates[g] + b1[j]) * timepoints +
               stats::rnorm(n_timepoints, 0, residual_sd)
             vol <- exp(log_vol)
