@@ -431,6 +431,19 @@ bayesian_therapeutic_window <- function(
     )
   )
 
+  # ── Surface diagnostics from the input models so the dashboard's TWM
+  # tab can show the standard pp_check / prior_posterior / mcmc_trace
+  # plots without the caller having to remember the input objects.
+  # CODE_REVIEW.md G.5 — the function previously returned ZERO standard
+  # Bayesian diagnostic plots even though it's the most complex Bayesian
+  # model in the package.
+  tg_pp        <- tg_result$pp_check_plot         %||% NULL
+  bw_pp        <- bw_result$pp_check_plot         %||% NULL
+  tg_pp_prior  <- tg_result$prior_posterior_plot  %||% NULL
+  bw_pp_prior  <- bw_result$prior_posterior_plot  %||% NULL
+  tg_trace     <- tg_result$mcmc_trace_plot       %||% NULL
+  bw_trace     <- bw_result$mcmc_trace_plot       %||% NULL
+
   # ── Return ─────────────────────────────────────────────────────────────────
   list(
     model_type_used = "bayes_twm",
@@ -439,9 +452,18 @@ bayesian_therapeutic_window <- function(
     wl_summary      = wl_summary,
     summary         = analysis_summary,
     twm_plot        = twm_plot,
-    tgi_wl_plot     = tgi_wl_plot
+    tgi_wl_plot     = tgi_wl_plot,
+    # Standard diagnostic plots, surfaced from the two input models
+    pp_check_tg          = tg_pp,
+    pp_check_bw          = bw_pp,
+    prior_posterior_tg   = tg_pp_prior,
+    prior_posterior_bw   = bw_pp_prior,
+    mcmc_trace_tg        = tg_trace,
+    mcmc_trace_bw        = bw_trace
   )
 }
+
+`%||%` <- function(a, b) if (!is.null(a)) a else b
 
 
 #' Fit and Compute Bayesian Therapeutic Window from Raw Data

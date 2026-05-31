@@ -570,6 +570,29 @@ bayesian_synergy <- function(
       ggplot2::theme_classic(base_size = 14)
   }
 
+  # ── Standard Bayesian diagnostic plots (G.4: match what TG/BW/Survival
+  # / DR functions already return). All three are skipped silently if the
+  # underlying brms helpers aren't available — keeps the function usable
+  # in lighter environments.
+  pp_check_plot         <- tryCatch(
+    if (requireNamespace("brms", quietly = TRUE)) brms::pp_check(model) else NULL,
+    error = function(e) NULL
+  )
+  prior_posterior_plot  <- tryCatch(
+    bayes_prior_posterior_plot(model, treatment_column),
+    error = function(e) NULL
+  )
+  mcmc_trace_plot       <- tryCatch(
+    if (requireNamespace("bayesplot", quietly = TRUE)) {
+      bayesplot::mcmc_trace(
+        brms::as_draws_df(model),
+        regex_pars = paste0("^b_", gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1",
+                                         treatment_column))
+      )
+    } else NULL,
+    error = function(e) NULL
+  )
+
   # ── Summary metadata ───────────────────────────────────────────────────────
   analysis_summary <- list(
     analysis_type = paste0(
@@ -615,9 +638,12 @@ bayesian_synergy <- function(
     nuts_diagnostics    = nuts_diagnostics,
     loo_diagnostics     = loo_diagnostics,
     bayes_R2            = bayes_r2,
-    summary             = analysis_summary,
-    synergy_plot        = synergy_plot,
-    posterior_dist_plot = post_dist_plot
+    summary               = analysis_summary,
+    synergy_plot          = synergy_plot,
+    posterior_dist_plot   = post_dist_plot,
+    pp_check_plot         = pp_check_plot,
+    prior_posterior_plot  = prior_posterior_plot,
+    mcmc_trace_plot       = mcmc_trace_plot
   )
   out
 }
