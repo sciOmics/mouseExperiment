@@ -5,6 +5,200 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5] - 2026-05-31
+
+Resolves 29 items from `CODE_REVIEW.md` Round 2 across statistical
+validity, Bayesian diagnostics, composite-key consistency, and
+documentation. See the individual commits for per-item context.
+
+### Added — Bayesian diagnostics (every brms-based function)
+- **NUTS sampler diagnostics** (`make_nuts_diagnostics()`, A.2):
+  per-fit count of divergent transitions, max-treedepth hits, and
+  the minimum per-chain E-BFMI. The Bayesian path no longer reports
+  `Converged = TRUE` while hiding 500 divergent transitions.
+- **PSIS-LOO + Pareto-k** (`bayes_loo()`, A.4): one-row summary of
+  `elpd_loo / p_loo / looic / n_high_k` plus the per-observation
+  Pareto-k vector. The Bayesian counterparts of AIC and Cook's
+  distance — both previously absent.
+- **bayes_R2 posterior summary** (`bayes_r2_summary()`, C.1): posterior
+  median / 95 % CrI of variance explained.
+- **ESS / N efficiency** (C.3): `make_mcmc_diagnostics()` now appends
+  `ESS_per_draw = Bulk_ESS / total_draws`.
+- **Directional posterior probability** for emmeans contrasts
+  (`emm_p_direction()`, C.2): `P_direction` column on
+  `pairwise_comparisons` for `bayesian_tumor_growth()` /
+  `bayesian_body_weight()`. Replaces "does the 95 % CrI exclude zero?"
+  with a quantitative posterior statement.
+- **Standard diagnostic plots for synergy and TWM** (G.4, G.5): the
+  four-plot battery (`pp_check_plot`, `prior_posterior_plot`,
+  `mcmc_trace_plot`, plus the existing `posterior_dist_plot` /
+  `synergy_plot`) now shipped by `bayesian_synergy()`; the TWM wrapper
+  surfaces aliases from the two input models.
+
+### Added — Survival diagnostics
+- **Proportional-hazards check via `cox.zph()`** (A.1, J.17). Both
+  `survival_statistics()` and `weight_loss_threshold()` now return a
+  `ph_test` Schoenfeld-residual test object on the standard-Cox path
+  and warn on the console when the global p < 0.05.
+- **Concordance / C-index** in `survival_statistics()` (E.2).
+- **Firth fallback** in `weight_loss_threshold()` (J.17), matching
+  `survival_statistics()`'s coxphf path for complete-separation cases.
+
+### Changed — Statistical validity
+- **`tumor_growth_statistics()` `auc_method` argument removed** (A.3).
+  It was matched but never propagated; users requesting LOCF silently
+  received trapezoidal output. Same silent-ignore bug class as the
+  Round 1 1.1 `handle_cage_effects` fix. For LOCF AUC, call
+  `tumor_auc_analysis(method = "last_observation")` directly.
+- **Cox CI uses `summary(coxph)$conf.int`** (B.2). The magic `1.96`
+  literal is gone; CI bounds now come from the proper qnorm-derived
+  `lower .95` / `upper .95` columns.
+- **`analyze_polynomial_trends()` uses true dose scores** (G.7 — *Major,
+  silent wrong answer*). `contr.poly()` is now called with the actual
+  numeric dose values as `scores`, so linear / quadratic / cubic trend
+  decompositions are on the dose axis rather than the (incorrect) index
+  axis. Critical for the common unequally-spaced dose designs.
+- **DR model labels separate shape from direction** (G.2): the model
+  comparison now stores `dr_model_type ∈ {symmetric, asymmetric}` (the
+  LL.4-vs-LL.5 axis the AIC actually selects on) plus a new
+  `dr_model_direction ∈ {inhibition, stimulation}` derived from
+  `sign(coef(model)["Slope:(Intercept)"])`. The previous labels
+  (`inhibition`/`stimulation` on shape selection) were misleading.
+- **`bayesian_dose_response()` warns on stimulatory data** (G.3): the
+  Hill formula bounds Emax in [0, 1] and the Hill exponent > 0, so the
+  curve is inhibition-only by construction. Documented prominently and
+  surfaced via `warning()` at fit time when mean TGI is materially
+  negative.
+- **`analyze_body_weight()` actually uses `cage_column`** (J.11). The
+  argument was previously attached to the working frame as `wd$Cage`
+  but never appeared in the model formula. The LMM and the fallback
+  random-intercept formulas now include `(1 | Cage)` when a cage column
+  is supplied. Same bug class as Round 1 1.1.
+
+### Changed — Bayesian fit hygiene
+- **`bayesian_synergy()` / `bayesian_synergy_over_time()` no longer
+  `suppressWarnings()` around `brms::brm()`** (G.1 — Critical). Stan's
+  divergent-transition / max-treedepth / Rhat warnings are exactly the
+  signals to surface; the prior session would silently report
+  `Converged = TRUE` on broken fits. The new NUTS diagnostics provide
+  programmatic detection (A.2) and Stan's warnings provide the
+  user-visible second line.
+- **`bayes_prior_params()` `stop()`s on unknown `prior_strength`** (B.4).
+
+### Changed — Composite-key consistency
+- **`tumor_doubling_time()` / `therapeutic_window_metric()` /
+  `efficacy_toxicity_bivariate()` toxicity arm** (J.9 / J.14 / J.18).
+  All three switched from `ID`-only or `ID + Treatment` aggregation to
+  the canonical `make_mouse_key(ID, Treatment, Cage)` composite key so
+  reused IDs across cages or treatments no longer collapse. Same fix
+  class as Round 1 1.5 / 1.8.
+- **`tgs_extrapolate()` reports the actual count of extrapolated
+  subjects** (B.1). Previously
+  `length(unique(df$Extrapolated[df$Extrapolated]))` always evaluated
+  to 0 or 1.
+
+### Changed — Zero-handling canonicalisation
+- **`analyze_growth_rate()` and `repeated_measures_anova()` now use the
+  canonical `log(x); x[x<=0] <- min(positive)/2` zero-handling pattern**
+  (G.8, J.10), matching `tumor_growth_statistics()` and
+  `bayesian_tumor_growth()`. The previous `log1p()` / `log(x + 1)`
+  patterns introduced a fixed +1 mm^3 bias on the small early-day
+  volumes that matter most.
+
+### Changed — TWM / safety scoring
+- **`therapeutic_window_metric()` clamps `TGI < 0` to 0** (J.13). A
+  treatment that *accelerated* tumour growth (negative TGI) and caused
+  weight loss previously earned a *positive* TWM via `abs(TGI)` — the
+  worst case the metric is supposed to flag. Now scores 0.
+- **`bayesian_therapeutic_window()` renders the exact TWM = 1 piecewise
+  isoline** (J.2). The single-line `geom_abline()` approximation is
+  replaced with a four-corner `geom_path()` matching the true
+  horizontal-then-linear shape.
+- **Independence-assumption caveat** documented in `@section` (J.1):
+  the draw-pairing across the two independently-fitted TG/BW posteriors
+  ignores within-animal correlation between efficacy and toxicity, so
+  the TWM CrI can be too wide or too narrow depending on the sign of
+  that correlation.
+
+### Changed — Power / synergy / dose-response
+- **`apriori_power_simulation()` `baseline_sd` is no longer a ghost
+  parameter** (J.4). It's now converted to a log-scale SD via the
+  first-order delta method and added as a per-mouse jitter on
+  `log(baseline_volume)`. Setting `baseline_sd = 0` reproduces the
+  previous deterministic behaviour.
+- **`analyze_drug_synergy()` / `bayesian_synergy()` /
+  `bayesian_synergy_over_time()` share `synergy_bliss_expected()` and
+  `synergy_loewe_ci()` helpers** (I.1) in `R/utils_synergy.R`. All three
+  formulas are scalar/vector polymorphic so a single implementation
+  serves point-estimate and posterior-draw call sites.
+- **`plot_combination_index()` annotation positions use additive
+  offsets** (J.3). Round 1 3.9 fixed `plot_synergy_trend()` for studies
+  that don't start at day 0; this finishes the pair.
+
+### Changed — Documentation
+- **`apriori_power_analysis()` clarifies effect-size scale** (E.5):
+  Cohen's d is on the *modelling scale* (log-volume by default), not
+  on raw volume. Adds a worked example of converting log-scale d to
+  approximate fold-difference.
+- **`bayesian_dose_response()` documents the data-aware EC50 prior**
+  (G.9): the prior is centred on `log(median(non_zero_doses))` so it
+  stays sensible regardless of dose units.
+- **`total_benefit_area()` `lambda` parameter** documents the
+  unit-mismatch between TGI-point-days and weight-loss-point-days, and
+  the clinically arbitrary equivalence at the `lambda = 1` default
+  (J.16).
+- **`therapeutic_window_metric()` `noise_floor` default** of 1.0 % is
+  now explicitly an experimentally pragmatic threshold for numerical
+  stability with no formal clinical basis (I.2).
+
+### Fixed — Utility hygiene
+- **`calculate_volume()` `formula` argument is `match.arg`'d** (J.19).
+  Unknown values (e.g. the typo `"ellipsoid_3axes"`) previously fell
+  through a default-catch branch that silently computed the ellipsoid
+  volume. Now fails loudly.
+- **`calculate_dates()` `in_place = TRUE` is deprecated** (J.20). The
+  `parent.frame()` + `assign()` mechanism silently failed when called
+  from inside another function. Matches the calculate_volume()
+  deprecation from Round 1 3.3.
+- **Removed unused `my_data` example dataset** (J.21). Template
+  scaffolding unrelated to the package's purpose; the two roxygen
+  examples that referenced it now point at `master_synthetic_data`.
+- **`total_benefit_area()` `is.finite()` guard** catches both NaN and
+  ±Inf TGI values, not just NaN (J.15).
+
+### Fixed — Tests
+- **Stale Bayesian TG / BW / Survival tests updated to current API**
+  (K.1): `model_type_used = "bayes_tg"` (not `"bayes"`), CrI columns
+  use `Lower_CrI`/`Upper_CrI` (not `Lower_CL`). Tests previously would
+  have failed whenever brms was installed; CI skips masked the
+  staleness.
+- **Bayesian convergence assertions tightened** (K.6): `Rhat <= 1.01`
+  (Vehtari 2021) instead of the legacy `< 1.1`, plus new `Bulk_ESS`
+  and `Tail_ESS` ≥ 400 assertions across all four Bayesian test files.
+
+### Open — deferred to follow-up sessions
+- G.6: extract `bs_fit_synergy_model()` helper to dedupe the
+  ~300 LOC shared between `bayesian_synergy()` and
+  `bayesian_synergy_over_time()`.
+- J.5 / J.6 / J.7: multi-group support, random-slope option, and
+  null-distribution / type-I calibration in `bayesian_power_analysis()`.
+- J.8: decide whether to wire the analysis functions into the `me_result`
+  S3 class (currently defined but unused by main analysis functions)
+  or delete the class entirely.
+- K.2 / K.3: replace defensive `if (!is.na(col))` masking + blanket
+  `suppressWarnings()` patterns in the test suite.
+- K.4: per-function parameter-sensitivity tests (the missing safety net
+  that would have caught Round 1 1.1, A.3, J.11).
+- D.1 / D.2 / D.3: file-size refactors (1000+ LOC `tumor_growth_statistics.R`,
+  `bayesian_synergy.R`, `bayesian_body_weight.R`); param-group config
+  helpers for 20+ arg signatures; separating ggplot generation from
+  statistical computation.
+- E.1: `cmdstanr` backend option across all Bayesian functions.
+- E.3: per-animal posterior growth rates drawn from the brms model itself
+  instead of via OLS on log-volumes.
+- E.4: bootstrap CIs for AUC treatment effects.
+- E.6: posterior predictive interval coverage check.
+
 ## [0.4.4] - 2026-05-30
 
 ### Added

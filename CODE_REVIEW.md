@@ -1062,28 +1062,28 @@ A standard check: simulate from the posterior predictive distribution and comput
 
 ## F. Status Summary — Round 2
 
-| ID | Issue | Severity | File |
-|---|---|---|---|
-| A.1 | No `cox.zph()` proportional hazards check | Critical | `survival_statistics.R` |
-| A.2 | No NUTS divergences / max_treedepth / E-BFMI | Critical | all `bayesian_*.R` |
-| A.3 | `auc_method` parameter silently ignored | Critical | `tumor_growth_statistics.R` |
-| A.4 | No LOO-CV / Pareto-k / WAIC | Major | all `bayesian_*.R` |
-| B.1 | Extrapolation count always 0 or 1 | Major | `tumor_growth_statistics.R` |
-| B.2 | Magic 1.96 for Cox CI | Minor | `survival_statistics.R` |
-| B.3 | `tgs_handle_necrosis` misplaced | Minor | `tumor_growth_statistics.R` |
-| B.4 | `bayes_prior_params` missing default | Minor | `utils_bayes.R` |
-| C.1 | No `bayes_R2()` | Major | all `bayesian_*.R` |
-| C.2 | No posterior P(effect > 0) | Major | all `bayesian_*.R` |
-| C.3 | No ESS/N efficiency ratio | Minor | `utils_bayes.R` |
-| D.1 | 1,000+ LOC files | Architecture | multiple |
-| D.2 | 20+ parameter signatures | Architecture | multiple |
-| D.3 | ggplot generation inside stat functions | Architecture | multiple |
-| E.1 | Add cmdstanr backend option | Enhancement | all `bayesian_*.R` |
-| E.2 | Concordance / C-index | Enhancement | `survival_statistics.R` |
-| E.3 | Posterior growth rates from brms model | Enhancement | `bayesian_tumor_growth.R` |
-| E.4 | Bootstrap CIs for AUC | Enhancement | `tumor_growth_statistics.R` |
-| E.5 | Document effect-size scale | Enhancement | `apriori_power_analysis.R` |
-| E.6 | Posterior predictive coverage | Enhancement | all `bayesian_*.R` |
+| ID | Issue | Severity | File | Status |
+|---|---|---|---|---|
+| A.1 | No `cox.zph()` proportional hazards check | Critical | `survival_statistics.R` | ✅ Fixed v0.4.5 |
+| A.2 | No NUTS divergences / max_treedepth / E-BFMI | Critical | all `bayesian_*.R` | ✅ Fixed v0.4.5 (`make_nuts_diagnostics`) |
+| A.3 | `auc_method` parameter silently ignored | Critical | `tumor_growth_statistics.R` | ✅ Fixed v0.4.5 (removed) |
+| A.4 | No LOO-CV / Pareto-k / WAIC | Major | all `bayesian_*.R` | ✅ Fixed v0.4.5 (`bayes_loo`) |
+| B.1 | Extrapolation count always 0 or 1 | Major | `tumor_growth_statistics.R` | ✅ Fixed v0.4.5 |
+| B.2 | Magic 1.96 for Cox CI | Minor | `survival_statistics.R` | ✅ Fixed v0.4.5 |
+| B.3 | `tgs_handle_necrosis` misplaced | Minor | `tumor_growth_statistics.R` | Retracted (H.1) |
+| B.4 | `bayes_prior_params` missing default | Minor | `utils_bayes.R` | ✅ Fixed v0.4.5 |
+| C.1 | No `bayes_R2()` | Major | all `bayesian_*.R` | ✅ Fixed v0.4.5 (`bayes_r2_summary`) |
+| C.2 | No posterior P(effect > 0) | Major | all `bayesian_*.R` | ✅ Fixed v0.4.5 (`emm_p_direction` for TG/BW; survival/DR open) |
+| C.3 | No ESS/N efficiency ratio | Minor | `utils_bayes.R` | ✅ Fixed v0.4.5 |
+| D.1 | 1,000+ LOC files | Architecture | multiple | Open |
+| D.2 | 20+ parameter signatures | Architecture | multiple | Open |
+| D.3 | ggplot generation inside stat functions | Architecture | multiple | Open |
+| E.1 | Add cmdstanr backend option | Enhancement | all `bayesian_*.R` | Open |
+| E.2 | Concordance / C-index | Enhancement | `survival_statistics.R` | ✅ Fixed v0.4.5 |
+| E.3 | Posterior growth rates from brms model | Enhancement | `bayesian_tumor_growth.R` | Open |
+| E.4 | Bootstrap CIs for AUC | Enhancement | `tumor_growth_statistics.R` | Open |
+| E.5 | Document effect-size scale | Enhancement | `apriori_power_analysis.R` | ✅ Fixed v0.4.5 |
+| E.6 | Posterior predictive coverage | Enhancement | all `bayesian_*.R` | Open |
 
 ---
 
@@ -1210,15 +1210,15 @@ Add to the table in section F:
 
 | ID | Issue | Severity | File |
 |---|---|---|---|
-| G.1 | `suppressWarnings()` around `brms::brm()` | Critical | `bayesian_synergy.R` |
-| G.2 | DR model labels misleading (`decr`/`incr` = `inhibition`/`stimulation`) | Major | `dose_response_statistics.R` |
-| G.3 | Bayesian DR inhibition-only by construction | Major | `bayesian_dose_response.R` |
-| G.4 | `bayesian_synergy` missing 4 standard diagnostic plots | Major | `bayesian_synergy.R` |
-| G.5 | `bayesian_therapeutic_window` missing **all** standard diagnostic plots | Major | `bayesian_therapeutic_window.R` |
-| G.6 | `bayesian_synergy_over_time` duplicates `bayesian_synergy` | Architecture | `bayesian_synergy.R` |
-| G.7 | `analyze_polynomial_trends` assumes equally-spaced doses | Major | `dose_response_statistics.R` |
-| G.8 | `log1p` vs `log(min/2)` inconsistency | Minor | `dose_response_statistics.R` |
-| G.9 | EC50 prior centred on median dose | (Good practice — document) | `bayesian_dose_response.R` |
+| G.1 | `suppressWarnings()` around `brms::brm()` | Critical | `bayesian_synergy.R` | ✅ Fixed v0.4.5 |
+| G.2 | DR model labels misleading (`decr`/`incr` = `inhibition`/`stimulation`) | Major | `dose_response_statistics.R` | ✅ Fixed v0.4.5 (symmetric/asymmetric + independent direction) |
+| G.3 | Bayesian DR inhibition-only by construction | Major | `bayesian_dose_response.R` | ✅ Fixed v0.4.5 (documented + data-direction warning) |
+| G.4 | `bayesian_synergy` missing 4 standard diagnostic plots | Major | `bayesian_synergy.R` | ✅ Fixed v0.4.5 |
+| G.5 | `bayesian_therapeutic_window` missing **all** standard diagnostic plots | Major | `bayesian_therapeutic_window.R` | ✅ Fixed v0.4.5 (aliased from input models) |
+| G.6 | `bayesian_synergy_over_time` duplicates `bayesian_synergy` | Architecture | `bayesian_synergy.R` | Open |
+| G.7 | `analyze_polynomial_trends` assumes equally-spaced doses | Major | `dose_response_statistics.R` | ✅ Fixed v0.4.5 |
+| G.8 | `log1p` vs `log(min/2)` inconsistency | Minor | `dose_response_statistics.R` | ✅ Fixed v0.4.5 |
+| G.9 | EC50 prior centred on median dose | (Good practice — document) | `bayesian_dose_response.R` | ✅ Fixed v0.4.5 |
 
 ---
 
@@ -1425,27 +1425,27 @@ Adds to the totals in Section F + Section G. Open items as of v0.3.6 / 2026-05-3
 
 | ID | Issue | Severity | File |
 |---|---|---|---|
-| J.1 | TWM independence assumption between TG and BW posteriors | Minor (document) | `bayesian_therapeutic_window.R` |
-| J.2 | TWM=1 plot isoline is approximate | Minor | `bayesian_therapeutic_window.R` |
-| J.3 | `plot_combination_index` multiplicative-offset bug (Round 1 3.9 partial fix) | Major | `analyze_drug_synergy_over_time.R` |
-| J.4 | `baseline_sd` ghost parameter | Minor | `apriori_power_simulation.R` |
-| J.5 | Bayesian power: no multi-group support | Missing | `bayesian_power_analysis.R` |
-| J.6 | Bayesian power: no random-slope option | Missing | `bayesian_power_analysis.R` |
-| J.7 | Bayesian power: no null-distribution / type-I check | Minor | `bayesian_power_analysis.R` |
-| J.8 | `me_result` class defined but not used by main funcs | Architecture | `me_result.R` |
-| J.9 | `tumor_doubling_time` no composite key | Minor | `me_result.R` |
-| J.10 | `repeated_measures_anova` uses third zero-handling pattern | Minor (inconsistency) | `me_result.R` |
-| J.11 | `analyze_body_weight` accepts `cage_column` but ignores it in formula | **Major** | `analyze_body_weight.R` |
-| J.12 | `analyze_body_weight` returns no diagnostic plots | Missing | `analyze_body_weight.R` |
-| J.13 | `therapeutic_window_metric` `abs(TGI)` masks negative efficacy | Minor | `therapeutic_window_metric.R` |
-| J.14 | `therapeutic_window_metric` baseline doesn't use composite key | Minor | `therapeutic_window_metric.R` |
-| J.15 | `total_benefit_area` division-by-zero partial guard | Minor | `total_benefit_area.R` |
-| J.16 | `total_benefit_area` unit-mismatch in benefit score | Minor (document) | `total_benefit_area.R` |
-| J.17 | `weight_loss_threshold` no `cox.zph` / Firth fallback | Major | `weight_loss_threshold.R` |
-| J.18 | `efficacy_toxicity_bivariate` toxicity uses ID-only key | Minor | `efficacy_toxicity_bivariate.R` |
-| J.19 | `calculate_volume` silent default on unknown formula | Minor | `calculate_volume.R` |
-| J.20 | `calculate_dates` `in_place` still uses `assign()` to parent.frame | Minor (inconsistency) | `calculate_dates.R` |
-| J.21 | `my_data` example dataset unrelated to package purpose | Minor | `data.R` |
+| J.1 | TWM independence assumption between TG and BW posteriors | Minor (document) | `bayesian_therapeutic_window.R` | ✅ Fixed v0.4.5 |
+| J.2 | TWM=1 plot isoline is approximate | Minor | `bayesian_therapeutic_window.R` | ✅ Fixed v0.4.5 |
+| J.3 | `plot_combination_index` multiplicative-offset bug (Round 1 3.9 partial fix) | Major | `analyze_drug_synergy_over_time.R` | ✅ Fixed v0.4.5 |
+| J.4 | `baseline_sd` ghost parameter | Minor | `apriori_power_simulation.R` | ✅ Fixed v0.4.5 (now functional) |
+| J.5 | Bayesian power: no multi-group support | Missing | `bayesian_power_analysis.R` | Open |
+| J.6 | Bayesian power: no random-slope option | Missing | `bayesian_power_analysis.R` | Open |
+| J.7 | Bayesian power: no null-distribution / type-I check | Minor | `bayesian_power_analysis.R` | Open |
+| J.8 | `me_result` class defined but not used by main funcs | Architecture | `me_result.R` | Open |
+| J.9 | `tumor_doubling_time` no composite key | Minor | `me_result.R` | ✅ Fixed v0.4.5 |
+| J.10 | `repeated_measures_anova` uses third zero-handling pattern | Minor (inconsistency) | `me_result.R` | ✅ Fixed v0.4.5 |
+| J.11 | `analyze_body_weight` accepts `cage_column` but ignores it in formula | **Major** | `analyze_body_weight.R` | ✅ Fixed v0.4.5 |
+| J.12 | `analyze_body_weight` returns no diagnostic plots | Missing | `analyze_body_weight.R` | ✅ Fixed v0.4.5 |
+| J.13 | `therapeutic_window_metric` `abs(TGI)` masks negative efficacy | Minor | `therapeutic_window_metric.R` | ✅ Fixed v0.4.5 |
+| J.14 | `therapeutic_window_metric` baseline doesn't use composite key | Minor | `therapeutic_window_metric.R` | ✅ Fixed v0.4.5 |
+| J.15 | `total_benefit_area` division-by-zero partial guard | Minor | `total_benefit_area.R` | ✅ Fixed v0.4.5 |
+| J.16 | `total_benefit_area` unit-mismatch in benefit score | Minor (document) | `total_benefit_area.R` | ✅ Fixed v0.4.5 |
+| J.17 | `weight_loss_threshold` no `cox.zph` / Firth fallback | Major | `weight_loss_threshold.R` | ✅ Fixed v0.4.5 |
+| J.18 | `efficacy_toxicity_bivariate` toxicity uses ID-only key | Minor | `efficacy_toxicity_bivariate.R` | ✅ Fixed v0.4.5 |
+| J.19 | `calculate_volume` silent default on unknown formula | Minor | `calculate_volume.R` | ✅ Fixed v0.4.5 |
+| J.20 | `calculate_dates` `in_place` still uses `assign()` to parent.frame | Minor (inconsistency) | `calculate_dates.R` | ✅ Fixed v0.4.5 (deprecated) |
+| J.21 | `my_data` example dataset unrelated to package purpose | Minor | `data.R` | ✅ Fixed v0.4.5 (deleted) |
 
 ---
 
@@ -1564,15 +1564,15 @@ The class exists but isn't constructed by any analysis function (J.8). The test 
 
 | ID | Issue | Severity |
 |---|---|---|
-| K.1 | Stale tests reference old `bayes` / `Lower_CL` API | **Critical** (Bayesian path effectively unchecked) |
-| K.2 | Defensive `if(!is.na(col))` masks shallow assertions | Major |
-| K.3 | Blanket `suppressWarnings(suppressMessages())` hides real signal | Major |
-| K.4 | No "parameter actually changes output" tests | Major (same bug class as Round 1 1.1) |
-| K.5 | None of the Round 2 findings would have been caught | Major |
-| K.6 | Rhat threshold 1.1 too permissive; no ESS assertions | Minor |
-| K.7 | n_iter = 500 is fast but light | Minor |
-| K.8 | Toxicity fixture duplicates `make_bw_simple()` | Minor |
-| K.9 | Plot return values not tested | Minor |
-| K.10 | No code-coverage measurement | Architecture |
-| K.11 | No regression tests for prior Round 1 / Round 2 fixes | Process |
-| K.12 | `me_result` tested in isolation; not exercised end-to-end | Minor |
+| K.1 | Stale tests reference old `bayes` / `Lower_CL` API | **Critical** (Bayesian path effectively unchecked) | ✅ Fixed v0.4.5 |
+| K.2 | Defensive `if(!is.na(col))` masks shallow assertions | Major | Open |
+| K.3 | Blanket `suppressWarnings(suppressMessages())` hides real signal | Major | Open |
+| K.4 | No "parameter actually changes output" tests | Major (same bug class as Round 1 1.1) | Open |
+| K.5 | None of the Round 2 findings would have been caught | Major | Partially addressed (K.1, K.6 fixed; K.4 still open) |
+| K.6 | Rhat threshold 1.1 too permissive; no ESS assertions | Minor | ✅ Fixed v0.4.5 |
+| K.7 | n_iter = 500 is fast but light | Minor | Open |
+| K.8 | Toxicity fixture duplicates `make_bw_simple()` | Minor | Open |
+| K.9 | Plot return values not tested | Minor | Open |
+| K.10 | No code-coverage measurement | Architecture | Open |
+| K.11 | No regression tests for prior Round 1 / Round 2 fixes | Process | Open |
+| K.12 | `me_result` tested in isolation; not exercised end-to-end | Minor | Open |
