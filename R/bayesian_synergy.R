@@ -324,20 +324,22 @@ bayesian_synergy <- function(
   # ── Fit model ─────────────────────────────────────────────────────────────
   if (isTRUE(verbose)) message("Fitting brms model …")
 
-  model <- suppressWarnings(
-    brms::brm(
-      formula      = brms_formula,
-      data         = analysis_df,
-      prior        = priors,
-      chains       = n_chains,
-      cores        = n_chains,
-      iter         = n_warmup + n_iter,
-      warmup       = n_warmup,
-      seed         = seed,
-      sample_prior = "yes",
-      silent       = if (isTRUE(verbose)) 0L else 2L,
-      refresh      = if (isTRUE(verbose)) 100L else 0L
-    )
+  # Stan warnings (divergent transitions, max_treedepth, low ESS, Rhat) are
+  # exactly the signals we want to surface — they should NOT be suppressed.
+  # nuts_diagnostics already captures divergences / max_treedepth / E-BFMI;
+  # this restores user-visible warnings as a second line of defence.
+  model <- brms::brm(
+    formula      = brms_formula,
+    data         = analysis_df,
+    prior        = priors,
+    chains       = n_chains,
+    cores        = n_chains,
+    iter         = n_warmup + n_iter,
+    warmup       = n_warmup,
+    seed         = seed,
+    sample_prior = "yes",
+    silent       = if (isTRUE(verbose)) 0L else 2L,
+    refresh      = if (isTRUE(verbose)) 100L else 0L
   )
 
   # ── Posterior summary (fixed effects) ─────────────────────────────────────
@@ -833,20 +835,19 @@ bayesian_synergy_over_time <- function(
   # ── Fit model ─────────────────────────────────────────────────────────────
   if (isTRUE(verbose)) message("Fitting brms model …")
 
-  model <- suppressWarnings(
-    brms::brm(
-      formula      = brms_formula,
-      data         = analysis_df,
-      prior        = priors,
-      chains       = n_chains,
-      cores        = n_chains,
-      iter         = n_warmup + n_iter,
-      warmup       = n_warmup,
-      seed         = seed,
-      sample_prior = "yes",
-      silent       = if (isTRUE(verbose)) 0L else 2L,
-      refresh      = if (isTRUE(verbose)) 100L else 0L
-    )
+  # See note above re: not suppressing Stan warnings.
+  model <- brms::brm(
+    formula      = brms_formula,
+    data         = analysis_df,
+    prior        = priors,
+    chains       = n_chains,
+    cores        = n_chains,
+    iter         = n_warmup + n_iter,
+    warmup       = n_warmup,
+    seed         = seed,
+    sample_prior = "yes",
+    silent       = if (isTRUE(verbose)) 0L else 2L,
+    refresh      = if (isTRUE(verbose)) 100L else 0L
   )
 
   posterior_summary <- build_posterior_summary(model)
