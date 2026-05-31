@@ -111,10 +111,15 @@ therapeutic_window_metric <- function(df,
 
   # --- TWM ---
   twm <- merge(tgi_data, group_wl, by = "Treatment")
+  # Clamp negative TGI to 0 — a treatment that *accelerates* tumour growth
+  # has no efficacy benefit, so TWM should not be positive for it. Using
+  # abs(TGI) here previously would have made a treatment that enhanced
+  # disease AND caused weight loss appear safe (TWM > 0); now it scores 0.
+  tgi_pos <- pmax(twm$TGI, 0)
   twm$TWM <- ifelse(
     twm$Mean_Pct_Weight_Loss <= noise_floor,
-    abs(twm$TGI),  # Safety score = TGI when weight loss negligible
-    abs(twm$TGI) / twm$Mean_Pct_Weight_Loss
+    tgi_pos,  # Safety score = max(TGI, 0) when weight loss negligible
+    tgi_pos / twm$Mean_Pct_Weight_Loss
   )
   twm$Safety_Note <- ifelse(
     twm$Mean_Pct_Weight_Loss <= noise_floor,

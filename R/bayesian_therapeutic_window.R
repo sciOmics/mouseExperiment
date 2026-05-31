@@ -373,13 +373,29 @@ bayesian_therapeutic_window <- function(
           xintercept = -noise_floor, linetype = "dashed",
           colour = "grey60", linewidth = 0.5
         ) +
-        ggplot2::geom_abline(
-          slope     = -1 / 100,
-          intercept = noise_floor / 100,
-          linetype  = "dotted",
-          colour    = "tomato",
-          linewidth = 0.7
-        ) +
+        # TWM = 1 isoline. Piecewise:
+        #   horizontal at y = noise_floor/100 for |x| <= noise_floor
+        #   linear (TGI = |WL%|/100) outside that band.
+        # Build the path explicitly via geom_path so the corners render
+        # correctly. (Previously a single geom_abline approximated it but
+        # crossed the y axis at the wrong slope near the floor.)
+        {
+          x_min      <- min(plot_df$WL_Median, na.rm = TRUE)
+          x_max      <- max(plot_df$WL_Median, na.rm = TRUE)
+          x_pad      <- 0.05 * max(1, abs(x_max - x_min))
+          x_lo       <- min(x_min - x_pad, -noise_floor * 2)
+          x_hi       <- max(x_max + x_pad,  noise_floor * 2)
+          iso_df <- data.frame(
+            x = c(x_lo, -noise_floor, noise_floor, x_hi),
+            y = c(abs(x_lo) / 100, noise_floor / 100,
+                  noise_floor / 100, abs(x_hi) / 100)
+          )
+          ggplot2::geom_path(
+            data = iso_df, ggplot2::aes(x = x, y = y),
+            linetype = "dotted", colour = "tomato", linewidth = 0.7,
+            inherit.aes = FALSE
+          )
+        } +
         ggplot2::labs(
           title    = "Efficacy vs. Safety (Posterior Medians)",
           subtitle = "Dotted red line = TWM 1 isoline; points above = TWM > 1",
