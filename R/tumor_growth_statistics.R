@@ -94,10 +94,19 @@ tgs_extrapolate <- function(df, id_column, treatment_column, cage_column,
   # Combine all subject data
   df <- do.call(rbind, subjects_with_extrapolation)
   
-  # Count extrapolated subjects for verbose output
+  # Count extrapolated subjects for verbose output.
+  # Previously: unique(df$Extrapolated[df$Extrapolated]) collapses to c(TRUE),
+  # so the count was always 0 or 1. Use composite mouse keys for the actual
+  # subject count.
   if (isTRUE(verbose)) {
-    extrapolated_subjects <- unique(df$Extrapolated[df$Extrapolated])
-    n_extrapolated <- length(extrapolated_subjects)
+    ex_rows <- df[df$Extrapolated, , drop = FALSE]
+    n_extrapolated <- if (nrow(ex_rows) > 0L) {
+      length(unique(make_mouse_key(
+        ex_rows[[id_column]],
+        ex_rows[[treatment_column]],
+        ex_rows[[cage_column]]
+      )))
+    } else 0L
     if (n_extrapolated > 0) {
       message("Successfully extrapolated ", n_extrapolated, " subjects to day ", true_max_day)
     } else {
