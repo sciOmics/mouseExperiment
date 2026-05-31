@@ -5,6 +5,45 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-05-30
+
+### Added
+- **GAM model option for tumor growth, body weight, and Bayesian tumor growth.**
+  Replaces the previous mechanism of fitting higher-order polynomials in time:
+  - `tumor_growth_statistics()` — new `model_type = "gam"` choice. Fits via
+    `gamm4` (lme4 random effects + mgcv smoothers) with a group-specific
+    smoother on Day: `y ~ Treatment + s(Day, by = Treatment, k)`. Smoother
+    basis dimension is auto-chosen from the number of unique time points
+    (clamped to `[3, 10]`). Returns the same result-list shape as the LME4
+    path — `treatment_effects` (at mean day), `treatment_effects_over_time`
+    (at the five study-day quantiles), `pairwise_comparisons` (smooth-vs-
+    smooth differences at quantile days, pairwise vs the reference group),
+    `anova` (mgcv smooth-term significance), and a `diagnostics` block
+    including `k_check` (basis adequacy) and `deviance_explained`.
+  - `bayesian_tumor_growth()` — new `model_type = c("lmm", "gam")` argument
+    (default `"lmm"` preserves prior behaviour). When `"gam"`, brms fits
+    `y ~ Treatment + s(Day, by = Treatment, k)` with the same random-effects
+    spec. The returned `model_type_used` is `"bayes_tg_gam"`.
+  - `analyze_body_weight()` — new `model_type = c("lmm", "gam")` argument.
+    GAM path uses `gamm4` with `(1 | Cage) + (1 | ID)` random effects when a
+    cage column is supplied.
+- `R/tgs_gam.R` — new internal helpers shared across these paths:
+  `tgs_fit_gamm4_model()`, `tgs_gam_treatment_effects()`, `tgs_gam_emm_time()`,
+  `tgs_gam_pairwise()`, `tgs_gam_anova_table()`, `tgs_gam_diagnostics()`.
+
+### Removed
+- **`polynomial_degree` argument** removed from `tumor_growth_statistics()`
+  entirely. Higher-order polynomial-in-time fits were a workaround for
+  non-linear growth; `model_type = "gam"` is the principled replacement and
+  extrapolates more honestly. Existing callers that previously passed
+  `polynomial_degree = 1` are unaffected (linear time is still the default
+  LME4 behaviour). Callers passing `polynomial_degree > 1` should migrate
+  to `model_type = "gam"`.
+
+### Dependencies
+- `gamm4 (>= 0.2-6)` and `mgcv (>= 1.8-40)` added to `Suggests`. Required
+  only when `model_type = "gam"` is requested.
+
 ## [0.4.3] - 2026-05-20
 
 ### Added

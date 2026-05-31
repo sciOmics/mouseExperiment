@@ -168,6 +168,7 @@ bayesian_tumor_growth <- function(
   cage_column                  = NULL,
   dose_column                  = NULL,
   transform                    = c("log", "sqrt", "none"),
+  model_type                   = c("lmm", "gam"),
   random_effects_specification = c("intercept_only", "slope"),
   reference_group              = NULL,
   prior_strength               = c("skeptical", "weakly_informative", "informative", "diffuse", "manual"),
@@ -196,6 +197,7 @@ bayesian_tumor_growth <- function(
   }
 
   transform                    <- match.arg(transform)
+  model_type                   <- match.arg(model_type)
   random_effects_specification <- match.arg(random_effects_specification)
   prior_strength               <- match.arg(prior_strength)
   necrotic_handling            <- match.arg(necrotic_handling)
@@ -275,7 +277,19 @@ bayesian_tumor_growth <- function(
     }
   }
 
-  fixed_part <- paste(volume_column, "~", treatment_column, "*", time_column)
+  # Linear interaction (LMM) vs group-specific smoother (GAM via brms s()).
+  # The smoother basis dimension is auto-chosen from observed time points.
+  if (model_type == "gam") {
+    n_days     <- length(unique(analysis_df[[time_column]]))
+    k_val      <- max(3L, min(10L, n_days - 1L))
+    fixed_part <- paste0(
+      volume_column, " ~ ", treatment_column,
+      " + s(", time_column, ", by = ", treatment_column,
+      ", k = ", k_val, ")"
+    )
+  } else {
+    fixed_part <- paste(volume_column, "~", treatment_column, "*", time_column)
+  }
   if (isTRUE(include_necrotic_covariate)) {
     fixed_part <- paste(fixed_part, "+ necrotic_cov_flag")
   }
@@ -537,7 +551,11 @@ bayesian_tumor_growth <- function(
 
   # ── Analysis summary metadata ──────────────────────────────────────────────
   analysis_summary <- list(
-    analysis_type = "Bayesian Linear Mixed-Effects Model (brms)",
+    analysis_type = if (model_type == "gam") {
+      "Bayesian Generalized Additive Mixed Model (brms, group-specific smooths)"
+    } else {
+      "Bayesian Linear Mixed-Effects Model (brms)"
+    },
     data_description = list(
       subjects         = length(unique(make_mouse_key(
         auc_df[[id_column]],
@@ -575,7 +593,7 @@ bayesian_tumor_growth <- function(
   # ── Return ─────────────────────────────────────────────────────────────────
   list(
     model                   = if (isTRUE(return_model)) model else NULL,
-    model_type_used         = "bayes_tg",
+    model_type_used         = if (model_type == "gam") "bayes_tg_gam" else "bayes_tg",
     transform_used          = transform,
     summary                 = analysis_summary,
     posterior_summary       = posterior_summary,

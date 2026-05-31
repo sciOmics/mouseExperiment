@@ -236,7 +236,6 @@ tgs_compute_cage_effects <- function(analysis_df, cage_column, treatment_column,
 #' @param random_effects_specification One of "intercept_only", "slope", "none"
 #' @param handle_cage_effects One of "include_if_not_collinear", "always_include",
 #'   "never_include", "as_random_effect"
-#' @param polynomial_degree Integer >= 1 for the polynomial degree of the time term
 #' @param cage_collinear Logical; whether cage is collinear with treatment
 #' @param verbose Print progress messages
 #' @return List with model, model_selection, and best_model
@@ -246,22 +245,14 @@ tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
                                 treatment_column, id_column, cage_column,
                                 random_effects_specification,
                                 handle_cage_effects,
-                                polynomial_degree,
                                 cage_collinear,
                                 verbose,
                                 include_necrotic_covariate = FALSE) {
   bt <- function(x) paste0("`", x, "`")
 
-  # Build time term based on polynomial degree
-  time_term <- if (polynomial_degree == 1) {
-    bt(time_column)
-  } else {
-    inner <- paste(c(
-      bt(time_column),
-      paste0("I(", bt(time_column), "^", 2:polynomial_degree, ")")
-    ), collapse = " + ")
-    paste0("(", inner, ")")
-  }
+  # Linear time term only — higher-order polynomial time has been removed in
+  # favour of model_type = "gam" (smoother-based non-linear trajectories).
+  time_term <- bt(time_column)
 
   # Determine cage inclusion in fixed vs random effects
   include_cage_fixed <- switch(handle_cage_effects,
@@ -285,7 +276,6 @@ tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
 
   if (isTRUE(verbose)) {
     message("Random effects specification: ", random_effects_specification)
-    message("Polynomial degree: ", polynomial_degree)
     message("Cage in fixed effects: ", include_cage_fixed)
     message("Cage as random effect: ", include_cage_random)
   }
@@ -565,13 +555,13 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'        This column should contain unique identifiers for each animal/subject. Default is "ID".
 #' @param dose_column Optional. A character string specifying the column name for dose levels, if available.
 #'        This allows for dose-response analysis. Default is NULL.
-#' @param transform A character string specifying the transformation to apply to volume data. 
+#' @param transform A character string specifying the transformation to apply to volume data.
 #'        Options are "log", "sqrt", "none". Default is "log", which is recommended for exponential growth.
-#' @param polynomial_degree Integer specifying the polynomial degree for time (day) effects in the model. 
-#'        Default is 1 (linear). Increase to 2 or 3 to model non-linear growth patterns.
-#' @param model_type A character string specifying the type of model to fit. Options are: 
-#'        "lme4" (standard linear mixed effects model using lme4 package),
-#'        "auc" (area under the curve analysis).
+#' @param model_type A character string specifying the type of model to fit. Options are:
+#'        "lme4" (standard linear mixed effects model using lme4 package — linear time × treatment),
+#'        "gam"  (generalized additive mixed model via gamm4 — group-specific smooth time terms;
+#'                use this in place of fitting a high-order polynomial in time),
+#'        "auc"  (area under the curve analysis).
 #'        Default is "lme4".
 #' @param random_effects_specification A character string specifying the random effects structure.
 #'        "intercept_only" (default): (1|ID) - random intercepts by subject
@@ -658,12 +648,14 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #' # Plot adjusted means for each treatment group
 #' print(results$plots$adjusted_means)
 #' 
-#' # Analyze with different model specification
+#' # Analyze with a generalized additive mixed model (group-specific smooth
+#' # time terms via gamm4) — preferred over a high-order polynomial in time.
 #' results_gam <- tumor_growth_statistics(
 #'   tumor_data,
 #'   model_type = "gam",
 #'   transform = "log"
 #' )
+#' print(results_gam$treatment_effects_over_time)
 #'
 #' @export
 tumor_growth_statistics <- function(df,
@@ -674,8 +666,7 @@ tumor_growth_statistics <- function(df,
                                   id_column = "ID",
                                   dose_column = NULL,
                                   transform = c("log", "sqrt", "none"),
-                                  polynomial_degree = 1,
-                                  model_type = c("lme4", "auc"),
+                                  model_type = c("lme4", "gam", "auc"),
                                   random_effects_specification = c("intercept_only", "slope", "none"),
                                   handle_cage_effects = c("include_if_not_collinear", "always_include", 
                                                         "never_include", "as_random_effect"),
@@ -696,7 +687,7 @@ tumor_growth_statistics <- function(df,
   
   # Match arguments
   transform <- match.arg(transform)
-  model_type <- match.arg(model_type, c("lme4", "auc"))
+  model_type <- match.arg(model_type, c("lme4", "gam", "auc"))
   random_effects_specification <- match.arg(random_effects_specification)
   handle_cage_effects <- match.arg(handle_cage_effects)
   auc_method <- match.arg(auc_method)
@@ -787,11 +778,118 @@ tumor_growth_statistics <- function(df,
   # Model fitting and selection
   cage_collinear <- !is.null(cage_analysis$collinearity_test) &&
     isTRUE(cage_analysis$collinearity_test$p.value < 0.05)
+
+  # ── GAM path (early return) ──────────────────────────────────────────────
+  # Use gamm4 (lme4 + mgcv) when model_type == "gam". Skips the LME4 fit
+  # entirely and builds a result list that mirrors the LME4 shape so the
+  # dashboard render pipeline is shared.
+  if (model_type == "gam") {
+    # data_summary is computed inside the GAM branch (the LME4 path computes
+    # it later); same helper, same shape.
+    data_summary <- tgs_compute_summary(
+      analysis_df, treatment_column, time_column, volume_column
+    )
+
+    gam_result <- tgs_fit_gamm4_model(
+      analysis_df, volume_column, time_column,
+      treatment_column, id_column, cage_column,
+      handle_cage_effects, cage_collinear, verbose,
+      include_necrotic_covariate = include_necrotic_covariate
+    )
+    if (is.null(gam_result)) {
+      stop("model_type = 'gam' failed to fit. See warnings above.")
+    }
+
+    gam_fit  <- gam_result$model
+    gam_obj  <- gam_fit$gam
+    mer_obj  <- gam_fit$mer
+
+    day_range <- sort(unique(analysis_df[[time_column]]))
+    mean_day  <- mean(analysis_df[[time_column]])
+
+    treatment_effects   <- tgs_gam_treatment_effects(
+      gam_obj, treatment_column, time_column, mean_day, reference_group
+    )
+    emm_time_df         <- tgs_gam_emm_time(
+      gam_obj, treatment_column, time_column, day_range
+    )
+    pairwise_comp_df    <- tgs_gam_pairwise(
+      gam_obj, treatment_column, time_column, day_range, reference_group
+    )
+    anova_table         <- tgs_gam_anova_table(gam_obj)
+    gam_diagnostics     <- if (include_diagnostics) {
+      tgs_gam_diagnostics(gam_fit, id_column)
+    } else NULL
+
+    analysis_summary <- list(
+      analysis_type = "Generalized Additive Mixed Model (gamm4)",
+      data_description = list(
+        subjects         = length(unique(make_mouse_key(
+          analysis_df[[id_column]],
+          analysis_df[[treatment_column]],
+          analysis_df[[cage_column]]
+        ))),
+        treatment_groups = length(unique(analysis_df[[treatment_column]])),
+        time_points      = length(unique(analysis_df[[time_column]])),
+        reference_group  = reference_group
+      ),
+      model_specification = list(
+        fixed_effects  = paste(volume_column, "~", treatment_column,
+                               "+ s(", time_column, ", by =",
+                               treatment_column, ")"),
+        random_effects = switch(handle_cage_effects,
+          as_random_effect = paste0("(1|", cage_column, ") + (1|", id_column, ")"),
+                             paste0("(1|", id_column, ")")
+        ),
+        cage_effects   = handle_cage_effects,
+        smoother_k     = gam_result$model_selection$k_basis
+      ),
+      model_selection = gam_result$model_selection,
+      methods = list(
+        volume_transformation = transform,
+        anova_method          = "Smooth-term significance (mgcv summary)",
+        posthoc_method        = paste0(
+          "Difference of group-specific smooths at five study-day quantiles ",
+          "(min / Q1 / median / Q3 / max), pairwise vs ", reference_group
+        )
+      ),
+      notes = c(
+        if (transform != "none") paste("Volume data was", transform,
+                                       "transformed prior to analysis")
+        else "No transformation applied to volume data",
+        paste0("Smoother basis dimension k = ",
+               gam_result$model_selection$k_basis,
+               "; check k_check in diagnostics if k.index << 1")
+      )
+    )
+
+    return(list(
+      model                       = if (return_model) gam_fit else NULL,
+      model_type_used             = "gam",
+      anova                       = anova_table,
+      summary                     = analysis_summary,
+      pairwise_comparisons        = pairwise_comp_df,
+      posthoc = list(
+        method   = "GAM smooth-difference contrasts at quantile days",
+        pairwise = pairwise_comp_df
+      ),
+      treatment_effects           = treatment_effects,
+      treatment_effects_over_time = emm_time_df,
+      growth_rates                = growth_rates,
+      cage_analysis               = cage_analysis,
+      model_selection             = gam_result$model_selection,
+      diagnostics                 = gam_diagnostics,
+      data_summary                = data_summary,
+      plots                       = NULL,
+      necrosis_summary            = necrosis_summary
+    ))
+  }
+
   lme4_result <- tgs_fit_lme4_models(
     analysis_df, volume_column, time_column,
     treatment_column, id_column, cage_column,
     random_effects_specification, handle_cage_effects,
-    polynomial_degree, cage_collinear, verbose,
+    cage_collinear, verbose,
     include_necrotic_covariate = include_necrotic_covariate
   )
   model <- lme4_result$model
@@ -1165,7 +1263,6 @@ tumor_growth_statistics <- function(df,
                                "intercept_only" = paste("(1|", id_column, ")"),
                                "slope" = paste("(", time_column, "|", id_column, ")"),
                                "none" = "None"),
-        polynomial_degree = polynomial_degree,
         cage_effects = handle_cage_effects
       ),
       model_selection = list(
