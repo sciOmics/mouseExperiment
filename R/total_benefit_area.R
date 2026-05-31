@@ -72,7 +72,11 @@ total_benefit_area <- function(df,
     gv <- vol_agg[vol_agg$Treatment == g, c("Day", "Volume")]
     merged <- merge(gv, ctrl_vol, by = "Day")
     merged$TGI <- (1 - merged$Volume / merged$Ctrl_Volume) * 100
-    merged$TGI[is.nan(merged$TGI)] <- 0
+    # Guard against 0/0 (NaN) and any V/0 (±Inf) cases that occur when the
+    # control mean is 0 at an early time-point. Treat as 0 TGI; alerting the
+    # caller would be better, but silently zeroing matches the existing
+    # is.nan guard's intent (Round 2 J.15).
+    merged$TGI[!is.finite(merged$TGI)] <- 0
     auc_val <- calculate_auc(merged$Day, merged$TGI)
     data.frame(Treatment = g, Efficacy_AUC = auc_val, stringsAsFactors = FALSE)
   })
