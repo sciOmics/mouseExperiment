@@ -375,7 +375,7 @@ filename = function() {
 | 2.1 | Tab names differ across modules for the same concept | Inconsistency | Multiple | Done |
 | 2.2 | Download button placement not consistent | Inconsistency | Multiple | Done |
 | 2.3 | Reference group label: "Reference Group" vs "Control Group" vs "Control / Reference Group" | Inconsistency | Multiple | Done |
-| 2.4 | Plot customization controls differ substantially between modules | Inconsistency | Multiple | Open |
+| 2.4 | Plot customization controls differ substantially between modules | Inconsistency | Multiple | ✅ Fixed v26.06.002 (DR caught up to other modules) |
 | 2.5 | Progress feedback: Toxicity has 6 steps, Synergy has 1 | Inconsistency | Multiple | Done |
 | 3.1 | `ensure_preprocessed()` may re-run preprocessing for each module | Performance | `helpers.R` | Done |
 | 3.2 | `get_ordered_groups()` runs on every render; not memoized | Performance | Multiple | Done |
@@ -549,20 +549,20 @@ If the user accidentally closes the tab or the connection drops mid-Bayesian-fit
 | A.4 | Stale browser cache of CSS/JS | Major | `app.R` | ✅ Fixed (5e63303) |
 | B.1 | Silent rebuild failures (CRAN miss → broken image swap) | Critical | VPS `rebuild-shiny.sh` | ✅ Fixed (VPS `d2034c5`) |
 | B.2 | NPM hosts missing websocket + advanced_config | Critical | VPS `06-configure-npm.sh` | ✅ Fixed (VPS `043419e`) |
-| C.1 | Server function length still growing | Architecture | Multiple | ❌ Open — regressed |
-| C.2 | Module file naming inconsistency | Minor | Module files | ❌ Open |
-| C.3 | Mega-files concentrate render handlers | Architecture | Multiple | ❌ Open |
+| C.1 | Server function length still growing | Architecture | Multiple | ❌ Open — needs dedicated session |
+| C.2 | Module file naming inconsistency | Minor | Module files | ✅ Fixed v26.06.002 (mod_*.R everywhere) |
+| C.3 | Mega-files concentrate render handlers | Architecture | Multiple | ❌ Open — needs dedicated session |
 | D.x | Diagnostic surfacing | Major | All Bayesian / Survival tabs | ✅ Fixed v26.06.001 (bayes_R2, ppc_coverage, NUTS banner, LOO panel, cox.zph tab, C-index, P_direction column) |
 | E.1 | Power Analysis missing Summary tab | Minor | `power_modules.R` | ✅ Fixed v26.06.001 |
 | E.2 | CHANGELOG missing v26.05.020 entry | Minor | `CHANGELOG.md` | ✅ Fixed v26.06.001 |
-| E.3 | No startup warning for missing NPM timeout | Minor | `app.R` | ❌ Open |
-| F.1 | Reproducible report export | Enhancement | New | — |
-| F.2 | Save/load analysis presets | Enhancement | New | — |
-| F.3 | Side-by-side frequentist vs Bayesian | Enhancement | New | — |
-| F.4 | Per-mouse drill-down | Enhancement | New | — |
-| F.5 | Re-run with subset | Enhancement | New | — |
+| E.3 | No startup warning for missing NPM timeout | Minor | `app.R` | ✅ Fixed v26.06.002 |
+| F.1 | Reproducible report export | Enhancement | New | ✅ Fixed v26.06.002 (HTML report download) |
+| F.2 | Save/load analysis presets | Enhancement | New | ✅ Fixed v26.06.002 |
+| F.3 | Side-by-side frequentist vs Bayesian | Enhancement | New | ✅ Fixed v26.06.002 (consecutive-run compare) |
+| F.4 | Per-mouse drill-down | Enhancement | New | ✅ Fixed v26.06.002 |
+| F.5 | Re-run with subset | Enhancement | New | ✅ Fixed v26.06.002 (Subset Filter) |
 | F.6 | Cmdstanr backend toggle | Enhancement | All Bayesian sidebars | ✅ Fixed v26.06.001 |
-| F.7 | Session resume | Enhancement | `app.R` | — |
+| F.7 | Session resume | Enhancement | `app.R` | ❌ Open — needs dedicated session |
 
 ---
 
@@ -636,9 +636,9 @@ The module-server fixture sets `tg_results = NULL`, `surv_results = NULL`, etc. 
 | ID | Issue | Severity |
 |---|---|---|
 | I.1 | `expect_true(TRUE)` placeholders in module-server tests | **Major** | ✅ Fixed v26.06.001 |
-| I.2 | `tumor_growth_server` / `toxicity_server` / `data_upload_server` untested | **Major** | ❌ Open |
-| I.3 | No tests for `show_analysis_modal()`, auto-switch, cache-busting | Missing | ❌ Open |
+| I.2 | `tumor_growth_server` / `toxicity_server` / `data_upload_server` untested | **Major** | ✅ Fixed v26.06.002 (init tests) |
+| I.3 | No tests for `show_analysis_modal()`, auto-switch, cache-busting | Missing | ✅ Fixed v26.06.002 |
 | I.4 | `analysis_log_server` tests outlive the UI tab | Minor (process) | ✅ Fixed v26.06.001 (function + tests removed) |
-| I.5 | shinytest2 covers only the Data tab | Minor | ❌ Open |
-| I.6 | No CI smoke test against deployed staging | Architecture | ❌ Open |
+| I.5 | shinytest2 covers only the Data tab | Minor | ✅ Fixed v26.06.002 (end-to-end workflow added) |
+| I.6 | No CI smoke test against deployed staging | Architecture | ❌ Open (VPS-side) |
 | I.7 | `make_test_rv()` doesn't support `with_results` | Minor | ✅ Fixed v26.06.001 |

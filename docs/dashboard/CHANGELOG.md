@@ -4,6 +4,81 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.06.002] 2026 June 1st
+
+Closes 11 more CODE_REVIEW.md Round 2 items. After this release only the
+mega-file refactor (C.1 / C.3) and the cross-session resume infrastructure
+(F.7) remain open in CODE_REVIEW.md Round 2; both need a dedicated
+architectural pass.
+
+### Added — features
+
+- **Subset Filter** on the Data Upload tab (F.5). Three selectizeInputs
+  (Exclude IDs / Treatments / Cages) wired through to every analysis
+  module via the new `apply_subset_filter()` helper. Re-running an
+  analysis with a different subset is now a one-click operation — no
+  CSV editing or re-upload required. Filter state survives session
+  save/restore.
+- **Per-mouse drill-down** on the Tumor Growth Growth Rates tab (F.4).
+  Selecting any row in the per-mouse table now renders that mouse's
+  volume trajectory below, overlaid with the dashed group-mean
+  trajectory and a subtitle reporting its growth rate + back-transformed
+  daily fold change.
+- **Side-by-side compare** of consecutive Tumor Growth runs (F.3).
+  Re-running TG with a different model type (LME4 → Bayesian, AUC →
+  GAMM, …) preserves the previous result. A new Compare tab renders
+  both treatment_effects tables side-by-side, each tagged with its
+  `model_type_used`.
+- **Reproducible HTML report** from the Tumor Growth Summary tab (F.1).
+  Single self-contained file with timestamp + settings + Treatment
+  Effects + Pairwise + ANOVA + Growth Rates + Data Summary. Printable
+  to PDF from the browser; no new package dependencies (composed via
+  the new `build_html_report()` base-R helper).
+- **Settings preset save / load** in the Session Save / Restore panel
+  (F.2). Small JSON preset (column mappings + time / volume / formula
+  settings) is portable across datasets with the same headers.
+- **Dose-Response plot customisation** controls (Round 1 item 2.4).
+  Adds legend-position selector + X-axis / Y-axis / Legend label text
+  inputs to match the Tumor Growth / Survival / Synergy plot tabs.
+
+### Added — tests
+
+- New `tests/testthat/test-modal-and-cachebust.R` covering
+  `show_analysis_modal()`, the `updateTabsetPanel(..., selected = "Summary")`
+  auto-switch behaviour, and the `?v=<version>` cache-busting on static
+  assets (I.3).
+- Extended `tests/testthat/test-shiny_app.R` with an end-to-end workflow
+  test: load combo demo → switch to TG → click Run → assert
+  `rv$tg_results` populates within 30s on the LME4 path (I.5).
+- Init tests for `tumor_growth_server`, `toxicity_server`, and
+  `data_upload_server` in `test-module_servers.R` (I.2). Test count for
+  that file is now 30 (was 24).
+
+### Changed
+
+- **NPM proxy-timeout startup warning** when running under shiny-server
+  (E.3). `runDashboard()` detects `SHINY_PORT` or `SHINY_SERVER_VERSION`
+  env vars and emits an 8-line reminder banner about the
+  `proxy_read_timeout >= 3600s` + `allow_websocket_upgrade = true` NPM
+  requirements documented in Round 2 A.3. No effect for local
+  development.
+- **Module file naming standardised** (C.2). All `*_modules.R` files
+  renamed to `mod_*.R` to match the existing `mod_data_upload.R` /
+  `mod_tumor_growth.R` convention. Two internal references updated.
+
+### Removed
+- `.waylog/` (Claude Code's local session log directory) and `.claude/`
+  added to `.gitignore`; one stale waylog markdown that had been
+  accidentally committed in v26.05.023 is removed.
+
+### Open — still deferred
+- C.1 + C.3: split mega-files into per-tab UI / server / renders.
+  `mod_tumor_growth.R` is still 2,400+ LOC; the split needs paired
+  design with the analysis-module pattern and is a session of its own.
+- F.7: cross-session resume of in-flight Bayesian futures (promise
+  handle persistence keyed by a session ID / cookie). Substantial
+  infrastructure piece requiring a server-side design decision.
+
 ## [v26.06.001] 2026 June 1st
 
 Closes 11 items from CODE_REVIEW.md Round 2, primarily the D-series
