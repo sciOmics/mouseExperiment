@@ -803,7 +803,15 @@ tumorGrowthUI <- function(id) {
             shinycssloaders::withSpinner(
               DTOutput(ns("tg_growth_rates_table"))
             ),
-            downloadButton(ns("download_tg_rates"), "Download Growth Rates")
+            downloadButton(ns("download_tg_rates"), "Download Growth Rates"),
+            br(), br(),
+            # Per-mouse drill-down (CODE_REVIEW.md Round 2 F.4)
+            h5(strong(icon("magnifying-glass"), " Per-mouse drill-down"),
+               tags$small(style = "color:#6c757d; margin-left:8px;",
+                          "Select a row in the table above to see that mouse's trajectory.")),
+            shinycssloaders::withSpinner(
+              plotOutput(ns("tg_drilldown_plot"), height = "350px")
+            )
           ),
           
           tabPanel("Data Summary",

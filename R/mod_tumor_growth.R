@@ -1437,12 +1437,82 @@ tumor_growth_server <- function(id, rv) {
     )
     new_names <- colnames(rates_df)
     for (old in names(rename_map)) new_names[new_names == old] <- rename_map[[old]]
+    # CODE_REVIEW.md Round 2 F.4 — single-row selection enables the
+    # per-mouse drill-down plot rendered just below the table.
     datatable(rates_df,
       colnames = new_names,
+      selection = list(mode = "single", target = "row"),
       options  = list(scrollX = TRUE, paging = FALSE, searching = FALSE, scrollY = "500px", scrollCollapse = TRUE)
     )
   })
-  
+
+  # Per-mouse drill-down plot (CODE_REVIEW.md Round 2 F.4)
+  # Shows the selected mouse's volume trajectory overlaid against its
+  # treatment-group mean trajectory and the fitted log-linear slope.
+  output$tg_drilldown_plot <- renderPlot({
+    req(rv$tg_results)
+    req(rv$tg_plot_data, rv$tg_col_names)
+    rates_df <- as.data.frame(rv$tg_results$growth_rates)
+    if (is.null(rates_df) || nrow(rates_df) == 0L) {
+      plot.new(); title(main = "No per-animal data available"); return()
+    }
+    sel <- input$tg_growth_rates_table_rows_selected
+    if (length(sel) == 0L) {
+      plot.new()
+      title(main = "Select a row in the table above to drill down",
+            sub  = "Each row = one mouse. Click to see that mouse's trajectory.",
+            cex.main = 1.0, cex.sub = 0.8)
+      return()
+    }
+    sel <- as.integer(sel[1])
+    if (sel < 1L || sel > nrow(rates_df)) return()
+
+    id_col   <- rv$tg_col_names$id_column        %||% "ID"
+    tx_col   <- rv$tg_col_names$treatment_column %||% "Treatment"
+    time_col <- rv$tg_col_names$time_column      %||% "Day"
+    vol_col  <- rv$tg_col_names$volume_column    %||% "Volume"
+
+    target_id <- as.character(rates_df$ID[sel])
+    target_tx <- as.character(rates_df$Treatment[sel])
+    raw_data  <- rv$tg_plot_data
+
+    mouse_rows <- raw_data[as.character(raw_data[[id_col]]) == target_id &
+                            as.character(raw_data[[tx_col]]) == target_tx, , drop = FALSE]
+    group_rows <- raw_data[as.character(raw_data[[tx_col]]) == target_tx, , drop = FALSE]
+
+    if (nrow(mouse_rows) == 0L) {
+      plot.new(); title(main = paste("No raw data found for", target_id)); return()
+    }
+
+    group_mean <- stats::aggregate(
+      stats::as.formula(paste(vol_col, "~", time_col)),
+      data = group_rows, FUN = mean, na.rm = TRUE
+    )
+    names(group_mean)[2] <- "Mean_Volume"
+
+    gr_rate <- rates_df$growth_rate[sel]
+
+    p <- ggplot2::ggplot() +
+      ggplot2::geom_line(data = group_mean,
+        ggplot2::aes(x = .data[[time_col]], y = Mean_Volume),
+        colour = "grey60", linewidth = 0.7, linetype = "dashed") +
+      ggplot2::geom_point(data = mouse_rows,
+        ggplot2::aes(x = .data[[time_col]], y = .data[[vol_col]]),
+        size = 3, colour = "steelblue") +
+      ggplot2::geom_line(data = mouse_rows,
+        ggplot2::aes(x = .data[[time_col]], y = .data[[vol_col]]),
+        colour = "steelblue", linewidth = 1) +
+      ggplot2::labs(
+        title = sprintf("Drill-down: %s (%s)", target_id, target_tx),
+        subtitle = sprintf(
+          "Per-animal growth rate = %.4f log-vol/day (= %.2fx daily fold change). Grey dashed = group mean.",
+          gr_rate, exp(gr_rate)),
+        x = time_col, y = vol_col
+      ) +
+      ggplot2::theme_classic(base_size = 14)
+    print(p)
+  })
+
   # AUC individual data table
   output$tg_auc_individual_table <- renderDT({
     req(rv$tg_results)
