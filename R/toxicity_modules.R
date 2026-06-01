@@ -773,6 +773,52 @@ toxicity_server <- function(id, rv) {
           downloadButton(ns("download_bayes_twm_plot"), "Download Plot")
         )
       )
+      # CODE_REVIEW.md Round 2 H — mE v0.4.6 G.5 added aliased diagnostic
+      # plots from the two input models (pp_check_tg/bw, prior_posterior_tg/bw,
+      # mcmc_trace_tg/bw). Surface them in a single Diagnostics tab so users
+      # don't have to dig back into the TG/BW results to inspect convergence
+      # of the models that fed into TWM.
+      insertTab(inputId = tabs_id, target = "Bayesian TWM Results",
+                position = "after",
+        tabPanel("TWM Diagnostics",
+          tab_info(
+            strong("Diagnostics for the two input models. "),
+            "TWM does not fit its own brms model — it combines posterior ",
+            "draws from a Bayesian TG fit and a Bayesian BW fit. Each pair ",
+            "of plots below shows the same standard diagnostic (PPC, prior ",
+            "vs posterior, MCMC trace) for both inputs side-by-side."
+          ),
+          h4("Posterior Predictive Check"),
+          fluidRow(
+            column(6, h5("TG model"),
+              shinycssloaders::withSpinner(plotOutput(ns("twm_pp_check_tg"),
+                                                      height = "300px"))),
+            column(6, h5("BW model"),
+              shinycssloaders::withSpinner(plotOutput(ns("twm_pp_check_bw"),
+                                                      height = "300px")))
+          ),
+          br(),
+          h4("Prior vs Posterior"),
+          fluidRow(
+            column(6, h5("TG model"),
+              shinycssloaders::withSpinner(plotOutput(ns("twm_prior_post_tg"),
+                                                      height = "300px"))),
+            column(6, h5("BW model"),
+              shinycssloaders::withSpinner(plotOutput(ns("twm_prior_post_bw"),
+                                                      height = "300px")))
+          ),
+          br(),
+          h4("MCMC Trace"),
+          fluidRow(
+            column(6, h5("TG model"),
+              shinycssloaders::withSpinner(plotOutput(ns("twm_trace_tg"),
+                                                      height = "300px"))),
+            column(6, h5("BW model"),
+              shinycssloaders::withSpinner(plotOutput(ns("twm_trace_bw"),
+                                                      height = "300px")))
+          )
+        )
+      )
     }
   }, ignoreNULL = FALSE)
 
@@ -951,6 +997,31 @@ toxicity_server <- function(id, rv) {
     req(!is.null(p))
     print(p)
   })
+
+  # CODE_REVIEW.md Round 2 H — surface the six aliased diagnostic plots
+  # that mE v0.4.6 G.5 added to bayesian_therapeutic_window() output.
+  twm_plot_renderer <- function(field_name) {
+    renderPlot({
+      req(rv$tox_results)
+      req(isTRUE(rv$tox_results$model_type == "bayes_twm"))
+      req(!is.null(rv$tox_results$twm))
+      p <- rv$tox_results$twm[[field_name]]
+      if (is.null(p)) {
+        plot.new()
+        title(main = paste0(field_name, " not available"),
+              sub = "Re-run the upstream TG/BW Bayesian fits with plots = TRUE.",
+              cex.sub = 0.8)
+        return(invisible(NULL))
+      }
+      print(p)
+    })
+  }
+  output$twm_pp_check_tg    <- twm_plot_renderer("pp_check_tg")
+  output$twm_pp_check_bw    <- twm_plot_renderer("pp_check_bw")
+  output$twm_prior_post_tg  <- twm_plot_renderer("prior_posterior_tg")
+  output$twm_prior_post_bw  <- twm_plot_renderer("prior_posterior_bw")
+  output$twm_trace_tg       <- twm_plot_renderer("mcmc_trace_tg")
+  output$twm_trace_bw       <- twm_plot_renderer("mcmc_trace_bw")
 
   output$download_bayes_twm_csv <- downloadHandler(
     filename = function() paste0("bayesian_twm_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv"),
