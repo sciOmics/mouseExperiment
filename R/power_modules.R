@@ -183,6 +183,17 @@ powerAnalysisUI <- function(id) {
         tabsetPanel(
           id = ns("pw_ap_results_tabs"),
 
+          tabPanel("Summary",
+            fluidRow(
+              column(10, offset = 1,
+                br(),
+                shinycssloaders::withSpinner(
+                  uiOutput(ns("pw_ap_summary_ui"))
+                )
+              )
+            )
+          ),
+
           tabPanel("Info",
             fluidRow(
               column(10, offset = 1,
@@ -522,6 +533,7 @@ power_server <- function(id, rv) {
       output$pw_status_msg <- renderUI({
         status_alert("A priori power analysis completed.", "success")
       })
+      updateTabsetPanel(session, "pw_ap_results_tabs", selected = "Summary")
 
     # =========================================================================
     # BRANCH B — A PRIORI LMM SIMULATION
@@ -588,12 +600,104 @@ power_server <- function(id, rv) {
       output$pw_status_msg <- renderUI({
         status_alert("LMM simulation completed.", "success")
       })
+      updateTabsetPanel(session, "pw_ap_results_tabs", selected = "Summary")
     }
   })
 
   # ===========================================================================
   # A PRIORI OUTPUTS
   # ===========================================================================
+
+  # ── Summary tab — concise overview of the most recent run ───────────────
+  # CODE_REVIEW.md Round 2 E.1: every other module has a Summary tab, and
+  # the auto-switch-to-Summary behaviour added in v26.05.022 was skipping
+  # Power Analysis because it had no such tab. Adding it both restores
+  # parity and gives users a one-glance "what did this analysis answer".
+  output$pw_ap_summary_ui <- renderUI({
+    if (is.null(rv$ap_results)) {
+      return(div(
+        class = "alert alert-info",
+        icon("info-circle"), " ",
+        "Run an a priori power analysis to see results here."
+      ))
+    }
+    res     <- rv$ap_results
+    mode_ap <- res$mode %||% "apriori_analytic"
+    submode <- res$ap_submode %||% NA_character_
+
+    # Recommended N: smallest N reaching the target power across scenarios.
+    target  <- isolate(input$pw_ap_target_power) %||% 0.80
+    rec_n_html <- if (mode_ap == "apriori_lmm") {
+      cd <- res$power_curve_data
+      ok <- cd[!is.na(cd$Power) & cd$Power >= target, , drop = FALSE]
+      if (nrow(ok) > 0L) {
+        min_n <- min(ok$N_Per_Group, na.rm = TRUE)
+        tags$p(
+          tags$strong("Recommended N per group:"), " ",
+          tags$span(class = "badge", min_n),
+          tags$br(),
+          tags$small(class = "text-muted",
+            sprintf("Smallest simulated N reaching power ≥ %.0f%%.", 100 * target))
+        )
+      } else {
+        tags$p(
+          tags$strong("Recommended N per group:"), " not reached",
+          tags$br(),
+          tags$small(class = "text-muted",
+            sprintf("None of the simulated N values reached power ≥ %.0f%%; extend the range.", 100 * target))
+        )
+      }
+    } else {
+      st <- res$scenario_table
+      n_col <- intersect(c("Required_N", "N_Required"), colnames(st))[1]
+      if (!is.na(n_col) && any(is.finite(st[[n_col]]))) {
+        min_n <- min(st[[n_col]][is.finite(st[[n_col]])], na.rm = TRUE)
+        tags$p(
+          tags$strong("Recommended N per group (smallest scenario):"), " ",
+          tags$span(class = "badge", min_n),
+          tags$br(),
+          tags$small(class = "text-muted",
+            sprintf("From the scenario with the most favourable (effect, alpha) combination at target power = %.0f%%.", 100 * target))
+        )
+      } else {
+        tags$p(
+          tags$strong("Recommended N per group:"), " see Scenario Table"
+        )
+      }
+    }
+
+    method_str <- switch(mode_ap,
+      "apriori_lmm"      = "A priori — LMM simulation (longitudinal mixed model)",
+      "apriori_analytic" = sprintf(
+        "A priori — analytic (%s)",
+        switch(submode %||% "",
+          "n_required" = "find N for target power",
+          "power"      = "find power for fixed N",
+          "analytic"
+        )
+      ),
+      paste0("A priori — ", mode_ap)
+    )
+
+    div(
+      div(class = "panel panel-default",
+        div(class = "panel-heading",
+            h4(class = "panel-title", "Power-Analysis Summary")),
+        div(class = "panel-body",
+          tags$p(tags$strong("Method:"), " ", method_str),
+          tags$p(tags$strong("Scenarios:"), " ",
+                 nrow(res$scenario_table), " row(s) in Scenario Table"),
+          rec_n_html,
+          tags$hr(),
+          tags$p(tags$small(class = "text-muted",
+            "Full scenario grid is in the ", tags$strong("Scenario Table"),
+            " tab; power curves are in ", tags$strong("Power Curves"),
+            "; SD sensitivity (analytic mode only) is in ",
+            tags$strong("SD Sensitivity"), "."))
+        )
+      )
+    )
+  })
 
   output$pw_ap_scenario_table <- renderDT({
     req(rv$ap_results)
