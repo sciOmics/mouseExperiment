@@ -115,9 +115,14 @@
 #'     indicates that the log-linear time assumption is violated and a GAM or
 #'     nonlinear model should be considered. \code{NULL} when
 #'     \code{plots = FALSE}.}
-#'   \item{\code{growth_rates}}{Per-animal exponential growth rates (same
-#'     structure as the \code{lme4} path; estimated by log-linear OLS, not
-#'     MCMC).}
+#'   \item{\code{growth_rates}}{Per-animal exponential growth rates. When the
+#'     LMM was fit with \code{random_effects_specification = "slope"}, these
+#'     are derived directly from the brms posterior — each row carries
+#'     \code{growth_rate} (posterior median) plus \code{growth_rate_lower}
+#'     and \code{growth_rate_upper} (2.5% / 97.5% credible intervals). For
+#'     intercept-only and GAM paths, falls back to log-linear OLS per
+#'     animal and the credible-interval columns reflect OLS confidence
+#'     intervals (Round 2 E.3).}
 #'   \item{\code{data_summary}}{Descriptive statistics by treatment group and
 #'     day.}
 #' }
@@ -430,11 +435,32 @@ bayesian_tumor_growth <- function(
     }
   }
 
-  # ── Growth rates (per-animal OLS log-linear, same as lme4 path) ───────────
-  growth_rates <- tgs_compute_growth_rates(
-    auc_df, treatment_column, id_column,
-    cage_column, time_column, volume_column
-  )
+  # ── Growth rates ──────────────────────────────────────────────────────────
+  # When the LMM was fit with random slopes, derive per-animal growth rates
+  # from the brms model itself (treatment fixed slope + per-animal random
+  # slope draw) rather than falling back to OLS on log-volumes. The brms
+  # version gives posterior credible intervals; the OLS version does not.
+  # Other paths (intercept_only, GAM) fall back to OLS.
+  brms_growth_rates <- NULL
+  if (model_type == "lmm" &&
+      random_effects_specification == "slope" &&
+      requireNamespace("brms", quietly = TRUE) &&
+      requireNamespace("posterior", quietly = TRUE)) {
+    brms_growth_rates <- tryCatch(
+      tg_brms_per_animal_growth_rates(model, treatment_column,
+                                       id_column, time_column,
+                                       analysis_df),
+      error = function(e) NULL
+    )
+  }
+  growth_rates <- if (!is.null(brms_growth_rates)) {
+    brms_growth_rates
+  } else {
+    tgs_compute_growth_rates(
+      auc_df, treatment_column, id_column,
+      cage_column, time_column, volume_column
+    )
+  }
 
   # ── Data summary ───────────────────────────────────────────────────────────
   data_summary <- tgs_compute_summary(
@@ -620,4 +646,106 @@ bayesian_tumor_growth <- function(
     data_summary            = data_summary,
     necrosis_summary        = necrosis_summary
   )
+}
+
+
+#' Per-animal posterior growth rates from a brms LMM
+#'
+#' Combines treatment-level fixed slope draws (Treatment[i]:Day) with each
+#' animal's random slope draw (ranef ID, Day) to produce a posterior
+#' distribution of growth rates per mouse. Returns a data frame compatible
+#' with the lme4 path's \code{growth_rates} shape plus credible-interval
+#' columns.
+#'
+#' Columns: \code{Treatment}, \code{ID}, \code{Cage} (if available),
+#' \code{growth_rate} (posterior median), \code{growth_rate_lower} /
+#' \code{growth_rate_upper} (2.5% / 97.5% CrI), \code{R_squared} (NA —
+#' the OLS R^2 has no Bayesian counterpart at the per-animal level).
+#'
+#' Requires \pkg{brms} >= 2.19 and \pkg{posterior}.
+#' @noRd
+tg_brms_per_animal_growth_rates <- function(model, treatment_column,
+                                             id_column, time_column,
+                                             analysis_df) {
+  # Fixed-effect posterior draws (full matrix): rows = draws, cols = params
+  fe <- brms::fixef(model, summary = FALSE)
+  fe_names <- colnames(fe)
+
+  # Slope column for the reference treatment level: "<time_column>" alone.
+  if (!time_column %in% fe_names) return(NULL)
+  ref_slope_draws <- fe[, time_column]
+
+  # Treatment:Day interaction columns: one per non-reference treatment level.
+  int_cols <- grep(
+    paste0(treatment_column, ".*:", time_column, "|",
+           time_column, ":", treatment_column),
+    fe_names, value = TRUE
+  )
+
+  # Per-animal random slope draws on Day. brms::ranef(summary = FALSE)
+  # returns a list of 3D arrays (draws x animals x effects).
+  re_all <- tryCatch(brms::ranef(model, summary = FALSE),
+                     error = function(e) NULL)
+  if (is.null(re_all) || !id_column %in% names(re_all)) return(NULL)
+  re_arr <- re_all[[id_column]]
+  if (length(dim(re_arr)) != 3L) return(NULL)
+  re_dimnames <- dimnames(re_arr)
+  if (length(re_dimnames) < 3L) return(NULL)
+
+  # Identify which slice corresponds to the Day random slope
+  slope_dim <- which(re_dimnames[[3L]] == time_column)
+  if (length(slope_dim) == 0L) return(NULL)
+  re_slope <- re_arr[, , slope_dim[[1L]], drop = TRUE]
+  # re_slope is now n_draws x n_animals.
+
+  animal_ids <- colnames(re_slope)
+
+  # Build per-animal lookup of Treatment (and Cage if present)
+  cage_col_present <- "Cage" %in% colnames(analysis_df)
+  id_lookup <- unique(analysis_df[, c(treatment_column, id_column,
+                                       intersect("Cage", colnames(analysis_df))),
+                                   drop = FALSE])
+  id_lookup[[id_column]] <- as.character(id_lookup[[id_column]])
+
+  rows <- lapply(animal_ids, function(aid) {
+    meta <- id_lookup[id_lookup[[id_column]] == aid, , drop = FALSE]
+    if (nrow(meta) == 0L) return(NULL)
+    treat <- as.character(meta[[treatment_column]])[[1L]]
+    cage  <- if (cage_col_present) as.character(meta[["Cage"]])[[1L]] else NA_character_
+
+    # Build treatment fixed slope = reference slope + interaction (if any)
+    # for this animal's treatment level. brms encodes interaction columns as
+    # "<treatment_column><level>:<time>" — drop the reference level.
+    int_for_treat <- grep(
+      paste0("^", treatment_column,
+             gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1", treat),
+             ":", time_column, "$"),
+      int_cols, value = TRUE
+    )
+    if (length(int_for_treat) == 1L) {
+      treat_slope_draws <- ref_slope_draws + fe[, int_for_treat]
+    } else {
+      # Treatment is the reference level (or naming differs) — use ref slope.
+      treat_slope_draws <- ref_slope_draws
+    }
+    animal_slope_draws <- treat_slope_draws + re_slope[, aid]
+
+    qq <- stats::quantile(animal_slope_draws,
+                          c(0.025, 0.5, 0.975), names = FALSE)
+    data.frame(
+      Treatment         = treat,
+      ID                = aid,
+      Cage              = cage,
+      growth_rate       = round(qq[[2L]], 4),
+      growth_rate_lower = round(qq[[1L]], 4),
+      growth_rate_upper = round(qq[[3L]], 4),
+      R_squared         = NA_real_,
+      stringsAsFactors  = FALSE
+    )
+  })
+
+  out <- do.call(rbind, Filter(Negate(is.null), rows))
+  if (is.null(out) || nrow(out) == 0L) return(NULL)
+  if (!cage_col_present) out$Cage <- NULL
+  out
 }
