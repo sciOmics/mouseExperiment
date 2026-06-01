@@ -552,16 +552,16 @@ If the user accidentally closes the tab or the connection drops mid-Bayesian-fit
 | C.1 | Server function length still growing | Architecture | Multiple | ❌ Open — regressed |
 | C.2 | Module file naming inconsistency | Minor | Module files | ❌ Open |
 | C.3 | Mega-files concentrate render handlers | Architecture | Multiple | ❌ Open |
-| D.x | Diagnostic surfacing | Major | All Bayesian / Survival tabs | ❌ Open (blocked on backend) |
-| E.1 | Power Analysis missing Summary tab | Minor | `power_modules.R` | ❌ Open |
-| E.2 | CHANGELOG missing v26.05.020 entry | Minor | `CHANGELOG.md` | ❌ Open |
+| D.x | Diagnostic surfacing | Major | All Bayesian / Survival tabs | ✅ Fixed v26.06.001 (bayes_R2, ppc_coverage, NUTS banner, LOO panel, cox.zph tab, C-index, P_direction column) |
+| E.1 | Power Analysis missing Summary tab | Minor | `power_modules.R` | ✅ Fixed v26.06.001 |
+| E.2 | CHANGELOG missing v26.05.020 entry | Minor | `CHANGELOG.md` | ✅ Fixed v26.06.001 |
 | E.3 | No startup warning for missing NPM timeout | Minor | `app.R` | ❌ Open |
 | F.1 | Reproducible report export | Enhancement | New | — |
 | F.2 | Save/load analysis presets | Enhancement | New | — |
 | F.3 | Side-by-side frequentist vs Bayesian | Enhancement | New | — |
 | F.4 | Per-mouse drill-down | Enhancement | New | — |
 | F.5 | Re-run with subset | Enhancement | New | — |
-| F.6 | Cmdstanr backend toggle | Enhancement | All Bayesian sidebars | — |
+| F.6 | Cmdstanr backend toggle | Enhancement | All Bayesian sidebars | ✅ Fixed v26.06.001 |
 | F.7 | Session resume | Enhancement | `app.R` | — |
 
 ---
@@ -635,10 +635,10 @@ The module-server fixture sets `tg_results = NULL`, `surv_results = NULL`, etc. 
 
 | ID | Issue | Severity |
 |---|---|---|
-| I.1 | `expect_true(TRUE)` placeholders in module-server tests | **Major** |
-| I.2 | `tumor_growth_server` / `toxicity_server` / `data_upload_server` untested | **Major** |
-| I.3 | No tests for `show_analysis_modal()`, auto-switch, cache-busting | Missing |
-| I.4 | `analysis_log_server` tests outlive the UI tab | Minor (process) |
-| I.5 | shinytest2 covers only the Data tab | Minor |
-| I.6 | No CI smoke test against deployed staging | Architecture |
-| I.7 | `make_test_rv()` doesn't support `with_results` | Minor |
+| I.1 | `expect_true(TRUE)` placeholders in module-server tests | **Major** | ✅ Fixed v26.06.001 |
+| I.2 | `tumor_growth_server` / `toxicity_server` / `data_upload_server` untested | **Major** | ❌ Open |
+| I.3 | No tests for `show_analysis_modal()`, auto-switch, cache-busting | Missing | ❌ Open |
+| I.4 | `analysis_log_server` tests outlive the UI tab | Minor (process) | ✅ Fixed v26.06.001 (function + tests removed) |
+| I.5 | shinytest2 covers only the Data tab | Minor | ❌ Open |
+| I.6 | No CI smoke test against deployed staging | Architecture | ❌ Open |
+| I.7 | `make_test_rv()` doesn't support `with_results` | Minor | ✅ Fixed v26.06.001 |

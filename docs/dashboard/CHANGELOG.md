@@ -4,6 +4,105 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.06.001] 2026 June 1st
+
+Closes 11 items from CODE_REVIEW.md Round 2, primarily the D-series
+"surface diagnostics that the mouseExperiment v0.4.5 / v0.4.6
+backend just shipped". Requires mouseExperiment >= 0.4.6.
+
+### Added — Bayesian diagnostics across every brms tab
+- **NUTS sampler warning banner** (Round 2 D). New uiOutput at the
+  top of every MCMC Diagnostics tab. Warning alert when any of
+  n_divergent > 0 / n_max_treedepth > 0 / E-BFMI < 0.3 is detected,
+  with the standard Stan remediation pointers (raise adapt_delta,
+  reparameterise, increase max_treedepth). Success alert otherwise.
+  Fed by mouseExperiment v0.4.5's nuts_diagnostics field.
+- **Model fit & diagnostics panel** in every MCMC Diagnostics tab.
+  Single block summarising Bayes R² (Estimate + 95 % CrI),
+  Posterior Predictive Check coverage (empirical 50 / 80 / 95 %
+  interval coverage), and PSIS-LOO (elpd_loo ± SE plus n_high_k
+  count of observations with Pareto-k > 0.7). Pulled from
+  bayes_R2 / ppc_coverage / loo_diagnostics result fields.
+- **Influential observations table** below the per-parameter Rhat /
+  ESS table in every MCMC Diagnostics tab. Lists the per-mouse
+  Pareto-k > 0.7 values from PSIS-LOO; empty-state shows a clean
+  "No observations exceed the threshold" message.
+- Two new internal helpers in `R/helpers.R`:
+  - `bayes_diagnostics_panel(result)` — rendering for the warning
+    banner + stats panel (used by all five Bayesian modules).
+  - `bayes_influential_obs(result, threshold = 0.7)` — extracts the
+    per-mouse Pareto-k table from `loo_diagnostics$pareto_k`.
+
+### Added — Survival diagnostic surfaces
+- **PH Assumption tab** in the Survival results panel. Renders the
+  full Schoenfeld-residual cox.zph table (per-covariate + GLOBAL row,
+  with chisq / df / p columns). Info banner explains unavailability
+  for the Firth (coxphf) and log-rank fallback methods.
+- **Concordance / C-index** rendered above the Cox HR table with a
+  95 % CI from sqrt(var). Frequentist Cox path only.
+- **PH check global summary banner** above the Cox table — coloured
+  alert (warning when global cox.zph p < 0.05, success otherwise),
+  with a pointer to the new PH Assumption tab for details.
+
+### Added — Bayesian P_direction column in pairwise tables
+- Tumor Growth pairwise table now puts `Lower_CrI`, `Upper_CrI`, and
+  `P_direction` in their preferred positions next to estimate / p.value.
+  New roxygen bullets in the tab_info explain `P_direction` as the
+  directional posterior probability replacing the awkward
+  "does the 95 % CrI exclude zero?" check.
+
+### Added — cmdstanr backend toggle in every Bayesian sidebar
+- Every Bayesian module (TG / Survival / Synergy / Dose-Response /
+  Toxicity BW) gains a "Stan backend" selectInput choosing between
+  RStan (default) and cmdstanr. The choice is threaded through to the
+  corresponding bayesian_*() call's new `backend = ...` argument
+  (mE v0.4.6 E.1). RStan default keeps out-of-the-box use unchanged;
+  cmdstanr compiles 3-10× faster on the VPS but needs a one-time
+  CmdStan toolchain install via `cmdstanr::install_cmdstan()`.
+
+### Added — Bayesian TWM diagnostic plots
+- The TWM result section gains a "TWM Diagnostics" tab with three
+  side-by-side panels (Posterior Predictive Check, Prior vs Posterior,
+  MCMC Trace) showing both input models (TG on left, BW on right).
+  Backed by mouseExperiment v0.4.6 G.5's aliased
+  pp_check_tg/bw, prior_posterior_tg/bw, mcmc_trace_tg/bw fields.
+
+### Added — Power Analysis Summary tab
+- First results tab is now "Summary" (was "Info"). Displays method
+  (Analytic submode or LMM Simulation), scenario count, and the
+  recommended N per group (smallest N reaching target_power, derived
+  from `power_curve_data` for LMM mode or `Required_N` for analytic
+  mode). Both completion branches now call
+  `updateTabsetPanel(..., selected = "Summary")` matching every other
+  module's auto-switch behaviour.
+
+### Changed — Tests
+- `tests/testthat/test-module_servers.R`:
+  - The four `expect_true(TRUE)` placeholders are replaced with real
+    assertions on the mock session + namespace wiring; the new
+    assertions catch the "module crashes silently on init" bug class.
+  - `make_test_rv()` gains a `with_results = character(0)` argument
+    that pre-populates `rv$<X>_results` with small dummy result lists
+    for any subset of `{tg, surv, syn, pw, dr, tox, ap}`. Lets tests
+    of post-completion UI behaviour (auto-switch, downloads enabled)
+    set up the precondition without running the analysis.
+  - The `analysis_log_server` test block is gone alongside the
+    function it tested.
+
+### Removed
+- `analysis_log_server()` and its two tests. The Log tab was removed
+  in v26.05.020 but the unused module + tests outlived it. Structured
+  stdout logging via the `logger` package continues unchanged.
+
+### Docs
+- Backfilled the v26.05.020 CHANGELOG entry (Log tab removal +
+  Help tab rewrite + Umami repoint).
+
+### Requires
+- **mouseExperiment >= 0.4.6** for the new diagnostic fields
+  (nuts_diagnostics, bayes_R2, loo_diagnostics, ppc_coverage,
+  P_direction, ph_test, c_index, TWM aliased plots, backend arg).
+
 ## [v26.05.023] 2026 May 30th
 
 ### Added
