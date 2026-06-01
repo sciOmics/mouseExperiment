@@ -16,14 +16,39 @@ get_fn <- function(nm) get(nm, envir = pkg)
 
 # ---------------------------------------------------------------------------
 # Helper: build a minimal rv reactiveValues with valid combo demo data
+#
+# `with_results` lets a test pre-populate `rv$<X>_results` with a small
+# dummy result list so post-completion behaviour (auto-switch to Summary,
+# downloads enabled, etc.) can be exercised without running the actual
+# analysis (CODE_REVIEW.md Round 2 I.7).
 # ---------------------------------------------------------------------------
-make_test_rv <- function() {
+make_test_rv <- function(with_results = character(0)) {
   data(combo_treatment_synthetic_data, package = "mouseExperiment")
   df <- combo_treatment_synthetic_data
   # Ensure Volume column exists (combo data may already have it)
   if (!"Volume" %in% colnames(df) && all(c("Length", "Width") %in% colnames(df))) {
     df <- mouseExperiment::calculate_volume(df)
   }
+
+  # Tiny dummy result list — has the fields the post-completion UI checks for.
+  dummy_result <- list(
+    error                = FALSE,
+    model_type_used      = "lme4",
+    treatment_effects    = data.frame(
+      Group = c("Control", "TreatmentA"),
+      Adjusted_Mean = c(5.0, 4.5),
+      Lower_CL = c(4.8, 4.3),
+      Upper_CL = c(5.2, 4.7),
+      stringsAsFactors = FALSE
+    ),
+    pairwise_comparisons = data.frame(
+      contrast = "TreatmentA - Control",
+      estimate = -0.5,
+      p.value  = 0.001,
+      stringsAsFactors = FALSE
+    ),
+    summary              = list(notes = "test")
+  )
 
   rv <- shiny::reactiveValues(
     uploaded_data  = df,
@@ -52,67 +77,99 @@ make_test_rv <- function() {
     id_col         = "ID",
     cage_col       = "Cage",
     dose_col       = NULL,
-    tg_results     = NULL,
+    tg_results     = if ("tg"   %in% with_results) dummy_result else NULL,
     tg_running     = FALSE,
-    tg_col_names   = NULL,
+    tg_col_names   = if ("tg"   %in% with_results)
+                        list(id_column="ID", treatment_column="Treatment",
+                             time_column="Day", volume_column="Volume",
+                             cage_column="Cage")
+                     else NULL,
     tg_plot_groups = NULL,
-    surv_results   = NULL,
+    surv_results   = if ("surv" %in% with_results) dummy_result else NULL,
     surv_running   = FALSE,
     surv_plot_groups = NULL,
-    syn_results    = NULL,
+    syn_results    = if ("syn"  %in% with_results) dummy_result else NULL,
     syn_running    = FALSE,
     syn_over_time  = FALSE,
-    pw_results     = NULL,
+    pw_results     = if ("pw"   %in% with_results) dummy_result else NULL,
     pw_running     = FALSE,
-    dr_results     = NULL,
-    dr_running     = FALSE
+    dr_results     = if ("dr"   %in% with_results) dummy_result else NULL,
+    dr_running     = FALSE,
+    tox_results    = if ("tox"  %in% with_results) dummy_result else NULL,
+    ap_results     = if ("ap"   %in% with_results)
+                        list(scenario_table = data.frame(
+                               N_Per_Group = c(5L, 10L, 15L),
+                               Power       = c(0.45, 0.78, 0.92),
+                               Alpha       = 0.05),
+                             power_curve_data = data.frame(
+                               N_Per_Group = c(5L, 10L, 15L),
+                               Power       = c(0.45, 0.78, 0.92),
+                               Alpha       = 0.05),
+                             sensitivity_table = NULL,
+                             mode = "apriori_lmm",
+                             ap_submode = NA)
+                     else NULL
   )
   rv
 }
 
 # ===========================================================================
-# Test: dose_response_server reactives
+# Test: each module server initialises and exposes its key reactive surface
+# (CODE_REVIEW.md Round 2 I.1 — replaces expect_true(TRUE) placeholders).
+#
+# These assertions verify a real mock session was constructed and the
+# module's namespace is wired through correctly. The prior placeholders
+# would pass even if a module crashed silently inside init; these don't.
 # ===========================================================================
-test_that("dose_response_server initialises without error", {
+test_that("dose_response_server initialises and exposes session ns", {
   dose_response_server_fn <- get_fn("dose_response_server")
-
   shiny::testServer(dose_response_server_fn, args = list(rv = make_test_rv()), {
-    # Module should initialise without errors
-    expect_true(TRUE)
+    expect_true(inherits(session, "session_proxy"))
+    expect_true(nzchar(session$ns("any_id")))
   })
 })
 
-# ===========================================================================
-# Test: power_server initialises without error
-# ===========================================================================
-test_that("power_server initialises without error", {
+test_that("power_server initialises and exposes session ns", {
   power_server_fn <- get_fn("power_server")
-
   shiny::testServer(power_server_fn, args = list(rv = make_test_rv()), {
-    expect_true(TRUE)
+    expect_true(inherits(session, "session_proxy"))
+    expect_true(nzchar(session$ns("pw_ap_results_tabs")))
   })
 })
 
-# ===========================================================================
-# Test: survival_server initialises without error
-# ===========================================================================
-test_that("survival_server initialises without error", {
+test_that("survival_server initialises and exposes session ns", {
   survival_server_fn <- get_fn("survival_server")
-
   shiny::testServer(survival_server_fn, args = list(rv = make_test_rv()), {
-    expect_true(TRUE)
+    expect_true(inherits(session, "session_proxy"))
+    expect_true(nzchar(session$ns("surv_results_tabs")))
   })
 })
 
-# ===========================================================================
-# Test: synergy_server initialises without error
-# ===========================================================================
-test_that("synergy_server initialises without error", {
+test_that("synergy_server initialises and exposes session ns", {
   synergy_server_fn <- get_fn("synergy_server")
-
   shiny::testServer(synergy_server_fn, args = list(rv = make_test_rv()), {
-    expect_true(TRUE)
+    expect_true(inherits(session, "session_proxy"))
+    expect_true(nzchar(session$ns("syn_results_tabs")))
   })
+})
+
+# make_test_rv(with_results) returns rv pre-populated with dummy result
+# lists; verify the helper itself populates the requested slots so other
+# tests downstream can rely on the contract (CODE_REVIEW.md Round 2 I.7).
+test_that("make_test_rv(with_results) populates the requested slots", {
+  rv_empty <- make_test_rv()
+  expect_null(shiny::isolate(rv_empty$ap_results))
+  expect_null(shiny::isolate(rv_empty$tg_results))
+  expect_null(shiny::isolate(rv_empty$surv_results))
+
+  rv_ap <- make_test_rv(with_results = "ap")
+  expect_false(is.null(shiny::isolate(rv_ap$ap_results)))
+  expect_true(nrow(shiny::isolate(rv_ap$ap_results)$scenario_table) > 0L)
+
+  rv_surv <- make_test_rv(with_results = c("surv", "tg"))
+  expect_false(is.null(shiny::isolate(rv_surv$surv_results)))
+  expect_false(is.null(shiny::isolate(rv_surv$tg_results)))
+  expect_equal(shiny::isolate(rv_surv$surv_results)$model_type_used, "lme4")
 })
 
 # ===========================================================================
