@@ -1,6 +1,169 @@
 # Copyright (c) 2026 mouseExperiment Contributors
 # Licensed under the MIT License - see LICENSE file
 
+
+#' Shared brms LMM fit for the two synergy entry points
+#'
+#' Encapsulates the steps that bayesian_synergy() and
+#' bayesian_synergy_over_time() did identically (CODE_REVIEW.md G.6):
+#' apply the volume transform, set up cage / id placeholders, build the
+#' random-effects term and full brms formula, construct priors, fit the
+#' model, and pull the standard suite of diagnostics
+#' (posterior_summary, mcmc_diagnostics, nuts_diagnostics, loo_diagnostics,
+#' bayes_R2, ppc_coverage).
+#'
+#' @param analysis_df Data frame already subset to the four analysis groups
+#'   and with the Treatment factor levelled.
+#' @param volume_column,treatment_column,time_column,id_column,cage_column
+#'   Column names; \code{cage_column} may be NULL.
+#' @param transform One of "log", "sqrt", "none".
+#' @param include_cage_effect Logical.
+#' @param re_spec "intercept_only" or "slope".
+#' @param prior_str Prior preset name, or "manual".
+#' @param manual_priors When \code{prior_str = "manual"}, a list with
+#'   \code{prior_b}, \code{prior_intercept}, \code{prior_sd},
+#'   \code{prior_sigma}.
+#' @param n_chains,n_warmup,n_iter,seed,verbose Standard brms fit knobs.
+#' @noRd
+bs_fit_synergy_model <- function(analysis_df,
+                                  volume_column, treatment_column,
+                                  time_column, id_column, cage_column,
+                                  transform = c("log", "sqrt", "none"),
+                                  include_cage_effect = TRUE,
+                                  re_spec = c("intercept_only", "slope"),
+                                  prior_str,
+                                  manual_priors = NULL,
+                                  n_chains, n_warmup, n_iter,
+                                  seed, verbose = FALSE) {
+  transform <- match.arg(transform)
+  re_spec   <- match.arg(re_spec)
+
+  # ── Apply transform ──────────────────────────────────────────────────────
+  if (transform == "log") {
+    vol           <- analysis_df[[volume_column]]
+    positive_vals <- vol[is.finite(vol) & vol > 0]
+    if (length(positive_vals) == 0L) {
+      stop(
+        "No positive values in '", volume_column,
+        "' after filtering. Cannot apply log transform."
+      )
+    }
+    vol[vol <= 0] <- min(positive_vals, na.rm = TRUE) / 2
+    analysis_df$Response <- log(vol)
+  } else if (transform == "sqrt") {
+    analysis_df$Response <- sqrt(analysis_df[[volume_column]])
+  } else {
+    analysis_df$Response <- analysis_df[[volume_column]]
+  }
+
+  # ── Cage / id setup ──────────────────────────────────────────────────────
+  has_cage <- !is.null(cage_column) && cage_column %in% colnames(analysis_df)
+  if (has_cage) {
+    analysis_df$cage_var <- analysis_df[[cage_column]]
+  } else {
+    analysis_df$cage_var <- analysis_df[[id_column]]
+  }
+  analysis_df$id_var <- paste0(
+    analysis_df$cage_var, "__", analysis_df[[id_column]]
+  )
+
+  # ── Random-effects term + full formula ───────────────────────────────────
+  re_term <- if (re_spec == "slope") {
+    if (has_cage && isTRUE(include_cage_effect)) {
+      paste0("(", time_column, " | id_var) + (1 | cage_var)")
+    } else {
+      paste0("(", time_column, " | id_var)")
+    }
+  } else {
+    if (has_cage && isTRUE(include_cage_effect)) {
+      "(1 | cage_var/id_var)"
+    } else {
+      "(1 | id_var)"
+    }
+  }
+  brms_formula <- stats::as.formula(
+    paste0(
+      "Response ~ ", treatment_column, " * ", time_column, " + ", re_term
+    )
+  )
+
+  # ── Priors ───────────────────────────────────────────────────────────────
+  if (prior_str == "manual") {
+    if (is.null(manual_priors$prior_b) ||
+          is.null(manual_priors$prior_intercept) ||
+          is.null(manual_priors$prior_sd) ||
+          is.null(manual_priors$prior_sigma)) {
+      stop(
+        "prior_strength = 'manual' requires prior_b, prior_intercept, ",
+        "prior_sd, and prior_sigma."
+      )
+    }
+    priors <- c(
+      brms::prior_string(manual_priors$prior_b,         class = "b"),
+      brms::prior_string(manual_priors$prior_intercept, class = "Intercept"),
+      brms::prior_string(manual_priors$prior_sd,        class = "sd"),
+      brms::prior_string(manual_priors$prior_sigma,     class = "sigma")
+    )
+  } else {
+    pp       <- bayes_prior_params(prior_str)
+    b_sd     <- pp$b_sd
+    exp_rate <- pp$exp_rate
+    priors   <- c(
+      brms::prior_string(paste0("normal(0, ", b_sd,       ")"),
+                         class = "b"),
+      brms::prior_string(paste0("normal(0, ", b_sd * 2.5, ")"),
+                         class = "Intercept"),
+      brms::prior_string(paste0("exponential(", exp_rate, ")"),
+                         class = "sd"),
+      brms::prior_string(paste0("exponential(", exp_rate, ")"),
+                         class = "sigma")
+    )
+  }
+
+  # ── Fit ──────────────────────────────────────────────────────────────────
+  if (isTRUE(verbose)) message("Fitting brms model …")
+
+  # Stan warnings (divergent transitions, max_treedepth, low ESS, Rhat) are
+  # exactly the signals we want to surface — they should NOT be suppressed.
+  # See nuts_diagnostics for the programmatic equivalents.
+  model <- brms::brm(
+    formula      = brms_formula,
+    data         = analysis_df,
+    prior        = priors,
+    chains       = n_chains,
+    cores        = n_chains,
+    iter         = n_warmup + n_iter,
+    warmup       = n_warmup,
+    seed         = seed,
+    sample_prior = "yes",
+    silent       = if (isTRUE(verbose)) 0L else 2L,
+    refresh      = if (isTRUE(verbose)) 100L else 0L
+  )
+
+  posterior_summary <- build_posterior_summary(model)
+  mcmc_diagnostics  <- make_mcmc_diagnostics(
+    posterior_summary, total_draws = n_chains * n_iter
+  )
+  nuts_diagnostics  <- make_nuts_diagnostics(model)
+  loo_diagnostics   <- bayes_loo(model)
+  bayes_r2          <- bayes_r2_summary(model)
+  ppc_coverage      <- bayes_ppc_coverage(model)
+
+  list(
+    model             = model,
+    analysis_df       = analysis_df,
+    has_cage          = has_cage,
+    re_term           = re_term,
+    brms_formula      = brms_formula,
+    posterior_summary = posterior_summary,
+    mcmc_diagnostics  = mcmc_diagnostics,
+    nuts_diagnostics  = nuts_diagnostics,
+    loo_diagnostics   = loo_diagnostics,
+    bayes_R2          = bayes_r2,
+    ppc_coverage      = ppc_coverage
+  )
+}
+
 #' Bayesian Drug Combination Synergy Analysis
 #'
 #' Fits a Bayesian linear mixed-effects model to longitudinal tumor volume data
@@ -236,122 +399,32 @@ bayesian_synergy <- function(
             "; transform = ", transform)
   }
 
-  # ── Apply transform ───────────────────────────────────────────────────────
-  if (transform == "log") {
-    vol           <- analysis_df[[volume_column]]
-    positive_vals <- vol[is.finite(vol) & vol > 0]
-    if (length(positive_vals) == 0L) {
-      stop(
-        "No positive values in '", volume_column,
-        "' after filtering. Cannot apply log transform."
-      )
-    }
-    vol[vol <= 0] <- min(positive_vals, na.rm = TRUE) / 2
-    analysis_df$Response <- log(vol)
-  } else if (transform == "sqrt") {
-    analysis_df$Response <- sqrt(analysis_df[[volume_column]])
-  } else {
-    analysis_df$Response <- analysis_df[[volume_column]]
-  }
-
-  # ── Cage placeholder (keeps model data consistent with bayesian_tumor_growth)
-  has_cage <- !is.null(cage_column) && cage_column %in% colnames(analysis_df)
-  if (has_cage) {
-    analysis_df$cage_var <- analysis_df[[cage_column]]
-  } else {
-    analysis_df$cage_var <- analysis_df[[id_column]]
-  }
-  analysis_df$id_var <- paste0(
-    analysis_df$cage_var, "__", analysis_df[[id_column]]
+  # ── Fit model via shared helper (CODE_REVIEW.md G.6) ──────────────────────
+  fit <- bs_fit_synergy_model(
+    analysis_df        = analysis_df,
+    volume_column      = volume_column,
+    treatment_column   = treatment_column,
+    time_column        = time_column,
+    id_column          = id_column,
+    cage_column        = cage_column,
+    transform          = transform,
+    include_cage_effect = include_cage_effect,
+    re_spec            = re_spec,
+    prior_str          = prior_str,
+    manual_priors      = list(prior_b = prior_b, prior_intercept = prior_intercept,
+                              prior_sd = prior_sd, prior_sigma = prior_sigma),
+    n_chains = n_chains, n_warmup = n_warmup, n_iter = n_iter,
+    seed = seed, verbose = verbose
   )
-
-  # ── Random-effects formula ─────────────────────────────────────────────────
-  re_term <- if (re_spec == "slope") {
-    if (has_cage && isTRUE(include_cage_effect)) {
-      paste0("(", time_column, " | id_var) + (1 | cage_var)")
-    } else {
-      paste0("(", time_column, " | id_var)")
-    }
-  } else {
-    if (has_cage && isTRUE(include_cage_effect)) {
-      "(1 | cage_var/id_var)"
-    } else {
-      "(1 | id_var)"
-    }
-  }
-
-  brms_formula <- stats::as.formula(
-    paste0(
-      "Response ~ ", treatment_column, " * ", time_column, " + ", re_term
-    )
-  )
-
-  # ── Priors ────────────────────────────────────────────────────────────────
-  if (prior_str == "manual") {
-    if (is.null(prior_b) || is.null(prior_intercept) ||
-          is.null(prior_sd) || is.null(prior_sigma)) {
-      stop(
-        "prior_strength = 'manual' requires prior_b, prior_intercept, ",
-        "prior_sd, and prior_sigma."
-      )
-    }
-    priors <- c(
-      brms::prior_string(prior_b,         class = "b"),
-      brms::prior_string(prior_intercept, class = "Intercept"),
-      brms::prior_string(prior_sd,        class = "sd"),
-      brms::prior_string(prior_sigma,     class = "sigma")
-    )
-  } else {
-    pp       <- bayes_prior_params(prior_str)
-    b_sd     <- pp$b_sd
-    exp_rate <- pp$exp_rate
-    priors   <- c(
-      brms::prior_string(
-        paste0("normal(0, ", b_sd,        ")"), class = "b"
-      ),
-      brms::prior_string(
-        paste0("normal(0, ", b_sd * 2.5,  ")"), class = "Intercept"
-      ),
-      brms::prior_string(
-        paste0("exponential(", exp_rate,  ")"), class = "sd"
-      ),
-      brms::prior_string(
-        paste0("exponential(", exp_rate,  ")"), class = "sigma"
-      )
-    )
-  }
-
-  # ── Fit model ─────────────────────────────────────────────────────────────
-  if (isTRUE(verbose)) message("Fitting brms model …")
-
-  # Stan warnings (divergent transitions, max_treedepth, low ESS, Rhat) are
-  # exactly the signals we want to surface — they should NOT be suppressed.
-  # nuts_diagnostics already captures divergences / max_treedepth / E-BFMI;
-  # this restores user-visible warnings as a second line of defence.
-  model <- brms::brm(
-    formula      = brms_formula,
-    data         = analysis_df,
-    prior        = priors,
-    chains       = n_chains,
-    cores        = n_chains,
-    iter         = n_warmup + n_iter,
-    warmup       = n_warmup,
-    seed         = seed,
-    sample_prior = "yes",
-    silent       = if (isTRUE(verbose)) 0L else 2L,
-    refresh      = if (isTRUE(verbose)) 100L else 0L
-  )
-
-  # ── Posterior summary (fixed effects) ─────────────────────────────────────
-  posterior_summary <- build_posterior_summary(model)
-
-  # ── MCMC diagnostics ──────────────────────────────────────────────────────
-  mcmc_diagnostics <- make_mcmc_diagnostics(posterior_summary,
-                                            total_draws = n_chains * n_iter)
-  nuts_diagnostics <- make_nuts_diagnostics(model)
-  loo_diagnostics  <- bayes_loo(model)
-  bayes_r2         <- bayes_r2_summary(model)
-  ppc_coverage     <- bayes_ppc_coverage(model)
+  model             <- fit$model
+  analysis_df       <- fit$analysis_df
+  has_cage          <- fit$has_cage
+  posterior_summary <- fit$posterior_summary
+  mcmc_diagnostics  <- fit$mcmc_diagnostics
+  nuts_diagnostics  <- fit$nuts_diagnostics
+  loo_diagnostics   <- fit$loo_diagnostics
+  bayes_r2          <- fit$bayes_R2
+  ppc_coverage      <- fit$ppc_coverage
 
   # ── Posterior predictive draws at endpoint day ─────────────────────────────
   groups <- c(control_name, drug_a_name, drug_b_name, combo_name)
@@ -780,112 +853,32 @@ bayesian_synergy_over_time <- function(
             " days; transform = ", transform)
   }
 
-  # ── Apply transform ───────────────────────────────────────────────────────
-  if (transform == "log") {
-    vol           <- analysis_df[[volume_column]]
-    positive_vals <- vol[is.finite(vol) & vol > 0]
-    if (length(positive_vals) == 0L) {
-      stop(
-        "No positive values in '", volume_column,
-        "' after filtering. Cannot apply log transform."
-      )
-    }
-    vol[vol <= 0] <- min(positive_vals, na.rm = TRUE) / 2
-    analysis_df$Response <- log(vol)
-  } else if (transform == "sqrt") {
-    analysis_df$Response <- sqrt(analysis_df[[volume_column]])
-  } else {
-    analysis_df$Response <- analysis_df[[volume_column]]
-  }
-
-  # ── Cage / id setup ───────────────────────────────────────────────────────
-  has_cage <- !is.null(cage_column) && cage_column %in% colnames(analysis_df)
-  if (has_cage) {
-    analysis_df$cage_var <- analysis_df[[cage_column]]
-  } else {
-    analysis_df$cage_var <- analysis_df[[id_column]]
-  }
-  analysis_df$id_var <- paste0(
-    analysis_df$cage_var, "__", analysis_df[[id_column]]
+  # ── Fit model via shared helper (CODE_REVIEW.md G.6) ──────────────────────
+  fit <- bs_fit_synergy_model(
+    analysis_df        = analysis_df,
+    volume_column      = volume_column,
+    treatment_column   = treatment_column,
+    time_column        = time_column,
+    id_column          = id_column,
+    cage_column        = cage_column,
+    transform          = transform,
+    include_cage_effect = include_cage_effect,
+    re_spec            = re_spec,
+    prior_str          = prior_str,
+    manual_priors      = list(prior_b = prior_b, prior_intercept = prior_intercept,
+                              prior_sd = prior_sd, prior_sigma = prior_sigma),
+    n_chains = n_chains, n_warmup = n_warmup, n_iter = n_iter,
+    seed = seed, verbose = verbose
   )
-
-  # ── Random-effects formula ─────────────────────────────────────────────────
-  re_term <- if (re_spec == "slope") {
-    if (has_cage && isTRUE(include_cage_effect)) {
-      paste0("(", time_column, " | id_var) + (1 | cage_var)")
-    } else {
-      paste0("(", time_column, " | id_var)")
-    }
-  } else {
-    if (has_cage && isTRUE(include_cage_effect)) {
-      "(1 | cage_var/id_var)"
-    } else {
-      "(1 | id_var)"
-    }
-  }
-
-  brms_formula <- stats::as.formula(
-    paste0(
-      "Response ~ ", treatment_column, " * ", time_column, " + ", re_term
-    )
-  )
-
-  # ── Priors ────────────────────────────────────────────────────────────────
-  if (prior_str == "manual") {
-    if (is.null(prior_b) || is.null(prior_intercept) ||
-          is.null(prior_sd) || is.null(prior_sigma)) {
-      stop(
-        "prior_strength = 'manual' requires prior_b, prior_intercept, ",
-        "prior_sd, and prior_sigma."
-      )
-    }
-    priors <- c(
-      brms::prior_string(prior_b,         class = "b"),
-      brms::prior_string(prior_intercept, class = "Intercept"),
-      brms::prior_string(prior_sd,        class = "sd"),
-      brms::prior_string(prior_sigma,     class = "sigma")
-    )
-  } else {
-    pp       <- bayes_prior_params(prior_str)
-    b_sd     <- pp$b_sd
-    exp_rate <- pp$exp_rate
-    priors   <- c(
-      brms::prior_string(paste0("normal(0, ", b_sd,       ")"),
-                         class = "b"),
-      brms::prior_string(paste0("normal(0, ", b_sd * 2.5, ")"),
-                         class = "Intercept"),
-      brms::prior_string(paste0("exponential(", exp_rate, ")"),
-                         class = "sd"),
-      brms::prior_string(paste0("exponential(", exp_rate, ")"),
-                         class = "sigma")
-    )
-  }
-
-  # ── Fit model ─────────────────────────────────────────────────────────────
-  if (isTRUE(verbose)) message("Fitting brms model …")
-
-  # See note above re: not suppressing Stan warnings.
-  model <- brms::brm(
-    formula      = brms_formula,
-    data         = analysis_df,
-    prior        = priors,
-    chains       = n_chains,
-    cores        = n_chains,
-    iter         = n_warmup + n_iter,
-    warmup       = n_warmup,
-    seed         = seed,
-    sample_prior = "yes",
-    silent       = if (isTRUE(verbose)) 0L else 2L,
-    refresh      = if (isTRUE(verbose)) 100L else 0L
-  )
-
-  posterior_summary <- build_posterior_summary(model)
-  mcmc_diagnostics  <- make_mcmc_diagnostics(posterior_summary,
-                                             total_draws = n_chains * n_iter)
-  nuts_diagnostics  <- make_nuts_diagnostics(model)
-  loo_diagnostics   <- bayes_loo(model)
-  bayes_r2          <- bayes_r2_summary(model)
-  ppc_coverage      <- bayes_ppc_coverage(model)
+  model             <- fit$model
+  analysis_df       <- fit$analysis_df
+  has_cage          <- fit$has_cage
+  posterior_summary <- fit$posterior_summary
+  mcmc_diagnostics  <- fit$mcmc_diagnostics
+  nuts_diagnostics  <- fit$nuts_diagnostics
+  loo_diagnostics   <- fit$loo_diagnostics
+  bayes_r2          <- fit$bayes_R2
+  ppc_coverage      <- fit$ppc_coverage
 
   # ── Posterior predictive draws for all (group, day) combinations ──────────
   groups  <- c(control_name, drug_a_name, drug_b_name, combo_name)
