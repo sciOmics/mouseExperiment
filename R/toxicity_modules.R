@@ -814,8 +814,16 @@ toxicity_server <- function(id, rv) {
             strong("MCMC convergence diagnostics. "),
             "All Rhat values should be ≤ 1.01 before interpreting results."
           ),
+          uiOutput(ns_here("tox_bw_bayes_diagnostics")),
           shinycssloaders::withSpinner(
             DTOutput(ns_here("tox_bw_mcmc_diag_table"))
+          ),
+          br(),
+          h5(strong("Influential observations (Pareto-k > 0.7)")),
+          em(class = "text-muted",
+             "Observations the LOO approximation can't reliably estimate."),
+          shinycssloaders::withSpinner(
+            DTOutput(ns_here("tox_bw_bayes_influential"))
           ),
           br(),
           shinycssloaders::withSpinner(
@@ -862,6 +870,27 @@ toxicity_server <- function(id, rv) {
     req(!is.null(diag))
     datatable(format_df_for_display(as.data.frame(diag)),
               options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+  })
+
+  output$tox_bw_bayes_diagnostics <- renderUI({
+    req(rv$tox_results)
+    req(isTRUE(rv$tox_results$model_type == "bw_bayes"))
+    bayes_diagnostics_panel(rv$tox_results$mixed_model)
+  })
+
+  output$tox_bw_bayes_influential <- renderDT({
+    req(rv$tox_results)
+    req(isTRUE(rv$tox_results$model_type == "bw_bayes"))
+    inf_df <- bayes_influential_obs(rv$tox_results$mixed_model)
+    if (nrow(inf_df) == 0L) {
+      return(datatable(
+        data.frame(Note = "No observations exceed the Pareto-k = 0.7 threshold."),
+        options = list(dom = "t", paging = FALSE, searching = FALSE), rownames = FALSE
+      ))
+    }
+    datatable(inf_df,
+              options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+              rownames = FALSE)
   })
 
   output$tox_bw_mcmc_trace_plot <- renderPlot({

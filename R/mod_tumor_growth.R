@@ -1041,8 +1041,20 @@ tumor_growth_server <- function(id, rv) {
             ),
             em("If Rhat > 1.01, try increasing iterations or chains before reporting results.")
           ),
+          # NUTS sampler banner + Bayes R² + PPC coverage + PSIS-LOO summary
+          # (CODE_REVIEW.md Round 2 D-series, surfaces mouseExperiment v0.4.6
+          # fields: nuts_diagnostics, bayes_R2, ppc_coverage, loo_diagnostics).
+          uiOutput(session$ns("tg_bayes_diagnostics")),
           shinycssloaders::withSpinner(
             DTOutput(session$ns("tg_mcmc_diag_table"))
+          ),
+          br(),
+          # Influential observations (Pareto-k > 0.7)
+          h5(strong("Influential observations (Pareto-k > 0.7)")),
+          em(class = "text-muted",
+             "Observations the LOO approximation can't reliably estimate. Investigate these mice individually."),
+          shinycssloaders::withSpinner(
+            DTOutput(session$ns("tg_bayes_influential"))
           ),
           br(),
           shinycssloaders::withSpinner(
@@ -2204,6 +2216,32 @@ tumor_growth_server <- function(id, rv) {
     datatable(
       format_df_for_display(as.data.frame(diag)),
       options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)
+    )
+  })
+
+  # CODE_REVIEW.md Round 2 D — Bayesian diagnostics panel (NUTS banner +
+  # Bayes R² + PPC coverage + LOO summary).
+  output$tg_bayes_diagnostics <- renderUI({
+    req(rv$tg_results)
+    req(isTRUE(rv$tg_results$model_type_used == "bayes"))
+    req(!isTRUE(rv$tg_results$error))
+    bayes_diagnostics_panel(rv$tg_results)
+  })
+
+  output$tg_bayes_influential <- renderDT({
+    req(rv$tg_results)
+    req(isTRUE(rv$tg_results$model_type_used == "bayes"))
+    req(!isTRUE(rv$tg_results$error))
+    inf_df <- bayes_influential_obs(rv$tg_results)
+    if (nrow(inf_df) == 0L) {
+      return(datatable(
+        data.frame(Note = "No observations exceed the Pareto-k = 0.7 threshold."),
+        options = list(dom = "t", paging = FALSE, searching = FALSE), rownames = FALSE
+      ))
+    }
+    datatable(
+      inf_df,
+      options = list(scrollX = TRUE, paging = FALSE, searching = FALSE), rownames = FALSE
     )
   })
 

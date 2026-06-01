@@ -355,8 +355,16 @@ synergy_server <- function(id, rv) {
             strong("MCMC convergence diagnostics. "),
             "All Rhat values should be ≤ 1.01 before interpreting results."
           ),
+          uiOutput(session$ns("syn_bayes_diagnostics")),
           shinycssloaders::withSpinner(
             DTOutput(session$ns("syn_mcmc_diag_table"))
+          ),
+          br(),
+          h5(strong("Influential observations (Pareto-k > 0.7)")),
+          em(class = "text-muted",
+             "Observations the LOO approximation can't reliably estimate."),
+          shinycssloaders::withSpinner(
+            DTOutput(session$ns("syn_bayes_influential"))
           ),
           br(),
           shinycssloaders::withSpinner(
@@ -388,6 +396,29 @@ synergy_server <- function(id, rv) {
     req(!is.null(diag))
     datatable(format_df_for_display(as.data.frame(diag)),
               options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+  })
+
+  output$syn_bayes_diagnostics <- renderUI({
+    req(rv$syn_results)
+    req(isTRUE(rv$syn_results$model_type_used == "bayes_synergy"))
+    req(!isTRUE(rv$syn_results$error))
+    bayes_diagnostics_panel(rv$syn_results)
+  })
+
+  output$syn_bayes_influential <- renderDT({
+    req(rv$syn_results)
+    req(isTRUE(rv$syn_results$model_type_used == "bayes_synergy"))
+    req(!isTRUE(rv$syn_results$error))
+    inf_df <- bayes_influential_obs(rv$syn_results)
+    if (nrow(inf_df) == 0L) {
+      return(datatable(
+        data.frame(Note = "No observations exceed the Pareto-k = 0.7 threshold."),
+        options = list(dom = "t", paging = FALSE, searching = FALSE), rownames = FALSE
+      ))
+    }
+    datatable(inf_df,
+              options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+              rownames = FALSE)
   })
 
   output$syn_mcmc_trace_plot <- renderPlot({
