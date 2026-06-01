@@ -251,9 +251,19 @@ doseResponseUI <- function(id) {
                      icon("sliders-h"), " Options"),
                   sliderInput(ns("dr_opt_text_size"), "Text size (pt)",
                               min = 10, max = 24, value = 16, step = 1),
+                  selectInput(ns("dr_opt_legend_pos"), "Legend position",
+                    choices = c("None" = "none",
+                                "Top" = "top", "Bottom" = "bottom",
+                                "Left" = "left", "Right" = "right",
+                                "In plot - top left"  = "inplot_tl",
+                                "In plot - top right" = "inplot_tr",
+                                "In plot - bottom left" = "inplot_bl",
+                                "In plot - bottom right" = "inplot_br"),
+                    selected = "right"
+                  ),
                   hr(),
                   h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
-                     icon("heading"), " Title & Subtitle"),
+                     icon("heading"), " Title, Labels & Subtitle"),
                   textInput(ns("dr_plot_title"), "Title",
                             placeholder = "Leave blank for default"),
                   selectInput(ns("dr_plot_title_align"), "Title alignment",
@@ -261,6 +271,12 @@ doseResponseUI <- function(id) {
                     selected = "center"),
                   textInput(ns("dr_plot_subtitle"), "Subtitle",
                             placeholder = "Optional subtitle"),
+                  textInput(ns("dr_plot_xaxis_label"), "X-axis label",
+                            placeholder = "Leave blank for default"),
+                  textInput(ns("dr_plot_yaxis_label"), "Y-axis label",
+                            placeholder = "Leave blank for default"),
+                  textInput(ns("dr_plot_legend_label"), "Legend label",
+                            placeholder = "Leave blank for default"),
                   hr(),
                   h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
                      icon("arrows-alt"), " Plot Size / Export"),
@@ -802,7 +818,11 @@ dose_response_server <- function(id, rv) {
                    x = "Dose", y = "Tumor Volume") +
       ggplot2::theme_classic()
     p <- apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
-                      input$dr_plot_title_align %||% "center", text_sz)
+                      input$dr_plot_title_align %||% "center", text_sz,
+                      input$dr_plot_xaxis_label %||% "",
+                      input$dr_plot_yaxis_label %||% "",
+                      input$dr_plot_legend_label %||% "")
+    p <- apply_legend_pos(p, input$dr_opt_legend_pos %||% "right")
     current_dr_scatter(p)
     p
   }, width = function() input$dr_plot_width %||% 800,
@@ -845,7 +865,11 @@ dose_response_server <- function(id, rv) {
                    x = "Dose", y = "% Tumor Growth Inhibition") +
       ggplot2::theme_classic()
     p <- apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
-                      input$dr_plot_title_align %||% "center", text_sz)
+                      input$dr_plot_title_align %||% "center", text_sz,
+                      input$dr_plot_xaxis_label %||% "",
+                      input$dr_plot_yaxis_label %||% "",
+                      input$dr_plot_legend_label %||% "")
+    p <- apply_legend_pos(p, input$dr_opt_legend_pos %||% "right")
     current_dr_tgi(p)
     p
   }, width = function() input$dr_plot_width %||% 800,
