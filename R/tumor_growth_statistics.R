@@ -441,6 +441,43 @@ tgs_compute_summary <- function(analysis_df, treatment_column, time_column,
 #' @return List with individual and summary AUC results
 #' @noRd
 #' @keywords internal
+#' Percentile bootstrap CI for the mean difference of two AUC vectors
+#'
+#' Per-mouse AUC is a derived statistic whose distribution can be skewed
+#' (especially when extrapolation is in play), so the Welch's t-CI used
+#' downstream is only approximate at small N. The bootstrap CI is
+#' non-parametric and well-suited to this setting.
+#'
+#' Resamples each group with replacement \code{n_boot} times, computes the
+#' mean difference per resample, and returns the empirical 2.5 / 97.5 %
+#' percentiles. Returns \code{c(NA, NA)} when either group has fewer than
+#' two observations or n_boot < 2.
+#'
+#' @noRd
+tgs_boot_diff_ci <- function(x, y, n_boot = 999L, seed = NULL) {
+  if (length(x) < 2L || length(y) < 2L || n_boot < 2L) {
+    return(c(lower = NA_real_, upper = NA_real_))
+  }
+  if (!is.null(seed)) {
+    old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) {
+      get(".Random.seed", envir = .GlobalEnv)
+    } else NULL
+    on.exit({
+      if (!is.null(old_seed)) {
+        assign(".Random.seed", old_seed, envir = .GlobalEnv)
+      }
+    })
+    set.seed(seed)
+  }
+  diffs <- vapply(seq_len(n_boot), function(b) {
+    mean(sample(x, length(x), replace = TRUE)) -
+      mean(sample(y, length(y), replace = TRUE))
+  }, numeric(1L))
+  q <- stats::quantile(diffs, c(0.025, 0.975), names = FALSE, na.rm = TRUE)
+  c(lower = q[1L], upper = q[2L])
+}
+
+
 tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
                             time_column, volume_column, verbose) {
   # Calculate AUC for each subject
@@ -591,6 +628,16 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #' @param plots Boolean. Should standard plots be generated and returned? Default is TRUE.
 #' @param verbose Boolean. Should detailed information be printed during analysis? Default is FALSE.
 #' @param extrapolation_points Number of points to extrapolate for each subject (default: 0)
+#' @param auc_bootstrap_n Integer >= 0. When > 0 and \code{model_type = "auc"},
+#'   each pairwise Welch's t-test gains a non-parametric percentile-bootstrap
+#'   95\% CI for the mean difference (\code{boot_ci_lower}, \code{boot_ci_upper}
+#'   columns in \code{pairwise_comparisons}). Honest at small N when per-mouse
+#'   AUC distributions are skewed (especially under extrapolation), where the
+#'   parametric t-CI is only approximate. A typical value is \code{999};
+#'   higher (e.g. \code{4999}) gives smoother percentile estimates. Default
+#'   \code{0} (skip; \code{boot_ci_*} columns are \code{NA}).
+#' @param auc_bootstrap_seed Optional integer seed for reproducible bootstrap
+#'   resampling. \code{NULL} (default) uses the caller's RNG state.
 #'
 #' @return A list containing the following components:
 #' \describe{
@@ -689,7 +736,9 @@ tumor_growth_statistics <- function(df,
                                   verbose = FALSE,
                                   extrapolation_points = 0,
                                   necrotic_column  = NULL,
-                                  necrotic_handling = c("exclude", "covariate", "none")) {
+                                  necrotic_handling = c("exclude", "covariate", "none"),
+                                  auc_bootstrap_n = 0L,
+                                  auc_bootstrap_seed = NULL) {
   # Check for required packages
   if (!requireNamespace("lme4", quietly = TRUE)) {
     stop("Please install the lme4 package: install.packages('lme4')")
@@ -964,14 +1013,16 @@ tumor_growth_statistics <- function(df,
       if(length(group1_data) < 2 || length(group2_data) < 2) {
         # Not enough data, create a placeholder result
         pairwise_results[[paste(pair[1], "-", pair[2])]] <- list(
-          comparison = paste(pair[1], "-", pair[2]),
-          mean_diff = ifelse(length(group1_data) > 0 && length(group2_data) > 0,
-                            mean(group1_data) - mean(group2_data), NA),
-          t_value = NA,
-          df = NA,
-          p_value = NA,
-          ci_lower = NA,
-          ci_upper = NA
+          comparison       = paste(pair[1], "-", pair[2]),
+          mean_diff        = ifelse(length(group1_data) > 0 && length(group2_data) > 0,
+                                    mean(group1_data) - mean(group2_data), NA),
+          t_value          = NA,
+          df               = NA,
+          p_value          = NA,
+          ci_lower         = NA,
+          ci_upper         = NA,
+          boot_ci_lower    = NA_real_,
+          boot_ci_upper    = NA_real_
         )
         
         # Store placeholder data
@@ -991,18 +1042,30 @@ tumor_growth_statistics <- function(df,
       } else {
         # We have enough data, perform Welch's t-test
         t_test_result <- stats::t.test(group1_data, group2_data, var.equal = FALSE)
-        
+
+        # Optional non-parametric bootstrap CI for the mean difference.
+        # Welch's CI is approximate at small N when per-mouse AUC is skewed
+        # (especially with extrapolation); the bootstrap percentile CI is
+        # the recommended honest alternative.
+        boot_ci <- if (auc_bootstrap_n > 0L) {
+          tgs_boot_diff_ci(group1_data, group2_data,
+                           n_boot = auc_bootstrap_n,
+                           seed   = auc_bootstrap_seed)
+        } else c(lower = NA_real_, upper = NA_real_)
+
         # Store results
         pairwise_results[[paste(pair[1], "-", pair[2])]] <- list(
-          comparison = paste(pair[1], "-", pair[2]),
-          mean_diff = mean(group1_data) - mean(group2_data),
-          t_value = t_test_result$statistic,
-          df = t_test_result$parameter,
-          p_value = t_test_result$p.value,
-          ci_lower = t_test_result$conf.int[1],
-          ci_upper = t_test_result$conf.int[2]
+          comparison       = paste(pair[1], "-", pair[2]),
+          mean_diff        = mean(group1_data) - mean(group2_data),
+          t_value          = t_test_result$statistic,
+          df               = t_test_result$parameter,
+          p_value          = t_test_result$p.value,
+          ci_lower         = t_test_result$conf.int[1],
+          ci_upper         = t_test_result$conf.int[2],
+          boot_ci_lower    = unname(boot_ci["lower"]),
+          boot_ci_upper    = unname(boot_ci["upper"])
         )
-        
+
         # Store data for the posthoc object
         pairwise_data[[paste(pair[1], "-", pair[2])]] <- list(
           group1 = pair[1],
@@ -1018,13 +1081,15 @@ tumor_growth_statistics <- function(df,
     pairwise_df <- do.call(rbind, lapply(names(pairwise_results), function(comp) {
       res <- pairwise_results[[comp]]
       data.frame(
-        comparison = res$comparison,
-        estimate = res$mean_diff,
-        t_value = res$t_value,
-        df = res$df,
-        p_value = res$p_value,
-        ci_lower = res$ci_lower,
-        ci_upper = res$ci_upper,
+        comparison    = res$comparison,
+        estimate      = res$mean_diff,
+        t_value       = res$t_value,
+        df            = res$df,
+        p_value       = res$p_value,
+        ci_lower      = res$ci_lower,
+        ci_upper      = res$ci_upper,
+        boot_ci_lower = res$boot_ci_lower,
+        boot_ci_upper = res$boot_ci_upper,
         stringsAsFactors = FALSE
       )
     }))
