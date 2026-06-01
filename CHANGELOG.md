@@ -5,6 +5,96 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6] - 2026-06-01
+
+Closes 12 more CODE_REVIEW.md Round 2 items, including every open
+"Enhancement" entry and three of the four open Bayesian-power
+"Missing" entries. Only the two invasive API refactors (D.2, D.3)
+remain deferred at this point.
+
+### Added — Bayesian diagnostics & features
+- **PSIS posterior predictive interval coverage** (`bayes_ppc_coverage()`,
+  E.6). One-row data frame (`cov_50`, `cov_80`, `cov_95`, `n_obs`) for
+  every Bayesian fit. Mis-calibration flags model mis-specification
+  cheaply; complements the existing `loo_diagnostics` (out-of-sample).
+- **Per-animal posterior growth rates from brms** (E.3). When
+  `bayesian_tumor_growth(random_effects_specification = "slope")` is
+  used, `growth_rates` is now derived from per-animal posterior random
+  slopes (with credible intervals) instead of OLS on log-volumes. New
+  internal helper `tg_brms_per_animal_growth_rates()`.
+- **Bayesian power: multi-group, random-slope, null calibration**
+  (J.5 / J.6 / J.7). `bayesian_power_analysis()` gains:
+  - `n_groups`: total groups including control; per-arm
+    `treatment_effect` accepted as scalar or vector of length
+    `n_groups - 1`. Success criterion is "max P(β < −δ) > target_prob"
+    across treated groups.
+  - `random_effects_specification = c("intercept_only", "slope")` to
+    match the downstream fitting pipeline; new `animal_slope_sd`
+    parameter for the slope variance.
+  - `null_calibration = TRUE` re-runs the simulation with
+    `treatment_effect = 0` and reports the empirical Type-I rate
+    (should be ≤ `1 - target_prob`). Power curve plot now overlays
+    a dot-dash Type-I line.
+- **Percentile bootstrap CIs for AUC pairwise differences** (E.4).
+  `tumor_growth_statistics(model_type = "auc")` gains
+  `auc_bootstrap_n` and `auc_bootstrap_seed`. When active,
+  `pairwise_comparisons` gets `boot_ci_lower` / `boot_ci_upper`
+  alongside the parametric Welch's t-CI. New helper
+  `tgs_boot_diff_ci()`.
+- **cmdstanr backend option** (E.1). All six Bayesian entry points and
+  `bayesian_power_analysis()` accept `backend = c("rstan", "cmdstanr")`.
+  cmdstanr is 3-10× faster to compile and produces better diagnostics;
+  rstan stays the default for out-of-the-box use. New helper
+  `resolve_brms_backend()` validates the choice and emits installation
+  instructions on missing toolchain rather than silently falling back.
+
+### Changed — Architecture & code organisation
+- **`bs_fit_synergy_model()` helper extracts shared synergy fit code**
+  (G.6). `bayesian_synergy()` and `bayesian_synergy_over_time()` each
+  had ~180 LOC of bit-identical transform / cage-setup / RE-formula /
+  priors / brms::brm / diagnostics extraction. Both call sites now
+  delegate to the helper; any future synergy-fit change lands in one
+  place. No behaviour change.
+- **`tgs_path_auc()` extracted to R/tgs_path_auc.R** (D.1 partial).
+  The 210-LOC AUC path inside `tumor_growth_statistics()` is now a
+  separate file, dropping the main file from 1,389 → 1,197 LOC. Pure
+  code-organisation refactor. The two other D-class items (D.2:
+  config helpers for 20+ arg signatures, D.3: separating ggplot
+  generation from statistical computation) remain open — both break
+  the dashboard call sites and need paired upstream design.
+
+### Changed — Documentation
+- **`me_result` class scope corrected** (J.8). The docstring claimed
+  every analysis function returns an `me_result`; in reality the main
+  surface returns bespoke lists and only `repeated_measures_anova()`
+  uses the class. Documentation rewritten to accurately describe the
+  class as a small optional utility. No code change; no API change.
+
+### Tests — discipline & regression
+- **Defensive column-name masks tightened** (K.2). Tests that used
+  `if (!is.na(col)) <real assertions>` would have silently passed if
+  the column was renamed. `test-tumor_growth_statistics.R` (three
+  blocks) now asserts `expect_false(is.na(col))` before the real
+  expectations.
+- **Test-side warning capture helpers** (K.3). New
+  `capture_warnings()` + `expect_no_unexpected_warnings()` in
+  `helper-fixtures.R`. Existing tests aren't switched in bulk (most
+  use benign `lme4` warning suppression that's still appropriate);
+  the helpers are in place for incremental adoption.
+- **Parameter-sensitivity regression tests** (K.4). New
+  `test-param_sensitivity.R` covers six assertions that the
+  silent-ignore bug class catches: `random_effects_specification`,
+  `transform`, `auc_bootstrap_n`, `ph_test` presence, `cage_column`
+  formula entry, and TWM `TGI < 0` clamping. Locks in the post-Round-2
+  behaviour and prevents the entire bug class from recurring.
+
+### Open — still deferred
+- D.2 (config-helper grouping for 20+ arg signatures): invasive API
+  break across every dashboard call site; needs paired design with the
+  dashboard module that consumes the configs.
+- D.3 (separate ggplot from stat functions): same scope; affects every
+  exported analysis function's return shape.
+
 ## [0.4.5] - 2026-05-31
 
 Resolves 29 items from `CODE_REVIEW.md` Round 2 across statistical

@@ -1075,15 +1075,15 @@ A standard check: simulate from the posterior predictive distribution and comput
 | C.1 | No `bayes_R2()` | Major | all `bayesian_*.R` | ✅ Fixed v0.4.5 (`bayes_r2_summary`) |
 | C.2 | No posterior P(effect > 0) | Major | all `bayesian_*.R` | ✅ Fixed v0.4.5 (`emm_p_direction` for TG/BW; survival/DR open) |
 | C.3 | No ESS/N efficiency ratio | Minor | `utils_bayes.R` | ✅ Fixed v0.4.5 |
-| D.1 | 1,000+ LOC files | Architecture | multiple | Open |
-| D.2 | 20+ parameter signatures | Architecture | multiple | Open |
-| D.3 | ggplot generation inside stat functions | Architecture | multiple | Open |
-| E.1 | Add cmdstanr backend option | Enhancement | all `bayesian_*.R` | Open |
+| D.1 | 1,000+ LOC files | Architecture | multiple | Partial v0.4.6 (`tgs_path_auc` extracted; D.2/D.3 still open) |
+| D.2 | 20+ parameter signatures | Architecture | multiple | Open (deferred — invasive API break) |
+| D.3 | ggplot generation inside stat functions | Architecture | multiple | Open (deferred — invasive API break) |
+| E.1 | Add cmdstanr backend option | Enhancement | all `bayesian_*.R` | ✅ Fixed v0.4.6 |
 | E.2 | Concordance / C-index | Enhancement | `survival_statistics.R` | ✅ Fixed v0.4.5 |
-| E.3 | Posterior growth rates from brms model | Enhancement | `bayesian_tumor_growth.R` | Open |
-| E.4 | Bootstrap CIs for AUC | Enhancement | `tumor_growth_statistics.R` | Open |
+| E.3 | Posterior growth rates from brms model | Enhancement | `bayesian_tumor_growth.R` | ✅ Fixed v0.4.6 |
+| E.4 | Bootstrap CIs for AUC | Enhancement | `tumor_growth_statistics.R` | ✅ Fixed v0.4.6 |
 | E.5 | Document effect-size scale | Enhancement | `apriori_power_analysis.R` | ✅ Fixed v0.4.5 |
-| E.6 | Posterior predictive coverage | Enhancement | all `bayesian_*.R` | Open |
+| E.6 | Posterior predictive coverage | Enhancement | all `bayesian_*.R` | ✅ Fixed v0.4.6 |
 
 ---
 
@@ -1215,7 +1215,7 @@ Add to the table in section F:
 | G.3 | Bayesian DR inhibition-only by construction | Major | `bayesian_dose_response.R` | ✅ Fixed v0.4.5 (documented + data-direction warning) |
 | G.4 | `bayesian_synergy` missing 4 standard diagnostic plots | Major | `bayesian_synergy.R` | ✅ Fixed v0.4.5 |
 | G.5 | `bayesian_therapeutic_window` missing **all** standard diagnostic plots | Major | `bayesian_therapeutic_window.R` | ✅ Fixed v0.4.5 (aliased from input models) |
-| G.6 | `bayesian_synergy_over_time` duplicates `bayesian_synergy` | Architecture | `bayesian_synergy.R` | Open |
+| G.6 | `bayesian_synergy_over_time` duplicates `bayesian_synergy` | Architecture | `bayesian_synergy.R` | ✅ Fixed v0.4.6 (`bs_fit_synergy_model` helper) |
 | G.7 | `analyze_polynomial_trends` assumes equally-spaced doses | Major | `dose_response_statistics.R` | ✅ Fixed v0.4.5 |
 | G.8 | `log1p` vs `log(min/2)` inconsistency | Minor | `dose_response_statistics.R` | ✅ Fixed v0.4.5 |
 | G.9 | EC50 prior centred on median dose | (Good practice — document) | `bayesian_dose_response.R` | ✅ Fixed v0.4.5 |
@@ -1429,10 +1429,10 @@ Adds to the totals in Section F + Section G. Open items as of v0.3.6 / 2026-05-3
 | J.2 | TWM=1 plot isoline is approximate | Minor | `bayesian_therapeutic_window.R` | ✅ Fixed v0.4.5 |
 | J.3 | `plot_combination_index` multiplicative-offset bug (Round 1 3.9 partial fix) | Major | `analyze_drug_synergy_over_time.R` | ✅ Fixed v0.4.5 |
 | J.4 | `baseline_sd` ghost parameter | Minor | `apriori_power_simulation.R` | ✅ Fixed v0.4.5 (now functional) |
-| J.5 | Bayesian power: no multi-group support | Missing | `bayesian_power_analysis.R` | Open |
-| J.6 | Bayesian power: no random-slope option | Missing | `bayesian_power_analysis.R` | Open |
-| J.7 | Bayesian power: no null-distribution / type-I check | Minor | `bayesian_power_analysis.R` | Open |
-| J.8 | `me_result` class defined but not used by main funcs | Architecture | `me_result.R` | Open |
+| J.5 | Bayesian power: no multi-group support | Missing | `bayesian_power_analysis.R` | ✅ Fixed v0.4.6 |
+| J.6 | Bayesian power: no random-slope option | Missing | `bayesian_power_analysis.R` | ✅ Fixed v0.4.6 |
+| J.7 | Bayesian power: no null-distribution / type-I check | Minor | `bayesian_power_analysis.R` | ✅ Fixed v0.4.6 |
+| J.8 | `me_result` class defined but not used by main funcs | Architecture | `me_result.R` | ✅ Fixed v0.4.6 (docs corrected to honest scope) |
 | J.9 | `tumor_doubling_time` no composite key | Minor | `me_result.R` | ✅ Fixed v0.4.5 |
 | J.10 | `repeated_measures_anova` uses third zero-handling pattern | Minor (inconsistency) | `me_result.R` | ✅ Fixed v0.4.5 |
 | J.11 | `analyze_body_weight` accepts `cage_column` but ignores it in formula | **Major** | `analyze_body_weight.R` | ✅ Fixed v0.4.5 |
@@ -1565,9 +1565,9 @@ The class exists but isn't constructed by any analysis function (J.8). The test 
 | ID | Issue | Severity |
 |---|---|---|
 | K.1 | Stale tests reference old `bayes` / `Lower_CL` API | **Critical** (Bayesian path effectively unchecked) | ✅ Fixed v0.4.5 |
-| K.2 | Defensive `if(!is.na(col))` masks shallow assertions | Major | Open |
-| K.3 | Blanket `suppressWarnings(suppressMessages())` hides real signal | Major | Open |
-| K.4 | No "parameter actually changes output" tests | Major (same bug class as Round 1 1.1) | Open |
+| K.2 | Defensive `if(!is.na(col))` masks shallow assertions | Major | ✅ Fixed v0.4.6 (TGS tests tightened) |
+| K.3 | Blanket `suppressWarnings(suppressMessages())` hides real signal | Major | ✅ Fixed v0.4.6 (`capture_warnings()` + `expect_no_unexpected_warnings()` helpers) |
+| K.4 | No "parameter actually changes output" tests | Major (same bug class as Round 1 1.1) | ✅ Fixed v0.4.6 (`test-param_sensitivity.R`) |
 | K.5 | None of the Round 2 findings would have been caught | Major | Partially addressed (K.1, K.6 fixed; K.4 still open) |
 | K.6 | Rhat threshold 1.1 too permissive; no ESS assertions | Minor | ✅ Fixed v0.4.5 |
 | K.7 | n_iter = 500 is fast but light | Minor | Open |
