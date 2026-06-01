@@ -59,3 +59,7 @@ coverage/
 
 # R default plot output
 Rplots.pdf
+
+# Claude Code waylog
+.waylog/
+.claude/
