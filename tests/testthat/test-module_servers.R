@@ -153,6 +153,36 @@ test_that("synergy_server initialises and exposes session ns", {
   })
 })
 
+# CODE_REVIEW.md Round 2 I.2 — the three biggest server modules were
+# previously untested altogether. Add basic init tests so a future regression
+# that breaks any of them at startup fails immediately.
+test_that("tumor_growth_server initialises and exposes session ns", {
+  tumor_growth_server_fn <- get_fn("tumor_growth_server")
+  shiny::testServer(tumor_growth_server_fn, args = list(rv = make_test_rv()), {
+    expect_true(inherits(session, "session_proxy"))
+    expect_true(nzchar(session$ns("tg_results_tabs")))
+  })
+})
+
+test_that("toxicity_server initialises and exposes session ns", {
+  toxicity_server_fn <- get_fn("toxicity_server")
+  shiny::testServer(toxicity_server_fn, args = list(rv = make_test_rv()), {
+    expect_true(inherits(session, "session_proxy"))
+    expect_true(nzchar(session$ns("tox_results_tabs")))
+  })
+})
+
+test_that("data_upload_server initialises and exposes session ns", {
+  data_upload_server_fn <- get_fn("data_upload_server")
+  shiny::testServer(data_upload_server_fn,
+                    args = list(rv = make_test_rv()), {
+    expect_true(inherits(session, "session_proxy"))
+    # Module sets rv$uploaded_data via the moduleServer scope; verify the
+    # exposed namespace generates a namespaced ID.
+    expect_true(nzchar(session$ns("any_id")))
+  })
+})
+
 # make_test_rv(with_results) returns rv pre-populated with dummy result
 # lists; verify the helper itself populates the requested slots so other
 # tests downstream can rely on the contract (CODE_REVIEW.md Round 2 I.7).
