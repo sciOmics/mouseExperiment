@@ -1525,6 +1525,32 @@ tumor_growth_server <- function(id, rv) {
     print(p)
   })
 
+  # CODE_REVIEW.md Round 2 F.1 — standalone HTML report download
+  output$download_tg_report <- downloadHandler(
+    filename = function() {
+      paste0("tumor_growth_report_",
+             format(Sys.time(), "%Y%m%d_%H%M%S"), ".html")
+    },
+    content = function(file) {
+      req(rv$tg_results)
+      settings <- list(
+        model_type      = input$tg_model_type     %||% "",
+        transform       = input$tg_transform      %||% "",
+        random_effects  = input$tg_random_effects %||% "",
+        reference_group = input$tg_reference      %||% "",
+        cage_effect     = input$tg_cage_effect    %||% "",
+        n_rows          = if (!is.null(rv$tg_plot_data)) nrow(rv$tg_plot_data) else NA
+      )
+      build_html_report(
+        result   = rv$tg_results,
+        title    = "Tumor Growth Analysis Report",
+        settings = settings,
+        file     = file
+      )
+      shinyjs::runjs("window.trackDownload('tumor_growth', 'report', 'html');")
+    }
+  )
+
   # CODE_REVIEW.md Round 2 F.3 — side-by-side compare tab
   output$tg_compare_panel <- renderUI({
     if (is.null(rv$tg_results)) {

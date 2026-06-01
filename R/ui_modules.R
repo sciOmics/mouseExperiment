@@ -755,6 +755,13 @@ tumorGrowthUI <- function(id) {
             uiOutput(ns("tg_summary_tab_info")),
             shinycssloaders::withSpinner(
               verbatimTextOutput(ns("tg_summary"))
+            ),
+            # CODE_REVIEW.md Round 2 F.1 — reproducible report export.
+            br(),
+            div(class = "text-right",
+              downloadButton(ns("download_tg_report"),
+                             "Download Full Report (HTML)",
+                             class = "btn-sm btn-primary")
             )
           ),
           
