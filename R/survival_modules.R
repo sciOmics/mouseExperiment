@@ -72,6 +72,10 @@ survivalUI <- function(id) {
                          value = 1000, min = 200, max = 5000, step = 100),
             numericInput(ns("surv_bayes_iter"), "Post-warmup draws per chain",
                          value = 500, min = 200, max = 5000, step = 100),
+            selectInput(ns("surv_bayes_backend"), "Stan backend",
+                        choices = c("RStan (default)" = "rstan",
+                                    "cmdstanr (faster, requires install)" = "cmdstanr"),
+                        selected = "rstan"),
             div(class = "alert alert-warning",
                 style = "font-size:0.85em; padding:8px; margin-top:6px;",
               icon("clock"), " Bayesian fitting takes ~3–12 minutes. ",
@@ -701,6 +705,7 @@ survival_server <- function(id, rv) {
         n_chains       = as.integer(input$surv_bayes_chains  %||% 4L),
         n_warmup       = as.integer(input$surv_bayes_warmup  %||% 1000L),
         n_iter         = as.integer(input$surv_bayes_iter    %||% 500L),
+        backend        = input$surv_bayes_backend %||% "rstan",
         event_src      = event_src,
         vol_threshold  = if (event_src == "volume") as.numeric(input$surv_vol_threshold %||% 2000) else NA_real_,
         time_method    = rv$settings$time_method,
@@ -729,6 +734,7 @@ survival_server <- function(id, rv) {
           n_chains         = bayes_params$n_chains,
           n_warmup         = bayes_params$n_warmup,
           n_iter           = bayes_params$n_iter,
+          backend          = bayes_params$backend,
           return_model     = TRUE,
           plots            = TRUE
         )

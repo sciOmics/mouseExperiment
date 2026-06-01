@@ -91,6 +91,10 @@ toxicityUI <- function(id) {
                              value = 1000, min = 200, max = 5000, step = 100),
                 numericInput(ns("tox_bw_bayes_iter"), "Post-warmup draws per chain",
                              value = 500, min = 200, max = 5000, step = 100),
+                selectInput(ns("tox_bw_bayes_backend"), "Stan backend",
+                            choices = c("RStan (default)" = "rstan",
+                                        "cmdstanr (faster, requires install)" = "cmdstanr"),
+                            selected = "rstan"),
                 div(class = "alert alert-warning",
                     style = "font-size:0.85em; padding:8px; margin-top:6px;",
                   icon("clock"), " Bayesian fitting takes ~3–12 minutes. ",
@@ -1153,7 +1157,8 @@ toxicity_server <- function(id, rv) {
         re_spec       = input$tox_bw_random_effects %||% "intercept_only",
         n_chains      = as.integer(input$tox_bw_bayes_chains  %||% 4L),
         n_warmup      = as.integer(input$tox_bw_bayes_warmup  %||% 1000L),
-        n_iter        = as.integer(input$tox_bw_bayes_iter    %||% 500L)
+        n_iter        = as.integer(input$tox_bw_bayes_iter    %||% 500L),
+        backend       = input$tox_bw_bayes_backend %||% "rstan"
       )
 
       show_analysis_modal("Bayesian body weight fit running…", "Fitting body weight model with brms. This may take 3–12 minutes.")
@@ -1175,6 +1180,7 @@ toxicity_server <- function(id, rv) {
           n_chains                     = bw_bayes_params$n_chains,
           n_warmup                     = bw_bayes_params$n_warmup,
           n_iter                       = bw_bayes_params$n_iter,
+          backend                      = bw_bayes_params$backend,
           return_model                 = TRUE,
           plots                        = TRUE
         )
