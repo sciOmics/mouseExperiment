@@ -232,11 +232,30 @@ survivalUI <- function(id) {
             div(class = "text-right", style = "margin-bottom: 6px;",
               downloadButton(ns("download_surv_cox"), "Download Results")
             ),
+            # C-index (mE v0.4.5 E.2) + Cox PH check summary (mE v0.4.5 A.1)
+            uiOutput(ns("surv_model_quality_panel")),
             shinycssloaders::withSpinner(
               verbatimTextOutput(ns("surv_cox_summary"))
             ),
             shinycssloaders::withSpinner(
               DTOutput(ns("surv_cox_table"))
+            )
+          ),
+
+          tabPanel("PH Assumption",
+            tab_info(
+              strong("Cox proportional-hazards assumption check via Schoenfeld residuals (cox.zph). "),
+              "The Cox model assumes the hazard ratio is constant over time. A small global p-value indicates the assumption is violated and the reported HRs / CIs may be misleading (a treatment whose effect accelerates or attenuates over time gives inconsistent HRs depending on when you look).",
+              tags$ul(
+                tags$li(strong("chisq"), " \u2014 Schoenfeld-residual test statistic per covariate, plus a GLOBAL row."),
+                tags$li(strong("df"), " \u2014 degrees of freedom for the test."),
+                tags$li(strong("p"), " \u2014 p-value. < 0.05 in the GLOBAL row means the PH assumption is rejected at the 5 % level.")
+              ),
+              em("Only available for the standard Cox path. NA for Firth (coxphf) and log-rank fallbacks.")
+            ),
+            uiOutput(ns("surv_ph_test_banner")),
+            shinycssloaders::withSpinner(
+              DTOutput(ns("surv_ph_test_table"))
             )
           ),
           
@@ -1195,6 +1214,96 @@ survival_server <- function(id, rv) {
     }
     if (is.null(rv$surv_results$model)) return("Model not available")
     paste(capture.output(summary(rv$surv_results$model)), collapse = "\n")
+  })
+
+  # C-index + PH-check summary panel (frequentist Cox path only).
+  # mE v0.4.5 E.2 (c_index) and A.1 (ph_test); rendered alongside the Cox table
+  # so users can read model quality at a glance.
+  output$surv_model_quality_panel <- renderUI({
+    req(rv$surv_results)
+    if (isTRUE(rv$surv_results$error)) return(NULL)
+    if (isTRUE(rv$surv_results$model_type_used == "bayes")) return(NULL)
+
+    method <- rv$surv_results$method_used %||% NA_character_
+    c_idx  <- rv$surv_results$c_index
+    ph     <- rv$surv_results$ph_test
+
+    parts <- list()
+
+    # Concordance / C-index (Cox path only)
+    if (!is.null(c_idx) && !is.null(c_idx$concordance)) {
+      val <- as.numeric(c_idx$concordance)
+      se  <- tryCatch(sqrt(as.numeric(c_idx$var)), error = function(e) NA_real_)
+      ci_lo <- if (is.finite(se)) val - 1.96 * se else NA_real_
+      ci_hi <- if (is.finite(se)) val + 1.96 * se else NA_real_
+      txt <- if (is.finite(se)) {
+        sprintf("Concordance (C-index): %.3f (95%% CI %.3f – %.3f). 0.5 = no discrimination, 1.0 = perfect.",
+                val, ci_lo, ci_hi)
+      } else {
+        sprintf("Concordance (C-index): %.3f. 0.5 = no discrimination, 1.0 = perfect.", val)
+      }
+      parts$c_index <- shiny::div(class = "alert alert-info",
+        shiny::icon("scale-balanced"), " ", txt)
+    }
+
+    # PH check (cox.zph) global summary
+    if (!is.null(ph) && !is.null(ph$table)) {
+      tab <- as.data.frame(ph$table)
+      if ("GLOBAL" %in% rownames(tab) && "p" %in% colnames(tab)) {
+        gp <- as.numeric(tab["GLOBAL", "p"])
+        if (is.finite(gp) && gp < 0.05) {
+          parts$ph <- shiny::div(class = "alert alert-warning",
+            shiny::icon("triangle-exclamation"),
+            shiny::strong(" Proportional-hazards assumption may be violated: "),
+            sprintf("global cox.zph p = %.4f (< 0.05). ", gp),
+            "Inspect the PH Assumption tab for details; reported HRs / CIs may be misleading.")
+        } else if (is.finite(gp)) {
+          parts$ph <- shiny::div(class = "alert alert-success",
+            shiny::icon("check-circle"),
+            shiny::strong(" PH assumption OK: "),
+            sprintf("global cox.zph p = %.4f (≥ 0.05).", gp))
+        }
+      }
+    }
+
+    if (length(parts) == 0L) return(NULL)
+    do.call(shiny::tagList, unname(parts))
+  })
+
+  # PH Assumption tab — Schoenfeld test table (cox.zph)
+  output$surv_ph_test_banner <- renderUI({
+    req(rv$surv_results)
+    if (isTRUE(rv$surv_results$error)) return(NULL)
+    ph <- rv$surv_results$ph_test
+    if (is.null(ph)) {
+      return(shiny::div(class = "alert alert-info",
+        shiny::icon("info-circle"),
+        " The PH check is only computed for the standard Cox path. ",
+        sprintf("This analysis used method_used = '%s'; no Schoenfeld test available.",
+                rv$surv_results$method_used %||% "unknown")))
+    }
+    NULL
+  })
+
+  output$surv_ph_test_table <- renderDT({
+    req(rv$surv_results)
+    if (isTRUE(rv$surv_results$error)) {
+      return(datatable(data.frame(Message = "Results not available")))
+    }
+    ph <- rv$surv_results$ph_test
+    if (is.null(ph) || is.null(ph$table)) {
+      return(datatable(
+        data.frame(Note = "cox.zph not available — non-Cox method was used."),
+        options = list(dom = "t", paging = FALSE, searching = FALSE), rownames = FALSE
+      ))
+    }
+    tab <- as.data.frame(ph$table)
+    tab <- cbind(Covariate = rownames(tab), tab)
+    rownames(tab) <- NULL
+    tab <- format_df_for_display(tab)
+    datatable(tab,
+              options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+              rownames = FALSE)
   })
 
   # Results table — Cox HR table (frequentist) or treatment effects (Bayesian)

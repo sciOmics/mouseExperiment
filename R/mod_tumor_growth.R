@@ -1174,7 +1174,9 @@ tumor_growth_server <- function(id, rv) {
           tags$li(strong("SE"), " \u2014 standard error of the estimated difference."),
           tags$li(strong("Fold_Change"), " (if shown; log-transform models only) \u2014 exp(estimate): the multiplicative ratio of group geometric means on the original volume scale. Values below 1.0 indicate the treatment group has lower volume than reference. Fold_Change_Lower / Fold_Change_Upper give the back-transformed CI bounds."),
           tags$li(strong("t.ratio"), " \u2014 t-statistic (estimate \u00f7 SE). Large absolute values indicate a larger difference relative to its uncertainty."),
-          tags$li(strong("p.value"), " \u2014 adjusted p-value (Dunnett correction for \u2018vs Reference\u2019; Tukey HSD for \u2018All Comparisons\u2019). Values below 0.05 indicate a significant difference.")
+          tags$li(strong("p.value"), " \u2014 adjusted p-value (Dunnett correction for \u2018vs Reference\u2019; Tukey HSD for \u2018All Comparisons\u2019). Values below 0.05 indicate a significant difference."),
+          tags$li(strong("Lower_CrI / Upper_CrI"), " (Bayesian path only) \u2014 2.5\u202f% and 97.5\u202f% bounds of the posterior distribution of the contrast on the model scale."),
+          tags$li(strong("P_direction"), " (Bayesian path only) \u2014 posterior probability that the contrast is in its dominant direction, > 0.5 by construction. P_direction = 0.97 means 97\u202f% of posterior mass agrees on the sign of the effect; equivalent to a one-sided posterior probability and replaces the frequentist \u2018does the CrI exclude zero?\u2019 dichotomy.")
         )
       )
     }
@@ -1324,16 +1326,20 @@ tumor_growth_server <- function(id, rv) {
       }
     }
 
-    # Enforce column order: contrast, df, estimate, lower.CL, upper.CL, SE,
-    # t.ratio, p.value, Fold_Change, Fold_Change_Lower, Fold_Change_Upper, then any remaining cols
+    # Enforce column order. Bayesian path also surfaces Lower_CrI / Upper_CrI
+    # (credible intervals) and P_direction (CODE_REVIEW.md Round 2 D —
+    # mE v0.4.6 directional posterior probability; replaces the awkward
+    # "does the 95% CrI exclude 0?" check with a quantitative posterior).
     preferred_order <- c("contrast", "Contrast",
                          "df",
                          "estimate", "Estimate",
                          "lower.CL", "lower_CL",
                          "upper.CL", "upper_CL",
+                         "Lower_CrI", "Upper_CrI",
                          "SE",
                          "t.ratio", "z.ratio",
                          "p.value",
+                         "P_direction",
                          "Fold_Change", "Fold_Change_Lower", "Fold_Change_Upper")
     ordered_cols <- intersect(preferred_order, colnames(comp_df))
     rest_cols    <- setdiff(colnames(comp_df), ordered_cols)
