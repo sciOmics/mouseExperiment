@@ -814,6 +814,16 @@ tumorGrowthUI <- function(id) {
             )
           ),
           
+          # CODE_REVIEW.md Round 2 F.3 — side-by-side previous vs current
+          # treatment-effects when the user ran two different model_types.
+          tabPanel("Compare",
+            tab_info(
+              strong("Side-by-side comparison "),
+              "of the previous and current Tumor Growth analyses. The previous run is automatically preserved whenever you re-run with a different model type (e.g. LME4 → Bayesian, AUC → GAMM)."
+            ),
+            uiOutput(ns("tg_compare_panel"))
+          ),
+
           tabPanel("Data Summary",
             tab_info(
               strong("Descriptive statistics for tumor volume "), "by treatment group and timepoint. Shows mean, standard deviation, and standard error across subjects measured at each study day.",
