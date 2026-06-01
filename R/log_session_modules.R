@@ -1,59 +1,13 @@
-#' Analysis Log and Session Management Modules
+#' Session Management Module
 #'
-#' Server-side logic for the Analysis Log viewer and Session Save/Restore.
+#' Server-side logic for the Session Save / Restore controls in the Data
+#' Upload tab. (The Analysis Log viewer was removed in v26.05.020; the
+#' \code{logger} package continues to write structured log lines to
+#' stdout — visible via \code{journalctl} / \code{docker logs} — so the
+#' operational signal is preserved without a user-facing tab.)
 #'
 #' @name log_session_modules
 #' @keywords internal
-
-# ---------------------------------------------------------------------------
-# Analysis Log Module
-# ---------------------------------------------------------------------------
-
-#' Analysis Log Server
-#'
-#' Provides a live view of the in-process log buffer (see \code{logging.R}).
-#' Users can refresh, clear, and download the log.
-#'
-#' @param id Module namespace id.
-#' @param rv Shared reactiveValues.
-#' @keywords internal
-analysis_log_server <- function(id, rv) {
-  moduleServer(id, function(input, output, session) {
-
-    # Auto-refresh every 5 seconds, or on manual refresh
-    log_trigger <- reactiveTimer(5000)
-
-    log_text <- reactive({
-      log_trigger()
-      input$refresh_log   # also invalidate on button click
-      entries <- get_log_entries()
-      if (length(entries) == 0L) return("No log entries yet.")
-      formatted <- vapply(rev(entries), function(line) {
-        tryCatch({
-          p <- jsonlite::fromJSON(line)
-          sprintf("[%s] %-5s  %s", p$time, p$level, p$msg)
-        }, error = function(e) line)
-      }, character(1L))
-      paste(formatted, collapse = "\n")
-    })
-
-    output$log_output <- renderText(log_text())
-
-    observeEvent(input$clear_log, {
-      clear_log_buffer()
-    })
-
-    output$download_log <- downloadHandler(
-      filename = function() {
-        paste0("analysis_log_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".txt")
-      },
-      content = function(file) {
-        shinyjs::runjs("window.trackDownload('log', 'analysis_log', 'txt');")
-        writeLines(get_log_entries(), file)
-      }
-    )
-  })
-}
 
 # ---------------------------------------------------------------------------
 # Session Save / Restore

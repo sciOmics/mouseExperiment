@@ -71,32 +71,6 @@ make_test_rv <- function() {
 }
 
 # ===========================================================================
-# Test: analysis_log_server
-# ===========================================================================
-test_that("analysis_log_server outputs log text", {
-  analysis_log_server_fn <- get_fn("analysis_log_server")
-
-  shiny::testServer(analysis_log_server_fn, args = list(rv = make_test_rv()), {
-    # The log_text reactive should return something
-    output_text <- output$log_output
-    expect_true(is.character(output_text) || !is.null(output_text))
-  })
-})
-
-test_that("analysis_log_server handles clear_log", {
-  analysis_log_server_fn <- get_fn("analysis_log_server")
-
-  shiny::testServer(analysis_log_server_fn, args = list(rv = make_test_rv()), {
-    # Simulate clicking clear_log
-    session$setInputs(clear_log = 1)
-    Sys.sleep(0.1)
-    # After clearing, log should show no entries or a message
-    output_text <- output$log_output
-    expect_true(is.character(output_text) || !is.null(output_text))
-  })
-})
-
-# ===========================================================================
 # Test: dose_response_server reactives
 # ===========================================================================
 test_that("dose_response_server initialises without error", {
