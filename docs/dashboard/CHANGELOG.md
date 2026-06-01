@@ -58,6 +58,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ### Changed
 - **All modules — auto-switch to Summary on completion** — when an analysis finishes (frequentist or Bayesian, success or error), the results tabset now jumps to the **Summary** tab automatically via `updateTabsetPanel()`. Applied to Tumor Growth, Survival, Drug Synergy, Dose Response, and Toxicity (TWM Bayesian, BW Bayesian, and frequentist paths). Power Analysis has no Summary tab and was left alone.
 
+## [v26.05.020] 2026 May 20th
+
+### Removed
+- **Analysis Log tab** — the user-facing **Log** panel is gone. Structured
+  logging via `logger` continues to emit to stdout (visible in
+  `journalctl -u shiny` / `docker logs`), so the operational signal is
+  preserved; only the in-app display tab was removed. `analysisLogUI` is no
+  longer registered in `app.R`.
+
+### Changed
+- **Help tab — rewritten end-to-end.** Now covers every analysis module
+  with the same level of detail: LME4 / AUC / Bayesian Tumor Growth,
+  Survival (KM / Cox / AFT), Body Weight + Therapeutic Window Metric,
+  Bliss / Loewe / Bayesian Synergy, Hill / Emax Dose-Response, and Power
+  Analysis. Also adds: a column auto-detection table (which header names
+  the dashboard recognises for ID / Cage / Day / Volume / Weight /
+  Treatment / Survival_Censor), a step-by-step workflow guide
+  (upload → map → configure → run → export), and an expanded
+  troubleshooting section that explicitly addresses the long Bayesian
+  fit times (3-12 min, expected during Stan compilation).
+
 ## [v26.05.021] 2026 May 29th
 
 ### Changed
