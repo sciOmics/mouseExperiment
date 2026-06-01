@@ -255,3 +255,40 @@ make_combo_four_group <- function() {
     }))
   }))
 }
+
+
+# ─── Test-side warning capture (CODE_REVIEW.md K.3) ──────────────────────────
+#
+# Tests should not blanket-suppress warnings around brms or lme4 fits —
+# divergent transitions, singular-fit signals, and emmeans interaction
+# warnings are exactly the regressions a test suite should catch. Use
+# `capture_warnings()` to materialise warnings into a character vector
+# while still evaluating the expression, then assert nothing unexpected
+# appeared. Known-benign warning patterns can be allowlisted via
+# `allow_pattern` (regex).
+
+capture_warnings <- function(expr) {
+  warns <- character(0)
+  val   <- withCallingHandlers(
+    expr,
+    warning = function(w) {
+      warns <<- c(warns, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+  attr(val, "captured_warnings") <- warns
+  val
+}
+
+expect_no_unexpected_warnings <- function(x, allow_pattern = NULL) {
+  warns <- attr(x, "captured_warnings") %||% character(0)
+  if (!is.null(allow_pattern) && length(warns) > 0L) {
+    warns <- warns[!grepl(allow_pattern, warns, perl = TRUE)]
+  }
+  testthat::expect_true(
+    length(warns) == 0L,
+    info = paste("Unexpected warnings:", paste(warns, collapse = "; "))
+  )
+}
+
+`%||%` <- function(a, b) if (!is.null(a)) a else b

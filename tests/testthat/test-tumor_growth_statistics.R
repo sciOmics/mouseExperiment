@@ -87,25 +87,31 @@ test_that("lme4: pairwise comparison for TreatmentA > Control has correct direct
   pw <- as.data.frame(res$pairwise_comparisons)
   expect_true(nrow(pw) >= 1L)
 
-  # The contrast name should mention TreatmentA
+  # The contrast name should mention TreatmentA. CODE_REVIEW.md K.2:
+  # column-name discovery used to be defensive (if (!is.na(col)) ...) which
+  # meant a renamed column silently skipped the assertion. Now we assert
+  # that the expected columns exist first; a rename triggers a real failure.
   contrast_col <- intersect(c("contrast", "Contrast", "comparison"), colnames(pw))[1]
   est_col      <- intersect(c("estimate", "Estimate"), colnames(pw))[1]
   p_col        <- intersect(c("p.value", "p_value", "adj.p.value"), colnames(pw))[1]
 
-  if (!is.na(contrast_col) && !is.na(est_col)) {
-    row_a <- grepl("TreatmentA", ignore.case = TRUE, pw[[contrast_col]])
-    if (any(row_a)) {
-      est <- as.numeric(pw[[est_col]][which(row_a)[1]])
-      # TreatmentA grows faster → positive pairwise estimate vs Control
-      expect_true(est > 0,
-                  info = paste("Expected positive estimate for TreatmentA, got", est))
-    }
-  }
+  expect_false(is.na(contrast_col),
+               info = "pairwise_comparisons must have a contrast/Contrast/comparison column")
+  expect_false(is.na(est_col),
+               info = "pairwise_comparisons must have an estimate/Estimate column")
+  expect_false(is.na(p_col),
+               info = "pairwise_comparisons must have a p.value/p_value/adj.p.value column")
 
-  if (!is.na(p_col)) {
-    expect_true(any(as.numeric(pw[[p_col]]) < 0.05, na.rm = TRUE),
-                info = "No significant pairwise comparison found")
-  }
+  row_a <- grepl("TreatmentA", ignore.case = TRUE, pw[[contrast_col]])
+  expect_true(any(row_a),
+              info = "Expected a pairwise row involving TreatmentA")
+  est <- as.numeric(pw[[est_col]][which(row_a)[1]])
+  # TreatmentA grows faster → positive pairwise estimate vs Control
+  expect_true(est > 0,
+              info = paste("Expected positive estimate for TreatmentA, got", est))
+
+  expect_true(any(as.numeric(pw[[p_col]]) < 0.05, na.rm = TRUE),
+              info = "No significant pairwise comparison found")
 })
 
 test_that("lme4: treatment_effects has one row per group and numeric estimates", {
@@ -178,15 +184,19 @@ test_that("lme4: mean growth rate of TreatmentA > mean growth rate of Control", 
 
   gr <- as.data.frame(res$growth_rates)
   tx_col   <- intersect(c("Treatment", "treatment", "Group"), colnames(gr))[1]
-  rate_col <- intersect(c("Growth_Rate", "rate", "slope", "Slope"), colnames(gr))[1]
+  rate_col <- intersect(c("Growth_Rate", "growth_rate", "rate", "slope", "Slope"),
+                       colnames(gr))[1]
 
-  if (!is.na(tx_col) && !is.na(rate_col)) {
-    mean_ctrl <- mean(gr[[rate_col]][gr[[tx_col]] == "Control"],    na.rm = TRUE)
-    mean_tx   <- mean(gr[[rate_col]][gr[[tx_col]] == "TreatmentA"], na.rm = TRUE)
-    expect_true(mean_tx > mean_ctrl,
-                info = paste("Control mean rate:", mean_ctrl,
-                             "TreatmentA mean rate:", mean_tx))
-  }
+  expect_false(is.na(tx_col),
+               info = "growth_rates must have a Treatment/treatment/Group column")
+  expect_false(is.na(rate_col),
+               info = "growth_rates must have a Growth_Rate/growth_rate/rate/slope column")
+
+  mean_ctrl <- mean(gr[[rate_col]][gr[[tx_col]] == "Control"],    na.rm = TRUE)
+  mean_tx   <- mean(gr[[rate_col]][gr[[tx_col]] == "TreatmentA"], na.rm = TRUE)
+  expect_true(mean_tx > mean_ctrl,
+              info = paste("Control mean rate:", mean_ctrl,
+                           "TreatmentA mean rate:", mean_tx))
 })
 
 # ---------------------------------------------------------------------------
@@ -238,19 +248,23 @@ test_that("auc model: mean AUC of TreatmentA > Control", {
 
   skip_if(isTRUE(res$error), "AUC model returned an error")
 
-  # auc_analysis$individual has per-mouse AUCs
-  if (!is.null(res$auc_analysis) && !is.null(res$auc_analysis$individual)) {
-    ind <- as.data.frame(res$auc_analysis$individual)
-    grp_col <- intersect(c("Group", "Treatment", "treatment"), colnames(ind))[1]
-    auc_col <- intersect(c("AUC", "auc"), colnames(ind))[1]
-    if (!is.na(grp_col) && !is.na(auc_col)) {
-      mu_ctrl <- mean(ind[[auc_col]][ind[[grp_col]] == "Control"],    na.rm = TRUE)
-      mu_tx   <- mean(ind[[auc_col]][ind[[grp_col]] == "TreatmentA"], na.rm = TRUE)
-      expect_true(mu_tx > mu_ctrl,
-                  info = paste("Control mean AUC:", mu_ctrl,
-                               "TreatmentA mean AUC:", mu_tx))
-    }
-  }
+  # auc_analysis$individual has per-mouse AUCs. K.2: tighten defensive masks.
+  expect_false(is.null(res$auc_analysis),
+               info = "AUC model must return auc_analysis")
+  expect_false(is.null(res$auc_analysis$individual),
+               info = "auc_analysis$individual must be present")
+  ind <- as.data.frame(res$auc_analysis$individual)
+  grp_col <- intersect(c("Group", "Treatment", "treatment"), colnames(ind))[1]
+  auc_col <- intersect(c("AUC", "auc"), colnames(ind))[1]
+  expect_false(is.na(grp_col),
+               info = "auc_analysis$individual must have a Group/Treatment column")
+  expect_false(is.na(auc_col),
+               info = "auc_analysis$individual must have an AUC column")
+  mu_ctrl <- mean(ind[[auc_col]][ind[[grp_col]] == "Control"],    na.rm = TRUE)
+  mu_tx   <- mean(ind[[auc_col]][ind[[grp_col]] == "TreatmentA"], na.rm = TRUE)
+  expect_true(mu_tx > mu_ctrl,
+              info = paste("Control mean AUC:", mu_ctrl,
+                           "TreatmentA mean AUC:", mu_tx))
 })
 
 # ---------------------------------------------------------------------------
