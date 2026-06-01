@@ -75,6 +75,13 @@
 #'   reactively from the stored model object (e.g. in Shiny).
 #' @param verbose Logical. Show Stan compilation and sampling messages? Default
 #'   \code{FALSE}.
+#' @param backend brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
+#'   \code{"cmdstanr"} is 3-10x faster to compile and produces better
+#'   diagnostic reporting but requires the \pkg{cmdstanr} package plus a
+#'   working CmdStan toolchain (install via
+#'   \code{cmdstanr::install_cmdstan()}). Recommended for production use
+#'   on the VPS; the default keeps \pkg{rstan} so the function works
+#'   out-of-the-box.
 #'
 #' @return A named list:
 #' \describe{
@@ -190,7 +197,8 @@ bayesian_tumor_growth <- function(
   plots                        = TRUE,
   verbose                      = FALSE,
   necrotic_column              = NULL,
-  necrotic_handling            = c("exclude", "covariate", "none")
+  necrotic_handling            = c("exclude", "covariate", "none"),
+  backend                      = c("rstan", "cmdstanr")
 ) {
 
   # ── Dependency checks ──────────────────────────────────────────────────────
@@ -206,6 +214,7 @@ bayesian_tumor_growth <- function(
   random_effects_specification <- match.arg(random_effects_specification)
   prior_strength               <- match.arg(prior_strength)
   necrotic_handling            <- match.arg(necrotic_handling)
+  backend                      <- resolve_brms_backend(backend)
 
   # ── Column validation ──────────────────────────────────────────────────────
   required_cols <- c(time_column, volume_column, treatment_column, id_column)
@@ -340,6 +349,7 @@ bayesian_tumor_growth <- function(
     iter         = as.integer(n_warmup + n_iter),
     warmup       = as.integer(n_warmup),
     seed         = as.integer(seed),
+    backend      = backend,
     silent       = if (isTRUE(verbose)) 0L else 2L,
     refresh      = if (isTRUE(verbose)) 100L else 0L
   )

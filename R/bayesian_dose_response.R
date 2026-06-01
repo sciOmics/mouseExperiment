@@ -76,6 +76,8 @@
 #'   Default \code{TRUE}.
 #' @param verbose Logical. Show Stan compilation and sampling messages?
 #'   Default \code{FALSE}.
+#' @param backend brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
+#'   See \code{\link{bayesian_tumor_growth}} for details.
 #'
 #' @details
 #' The Hill inhibition model fitted is:
@@ -153,7 +155,8 @@ bayesian_dose_response <- function(
   seed             = 42L,
   return_model     = TRUE,
   plots            = TRUE,
-  verbose          = FALSE
+  verbose          = FALSE,
+  backend          = c("rstan", "cmdstanr")
 ) {
 
   # ── Dependency check ───────────────────────────────────────────────────────
@@ -165,6 +168,7 @@ bayesian_dose_response <- function(
   }
 
   prior_strength <- match.arg(prior_strength)
+  backend        <- resolve_brms_backend(backend)
 
   # ── Column validation ──────────────────────────────────────────────────────
   required_cols <- c(dose_column, volume_column, treatment_column,
@@ -352,6 +356,7 @@ bayesian_dose_response <- function(
     iter         = as.integer(n_warmup + n_iter),
     warmup       = as.integer(n_warmup),
     seed         = as.integer(seed),
+    backend      = backend,
     silent       = if (isTRUE(verbose)) 0L else 2L,
     refresh      = if (isTRUE(verbose)) 100L else 0L
   )

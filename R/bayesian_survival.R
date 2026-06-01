@@ -72,6 +72,8 @@
 #'   Default \code{TRUE}.
 #' @param verbose Logical. Show Stan compilation and sampling messages? Default
 #'   \code{FALSE}.
+#' @param backend brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
+#'   See \code{\link{bayesian_tumor_growth}} for details.
 #'
 #' @return A named list:
 #' \describe{
@@ -161,7 +163,8 @@ bayesian_survival <- function(
   seed             = 42L,
   return_model     = TRUE,
   plots            = TRUE,
-  verbose          = FALSE
+  verbose          = FALSE,
+  backend          = c("rstan", "cmdstanr")
 ) {
 
   # ── Dependency check ───────────────────────────────────────────────────────
@@ -171,6 +174,7 @@ bayesian_survival <- function(
 
   family         <- match.arg(family)
   prior_strength <- match.arg(prior_strength)
+  backend        <- resolve_brms_backend(backend)
 
   # ── Column validation ──────────────────────────────────────────────────────
   required_cols <- c(time_column, event_column, treatment_column, id_column)
@@ -290,6 +294,7 @@ bayesian_survival <- function(
     iter         = as.integer(n_warmup + n_iter),
     warmup       = as.integer(n_warmup),
     seed         = as.integer(seed),
+    backend      = backend,
     silent       = if (isTRUE(verbose)) 0L else 2L,
     refresh      = if (isTRUE(verbose)) 100L else 0L
   )

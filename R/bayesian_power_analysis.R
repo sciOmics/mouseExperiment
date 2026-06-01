@@ -71,6 +71,10 @@
 #' @param seed Integer random seed for reproducibility. Default \code{42L}.
 #' @param progress_fn Optional callback \code{function(n, sim_i, n_sims)}
 #'   called after each simulation fit. Useful for Shiny progress bars.
+#' @param backend brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
+#'   With cmdstanr the compile-once-and-reuse pattern via
+#'   \code{brms::update()} runs noticeably faster across many simulations.
+#'   See \code{\link{bayesian_tumor_growth}} for installation details.
 #'
 #' @return A named list:
 #' \describe{
@@ -112,7 +116,8 @@ bayesian_power_analysis <- function(
   n_warmup            = 500L,
   n_iter              = 500L,
   seed                = 42L,
-  progress_fn         = NULL
+  progress_fn         = NULL,
+  backend             = c("rstan", "cmdstanr")
 ) {
 
   if (!requireNamespace("brms", quietly = TRUE)) {
@@ -124,6 +129,7 @@ bayesian_power_analysis <- function(
 
   prior_str     <- match.arg(prior_strength)
   re_spec       <- match.arg(random_effects_specification)
+  backend       <- resolve_brms_backend(backend)
   n_per_group   <- as.integer(n_per_group)
   n_groups      <- as.integer(n_groups)
   n_simulations <- as.integer(n_simulations)
@@ -243,6 +249,7 @@ bayesian_power_analysis <- function(
             iter    = n_warmup + n_iter,
             warmup  = n_warmup,
             seed    = seed,
+            backend = backend,
             silent  = 2L,
             refresh = 0L
           )

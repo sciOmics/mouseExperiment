@@ -60,6 +60,8 @@
 #' @param plots Logical. Pre-compute and return \pkg{ggplot2} plot objects?
 #'   Default \code{TRUE}.
 #' @param verbose Logical. Show Stan messages? Default \code{FALSE}.
+#' @param backend brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
+#'   See \code{\link{bayesian_tumor_growth}} for details.
 #'
 #' @return A named list:
 #' \describe{
@@ -129,7 +131,8 @@ bayesian_body_weight <- function(
   include_cage_effect          = TRUE,
   return_model                 = TRUE,
   plots                        = TRUE,
-  verbose                      = FALSE
+  verbose                      = FALSE,
+  backend                      = c("rstan", "cmdstanr")
 ) {
 
   # ── Dependency check ───────────────────────────────────────────────────────
@@ -143,6 +146,7 @@ bayesian_body_weight <- function(
   transform                    <- match.arg(transform)
   random_effects_specification <- match.arg(random_effects_specification)
   prior_strength               <- match.arg(prior_strength)
+  backend                      <- resolve_brms_backend(backend)
 
   # ── Column validation ──────────────────────────────────────────────────────
   required_cols <- c(weight_column, time_column, treatment_column, id_column)
@@ -289,6 +293,7 @@ bayesian_body_weight <- function(
     iter         = as.integer(n_warmup + n_iter),
     warmup       = as.integer(n_warmup),
     seed         = as.integer(seed),
+    backend      = backend,
     silent       = if (isTRUE(verbose)) 0L else 2L,
     refresh      = if (isTRUE(verbose)) 100L else 0L
   )

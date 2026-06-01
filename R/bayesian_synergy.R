@@ -34,7 +34,8 @@ bs_fit_synergy_model <- function(analysis_df,
                                   prior_str,
                                   manual_priors = NULL,
                                   n_chains, n_warmup, n_iter,
-                                  seed, verbose = FALSE) {
+                                  seed, verbose = FALSE,
+                                  backend = "rstan") {
   transform <- match.arg(transform)
   re_spec   <- match.arg(re_spec)
 
@@ -135,6 +136,7 @@ bs_fit_synergy_model <- function(analysis_df,
     iter         = n_warmup + n_iter,
     warmup       = n_warmup,
     seed         = seed,
+    backend      = backend,
     sample_prior = "yes",
     silent       = if (isTRUE(verbose)) 0L else 2L,
     refresh      = if (isTRUE(verbose)) 100L else 0L
@@ -222,6 +224,9 @@ bs_fit_synergy_model <- function(analysis_df,
 #' @param plots Logical. Return \pkg{ggplot2} plot objects? Default
 #'   \code{TRUE}.
 #' @param verbose Logical. Print progress messages? Default \code{FALSE}.
+#' @param backend brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
+#'   See \code{\link{bayesian_tumor_growth}} for details. Applies to both
+#'   \code{bayesian_synergy()} and \code{bayesian_synergy_over_time()}.
 #'
 #' @details
 #' The model formula is \code{Volume_transformed ~ Treatment * Day + re},
@@ -338,7 +343,8 @@ bayesian_synergy <- function(
   include_cage_effect         = TRUE,
   return_model                = TRUE,
   plots                       = TRUE,
-  verbose                     = FALSE
+  verbose                     = FALSE,
+  backend                     = c("rstan", "cmdstanr")
 ) {
 
   # ── Dependency check ───────────────────────────────────────────────────────
@@ -352,6 +358,7 @@ bayesian_synergy <- function(
   transform  <- match.arg(transform)
   re_spec    <- match.arg(random_effects_specification)
   prior_str  <- match.arg(prior_strength)
+  backend    <- resolve_brms_backend(backend)
 
   # ── Input validation ───────────────────────────────────────────────────────
   required_cols <- c(
@@ -414,7 +421,7 @@ bayesian_synergy <- function(
     manual_priors      = list(prior_b = prior_b, prior_intercept = prior_intercept,
                               prior_sd = prior_sd, prior_sigma = prior_sigma),
     n_chains = n_chains, n_warmup = n_warmup, n_iter = n_iter,
-    seed = seed, verbose = verbose
+    seed = seed, verbose = verbose, backend = backend
   )
   model             <- fit$model
   analysis_df       <- fit$analysis_df
@@ -800,7 +807,8 @@ bayesian_synergy_over_time <- function(
   include_cage_effect          = TRUE,
   return_model                 = TRUE,
   plots                        = TRUE,
-  verbose                      = FALSE
+  verbose                      = FALSE,
+  backend                      = c("rstan", "cmdstanr")
 ) {
 
   if (!requireNamespace("brms", quietly = TRUE)) {
@@ -813,6 +821,7 @@ bayesian_synergy_over_time <- function(
   transform  <- match.arg(transform)
   re_spec    <- match.arg(random_effects_specification)
   prior_str  <- match.arg(prior_strength)
+  backend    <- resolve_brms_backend(backend)
 
   # ── Input validation ───────────────────────────────────────────────────────
   required_cols <- c(volume_column, time_column, treatment_column, id_column)
@@ -868,7 +877,7 @@ bayesian_synergy_over_time <- function(
     manual_priors      = list(prior_b = prior_b, prior_intercept = prior_intercept,
                               prior_sd = prior_sd, prior_sigma = prior_sigma),
     n_chains = n_chains, n_warmup = n_warmup, n_iter = n_iter,
-    seed = seed, verbose = verbose
+    seed = seed, verbose = verbose, backend = backend
   )
   model             <- fit$model
   analysis_df       <- fit$analysis_df

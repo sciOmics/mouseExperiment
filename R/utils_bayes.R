@@ -143,6 +143,43 @@ bayes_prior_params <- function(prior_strength) {
 
 # ── Cage column setup ──────────────────────────────────────────────────────────
 
+#' Validate and resolve a brms backend choice
+#'
+#' Returns the validated backend choice. \code{"rstan"} (default) is always
+#' available because brms imports rstan. \code{"cmdstanr"} requires the
+#' cmdstanr package plus a working CmdStan installation; if either is
+#' missing we \code{stop()} with a pointer to install instructions rather
+#' than silently fall back, so users who chose cmdstanr know why their
+#' choice didn't apply.
+#'
+#' \code{cmdstanr} is the actively-maintained Stan interface (3–10× faster
+#' compilation, better diagnostic reporting) and is the recommended backend
+#' for production / VPS use.
+#' @noRd
+resolve_brms_backend <- function(backend = c("rstan", "cmdstanr")) {
+  backend <- match.arg(backend)
+  if (backend == "cmdstanr") {
+    if (!requireNamespace("cmdstanr", quietly = TRUE)) {
+      stop(
+        "backend = 'cmdstanr' requires the cmdstanr package. ",
+        "Install it with: ",
+        "install.packages('cmdstanr', repos = c('https://mc-stan.org/r-packages/', getOption('repos'))) ",
+        "and then a CmdStan toolchain via cmdstanr::install_cmdstan()."
+      )
+    }
+    cmdstan_path <- tryCatch(cmdstanr::cmdstan_path(),
+                             error = function(e) NULL)
+    if (is.null(cmdstan_path) || !nzchar(cmdstan_path)) {
+      stop(
+        "backend = 'cmdstanr' is installed but no CmdStan toolchain was ",
+        "found. Run cmdstanr::install_cmdstan() once to install it."
+      )
+    }
+  }
+  backend
+}
+
+
 #' Empirical coverage of posterior predictive intervals
 #'
 #' For a fitted brmsfit, simulates from the posterior predictive
