@@ -108,3 +108,92 @@ setup_session_save_restore <- function(input, output, session, rv) {
     })
   })
 }
+
+
+# ---------------------------------------------------------------------------
+# Subset Filter UI (CODE_REVIEW.md Round 2 F.5)
+# ---------------------------------------------------------------------------
+
+#' Subset Filter UI — exclude mice / cages / treatments from every analysis
+#'
+#' Renders a collapsed wellPanel below the data preview on the Data Upload
+#' tab. Lets users exclude specific IDs, treatments, or cages without
+#' re-uploading the CSV. The exclusions are written to
+#' \code{rv$exclude_ids / exclude_treatments / exclude_cages} and applied
+#' transparently by \code{apply_subset_filter()} at the top of every
+#' analysis module.
+#'
+#' @param ns Namespace function from the enclosing module.
+#' @return A \code{tagList}.
+#' @keywords internal
+subset_filter_ui <- function(ns) {
+  wellPanel(
+    h5(strong(icon("filter"), " Subset Filter"),
+       tags$small(style = "color:#6c757d; margin-left:8px;",
+                  "Exclude mice, treatments, or cages from all downstream analyses.")),
+    fluidRow(
+      column(4,
+        selectizeInput(ns("exclude_ids"), "Exclude IDs",
+                       choices = NULL, multiple = TRUE,
+                       options = list(placeholder = "(none excluded)"))
+      ),
+      column(4,
+        selectizeInput(ns("exclude_treatments"), "Exclude Treatments",
+                       choices = NULL, multiple = TRUE,
+                       options = list(placeholder = "(none excluded)"))
+      ),
+      column(4,
+        selectizeInput(ns("exclude_cages"), "Exclude Cages",
+                       choices = NULL, multiple = TRUE,
+                       options = list(placeholder = "(none excluded)"))
+      )
+    ),
+    p(style = "font-size:11px; color:#6c757d; margin:4px 0 0 0;",
+      "After changing this filter, click ", strong("Run Analysis"),
+      " on any analysis tab to re-fit with the new subset. ",
+      "Filter state survives session save/restore.")
+  )
+}
+
+#' Server-side handler for the Subset Filter — populates choices, syncs to rv
+#'
+#' Called from inside the data_upload module server. Populates the three
+#' selectizeInput choices once data is uploaded and column mappings are
+#' resolved; mirrors the user's selections into \code{rv$exclude_*} so
+#' downstream modules can read them via \code{apply_subset_filter()}.
+#' @keywords internal
+setup_subset_filter <- function(input, output, session, rv) {
+
+  # Populate choices whenever uploaded_data + column mappings change.
+  observe({
+    df <- rv$uploaded_data
+    req(df)
+    id_col <- rv$settings$col_id
+    tx_col <- rv$settings$col_treatment
+    cg_col <- rv$settings$col_cage
+
+    ids <- if (!is.null(id_col) && nzchar(id_col) && id_col %in% colnames(df))
+      sort(unique(as.character(df[[id_col]]))) else character(0)
+    txs <- if (!is.null(tx_col) && nzchar(tx_col) && tx_col %in% colnames(df))
+      sort(unique(as.character(df[[tx_col]]))) else character(0)
+    cgs <- if (!is.null(cg_col) && nzchar(cg_col) && cg_col %in% colnames(df))
+      sort(unique(as.character(df[[cg_col]]))) else character(0)
+
+    updateSelectizeInput(session, "exclude_ids",
+                        choices = ids,
+                        selected = intersect(isolate(rv$exclude_ids), ids),
+                        server = TRUE)
+    updateSelectizeInput(session, "exclude_treatments",
+                        choices = txs,
+                        selected = intersect(isolate(rv$exclude_treatments), txs),
+                        server = TRUE)
+    updateSelectizeInput(session, "exclude_cages",
+                        choices = cgs,
+                        selected = intersect(isolate(rv$exclude_cages), cgs),
+                        server = TRUE)
+  })
+
+  observeEvent(input$exclude_ids,        { rv$exclude_ids        <- input$exclude_ids        }, ignoreNULL = FALSE)
+  observeEvent(input$exclude_treatments, { rv$exclude_treatments <- input$exclude_treatments }, ignoreNULL = FALSE)
+  observeEvent(input$exclude_cages,      { rv$exclude_cages      <- input$exclude_cages      }, ignoreNULL = FALSE)
+}

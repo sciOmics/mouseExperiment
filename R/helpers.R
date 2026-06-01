@@ -199,6 +199,51 @@ bayes_influential_obs <- function(result, threshold = 0.7) {
   df[order(-df$Pareto_k), , drop = FALSE]
 }
 
+# ---- Subset filter (CODE_REVIEW.md Round 2 F.5) -----------------------------
+
+#' Apply a global subset filter to uploaded data
+#'
+#' Reads exclusion lists from \code{rv$exclude_ids},
+#' \code{rv$exclude_treatments}, and \code{rv$exclude_cages} (set by the
+#' Data Upload tab's Subset Filter panel) and returns the data frame with
+#' those rows dropped. Quietly returns the input unchanged when no
+#' exclusions are active or the relevant columns aren't mapped.
+#'
+#' Every analysis module calls this on its uploaded data as the first
+#' step, so users can re-run any analysis with a different subset by
+#' simply editing the Data Upload filters and clicking Run — no need to
+#' re-upload the CSV. CODE_REVIEW.md Round 2 F.5.
+#'
+#' @param df Raw uploaded data frame.
+#' @param rv Shared reactiveValues list.
+#' @return Filtered data frame.
+#' @keywords internal
+apply_subset_filter <- function(df, rv) {
+  if (is.null(df) || nrow(df) == 0L) return(df)
+
+  ex_ids <- shiny::isolate(rv$exclude_ids)        %||% character(0)
+  ex_tx  <- shiny::isolate(rv$exclude_treatments) %||% character(0)
+  ex_cg  <- shiny::isolate(rv$exclude_cages)      %||% character(0)
+
+  id_col <- shiny::isolate(rv$settings$col_id)
+  tx_col <- shiny::isolate(rv$settings$col_treatment)
+  cg_col <- shiny::isolate(rv$settings$col_cage)
+
+  if (length(ex_ids) > 0L && !is.null(id_col) && nzchar(id_col) &&
+      id_col %in% colnames(df)) {
+    df <- df[!(as.character(df[[id_col]]) %in% ex_ids), , drop = FALSE]
+  }
+  if (length(ex_tx) > 0L && !is.null(tx_col) && nzchar(tx_col) &&
+      tx_col %in% colnames(df)) {
+    df <- df[!(as.character(df[[tx_col]]) %in% ex_tx), , drop = FALSE]
+  }
+  if (length(ex_cg) > 0L && !is.null(cg_col) && nzchar(cg_col) &&
+      cg_col %in% colnames(df)) {
+    df <- df[!(as.character(df[[cg_col]]) %in% ex_cg), , drop = FALSE]
+  }
+  df
+}
+
 # ---- Alert helpers (consolidated validate/need pattern) ----------------------
 
 #' Create a Bootstrap alert div for module status messages
@@ -284,19 +329,22 @@ detect_date_format <- function(data, date_column, reference_date) {
 #' @return A list with \code{data}, \code{time_col}, \code{vol_col}, \code{tx_col}.
 #' @keywords internal
 ensure_preprocessed <- function(rv) {
-  # Reuse canonical result if available
-
+  # Reuse canonical result if available. CODE_REVIEW.md Round 2 F.5:
+  # always re-apply the Subset Filter to the cached frame so changes to
+  # the filter take effect on the next analysis run without needing a
+  # full re-upload + re-preprocess.
   if (!is.null(rv$processed_data)) {
     return(list(
-      data     = rv$processed_data,
+      data     = apply_subset_filter(rv$processed_data, rv),
       time_col = rv$time_col,
       vol_col  = rv$vol_col,
       tx_col   = rv$tx_col
     ))
   }
 
-  # Otherwise preprocess from scratch
-  data <- rv$uploaded_data
+  # Otherwise preprocess from scratch. Apply the Subset Filter to the
+  # raw upload before any column derivation.
+  data <- apply_subset_filter(rv$uploaded_data, rv)
   settings <- rv$settings
 
   # Date → Day

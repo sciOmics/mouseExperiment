@@ -649,5 +649,8 @@ data_upload_server <- function(id, rv) {
   # Session save / restore handlers
   setup_session_save_restore(input, output, session, rv)
 
+  # Subset Filter (CODE_REVIEW.md Round 2 F.5)
+  setup_subset_filter(input, output, session, rv)
+
   })
 }

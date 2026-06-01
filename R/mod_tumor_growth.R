@@ -75,7 +75,10 @@ tumor_growth_server <- function(id, rv) {
     })
     
     # Prepare data
-    data <- rv$uploaded_data
+    # CODE_REVIEW.md Round 2 F.5: apply the global Subset Filter (set on the
+    # Data Upload tab) before any column derivation, so excluded mice /
+    # treatments / cages are gone from every downstream computation.
+    data <- apply_subset_filter(rv$uploaded_data, rv)
     
     # Handle time column - either use direct day or calculate from date
     if (rv$settings$time_method == "from_date") {

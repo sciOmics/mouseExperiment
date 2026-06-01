@@ -142,6 +142,10 @@ dataUploadUI <- function(id) {
     # Data preview (shown after successful upload)
     uiOutput(ns("data_preview_ui")),
 
+    # Subset filter (CODE_REVIEW.md Round 2 F.5) — exclude mice / cages /
+    # treatments from every downstream analysis without re-uploading.
+    subset_filter_ui(ns),
+
     # Session save / restore
     session_save_restore_ui(ns)
   )
