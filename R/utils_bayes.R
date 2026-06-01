@@ -143,6 +143,61 @@ bayes_prior_params <- function(prior_strength) {
 
 # ── Cage column setup ──────────────────────────────────────────────────────────
 
+#' Empirical coverage of posterior predictive intervals
+#'
+#' For a fitted brmsfit, simulates from the posterior predictive
+#' distribution at the training data points and computes the empirical
+#' coverage of nominal 50\%, 80\%, and 95\% intervals against the observed
+#' response. Good coverage means \code{empirical / nominal ~ 1}; large
+#' deviations indicate model mis-specification.
+#'
+#' Returns a one-row data frame:
+#' \code{cov_50}, \code{cov_80}, \code{cov_95} (empirical coverage as a
+#' proportion of training observations falling within the interval), and
+#' an \code{n_obs} count. Returns \code{NULL} on any failure so the
+#' analysis still completes.
+#'
+#' Limitation: this is \emph{in-sample} coverage. It catches obvious
+#' mis-specification (e.g. residuals far heavier-tailed than the assumed
+#' family) but does not substitute for out-of-sample validation
+#' (\code{\link{bayes_loo}} for that).
+#' @noRd
+bayes_ppc_coverage <- function(model, response_var = NULL) {
+  if (!requireNamespace("brms", quietly = TRUE) || is.null(model)) return(NULL)
+  yrep <- tryCatch(brms::posterior_predict(model),
+                   error = function(e) NULL,
+                   warning = function(w) NULL)
+  if (is.null(yrep) || !is.matrix(yrep)) return(NULL)
+
+  y_obs <- tryCatch({
+    if (is.null(response_var)) {
+      brms::standata(model)$Y
+    } else {
+      model$data[[response_var]]
+    }
+  }, error = function(e) NULL)
+  if (is.null(y_obs) || length(y_obs) != ncol(yrep)) return(NULL)
+
+  # Per-observation predictive quantile bounds
+  q_bounds <- apply(yrep, 2L, function(col) {
+    stats::quantile(col, c(0.025, 0.10, 0.25, 0.75, 0.90, 0.975),
+                    names = FALSE, na.rm = TRUE)
+  })
+  # q_bounds is 6 x n_obs (rows: q025, q10, q25, q75, q90, q975)
+  cov50 <- mean(y_obs >= q_bounds[3L, ] & y_obs <= q_bounds[4L, ], na.rm = TRUE)
+  cov80 <- mean(y_obs >= q_bounds[2L, ] & y_obs <= q_bounds[5L, ], na.rm = TRUE)
+  cov95 <- mean(y_obs >= q_bounds[1L, ] & y_obs <= q_bounds[6L, ], na.rm = TRUE)
+
+  data.frame(
+    cov_50  = round(cov50, 4),
+    cov_80  = round(cov80, 4),
+    cov_95  = round(cov95, 4),
+    n_obs   = as.integer(length(y_obs)),
+    stringsAsFactors = FALSE
+  )
+}
+
+
 #' Posterior probability of direction for emmeans contrasts on a brmsfit
 #'
 #' Returns a numeric vector of length \code{ncol(contrast_draws)} with the

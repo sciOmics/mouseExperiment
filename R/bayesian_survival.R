@@ -310,6 +310,7 @@ bayesian_survival <- function(
   nuts_diagnostics <- make_nuts_diagnostics(model)
   loo_diagnostics  <- bayes_loo(model)
   bayes_r2         <- bayes_r2_summary(model)
+  ppc_coverage     <- bayes_ppc_coverage(model)
 
   # ── Treatment effects table ────────────────────────────────────────────────
   treatment_effects <- bs_build_treatment_table(
@@ -411,6 +412,7 @@ bayesian_survival <- function(
     nuts_diagnostics    = nuts_diagnostics,
     loo_diagnostics     = loo_diagnostics,
     bayes_R2            = bayes_r2,
+    ppc_coverage        = ppc_coverage,
     survival_data       = data.frame(
       Time      = df[[time_column]],
       Event     = df[[event_column]],
