@@ -38,6 +38,27 @@ session_save_restore_ui <- function(ns) {
                   buttonLabel = "Restore Session",
                   placeholder = "No file")
       )
+    ),
+    # CODE_REVIEW.md Round 2 F.2 — settings-only preset save/load.
+    # Smaller JSON file portable across datasets; doesn't carry uploaded
+    # data or results.
+    hr(style = "margin: 12px 0;"),
+    h6(strong(icon("sliders-h"), " Settings preset (column mapping + methods)")),
+    p(style = "font-size:11px; color:#6c757d; margin: 4px 0 8px 0;",
+      "Save just your column mappings and time / volume / formula settings ",
+      "to a small JSON file. Apply on a future dataset with the same column ",
+      "names to skip the mapping step."),
+    fluidRow(
+      column(6,
+        downloadButton(ns("save_preset"), "Save Preset",
+                       class = "btn-sm btn-info", style = "width:100%;")
+      ),
+      column(6,
+        fileInput(ns("load_preset"), NULL,
+                  accept = ".json",
+                  buttonLabel = "Load Preset",
+                  placeholder = "No file")
+      )
     )
   )
 }
@@ -105,6 +126,73 @@ setup_session_save_restore <- function(input, output, session, rv) {
       shinyjs::runjs(sprintf("window.trackError('session', %s, 'session_restore');",
                              js_string(e$message)))
       log_caught_error("session", "restore", e)
+    })
+  })
+
+  # ── Settings preset save / load (CODE_REVIEW.md Round 2 F.2) ─────────────
+  # The preset contains only the column mappings + time/volume methods —
+  # small enough to be portable across datasets with the same headers.
+
+  output$save_preset <- downloadHandler(
+    filename = function() {
+      paste0("mouseExperiment_preset_",
+             format(Sys.time(), "%Y%m%d_%H%M%S"), ".json")
+    },
+    content = function(file) {
+      preset <- list(
+        format_version = "1",
+        saved_at       = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"),
+        settings       = isolate(rv$settings) %||% list()
+      )
+      jsonlite::write_json(preset, file, pretty = TRUE, auto_unbox = TRUE)
+      log_info("preset_save | file=mouseExperiment_preset.json")
+      shinyjs::runjs("window.trackEvent('preset_saved', {format: 'json'});")
+    }
+  )
+
+  observeEvent(input$load_preset, {
+    file_info <- input$load_preset
+    req(file_info)
+    tryCatch({
+      preset <- jsonlite::read_json(file_info$datapath, simplifyVector = TRUE)
+      if (!is.list(preset) || is.null(preset$settings)) {
+        showNotification("Invalid preset file (missing settings).", type = "error")
+        return()
+      }
+
+      # Apply each column-mapping / methods setting via update*Input. The
+      # observe() in data_upload that mirrors inputs into rv$settings will
+      # pick up the changes automatically.
+      st <- preset$settings
+      updateSelectInput(session, "col_treatment",     selected = st$col_treatment     %||% "")
+      updateSelectInput(session, "col_id",            selected = st$col_id            %||% "")
+      updateSelectInput(session, "col_day",           selected = st$col_day           %||% "")
+      updateSelectInput(session, "col_date_for_day",  selected = st$col_date_for_day  %||% "")
+      updateSelectInput(session, "col_volume",        selected = st$col_volume        %||% "")
+      updateSelectInput(session, "col_length",        selected = st$col_length        %||% "")
+      updateSelectInput(session, "col_width",         selected = st$col_width         %||% "")
+      updateSelectInput(session, "col_height",        selected = st$col_height        %||% "")
+      updateSelectInput(session, "col_cage",          selected = st$col_cage          %||% "")
+      updateSelectInput(session, "col_dose",          selected = st$col_dose          %||% "")
+      updateSelectInput(session, "col_survival_event",selected = st$col_survival_event%||% "")
+      updateSelectInput(session, "col_weight",        selected = st$col_weight        %||% "")
+      updateSelectInput(session, "col_sex",           selected = st$col_sex           %||% "")
+      updateSelectInput(session, "col_necrotic",      selected = st$col_necrotic      %||% "")
+      if (!is.null(st$time_method))    updateRadioButtons(session, "time_method",    selected = st$time_method)
+      if (!is.null(st$volume_method))  updateRadioButtons(session, "volume_method",  selected = st$volume_method)
+      if (!is.null(st$volume_formula)) updateSelectInput(session,  "volume_formula", selected = st$volume_formula)
+      if (!is.null(st$reference_date)) updateTextInput(session,    "reference_date", value    = st$reference_date)
+
+      saved_at <- preset$saved_at %||% "(unknown)"
+      showNotification(
+        paste("Preset loaded — saved at", saved_at),
+        type = "message", duration = 5
+      )
+      shinyjs::runjs("window.trackEvent('preset_loaded', {format: 'json'});")
+      log_info(sprintf("preset_load | saved_at=%s", saved_at))
+    }, error = function(e) {
+      showNotification(paste("Failed to load preset:", e$message), type = "error")
+      log_caught_error("preset", "load", e)
     })
   })
 }
