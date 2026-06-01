@@ -21,6 +21,27 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
 
   if (!exists("APP_VERSION")) APP_VERSION <- "0.1.0 (Development)"
 
+  # CODE_REVIEW.md Round 2 E.3 — proxy timeout health check.
+  # When the dashboard is running under shiny-server (detected via
+  # SHINY_PORT) it's almost certainly behind a reverse proxy. The default
+  # proxy_read_timeout on most stacks (NPM, nginx) is 60s, which kills
+  # the websocket mid-Bayesian-fit and produces the disconnect overlay
+  # documented in Round 2 A.3. There's no way to introspect the live proxy
+  # config from inside the container, so the best we can do is log a
+  # prominent warning at startup so operators have a written reminder.
+  if (nzchar(Sys.getenv("SHINY_PORT", unset = "")) ||
+      nzchar(Sys.getenv("SHINY_SERVER_VERSION", unset = ""))) {
+    message(strrep("=", 78))
+    message("[startup] Detected shiny-server environment.")
+    message("[startup] Bayesian fits take 3-12 minutes; verify the reverse")
+    message("[startup] proxy ahead of this app uses proxy_read_timeout >= 3600s")
+    message("[startup] (NPM \"Advanced\" tab) AND allow_websocket_upgrade = true.")
+    message("[startup] Otherwise long fits will drop their websocket and surface")
+    message("[startup] as Shiny's disconnect overlay. See dashboard CODE_REVIEW.md")
+    message("[startup] Round 2 A.3 / E.3 and the VPS repo's NPM provisioner.")
+    message(strrep("=", 78))
+  }
+
   # Mount static assets from inst/www/ (bundled with package)
   # system.file() returns the installation path during normal use, and the
   # source directory root during devtools::load_all(), so inst/www resolves correctly in both cases.
