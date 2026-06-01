@@ -1,4 +1,4 @@
-# Efficacy-Toxicity functionality has been merged into toxicity_modules.R
+# Efficacy-Toxicity functionality has been merged into mod_toxicity.R
 # The Statistical Model selector in the Toxicity tab now provides both
 # "Body Weight Analysis" and "Efficacy-Toxicity Analysis" modes.
 # These stub functions are kept to avoid breaking any lingering references.

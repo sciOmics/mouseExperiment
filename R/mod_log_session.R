@@ -6,7 +6,7 @@
 #' stdout — visible via \code{journalctl} / \code{docker logs} — so the
 #' operational signal is preserved without a user-facing tab.)
 #'
-#' @name log_session_modules
+#' @name mod_log_session
 #' @keywords internal
 
 # ---------------------------------------------------------------------------
