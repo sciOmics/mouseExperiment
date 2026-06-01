@@ -140,3 +140,61 @@ test_that("column mapping UI renders after loading demo data", {
 })
 
 `%||%` <- function(a, b) if (!is.null(a)) a else b
+
+# ===========================================================================
+# Test: end-to-end upload → run TG LME4 → verify results populate
+# (CODE_REVIEW.md Round 2 I.5)
+# ===========================================================================
+#
+# Extends shinytest2 coverage beyond the Data tab. Drives a complete
+# user workflow: load combo demo, switch to the TG tab, accept defaults,
+# run the LME4 fit, wait for completion, assert tg_results is non-NULL.
+#
+# LME4 on the combo fixture completes in < 10s. Bayesian / GAMM paths
+# are NOT exercised here because they require brms + Stan and would
+# blow CI budgets. They're covered by mouseExperiment's unit tests.
+
+test_that("end-to-end: load combo demo + run TG LME4 populates results", {
+  skip_if_not_installed("mouseExperiment")
+
+  workflow_app <- build_workflow_test_app()
+  skip_if(is.null(workflow_app),
+          "Could not build workflow test app — package namespace incomplete")
+
+  app <- shinytest2::AppDriver$new(
+    workflow_app,
+    name    = "dashboard-workflow",
+    timeout = 30000,
+    wait    = TRUE
+  )
+  on.exit(app$stop(), add = TRUE)
+
+  # Step 1 — load combo demo data
+  app$set_inputs(demo_dataset = "combo", wait_ = FALSE)
+  app$click("load_demo_data")
+  app$wait_for_idle(timeout = 15000)
+  expect_equal(trimws(app$get_text("#test_data_valid")), "TRUE",
+               info = "Data should load successfully")
+
+  # Step 2 — switch to TG tab
+  app$set_inputs(main_tabs = "TG")
+  app$wait_for_idle(timeout = 5000)
+
+  # Step 3 — click Run; LME4 is the default model_type
+  app$click("tg-run_tg_analysis")
+
+  # Step 4 — poll up to 30s for results to populate
+  deadline <- Sys.time() + 30
+  populated <- FALSE
+  while (Sys.time() < deadline) {
+    app$wait_for_idle(timeout = 2000)
+    tg_state <- trimws(app$get_text("#test_tg_has_results") %||% "FALSE")
+    if (identical(tg_state, "TRUE")) {
+      populated <- TRUE
+      break
+    }
+    Sys.sleep(1)
+  }
+  expect_true(populated,
+              info = "TG LME4 analysis should populate rv$tg_results within 30s")
+})
