@@ -624,59 +624,9 @@ dose_response_server <- function(id, rv) {
         backend       = input$dr_bayes_backend %||% "rstan"
       )
 
-      show_analysis_modal("Bayesian dose-response fit running…", "Fitting Bayesian Hill/Emax model with brms. This may take 3–12 minutes.")
-
-      shinyjs::runjs("window.trackAnalysisStart('dose_response', 'bayes', 'hill_emax');")
-
-      promises::future_promise({
-        mouseExperiment::bayesian_dose_response(
-          df               = dr_bayes_params$data,
-          dose_column      = dr_bayes_params$dose_col,
-          volume_column    = dr_bayes_params$vol_col,
-          treatment_column = dr_bayes_params$tx_col,
-          day_column       = dr_bayes_params$time_col,
-          id_column        = dr_bayes_params$id_col,
-          endpoint_day     = dr_bayes_params$time_point,
-          reference_group  = dr_bayes_params$ref_group,
-          prior_strength   = dr_bayes_params$prior_str,
-          n_chains         = dr_bayes_params$n_chains,
-          n_warmup         = dr_bayes_params$n_warmup,
-          n_iter           = dr_bayes_params$n_iter,
-          backend          = dr_bayes_params$backend,
-          return_model     = TRUE,
-          plots            = TRUE
-        )
-      }) %...>% (function(result) {
-        shiny::removeModal()
-        result$model_type_used <- "bayes_dr"
-        if (!is.null(rv$bayes_models)) rv$bayes_models$dr <- result$model
-        else                           rv$bayes_models <- list(dr = result$model)
-        result$model <- NULL
-        gc()
-        rv$dr_results <- result
-        updateTabsetPanel(session, "dr_results_tabs", selected = "Summary")
-        if (isTRUE(result$error)) {
-          err_msg <- result$message
-          shinyjs::runjs(sprintf("window.trackAnalysisComplete('dose_response', false, %s);",
-                                 js_string(err_msg)))
-          output$dr_status_msg <- renderUI({
-            status_alert(paste("Bayesian DR failed:", err_msg), "danger")
-          })
-        } else {
-          shinyjs::runjs("window.trackAnalysisComplete('dose_response', true);")
-          output$dr_status_msg <- renderUI({
-            status_alert("Bayesian dose-response analysis completed!", "success")
-          })
-        }
-      }) %...!% (function(err) {
-        shiny::removeModal()
-        err_msg <- translate_error(conditionMessage(err))
-        shinyjs::runjs(sprintf("window.trackAnalysisComplete('dose_response', false, %s);",
-                               js_string(err_msg)))
-        output$dr_status_msg <- renderUI({
-          status_alert(paste("Bayesian DR failed:", err_msg), "danger")
-        })
-      })
+      # F.7 — route through the job registry.
+      launch_dr_bayes_job(rv$session_id, dr_bayes_params,
+                          input, output, session, rv)
       return()
     }
 
@@ -1065,5 +1015,8 @@ dose_response_server <- function(id, rv) {
       write.csv(out, file, row.names = FALSE)
     }
   )
+
+  # F.7 — register the resume handler for bayes_dr jobs.
+  register_dr_resume(input, output, session, rv)
   })
 }

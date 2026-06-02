@@ -587,69 +587,9 @@ synergy_server <- function(id, rv) {
         backend    = input$syn_bayes_backend %||% "rstan"
       )
 
-      show_analysis_modal("Bayesian synergy fit running…", "Fitting synergy model with brms. This may take 3–12 minutes.")
-
-      shinyjs::runjs("window.trackAnalysisStart('drug_synergy', 'bayes', 'combo_vs_monotherapy');")
-
-      promises::future_promise({
-        mouseExperiment::bayesian_synergy(
-          df                           = syn_bayes_params$data,
-          volume_column                = syn_bayes_params$vol_col,
-          time_column                  = syn_bayes_params$time_col,
-          treatment_column             = syn_bayes_params$tx_col,
-          id_column                    = syn_bayes_params$id_col,
-          cage_column                  = syn_bayes_params$cage_col,
-          drug_a_name                  = syn_bayes_params$drug_a,
-          drug_b_name                  = syn_bayes_params$drug_b,
-          combo_name                   = syn_bayes_params$combo,
-          control_name                 = syn_bayes_params$control,
-          endpoint_day                 = syn_bayes_params$endpoint_day,
-          random_effects_specification = syn_bayes_params$re_spec,
-          prior_strength               = syn_bayes_params$prior_str,
-          n_chains                     = syn_bayes_params$n_chains,
-          n_warmup                     = syn_bayes_params$n_warmup,
-          n_iter                       = syn_bayes_params$n_iter,
-          backend                      = syn_bayes_params$backend,
-          return_model                 = TRUE,
-          plots                        = TRUE
-        )
-      }) %...>% (function(result) {
-        shiny::removeModal()
-        if (!is.null(rv$bayes_models)) rv$bayes_models$syn <- result$model
-        else                           rv$bayes_models <- list(syn = result$model)
-        result$model <- NULL
-        gc()
-        rv$syn_results   <- result
-        updateTabsetPanel(session, "syn_results_tabs", selected = "Summary")
-        rv$syn_over_time <- FALSE
-        rv$syn_plot_inputs <- list(
-          drug_a  = syn_bayes_params$drug_a,
-          drug_b  = syn_bayes_params$drug_b,
-          combo   = syn_bayes_params$combo,
-          control = syn_bayes_params$control
-        )
-        if (isTRUE(result$error)) {
-          err_msg <- result$message
-          shinyjs::runjs(sprintf("window.trackAnalysisComplete('drug_synergy', false, %s);",
-                                 js_string(err_msg)))
-          output$syn_status_msg <- renderUI({
-            status_alert(paste("Bayesian synergy failed:", err_msg), "danger")
-          })
-        } else {
-          shinyjs::runjs("window.trackAnalysisComplete('drug_synergy', true);")
-          output$syn_status_msg <- renderUI({
-            status_alert("Bayesian synergy analysis completed!", "success")
-          })
-        }
-      }) %...!% (function(err) {
-        shiny::removeModal()
-        err_msg <- translate_error(conditionMessage(err))
-        shinyjs::runjs(sprintf("window.trackAnalysisComplete('drug_synergy', false, %s);",
-                               js_string(err_msg)))
-        output$syn_status_msg <- renderUI({
-          status_alert(paste("Bayesian synergy failed:", err_msg), "danger")
-        })
-      })
+      # F.7 — route through the job registry.
+      launch_syn_bayes_job(rv$session_id, syn_bayes_params,
+                           input, output, session, rv)
       return()
     }
 
@@ -1167,5 +1107,8 @@ synergy_server <- function(id, rv) {
   add_syn_download_handlers(input, output, session, rv,
                             current_syn_main_plot, current_syn_trend_plot,
                             current_syn_ci_plot,   current_syn_tgi_plot)
+
+  # F.7 — register the resume handler for bayes_syn jobs.
+  register_syn_resume(input, output, session, rv)
   })
 }

@@ -713,81 +713,10 @@ survival_server <- function(id, rv) {
         ref_date       = rv$settings$reference_date
       )
 
-      show_analysis_modal("Bayesian survival fit running…", "Fitting Weibull model with brms. This may take 3–12 minutes.")
-
-      shinyjs::runjs(sprintf(
-        "window.trackAnalysisStart('survival', 'bayes', '%s');",
-        bayes_params$ref_group
-      ))
-
-      promises::future_promise({
-        mouseExperiment::bayesian_survival(
-          df               = bayes_params$data,
-          time_column      = bayes_params$time_col,
-          event_column     = bayes_params$event_col,
-          treatment_column = bayes_params$tx_col,
-          id_column        = bayes_params$id_col,
-          cage_column      = bayes_params$cage_col,
-          family           = bayes_params$family,
-          reference_group  = bayes_params$ref_group,
-          prior_strength   = bayes_params$prior_str,
-          n_chains         = bayes_params$n_chains,
-          n_warmup         = bayes_params$n_warmup,
-          n_iter           = bayes_params$n_iter,
-          backend          = bayes_params$backend,
-          return_model     = TRUE,
-          plots            = TRUE
-        )
-      }) %...>% (function(result) {
-        shiny::removeModal()
-        result$model_type_used    <- "bayes"
-        result$event_src_used     <- bayes_params$event_src
-        result$vol_threshold_used <- bayes_params$vol_threshold
-        result$time_method        <- bayes_params$time_method
-        result$time_column_used   <- bayes_params$time_col_orig
-        result$reference_date     <- bayes_params$ref_date
-        # Build km_fit from survival_data for risk table / KM reactive
-        if (!isTRUE(result$error) && !is.null(result$survival_data)) {
-          tryCatch({
-            sd <- result$survival_data
-            result$km_fit <- survival::survfit(
-              survival::Surv(Time, Event) ~ Treatment, data = sd)
-          }, error = function(e) NULL)
-        }
-        if (!is.null(rv$bayes_models)) rv$bayes_models$surv <- result$model
-        else                           rv$bayes_models <- list(surv = result$model)
-        result$model <- NULL
-        gc()
-        rv$surv_results <- result
-        updateTabsetPanel(session, "surv_results_tabs", selected = "Summary")
-        rv$surv_running <- FALSE
-        rv$surv_plot_groups <- if (!is.null(result$survival_data) &&
-                                   has_col(result$survival_data, "Treatment")) {
-          unique(as.character(result$survival_data$Treatment))
-        } else NULL
-        if (isTRUE(result$error)) {
-          err_msg <- result$message
-          shinyjs::runjs(sprintf(
-            "window.trackAnalysisComplete('survival', false, %s);", js_string(err_msg)))
-          output$surv_status_msg <- renderUI({
-            status_alert(paste("Bayesian analysis failed:", err_msg), "danger")
-          })
-        } else {
-          shinyjs::runjs("window.trackAnalysisComplete('survival', true);")
-          output$surv_status_msg <- renderUI({
-            status_alert("Bayesian survival analysis completed!", "success")
-          })
-        }
-      }) %...!% (function(err) {
-        shiny::removeModal()
-        err_msg <- translate_error(conditionMessage(err))
-        rv$surv_running <- FALSE
-        shinyjs::runjs(sprintf(
-          "window.trackAnalysisComplete('survival', false, %s);", js_string(err_msg)))
-        output$surv_status_msg <- renderUI({
-          status_alert(paste("Bayesian analysis failed:", err_msg), "danger")
-        })
-      })
+      # F.7 — route through the job registry so the fit survives tab
+      # disconnect / NPM proxy timeout.
+      launch_surv_bayes_job(rv$session_id, bayes_params,
+                            input, output, session, rv)
       return()
     }
 
@@ -1462,6 +1391,9 @@ survival_server <- function(id, rv) {
   # passed explicitly so the KM-PNG handler's reactive dependency stays
   # visible at the call site.
   add_surv_download_handlers(input, output, session, rv, km_plot_r)
+
+  # F.7 — register the resume handler for bayes_surv jobs.
+  register_surv_resume(input, output, session, rv)
 
   })
 }

@@ -1100,41 +1100,9 @@ toxicity_server <- function(id, rv) {
         ref_group  = input$tox_reference_group %||% NULL
       )
 
-      show_analysis_modal("Bayesian TWM running…", "Combining TG and BW posterior samples. This may take a few minutes.")
-
-      promises::future_promise({
-        mouseExperiment::bayesian_therapeutic_window(
-          tg_result        = twm_params$tg_result,
-          bw_result        = twm_params$bw_result,
-          treatment_column = twm_params$tx_col,
-          time_column      = twm_params$time_col,
-          reference_group  = twm_params$ref_group,
-          plots            = TRUE
-        )
-      }) %...>% (function(result) {
-        shiny::removeModal()
-        result$model_type <- "bayes_twm"
-        rv$tox_results <- list(
-          model_type = "bayes_twm",
-          twm        = result
-        )
-        updateTabsetPanel(session, "tox_results_tabs", selected = "Summary")
-        if (isTRUE(result$error)) {
-          output$tox_status_msg <- renderUI({
-            status_alert(paste("Bayesian TWM failed:", result$message), "danger")
-          })
-        } else {
-          output$tox_status_msg <- renderUI({
-            status_alert("Bayesian Therapeutic Window analysis completed!", "success")
-          })
-        }
-      }) %...!% (function(err) {
-        shiny::removeModal()
-        err_msg <- translate_error(conditionMessage(err))
-        output$tox_status_msg <- renderUI({
-          status_alert(paste("Bayesian TWM failed:", err_msg), "danger")
-        })
-      })
+      # F.7 — route through the job registry.
+      launch_twm_bayes_job(rv$session_id, twm_params,
+                           input, output, session, rv)
       return()
     }
 
@@ -1194,64 +1162,9 @@ toxicity_server <- function(id, rv) {
         backend       = input$tox_bw_bayes_backend %||% "rstan"
       )
 
-      show_analysis_modal("Bayesian body weight fit running…", "Fitting body weight model with brms. This may take 3–12 minutes.")
-
-      promises::future_promise({
-        mouseExperiment::bayesian_body_weight(
-          df                           = bw_bayes_params$data,
-          weight_column                = bw_bayes_params$wt_col,
-          time_column                  = bw_bayes_params$time_col,
-          treatment_column             = bw_bayes_params$tx_col,
-          id_column                    = bw_bayes_params$id_col,
-          cage_column                  = bw_bayes_params$cage_col,
-          volume_column                = bw_bayes_params$vol_col,
-          adjust_tumor_weight          = bw_bayes_params$adjust,
-          tumor_density                = bw_bayes_params$density,
-          random_effects_specification = bw_bayes_params$re_spec,
-          reference_group              = bw_bayes_params$ref_group,
-          prior_strength               = bw_bayes_params$prior_str,
-          n_chains                     = bw_bayes_params$n_chains,
-          n_warmup                     = bw_bayes_params$n_warmup,
-          n_iter                       = bw_bayes_params$n_iter,
-          backend                      = bw_bayes_params$backend,
-          return_model                 = TRUE,
-          plots                        = TRUE
-        )
-      }) %...>% (function(result) {
-        shiny::removeModal()
-        result$model_type  <- "bw_bayes"
-        if (!is.null(rv$bayes_models)) rv$bayes_models$bw <- result$model
-        else                           rv$bayes_models <- list(bw = result$model)
-        result$model <- NULL
-        gc()
-        rv$tox_results <- list(
-          model_type    = "bw_bayes",
-          mixed_model   = result,
-          bw_auc        = NULL,
-          weight_loss   = NULL
-        )
-        updateTabsetPanel(session, "tox_results_tabs", selected = "Summary")
-        rv$tox_plot_groups <- if (!is.null(result$treatment_effects) &&
-                                   has_col(as.data.frame(result$treatment_effects), "Group")) {
-          unique(as.character(as.data.frame(result$treatment_effects)$Group))
-        } else NULL
-        if (isTRUE(result$error)) {
-          err_msg <- result$message
-          output$tox_status_msg <- renderUI({
-            status_alert(paste("Bayesian BW failed:", err_msg), "danger")
-          })
-        } else {
-          output$tox_status_msg <- renderUI({
-            status_alert("Bayesian body weight analysis completed!", "success")
-          })
-        }
-      }) %...!% (function(err) {
-        shiny::removeModal()
-        err_msg <- translate_error(conditionMessage(err))
-        output$tox_status_msg <- renderUI({
-          status_alert(paste("Bayesian BW failed:", err_msg), "danger")
-        })
-      })
+      # F.7 — route through the job registry.
+      launch_bw_bayes_job(rv$session_id, bw_bayes_params,
+                          input, output, session, rv)
       return()
     }
 
@@ -1590,6 +1503,10 @@ toxicity_server <- function(id, rv) {
   # C.1/C.3). Active-plot handler reaches into `output[[plot_id]]()` which
   # still works because every handler binds to the same `output` env.
   add_tox_download_handlers(input, output, session, rv)
+
+  # F.7 — register resume handlers for both Bayesian fits in this module.
+  register_bw_resume(input, output, session, rv)
+  register_twm_resume(input, output, session, rv)
 
   }) # end moduleServer
 }

@@ -12,9 +12,9 @@ g <- function(nm) get(nm, envir = pkg)
 flush_promises <- function() later::run_now(timeoutSecs = 1)
 
 # ---------------------------------------------------------------------------
-# .finalize_tg_bayes_success populates rv idempotently
+# .finalize_tg_success populates rv idempotently
 # ---------------------------------------------------------------------------
-test_that(".finalize_tg_bayes_success writes rv$tg_results + plot data", {
+test_that(".finalize_tg_success writes rv$tg_results + plot data", {
   rv <- shiny::reactiveValues(
     tg_running   = TRUE,
     tg_results   = NULL,
@@ -37,9 +37,11 @@ test_that(".finalize_tg_bayes_success writes rv$tg_results + plot data", {
   shiny::testServer(function(id, rv) {
     shiny::moduleServer(id, function(input, output, session) {
       # We don't actually run the function inside the module — call it
-      # directly with the captured session.
-      g(".finalize_tg_bayes_success")(fake_result, fake_params,
-                                      input, output, session, rv)
+      # directly with the captured session. New signature takes a
+      # `context` list, not the params directly.
+      g(".finalize_tg_success")(fake_result,
+                                list(bayes_params = fake_params),
+                                input, output, session, rv)
     })
   }, args = list(rv = rv), {
     expect_equal(shiny::isolate(rv$tg_results)$model_type_used, "bayes")
@@ -51,13 +53,14 @@ test_that(".finalize_tg_bayes_success writes rv$tg_results + plot data", {
 })
 
 # ---------------------------------------------------------------------------
-# .finalize_tg_bayes_failure writes error state without leaking sid
+# .finalize_tg_failure writes error state without leaking sid
 # ---------------------------------------------------------------------------
-test_that(".finalize_tg_bayes_failure sets rv$tg_running=FALSE", {
+test_that(".finalize_tg_failure sets rv$tg_running=FALSE", {
   rv <- shiny::reactiveValues(tg_running = TRUE)
   shiny::testServer(function(id, rv) {
     shiny::moduleServer(id, function(input, output, session) {
-      g(".finalize_tg_bayes_failure")("Stan compile error", output, rv)
+      g(".finalize_tg_failure")("Stan compile error",
+                                input, output, session, rv)
     })
   }, args = list(rv = rv), {
     expect_false(shiny::isolate(rv$tg_running))
