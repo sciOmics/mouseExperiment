@@ -4,6 +4,44 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.06.003] 2026 June 1st
+
+Closes CODE_REVIEW.md Round 2 C.1 / C.3 — the tumor-growth mega-file refactor.
+`R/mod_tumor_growth.R` shrinks from 2,659 LOC to 1,727 LOC (−932 LOC, −35%);
+the extracted code lives in two new files split by concern, not by tab.
+
+### Changed
+
+- `R/mod_tumor_growth_downloads.R` (new, 253 LOC). Holds all 16
+  download handlers (anova / comparisons / effects / rates / AUC /
+  data summary / 5 plot PNGs / posterior predictive check /
+  necrosis CSV / "Download All" ZIP) plus the necrosis-summary
+  `renderDT` that sits adjacent to its download. Exposed as
+  `add_tg_download_handlers(input, output, session, rv,
+  tg_growth_plot, tg_rates_plot, tg_auc_plot, tg_forest_plot,
+  tg_wf_plot)` — the plot reactives are passed in explicitly rather
+  than captured by closure so the cross-file contract is visible.
+- `R/mod_tumor_growth_plots.R` (new, 746 LOC). Holds all five plot
+  reactives (`tg_growth_plot`, `tg_rates_plot`, `tg_auc_plot`,
+  `tg_wf_plot`, `tg_forest_plot`), their associated `renderPlot`
+  bindings, the group-order / colour `renderUI`, the palette-preset
+  observer, and the two frequentist diagnostic plots (`tg_diag_qq`,
+  `tg_diag_resid_fitted`). Exposed as `add_tg_plots(input, output,
+  session, rv, ordered_tg_grps)` and returns a named list of the
+  five reactives so the caller can hand them to the downloads helper.
+- `R/mod_tumor_growth.R` now owns lifecycle only — observers, fit
+  dispatch (frequentist + Bayesian), status messages, tab insertion,
+  the Bayesian renderers (`tg_posterior_summary`,
+  `tg_pp_check_plot`, `tg_mcmc_diag_table`, `tg_bayes_diagnostics`,
+  `tg_bayes_influential`, `tg_mcmc_trace_plot`), and the table /
+  drilldown / compare-panel renderers that remain interleaved with
+  lifecycle code.
+
+No behaviour change: implementation is moved verbatim, and the
+existing `test-module_servers.R::tumor_growth_server initialises and
+exposes session ns` test still exercises the full module startup
+across all three files.
+
 ## [v26.06.002] 2026 June 1st
 
 Closes 11 more CODE_REVIEW.md Round 2 items. After this release only the

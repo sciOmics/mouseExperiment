@@ -7,7 +7,7 @@
 
 **Resolution status:** 24/25 items resolved. Two items remain open:
 - **2.4** — Dose-Response plot customization controls (scope expansion; not a bug)
-- **6.1** — Server function length (architectural recommendation; ongoing)
+- **6.1** — Server function length (architectural recommendation; partially addressed v26.06.003 — `mod_tumor_growth.R` split, four other mega-files still pending)
 
 ---
 
@@ -390,7 +390,7 @@ filename = function() {
 | 5.1 | Raw R error messages surface to users | Error handling | Multiple | Done |
 | 5.2 | Silent failures in download handlers (no user feedback) | Error handling | Multiple | Done |
 | 5.3 | Analytics JS escaping incomplete for multiline/unicode errors | Error handling | Multiple | Done |
-| 6.1 | Server functions 800+ lines; hard to maintain | Structure | Multiple | Open |
+| 6.1 | Server functions 800+ lines; hard to maintain | Structure | Multiple | Partial (v26.06.003) — `mod_tumor_growth.R` split 2,659→1,727 LOC + 2 new files; 4 others still open |
 | 6.2 | Plot code duplicated in renderPlot + downloadHandler | Structure | Multiple | Done |
 | 6.3 | Synergy inline colour construction bypasses `build_color_vector()` | Structure / Bug | `synergy_modules.R:619` | Done |
 | 7.1 | Bayesian analysis pattern not yet implemented for Synergy / DR / TWM | Harmonization | Multiple | Done |
@@ -406,7 +406,7 @@ filename = function() {
 
 ## Round-1 status
 
-Of the 25 items in the v26.05.019 review, **24 are resolved**. Only item **6.1 (server function length)** remains open and has in fact regressed — see C.1 below. Item 2.4 (Dose-Response plot customization) is a scope expansion rather than a bug and is intentionally deferred.
+Of the 25 items in the v26.05.019 review, **24 are resolved**. Item **6.1 (server function length)** is partially addressed in v26.06.003 — see C.1 below — but the other four mega-files (`toxicity_modules.R`, `survival_modules.R`, `synergy_modules.R`, `helpers.R`) still need the same treatment. Item 2.4 (Dose-Response plot customization) is a scope expansion rather than a bug and is intentionally deferred.
 
 The Bayesian module pattern (item 7.1) has been fully harmonised: all five analysis modules (Tumor Growth, Survival, Synergy, Dose Response, Toxicity TWM/BW) now share a common `show_analysis_modal()` running indicator, `Posterior Check` / `MCMC Diagnostics` / `Prior vs Posterior` tab structure, and posterior-summary table layout.
 
@@ -456,29 +456,40 @@ The canonical provisioner created the Shiny hosts with neither `allow_websocket_
 
 ## C. Architecture
 
-### C.1 Server function length (6.1 from v26.05.019 — re-flagged, regressed)
-| File | LOC at v26.05.019 review | LOC at v26.05.022 |
+### C.1 Server function length (6.1 from v26.05.019 — partially resolved in v26.06.003)
+| File | LOC at v26.05.022 | LOC at v26.06.003 |
 |---|---|---|
-| `mod_tumor_growth.R` | ~1,800 | **2,367** |
-| `toxicity_modules.R` | ~1,600 | **2,069** |
-| `survival_modules.R` | ~1,200 | **1,405** |
-| `synergy_modules.R` | ~1,100 | **1,205** |
-| `helpers.R` | ~900 | **1,083** (35 helper functions in one file) |
+| `mod_tumor_growth.R` | **2,367** | **1,727** (split into 3 files) |
+| `toxicity_modules.R` | **2,069** | 2,069 — still open |
+| `survival_modules.R` | **1,405** | 1,405 — still open |
+| `synergy_modules.R` | **1,205** | 1,205 — still open |
+| `helpers.R` | **1,083** | 1,083 — still open |
 
-Each module file contains both the UI definition *and* the entire server observeEvent chain for that analysis. Recommended split per module:
-- `mod_<tab>/ui.R` — `tabPanel`, sidebar, results tabsets
-- `mod_<tab>/server_frequentist.R` — frequentist observe* chain
-- `mod_<tab>/server_bayesian.R` — Bayesian path + future callbacks
-- `mod_<tab>/renders.R` — `render*` and `download*` handlers
-- `mod_<tab>/server.R` — top-level module assembling the above
+**Resolved for `mod_tumor_growth.R` in v26.06.003** by splitting concerns
+across three files rather than the originally-proposed per-tab subdirectory
+layout (R/ is flattened on install, so subdirs aren't usable). The chosen
+split is by concern, not by Bayesian/frequentist:
 
-Same split helps `helpers.R` — currently mixes status alerts, formatters, plot helpers, validation, and `show_analysis_modal()`.
+- `mod_tumor_growth.R` (1,727 LOC) — server lifecycle: observers, fit
+  dispatch (frequentist + Bayesian), status messages, tab insertion, table
+  / drilldown / compare-panel renderers, Bayesian renderers
+- `mod_tumor_growth_plots.R` (746 LOC) — all 5 plot reactives + plot
+  renderers + diagnostics + group-order / palette wiring
+- `mod_tumor_growth_downloads.R` (253 LOC) — all 16 download handlers +
+  the necrosis-summary renderDT
+
+Plot reactives are passed explicitly to the downloads helper rather than
+captured by closure, so the cross-file contract is visible at the call
+site. No subdirectory layout used. The same pattern can be applied to the
+other four files when their refactors are scheduled.
 
 ### C.2 Module file naming inconsistency
 Only `mod_tumor_growth.R` uses the `mod_` prefix; the others (`survival_modules.R`, `synergy_modules.R`, …) use the `_modules.R` suffix. Pick one convention.
 
 ### C.3 `output$` rendering is concentrated in a few mega-files
 `survival_modules.R`, `mod_tumor_growth.R`, and `mod_data_upload.R` each contain dozens of `output$X <- render*()` blocks. Extracting per-tab `*_render_helpers.R` files would let test cases hit them individually.
+
+**Partially resolved in v26.06.003** for `mod_tumor_growth.R` — see C.1 above. The five plot reactives + their `renderPlot` bindings + the two frequentist diagnostic plots now live in `mod_tumor_growth_plots.R`; all 16 download handlers + the necrosis `renderDT` live in `mod_tumor_growth_downloads.R`. Table renderers and Bayesian renderers remain in the main file because they're interleaved with lifecycle code and the marginal gain from further splitting is small. `survival_modules.R` and `mod_data_upload.R` still pending.
 
 ---
 
@@ -549,9 +560,9 @@ If the user accidentally closes the tab or the connection drops mid-Bayesian-fit
 | A.4 | Stale browser cache of CSS/JS | Major | `app.R` | ✅ Fixed (5e63303) |
 | B.1 | Silent rebuild failures (CRAN miss → broken image swap) | Critical | VPS `rebuild-shiny.sh` | ✅ Fixed (VPS `d2034c5`) |
 | B.2 | NPM hosts missing websocket + advanced_config | Critical | VPS `06-configure-npm.sh` | ✅ Fixed (VPS `043419e`) |
-| C.1 | Server function length still growing | Architecture | Multiple | ❌ Open — needs dedicated session |
+| C.1 | Server function length still growing | Architecture | Multiple | ⚠️ Partial v26.06.003 (mod_tumor_growth.R split: 2,659 → 1,727 LOC + 2 new files; other 4 files still open) |
 | C.2 | Module file naming inconsistency | Minor | Module files | ✅ Fixed v26.06.002 (mod_*.R everywhere) |
-| C.3 | Mega-files concentrate render handlers | Architecture | Multiple | ❌ Open — needs dedicated session |
+| C.3 | Mega-files concentrate render handlers | Architecture | Multiple | ⚠️ Partial v26.06.003 (TG plot + download handlers extracted; survival, data_upload still open) |
 | D.x | Diagnostic surfacing | Major | All Bayesian / Survival tabs | ✅ Fixed v26.06.001 (bayes_R2, ppc_coverage, NUTS banner, LOO panel, cox.zph tab, C-index, P_direction column) |
 | E.1 | Power Analysis missing Summary tab | Minor | `power_modules.R` | ✅ Fixed v26.06.001 |
 | E.2 | CHANGELOG missing v26.05.020 entry | Minor | `CHANGELOG.md` | ✅ Fixed v26.06.001 |
