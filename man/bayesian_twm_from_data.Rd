@@ -20,7 +20,8 @@ bayesian_twm_from_data(
   prior_strength = c("skeptical", "weakly_informative", "informative", "diffuse",
     "manual"),
   n_chains = 4L,
-  n_iter = 2000L,
+  n_warmup = 1000L,
+  n_iter = 500L,
   seed = 42L,
   include_cage_effect = TRUE,
   noise_floor = 1,
@@ -76,7 +77,9 @@ before fitting. One of \code{"none"} (default), \code{"log"},
 
 \item{n_chains}{Number of MCMC chains. Default \code{4L}.}
 
-\item{n_iter}{Iterations per chain (including warm-up). Default \code{2000L}.}
+\item{n_warmup}{Warm-up (burn-in) iterations per chain. Default \code{1000L}.}
+
+\item{n_iter}{Post-warmup draws per chain. Default \code{500L}.}
 
 \item{seed}{Random seed for reproducibility. Default \code{42L}.}
 

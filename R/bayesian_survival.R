@@ -164,7 +164,9 @@ bayesian_survival <- function(
   return_model     = TRUE,
   plots            = TRUE,
   verbose          = FALSE,
-  backend          = c("rstan", "cmdstanr")
+  backend          = c("rstan", "cmdstanr"),
+  priors           = NULL,
+  mcmc             = NULL
 ) {
 
   # ── Dependency check ───────────────────────────────────────────────────────
@@ -175,6 +177,25 @@ bayesian_survival <- function(
   family         <- match.arg(family)
   prior_strength <- match.arg(prior_strength)
   backend        <- resolve_brms_backend(backend)
+
+  # CODE_REVIEW.md Round 2 D.2 — accept `priors = tg_priors()` /
+  # `mcmc = tg_mcmc()` override objects. Note: `priors$sigma` is mapped
+  # to `prior_aux` for survival families that use an auxiliary parameter
+  # (shape for weibull, etc.); the user can also still set `prior_aux`
+  # directly.
+  .p <- .resolve_priors(priors, prior_strength, prior_b, prior_intercept,
+                        prior_sd, prior_aux)
+  prior_strength  <- .p$strength
+  prior_b         <- .p$b
+  prior_intercept <- .p$intercept
+  prior_sd        <- .p$sd
+  prior_aux       <- .p$sigma
+  .m <- .resolve_mcmc(mcmc, n_chains, n_warmup, n_iter, seed, backend)
+  n_chains <- .m$chains
+  n_warmup <- .m$warmup
+  n_iter   <- .m$iter
+  seed     <- .m$seed
+  backend  <- .m$backend
 
   # ── Column validation ──────────────────────────────────────────────────────
   required_cols <- c(time_column, event_column, treatment_column, id_column)

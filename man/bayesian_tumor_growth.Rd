@@ -13,6 +13,7 @@ bayesian_tumor_growth(
   cage_column = NULL,
   dose_column = NULL,
   transform = c("log", "sqrt", "none"),
+  model_type = c("lmm", "gam"),
   random_effects_specification = c("intercept_only", "slope"),
   reference_group = NULL,
   prior_strength = c("skeptical", "weakly_informative", "informative", "diffuse",
@@ -22,14 +23,18 @@ bayesian_tumor_growth(
   prior_sd = NULL,
   prior_sigma = NULL,
   n_chains = 4L,
-  n_iter = 2000L,
+  n_warmup = 1000L,
+  n_iter = 500L,
   seed = 42L,
   include_cage_effect = TRUE,
   return_model = TRUE,
   plots = TRUE,
   verbose = FALSE,
   necrotic_column = NULL,
-  necrotic_handling = c("exclude", "covariate", "none")
+  necrotic_handling = c("exclude", "covariate", "none"),
+  backend = c("rstan", "cmdstanr"),
+  priors = NULL,
+  mcmc = NULL
 )
 }
 \arguments{
@@ -100,7 +105,9 @@ Only used when \code{prior_strength = "manual"}.}
 
 \item{n_chains}{Number of MCMC chains. Default \code{4}.}
 
-\item{n_iter}{Total iterations per chain (including warmup). Default \code{2000}.}
+\item{n_warmup}{Warm-up (burn-in) iterations per chain. Default \code{1000}.}
+
+\item{n_iter}{Post-warmup draws per chain. Default \code{500}.}
 
 \item{seed}{Integer random seed for reproducibility. Default \code{42}.}
 
@@ -119,6 +126,24 @@ reactively from the stored model object (e.g. in Shiny).}
 
 \item{verbose}{Logical. Show Stan compilation and sampling messages? Default
 \code{FALSE}.}
+
+\item{backend}{brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
+\code{"cmdstanr"} is 3-10x faster to compile and produces better
+diagnostic reporting but requires the \pkg{cmdstanr} package plus a
+working CmdStan toolchain (install via
+\code{cmdstanr::install_cmdstan()}). Recommended for production use
+on the VPS; the default keeps \pkg{rstan} so the function works
+out-of-the-box.}
+
+\item{priors}{Optional \code{\link{tg_priors}()} configuration object.
+When supplied, its fields override the individual \code{prior_*}
+arguments. CODE_REVIEW.md Round 2 D.2 — lets callers bundle the
+five prior arguments into a single value.}
+
+\item{mcmc}{Optional \code{\link{tg_mcmc}()} configuration object. When
+supplied, its fields override the individual \code{n_chains},
+\code{n_warmup}, \code{n_iter}, \code{seed}, and \code{backend}
+arguments.}
 }
 \value{
 A named list:
@@ -160,9 +185,14 @@ faceted by treatment group with a loess smoother. Systematic curvature
 indicates that the log-linear time assumption is violated and a GAM or
 nonlinear model should be considered. \code{NULL} when
 \code{plots = FALSE}.}
-\item{\code{growth_rates}}{Per-animal exponential growth rates (same
-structure as the \code{lme4} path; estimated by log-linear OLS, not
-MCMC).}
+\item{\code{growth_rates}}{Per-animal exponential growth rates. When the
+LMM was fit with \code{random_effects_specification = "slope"}, these
+are derived directly from the brms posterior — each row carries
+\code{growth_rate} (posterior median) plus \code{growth_rate_lower}
+and \code{growth_rate_upper} (2.5\% / 97.5\% credible intervals). For
+intercept-only and GAM paths, falls back to log-linear OLS per
+animal and the credible-interval columns reflect OLS confidence
+intervals (Round 2 E.3).}
 \item{\code{data_summary}}{Descriptive statistics by treatment group and
 day.}
 }
@@ -205,6 +235,25 @@ interval"), unlike frequentist confidence intervals.
 means from \pkg{emmeans}, which draws from the posterior to marginalise.
 Results may differ slightly across calls due to MCMC variability.
 }
+}
+
+\section{Separating analysis from visualization (CODE_REVIEW.md D.3)}{
+
+Every \code{bayesian_*} function in this package returns the underlying
+analysis data as data frames (\code{treatment_effects},
+\code{posterior_summary}, \code{pairwise_comparisons},
+\code{mcmc_diagnostics}, \code{growth_rates}, …) and — separately — a
+set of pre-rendered \pkg{ggplot2} plot objects (\code{pp_check_plot},
+\code{posterior_dist_plot}, \code{credible_intervals_plot},
+\code{mcmc_trace_plot}, …). Pass \code{plots = FALSE} to skip plot
+generation and receive only the data; the plot fields are then
+\code{NULL} and the returned list is suitable for headless / CI
+pipelines or for callers that prefer to render plots from the data
+using the package's \code{plot_*()} helpers (\code{\link{plot_auc}},
+\code{\link{plot_growth_rate}}, etc.) or their own renderers. The Shiny
+dashboard uses this pattern: it passes \code{plots = FALSE} and rebuilds
+every plot reactively from the data frames so user UI changes (colour,
+group order, …) take effect without re-running the analysis.
 }
 
 \references{

@@ -156,7 +156,8 @@ bayesian_dose_response <- function(
   return_model     = TRUE,
   plots            = TRUE,
   verbose          = FALSE,
-  backend          = c("rstan", "cmdstanr")
+  backend          = c("rstan", "cmdstanr"),
+  mcmc             = NULL
 ) {
 
   # ── Dependency check ───────────────────────────────────────────────────────
@@ -169,6 +170,16 @@ bayesian_dose_response <- function(
 
   prior_strength <- match.arg(prior_strength)
   backend        <- resolve_brms_backend(backend)
+
+  # CODE_REVIEW.md Round 2 D.2 — only the MCMC config helper applies here;
+  # the Hill-model priors (`prior_emax`, `prior_ec50`, `prior_hill`) are
+  # model-specific so they're not bundled by `tg_priors()`.
+  .m <- .resolve_mcmc(mcmc, n_chains, n_warmup, n_iter, seed, backend)
+  n_chains <- .m$chains
+  n_warmup <- .m$warmup
+  n_iter   <- .m$iter
+  seed     <- .m$seed
+  backend  <- .m$backend
 
   # ── Column validation ──────────────────────────────────────────────────────
   required_cols <- c(dose_column, volume_column, treatment_column,

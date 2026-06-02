@@ -36,7 +36,16 @@ total_benefit_area(
 
 \item{reference_group}{Name of the control/reference group.}
 
-\item{lambda}{Trade-off parameter (default 1.0). Higher = penalize toxicity more.}
+\item{lambda}{Efficacy-toxicity trade-off weight (default 1.0). Higher values
+penalise toxicity more. \strong{Note on units:} \code{Efficacy_AUC} is in
+TGI-point-days and \code{Toxicity_AUC} is in weight-loss-point-days; the
+two AUCs share a numeric scale (both percent-by-day) but no biological
+equivalence. \code{lambda = 1} treats 1 TGI-point-day as offsetting 1
+weight-loss-point-day, which is a clinically arbitrary trade-off. Choose
+\code{lambda} from clinical context (acceptable weight-loss tolerance
+relative to required efficacy), or normalise both AUCs to their
+reference-group means before combining if a unit-free comparison is
+preferred.}
 }
 \value{
 A list with: benefit_table, efficacy_auc, toxicity_auc.

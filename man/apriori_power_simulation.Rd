@@ -30,8 +30,12 @@ Power is computed for each value independently. Default \code{c(5, 8, 10, 12, 15
 \item{baseline_volume}{Numeric > 0. Geometric mean tumour volume at Day 0
 in mm³ (default 100).}
 
-\item{baseline_sd}{Numeric > 0. SD of baseline volume in mm³ (unused in
-simulation; retained for documentation purposes).}
+\item{baseline_sd}{Numeric \eqn{\ge} 0. Standard deviation (in mm^3) of the
+raw-scale baseline volume across animals. Converted to a log-scale SD
+via the first-order delta-method approximation
+\code{log_sd \approx baseline_sd / baseline_volume} and added as a
+per-mouse jitter on top of \code{log(baseline_volume)}. Set to 0 to fix
+all animals at exactly \code{baseline_volume} (the original behaviour).}
 
 \item{control_growth_rate}{Numeric. Log-scale daily growth rate for the
 control group (default 0.15, ~16\\% daily increase).}

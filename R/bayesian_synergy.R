@@ -344,7 +344,9 @@ bayesian_synergy <- function(
   return_model                = TRUE,
   plots                       = TRUE,
   verbose                     = FALSE,
-  backend                     = c("rstan", "cmdstanr")
+  backend                     = c("rstan", "cmdstanr"),
+  priors                      = NULL,
+  mcmc                        = NULL
 ) {
 
   # ── Dependency check ───────────────────────────────────────────────────────
@@ -359,6 +361,21 @@ bayesian_synergy <- function(
   re_spec    <- match.arg(random_effects_specification)
   prior_str  <- match.arg(prior_strength)
   backend    <- resolve_brms_backend(backend)
+
+  # CODE_REVIEW.md Round 2 D.2 — config overrides.
+  .p <- .resolve_priors(priors, prior_str, prior_b, prior_intercept,
+                        prior_sd, prior_sigma)
+  prior_str       <- .p$strength
+  prior_b         <- .p$b
+  prior_intercept <- .p$intercept
+  prior_sd        <- .p$sd
+  prior_sigma     <- .p$sigma
+  .m <- .resolve_mcmc(mcmc, n_chains, n_warmup, n_iter, seed, backend)
+  n_chains <- .m$chains
+  n_warmup <- .m$warmup
+  n_iter   <- .m$iter
+  seed     <- .m$seed
+  backend  <- .m$backend
 
   # ── Input validation ───────────────────────────────────────────────────────
   required_cols <- c(

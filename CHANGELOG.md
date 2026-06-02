@@ -5,6 +5,60 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-06-02
+
+Closes CODE_REVIEW.md Round 2 items **D.2**, **D.3**, and **K.10** —
+the long-deferred architecture / process items from the v0.3.6 Round 2
+review.
+
+### Added
+
+- **`tg_priors()` and `tg_mcmc()` config helpers** (CODE_REVIEW.md D.2).
+  New exported helpers that bundle the five prior-related and four
+  MCMC-related arguments accepted by every `bayesian_*` entry point.
+  Lets callers replace
+  `bayesian_tumor_growth(df, prior_strength = "weakly_informative", n_chains = 2, n_iter = 800, ...)`
+  with
+  `bayesian_tumor_growth(df, priors = tg_priors(strength = "weakly_informative"), mcmc = tg_mcmc(chains = 2, iter = 800), ...)`.
+  The change is **fully additive** — every individual `prior_*` /
+  `n_chains` / `n_warmup` / `n_iter` / `seed` / `backend` argument
+  continues to work exactly as before. When a config object is
+  supplied, its fields take precedence over the legacy individual
+  arguments. The two helpers live in `R/bayesian_config.R`.
+- Wired the `priors` and `mcmc` arguments into
+  `bayesian_tumor_growth()`, `bayesian_body_weight()`,
+  `bayesian_survival()` (priors$sigma → prior_aux mapping documented),
+  and `bayesian_synergy()`. `bayesian_dose_response()` accepts `mcmc`
+  only because its Hill-model priors (`prior_emax`, `prior_ec50`,
+  `prior_hill`) are model-specific and not bundled by `tg_priors()`.
+
+- **Coverage measurement infrastructure** (CODE_REVIEW.md K.10).
+  - `covr (>= 3.6.0)` added to `Suggests`.
+  - `coverage.R` script in the package root: `Rscript coverage.R`
+    produces a `covr::package_coverage()` summary; `--html` emits an
+    HTML report. Bayesian functions are excluded by default (Stan
+    compilation dominates the run).
+  - Known caveat: the script's first run surfaces pre-existing test
+    failures in `test-post_power_analysis.R` (function removed in
+    v0.3.4) and `test-toxicity_functions.R` (`efficacy_metric =
+    "log_cell_kill"` is no longer a valid choice). Both are stale-test
+    issues tracked under CODE_REVIEW.md K.11 and block `covr` from
+    producing a clean summary until they're cleaned up.
+
+### Changed — documentation
+
+- **Separating analysis from visualization** (CODE_REVIEW.md D.3).
+  Added a new `@section Separating analysis from visualization` to
+  `bayesian_tumor_growth()`'s roxygen documentation. Documents the
+  pattern that every analysis function in this package already follows:
+  data frames (`treatment_effects`, `posterior_summary`,
+  `pairwise_comparisons`, …) are returned alongside pre-rendered plot
+  objects (`pp_check_plot`, `credible_intervals_plot`, …), and callers
+  can pass `plots = FALSE` to skip plot generation entirely and receive
+  data-only results suitable for headless / CI pipelines. Verified that
+  every `bayesian_*` function guards plot generation with
+  `if (isTRUE(plots))`. The Shiny dashboard already uses this pattern.
+
 ## [0.4.6] - 2026-06-01
 
 Closes 12 more CODE_REVIEW.md Round 2 items, including every open

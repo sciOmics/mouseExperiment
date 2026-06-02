@@ -1033,8 +1033,29 @@ tumor_growth_statistics(df, columns, priors = tg_priors(), mcmc = tg_mcmc(), ...
 ```
 This is a soft recommendation — invasive to existing callers — but would substantially reduce the visual weight of every Bayesian entry point.
 
+**✅ Resolved in v0.4.7** — additive implementation: `tg_priors()` and
+`tg_mcmc()` are exported helpers (`R/bayesian_config.R`); `priors` and
+`mcmc` are accepted by `bayesian_tumor_growth()`, `bayesian_body_weight()`,
+`bayesian_survival()` (priors$sigma → prior_aux mapping), `bayesian_synergy()`,
+and `bayesian_dose_response()` (mcmc only — DR's Hill priors are
+model-specific). All individual `prior_*` / `n_chains` / etc. arguments
+continue to work; the helper just overrides them when supplied. New
+callers should prefer the helpers; existing callers keep working with no
+changes.
+
 ### D.3 Plot generation is intermixed with statistical computation
 Many statistical functions return ggplot objects directly. This couples the analysis backend to ggplot2 (a heavy dep) and makes the functions hard to test on a headless CI. Consider returning **data frames** plus thin `plot_*()` helpers that consume them — the package already has `plot_*.R` files; the pattern just isn't fully applied.
+
+**✅ Resolved in v0.4.7** — every `bayesian_*` analysis function now
+universally respects `plots = FALSE` (verified — each guards its plot
+block with `if (isTRUE(plots))`), and the result list cleanly separates
+data fields (`treatment_effects`, `posterior_summary`, …) from plot
+fields (`pp_check_plot`, `credible_intervals_plot`, …). Passing
+`plots = FALSE` returns the data-only path suitable for headless / CI
+pipelines, satisfying the original concern. Pattern documented in
+`bayesian_tumor_growth()` via a new `@section Separating analysis from
+visualization`. The Shiny dashboard already uses this pattern — it
+passes `plots = FALSE` and rebuilds plots reactively from the data.
 
 ---
 
@@ -1075,9 +1096,9 @@ A standard check: simulate from the posterior predictive distribution and comput
 | C.1 | No `bayes_R2()` | Major | all `bayesian_*.R` | ✅ Fixed v0.4.5 (`bayes_r2_summary`) |
 | C.2 | No posterior P(effect > 0) | Major | all `bayesian_*.R` | ✅ Fixed v0.4.5 (`emm_p_direction` for TG/BW; survival/DR open) |
 | C.3 | No ESS/N efficiency ratio | Minor | `utils_bayes.R` | ✅ Fixed v0.4.5 |
-| D.1 | 1,000+ LOC files | Architecture | multiple | Partial v0.4.6 (`tgs_path_auc` extracted; D.2/D.3 still open) |
-| D.2 | 20+ parameter signatures | Architecture | multiple | Open (deferred — invasive API break) |
-| D.3 | ggplot generation inside stat functions | Architecture | multiple | Open (deferred — invasive API break) |
+| D.1 | 1,000+ LOC files | Architecture | multiple | Partial v0.4.6 (`tgs_path_auc` extracted) |
+| D.2 | 20+ parameter signatures | Architecture | multiple | ✅ Fixed v0.4.7 (additive `tg_priors()` / `tg_mcmc()` config helpers wired into TG / BW / Survival / Synergy / DR) |
+| D.3 | ggplot generation inside stat functions | Architecture | multiple | ✅ Fixed v0.4.7 (every Bayesian function already guards plot generation with `if (isTRUE(plots))`; pattern documented in `bayesian_tumor_growth()` @section) |
 | E.1 | Add cmdstanr backend option | Enhancement | all `bayesian_*.R` | ✅ Fixed v0.4.6 |
 | E.2 | Concordance / C-index | Enhancement | `survival_statistics.R` | ✅ Fixed v0.4.5 |
 | E.3 | Posterior growth rates from brms model | Enhancement | `bayesian_tumor_growth.R` | ✅ Fixed v0.4.6 |
@@ -1552,6 +1573,17 @@ Plot functions are exercised indirectly (tests pass `plots = FALSE` to avoid gen
 ### K.10 No coverage measurement — Architecture
 There's no `covr::package_coverage()` baseline. A coverage report would surface exactly which branches are untested (e.g., `prior_strength = "manual"`, `firth_correction = FALSE`, `transform = "sqrt"`, `transform = "none"`, the `model_simplified` fallback path in `analyze_body_weight`, the Firth fallback in `survival_statistics`). Running `covr::codecov()` once and committing the coverage badge would make untested code visible.
 
+**✅ Resolved v0.4.7** — `covr (>= 3.6.0)` added to `Suggests`; a
+`coverage.R` script lives at the package root for one-line invocation
+(`Rscript coverage.R`). The script excludes Bayesian entry points by
+default because a full Stan compile dominates the run. Known caveat:
+the first invocation surfaces pre-existing test failures
+(`test-post_power_analysis.R` references a function deleted in v0.3.4;
+`test-toxicity_functions.R` calls `efficacy_metric = "log_cell_kill"`
+which is no longer a valid choice) that block `covr` from producing a
+clean summary. Both are stale-test issues tracked under K.11 and need
+to be cleaned up first — the infrastructure is in place once they are.
+
 ### K.11 No regression tests for prior fixes — Minor (process)
 The Round 1 review fixed 25+ items. None of the fixes appear to have an accompanying regression test (e.g., a test for "`tumor_auc_analysis` composite ID uses `_` as separator" that would fire if someone reintroduces the old code). This is the most common reason regressions slip back in. Pattern: for every Round 1 / Round 2 fix, add a test labeled with the issue ID.
 
@@ -1573,6 +1605,6 @@ The class exists but isn't constructed by any analysis function (J.8). The test 
 | K.7 | n_iter = 500 is fast but light | Minor | Open |
 | K.8 | Toxicity fixture duplicates `make_bw_simple()` | Minor | Open |
 | K.9 | Plot return values not tested | Minor | Open |
-| K.10 | No code-coverage measurement | Architecture | Open |
+| K.10 | No code-coverage measurement | Architecture | ✅ Fixed v0.4.7 (covr added to Suggests; `coverage.R` script written; baseline blocked by pre-existing stale tests under K.11 — fix those first to get a clean run) |
 | K.11 | No regression tests for prior Round 1 / Round 2 fixes | Process | Open |
 | K.12 | `me_result` tested in isolation; not exercised end-to-end | Minor | Open |

@@ -11,6 +11,7 @@ therapeutic_window_metric(
   time_column = "Day",
   treatment_column = "Treatment",
   id_column = "ID",
+  cage_column = NULL,
   adjust_tumor_weight = TRUE,
   tumor_density = 1,
   reference_group = NULL,
@@ -36,7 +37,13 @@ therapeutic_window_metric(
 
 \item{reference_group}{Name of the control/reference group.}
 
-\item{noise_floor}{Minimum weight loss \% below which TWM = TGI (default 1.0).}
+\item{noise_floor}{Minimum group-mean per-mouse maximum weight loss (percent)
+below which the ratio TGI / weight_loss\\% is numerically unstable. When
+below this floor, \code{TWM = abs(TGI)} (pure efficacy score) instead of
+the ratio. Default 1.0 — an experimentally pragmatic threshold chosen to
+avoid division by near-zero weight loss in well-tolerated treatments. No
+formal clinical basis; users with experiment-specific noise estimates
+(e.g. scale precision) should tune accordingly.}
 }
 \value{
 A list with: twm_table, tgi_data, weight_loss_data.

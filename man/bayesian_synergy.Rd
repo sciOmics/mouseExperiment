@@ -25,12 +25,16 @@ bayesian_synergy(
   prior_sd = NULL,
   prior_sigma = NULL,
   n_chains = 4L,
-  n_iter = 2000L,
+  n_warmup = 1000L,
+  n_iter = 500L,
   seed = 42L,
   include_cage_effect = TRUE,
   return_model = TRUE,
   plots = TRUE,
-  verbose = FALSE
+  verbose = FALSE,
+  backend = c("rstan", "cmdstanr"),
+  priors = NULL,
+  mcmc = NULL
 )
 }
 \arguments{
@@ -90,8 +94,9 @@ model: \code{"intercept_only"} (default, \code{(1|ID)}) or
 
 \item{n_chains}{Number of MCMC chains. Default \code{4}.}
 
-\item{n_iter}{Total iterations per chain (including warmup). Default
-\code{2000}.}
+\item{n_warmup}{Warm-up (burn-in) iterations per chain. Default \code{1000}.}
+
+\item{n_iter}{Post-warmup draws per chain. Default \code{500}.}
 
 \item{seed}{Integer random seed. Default \code{42}.}
 
@@ -105,6 +110,10 @@ model: \code{"intercept_only"} (default, \code{(1|ID)}) or
 \code{TRUE}.}
 
 \item{verbose}{Logical. Print progress messages? Default \code{FALSE}.}
+
+\item{backend}{brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
+See \code{\link{bayesian_tumor_growth}} for details. Applies to both
+\code{bayesian_synergy()} and \code{bayesian_synergy_over_time()}.}
 }
 \value{
 A named list:

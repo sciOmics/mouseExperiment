@@ -45,6 +45,10 @@ A list containing:
 \item{results}{Data frame with hazard ratios, confidence intervals, p-values, and median survival times}
 \item{reference_group}{The treatment group used as reference}
 \item{method_used}{The statistical method used ("cox", "coxphf", or "logrank")}
+\item{ph_test}{A \code{cox.zph} object (Schoenfeld-residual proportional-hazards
+test) when the standard Cox path is used; \code{NULL} for the Firth and
+log-rank fallbacks. A small global p-value indicates the PH assumption is
+violated and hazard ratios should be interpreted with caution.}
 }
 }
 \description{

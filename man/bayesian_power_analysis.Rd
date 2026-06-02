@@ -6,9 +6,12 @@
 \usage{
 bayesian_power_analysis(
   n_per_group = c(5L, 8L, 10L, 12L, 15L),
+  n_groups = 2L,
   control_growth_rate = 0.15,
   treatment_effect = 0.1,
+  random_effects_specification = c("intercept_only", "slope"),
   animal_intercept_sd = 0.2,
+  animal_slope_sd = 0.05,
   residual_sd = 0.15,
   baseline_log_volume = log(100),
   timepoints = 0:14,
@@ -16,25 +19,48 @@ bayesian_power_analysis(
   target_prob = 0.95,
   effect_threshold = 0,
   prior_strength = c("skeptical", "weakly_informative", "informative", "diffuse"),
+  null_calibration = FALSE,
   n_chains = 2L,
-  n_iter = 1000L,
+  n_warmup = 500L,
+  n_iter = 500L,
   seed = 42L,
-  progress_fn = NULL
+  progress_fn = NULL,
+  backend = c("rstan", "cmdstanr")
 )
 }
 \arguments{
 \item{n_per_group}{Integer vector of animals-per-group values to evaluate.
 Default \code{c(5L, 8L, 10L, 12L, 15L)}.}
 
+\item{n_groups}{Total number of treatment groups including control. Default
+\code{2L} (single treatment vs control). For multi-group designs (e.g. a
+dose-escalation with three treated arms vs control, \code{n_groups = 4L})
+the simulator replicates \code{treatment_effect} across all non-control
+groups unless a vector of length \code{n_groups - 1} is supplied. The
+power success criterion under multi-group is "at least one Treatment:Day
+interaction has P(β < −δ | y) > target_prob" — the natural multi-arm
+analogue of the single-treatment case.}
+
 \item{control_growth_rate}{Exponential growth rate of the control group
 on the log-volume scale (per day). Default \code{0.15}.}
 
-\item{treatment_effect}{True reduction in log-scale growth rate for the
-treatment group relative to control (positive = inhibition). Default
-\code{0.10}.}
+\item{treatment_effect}{True reduction in log-scale growth rate for each
+treated group relative to control (positive = inhibition). Scalar (same
+effect for every non-control group) or numeric vector of length
+\code{n_groups - 1L}. Default \code{0.10}.}
+
+\item{random_effects_specification}{One of \code{"intercept_only"} (default,
+\code{(1 | ID)}) or \code{"slope"} (\code{(Day | ID)}, per-animal random
+slopes). Match the spec used by your downstream
+\code{\link{bayesian_tumor_growth}} fit so the power estimate reflects
+the model you'll actually run.}
 
 \item{animal_intercept_sd}{Between-animal random-intercept SD on the
 log-volume scale. Default \code{0.20}.}
+
+\item{animal_slope_sd}{Between-animal random-slope SD on the log-volume
+scale (only used when \code{random_effects_specification = "slope"}).
+Default \code{0.05}.}
 
 \item{residual_sd}{Within-animal residual SD on the log-volume scale.
 Default \code{0.15}.}
@@ -47,8 +73,8 @@ Default \code{0.15}.}
 Default \code{20L}. Keep small; see Computational note above.}
 
 \item{target_prob}{Posterior probability threshold: a simulation is counted
-as a "success" when \eqn{P(\beta < -\delta \mid y) >} \code{target_prob}.
-Default \code{0.95}.}
+as a "success" when \eqn{P(\beta < -\delta \mid y) >} \code{target_prob}
+for at least one Treatment:Day coefficient. Default \code{0.95}.}
 
 \item{effect_threshold}{Minimum log-scale slope difference that constitutes
 a meaningful effect (\eqn{\delta} above). \code{0} (default) means any
@@ -58,27 +84,44 @@ treatment-induced reduction in growth is scored as a success.}
 \code{"skeptical"} (default), \code{"weakly_informative"},
 \code{"informative"}, \code{"diffuse"}.}
 
+\item{null_calibration}{Logical. When \code{TRUE}, runs an additional
+simulation with \code{treatment_effect = 0} (everything else held
+constant) and reports the empirical false-positive rate at the same
+target_prob threshold. Under a calibrated decision rule the false
+positive rate should be at most \code{1 - target_prob}. Substantially
+doubles wall-clock time. Default \code{FALSE}.}
+
 \item{n_chains}{Number of MCMC chains per fit. Default \code{2L} for speed.}
 
-\item{n_iter}{Iterations per chain (including warm-up). Default \code{1000L}
-for speed.}
+\item{n_warmup}{Warm-up (burn-in) iterations per chain. Default \code{500L}.}
+
+\item{n_iter}{Post-warmup draws per chain. Default \code{500L} for speed.}
 
 \item{seed}{Integer random seed for reproducibility. Default \code{42L}.}
 
 \item{progress_fn}{Optional callback \code{function(n, sim_i, n_sims)}
 called after each simulation fit. Useful for Shiny progress bars.}
+
+\item{backend}{brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
+With cmdstanr the compile-once-and-reuse pattern via
+\code{brms::update()} runs noticeably faster across many simulations.
+See \code{\link{bayesian_tumor_growth}} for installation details.}
 }
 \value{
 A named list:
 \describe{
 \item{\code{power_table}}{Data frame: \code{N_Per_Group},
 \code{Bayes_Power} (proportion of successes), \code{SE_Power},
-\code{N_Success}, \code{N_Simulations}.}
+\code{N_Success}, \code{N_Simulations}. When
+\code{null_calibration = TRUE}, also includes \code{Type_I_Rate}
+and \code{SE_Type_I} for the same Ns.}
 \item{\code{power_curve_data}}{Same as \code{power_table} — for direct
 \pkg{ggplot2} use.}
 \item{\code{params}}{Named list of simulation parameters used.}
 \item{\code{power_curve_plot}}{\pkg{ggplot2} power curve with 95 \%
-Wilson CI error bars. \code{NULL} if \pkg{ggplot2} is unavailable.}
+Wilson CI error bars. When \code{null_calibration = TRUE}, also
+overlays the empirical Type-I curve. \code{NULL} if \pkg{ggplot2}
+is unavailable.}
 }
 }
 \description{
@@ -86,8 +129,9 @@ Estimates the Bayesian power — the probability that a study of size N
 yields a posterior probability of a meaningful treatment effect exceeding a
 specified target — using simulation. For each candidate sample size a brms
 longitudinal model is fitted to \code{n_simulations} synthetic datasets; the
-fraction of fits where \eqn{P(\beta_{\text{trt:Day}} < -\delta \mid y) >}
-\code{target_prob} is the estimated Bayesian power at that N.
+fraction of fits where the posterior probability that at least one treatment
+group's Treatment:Day interaction is more negative than \eqn{-\delta}
+exceeds \code{target_prob} is the estimated Bayesian power at that N.
 }
 \details{
 \strong{Computational note:} Fitting brms models is slow. The compiled Stan

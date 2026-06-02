@@ -9,7 +9,8 @@ tumor_doubling_time(
   time_column = "Day",
   volume_column = "Volume",
   treatment_column = "Treatment",
-  id_column = "ID"
+  id_column = "ID",
+  cage_column = NULL
 )
 }
 \arguments{
@@ -37,7 +38,7 @@ Subjects with fewer than 3 time points or non-positive growth rates are returned
 }
 \examples{
 \dontrun{
-dt <- tumor_doubling_time(my_data)
+dt <- tumor_doubling_time(master_synthetic_data)
 }
 
 }

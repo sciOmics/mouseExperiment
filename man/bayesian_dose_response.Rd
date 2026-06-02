@@ -20,11 +20,14 @@ bayesian_dose_response(
   prior_hill = NULL,
   prior_sigma = NULL,
   n_chains = 4L,
-  n_iter = 2000L,
+  n_warmup = 1000L,
+  n_iter = 500L,
   seed = 42L,
   return_model = TRUE,
   plots = TRUE,
-  verbose = FALSE
+  verbose = FALSE,
+  backend = c("rstan", "cmdstanr"),
+  mcmc = NULL
 )
 }
 \arguments{
@@ -49,7 +52,15 @@ computation. \code{NULL} (default) uses the last observed day.}
 \item{reference_group}{Name of the vehicle/control group (dose = 0).
 Auto-detected from common control names if \code{NULL}.}
 
-\item{prior_strength}{Prior preset:
+\item{prior_strength}{Prior preset. The EC50 prior is \strong{data-aware}:
+centred on \code{log(median(non_zero_doses))} so that, regardless of
+the units the user supplies doses in (nM, mg/kg, mM…), the prior puts
+most of its mass in the range the user actually tested. The width
+varies by preset (see below). This is intentionally weakly-informative
+on dose magnitude while preserving a flat prior on relative dose
+spacing. If the experiment didn't span the true EC50, the posterior
+will be pulled toward the median observed dose — supply \code{prior_ec50}
+manually if you have external EC50 knowledge.
 \describe{
 \item{\code{"skeptical"}}{(default) Emax ~ N(1.5, 0.75) on logit scale
 (prior median ≈ 0.82); Hill ~ N(0, 0.4) on log scale (prior median
@@ -81,8 +92,9 @@ parameter (\code{nlpar = "logEmax"}). Only used when
 
 \item{n_chains}{Number of MCMC chains. Default \code{4}.}
 
-\item{n_iter}{Total iterations per chain (including warmup). Default
-\code{2000}.}
+\item{n_warmup}{Warm-up (burn-in) iterations per chain. Default \code{1000}.}
+
+\item{n_iter}{Post-warmup draws per chain. Default \code{500}.}
 
 \item{seed}{Integer random seed. Default \code{42}.}
 
@@ -94,6 +106,9 @@ Default \code{TRUE}.}
 
 \item{verbose}{Logical. Show Stan compilation and sampling messages?
 Default \code{FALSE}.}
+
+\item{backend}{brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
+See \code{\link{bayesian_tumor_growth}} for details.}
 }
 \value{
 A named list:
@@ -134,6 +149,17 @@ posterior estimates of EC50, Emax, and the Hill slope with full credible
 intervals.
 }
 \details{
+\strong{Inhibition-only by construction:} the non-linear formula
+\code{TGI ~ inv_logit(logEmax) / (1 + (exp(logEC50)/Dose)^exp(logHill))}
+bounds the asymptotic effect in \code{[0, 1]} and constrains the Hill
+slope to be positive, so the curve is monotonically increasing in dose
+toward a positive ceiling — i.e. inhibitory only. Data that are actually
+stimulatory (treatment accelerates growth, negative TGI) cannot be
+represented; the function emits a warning at fit time and the resulting
+posterior will not be credible. For stimulatory dose-response, model
+\eqn{V_{treated}} directly with a stimulatory Hill parameterisation or
+invert the TGI sign convention.
+
 The Hill inhibition model fitted is:
 \deqn{
   \mathrm{TGI}_i =

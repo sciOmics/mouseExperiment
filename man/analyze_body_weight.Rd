@@ -17,6 +17,7 @@ analyze_body_weight(
   tumor_density = 1,
   covariates = c("volume"),
   estimation = c("REML", "ML"),
+  model_type = c("lmm", "gam"),
   reference_group = NULL
 )
 }
@@ -44,6 +45,10 @@ analyze_body_weight(
 \item{covariates}{Character vector of optional covariates: "volume", "sex", "initial_mass".}
 
 \item{estimation}{Character; "REML" (default) or "ML".}
+
+\item{model_type}{Character; "lmm" (default — linear mixed model via lme4) or
+"gam" (generalized additive mixed model via gamm4 with a group-specific
+smoother on Day, preferred when weight trajectories are non-monotonic).}
 
 \item{reference_group}{Name of the control/reference group. NULL auto-selects.}
 }

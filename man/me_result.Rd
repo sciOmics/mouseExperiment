@@ -16,18 +16,27 @@
 \item{...}{Additional arguments passed to methods.}
 }
 \description{
-The \code{me_result} S3 class provides a consistent wrapper around analysis
-outputs from mouseExperiment functions.
-}
-\details{
-Every analysis function returns an \code{me_result} object with at least:
+\code{me_result} is a lightweight S3 wrapper around analysis outputs.
+Provides consistent \code{print()}, \code{summary()}, and \code{plot()}
+methods plus a single-entry \code{\link{export_diagnostics}} accessor.
+
+\strong{Scope (Round 2 J.8 / v0.4.6):} the main analysis entry points
+(\code{\link{tumor_growth_statistics}}, \code{\link{survival_statistics}},
+\code{\link{bayesian_tumor_growth}}, \code{\link{analyze_drug_synergy}},
+etc.) return plain lists with bespoke schemas. The \code{me_result}
+wrapper is currently used only by \code{\link{repeated_measures_anova}}
+as a convenience for callers who want the print/summary/plot methods.
+Treat this class as a small optional utility, not as the canonical
+return shape for the package's analysis surface.
+
+An \code{me_result} object always carries:
 \itemize{
-\item \code{analysis_type}: character label (e.g. "tumor_growth", "survival", "synergy")
-\item \code{data}: the input data used
+\item \code{analysis_type}: character label (e.g. \code{"repeated_measures_anova"})
+\item \code{data}: the input data used (or \code{NULL})
 \item \code{results}: a named list of analysis outputs
-\item \code{plots}: a named list of ggplot objects (may be NULL)
-\item \code{summary}: a \code{data.frame} of key findings
-\item \code{call}: the matched call
-\item \code{timestamp}: when analysis was run
+\item \code{plots}: a named list of ggplot objects (may be \code{NULL})
+\item \code{summary}: a \code{data.frame} of key findings (may be \code{NULL})
+\item \code{call}: the matched call (or \code{NULL})
+\item \code{timestamp}: when the analysis was run
 }
 }

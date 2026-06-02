@@ -41,7 +41,7 @@ to produce the ANOVA table.
 }
 \examples{
 \dontrun{
-result <- repeated_measures_anova(my_data)
+result <- repeated_measures_anova(master_synthetic_data)
 print(result)
 }
 

@@ -132,7 +132,9 @@ bayesian_body_weight <- function(
   return_model                 = TRUE,
   plots                        = TRUE,
   verbose                      = FALSE,
-  backend                      = c("rstan", "cmdstanr")
+  backend                      = c("rstan", "cmdstanr"),
+  priors                       = NULL,
+  mcmc                         = NULL
 ) {
 
   # ── Dependency check ───────────────────────────────────────────────────────
@@ -147,6 +149,22 @@ bayesian_body_weight <- function(
   random_effects_specification <- match.arg(random_effects_specification)
   prior_strength               <- match.arg(prior_strength)
   backend                      <- resolve_brms_backend(backend)
+
+  # CODE_REVIEW.md Round 2 D.2 — config-object overrides for the
+  # individual prior / MCMC arguments. See `tg_priors()`, `tg_mcmc()`.
+  .p <- .resolve_priors(priors, prior_strength, prior_b, prior_intercept,
+                        prior_sd, prior_sigma)
+  prior_strength  <- .p$strength
+  prior_b         <- .p$b
+  prior_intercept <- .p$intercept
+  prior_sd        <- .p$sd
+  prior_sigma     <- .p$sigma
+  .m <- .resolve_mcmc(mcmc, n_chains, n_warmup, n_iter, seed, backend)
+  n_chains <- .m$chains
+  n_warmup <- .m$warmup
+  n_iter   <- .m$iter
+  seed     <- .m$seed
+  backend  <- .m$backend
 
   # ── Column validation ──────────────────────────────────────────────────────
   required_cols <- c(weight_column, time_column, treatment_column, id_column)

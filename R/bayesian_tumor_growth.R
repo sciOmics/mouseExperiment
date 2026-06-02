@@ -82,6 +82,14 @@
 #'   \code{cmdstanr::install_cmdstan()}). Recommended for production use
 #'   on the VPS; the default keeps \pkg{rstan} so the function works
 #'   out-of-the-box.
+#' @param priors Optional \code{\link{tg_priors}()} configuration object.
+#'   When supplied, its fields override the individual \code{prior_*}
+#'   arguments. CODE_REVIEW.md Round 2 D.2 — lets callers bundle the
+#'   five prior arguments into a single value.
+#' @param mcmc Optional \code{\link{tg_mcmc}()} configuration object. When
+#'   supplied, its fields override the individual \code{n_chains},
+#'   \code{n_warmup}, \code{n_iter}, \code{seed}, and \code{backend}
+#'   arguments.
 #'
 #' @return A named list:
 #' \describe{
@@ -161,6 +169,23 @@
 #'     Results may differ slightly across calls due to MCMC variability.
 #' }
 #'
+#' @section Separating analysis from visualization (CODE_REVIEW.md D.3):
+#' Every \code{bayesian_*} function in this package returns the underlying
+#' analysis data as data frames (\code{treatment_effects},
+#' \code{posterior_summary}, \code{pairwise_comparisons},
+#' \code{mcmc_diagnostics}, \code{growth_rates}, …) and — separately — a
+#' set of pre-rendered \pkg{ggplot2} plot objects (\code{pp_check_plot},
+#' \code{posterior_dist_plot}, \code{credible_intervals_plot},
+#' \code{mcmc_trace_plot}, …). Pass \code{plots = FALSE} to skip plot
+#' generation and receive only the data; the plot fields are then
+#' \code{NULL} and the returned list is suitable for headless / CI
+#' pipelines or for callers that prefer to render plots from the data
+#' using the package's \code{plot_*()} helpers (\code{\link{plot_auc}},
+#' \code{\link{plot_growth_rate}}, etc.) or their own renderers. The Shiny
+#' dashboard uses this pattern: it passes \code{plots = FALSE} and rebuilds
+#' every plot reactively from the data frames so user UI changes (colour,
+#' group order, …) take effect without re-running the analysis.
+#'
 #' @references
 #' Bürkner, P.-C. (2017). brms: An R package for Bayesian multilevel models
 #' using Stan. \emph{Journal of Statistical Software}, 80(1), 1–28.
@@ -198,7 +223,9 @@ bayesian_tumor_growth <- function(
   verbose                      = FALSE,
   necrotic_column              = NULL,
   necrotic_handling            = c("exclude", "covariate", "none"),
-  backend                      = c("rstan", "cmdstanr")
+  backend                      = c("rstan", "cmdstanr"),
+  priors                       = NULL,
+  mcmc                         = NULL
 ) {
 
   # ── Dependency checks ──────────────────────────────────────────────────────
@@ -215,6 +242,23 @@ bayesian_tumor_growth <- function(
   prior_strength               <- match.arg(prior_strength)
   necrotic_handling            <- match.arg(necrotic_handling)
   backend                      <- resolve_brms_backend(backend)
+
+  # CODE_REVIEW.md Round 2 D.2 — when callers supply `priors = tg_priors()`
+  # or `mcmc = tg_mcmc()`, their fields override the legacy individual
+  # arguments so the signature stays usable both ways.
+  .p <- .resolve_priors(priors, prior_strength, prior_b, prior_intercept,
+                        prior_sd, prior_sigma)
+  prior_strength  <- .p$strength
+  prior_b         <- .p$b
+  prior_intercept <- .p$intercept
+  prior_sd        <- .p$sd
+  prior_sigma     <- .p$sigma
+  .m <- .resolve_mcmc(mcmc, n_chains, n_warmup, n_iter, seed, backend)
+  n_chains <- .m$chains
+  n_warmup <- .m$warmup
+  n_iter   <- .m$iter
+  seed     <- .m$seed
+  backend  <- .m$backend
 
   # ── Column validation ──────────────────────────────────────────────────────
   required_cols <- c(time_column, volume_column, treatment_column, id_column)
