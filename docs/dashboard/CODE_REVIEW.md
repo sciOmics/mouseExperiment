@@ -5,9 +5,7 @@
 **Version reviewed:** v26.05.019
 **Scope:** All Shiny module R files, server logic, and UI definitions
 
-**Resolution status:** 24/25 items resolved. One item remains open:
-- **2.4** — Dose-Response plot customization controls (scope expansion; not a bug)
-- **6.1** — Server function length: ✅ Resolved across v26.06.003 + v26.06.004. All five mega-files (`mod_tumor_growth.R`, `mod_toxicity.R`, `mod_survival.R`, `mod_synergy.R`, `helpers.R`) have been split by concern.
+**Resolution status:** ✅ All 25 items from the v26.05.019 review are resolved. The last open item (**2.4** Dose-Response plot customization) was closed in v26.06.005 by adding per-dose centre / error overlays + a jitter-width slider to the DR Plots tab.
 
 ---
 
@@ -153,6 +151,13 @@ Standardise to "Reference Group" across all modules.
 - **Dose-Response:** minimal or no customization controls
 
 Text size and plot dimensions should be universally available. Group colour pickers and legend position should be available wherever groups are plotted. Confidence interval / error bar toggles should be available for all quantitative plots.
+
+**✅ Resolved across v26.06.002 + v26.06.005.** v26.06.002 added the
+universal controls (legend position, axis / title / legend label text
+inputs). v26.06.005 closed the remaining gap with per-dose centre
+overlay (mean / median), error-bar overlay (SEM / SD / 95 % CI), and a
+jitter-width slider on both the Tumor Volume vs Dose scatter and the
+TGI subplot.
 
 ---
 
@@ -406,7 +411,7 @@ filename = function() {
 
 ## Round-1 status
 
-Of the 25 items in the v26.05.019 review, **all 25 except 2.4 are resolved**. Item **6.1 (server function length)** is now closed in v26.06.004 — all five mega-files have been split by concern (see C.1 below). Item 2.4 (Dose-Response plot customization) is a scope expansion rather than a bug and is intentionally deferred.
+Of the 25 items in the v26.05.019 review, **all 25 are resolved**. Item **6.1 (server function length)** was closed in v26.06.004 — all five mega-files have been split by concern (see C.1 below). Item **2.4 (Dose-Response plot customization)** was closed in v26.06.005 by adding per-dose centre / error overlays and a jitter-width slider that bring the DR Plots tab in line with the Tumor Growth and Toxicity plot tabs.
 
 The Bayesian module pattern (item 7.1) has been fully harmonised: all five analysis modules (Tumor Growth, Survival, Synergy, Dose Response, Toxicity TWM/BW) now share a common `show_analysis_modal()` running indicator, `Posterior Check` / `MCMC Diagnostics` / `Prior vs Posterior` tab structure, and posterior-summary table layout.
 

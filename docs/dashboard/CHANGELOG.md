@@ -4,6 +4,24 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.06.005] 2026 June 2nd
+
+Closes the last remaining CODE_REVIEW.md item — **2.4 Dose-Response plot
+customization controls**.
+
+### Added — features
+
+- **Dose-Response: per-dose centre / error overlay** (Round 1 item 2.4).
+  Two new selectors on the Plots tab (centre: None / Mean / Median;
+  error bar: None / SEM / SD / 95 % CI) add an overlay layer on both
+  the Tumor Volume vs Dose scatter and the TGI subplot, matching the
+  established pattern used by the Tumor Growth and Toxicity plot tabs.
+  The overlay is computed per dose level and drawn on top of the raw
+  scatter / fitted trend line.
+- **Dose-Response: jitter width slider** for overlapping points at the
+  same dose level. Useful for replicate-rich studies where multiple
+  animals share a dose. Default 0 preserves the previous behaviour.
+
 ## [v26.06.004] 2026 June 2nd
 
 Closes CODE_REVIEW.md Round 2 C.1 / C.3 for the remaining four mega-files

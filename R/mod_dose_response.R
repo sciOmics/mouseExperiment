@@ -239,12 +239,27 @@ doseResponseUI <- function(id) {
                                            value = "#2166AC"),
                   sliderInput(ns("dr_scatter_pt_size"), "Point size",
                               min = 0.5, max = 6, value = 2, step = 0.5),
+                  sliderInput(ns("dr_opt_jitter_width"), "Jitter width",
+                              min = 0, max = 1, value = 0, step = 0.05),
                   checkboxInput(ns("dr_scatter_show_ci"),
                                 "Show trend line confidence interval",
                                 value = TRUE),
                   radioButtons(ns("dr_trend_method"), "Trend line fit",
                     choices = c("Linear" = "linear", "Non-linear (LOESS)" = "loess"),
                     selected = "linear", inline = TRUE
+                  ),
+                  selectInput(ns("dr_opt_center_bar"), "Centre overlay (per dose)",
+                    choices = c("None" = "none",
+                                "Mean"   = "mean",
+                                "Median" = "median"),
+                    selected = "none"
+                  ),
+                  selectInput(ns("dr_opt_error_bar"), "Error bar overlay",
+                    choices = c("None" = "none",
+                                "SEM" = "SEM",
+                                "SD"  = "SD",
+                                "95% CI" = "CI"),
+                    selected = "none"
                   ),
                   hr(),
                   h6(style = "font-size: 1.15rem; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
@@ -791,6 +806,30 @@ dose_response_server <- function(id, rv) {
     downloadButton(session$ns(btn_id), "Download Plot")
   })
 
+  # Helper: build per-dose summary df (center + half-width) for overlay layers.
+  # Returns NULL when no overlay was requested. Aggregates `y_col` over `x_col`.
+  dr_dose_summary <- function(df, x_col, y_col, center, err) {
+    if (center == "none" && err == "none") return(NULL)
+    doses <- if (is.factor(df[[x_col]])) levels(df[[x_col]]) else unique(df[[x_col]])
+    do.call(rbind, lapply(doses, function(d) {
+      y <- df[[y_col]][df[[x_col]] == d]
+      y <- y[is.finite(y)]
+      n <- length(y)
+      if (n == 0L) return(NULL)
+      ctr <- switch(center,
+        mean   = mean(y),
+        median = stats::median(y),
+        mean(y))
+      half <- switch(err,
+        SEM = stats::sd(y) / sqrt(n),
+        SD  = stats::sd(y),
+        CI  = stats::qt(0.975, df = max(n - 1L, 1L)) * stats::sd(y) / sqrt(n),
+        0)
+      data.frame(x = d, ctr = ctr, lo = ctr - half, hi = ctr + half,
+                 stringsAsFactors = FALSE)
+    }))
+  }
+
   # ---- Plots (rebuilt reactively so colour options take effect immediately) ----
   output$dr_plot_scatter <- renderPlot({
 
@@ -803,20 +842,39 @@ dose_response_server <- function(id, rv) {
     pt_col   <- input$dr_scatter_pt_color   %||% "#555555"
     ln_col   <- input$dr_scatter_line_color %||% "#2166AC"
     pt_sz    <- input$dr_scatter_pt_size     %||% 2
+    jit_w    <- input$dr_opt_jitter_width    %||% 0
     show_ci  <- isTRUE(input$dr_scatter_show_ci)
     trend    <- input$dr_trend_method %||% "linear"
     text_sz  <- input$dr_opt_text_size %||% 16
+    center   <- input$dr_opt_center_bar %||% "none"
+    err_bar  <- input$dr_opt_error_bar  %||% "none"
     smooth_args <- if (trend == "loess") {
       list(method = "loess", formula = y ~ x, color = ln_col, se = show_ci)
     } else {
       list(method = "lm", formula = y ~ x, color = ln_col, se = show_ci)
     }
     p <- ggplot2::ggplot(ad, ggplot2::aes(x = .data[[dose_col]], y = .data[[vol_col]])) +
-      ggplot2::geom_point(alpha = 0.7, color = pt_col, size = pt_sz) +
+      ggplot2::geom_jitter(alpha = 0.7, color = pt_col, size = pt_sz,
+                           width = jit_w, height = 0) +
       do.call(ggplot2::geom_smooth, smooth_args) +
       ggplot2::labs(title = "Tumor Volume vs Dose",
                    x = "Dose", y = "Tumor Volume") +
       ggplot2::theme_classic()
+    summ <- dr_dose_summary(ad, dose_col, vol_col, center, err_bar)
+    if (!is.null(summ)) {
+      if (err_bar != "none")
+        p <- p + ggplot2::geom_errorbar(data = summ,
+                ggplot2::aes(x = x, ymin = lo, ymax = hi),
+                inherit.aes = FALSE, colour = "black",
+                width = 0.05 * diff(range(ad[[dose_col]], na.rm = TRUE)),
+                linewidth = 0.9)
+      if (center != "none")
+        p <- p + ggplot2::geom_crossbar(data = summ,
+                ggplot2::aes(x = x, y = ctr, ymin = ctr, ymax = ctr),
+                inherit.aes = FALSE, colour = "black",
+                width = 0.07 * diff(range(ad[[dose_col]], na.rm = TRUE)),
+                linewidth = 0.9)
+    }
     p <- apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
                       input$dr_plot_title_align %||% "center", text_sz,
                       input$dr_plot_xaxis_label %||% "",
@@ -849,21 +907,40 @@ dose_response_server <- function(id, rv) {
     pt_col   <- input$dr_scatter_pt_color   %||% "#555555"
     ln_col   <- input$dr_scatter_line_color %||% "#2166AC"
     pt_sz    <- input$dr_scatter_pt_size     %||% 2
+    jit_w    <- input$dr_opt_jitter_width    %||% 0
     show_ci  <- isTRUE(input$dr_scatter_show_ci)
     trend    <- input$dr_trend_method %||% "linear"
     text_sz  <- input$dr_opt_text_size %||% 16
+    center   <- input$dr_opt_center_bar %||% "none"
+    err_bar  <- input$dr_opt_error_bar  %||% "none"
     smooth_args <- if (trend == "loess") {
       list(method = "loess", formula = y ~ x, color = ln_col, se = show_ci)
     } else {
       list(method = "lm", formula = y ~ x, color = ln_col, se = show_ci)
     }
     p <- ggplot2::ggplot(tgi_data, ggplot2::aes(x = .data[[dose_col]], y = .data[["pct_tgi"]])) +
-      ggplot2::geom_point(alpha = 0.7, color = pt_col, size = pt_sz) +
+      ggplot2::geom_jitter(alpha = 0.7, color = pt_col, size = pt_sz,
+                           width = jit_w, height = 0) +
       do.call(ggplot2::geom_smooth, smooth_args) +
       ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
       ggplot2::labs(title = "Tumor Growth Inhibition vs Dose",
                    x = "Dose", y = "% Tumor Growth Inhibition") +
       ggplot2::theme_classic()
+    summ <- dr_dose_summary(tgi_data, dose_col, "pct_tgi", center, err_bar)
+    if (!is.null(summ)) {
+      if (err_bar != "none")
+        p <- p + ggplot2::geom_errorbar(data = summ,
+                ggplot2::aes(x = x, ymin = lo, ymax = hi),
+                inherit.aes = FALSE, colour = "black",
+                width = 0.05 * diff(range(tgi_data[[dose_col]], na.rm = TRUE)),
+                linewidth = 0.9)
+      if (center != "none")
+        p <- p + ggplot2::geom_crossbar(data = summ,
+                ggplot2::aes(x = x, y = ctr, ymin = ctr, ymax = ctr),
+                inherit.aes = FALSE, colour = "black",
+                width = 0.07 * diff(range(tgi_data[[dose_col]], na.rm = TRUE)),
+                linewidth = 0.9)
+    }
     p <- apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
                       input$dr_plot_title_align %||% "center", text_sz,
                       input$dr_plot_xaxis_label %||% "",
