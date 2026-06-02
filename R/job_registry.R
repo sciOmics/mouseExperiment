@@ -79,9 +79,12 @@
 #'   "bayes_bw", etc.). Used by the banner to label and route resumes.
 #' @param promise A `promises::promise` object — already constructed by
 #'   the caller.
+#' @param context Optional named list of metadata the resume handler
+#'   will need (e.g. `bayes_params` for re-populating plot data). Not
+#'   inspected by the registry; passed through to the handler verbatim.
 #' @return The new job_id (character).
 #' @keywords internal
-launch_job <- function(sid, kind, promise) {
+launch_job <- function(sid, kind, promise, context = NULL) {
   stopifnot(is.character(sid), length(sid) == 1L, nzchar(sid))
   stopifnot(is.character(kind), length(kind) == 1L, nzchar(kind))
   if (!inherits(promise, "promise")) {
@@ -96,7 +99,8 @@ launch_job <- function(sid, kind, promise) {
     completed_at = NA,
     status       = "running",
     result       = NULL,
-    error        = NULL
+    error        = NULL,
+    context      = context
   )
   .registry_put(sid, job_id, job)
 

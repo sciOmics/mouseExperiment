@@ -248,77 +248,11 @@ tumor_growth_server <- function(id, rv) {
         plot_groups       = rv$tg_plot_groups
       )
 
-      show_analysis_modal(
-        if (bayes_model_type == "gam") "Bayesian GAMM tumor growth fit running…"
-        else "Bayesian tumor growth fit running…",
-        if (bayes_model_type == "gam")
-          "Fitting Bayesian GAMM with brms smoothers. This may take 3–12 minutes."
-        else
-          "Fitting Bayesian LMM with brms. This may take 3–12 minutes."
-      )
-
-      promises::future_promise({
-        mouseExperiment::bayesian_tumor_growth(
-          df                           = bayes_params$data,
-          time_column                  = bayes_params$col_names$time_column,
-          volume_column                = bayes_params$col_names$volume_column,
-          id_column                    = bayes_params$col_names$id_column,
-          treatment_column             = bayes_params$col_names$treatment_column,
-          cage_column                  = bayes_params$col_names$cage_column,
-          dose_column                  = bayes_params$dose_col,
-          model_type                   = bayes_params$model_type,
-          random_effects_specification = bayes_params$random_effects,
-          reference_group              = bayes_params$reference_group,
-          prior_strength               = bayes_params$prior_strength,
-          prior_b                      = bayes_params$manual_priors$prior_b,
-          prior_intercept              = bayes_params$manual_priors$prior_intercept,
-          prior_sd                     = bayes_params$manual_priors$prior_sd,
-          prior_sigma                  = bayes_params$manual_priors$prior_sigma,
-          n_chains                     = bayes_params$n_chains,
-          n_warmup                     = bayes_params$n_warmup,
-          n_iter                       = bayes_params$n_iter,
-          backend                      = bayes_params$backend,
-          necrotic_column              = bayes_params$necrotic_col,
-          necrotic_handling            = bayes_params$necrotic_handling,
-          return_model                 = TRUE,
-          plots                        = FALSE,
-          verbose                      = FALSE
-        )
-      }) %...>% (function(result) {
-        shiny::removeModal()
-        result$model_type_used <- "bayes"
-        if (!is.null(rv$bayes_models)) rv$bayes_models$tg <- result$model
-        else rv$bayes_models <- list(tg = result$model)
-        result$model <- NULL
-        gc()
-        # CODE_REVIEW.md Round 2 F.3 — preserve previous result for compare
-        # tab when the model_type just changed (e.g. user ran LME4 then bayes).
-        if (!is.null(rv$tg_results) &&
-            !identical(rv$tg_results$model_type_used %||% "", result$model_type_used)) {
-          rv$tg_results_prev <- isolate(rv$tg_results)
-        }
-        rv$tg_results  <- result
-        updateTabsetPanel(session, "tg_results_tabs", selected = "Summary")
-        rv$tg_running  <- FALSE
-        rv$tg_plot_data <- bayes_params$data
-        rv$tg_col_names <- bayes_params$col_names
-
-        output$tg_status_msg <- renderUI(
-          status_alert("Bayesian analysis completed successfully!", "success")
-        )
-        shinyjs::runjs("window.trackAnalysisComplete('tumor_growth', true);")
-      }) %...!% (function(err) {
-        shiny::removeModal()
-        rv$tg_running <- FALSE
-        err_msg <- conditionMessage(err)
-        output$tg_status_msg <- renderUI(
-          status_alert(paste("Bayesian analysis failed:", err_msg), "danger")
-        )
-        shinyjs::runjs(sprintf(
-          "window.trackAnalysisComplete('tumor_growth', false, %s);",
-          js_string(err_msg)
-        ))
-      })
+      # F.7 — route through the job registry so the fit survives tab
+      # disconnect / NPM proxy timeout. Falls back to the legacy
+      # inline path when no sid is available.
+      launch_tg_bayes_job(rv$session_id, bayes_params,
+                          input, output, session, rv)
 
       return(NULL)   # return immediately — Shiny knows this is non-blocking
     }
@@ -1723,6 +1657,11 @@ tumor_growth_server <- function(id, rv) {
     tg_growth_plot, tg_rates_plot,
     tg_auc_plot, tg_forest_plot, tg_wf_plot
   )
+
+  # F.7 — register the resume handler. The banner module dispatches to
+  # this when the user clicks Resume on a bayes_tg job. Captures the
+  # module's input / output / session / rv via closure.
+  register_tg_resume(input, output, session, rv)
 
   })
 }
