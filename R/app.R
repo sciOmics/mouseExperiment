@@ -98,6 +98,9 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
         tags$meta(name = "twitter:image",       content = "https://mouseexperiment.com/images/og_preview.png"),
         tags$link(rel = "stylesheet", href = v("css/custom.css")),
         tags$link(rel = "stylesheet", href = v("css/dark.css")),
+        # session-id.js must load first so the mE_session cookie is set
+        # before Shiny opens its websocket — see CODE_REVIEW.md F.7.
+        tags$script(src = v("js/session-id.js")),
         tags$script(src = v("js/navbar.js")),
         tags$script(src = v("js/sidebar.js")),
         tags$script(src = v("js/darkmode.js")),
