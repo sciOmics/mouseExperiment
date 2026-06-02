@@ -432,15 +432,6 @@ synergy_server <- function(id, rv) {
     bayesplot::mcmc_trace(brms::as.array(rv$bayes_models$syn))
   })
 
-  output$download_syn_pp_check <- downloadHandler(
-    filename = function() paste0("syn_posterior_check_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
-    content = function(file) {
-      req(!is.null(rv$bayes_models$syn))
-      p <- brms::pp_check(rv$bayes_models$syn, type = "dens_overlay", ndraws = 50)
-      ggplot2::ggsave(file, plot = p, width = 8, height = 5, dpi = 150)
-    }
-  )
-
   syn_colors <- reactive({
     list(
       A     = input$syn_color_A     %||% "#2166AC",
@@ -1046,63 +1037,6 @@ synergy_server <- function(id, rv) {
   }, width = function() input$syn_plot_width %||% 800,
      height = function() input$syn_plot_height %||% 600)
   
-  output$download_syn_metrics <- downloadHandler(
-    filename = function() paste0("synergy_metrics_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv"),
-    content = function(file) {
-      df <- if (isTRUE(rv$syn_over_time) && !is.null(rv$syn_results$synergy_summary)) {
-        rv$syn_results$synergy_summary
-      } else if (!is.null(rv$syn_results$synergy_metrics)) {
-        as.data.frame(rv$syn_results$synergy_metrics)
-      } else NULL
-      if (!is.null(df)) write.csv(df, file, row.names = FALSE)
-    }
-  )
-  
-  output$download_syn_plot_main <- downloadHandler(
-    filename = function() paste0("synergy_plot_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
-    content = function(file) {
-      p <- current_syn_main_plot()
-      if (is.null(p)) {
-        showNotification("Plot is not available.", type = "warning")
-        return(invisible(NULL))
-      }
-      png(file, width = input$syn_plot_width %||% 900,
-                height = input$syn_plot_height %||% 600,
-                units = "px", res = input$syn_plot_dpi %||% 100)
-      print(p); dev.off()
-    }
-  )
-
-  output$download_syn_plot_trend <- downloadHandler(
-    filename = function() paste0("synergy_trend_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
-    content = function(file) {
-      p <- current_syn_trend_plot()
-      if (is.null(p)) {
-        showNotification("Plot is not available.", type = "warning")
-        return(invisible(NULL))
-      }
-      png(file, width = input$syn_plot_width %||% 900,
-                height = input$syn_plot_height %||% 600,
-                units = "px", res = input$syn_plot_dpi %||% 100)
-      print(p); dev.off()
-    }
-  )
-
-  output$download_syn_plot_ci <- downloadHandler(
-    filename = function() paste0("combination_index_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
-    content = function(file) {
-      p <- current_syn_ci_plot()
-      if (is.null(p)) {
-        showNotification("Plot is not available.", type = "warning")
-        return(invisible(NULL))
-      }
-      png(file, width = input$syn_plot_width %||% 900,
-                height = input$syn_plot_height %||% 600,
-                units = "px", res = input$syn_plot_dpi %||% 100)
-      print(p); dev.off()
-    }
-  )
-  
   # ------------------------------------------------------------------
   # TGI over time plot: per-mouse TGI with group lines + error bars
   # ------------------------------------------------------------------
@@ -1226,17 +1160,12 @@ synergy_server <- function(id, rv) {
   }, width = function() input$syn_plot_width %||% 800,
      height = function() input$syn_plot_height %||% 600)
   
-  output$download_syn_plot_tgi <- downloadHandler(
-    filename = function() paste0("synergy_tgi_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
-    content = function(file) {
-      p <- current_syn_tgi_plot()
-      if (!is.null(p)) {
-        png(file, width = input$syn_plot_width %||% 900,
-                  height = input$syn_plot_height %||% 600,
-                  units = "px", res = input$syn_plot_dpi %||% 100)
-        print(p); dev.off()
-      }
-    }
-  )
+  # All 6 download handlers live in `mod_synergy_downloads.R`
+  # (CODE_REVIEW.md C.1/C.3). The four plot PNG handlers each pull from a
+  # `current_syn_*_plot` reactiveVal that the renderPlot bindings update;
+  # those reactiveVals are passed in explicitly.
+  add_syn_download_handlers(input, output, session, rv,
+                            current_syn_main_plot, current_syn_trend_plot,
+                            current_syn_ci_plot,   current_syn_tgi_plot)
   })
 }

@@ -4,6 +4,50 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.06.004] 2026 June 2nd
+
+Closes CODE_REVIEW.md Round 2 C.1 / C.3 for the remaining four mega-files
+(`mod_toxicity.R`, `mod_survival.R`, `mod_synergy.R`, `helpers.R`) using the
+same by-concern split established for `mod_tumor_growth.R` in v26.06.003.
+
+### Changed
+
+- `mod_toxicity.R`: 2,175 → 1,595 LOC (−27%). Extracted:
+  - `R/mod_toxicity_downloads.R` (236 LOC) — all 17 download handlers
+    bundled into `add_tox_download_handlers(input, output, session, rv)`.
+    The active-plot download still reaches into `output[[plot_id]]()` —
+    that cross-binding works because every handler shares the same
+    `output` env.
+  - `R/mod_toxicity_plots.R` (399 LOC) — 10 frequentist plot renderers
+    (Q-Q, residuals, BW forest, BW trajectory, BW AUC, KM, ET TWM, ET
+    scatter, ET benefit, ET weight-corrected TGI) plus the BW and ET
+    group-order/palette UIs. Bayesian renderers stay in main because
+    they're interleaved with the Bayesian tab-insertion observer.
+    Exposed as `add_tox_plots(input, output, session, rv,
+    ordered_tox_grps, ordered_et_grps)`.
+- `mod_survival.R`: 1,554 → 1,467 LOC (−6%). Extracted:
+  - `R/mod_survival_downloads.R` (108 LOC) — all 6 download handlers
+    (2 Bayesian + 4 frequentist). `km_plot_r` is passed in explicitly
+    so the KM-PNG handler's reactive dependency stays visible at the
+    call site. Exposed as `add_surv_download_handlers(input, output,
+    session, rv, km_plot_r)`.
+- `mod_synergy.R`: 1,242 → 1,171 LOC (−6%). Extracted:
+  - `R/mod_synergy_downloads.R` (103 LOC) — all 6 download handlers
+    (1 Bayesian + 1 CSV + 4 plot PNGs). The four plot PNG handlers
+    each pull from a `current_syn_*_plot` reactiveVal that the
+    `renderPlot` bindings update; those reactiveVals are passed in
+    explicitly. Exposed as `add_syn_download_handlers(input, output,
+    session, rv, current_syn_main_plot, current_syn_trend_plot,
+    current_syn_ci_plot, current_syn_tgi_plot)`.
+- `helpers.R`: 1,417 → 1,153 LOC (−19%). Extracted:
+  - `R/helpers_bayes.R` (162 LOC) — `bayes_diagnostics_panel()` +
+    `bayes_influential_obs()`. Used by every Bayesian module.
+  - `R/helpers_report.R` (112 LOC) — `build_html_report()`. Composes a
+    standalone HTML audit document.
+
+No behaviour change anywhere — implementation is moved verbatim. Full
+test suite still passes 124/124.
+
 ## [v26.06.003] 2026 June 1st
 
 Closes CODE_REVIEW.md Round 2 C.1 / C.3 — the tumor-growth mega-file refactor.
