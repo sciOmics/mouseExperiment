@@ -556,6 +556,21 @@ Once the backend exposes it (`backend = c("rstan", "cmdstanr")`), add a checkbox
 ### F.7 Session resume
 If the user accidentally closes the tab or the connection drops mid-Bayesian-fit, the in-flight future is lost. Storing the future-promise handle keyed by a session-ID cookie would let the user reconnect to a still-running fit.
 
+**✅ Resolved v26.06.006.** Process-level job registry keyed by a
+256-bit CSPRNG cookie sid; futures live outside the per-session
+reactive scope so a fit survives tab disconnect / NPM proxy timeout
+/ browser sleep. Resume banner surfaces outstanding jobs on
+reconnect (only when the sid has any — no UI noise on fresh
+sessions). All six Bayesian fits (TG, BW, Survival, Synergy, DR,
+TWM) are routed through the registry; each has a per-kind resume
+handler that re-attaches the poller on Resume click and switches
+to the matching module tab. Cancel button per job. TTL sweeper
+evicts completed jobs after 30 min and abandoned running jobs
+after 4 h. Multi-user isolation enforced at four independent
+layers (registry keying, server-side cookie reading, sid leak
+audit, worker non-eval). 210/210 tests pass including 75
+F.7-specific assertions.
+
 ---
 
 ## G. Status Summary — Round 2
@@ -581,7 +596,7 @@ If the user accidentally closes the tab or the connection drops mid-Bayesian-fit
 | F.4 | Per-mouse drill-down | Enhancement | New | ✅ Fixed v26.06.002 |
 | F.5 | Re-run with subset | Enhancement | New | ✅ Fixed v26.06.002 (Subset Filter) |
 | F.6 | Cmdstanr backend toggle | Enhancement | All Bayesian sidebars | ✅ Fixed v26.06.001 |
-| F.7 | Session resume | Enhancement | `app.R` | ❌ Open — needs dedicated session |
+| F.7 | Session resume | Enhancement | `app.R` + 11 new files | ✅ Fixed v26.06.006 (job registry + cookie identity + resume banner; all 6 Bayesian fits resumable; 75 F.7-specific test assertions) |
 
 ---
 
