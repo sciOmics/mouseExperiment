@@ -130,7 +130,10 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
           `data-website-id` = "f820d0f9-9d2b-4048-b34f-078aa2fea7da"
         ),
         tags$script(src = v("js/umami-events.js"))
-      )
+      ),
+      # F.7 — resume banner sits above the navbar tabs. Renders nothing
+      # when the current sid has no outstanding jobs.
+      resume_banner_ui("resume_banner")
     ),
 
     tabPanel("Data",          dataUploadUI("data")),
@@ -144,6 +147,10 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     tabPanel("About",          citationUI())
   )
 
+  # F.7 — start the registry TTL sweeper once per R process. Idempotent
+  # so repeat `runDashboard()` calls (dev reloads) don't stack sweepers.
+  start_ttl_sweeper()
+
   server <- function(input, output, session) {
 
     # Initialise structured logging (JSON to stdout + in-process buffer)
@@ -154,6 +161,20 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     })
 
     rv <- reactiveValues()
+
+    # F.7 — capture the session-identity cookie. Server-authoritative:
+    # read from the HTTP Cookie header, never from input$. NULL until
+    # the JS that sets the cookie has run, but get_sid_or_none() returns
+    # SID_NONE as a sentinel so downstream observers can pattern-match.
+    rv$session_id <- get_sid_or_none(session)
+    # Mount the resume banner. on_resume dispatches by job$kind; the
+    # per-kind handlers are registered by each Bayesian module in
+    # commits 3-4 via register_resume_handler().
+    resume_banner_server(
+      id         = "resume_banner",
+      session_id = reactive(rv$session_id),
+      on_resume  = function(job) dispatch_resume(job, session, rv)
+    )
 
     # Startup disclaimer modal — shown once per session
     shiny::showModal(
