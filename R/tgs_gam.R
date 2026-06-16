@@ -314,6 +314,27 @@ tgs_gam_diagnostics <- function(fit, id_column) {
     as.data.frame(kc)
   }, error = function(e) NULL)
 
+  # Concurvity check — GAM analog of multicollinearity for smooths.
+  # Values close to 1 indicate one smooth can be predicted from the
+  # others. Returns one row per smooth × concurvity-component (worst,
+  # observed, estimate) when computable.
+  concurvity_df <- tryCatch({
+    cc <- mgcv::concurvity(gam_obj, full = FALSE)
+    # cc is a list of three matrices (worst, observed, estimate). Each
+    # column is a term in the model. Reshape to long for display.
+    if (!is.list(cc) || length(cc) == 0L) return(NULL)
+    nms <- names(cc)
+    do.call(rbind, lapply(nms, function(metric) {
+      mat <- cc[[metric]]
+      data.frame(
+        Component = metric,
+        Term      = colnames(mat),
+        Value     = round(diag(mat), 4L),
+        stringsAsFactors = FALSE
+      )
+    }))
+  }, error = function(e) NULL)
+
   dev_expl <- tryCatch(
     summary(gam_obj)$dev.expl,
     error = function(e) NA_real_
@@ -330,15 +351,24 @@ tgs_gam_diagnostics <- function(fit, id_column) {
     )
   }, error = function(e) list(intercepts = NULL, slopes = NULL))
 
+  # Standard residual diagnostic ggplots so the dashboard's TG
+  # Diagnostics tab renders for GAM the same way as for LME4 / AUC.
+  rd <- build_residual_diagnostic_plots(gam_obj,
+                                        title_prefix = "Tumour growth GAMM")
+
   list(
     residuals = list(
       fitted    = fitted,
       residuals = resids,
       qq_plot   = qq
     ),
-    random_effects      = random_effects,
-    variance_components = tryCatch(lme4::VarCorr(mer_obj), error = function(e) NULL),
-    k_check             = k_check,
-    deviance_explained  = dev_expl
+    random_effects           = random_effects,
+    variance_components      = tryCatch(lme4::VarCorr(mer_obj), error = function(e) NULL),
+    k_check                  = k_check,
+    concurvity               = concurvity_df,
+    deviance_explained       = dev_expl,
+    diag_qq_plot             = rd$diag_qq_plot,
+    diag_resid_fitted_plot   = rd$diag_resid_fitted_plot,
+    diag_scale_location_plot = rd$diag_scale_location_plot
   )
 }

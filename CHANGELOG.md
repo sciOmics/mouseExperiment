@@ -5,6 +5,69 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.8] - 2026-06-02
+
+Closes the bugs and high-priority gaps surfaced by the
+`docs/DIAGNOSTICS.md` audit. The dashboard's diagnostic surface was
+broken in one place and thinly populated in several others; this
+release fixes the bug and substantially expands what the user can
+inspect.
+
+### Added — features
+
+- **Standard residual-diagnostic ggplots** for every frequentist
+  fitting path. New helper `R/utils_diagnostics.R::build_residual_
+  diagnostic_plots()` produces `diag_qq_plot`, `diag_resid_fitted_
+  plot`, and `diag_scale_location_plot` from any model object
+  supporting `residuals()` / `fitted()`. Used by:
+  - `tumor_growth_statistics()` LME4 path — fixes
+    DIAGNOSTICS.md bug (1): the dashboard's TG Diagnostics tab
+    looked for `diag_qq_plot` / `diag_resid_fitted_plot` fields the
+    function never produced, so every LME4 fit showed "not
+    available". Now produces them, mirroring the
+    `analyze_body_weight` pattern from J.12.
+  - `tgs_path_auc()` — AUC path now produces the same shape.
+  - `tgs_gam_diagnostics()` (GAMM) — same shape, plus GAM-specific
+    fields (see below).
+  - `analyze_body_weight()` — gains `diag_scale_location_plot` and
+    `diag_re_qq_plot` for parity.
+
+- **Random-effects Q-Q plot** for LME4 fits via
+  `build_random_effects_qq_plot()`. Surfaces the LMM assumption
+  that BLUPs are normally distributed. Returns one panel per random
+  effect (intercept + slope when present) faceted via ggplot2.
+  Available on TG LME4 and BW results as `diag_re_qq_plot`.
+
+- **GAM-specific diagnostics** (`tgs_gam_diagnostics()`):
+  - `mgcv::concurvity()` results — the GAM analog of multicollinearity
+    for smooths. Returns a long-format data frame with one row per
+    smooth × component (worst / observed / estimate).
+  - Existing `k.check` output now promoted to top-level fields
+    (`gam_k_check`, `gam_concurvity`, `gam_deviance_explained`) so
+    the dashboard can render them uniformly without descending into
+    `$diagnostics`.
+
+- **Frequentist dose-response goodness-of-fit**
+  (`dose_response_statistics`): three new fields on the `statistics`
+  sub-list when the drc Hill / Emax fit converges:
+  - `dr_lack_of_fit` — `drc::modelFit()` output (lack-of-fit F-test
+    against a one-mean-per-dose smoother)
+  - `dr_residuals_df` — per-observation (Dose, Observed, Fitted,
+    Residual) data frame
+  - `dr_residuals_plot` — ggplot residuals-vs-dose with a loess
+    smoother. Closes DIAGNOSTICS.md gap (5).
+
+- **ESS adequacy flag** for Bayesian fits
+  (`R/utils_bayes.R::make_mcmc_diagnostics`): new `ESS_Adequate`
+  column on `mcmc_diagnostics` that flags `Bulk_ESS >= 400 &
+  Tail_ESS >= 400` per parameter (parallels the existing `Converged`
+  flag for Rhat). Closes DIAGNOSTICS.md gap (9).
+
+### Tests
+
+- Same 301 PASS as v0.4.7; no regressions. (7 pre-existing failures
+  from K.11 stale tests are unchanged.)
+
 ## [0.4.7] - 2026-06-02
 
 Closes CODE_REVIEW.md Round 2 items **D.2**, **D.3**, and **K.10** —

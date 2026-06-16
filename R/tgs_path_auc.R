@@ -235,6 +235,17 @@ tgs_path_auc <- function(auc_analysis,
     data     = pairwise_data
   )
 
+  # CODE_REVIEW.md DIAGNOSTICS bug (1) — also build ggplot diagnostics for
+  # the AUC path so the dashboard's TG Diagnostics tab renders correctly
+  # regardless of model_type.
+  rd <- if (include_diagnostics)
+    build_residual_diagnostic_plots(auc_model,
+                                    title_prefix = "Tumour growth AUC")
+  else
+    list(diag_qq_plot = NULL,
+         diag_resid_fitted_plot = NULL,
+         diag_scale_location_plot = NULL)
+
   # Return results for AUC model
   list(
     model                = if (return_model) auc_model else NULL,
@@ -248,6 +259,10 @@ tgs_path_auc <- function(auc_analysis,
     auc_analysis         = auc_analysis,
     data_summary         = data_summary,
     diagnostics          = diagnostics,
+    diag_qq_plot             = rd$diag_qq_plot,
+    diag_resid_fitted_plot   = rd$diag_resid_fitted_plot,
+    diag_scale_location_plot = rd$diag_scale_location_plot,
+    diag_re_qq_plot          = NULL,  # AUC fit is OLS, no random effects
     necrosis_summary     = necrosis_summary
   )
 }

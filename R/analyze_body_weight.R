@@ -288,38 +288,21 @@ analyze_body_weight <- function(df,
   # mcmc_trace_plot, etc. The frequentist version returned just model +
   # summary_text; users had no way to check residual normality or
   # heteroscedasticity. Add QQ and residuals-vs-fitted plots.
-  diag_qq_plot <- NULL
-  diag_resid_fitted_plot <- NULL
-  if (model_type == "lmm" && !is.null(model)) {
-    tryCatch({
-      resid_vec <- stats::residuals(model)
-      fit_vec   <- stats::fitted(model)
-      qq_data   <- stats::qqnorm(resid_vec, plot.it = FALSE)
-      qq_df     <- data.frame(theoretical = qq_data$x, sample = qq_data$y)
-      diag_qq_plot <- ggplot2::ggplot(
-        qq_df, ggplot2::aes(x = .data[["theoretical"]], y = .data[["sample"]])
-      ) +
-        ggplot2::geom_point(alpha = 0.6) +
-        ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed",
-                             colour = "red") +
-        ggplot2::theme_classic() +
-        ggplot2::labs(title = "Body-weight LMM: Q-Q Plot of Residuals",
-                      x = "Theoretical Quantiles",
-                      y = "Sample Quantiles")
-      rf_df <- data.frame(Fitted = fit_vec, Residuals = resid_vec)
-      diag_resid_fitted_plot <- ggplot2::ggplot(
-        rf_df, ggplot2::aes(x = .data[["Fitted"]], y = .data[["Residuals"]])
-      ) +
-        ggplot2::geom_point(alpha = 0.5) +
-        ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
-                            colour = "red") +
-        ggplot2::geom_smooth(method = "loess", se = FALSE,
-                             colour = "steelblue", linewidth = 0.8) +
-        ggplot2::theme_classic() +
-        ggplot2::labs(title = "Body-weight LMM: Residuals vs Fitted",
-                      x = "Fitted Values", y = "Residuals")
-    }, error = function(e) NULL)
-  }
+  # CODE_REVIEW.md J.12 — Bayesian counterpart returns pp_check_plot,
+  # mcmc_trace_plot, etc. v0.4.8 — use the shared helper so TG/BW/AUC
+  # paths produce identical diagnostic shape.
+  rd <- if (model_type == "lmm")
+    build_residual_diagnostic_plots(model, title_prefix = "Body-weight LMM")
+  else
+    list(diag_qq_plot = NULL,
+         diag_resid_fitted_plot = NULL,
+         diag_scale_location_plot = NULL)
+  diag_qq_plot             <- rd$diag_qq_plot
+  diag_resid_fitted_plot   <- rd$diag_resid_fitted_plot
+  diag_scale_location_plot <- rd$diag_scale_location_plot
+  diag_re_qq_plot          <- if (model_type == "lmm")
+    build_random_effects_qq_plot(model, title_prefix = "Body-weight LMM")
+  else NULL
 
   list(
     model          = model,
@@ -338,8 +321,10 @@ analyze_body_weight <- function(df,
       n_subjects       = length(unique(wd$ID)),
       n_groups         = length(levels(wd$Treatment))
     ),
-    diag_qq_plot           = diag_qq_plot,
-    diag_resid_fitted_plot = diag_resid_fitted_plot,
+    diag_qq_plot             = diag_qq_plot,
+    diag_resid_fitted_plot   = diag_resid_fitted_plot,
+    diag_scale_location_plot = diag_scale_location_plot,
+    diag_re_qq_plot          = diag_re_qq_plot,
     weight_data    = wd,
     summary_text   = summary_text
   )

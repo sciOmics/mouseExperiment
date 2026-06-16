@@ -36,6 +36,12 @@ make_mcmc_diagnostics <- function(posterior_summary_df, total_draws = NULL) {
     Bulk_ESS  = round(posterior_summary_df$Bulk_ESS, 0),
     Tail_ESS  = round(posterior_summary_df$Tail_ESS, 0),
     Converged = posterior_summary_df$Rhat <= 1.01,
+    # CODE_REVIEW.md DIAGNOSTICS gap (9) — ESS adequacy flag mirrors the
+    # Converged flag for ESS. 400 is the de-facto minimum from the Stan
+    # team's guidance; below it the posterior is noisier than the chain
+    # length suggests.
+    ESS_Adequate = (posterior_summary_df$Bulk_ESS >= 400) &
+                   (posterior_summary_df$Tail_ESS >= 400),
     stringsAsFactors = FALSE
   )
   if (!is.null(total_draws) && is.numeric(total_draws) && total_draws > 0) {

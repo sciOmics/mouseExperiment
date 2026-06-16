@@ -407,7 +407,46 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
       statistics$nonlinear_bic <- BIC(dr_model)
       statistics$aic_comparison_note <-
         "AIC/BIC values from lm and drc are not on the same scale and cannot be directly compared for model selection."
-      
+
+      # CODE_REVIEW.md DIAGNOSTICS gap (5) — frequentist dose-response had no
+      # goodness-of-fit diagnostics. Add lack-of-fit test, residuals plot, and
+      # a residual-summary table so the dashboard's DR Diagnostics tab has
+      # something to render.
+      statistics$dr_lack_of_fit <- tryCatch({
+        # drc::modelFit returns a data frame with one row per nested model:
+        # ANOVA F vs smoother (default), one DF per dose level. A small
+        # p-value indicates the parametric model fits worse than a one-mean-
+        # per-dose smoother — i.e., lack of fit.
+        as.data.frame(drc::modelFit(dr_model))
+      }, error = function(e) NULL)
+
+      statistics$dr_residuals_df <- tryCatch({
+        data.frame(
+          Dose      = drc_data[[dose_column]],
+          Observed  = drc_data[[volume_column]],
+          Fitted    = stats::fitted(dr_model),
+          Residual  = stats::residuals(dr_model),
+          stringsAsFactors = FALSE
+        )
+      }, error = function(e) NULL)
+
+      statistics$dr_residuals_plot <- tryCatch({
+        if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
+        rd <- statistics$dr_residuals_df
+        if (is.null(rd)) return(NULL)
+        ggplot2::ggplot(rd, ggplot2::aes(x = .data[["Dose"]],
+                                         y = .data[["Residual"]])) +
+          ggplot2::geom_point(alpha = 0.6) +
+          ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
+                              colour = "red") +
+          ggplot2::geom_smooth(method = "loess", se = FALSE,
+                               colour = "steelblue", formula = y ~ x) +
+          ggplot2::theme_classic() +
+          ggplot2::labs(title = "Dose-response residuals",
+                        subtitle = "Systematic curvature → wrong functional form",
+                        x = "Dose", y = "Residual")
+      }, error = function(e) NULL)
+
     }, error = function(e) {
       message("Non-linear regression failed: ", e$message)
       message("Continuing with linear analysis only.")

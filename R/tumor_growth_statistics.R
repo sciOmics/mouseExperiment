@@ -937,6 +937,15 @@ tumor_growth_statistics <- function(df,
       cage_analysis               = cage_analysis,
       model_selection             = gam_result$model_selection,
       diagnostics                 = gam_diagnostics,
+      # Promote GAM-specific diagnostics to top-level fields so the
+      # dashboard can read them with the same shape as LME4 / AUC.
+      diag_qq_plot                = if (!is.null(gam_diagnostics)) gam_diagnostics$diag_qq_plot,
+      diag_resid_fitted_plot      = if (!is.null(gam_diagnostics)) gam_diagnostics$diag_resid_fitted_plot,
+      diag_scale_location_plot    = if (!is.null(gam_diagnostics)) gam_diagnostics$diag_scale_location_plot,
+      diag_re_qq_plot             = NULL,    # gamm4's random-effects are inside $mer; not extracted here
+      gam_k_check                 = if (!is.null(gam_diagnostics)) gam_diagnostics$k_check,
+      gam_concurvity              = if (!is.null(gam_diagnostics)) gam_diagnostics$concurvity,
+      gam_deviance_explained      = if (!is.null(gam_diagnostics)) gam_diagnostics$deviance_explained,
       data_summary                = data_summary,
       plots                       = NULL,
       necrosis_summary            = necrosis_summary
@@ -1172,6 +1181,24 @@ tumor_growth_statistics <- function(df,
       )
     )
     
+    # CODE_REVIEW.md DIAGNOSTICS bug (1) — build the ggplots the dashboard's
+    # TG Diagnostics tab expects (diag_qq_plot, diag_resid_fitted_plot,
+    # diag_scale_location_plot, diag_re_qq_plot). Previously the function
+    # only stored qqnorm() *data* under diagnostics$residuals; the dashboard
+    # looked for rendered ggplots on the top-level result list and always
+    # showed "not available". Mirrors the analyze_body_weight pattern.
+    rd <- if (include_diagnostics)
+      build_residual_diagnostic_plots(model,
+                                      title_prefix = "Tumour growth LMM")
+    else
+      list(diag_qq_plot = NULL,
+           diag_resid_fitted_plot = NULL,
+           diag_scale_location_plot = NULL)
+    diag_re_qq_plot <- if (include_diagnostics)
+      build_random_effects_qq_plot(model, id_column,
+                                   title_prefix = "Tumour growth LMM")
+    else NULL
+
     # Return the results
     results <- list(
       model = if (return_model) model else NULL,
@@ -1188,6 +1215,10 @@ tumor_growth_statistics <- function(df,
       cage_analysis = cage_analysis,
       model_selection = model_selection,
       diagnostics = if (include_diagnostics) diagnostics else NULL,
+      diag_qq_plot             = rd$diag_qq_plot,
+      diag_resid_fitted_plot   = rd$diag_resid_fitted_plot,
+      diag_scale_location_plot = rd$diag_scale_location_plot,
+      diag_re_qq_plot          = diag_re_qq_plot,
       data_summary = data_summary,
       plots = plots_list,
       necrosis_summary = necrosis_summary
