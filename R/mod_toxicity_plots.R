@@ -22,11 +22,17 @@ add_tox_plots <- function(input, output, session, rv,
                           ordered_tox_grps, ordered_et_grps) {
 
   # ---- Diagnostics ----
+  # Prefer the ggplot2 diagnostic plots produced by analyze_body_weight()
+  # (consistent with TG and AUC paths). Fall back to a base-R qqnorm /
+  # scatter if the backend hasn't produced the ggplots yet (e.g., older
+  # cached result).
 
   output$tox_diag_qq <- renderPlot({
     req(rv$tox_results, rv$tox_results$mixed_model)
     mm <- rv$tox_results$mixed_model
     if (isTRUE(mm$error) || is.null(mm$model)) return(NULL)
+    if (!is.null(mm$diag_qq_plot)) return(mm$diag_qq_plot)
+    # Fallback (pre-v0.4.8 results)
     r <- tryCatch(stats::residuals(mm$model), error = function(e) NULL)
     req(!is.null(r))
     stats::qqnorm(r, main = "Q-Q Plot of Mixed Model Residuals", pch = 16,
@@ -38,6 +44,7 @@ add_tox_plots <- function(input, output, session, rv,
     req(rv$tox_results, rv$tox_results$mixed_model)
     mm <- rv$tox_results$mixed_model
     if (isTRUE(mm$error) || is.null(mm$model)) return(NULL)
+    if (!is.null(mm$diag_resid_fitted_plot)) return(mm$diag_resid_fitted_plot)
     r <- tryCatch(stats::residuals(mm$model), error = function(e) NULL)
     f <- tryCatch(stats::fitted(mm$model),    error = function(e) NULL)
     req(!is.null(r), !is.null(f))
@@ -45,6 +52,24 @@ add_tox_plots <- function(input, output, session, rv,
          xlab = "Fitted Values", ylab = "Residuals",
          pch = 16, col = "#2c7bb6")
     graphics::abline(h = 0, col = "#d7191c", lty = 2, lwd = 2)
+  })
+
+  output$tox_diag_scale_location <- renderPlot({
+    req(rv$tox_results, rv$tox_results$mixed_model)
+    mm <- rv$tox_results$mixed_model
+    if (isTRUE(mm$error) || is.null(mm$model)) return(NULL)
+    if (!is.null(mm$diag_scale_location_plot)) return(mm$diag_scale_location_plot)
+    plot(1, 1, type = "n",
+         main = "Scale-Location plot not available (re-run analysis)")
+  })
+
+  output$tox_diag_re_qq <- renderPlot({
+    req(rv$tox_results, rv$tox_results$mixed_model)
+    mm <- rv$tox_results$mixed_model
+    if (isTRUE(mm$error) || is.null(mm$model)) return(NULL)
+    if (!is.null(mm$diag_re_qq_plot)) return(mm$diag_re_qq_plot)
+    plot(1, 1, type = "n",
+         main = "Random-effects Q-Q not available (re-run analysis)")
   })
 
   # ---- BW AUC Forest Plot ----

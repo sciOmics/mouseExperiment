@@ -260,6 +260,25 @@ survivalUI <- function(id) {
             uiOutput(ns("surv_ph_test_banner")),
             shinycssloaders::withSpinner(
               DTOutput(ns("surv_ph_test_table"))
+            ),
+            hr(),
+            h4("Schoenfeld residuals plot"),
+            tab_info(
+              strong("How to read this plot. "),
+              "Each panel shows the smoothed Schoenfeld residuals for one ",
+              "covariate against transformed survival time. ",
+              strong("Flat horizontal smoother around 0 (within the shaded CI band)"),
+              " = PH assumption met for that term. ",
+              strong("Monotonic trend"),
+              " = the hazard ratio drifts over time (treatment effect ",
+              "strengthens or weakens). ",
+              strong("Sinusoidal / non-monotonic shape"),
+              " = a more complex time-varying effect — usually means a ",
+              "Cox model with a time-varying coefficient (or a parametric ",
+              "AFT) fits better. The dashed line at zero is the null."
+            ),
+            shinycssloaders::withSpinner(
+              plotOutput(ns("surv_schoenfeld_plot"), height = "500px")
             )
           ),
           
@@ -1198,6 +1217,28 @@ survival_server <- function(id, rv) {
                 rv$surv_results$method_used %||% "unknown")))
     }
     NULL
+  })
+
+  # Schoenfeld residuals plot — the `cox.zph` object supports plot()
+  # natively (base graphics). We wrap in a guarded block so the panel
+  # gracefully shows a message when ph_test isn't available (Firth /
+  # log-rank fallback) or when the user is in Bayesian mode.
+  output$surv_schoenfeld_plot <- renderPlot({
+    req(rv$surv_results)
+    if (isTRUE(rv$surv_results$error)) return(NULL)
+    ph <- rv$surv_results$ph_test
+    if (is.null(ph)) {
+      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = "Schoenfeld plot not available for this fit path")
+      return(invisible(NULL))
+    }
+    # cox.zph's plot method does the right thing — one panel per
+    # covariate plus a global panel; smoothers with 95% CI ribbons.
+    tryCatch(plot(ph), error = function(e) {
+      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = sprintf("Schoenfeld plot failed: %s",
+                          conditionMessage(e)))
+    })
   })
 
   output$surv_ph_test_table <- renderDT({

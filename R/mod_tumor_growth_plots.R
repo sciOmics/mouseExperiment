@@ -736,6 +736,69 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     plot(1, 1, type = "n", main = "Residuals vs Fitted not available", xlab = "", ylab = "")
   })
 
+  # Scale-Location (heteroscedasticity check). Falls back to a "not
+  # available" plot for backwards compat with old result lists.
+  output$tg_diag_scale_location <- renderPlot({
+    req(rv$tg_results)
+    if (isTRUE(rv$tg_results$error)) return(NULL)
+    if (isTRUE(rv$tg_results$model_type_used == "bayes")) {
+      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = "Not applicable in Bayesian mode.")
+      return(invisible(NULL))
+    }
+    if (!is.null(rv$tg_results$diag_scale_location_plot)) {
+      return(rv$tg_results$diag_scale_location_plot)
+    }
+    plot(1, 1, type = "n", main = "Scale-Location plot not available",
+         xlab = "", ylab = "")
+  })
+
+  # Random-effects Q-Q. Only meaningful for LME4 fits with random
+  # intercept (or slope); AUC path has no random effects.
+  output$tg_diag_re_qq <- renderPlot({
+    req(rv$tg_results)
+    if (isTRUE(rv$tg_results$error)) return(NULL)
+    if (isTRUE(rv$tg_results$model_type_used == "bayes")) {
+      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = "Not applicable in Bayesian mode.")
+      return(invisible(NULL))
+    }
+    if (!is.null(rv$tg_results$diag_re_qq_plot)) {
+      return(rv$tg_results$diag_re_qq_plot)
+    }
+    plot(1, 1, type = "n",
+         main = "Random-effects Q-Q not available (AUC path has no random effects)",
+         xlab = "", ylab = "")
+  })
+
+  # GAM-specific diagnostics — only populated when model_type = "gam".
+  # The UI uses output$tg_show_gam_diag to gate the conditionalPanel.
+  output$tg_show_gam_diag <- shiny::reactive({
+    !is.null(rv$tg_results) &&
+      isTRUE(rv$tg_results$model_type_used == "gam") &&
+      (!is.null(rv$tg_results$gam_k_check) ||
+       !is.null(rv$tg_results$gam_concurvity))
+  })
+  shiny::outputOptions(output, "tg_show_gam_diag", suspendWhenHidden = FALSE)
+
+  output$tg_gam_k_check <- renderDT({
+    req(rv$tg_results)
+    kc <- rv$tg_results$gam_k_check
+    if (is.null(kc) || nrow(kc) == 0L)
+      return(datatable(data.frame(Message = "k.check not available")))
+    datatable(format_df_for_display(as.data.frame(kc)),
+              options = list(dom = "t", paging = FALSE, searching = FALSE))
+  })
+
+  output$tg_gam_concurvity <- renderDT({
+    req(rv$tg_results)
+    cc <- rv$tg_results$gam_concurvity
+    if (is.null(cc) || nrow(cc) == 0L)
+      return(datatable(data.frame(Message = "concurvity not available")))
+    datatable(format_df_for_display(as.data.frame(cc)),
+              options = list(dom = "t", paging = FALSE, searching = FALSE))
+  })
+
   list(
     growth    = tg_growth_plot,
     rates     = tg_rates_plot,

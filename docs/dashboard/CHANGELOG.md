@@ -4,6 +4,61 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.06.007] 2026 June 2nd
+
+Fixes the diagnostic-rendering bugs and adds the high-priority gaps
+surfaced by the backend `docs/DIAGNOSTICS.md` audit. Requires
+backend ≥ 0.4.8 for the new diagnostic fields.
+
+### Fixed
+
+- **TG Diagnostics tab no longer broken**. The dashboard was
+  rendering `rv$tg_results$diag_qq_plot` and
+  `rv$tg_results$diag_resid_fitted_plot` — fields the backend's
+  `tumor_growth_statistics()` never produced for the LME4 path. Every
+  LME4 fit silently showed "not available". Fixed in tandem with the
+  backend's v0.4.8 update which now produces the ggplot diagnostics
+  on the same field names.
+
+### Added — features
+
+- **Expanded TG Diagnostics tab**: Q-Q + Residuals vs Fitted now
+  joined by Scale-Location and Random-effects Q-Q. Each plot has
+  collapsible "How to read this plot" help text explaining what
+  patterns to look for (S-shape vs bow vs heavy tails vs fan shape
+  etc.). Conditional GAM-specific sub-section displays `k.check` and
+  `concurvity` tables when `model_type = "gam"`.
+
+- **Schoenfeld residuals plot** in the Survival → PH Assumption tab.
+  Plots the smoothed Schoenfeld residuals via the `cox.zph` object's
+  built-in `plot()` method. Surfaces the SHAPE of any PH violation
+  (linear drift, sinusoidal, sudden change) that the `cox.zph` test
+  table can't show. Includes interpretation help.
+
+- **New DR Diagnostics tab** (Dose-Response). Surfaces the
+  backend's new `dr_lack_of_fit` table (`drc::modelFit` output) and
+  `dr_residuals_plot` (residuals vs dose with loess smoother). Each
+  with collapsible interpretation help.
+
+- **Expanded Toxicity / BW Diagnostics tab**: Scale-Location and
+  Random-effects Q-Q joining the existing Q-Q and Residuals vs
+  Fitted. Plots now use the ggplot2 versions from the backend
+  (consistent with TG) instead of base-R `qqnorm` / `plot`. Fallback
+  to base-R is kept for older cached results.
+
+- **Inline interpretation help** under every diagnostic plot via
+  collapsible `tags$details` blocks. Each describes:
+  - What pattern indicates the assumption is met
+  - What pattern indicates a problem (S-shape, bow, fan, curved
+    trend, etc.)
+  - What to do about it (try transform X, switch to model Y, etc.)
+  Help is collapsed by default so it doesn't clutter the surface
+  for experienced users.
+
+### Tests
+
+- 210 / 210 pass — same as v26.06.006; no regressions.
+
 ## [v26.06.006] 2026 June 2nd
 
 Closes CODE_REVIEW.md Round 2 **F.7** — session resume for long-running

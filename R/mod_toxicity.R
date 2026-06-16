@@ -540,20 +540,71 @@ toxicityUI <- function(id) {
             conditionalPanel(ns = ns, "output.tox_model_type_val == 'bw'",
               tab_info(
                 strong("Mixed-effects model diagnostics "), "for the body weight trajectory model. ",
-                "Inspect residual normality (Q-Q plot) and homoscedasticity (residuals vs fitted). ",
+                "Each plot checks one assumption — expand the help text under each one for interpretation.",
+                br(),
                 em("Diagnostics are only available in Body Weight Analysis mode.")
               ),
               fluidRow(
                 column(6,
                   h4("Q-Q Plot of Residuals"),
                   shinycssloaders::withSpinner(
-                    plotOutput(ns("tox_diag_qq"), height = "400px")
+                    plotOutput(ns("tox_diag_qq"), height = "350px")
+                  ),
+                  tags$details(
+                    tags$summary(tags$small("How to read this plot")),
+                    tags$small(
+                      "Points should fall along the red reference line. ",
+                      strong("S-shape: "), "heavy-tailed residuals — outliers or a ",
+                      "transform issue. ",
+                      strong("Bow: "), "skewed residuals — usually fixed by changing the ",
+                      "weight transform."
+                    )
                   )
                 ),
                 column(6,
                   h4("Residuals vs Fitted"),
                   shinycssloaders::withSpinner(
-                    plotOutput(ns("tox_diag_resid_fitted"), height = "400px")
+                    plotOutput(ns("tox_diag_resid_fitted"), height = "350px")
+                  ),
+                  tags$details(
+                    tags$summary(tags$small("How to read this plot")),
+                    tags$small(
+                      "Random scatter around zero = LMM assumptions met. ",
+                      strong("Curved blue line: "), "the linear-in-time model misses ",
+                      "non-linearity — consider a polynomial term or a GAM. ",
+                      strong("Fan shape: "), "heteroscedasticity — consider log-",
+                      "transforming or weighting the response."
+                    )
+                  )
+                )
+              ),
+              fluidRow(
+                column(6,
+                  h4("Scale-Location"),
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tox_diag_scale_location"), height = "350px")
+                  ),
+                  tags$details(
+                    tags$summary(tags$small("How to read this plot")),
+                    tags$small(
+                      "sqrt(|residuals|) vs fitted — magnifies variance trends. ",
+                      "Flat blue line = constant variance. Upward slope = ",
+                      "heteroscedasticity."
+                    )
+                  )
+                ),
+                column(6,
+                  h4("Random-effects Q-Q"),
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tox_diag_re_qq"), height = "350px")
+                  ),
+                  tags$details(
+                    tags$summary(tags$small("How to read this plot")),
+                    tags$small(
+                      "Per-animal random intercepts should be normally ",
+                      "distributed. Heavy tails are rare; safe to ignore at ",
+                      "typical preclinical N."
+                    )
                   )
                 )
               )

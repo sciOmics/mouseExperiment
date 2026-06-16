@@ -341,6 +341,65 @@ doseResponseUI <- function(id) {
             shinycssloaders::withSpinner(
               DTOutput(ns("dr_tukey_table"))
             )
+          ),
+
+          # CODE_REVIEW.md DIAGNOSTICS gap (5) \u2014 frequentist DR had no
+          # goodness-of-fit. v0.4.8 surfaces drc::modelFit + residuals plot.
+          tabPanel("Diagnostics",
+            tab_info(
+              strong("Goodness-of-fit checks for the non-linear (Hill / Emax) ",
+                     "dose-response model. "),
+              "If the lack-of-fit p-value is < 0.05, the parametric Hill ",
+              "model fits worse than a model with one mean per dose level ",
+              "\u2014 reconsider the functional form (try a different ",
+              "Hill variant, a simpler 3-parameter logistic, or transform ",
+              "the volume axis). Use the residuals plot to spot systematic ",
+              "patterns the lack-of-fit test would miss at small N.",
+              br(),
+              em("Only available when the drc Hill / Emax fit converged; ",
+                 "in pure-linear mode this tab will be empty.")
+            ),
+            fluidRow(
+              column(6,
+                h4("Lack-of-fit test"),
+                tags$details(
+                  tags$summary(tags$small("How to read this table")),
+                  tags$small(
+                    "drc::modelFit compares the Hill fit against a one-mean-",
+                    "per-dose smoother via an F-test. ",
+                    strong("Large p (\u2265 0.05): "),
+                    "the Hill model is as good as the smoother \u2014 ",
+                    "functional form is adequate. ",
+                    strong("Small p (< 0.05): "),
+                    "the smoother fits significantly better \u2014 the Hill ",
+                    "equation may be the wrong shape; inspect the residuals ",
+                    "plot for clues."
+                  )
+                ),
+                shinycssloaders::withSpinner(
+                  DTOutput(ns("dr_lack_of_fit_table"))
+                )
+              ),
+              column(6,
+                h4("Residuals vs Dose"),
+                tags$details(
+                  tags$summary(tags$small("How to read this plot")),
+                  tags$small(
+                    "Points should scatter around the red zero line with no ",
+                    "trend. ",
+                    strong("Curved blue smoother: "),
+                    "the Hill function misses curvature at some dose range ",
+                    "\u2014 try a different model. ",
+                    strong("Fan shape (variance grows with dose): "),
+                    "heteroscedasticity; consider log-transforming the ",
+                    "volume axis or weighting."
+                  )
+                ),
+                shinycssloaders::withSpinner(
+                  plotOutput(ns("dr_residuals_plot"), height = "400px")
+                )
+              )
+            )
           )
         )
       )
@@ -951,6 +1010,30 @@ dose_response_server <- function(id, rv) {
     tbl <- tbl[, c("Comparison", setdiff(names(tbl), "Comparison"))]
     tbl <- format_df_for_display(tbl)
     datatable(tbl, options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
+  })
+
+  # CODE_REVIEW.md DIAGNOSTICS gap (5) — frequentist DR Diagnostics tab.
+  output$dr_lack_of_fit_table <- renderDT({
+    req(rv$dr_results)
+    if (isTRUE(rv$dr_results$error)) return(datatable(data.frame(Message = "No results")))
+    lof <- rv$dr_results$statistics$dr_lack_of_fit
+    if (is.null(lof) || nrow(lof) == 0L)
+      return(datatable(data.frame(
+        Message = "Lack-of-fit not available (Hill / Emax fit did not converge)")))
+    datatable(format_df_for_display(as.data.frame(lof)),
+              options = list(dom = "t", paging = FALSE, searching = FALSE))
+  })
+
+  output$dr_residuals_plot <- renderPlot({
+    req(rv$dr_results)
+    if (isTRUE(rv$dr_results$error)) return(NULL)
+    p <- rv$dr_results$statistics$dr_residuals_plot
+    if (is.null(p)) {
+      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = "Residuals plot not available (Hill / Emax fit did not converge)")
+      return(invisible(NULL))
+    }
+    p
   })
 
   # ---- Download handlers ----

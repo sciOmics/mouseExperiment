@@ -1013,17 +1013,111 @@ tumorGrowthUI <- function(id) {
           ),
           
           tabPanel("Diagnostics",
+            tab_info(
+              strong("Residual diagnostics for the fitted model. "),
+              "Each plot checks one assumption — read the help text under each one.",
+              br(),
+              em("These are not shown in Bayesian mode; see the Posterior Check ",
+                 "and MCMC Diagnostics tabs instead.")
+            ),
             fluidRow(
               column(6,
                 h4("Q-Q Plot of Residuals"),
                 shinycssloaders::withSpinner(
-                  plotOutput(ns("tg_diag_qq"), height = "400px")
+                  plotOutput(ns("tg_diag_qq"), height = "350px")
+                ),
+                tags$details(
+                  tags$summary(tags$small("How to read this plot")),
+                  tags$small(
+                    "Points should fall along the red dashed reference line. ",
+                    strong("S-shape: "), "residuals have heavier tails than normal — ",
+                    "consider a robust likelihood or check for outliers. ",
+                    strong("Bow: "), "skewed residuals — check the volume transform ",
+                    "(log vs sqrt vs none). ",
+                    strong("A few outliers at the ends: "), "common; not a problem ",
+                    "unless they're clinically obvious errors."
+                  )
                 )
               ),
               column(6,
                 h4("Residuals vs Fitted"),
                 shinycssloaders::withSpinner(
-                  plotOutput(ns("tg_diag_resid_fitted"), height = "400px")
+                  plotOutput(ns("tg_diag_resid_fitted"), height = "350px")
+                ),
+                tags$details(
+                  tags$summary(tags$small("How to read this plot")),
+                  tags$small(
+                    "Points should scatter randomly around the red zero line. ",
+                    strong("Curved blue trend: "), "the model misses non-linearity ",
+                    "— try GAMM (smooth time × treatment) or a different volume ",
+                    "transform. ",
+                    strong("Fan shape (wider on the right): "), "heteroscedasticity ",
+                    "— variance grows with the mean. Switch to log transform or a ",
+                    "model with variance structure."
+                  )
+                )
+              )
+            ),
+            fluidRow(
+              column(6,
+                h4("Scale-Location"),
+                shinycssloaders::withSpinner(
+                  plotOutput(ns("tg_diag_scale_location"), height = "350px")
+                ),
+                tags$details(
+                  tags$summary(tags$small("How to read this plot")),
+                  tags$small(
+                    "Plots sqrt(|residuals|) vs fitted to magnify variance ",
+                    "trends. ",
+                    strong("Flat blue line: "), "constant variance — LMM assumption ",
+                    "satisfied. ",
+                    strong("Upward slope: "), "heteroscedasticity — see ",
+                    "Residuals vs Fitted notes above."
+                  )
+                )
+              ),
+              column(6,
+                h4("Random-effects Q-Q"),
+                shinycssloaders::withSpinner(
+                  plotOutput(ns("tg_diag_re_qq"), height = "350px")
+                ),
+                tags$details(
+                  tags$summary(tags$small("How to read this plot")),
+                  tags$small(
+                    "Per-animal random intercepts (and slopes, if used) should ",
+                    "be normally distributed. Points along the red line = ",
+                    "assumption met. Heavy tails / clear S-shape: the LMM ",
+                    "may be giving a few animals too much / too little ",
+                    "shrinkage. Rare and usually safe to ignore at N ≤ 30."
+                  )
+                )
+              )
+            ),
+            # GAM-specific diagnostics (only shown for model_type = "gam").
+            conditionalPanel(
+              ns = ns,
+              condition = "output.tg_show_gam_diag === true",
+              hr(),
+              h4("GAM-specific diagnostics"),
+              tab_info(
+                strong("k.check"), " tests whether each smoother had enough ",
+                "basis functions. Look at the ", strong("k-index"), " column: ",
+                "values < 1 (and a small p-value) suggest the smoother is ",
+                "wiggly enough to need more basis dimensions — re-fit with ",
+                "a larger ", code("k"), ". ",
+                strong("Concurvity"), " is the GAM analog of multicollinearity ",
+                "for smooths. Values close to 1 indicate one smooth can be ",
+                "predicted from another; coefficient estimates become ",
+                "unreliable."
+              ),
+              fluidRow(
+                column(6,
+                  h5("Basis-dimension check (k.check)"),
+                  DTOutput(ns("tg_gam_k_check"))
+                ),
+                column(6,
+                  h5("Concurvity"),
+                  DTOutput(ns("tg_gam_concurvity"))
                 )
               )
             )
