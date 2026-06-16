@@ -1093,6 +1093,40 @@ tumorGrowthUI <- function(id) {
                 )
               )
             ),
+            # CODE_REVIEW.md DIAGNOSTICS gap (13) — LMM influence
+            # diagnostics. Only shown when diag_cooks_distance was
+            # populated (LME4 path with include_diagnostics = TRUE).
+            conditionalPanel(
+              ns = ns,
+              condition = "output.tg_show_influence === true",
+              hr(),
+              h4("Influence diagnostics (case-deletion)"),
+              tab_info(
+                strong("Cook's distance"), " measures the overall effect of ",
+                "deleting each observation. Values above the dashed ",
+                "threshold (4/n) flag observations that move the fit ",
+                "significantly. Inspect any flagged points individually — ",
+                "they're not automatically wrong, but they're driving the ",
+                "result. ",
+                strong("DFBETAS"), " breaks the influence down per fixed ",
+                "effect: each column is one coefficient, each row one ",
+                "observation. Values | > 1 | are conventionally flagged."
+              ),
+              fluidRow(
+                column(6,
+                  h5("Cook's distance"),
+                  shinycssloaders::withSpinner(
+                    DTOutput(ns("tg_cooks_distance"))
+                  )
+                ),
+                column(6,
+                  h5("DFBETAS"),
+                  shinycssloaders::withSpinner(
+                    DTOutput(ns("tg_dfbetas"))
+                  )
+                )
+              )
+            ),
             # GAM-specific diagnostics (only shown for model_type = "gam").
             conditionalPanel(
               ns = ns,

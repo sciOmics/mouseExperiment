@@ -607,6 +607,35 @@ toxicityUI <- function(id) {
                     )
                   )
                 )
+              ),
+              # CODE_REVIEW.md DIAGNOSTICS gap (13) — LMM influence
+              # diagnostics for BW.
+              conditionalPanel(
+                ns = ns,
+                condition = "output.tox_show_influence === true",
+                hr(),
+                h4("Influence diagnostics (case-deletion)"),
+                tab_info(
+                  strong("Cook's distance"), " measures the overall ",
+                  "effect of deleting each observation. Above the dashed ",
+                  "threshold (4/n) = an observation that moves the fit. ",
+                  strong("DFBETAS"), " shows per-coefficient influence; ",
+                  "values | > 1 | are flagged."
+                ),
+                fluidRow(
+                  column(6,
+                    h5("Cook's distance"),
+                    shinycssloaders::withSpinner(
+                      DTOutput(ns("tox_cooks_distance"))
+                    )
+                  ),
+                  column(6,
+                    h5("DFBETAS"),
+                    shinycssloaders::withSpinner(
+                      DTOutput(ns("tox_dfbetas"))
+                    )
+                  )
+                )
               )
             ),
             conditionalPanel(ns = ns, "output.tox_model_type_val == 'et'",

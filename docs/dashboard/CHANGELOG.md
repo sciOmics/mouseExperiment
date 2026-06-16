@@ -4,6 +4,69 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.06.008] 2026 June 2nd
+
+Closes the remaining DIAGNOSTICS audit items (2, 10, 11, 12) plus the
+dashboard half of (6) and (13). Requires backend ≥ 0.4.9 for the new
+result-list fields. After this release all 13 items in
+`docs/DIAGNOSTICS.md` are addressed.
+
+### Added — features
+
+- **Pareto-k distribution histogram** (DIAGNOSTICS.md gap 11). In the
+  TG MCMC Diagnostics tab, alongside the existing high-k table. Shows
+  the full Pareto-k distribution with red (0.7) and orange (0.5) cut-off
+  lines so users can see whether high-k observations are isolated or
+  part of a broader pattern. New helper `helpers_bayes.R::
+  build_pareto_k_plot()`.
+
+- **PPC coverage bar chart** (gap 10). In the TG MCMC Diagnostics tab.
+  Replaces the dl-row text with a quick-scan bar chart showing
+  empirical vs nominal coverage at 50/80/95% with the nominal target
+  drawn as a red dashed reference. New helper
+  `helpers_bayes.R::build_ppc_coverage_plot()`.
+
+- **MCMC rank plots** (gap 12). Modern convergence diagnostic that
+  complements Rhat. Each chain's draws are rank-normalised; converged
+  chains look like uniform histograms and resemble each other. Wraps
+  `bayesplot::mcmc_rank_overlay()`. New helper
+  `helpers_bayes.R::build_mcmc_rank_plot()`.
+
+- **Bayesian residuals + posterior-density plots rendered** (gap 2).
+  The backend computes `residuals_plot` (posterior-mean residuals vs
+  day, faceted by treatment, with loess smoother) and
+  `posterior_dist_plot` (`bayesplot::mcmc_areas` for treatment
+  parameters) — both were computed and silently discarded. Now
+  rendered in the TG MCMC Diagnostics tab. Flipped TG's F.7 path to
+  `plots = TRUE` so the backend actually generates them.
+
+- **TG Influence sub-tab** (gap 13). Conditional section on the TG
+  Diagnostics tab showing Cook's distance + DFBETAS as DT tables.
+  Shows only when the backend populated the fields (gated via the
+  `tg_show_influence` reactive).
+
+- **BW Influence sub-tab** (gap 13). Same on Toxicity → BW Diagnostics
+  tab. `tox_show_influence` reactive gates visibility.
+
+- **Synergy Diagnostics tab** (gap 6). New tab on Drug Synergy with
+  the per-group Q-Q and boxplot from `analyze_drug_synergy()`.
+  Available only in the frequentist path; falls back to a graceful
+  "not available" message in Bayesian / over-time mode.
+
+### Interpretation help — pattern
+
+Every new diagnostic plot has a collapsible `tags$details(tags$summary
+("How to read this plot"))` block describing:
+- What pattern indicates the assumption is met
+- What pattern indicates a problem
+- What to do about it
+
+Collapsed by default; expand inline without leaving the tab.
+
+### Tests
+
+- 210 / 210 pass, no regressions.
+
 ## [v26.06.007] 2026 June 2nd
 
 Fixes the diagnostic-rendering bugs and adds the high-priority gaps

@@ -1008,8 +1008,81 @@ tumor_growth_server <- function(id, rv) {
             DTOutput(session$ns("tg_bayes_influential"))
           ),
           br(),
+          # CODE_REVIEW.md DIAGNOSTICS gap (11) — Pareto-k distribution
+          fluidRow(
+            column(6,
+              h5(strong("Pareto-k distribution (all observations)")),
+              tags$details(
+                tags$summary(tags$small("How to read this plot")),
+                tags$small(
+                  "Histogram of LOO Pareto-k values across all observations. ",
+                  strong("All bars left of 0.5 (orange dotted): "), "LOO is reliable. ",
+                  strong("Some bars between 0.5 and 0.7: "), "moderate influence; estimates usable but inspect. ",
+                  strong("Bars right of 0.7 (red dashed): "), "those observations are too influential for PSIS-LOO to estimate reliably — see the table above for which.")
+              ),
+              shinycssloaders::withSpinner(
+                plotOutput(session$ns("tg_pareto_k_plot"), height = "300px")
+              )
+            ),
+            column(6,
+              # CODE_REVIEW.md DIAGNOSTICS gap (10) — PPC coverage bar chart
+              h5(strong("Posterior predictive coverage")),
+              tags$details(
+                tags$summary(tags$small("How to read this plot")),
+                tags$small(
+                  "Each bar = empirical coverage of the corresponding nominal posterior-predictive interval. ",
+                  strong("Bars near red dashed line: "), "well-calibrated. ",
+                  strong("Bars below: "), "under-coverage — model intervals are too narrow. ",
+                  strong("Bars above: "), "over-coverage — too wide; model is being conservative.")
+              ),
+              shinycssloaders::withSpinner(
+                plotOutput(session$ns("tg_ppc_coverage_plot"), height = "300px")
+              )
+            )
+          ),
+          br(),
           shinycssloaders::withSpinner(
             plotOutput(session$ns("tg_mcmc_trace_plot"), height = "500px")
+          ),
+          br(),
+          # CODE_REVIEW.md DIAGNOSTICS gap (12) — rank plots
+          h5(strong("MCMC rank plots")),
+          tags$details(
+            tags$summary(tags$small("How to read these plots")),
+            tags$small(
+              "Modern convergence diagnostic. Each chain's draws are rank-normalised; chains that have converged look like uniform draws (flat histograms) and resemble each other. ",
+              strong("Distinctly non-uniform shapes or chain-specific patterns: "), "the chain hasn't mixed and the posterior estimate is unreliable.")
+          ),
+          shinycssloaders::withSpinner(
+            plotOutput(session$ns("tg_mcmc_rank_plot"), height = "500px")
+          ),
+          br(),
+          # CODE_REVIEW.md DIAGNOSTICS gap (2) — render wasted posterior plots
+          fluidRow(
+            column(6,
+              h5(strong("Treatment-parameter posterior densities")),
+              tags$details(
+                tags$summary(tags$small("How to read this plot")),
+                tags$small(
+                  "Posterior density (filled area) for each treatment coefficient. ",
+                  "Look for: (a) modes shifted from the prior (the data informed the parameter), (b) credible-interval bars that don't include zero (significant posterior direction), (c) heavy tails / multiple modes (potential identifiability issue).")
+              ),
+              shinycssloaders::withSpinner(
+                plotOutput(session$ns("tg_posterior_dist_plot"), height = "400px")
+              )
+            ),
+            column(6,
+              h5(strong("Bayesian residuals vs day")),
+              tags$details(
+                tags$summary(tags$small("How to read this plot")),
+                tags$small(
+                  "Posterior-mean residuals plotted against study day, faceted by treatment, with a loess smoother. Flat horizontal line at zero per group = the linear-time assumption is satisfied. ",
+                  strong("Systematic curvature: "), "the log-linear time assumption is violated; consider a GAMM or a more flexible mean function.")
+              ),
+              shinycssloaders::withSpinner(
+                plotOutput(session$ns("tg_bayes_residuals_plot"), height = "400px")
+              )
+            )
           )
         ),
         select = FALSE
@@ -1648,6 +1721,59 @@ tumor_growth_server <- function(id, rv) {
     req(!isTRUE(rv$tg_results$error))
     req(!is.null(rv$bayes_models$tg))
     bayesplot::mcmc_trace(brms::as.array(rv$bayes_models$tg))
+  })
+
+  # CODE_REVIEW.md DIAGNOSTICS gaps (10), (11), (12) — Bayesian extras.
+  output$tg_ppc_coverage_plot <- renderPlot({
+    req(rv$tg_results)
+    req(isTRUE(rv$tg_results$model_type_used == "bayes"))
+    p <- build_ppc_coverage_plot(rv$tg_results)
+    req(!is.null(p))
+    p
+  })
+
+  output$tg_pareto_k_plot <- renderPlot({
+    req(rv$tg_results)
+    req(isTRUE(rv$tg_results$model_type_used == "bayes"))
+    p <- build_pareto_k_plot(rv$tg_results)
+    req(!is.null(p))
+    p
+  })
+
+  output$tg_mcmc_rank_plot <- renderPlot({
+    req(rv$tg_results)
+    req(isTRUE(rv$tg_results$model_type_used == "bayes"))
+    req(!is.null(rv$bayes_models$tg))
+    p <- build_mcmc_rank_plot(rv$bayes_models$tg)
+    req(!is.null(p))
+    p
+  })
+
+  # CODE_REVIEW.md DIAGNOSTICS gap (2) — render the previously-wasted
+  # backend plots. They're populated only when bayesian_tumor_growth()
+  # was called with plots = TRUE; the dashboard's F.7 path passes
+  # plots = FALSE, so users see "not available" until we either flip the
+  # default or extend the F.7 path to compute these on demand.
+  output$tg_posterior_dist_plot <- renderPlot({
+    req(rv$tg_results)
+    p <- rv$tg_results$posterior_dist_plot
+    if (is.null(p)) {
+      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = "Posterior densities not available\n(fit with plots = TRUE to generate)")
+      return(invisible(NULL))
+    }
+    p
+  })
+
+  output$tg_bayes_residuals_plot <- renderPlot({
+    req(rv$tg_results)
+    p <- rv$tg_results$residuals_plot
+    if (is.null(p)) {
+      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = "Bayesian residuals not available\n(fit with plots = TRUE to generate)")
+      return(invisible(NULL))
+    }
+    p
   })
 
   # Necrosis table render + all download handlers live in

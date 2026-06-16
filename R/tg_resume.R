@@ -81,7 +81,11 @@ register_tg_resume <- function(input, output, session, rv) {
       necrotic_column              = bayes_params$necrotic_col,
       necrotic_handling            = bayes_params$necrotic_handling,
       return_model                 = TRUE,
-      plots                        = FALSE,
+      # plots = TRUE so the MCMC Diagnostics tab can render
+      # posterior_dist_plot + residuals_plot (CODE_REVIEW.md DIAGNOSTICS
+      # gap 2). Small extra fit-time cost; the dashboard's other plots
+      # (growth curves etc.) are still built reactively from data.
+      plots                        = TRUE,
       verbose                      = FALSE
     )
   })

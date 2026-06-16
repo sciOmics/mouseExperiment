@@ -72,6 +72,32 @@ add_tox_plots <- function(input, output, session, rv,
          main = "Random-effects Q-Q not available (re-run analysis)")
   })
 
+  # CODE_REVIEW.md DIAGNOSTICS gap (13) — LMM influence for BW.
+  output$tox_show_influence <- shiny::reactive({
+    mm <- rv$tox_results$mixed_model
+    !is.null(mm) && !isTRUE(mm$error) &&
+      (!is.null(mm$diag_cooks_distance) || !is.null(mm$diag_dfbetas))
+  })
+  shiny::outputOptions(output, "tox_show_influence", suspendWhenHidden = FALSE)
+
+  output$tox_cooks_distance <- renderDT({
+    req(rv$tox_results, rv$tox_results$mixed_model)
+    cd <- rv$tox_results$mixed_model$diag_cooks_distance
+    if (is.null(cd) || nrow(cd) == 0L)
+      return(datatable(data.frame(Message = "Cook's distance not available")))
+    datatable(format_df_for_display(as.data.frame(cd)),
+              options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
+  })
+
+  output$tox_dfbetas <- renderDT({
+    req(rv$tox_results, rv$tox_results$mixed_model)
+    db <- rv$tox_results$mixed_model$diag_dfbetas
+    if (is.null(db) || nrow(db) == 0L)
+      return(datatable(data.frame(Message = "DFBETAS not available")))
+    datatable(format_df_for_display(as.data.frame(db)),
+              options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
+  })
+
   # ---- BW AUC Forest Plot ----
 
   output$tox_bw_forest_plot <- renderPlot({

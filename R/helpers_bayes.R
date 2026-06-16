@@ -160,3 +160,116 @@ bayes_influential_obs <- function(result, threshold = 0.7) {
   )
   df[order(-df$Pareto_k), , drop = FALSE]
 }
+
+#' Build a posterior-predictive coverage bar chart.
+#'
+#' Plots empirical vs nominal coverage at 50 / 80 / 95 %. Bars near the
+#' dashed nominal line = well-calibrated; below = under-coverage (too
+#' narrow); above = over-coverage (too wide).
+#'
+#' Closes DIAGNOSTICS.md gap (10) — turning the dl row "50%: 48% | 80%:
+#' 78% | 95%: 94%" into a quick-scan visual.
+#'
+#' @param result A Bayesian-analysis result list (with `ppc_coverage`).
+#' @return ggplot, or NULL if `ppc_coverage` isn't populated.
+#' @keywords internal
+build_ppc_coverage_plot <- function(result) {
+  if (is.null(result)) return(NULL)
+  ppc <- result$ppc_coverage
+  if (is.null(ppc) || nrow(ppc) == 0L) return(NULL)
+  if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
+  cov_df <- data.frame(
+    Nominal   = c(50, 80, 95),
+    Empirical = c(as.numeric(ppc$cov_50[1]),
+                  as.numeric(ppc$cov_80[1]),
+                  as.numeric(ppc$cov_95[1])) * 100
+  )
+  ggplot2::ggplot(cov_df, ggplot2::aes(x = factor(.data[["Nominal"]]),
+                                       y = .data[["Empirical"]])) +
+    ggplot2::geom_col(fill = "#2c7bb6", width = 0.6) +
+    ggplot2::geom_text(ggplot2::aes(label = sprintf("%.0f%%",
+                                                   .data[["Empirical"]])),
+                       vjust = -0.4, size = 4) +
+    ggplot2::geom_segment(
+      data = data.frame(x = c(0.5, 1.5, 2.5), xend = c(1.5, 2.5, 3.5),
+                        y = c(50, 80, 95)),
+      ggplot2::aes(x = .data[["x"]], xend = .data[["xend"]],
+                   y = .data[["y"]],  yend = .data[["y"]]),
+      colour = "red", linetype = "dashed", inherit.aes = FALSE) +
+    ggplot2::scale_y_continuous(limits = c(0, 105)) +
+    ggplot2::labs(title = "Posterior predictive coverage",
+                  subtitle = "Red dashed = nominal target; bars = empirical",
+                  x = "Nominal interval (%)",
+                  y = "Empirical coverage (%)") +
+    ggplot2::theme_classic()
+}
+
+#' Build a Pareto-k histogram with the 0.7 cut-off line.
+#'
+#' Closes DIAGNOSTICS.md gap (11). The dashboard already shows the table
+#' of high-k observations; the histogram gives the full distribution so
+#' users can see whether 5 high-k observations have nearest neighbours at
+#' k = 0.65 or k = 0.3.
+#'
+#' @param result A Bayesian-analysis result list.
+#' @return ggplot, or NULL if Pareto-k isn't populated.
+#' @keywords internal
+build_pareto_k_plot <- function(result) {
+  if (is.null(result)) return(NULL)
+  loo <- result$loo_diagnostics
+  if (is.null(loo) || nrow(loo) == 0L) return(NULL)
+  pk <- loo$pareto_k[[1]]
+  if (is.null(pk) || length(pk) == 0L) return(NULL)
+  if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
+  df <- data.frame(k = as.numeric(pk))
+  ggplot2::ggplot(df, ggplot2::aes(x = .data[["k"]])) +
+    ggplot2::geom_histogram(bins = 30L, fill = "#2c7bb6",
+                            colour = "white") +
+    ggplot2::geom_vline(xintercept = 0.7, colour = "red",
+                        linetype = "dashed", linewidth = 0.8) +
+    ggplot2::geom_vline(xintercept = 0.5, colour = "orange",
+                        linetype = "dotted", linewidth = 0.6) +
+    ggplot2::annotate("text", x = 0.7, y = Inf, label = "  k = 0.7",
+                      colour = "red", hjust = 0, vjust = 1.4, size = 3.5) +
+    ggplot2::annotate("text", x = 0.5, y = Inf, label = "  k = 0.5",
+                      colour = "orange", hjust = 0, vjust = 1.4, size = 3.5) +
+    ggplot2::labs(title = "PSIS-LOO Pareto-k distribution",
+                  subtitle = sprintf("n = %d; cut-off at 0.7 (red), 0.5 (orange)",
+                                     length(pk)),
+                  x = "Pareto k", y = "Count of observations") +
+    ggplot2::theme_classic()
+}
+
+#' Build an MCMC rank-overlay plot.
+#'
+#' Modern convergence diagnostic that replaces Rhat for finer-grained
+#' detection. Each chain's draws are rank-normalised and plotted as a
+#' histogram per chain; chains that have converged should look like
+#' uniform draws (flat histograms) and resemble each other.
+#'
+#' Closes DIAGNOSTICS.md gap (12).
+#'
+#' @param brmsfit A fitted brms model (or any model that
+#'   `bayesplot::mcmc_rank_overlay` accepts).
+#' @param pars Optional character vector of parameter names to show.
+#'   Default uses brms's `pars = NA` which shows all non-`lp__`
+#'   parameters.
+#' @return ggplot, or NULL on failure.
+#' @keywords internal
+build_mcmc_rank_plot <- function(brmsfit, pars = NULL) {
+  if (is.null(brmsfit)) return(NULL)
+  if (!requireNamespace("bayesplot", quietly = TRUE)) return(NULL)
+  if (!requireNamespace("brms",      quietly = TRUE)) return(NULL)
+  tryCatch({
+    draws <- brms::as.array(brmsfit)
+    # Drop lp__ which adds noise; keep treatment-relevant params.
+    if (is.null(pars)) {
+      keep <- dimnames(draws)$parameters
+      keep <- keep[!grepl("^lp__$", keep)]
+      # Limit to first 12 to keep the plot legible
+      if (length(keep) > 12L) keep <- keep[seq_len(12L)]
+      draws <- draws[, , keep, drop = FALSE]
+    }
+    bayesplot::mcmc_rank_overlay(draws)
+  }, error = function(e) NULL)
+}

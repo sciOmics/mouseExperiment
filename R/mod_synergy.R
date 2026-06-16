@@ -303,6 +303,54 @@ synergyUI <- function(id) {
                 )
               )
             )
+          ),
+
+          # CODE_REVIEW.md DIAGNOSTICS gap (6) — frequentist synergy
+          # had no checkable t-test assumptions. New per-group Q-Q + boxplot.
+          tabPanel("Diagnostics",
+            tab_info(
+              strong("Assumption checks for the t-test path. "),
+              "The synergy calculations use Welch's t-tests; they're robust ",
+              "to unequal variances but assume per-group normality. Use ",
+              "these plots to spot heavy tails or outliers that could ",
+              "drive the synergy / antagonism call.",
+              br(),
+              em("Only available in the frequentist path.")
+            ),
+            fluidRow(
+              column(6,
+                h4("Per-group Q-Q of tumor volumes"),
+                tags$details(
+                  tags$summary(tags$small("How to read this plot")),
+                  tags$small(
+                    "One panel per treatment group; points on the red dashed ",
+                    "line = normally distributed. ",
+                    strong("S-shape: "), "heavy tails — Welch is robust but ",
+                    "consider a Mann-Whitney sanity check. ",
+                    strong("Far outliers: "), "investigate before reporting."
+                  )
+                ),
+                shinycssloaders::withSpinner(
+                  plotOutput(ns("syn_diag_group_qq_plot"), height = "350px")
+                )
+              ),
+              column(6,
+                h4("Per-group tumor volume boxplot"),
+                tags$details(
+                  tags$summary(tags$small("How to read this plot")),
+                  tags$small(
+                    "Boxplots with individual mice jittered. Outliers in red. ",
+                    "Use to confirm group means are dominated by the bulk of ",
+                    "mice (not 1-2 extreme cases). ",
+                    strong("Wide IQR + an outlier: "), "the synergy / ",
+                    "antagonism call may be driven by that one mouse."
+                  )
+                ),
+                shinycssloaders::withSpinner(
+                  plotOutput(ns("syn_diag_group_boxplot"), height = "350px")
+                )
+              )
+            )
           )
         )
       )
@@ -1107,6 +1155,29 @@ synergy_server <- function(id, rv) {
   add_syn_download_handlers(input, output, session, rv,
                             current_syn_main_plot, current_syn_trend_plot,
                             current_syn_ci_plot,   current_syn_tgi_plot)
+
+  # CODE_REVIEW.md DIAGNOSTICS gap (6) — frequentist synergy diagnostics.
+  output$syn_diag_group_qq_plot <- renderPlot({
+    req(rv$syn_results)
+    p <- rv$syn_results$diag_group_qq_plot
+    if (is.null(p)) {
+      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = "Per-group Q-Q not available (Bayesian or over-time path)")
+      return(invisible(NULL))
+    }
+    p
+  })
+
+  output$syn_diag_group_boxplot <- renderPlot({
+    req(rv$syn_results)
+    p <- rv$syn_results$diag_group_boxplot
+    if (is.null(p)) {
+      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = "Per-group boxplot not available (Bayesian or over-time path)")
+      return(invisible(NULL))
+    }
+    p
+  })
 
   # F.7 — register the resume handler for bayes_syn jobs.
   register_syn_resume(input, output, session, rv)

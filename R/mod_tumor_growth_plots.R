@@ -799,6 +799,35 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
               options = list(dom = "t", paging = FALSE, searching = FALSE))
   })
 
+  # CODE_REVIEW.md DIAGNOSTICS gap (13) — LMM influence diagnostics.
+  output$tg_show_influence <- shiny::reactive({
+    !is.null(rv$tg_results) &&
+      !isTRUE(rv$tg_results$error) &&
+      (!is.null(rv$tg_results$diag_cooks_distance) ||
+       !is.null(rv$tg_results$diag_dfbetas))
+  })
+  shiny::outputOptions(output, "tg_show_influence", suspendWhenHidden = FALSE)
+
+  output$tg_cooks_distance <- renderDT({
+    req(rv$tg_results)
+    cd <- rv$tg_results$diag_cooks_distance
+    if (is.null(cd) || nrow(cd) == 0L)
+      return(datatable(data.frame(Message = "Cook's distance not available")))
+    datatable(format_df_for_display(as.data.frame(cd)),
+              options = list(scrollX = TRUE, pageLength = 10),
+              rownames = FALSE)
+  })
+
+  output$tg_dfbetas <- renderDT({
+    req(rv$tg_results)
+    db <- rv$tg_results$diag_dfbetas
+    if (is.null(db) || nrow(db) == 0L)
+      return(datatable(data.frame(Message = "DFBETAS not available")))
+    datatable(format_df_for_display(as.data.frame(db)),
+              options = list(scrollX = TRUE, pageLength = 10),
+              rownames = FALSE)
+  })
+
   list(
     growth    = tg_growth_plot,
     rates     = tg_rates_plot,
