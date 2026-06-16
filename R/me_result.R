@@ -347,16 +347,27 @@ repeated_measures_anova <- function(df,
   # Fit model using lmerTest for Satterthwaite ddf
   formula_str <- paste0("y ~ ", treatment_column, " * ", time_column, " + (1|", id_column, ")")
   model <- lmerTest::lmer(stats::as.formula(formula_str), data = df)
-  
+
   anova_table <- stats::anova(model, type = "III")
-  
+
+  # CODE_REVIEW.md DIAGNOSTICS gap (8) — return the standard residual
+  # diagnostic ggplots so callers can check normality / heteroscedasticity
+  # / random-effects distribution. Same shape as TG / BW.
+  rd <- build_residual_diagnostic_plots(model, title_prefix = "rmANOVA")
+  diag_re_qq_plot <- build_random_effects_qq_plot(model, id_column,
+                                                  title_prefix = "rmANOVA")
+
   new_me_result(
     analysis_type = "repeated_measures_anova",
     data = df,
     results = list(
       model = model,
       anova_table = as.data.frame(anova_table),
-      transform = transform
+      transform = transform,
+      diag_qq_plot             = rd$diag_qq_plot,
+      diag_resid_fitted_plot   = rd$diag_resid_fitted_plot,
+      diag_scale_location_plot = rd$diag_scale_location_plot,
+      diag_re_qq_plot          = diag_re_qq_plot
     ),
     summary_df = as.data.frame(anova_table),
     call = match.call()

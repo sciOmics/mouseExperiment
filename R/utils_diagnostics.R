@@ -138,3 +138,62 @@ build_random_effects_qq_plot <- function(model,
     p
   }, error = function(e) NULL)
 }
+
+#' Compute LMM influence diagnostics (Cook's distance + DFBETAS).
+#'
+#' Uses `lme4::influence.merMod()` to compute case-deletion diagnostics.
+#' Returns a list with two components: `cooks_distance` (data frame of
+#' per-observation Cook's distance with a threshold flag) and
+#' `dfbetas` (data frame of per-observation DFBETAS for each fixed
+#' effect). Returns `NULL` for non-lmerMod input or when `lme4`'s
+#' influence machinery fails.
+#'
+#' Cook's distance threshold: `4/n` is the conventional cut-off
+#' (Fox 1991); a per-observation `cooks > 4/n` triggers the
+#' `is_influential` flag.
+#'
+#' Caveat: `influence.merMod` refits the model leaving each group out
+#' in turn. Cost is O(n_subjects); for large designs this can be slow.
+#' We compute on the `obs = TRUE` (per-observation) basis for the most
+#' useful Cook's distance display.
+#'
+#' @param model A fitted `lmerMod` object.
+#' @return A list with `cooks_distance` and `dfbetas`, or `NULL`.
+#' @keywords internal
+build_lmm_influence <- function(model) {
+  if (is.null(model)) return(NULL)
+  if (!inherits(model, "lmerMod")) return(NULL)
+  if (!requireNamespace("lme4", quietly = TRUE)) return(NULL)
+
+  tryCatch({
+    # Per-observation influence — most informative case-deletion view.
+    infl <- lme4::influence(model, obs = TRUE)
+    cd   <- stats::cooks.distance(infl)
+    df   <- stats::dfbetas(infl)
+
+    n <- length(cd)
+    threshold <- 4 / max(n, 1L)
+
+    cd_df <- data.frame(
+      Obs           = seq_along(cd),
+      Cooks_D       = round(as.numeric(cd), 4L),
+      Threshold     = round(threshold, 4L),
+      Is_Influential = as.numeric(cd) > threshold,
+      stringsAsFactors = FALSE
+    )
+
+    # DFBETAS is one column per fixed effect.
+    if (is.matrix(df)) {
+      df_df <- as.data.frame(df)
+      df_df$Obs <- seq_len(nrow(df_df))
+      df_df <- df_df[, c("Obs", setdiff(names(df_df), "Obs")), drop = FALSE]
+      # Round for display
+      num_cols <- vapply(df_df, is.numeric, logical(1L))
+      df_df[, num_cols] <- lapply(df_df[, num_cols, drop = FALSE], round, 4L)
+    } else {
+      df_df <- NULL
+    }
+
+    list(cooks_distance = cd_df, dfbetas = df_df)
+  }, error = function(e) NULL)
+}

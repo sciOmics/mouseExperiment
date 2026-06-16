@@ -1198,6 +1198,10 @@ tumor_growth_statistics <- function(df,
       build_random_effects_qq_plot(model, id_column,
                                    title_prefix = "Tumour growth LMM")
     else NULL
+    # CODE_REVIEW.md DIAGNOSTICS gap (13) — LMM influence diagnostics
+    # (Cook's distance + DFBETAS). Refits the model leaving each observation
+    # out; can be slow on large designs, so gated on include_diagnostics.
+    lmm_infl <- if (include_diagnostics) build_lmm_influence(model) else NULL
 
     # Return the results
     results <- list(
@@ -1219,6 +1223,8 @@ tumor_growth_statistics <- function(df,
       diag_resid_fitted_plot   = rd$diag_resid_fitted_plot,
       diag_scale_location_plot = rd$diag_scale_location_plot,
       diag_re_qq_plot          = diag_re_qq_plot,
+      diag_cooks_distance      = if (!is.null(lmm_infl)) lmm_infl$cooks_distance,
+      diag_dfbetas             = if (!is.null(lmm_infl)) lmm_infl$dfbetas,
       data_summary = data_summary,
       plots = plots_list,
       necrosis_summary = necrosis_summary

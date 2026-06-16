@@ -278,7 +278,9 @@ For preclinical datasets with one categorical covariate, VIF and influence diagn
 
 A prioritized list. (1)-(3) are user-visible bugs; (4)-(8) are gaps; (9)-(13) are nice-to-haves.
 
-**Status update — v0.4.8 (backend) + v26.06.007 (dashboard):** Items (1), (3), (4), (5), (7), and (9) have been fixed. Items (2), (6), (8), and (10)-(13) remain open as the lower-priority wave.
+**Status update — v0.4.8 (backend) + v26.06.007 (dashboard):** Items (1), (3), (4), (5), (7), and (9) fixed.
+
+**Status update — v0.4.9 (backend) + v26.06.008 (dashboard):** Items (2), (6), (8), (10), (11), (12), and (13) fixed. **All audit items closed.**
 
 ### (1) TG Diagnostics tab is broken
 

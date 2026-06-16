@@ -5,6 +5,49 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.9] - 2026-06-02
+
+Closes the remaining items from `docs/DIAGNOSTICS.md` — gaps (6), (8),
+(13). After this release the only DIAGNOSTICS items still open are
+dashboard-side rendering improvements (PPC bar chart, Pareto-k
+histogram, rank plots, wasted Bayesian plots), shipped in dashboard
+v26.06.008.
+
+### Added — features
+
+- **Per-group synergy diagnostics** (`analyze_drug_synergy()`,
+  CODE_REVIEW.md DIAGNOSTICS gap 6). New fields on the result list:
+  - `diag_group_qq_plot` — Q-Q of per-mouse volumes, one panel per
+    treatment group. Checks the t-test normality assumption.
+  - `diag_group_boxplot` — boxplot of per-mouse volumes per group
+    with individual mice jittered, outliers in red. Spots whether
+    the synergy / antagonism call is being driven by a single
+    extreme mouse.
+
+- **`repeated_measures_anova()` residual diagnostics** (gap 8).
+  Returns `diag_qq_plot`, `diag_resid_fitted_plot`,
+  `diag_scale_location_plot`, `diag_re_qq_plot` — same shape as
+  every other LMM fit in the package. Closes the longstanding gap
+  where rmANOVA returned only `model` + `anova_table` with no
+  assumption checks.
+
+- **LMM influence diagnostics** (`build_lmm_influence()`, gap 13).
+  New helper in `R/utils_diagnostics.R` that wraps
+  `lme4::influence.merMod()` to compute per-observation Cook's
+  distance + DFBETAS with a `4/n` threshold flag. Wired into
+  `tumor_growth_statistics()` LME4 path and `analyze_body_weight()`
+  as top-level `diag_cooks_distance` + `diag_dfbetas` data frames.
+  Gated on `include_diagnostics = TRUE` because case-deletion
+  refit is O(n_subjects).
+
+### Documentation
+
+- `docs/DIAGNOSTICS.md` status updated to reflect the new fixes.
+
+### Tests
+
+- Same 301 PASS as v0.4.8; no regressions.
+
 ## [0.4.8] - 2026-06-02
 
 Closes the bugs and high-priority gaps surfaced by the

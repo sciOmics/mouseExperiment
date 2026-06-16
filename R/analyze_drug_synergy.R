@@ -271,6 +271,58 @@ analyze_drug_synergy <- function(df,
     message("Overall Assessment: ", synergy_label, "\n")
   }
   
+  # CODE_REVIEW.md DIAGNOSTICS gap (6) — frequentist synergy had no
+  # checkable model-assumption diagnostics for the t-test path. Surface a
+  # per-group Q-Q plot of per-mouse volumes (Welch t robustness check)
+  # and a boxplot of per-mouse volumes (outlier check).
+  diag_group_qq_plot <- NULL
+  diag_group_boxplot <- NULL
+  if (requireNamespace("ggplot2", quietly = TRUE)) {
+    diag_group_qq_plot <- tryCatch({
+      ad <- analysis_data
+      # Build a Q-Q per group via stratified qqnorm computations.
+      grp_col <- treatment_column
+      val_col <- volume_column
+      groups <- unique(ad[[grp_col]])
+      long <- do.call(rbind, lapply(groups, function(g) {
+        v <- ad[[val_col]][ad[[grp_col]] == g]
+        v <- v[is.finite(v)]
+        if (length(v) < 3L) return(NULL)
+        qq <- stats::qqnorm(v, plot.it = FALSE)
+        data.frame(group = g, theoretical = qq$x, sample = qq$y,
+                   stringsAsFactors = FALSE)
+      }))
+      if (is.null(long) || nrow(long) == 0L) NULL
+      else ggplot2::ggplot(long, ggplot2::aes(x = .data[["theoretical"]],
+                                              y = .data[["sample"]])) +
+        ggplot2::geom_point(alpha = 0.7) +
+        ggplot2::geom_smooth(method = "lm", se = FALSE,
+                             colour = "red", linetype = "dashed",
+                             formula = y ~ x) +
+        ggplot2::facet_wrap(~ group, scales = "free") +
+        ggplot2::theme_classic() +
+        ggplot2::labs(
+          title = "Per-group Q-Q of tumor volumes",
+          subtitle = paste("At evaluation day", eval_time_point,
+                           "— heavy tails or curvature warn t-test assumptions"),
+          x = "Theoretical Quantiles", y = "Sample Quantiles")
+    }, error = function(e) NULL)
+
+    diag_group_boxplot <- tryCatch({
+      ggplot2::ggplot(analysis_data,
+                      ggplot2::aes(x = .data[[treatment_column]],
+                                   y = .data[[volume_column]])) +
+        ggplot2::geom_boxplot(outlier.colour = "red", outlier.alpha = 0.8) +
+        ggplot2::geom_jitter(width = 0.15, height = 0, alpha = 0.4) +
+        ggplot2::theme_classic() +
+        ggplot2::labs(
+          title = "Per-group tumor volumes at evaluation day",
+          subtitle = paste("Day", eval_time_point,
+                           "— outliers in red. Inspect before reporting synergy."),
+          x = "Treatment", y = "Tumor volume")
+    }, error = function(e) NULL)
+  }
+
   # Return a list with all results
   return(list(
     summary = summary_df,
@@ -295,6 +347,10 @@ analyze_drug_synergy <- function(df,
     overall_assessment = synergy_label,
     evaluation_time_point = eval_time_point,
     plot_data = plot_data, # Keep the plot data for later plotting
+    # Per-group diagnostics (Welch t robustness check) — CODE_REVIEW.md
+    # DIAGNOSTICS gap (6).
+    diag_group_qq_plot = diag_group_qq_plot,
+    diag_group_boxplot = diag_group_boxplot,
     # Additional data needed for plotting
     drug_a_name = drug_a_name,
     drug_b_name = drug_b_name,

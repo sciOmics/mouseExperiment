@@ -303,6 +303,8 @@ analyze_body_weight <- function(df,
   diag_re_qq_plot          <- if (model_type == "lmm")
     build_random_effects_qq_plot(model, title_prefix = "Body-weight LMM")
   else NULL
+  # CODE_REVIEW.md DIAGNOSTICS gap (13) — LMM influence diagnostics.
+  lmm_infl <- if (model_type == "lmm") build_lmm_influence(model) else NULL
 
   list(
     model          = model,
@@ -325,6 +327,8 @@ analyze_body_weight <- function(df,
     diag_resid_fitted_plot   = diag_resid_fitted_plot,
     diag_scale_location_plot = diag_scale_location_plot,
     diag_re_qq_plot          = diag_re_qq_plot,
+    diag_cooks_distance      = if (!is.null(lmm_infl)) lmm_infl$cooks_distance,
+    diag_dfbetas             = if (!is.null(lmm_infl)) lmm_infl$dfbetas,
     weight_data    = wd,
     summary_text   = summary_text
   )
