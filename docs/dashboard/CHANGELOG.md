@@ -4,6 +4,41 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.06.010] 2026 June 17th
+
+### Changed
+
+- **Subset Filter is now applied explicitly via an "Apply Filtering"
+  button** on the Data tab. Previously the selectizeInputs mirrored
+  directly into `rv$exclude_*` on every keystroke; users only learned
+  the filter was "active" when an analysis re-fit picked it up. The
+  new flow: edit the three exclusion lists → click Apply → the
+  Dataset Summary and Data Preview both immediately reflect the
+  filtered dataset, and a status line shows
+  `N of M rows shown (K excluded)`. A Clear button empties all three
+  lists at once. The static "click Run Analysis to re-fit" hint is
+  replaced by a status row that tells the user, at a glance, what is
+  and isn't currently filtered.
+
+- **Subset Filter panel moved up** to sit between the Dataset Summary
+  and the Data Preview (was below the preview). The natural flow is
+  now top-down: see summary → choose what to exclude → click Apply →
+  see the result in the preview directly below.
+
+### Internals
+
+- `setup_subset_filter()` no longer auto-syncs `input$exclude_*` → ``rv$exclude_*`. Pending choices now stage in the inputs; only the
+  Apply / Clear handlers commit to `rv` and bump a new
+  `rv$filter_applied_at` tick.
+- `preview_data()` in the data-upload server takes a reactive
+  dependency on `rv$filter_applied_at` and passes its output through
+  `apply_subset_filter()` so the preview reflects the current applied
+  state without depending on `rv$exclude_*` directly.
+
+### Tests
+
+- 210 / 210 pass, no regressions.
+
 ## [v26.06.009] 2026 June 17th
 
 ### Fixed

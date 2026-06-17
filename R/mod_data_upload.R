@@ -180,8 +180,13 @@ data_upload_server <- function(id, rv) {
   # ---------------------------------------------------------------------------
   preview_data <- reactive({
     req(rv$uploaded_data, rv$data_valid)
+    # Reactivity hook: when the user clicks Apply / Clear on the
+    # Subset Filter panel, rv$filter_applied_at ticks and this reactive
+    # recomputes so the Dataset Summary and Data Preview both update to
+    # reflect the active exclusion state.
+    rv$filter_applied_at
     data <- rv$uploaded_data
-    
+
     # Apply date -> Day calculation if selected
     if (!is.null(input$time_method) && input$time_method == "from_date" &&
         !is.null(input$col_date_for_day) && input$col_date_for_day != "") {
@@ -216,8 +221,11 @@ data_upload_server <- function(id, rv) {
         message("[TG Preview] Volume calculation failed: ", conditionMessage(e))
       })
     }
-    
-    data
+
+    # Apply the active subset filter so what the user sees here matches
+    # what every analysis module will actually fit. apply_subset_filter
+    # is a no-op when no exclusions are active.
+    apply_subset_filter(data, rv)
   })
 
   # Detect rows where the user has width > length before auto-correction.

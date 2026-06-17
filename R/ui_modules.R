@@ -138,13 +138,15 @@ dataUploadUI <- function(id) {
     
     # Dataset summary (shown after successful upload + column config)
     uiOutput(ns("data_summary_ui")),
-    
-    # Data preview (shown after successful upload)
-    uiOutput(ns("data_preview_ui")),
 
     # Subset filter (CODE_REVIEW.md Round 2 F.5) — exclude mice / cages /
-    # treatments from every downstream analysis without re-uploading.
+    # treatments. Sits between the Dataset Summary and Data Preview so
+    # users see the summary first, choose what to filter, click Apply,
+    # then the Data Preview below updates to reflect what they applied.
     subset_filter_ui(ns),
+
+    # Data preview (shown after successful upload)
+    uiOutput(ns("data_preview_ui")),
 
     # Session save / restore
     session_save_restore_ui(ns)

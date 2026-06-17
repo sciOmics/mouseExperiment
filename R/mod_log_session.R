@@ -236,10 +236,18 @@ subset_filter_ui <- function(ns) {
                        options = list(placeholder = "(none excluded)"))
       )
     ),
-    p(style = "font-size:11px; color:#6c757d; margin:4px 0 0 0;",
-      "After changing this filter, click ", strong("Run Analysis"),
-      " on any analysis tab to re-fit with the new subset. ",
-      "Filter state survives session save/restore.")
+    div(style = "margin-top: 8px;",
+      actionButton(ns("apply_filter"), "Apply Filtering",
+                   icon = icon("filter"), class = "btn-primary"),
+      actionButton(ns("clear_filter"), "Clear",
+                   icon = icon("times"), class = "btn-default",
+                   style = "margin-left: 6px;"),
+      uiOutput(ns("subset_filter_status"), inline = TRUE)
+    ),
+    p(style = "font-size:11px; color:#6c757d; margin:8px 0 0 0;",
+      "Edit the lists above, then click ", strong("Apply Filtering"),
+      ". The Dataset Summary and Data Preview below update to reflect ",
+      "what's currently applied. Filter state survives session save / restore.")
   )
 }
 
@@ -281,7 +289,66 @@ setup_subset_filter <- function(input, output, session, rv) {
                         server = TRUE)
   })
 
-  observeEvent(input$exclude_ids,        { rv$exclude_ids        <- input$exclude_ids        }, ignoreNULL = FALSE)
-  observeEvent(input$exclude_treatments, { rv$exclude_treatments <- input$exclude_treatments }, ignoreNULL = FALSE)
-  observeEvent(input$exclude_cages,      { rv$exclude_cages      <- input$exclude_cages      }, ignoreNULL = FALSE)
+  # Explicit Apply / Clear behaviour. The selectizeInputs are staging
+  # the user's pending choice; only on Apply do we commit those choices
+  # to rv$exclude_* and invalidate the preprocessing cache so analyses
+  # and the Data Preview pick up the new exclusion state.
+  observeEvent(input$apply_filter, {
+    rv$exclude_ids        <- input$exclude_ids        %||% character(0)
+    rv$exclude_treatments <- input$exclude_treatments %||% character(0)
+    rv$exclude_cages      <- input$exclude_cages      %||% character(0)
+    rv$processed_data     <- NULL
+    rv$filter_applied_at  <- Sys.time()
+    n <- length(rv$exclude_ids) + length(rv$exclude_treatments) +
+         length(rv$exclude_cages)
+    shiny::showNotification(
+      sprintf("Filter applied: %d exclusion(s) active.", n),
+      type = "message", duration = 3)
+  })
+
+  observeEvent(input$clear_filter, {
+    updateSelectizeInput(session, "exclude_ids",
+                        selected = character(0))
+    updateSelectizeInput(session, "exclude_treatments",
+                        selected = character(0))
+    updateSelectizeInput(session, "exclude_cages",
+                        selected = character(0))
+    rv$exclude_ids        <- character(0)
+    rv$exclude_treatments <- character(0)
+    rv$exclude_cages      <- character(0)
+    rv$processed_data     <- NULL
+    rv$filter_applied_at  <- Sys.time()
+    shiny::showNotification("Filter cleared.", type = "message",
+                            duration = 2)
+  })
+
+  # Status line — shows what's currently applied. Recomputes whenever
+  # the user clicks Apply or Clear (via the filter_applied_at tick) or
+  # when rv$uploaded_data changes (e.g., new file or session restore).
+  output$subset_filter_status <- renderUI({
+    rv$filter_applied_at  # tick dependency
+    n_ids <- length(rv$exclude_ids        %||% character(0))
+    n_tx  <- length(rv$exclude_treatments %||% character(0))
+    n_cg  <- length(rv$exclude_cages      %||% character(0))
+    if (n_ids + n_tx + n_cg == 0L) {
+      return(tags$span(
+        style = "color:#6c757d; margin-left: 14px; font-size: 12px;",
+        "No filter applied — full dataset is shown below."))
+    }
+    if (!is.null(rv$uploaded_data) && nrow(rv$uploaded_data) > 0L) {
+      n_full <- nrow(rv$uploaded_data)
+      n_filt <- nrow(apply_subset_filter(rv$uploaded_data, rv))
+      tags$span(
+        style = "color: #155724; margin-left: 14px; font-size: 12px;",
+        icon("check-circle"),
+        sprintf(" Active filter — %d of %d rows shown (%d excluded).",
+                n_filt, n_full, n_full - n_filt))
+    } else {
+      tags$span(
+        style = "color: #155724; margin-left: 14px; font-size: 12px;",
+        icon("check-circle"),
+        sprintf(" Active filter — %d ID(s), %d treatment(s), %d cage(s) excluded.",
+                n_ids, n_tx, n_cg))
+    }
+  })
 }
