@@ -31,6 +31,16 @@ build_residual_diagnostic_plots <- function(model, title_prefix = "Model") {
     qq_data   <- stats::qqnorm(resid_vec, plot.it = FALSE)
     qq_df     <- data.frame(theoretical = qq_data$x, sample = qq_data$y)
 
+    # Use a compact theme so the plot fits a constrained plotOutput
+    # without the title eating most of the canvas. The dashboard's h4
+    # heading above each plot already names it; the ggplot title is
+    # subordinate identification (useful when downloaded standalone).
+    compact_theme <- ggplot2::theme_classic() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 11, face = "plain"),
+        plot.subtitle = ggplot2::element_text(size = 9),
+        plot.margin = ggplot2::margin(4, 6, 4, 6))
+
     out$diag_qq_plot <- ggplot2::ggplot(
       qq_df, ggplot2::aes(x = .data[["theoretical"]],
                           y = .data[["sample"]])
@@ -38,8 +48,8 @@ build_residual_diagnostic_plots <- function(model, title_prefix = "Model") {
       ggplot2::geom_point(alpha = 0.6) +
       ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed",
                            colour = "red") +
-      ggplot2::theme_classic() +
-      ggplot2::labs(title = paste0(title_prefix, ": Q-Q Plot of Residuals"),
+      compact_theme +
+      ggplot2::labs(title = paste0(title_prefix, ": Q-Q of residuals"),
                     x = "Theoretical Quantiles",
                     y = "Sample Quantiles")
 
@@ -54,7 +64,7 @@ build_residual_diagnostic_plots <- function(model, title_prefix = "Model") {
       ggplot2::geom_smooth(method = "loess", se = FALSE,
                            colour = "steelblue", linewidth = 0.8,
                            formula = y ~ x) +
-      ggplot2::theme_classic() +
+      compact_theme +
       ggplot2::labs(title = paste0(title_prefix, ": Residuals vs Fitted"),
                     x = "Fitted Values", y = "Residuals")
 
@@ -70,7 +80,7 @@ build_residual_diagnostic_plots <- function(model, title_prefix = "Model") {
       ggplot2::geom_smooth(method = "loess", se = FALSE,
                            colour = "steelblue", linewidth = 0.8,
                            formula = y ~ x) +
-      ggplot2::theme_classic() +
+      compact_theme +
       ggplot2::labs(title = paste0(title_prefix, ": Scale-Location"),
                     x = "Fitted Values",
                     y = expression(sqrt(abs("Residuals"))))
@@ -128,7 +138,11 @@ build_random_effects_qq_plot <- function(model,
       ggplot2::geom_abline(slope = 1, intercept = 0,
                            linetype = "dashed", colour = "red") +
       ggplot2::theme_classic() +
-      ggplot2::labs(title = paste0(title_prefix, ": Q-Q of Random Effects"),
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 11, face = "plain"),
+        plot.subtitle = ggplot2::element_text(size = 9),
+        plot.margin = ggplot2::margin(4, 6, 4, 6)) +
+      ggplot2::labs(title = paste0(title_prefix, ": Q-Q of random effects"),
                     subtitle = paste0("Grouping: ", grp),
                     x = "Theoretical Quantiles",
                     y = "BLUP Sample Quantiles")

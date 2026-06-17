@@ -5,6 +5,21 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.10] - 2026-06-17
+
+### Fixed
+
+- **Diagnostic plot titles compressed**. The ggplots produced by
+  `build_residual_diagnostic_plots()` and
+  `build_random_effects_qq_plot()` previously used the default
+  `theme_classic()` title size, which ate vertical space in the
+  dashboard's constrained-height `plotOutput` containers, causing
+  axis labels to overflow into the help-text below. New compact
+  theme: smaller title (size 11) + subtitle (size 9) + tighter
+  plot margins so the same plot fits ~30% more plot area at the
+  same canvas height. Shortened titles too ("Q-Q of residuals"
+  instead of "Q-Q Plot of Residuals" etc.).
+
 ## [0.4.9] - 2026-06-02
 
 Closes the remaining items from `docs/DIAGNOSTICS.md` — gaps (6), (8),
