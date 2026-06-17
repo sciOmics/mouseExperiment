@@ -9,7 +9,8 @@ calculate_volume(
   length_column = "Length",
   width_column = "Width",
   height_column = NULL,
-  formula = "ellipsoid",
+  formula = c("ellipsoid", "modified_ellipsoid", "ellipsoid_3axis", "cylinder", "sphere",
+    "box"),
   in_place = FALSE
 )
 }

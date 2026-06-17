@@ -13,18 +13,21 @@ tumor_growth_statistics(
   id_column = "ID",
   dose_column = NULL,
   transform = c("log", "sqrt", "none"),
-  polynomial_degree = 1,
-  model_type = c("lme4", "auc"),
+  model_type = c("lme4", "gam", "auc"),
   random_effects_specification = c("intercept_only", "slope", "none"),
   handle_cage_effects = c("include_if_not_collinear", "always_include", "never_include",
     "as_random_effect"),
-  auc_method = c("trapezoidal", "last_observation"),
+  p_adjust_method = c("bonferroni", "holm", "fdr", "none"),
   reference_group = NULL,
   return_model = TRUE,
   include_diagnostics = TRUE,
   plots = TRUE,
   verbose = FALSE,
-  extrapolation_points = 0
+  extrapolation_points = 0,
+  necrotic_column = NULL,
+  necrotic_handling = c("exclude", "covariate", "none"),
+  auc_bootstrap_n = 0L,
+  auc_bootstrap_seed = NULL
 )
 }
 \arguments{
@@ -53,12 +56,11 @@ This allows for dose-response analysis. Default is NULL.}
 \item{transform}{A character string specifying the transformation to apply to volume data.
 Options are "log", "sqrt", "none". Default is "log", which is recommended for exponential growth.}
 
-\item{polynomial_degree}{Integer specifying the polynomial degree for time (day) effects in the model.
-Default is 1 (linear). Increase to 2 or 3 to model non-linear growth patterns.}
-
 \item{model_type}{A character string specifying the type of model to fit. Options are:
-"lme4" (standard linear mixed effects model using lme4 package),
-"auc" (area under the curve analysis).
+"lme4" (standard linear mixed effects model using lme4 package — linear time × treatment),
+"gam"  (generalized additive mixed model via gamm4 — group-specific smooth time terms;
+use this in place of fitting a high-order polynomial in time),
+"auc"  (area under the curve analysis).
 Default is "lme4".}
 
 \item{random_effects_specification}{A character string specifying the random effects structure.
@@ -69,7 +71,9 @@ Default is "lme4".}
 \item{handle_cage_effects}{Method for handling cage effects: "include_if_not_collinear", "always_include",
 "never_include", or "as_random_effect". Default is "include_if_not_collinear".}
 
-\item{auc_method}{Method for AUC calculation: "trapezoidal" or "last_observation". Default is "trapezoidal".}
+\item{p_adjust_method}{Method for p-value adjustment in pairwise comparisons:
+"bonferroni" (default, conservative), "holm" (step-down, less conservative),
+"fdr" (Benjamini-Hochberg false discovery rate), or "none" (no adjustment).}
 
 \item{reference_group}{Optional. A character string specifying which treatment group should be used as the reference
 for statistical comparisons. If NULL, the first treatment group alphabetically will be used.}
@@ -83,6 +87,22 @@ for statistical comparisons. If NULL, the first treatment group alphabetically w
 \item{verbose}{Boolean. Should detailed information be printed during analysis? Default is FALSE.}
 
 \item{extrapolation_points}{Number of points to extrapolate for each subject (default: 0)}
+
+\item{auc_bootstrap_n}{Integer >= 0. When > 0 and \code{model_type = "auc"},
+each pairwise Welch's t-test gains a non-parametric percentile-bootstrap
+95\\% CI for the mean difference (\code{boot_ci_lower}, \code{boot_ci_upper}
+columns in \code{pairwise_comparisons}). Honest at small N when per-mouse
+AUC distributions are skewed (especially under extrapolation), where the
+parametric t-CI is only approximate. A typical value is \code{999};
+higher (e.g. \code{4999}) gives smoother percentile estimates. Default
+\code{0} (skip; \code{boot_ci_*} columns are \code{NA}).}
+
+\item{auc_bootstrap_seed}{Optional integer seed for reproducible bootstrap
+resampling. \code{NULL} (default) uses the caller's RNG state.}
+
+\item{auc_method}{Removed in v0.4.5. The AUC path now always uses the
+trapezoidal rule. For last-observation-carried-forward (LOCF) AUC, use
+\code{\link{tumor_auc_analysis}(method = "last_observation")} directly.}
 }
 \value{
 A list containing the following components:
@@ -159,11 +179,13 @@ print(results$pairwise_comparisons)
 # Plot adjusted means for each treatment group
 print(results$plots$adjusted_means)
 
-# Analyze with different model specification
+# Analyze with a generalized additive mixed model (group-specific smooth
+# time terms via gamm4) — preferred over a high-order polynomial in time.
 results_gam <- tumor_growth_statistics(
   tumor_data,
   model_type = "gam",
   transform = "log"
 )
+print(results_gam$treatment_effects_over_time)
 
 }

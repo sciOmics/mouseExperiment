@@ -12,7 +12,8 @@ dose_response_statistics(
   day_column = "Day",
   id_column = "ID",
   time_point = NULL,
-  control_group_name = "Control"
+  control_group_name = "Control",
+  verbose = TRUE
 )
 }
 \arguments{
@@ -31,6 +32,8 @@ dose_response_statistics(
 \item{time_point}{Optional specific time point (day) to analyze. Default: NULL (uses last time point).}
 
 \item{control_group_name}{Name of the control group. Default: "Control".}
+
+\item{verbose}{Logical; if TRUE, prints model summaries and statistics to the console. Default: TRUE.}
 }
 \value{
 A list containing:

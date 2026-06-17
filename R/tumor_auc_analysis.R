@@ -107,7 +107,7 @@ tumor_auc_analysis <- function(df,
   
   # Create composite subject identifiers that include cage information if available
   if (use_cage_info) {
-    composite_ids <- paste(df[[id_column]], df[[treatment_column]], df[[cage_column]], sep = "_")
+    composite_ids <- make_mouse_key(df[[id_column]], df[[treatment_column]], df[[cage_column]])
     df$composite_id <- composite_ids
     # Get unique composite IDs instead of just subject IDs
     unique_ids <- unique(composite_ids)
@@ -200,21 +200,27 @@ tumor_auc_analysis <- function(df,
       return(list(auc = auc + extrapolated_value, extrapolated = is_extrapolated))
       
     } else if (method == "last_observation") {
-      # Last observation carried forward method
-      latest <- subject_data[which.max(subject_data[[time_column]]), ]
-      last_volume <- latest[[volume_column]]
-      
-      # For last observation method, extrapolation means extending the last volume
-      # to the maximum experiment time
+      # Last observation carried forward (LOCF) method.
+      # Compute trapezoidal AUC for the observed period first, then carry the
+      # last volume forward to max_experiment_time. Previously this branch
+      # returned `last_volume` (mm³) which is not an area — fixed here.
+      times   <- subject_data[[time_column]]
+      volumes <- subject_data[[volume_column]]
+
+      if (length(times) < 2) {
+        return(list(auc = NA, extrapolated = NA))
+      }
+
+      observed_auc <- calculate_auc(times, volumes)
+      last_volume  <- volumes[which.max(times)]
+
       if (can_extrapolate) {
-        # Calculate the additional AUC from last observation to max experiment time
         dt_extrapolation <- max_experiment_time - subject_max_time
         extrapolated_value <- dt_extrapolation * last_volume
         is_extrapolated <- TRUE
       }
-      
-      # For LOCF method, AUC is the last volume (for the observed period) plus any extrapolation
-      return(list(auc = last_volume + extrapolated_value, extrapolated = is_extrapolated))
+
+      return(list(auc = observed_auc + extrapolated_value, extrapolated = is_extrapolated))
     }
   }
   
@@ -226,7 +232,7 @@ tumor_auc_analysis <- function(df,
     if (use_cage_info) {
       subject_data <- df[df$composite_id == unique_id, ]
       # Extract original ID from composite ID for reporting
-      id_parts <- strsplit(unique_id, "_")[[1]]
+      id_parts <- split_mouse_key(unique_id)
       original_id <- id_parts[1]
       treatment <- id_parts[2]
       cage <- id_parts[3]
@@ -335,60 +341,34 @@ tumor_auc_analysis <- function(df,
   
   # Create plot
   if (requireNamespace("ggplot2", quietly = TRUE)) {
-    # Check if plot_auc function exists
-    if (exists("plot_auc", mode = "function")) {
-      tryCatch({
-        auc_plot <- plot_auc(
-          auc_data = auc_df,
-          title = paste("Area Under the Curve (AUC) by Treatment Group\nMethod:", auc_method),
-          show_mean = TRUE,
-          error_bar_type = "SEM",
-          extrapolated_column = "Extrapolated",
-          colors = colors,
-          point_size = point_size,
-          jitter_width = jitter_width
-        )
-      }, error = function(e) {
-        message("Error using plot_auc function: ", e$message)
-        # Create a basic plot as fallback
-        auc_plot <- ggplot2::ggplot(auc_df, ggplot2::aes(x = Treatment, y = AUC, color = Treatment)) +
-          ggplot2::geom_boxplot(alpha = 0.7) +
-          ggplot2::geom_jitter(ggplot2::aes(shape = Extrapolated), 
-                             position = ggplot2::position_jitter(width = jitter_width), 
-                             size = point_size,
-                             alpha = 0.5) +
-          ggplot2::scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 1)) +
-          # Add custom colors if provided
-          (if (!is.null(colors)) ggplot2::scale_color_manual(values = colors) else NULL) +
-          ggplot2::theme_classic() +
-          ggplot2::labs(
-            title = "Area Under the Curve (AUC) by Treatment Group",
-            subtitle = paste("Method:", auc_method, 
-                            ", Min Points for Extrapolation:", extrapolation_points),
-            x = "Treatment Group",
-            y = "Area Under the Curve"
-          )
-      })
-    } else {
-      # Fallback if plot_auc doesn't exist
-      auc_plot <- ggplot2::ggplot(auc_df, ggplot2::aes(x = Treatment, y = AUC, color = Treatment)) +
+    auc_plot <- tryCatch({
+      plot_auc(
+        auc_data = auc_df,
+        title = paste("Area Under the Curve (AUC) by Treatment Group\nMethod:", auc_method),
+        show_mean = TRUE,
+        error_bar_type = "SEM",
+        extrapolated_column = "Extrapolated",
+        colors = colors,
+        point_size = point_size,
+        jitter_width = jitter_width
+      )
+    }, error = function(e) {
+      message("Error using plot_auc function: ", e$message)
+      ggplot2::ggplot(auc_df, ggplot2::aes(x = Treatment, y = AUC, color = Treatment)) +
         ggplot2::geom_boxplot(alpha = 0.7) +
-        ggplot2::geom_jitter(ggplot2::aes(shape = Extrapolated), 
-                           position = ggplot2::position_jitter(width = jitter_width), 
-                           size = point_size,
-                           alpha = 0.5) +
+        ggplot2::geom_jitter(ggplot2::aes(shape = Extrapolated),
+                           position = ggplot2::position_jitter(width = jitter_width),
+                           size = point_size, alpha = 0.5) +
         ggplot2::scale_shape_manual(values = c("FALSE" = 16, "TRUE" = 1)) +
-        # Add custom colors if provided
         (if (!is.null(colors)) ggplot2::scale_color_manual(values = colors) else NULL) +
         ggplot2::theme_classic() +
         ggplot2::labs(
           title = "Area Under the Curve (AUC) by Treatment Group",
-          subtitle = paste("Method:", auc_method, 
-                         ", Min Points for Extrapolation:", extrapolation_points),
-          x = "Treatment Group",
-          y = "Area Under the Curve"
+          subtitle = paste("Method:", auc_method,
+                          ", Min Points for Extrapolation:", extrapolation_points),
+          x = "Treatment Group", y = "Area Under the Curve"
         )
-    }
+    })
   } else {
     auc_plot <- NULL
     warning("Package 'ggplot2' is required for plotting but is not available.")

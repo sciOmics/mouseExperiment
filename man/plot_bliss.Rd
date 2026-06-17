@@ -11,7 +11,11 @@ plot_bliss(
   add_legend = TRUE,
   x_label = "Days",
   y_label = "Percent Tumor Growth Inhibition",
-  y_limits = NULL
+  y_limits = NULL,
+  drug_a_label = "Drug A",
+  drug_b_label = "Drug B",
+  combo_label = "Combination",
+  expected_label = "Bliss Value"
 )
 }
 \arguments{

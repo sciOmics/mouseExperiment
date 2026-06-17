@@ -61,8 +61,15 @@
 #'                                   height_column = "Height",
 #'                                   formula = "ellipsoid_3axis")
 #' }
-calculate_volume <- function(df, length_column = "Length", width_column = "Width", 
-                            height_column = NULL, formula = "ellipsoid", in_place = FALSE) {
+calculate_volume <- function(df, length_column = "Length", width_column = "Width",
+                            height_column = NULL,
+                            formula = c("ellipsoid", "modified_ellipsoid",
+                                        "ellipsoid_3axis", "cylinder",
+                                        "sphere", "box"),
+                            in_place = FALSE) {
+  # match.arg fails loudly on typo (e.g. "ellipsoid_3axes" → error) instead
+  # of silently dropping into the previous default-catch ellipsoid branch.
+  formula <- match.arg(formula)
   # Deprecation warning for in_place parameter
   if (in_place) {
     warning("The 'in_place' parameter is deprecated and will be removed in a future version. ",
@@ -106,29 +113,20 @@ calculate_volume <- function(df, length_column = "Length", width_column = "Width
     height_tmp <- width_tmp  # Common approximation when height not measured
   }
   
-  # Calculate tumor volume using selected formula
+  # Calculate tumor volume using selected formula. match.arg() above
+  # guarantees `formula` is one of the listed choices, so no default-catch
+  # branch is needed (it had previously silently masked typos with ellipsoid).
   Volume <- switch(formula,
     "modified_ellipsoid" = (length_tmp * width_tmp^2) / 2,
     "ellipsoid" = (length_tmp * width_tmp^2 * pi) / 6,
     "ellipsoid_3axis" = (length_tmp * width_tmp * height_tmp * pi) / 6,
     "cylinder" = (pi * width_tmp^2 * length_tmp) / 4,
     "sphere" = (pi * width_tmp^3) / 6,
-    "box" = length_tmp * width_tmp * height_tmp,
-    # Default to ellipsoid if formula not recognized
-    (length_tmp * width_tmp^2 * pi) / 6
+    "box" = length_tmp * width_tmp * height_tmp
   )
   
   # Add volume to result dataframe
   result <- cbind(df_result, Volume)
-  
-  # If in_place is TRUE and we're in a function, update the original df in the parent environment
-  if (in_place) {
-    parent_frame <- parent.frame()
-    df_name <- deparse(substitute(df))
-    if (exists(df_name, envir = parent_frame)) {
-      assign(df_name, result, envir = parent_frame)
-    }
-  }
   
   # Return the result
   return(result)

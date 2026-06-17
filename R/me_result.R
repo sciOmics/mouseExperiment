@@ -1,19 +1,28 @@
 #' S3 Class for mouseExperiment Analysis Results
 #'
 #' @description
-#' The \code{me_result} S3 class provides a consistent wrapper around analysis
-#' outputs from mouseExperiment functions.
+#' \code{me_result} is a lightweight S3 wrapper around analysis outputs.
+#' Provides consistent \code{print()}, \code{summary()}, and \code{plot()}
+#' methods plus a single-entry \code{\link{export_diagnostics}} accessor.
 #'
-#' @details
-#' Every analysis function returns an \code{me_result} object with at least:
+#' \strong{Scope (Round 2 J.8 / v0.4.6):} the main analysis entry points
+#' (\code{\link{tumor_growth_statistics}}, \code{\link{survival_statistics}},
+#' \code{\link{bayesian_tumor_growth}}, \code{\link{analyze_drug_synergy}},
+#' etc.) return plain lists with bespoke schemas. The \code{me_result}
+#' wrapper is currently used only by \code{\link{repeated_measures_anova}}
+#' as a convenience for callers who want the print/summary/plot methods.
+#' Treat this class as a small optional utility, not as the canonical
+#' return shape for the package's analysis surface.
+#'
+#' An \code{me_result} object always carries:
 #' \itemize{
-#'   \item \code{analysis_type}: character label (e.g. "tumor_growth", "survival", "synergy")
-#'   \item \code{data}: the input data used
+#'   \item \code{analysis_type}: character label (e.g. \code{"repeated_measures_anova"})
+#'   \item \code{data}: the input data used (or \code{NULL})
 #'   \item \code{results}: a named list of analysis outputs
-#'   \item \code{plots}: a named list of ggplot objects (may be NULL)
-#'   \item \code{summary}: a \code{data.frame} of key findings
-#'   \item \code{call}: the matched call
-#'   \item \code{timestamp}: when analysis was run
+#'   \item \code{plots}: a named list of ggplot objects (may be \code{NULL})
+#'   \item \code{summary}: a \code{data.frame} of key findings (may be \code{NULL})
+#'   \item \code{call}: the matched call (or \code{NULL})
+#'   \item \code{timestamp}: when the analysis was run
 #' }
 #'
 #' @param x An \code{me_result} object.
@@ -187,7 +196,7 @@ export_diagnostics <- function(x, file = NULL) {
 #'
 #' @examples
 #' \dontrun{
-#' dt <- tumor_doubling_time(my_data)
+#' dt <- tumor_doubling_time(master_synthetic_data)
 #' }
 #'
 #' @export
@@ -195,32 +204,42 @@ tumor_doubling_time <- function(df,
                                 time_column = "Day",
                                 volume_column = "Volume",
                                 treatment_column = "Treatment",
-                                id_column = "ID") {
+                                id_column = "ID",
+                                cage_column = NULL) {
   # Validate inputs
   required <- c(time_column, volume_column, treatment_column, id_column)
   missing <- setdiff(required, colnames(df))
   if (length(missing) > 0) {
     stop("Missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
   }
-  
-  subjects <- unique(df[[id_column]])
-  result_list <- vector("list", length(subjects))
-  
-  for (i in seq_along(subjects)) {
-    sid <- subjects[i]
-    sdata <- df[df[[id_column]] == sid, ]
+
+  # Composite mouse key so IDs reused across cages/treatments don't collapse.
+  cage_col_present <- !is.null(cage_column) && cage_column %in% colnames(df)
+  cage_vec <- if (cage_col_present) df[[cage_column]] else rep("1", nrow(df))
+  mouse_keys_all <- make_mouse_key(
+    df[[id_column]], df[[treatment_column]], cage_vec
+  )
+  subject_keys <- unique(mouse_keys_all)
+  result_list <- vector("list", length(subject_keys))
+
+  for (i in seq_along(subject_keys)) {
+    key   <- subject_keys[i]
+    sdata <- df[mouse_keys_all == key, , drop = FALSE]
     sdata <- sdata[order(sdata[[time_column]]), ]
-    
+
+    sid       <- sdata[[id_column]][1]
     treatment <- sdata[[treatment_column]][1]
-    
+    cage_val  <- if (cage_col_present) sdata[[cage_column]][1] else NA_character_
+
     # Need positive volumes for log transform, and at least 3 points
     positive <- sdata[[volume_column]] > 0
     sdata_pos <- sdata[positive, ]
-    
+
     if (nrow(sdata_pos) < 3) {
       result_list[[i]] <- data.frame(
         ID = sid,
         Treatment = treatment,
+        Cage = cage_val,
         doubling_time = NA_real_,
         growth_rate = NA_real_,
         r_squared = NA_real_,
@@ -228,15 +247,15 @@ tumor_doubling_time <- function(df,
       )
       next
     }
-    
+
     log_vol <- log(sdata_pos[[volume_column]])
     times <- sdata_pos[[time_column]]
-    
+
     fit <- tryCatch(
       stats::lm(log_vol ~ times),
       error = function(e) NULL
     )
-    
+
     if (is.null(fit)) {
       growth_rate <- NA_real_
       r_sq <- NA_real_
@@ -244,19 +263,20 @@ tumor_doubling_time <- function(df,
       growth_rate <- stats::coef(fit)[2]
       r_sq <- summary(fit)$r.squared
     }
-    
+
     dt_val <- if (!is.na(growth_rate) && growth_rate > 0) log(2) / growth_rate else NA_real_
-    
+
     result_list[[i]] <- data.frame(
       ID = sid,
       Treatment = treatment,
+      Cage = cage_val,
       doubling_time = dt_val,
       growth_rate = growth_rate,
       r_squared = r_sq,
       stringsAsFactors = FALSE
     )
   }
-  
+
   do.call(rbind, result_list)
 }
 
@@ -282,7 +302,7 @@ tumor_doubling_time <- function(df,
 #'
 #' @examples
 #' \dontrun{
-#' result <- repeated_measures_anova(my_data)
+#' result <- repeated_measures_anova(master_synthetic_data)
 #' print(result)
 #' }
 #'
@@ -306,9 +326,16 @@ repeated_measures_anova <- function(df,
     stop("Missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
   }
   
-  # Transform
+  # Transform — log uses log(x) with x[x<=0] replaced by min_positive/2,
+  # matching tumor_growth_statistics() / bayesian_tumor_growth() (was log(x+1),
+  # divergence noted in CODE_REVIEW.md J.10).
   df$y <- switch(transform,
-    "log"  = log(df[[volume_column]] + 1),
+    "log"  = {
+      v <- df[[volume_column]]
+      pos <- v[is.finite(v) & v > 0]
+      if (length(pos) > 0L) v[!(is.finite(v) & v > 0)] <- min(pos) / 2
+      log(v)
+    },
     "sqrt" = sqrt(df[[volume_column]]),
     "none" = df[[volume_column]]
   )
@@ -320,16 +347,27 @@ repeated_measures_anova <- function(df,
   # Fit model using lmerTest for Satterthwaite ddf
   formula_str <- paste0("y ~ ", treatment_column, " * ", time_column, " + (1|", id_column, ")")
   model <- lmerTest::lmer(stats::as.formula(formula_str), data = df)
-  
+
   anova_table <- stats::anova(model, type = "III")
-  
+
+  # CODE_REVIEW.md DIAGNOSTICS gap (8) — return the standard residual
+  # diagnostic ggplots so callers can check normality / heteroscedasticity
+  # / random-effects distribution. Same shape as TG / BW.
+  rd <- build_residual_diagnostic_plots(model, title_prefix = "rmANOVA")
+  diag_re_qq_plot <- build_random_effects_qq_plot(model, id_column,
+                                                  title_prefix = "rmANOVA")
+
   new_me_result(
     analysis_type = "repeated_measures_anova",
     data = df,
     results = list(
       model = model,
       anova_table = as.data.frame(anova_table),
-      transform = transform
+      transform = transform,
+      diag_qq_plot             = rd$diag_qq_plot,
+      diag_resid_fitted_plot   = rd$diag_resid_fitted_plot,
+      diag_scale_location_plot = rd$diag_scale_location_plot,
+      diag_re_qq_plot          = diag_re_qq_plot
     ),
     summary_df = as.data.frame(anova_table),
     call = match.call()

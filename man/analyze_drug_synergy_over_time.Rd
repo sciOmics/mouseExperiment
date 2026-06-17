@@ -14,7 +14,8 @@ analyze_drug_synergy_over_time(
   combo_name,
   control_name = "Control",
   min_time_point = NULL,
-  max_time_point = NULL
+  max_time_point = NULL,
+  verbose = TRUE
 )
 }
 \arguments{
@@ -37,6 +38,9 @@ analyze_drug_synergy_over_time(
 \item{min_time_point}{Optional. A numeric value specifying the minimum time point to include in analysis. Default is NULL.}
 
 \item{max_time_point}{Optional. A numeric value specifying the maximum time point to include in analysis. Default is NULL.}
+
+\item{verbose}{Logical. If TRUE, prints detailed results to the console.
+Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.}
 }
 \value{
 A list containing the following components:
@@ -67,6 +71,22 @@ including:
 To visualize the results, use the plot_synergy_trend, plot_combination_index,
 or plot_synergy_combined functions with the output from this function.
 }
+\section{Assumptions and Limitations}{
+
+\strong{Bliss Independence applied to TGI:} Bliss Independence was formulated for the
+probability of cell death, not for proportional growth inhibition. Applying it to TGI is a
+common pragmatic choice but carries a ceiling effect: when individual drug TGIs are large
+(each > 50\\%), the Bliss expected combined TGI approaches 100\\%, making it nearly impossible
+to demonstrate synergy by this criterion regardless of the true biological interaction.
+Interpret Bliss results cautiously when individual-agent TGIs exceed 50\\% at a given time point.
+
+\strong{Loewe Additivity single-dose approximation:} The CI formula
+\code{min(FE_A + FE_B, 1) / FE_combo} assumes a linear dose-response relationship.
+Without full dose-response curves the IC50 values are unknown, so the CI should be
+interpreted as a qualitative indicator of synergy direction rather than a precise
+mechanistic estimate. This limitation applies at every evaluated time point.
+}
+
 \examples{
 # Analyze synergy over all available time points
 data(combo_treatment_synthetic_data)

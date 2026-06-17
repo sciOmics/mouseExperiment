@@ -13,7 +13,8 @@ analyze_drug_synergy(
   drug_b_name,
   combo_name,
   control_name = "Control",
-  eval_time_point = NULL
+  eval_time_point = NULL,
+  verbose = TRUE
 )
 }
 \arguments{
@@ -35,15 +36,17 @@ analyze_drug_synergy(
 
 \item{eval_time_point}{Optional. A numeric value specifying a specific time point to evaluate synergy.
 If NULL (default), the function will use the last time point in the data.}
+
+\item{verbose}{Logical. If TRUE, prints detailed results to the console.
+Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.}
 }
 \value{
 A list containing the following components:
 \describe{
 \item{summary}{A data frame summarizing the tumor growth inhibition (TGI) for each treatment and synergy metrics.}
 \item{bliss_independence}{Results of the Bliss independence model, including expected vs. observed effects.}
-\item{additive_model}{Results of the additive (mean) model.}
-\item{loewe_additivity}{Deprecated alias for \code{additive_model}. Will be removed in a future version.}
-\item{combination_index}{The combination index (CI), where CI < 1 indicates synergy, CI = 1 indicates additivity, and CI > 1 indicates antagonism.}
+\item{loewe_additivity}{Results of the Loewe additivity model (linear dose-response assumption).}
+\item{combination_index}{The Loewe-based combination index (CI), where CI < 1 indicates synergy, CI = 1 indicates additivity, and CI > 1 indicates antagonism.}
 \item{statistical_test}{Results of statistical tests comparing observed vs. expected effects.}
 \item{plot_data}{Data prepared for plotting, to be used with plot_drug_synergy function.}
 }
@@ -61,14 +64,32 @@ It then applies several models to test for synergy:
 \enumerate{
 \item Bliss Independence Model: Assumes drugs act independently through different mechanisms.
 Expected effect = EA + EB - (EA * EB), where EA and EB are the effects of drug A and B alone.
-\item Loewe Additivity Model: Assumes drugs work through similar mechanisms.
-Expected effect is calculated based on dose-response relationships.
-\item Combination Index: A widely used metric where CI < 1 indicates synergy.
+\item Loewe Additivity Model: Under a linear dose-response assumption (appropriate when only
+single-dose TGI data is available), the expected combination effect equals the sum of
+individual fractional effects, capped at 1.0. The Combination Index is calculated as
+CI = min(FE_A + FE_B, 1) / FE_combo (Berenbaum, 1989).
+\item Combination Index: CI < 1 indicates synergy, CI = 1 indicates additivity, CI > 1 indicates antagonism.
 }
 
 The function performs statistical tests to determine if the observed combination effect
 significantly differs from the expected effect under these models.
 }
+\section{Assumptions and Limitations}{
+
+\strong{Bliss Independence applied to TGI:} Bliss Independence was formulated for the
+probability of cell death, not for proportional growth inhibition. Applying it to TGI is a
+common pragmatic choice but carries a ceiling effect: when individual drug TGIs are large
+(each > 50\\%), the Bliss expected combined TGI approaches 100\\%, making it nearly impossible
+to demonstrate synergy by this criterion regardless of the true biological interaction.
+Interpret Bliss results cautiously when individual-agent TGIs exceed 50\\%.
+
+\strong{Loewe Additivity single-dose approximation:} The CI formula
+\code{min(FE_A + FE_B, 1) / FE_combo} assumes a linear dose-response relationship, which
+is appropriate when only single-dose data are available but is an approximation. Without
+dose-response curves the true IC50 values are unknown, so the result should be interpreted
+as a qualitative synergy indicator rather than a precise mechanistic estimate.
+}
+
 \examples{
 # Example with synthetic dataset
 data(combo_treatment_synthetic_data)

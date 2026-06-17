@@ -10,7 +10,8 @@ perform_statistical_analyses(
   volume_column = "Volume",
   day_column = "Day",
   id_column = "ID",
-  original_df = NULL
+  original_df = NULL,
+  verbose = TRUE
 )
 }
 \arguments{

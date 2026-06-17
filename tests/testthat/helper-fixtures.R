@@ -143,11 +143,13 @@ make_dose_response <- function() {
 #   Control   mean volume = 500  TGI = 0
 #   DrugA     mean volume = 250  TGI = 0.50
 #   DrugB     mean volume = 300  TGI = 0.40
-#   Bliss expected combo vol = 500 * (1-0.50) * (1-0.40) = 150
+#   Bliss expected FE = 0.50 + 0.40 - 0.20 = 0.70  → combo vol = 150
+#   Loewe expected FE = min(0.50 + 0.40, 1.0) = 0.90  → combo vol = 50
+#   Loewe CI = (FE_A + FE_B) / FE_combo = 0.90 / FE_combo
 #
-#   Additive combo:     actual mean ≈ 150  → delta ≈ 0
-#   Synergistic combo:  actual mean ≈ 50   → more inhibition than expected
-#   Antagonistic combo: actual mean ≈ 325  → less inhibition than expected
+#   Bliss-neutral combo:  actual mean ≈ 150, FE=0.70, Loewe CI=1.29
+#   Synergistic combo:    actual mean ≈ 25,  FE=0.95, Loewe CI=0.95 (CI < 1)
+#   Antagonistic combo:   actual mean ≈ 325, FE=0.35, Loewe CI=2.57
 # Uses 6 mice per group; 8% CV so group means are very close to target.
 # -----------------------------------------------------------------------------
 make_synergy_base <- function(combo_mean) {
@@ -174,8 +176,50 @@ make_synergy_base <- function(combo_mean) {
   )
 }
 
+# -----------------------------------------------------------------------------
+# Body weight: two groups with diverging weight trajectories
+#
+# Ground-truth design:
+#   - 2 groups × 5 mice × 5 time-points (days 0, 7, 14, 21, 28)
+#   - 2 cages per group
+#   - Control: stable weight at ~22 g (slope = 0.0 g/day)
+#   - TreatmentA: progressive weight loss (slope = -0.08 g/day ≈ -2.2 g by day 28)
+#   - Within-mouse noise SD = 0.3 g
+#   → LMM Treatment × Day interaction should be clearly significant
+# -----------------------------------------------------------------------------
+make_bw_simple <- function() {
+  set.seed(42)
+  days <- c(0, 7, 14, 21, 28)
+
+  make_mouse <- function(id, cage, treatment, slope) {
+    noise  <- rnorm(5, mean = 0, sd = 0.3)
+    weight <- 22 + slope * days + noise
+    data.frame(
+      ID        = id,
+      Cage      = cage,
+      Treatment = treatment,
+      Day       = days,
+      Weight    = round(weight, 1),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  rbind(
+    make_mouse("C01", "C1", "Control",    0.00),
+    make_mouse("C02", "C1", "Control",    0.00),
+    make_mouse("C03", "C2", "Control",    0.00),
+    make_mouse("C04", "C2", "Control",    0.00),
+    make_mouse("C05", "C2", "Control",    0.00),
+    make_mouse("T01", "T1", "TreatmentA", -0.08),
+    make_mouse("T02", "T1", "TreatmentA", -0.08),
+    make_mouse("T03", "T2", "TreatmentA", -0.08),
+    make_mouse("T04", "T2", "TreatmentA", -0.08),
+    make_mouse("T05", "T2", "TreatmentA", -0.08)
+  )
+}
+
 make_synergy_additive    <- function() make_synergy_base(150)   # Bliss-neutral
-make_synergy_synergistic <- function() make_synergy_base(50)    # Better than additive
+make_synergy_synergistic <- function() make_synergy_base(25)    # FE > Loewe expected → CI < 1
 make_synergy_antagonist  <- function() make_synergy_base(325)   # Worse than additive
 
 # Bliss ground-truth expected combo volume (used in assertions)
@@ -211,3 +255,40 @@ make_combo_four_group <- function() {
     }))
   }))
 }
+
+
+# ─── Test-side warning capture (CODE_REVIEW.md K.3) ──────────────────────────
+#
+# Tests should not blanket-suppress warnings around brms or lme4 fits —
+# divergent transitions, singular-fit signals, and emmeans interaction
+# warnings are exactly the regressions a test suite should catch. Use
+# `capture_warnings()` to materialise warnings into a character vector
+# while still evaluating the expression, then assert nothing unexpected
+# appeared. Known-benign warning patterns can be allowlisted via
+# `allow_pattern` (regex).
+
+capture_warnings <- function(expr) {
+  warns <- character(0)
+  val   <- withCallingHandlers(
+    expr,
+    warning = function(w) {
+      warns <<- c(warns, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+  attr(val, "captured_warnings") <- warns
+  val
+}
+
+expect_no_unexpected_warnings <- function(x, allow_pattern = NULL) {
+  warns <- attr(x, "captured_warnings") %||% character(0)
+  if (!is.null(allow_pattern) && length(warns) > 0L) {
+    warns <- warns[!grepl(allow_pattern, warns, perl = TRUE)]
+  }
+  testthat::expect_true(
+    length(warns) == 0L,
+    info = paste("Unexpected warnings:", paste(warns, collapse = "; "))
+  )
+}
+
+`%||%` <- function(a, b) if (!is.null(a)) a else b

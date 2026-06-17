@@ -16,6 +16,7 @@
 #' @param id_column Column with individual mouse identifiers. Default: "ID".
 #' @param time_point Optional specific time point (day) to analyze. Default: NULL (uses last time point).
 #' @param control_group_name Name of the control group. Default: "Control".
+#' @param verbose Logical; if TRUE, prints model summaries and statistics to the console. Default: TRUE.
 #'
 #' @return A list containing:
 #'   \item{dose_effect_test}{Statistical test results for dose-dependency}
@@ -64,7 +65,8 @@ dose_response_statistics <- function(df,
                                     id_column = id_column, time_point = time_point)
   
   # Generate summary statistics
-  summary_stats <- generate_summary_statistics(analysis_data, dose_column = dose_column, volume_column = volume_column)
+  summary_stats <- generate_summary_statistics(analysis_data, dose_column = dose_column,
+                                               volume_column = volume_column, verbose = verbose)
   
   # Create visualizations
   plots <- create_dose_plots(analysis_data, summary_stats, dose_column = dose_column, volume_column = volume_column)
@@ -75,7 +77,7 @@ dose_response_statistics <- function(df,
                                               verbose = verbose)
   
   # Generate user-friendly report
-  if (verbose) generate_user_report(stats_results, plots)
+  if (isTRUE(verbose)) generate_user_report(stats_results, plots)
   
   # Return all results
   return(list(
@@ -110,7 +112,8 @@ dose_response_statistics <- function(df,
 #' @param time_point Specific time point to analyze
 #' 
 #' @return Prepared data frame
-#' @export
+#' @noRd
+#' @keywords internal
 prepare_dose_data <- function(df, dose_column = "Dose", treatment_column = "Treatment", 
                              volume_column = "Volume", day_column = "Day", 
                              id_column = "ID", time_point = NULL) {
@@ -138,14 +141,17 @@ prepare_dose_data <- function(df, dose_column = "Dose", treatment_column = "Trea
 }
 
 #' Generate summary statistics for each dose level
-#' 
+#'
 #' @param analysis_data Prepared data frame
 #' @param dose_column Dose column name
 #' @param volume_column Volume column name
-#' 
+#' @param verbose Logical; whether to print summary statistics
+#'
 #' @return Summary statistics table
-#' @export
-generate_summary_statistics <- function(analysis_data, dose_column = "Dose", volume_column = "Volume") {
+#' @noRd
+#' @keywords internal
+generate_summary_statistics <- function(analysis_data, dose_column = "Dose", volume_column = "Volume",
+                                        verbose = TRUE) {
   summary_stats <- analysis_data %>%
     dplyr::group_by(.data[[dose_column]]) %>%
     dplyr::summarize(
@@ -158,10 +164,12 @@ generate_summary_statistics <- function(analysis_data, dose_column = "Dose", vol
       ci95_upper = mean_volume + qt(0.975, n-1) * sem_volume,
       .groups = "drop"
     )
-  
-  message("Summary statistics by dose level:")
-  message(paste(utils::capture.output(print(summary_stats)), collapse = "\n"))
-  
+
+  if (isTRUE(verbose)) {
+    message("Summary statistics by dose level:")
+    message(paste(utils::capture.output(print(summary_stats)), collapse = "\n"))
+  }
+
   return(summary_stats)
 }
 
@@ -228,7 +236,7 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
   linear_model <- stats::lm(paste(volume_column, "~", dose_column), data = analysis_data)
   linear_summary <- summary(linear_model)
   
-  if (verbose) {
+  if (isTRUE(verbose)) {
     message("Linear regression model:")
     message(paste(utils::capture.output(print(linear_summary)), collapse = "\n"))
   }
@@ -243,7 +251,7 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
                            data = analysis_data)
   anova_summary <- summary(anova_model)
   
-  if (verbose) {
+  if (isTRUE(verbose)) {
     message("ANOVA model:")
     message(paste(utils::capture.output(print(anova_summary)), collapse = "\n"))
   }
@@ -258,7 +266,7 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
   # 3. Post-hoc Tukey test
   if (!is.na(statistics$anova_p_value) && statistics$anova_p_value < 0.05) {
     tukey_results <- stats::TukeyHSD(anova_model)
-    if (verbose) {
+    if (isTRUE(verbose)) {
       message("Tukey HSD test:")
       message(paste(utils::capture.output(print(tukey_results)), collapse = "\n"))
     }
@@ -266,14 +274,21 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
   }
   
   # 4. Try to fit non-linear dose-response models
-  statistics <- try_nonlinear_models(analysis_data, dose_column, volume_column, statistics, linear_model)
-  
+  statistics <- try_nonlinear_models(
+    analysis_data, dose_column, volume_column, statistics, linear_model,
+    verbose = verbose
+  )
+
   # 5. Growth rate analysis
-  statistics <- analyze_growth_rate(original_df, analysis_data, dose_column, volume_column, 
-                                  day_column, id_column, statistics)
-  
+  statistics <- analyze_growth_rate(original_df, analysis_data, dose_column,
+                                    volume_column, day_column, id_column,
+                                    statistics)
+
   # 6. Polynomial trend analysis
-  statistics <- analyze_polynomial_trends(analysis_data, dose_column, volume_column, statistics)
+  statistics <- analyze_polynomial_trends(
+    analysis_data, dose_column, volume_column, statistics,
+    verbose = verbose
+  )
   
   # Jonckheere-Terpstra test not run due to mentioned issues
   jt_result <- NULL
@@ -296,8 +311,10 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
 #' 
 #' @return Updated statistics list
 #' @keywords internal
-try_nonlinear_models <- function(analysis_data, dose_column = "Dose", volume_column = "Volume", 
-                              statistics = list(), linear_model = NULL) {
+try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
+                              volume_column = "Volume",
+                              statistics = list(), linear_model = NULL,
+                              verbose = TRUE) {
   if (requireNamespace("drc", quietly = TRUE)) {
     tryCatch({
       # Prepare data for drc
@@ -313,33 +330,53 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose", volume_col
                                        drc_data[[dose_column]])
       }
       
-      # Fit models — decreasing (LL.4) vs increasing (LL.5, 5-param log-logistic)
-      dr_model_decr <- drc::drm(as.formula(paste(volume_column, "~", dose_column)), 
-                              data = drc_data, 
-                              fct = drc::LL.4(names = c("Slope", "Lower Limit", "Upper Limit", "EC50")))
-      
-      dr_model_incr <- drc::drm(as.formula(paste(volume_column, "~", dose_column)), 
-                              data = drc_data, 
-                              fct = drc::LL.5(names = c("Slope", "Lower Limit", "Upper Limit", "EC50", "Asymmetry")))
-      
-      # Compare models
-      model_aic_decr <- AIC(dr_model_decr)
-      model_aic_incr <- AIC(dr_model_incr)
-      
-      # Select better model
-      if (model_aic_decr < model_aic_incr) {
-        dr_model <- dr_model_decr
-        model_type <- "inhibition"
+      # Fit two log-logistic shapes: 4-parameter (symmetric) and 5-parameter
+      # (asymmetric — adds an asymmetry parameter). NEITHER constrains the
+      # direction of effect; both fit inhibition or stimulation via the sign
+      # of the Slope parameter. The previous variable names "decr"/"incr"
+      # and labels "inhibition"/"stimulation" were therefore misleading
+      # (CODE_REVIEW.md G.2).
+      dr_model_4p <- drc::drm(
+        as.formula(paste(volume_column, "~", dose_column)),
+        data = drc_data,
+        fct  = drc::LL.4(names = c("Slope", "Lower Limit", "Upper Limit",
+                                   "EC50"))
+      )
+      dr_model_5p <- drc::drm(
+        as.formula(paste(volume_column, "~", dose_column)),
+        data = drc_data,
+        fct  = drc::LL.5(names = c("Slope", "Lower Limit", "Upper Limit",
+                                   "EC50", "Asymmetry"))
+      )
+
+      # Compare models on shape (symmetric vs asymmetric); select lower AIC.
+      model_aic_4p <- AIC(dr_model_4p)
+      model_aic_5p <- AIC(dr_model_5p)
+      if (model_aic_4p < model_aic_5p) {
+        dr_model   <- dr_model_4p
+        model_type <- "symmetric"      # LL.4 = symmetric 4-parameter
       } else {
-        dr_model <- dr_model_incr
-        model_type <- "stimulation"
+        dr_model   <- dr_model_5p
+        model_type <- "asymmetric"     # LL.5 = asymmetric 5-parameter
       }
-      
+
+      # Derive direction independently from the sign of the Slope parameter
+      # in the selected model. Slope > 0 (LL.4/LL.5 convention) implies
+      # decreasing response with dose → "inhibition"; Slope < 0 → "stimulation".
+      slope_est <- tryCatch(
+        unname(stats::coef(dr_model)["Slope:(Intercept)"]),
+        error = function(e) NA_real_
+      )
+      model_direction <- if (is.finite(slope_est)) {
+        if (slope_est > 0) "inhibition" else "stimulation"
+      } else NA_character_
+
       # Get model summary
       dr_summary <- summary(dr_model)
-      
-      if (verbose) {
-        message("Selected dose-response model type: ", model_type)
+
+      if (isTRUE(verbose)) {
+        message("Selected dose-response shape: ", model_type)
+        message("Inferred direction (from Slope sign): ", model_direction)
         message("Non-linear dose-response model:")
         message(paste(utils::capture.output(print(dr_summary)), collapse = "\n"))
       }
@@ -351,16 +388,65 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose", volume_col
       statistics$lower_limit <- params["c:(Intercept)"]
       statistics$upper_limit <- params["d:(Intercept)"]
       
-      # Store model
+      # Store model. dr_model_type now reports the *shape* (symmetric or
+      # asymmetric); dr_model_direction reports the inferred direction
+      # (inhibition / stimulation) derived from the Slope sign.
       statistics$dr_model <- dr_model
-      statistics$dr_model_type <- model_type
+      statistics$dr_model_type      <- model_type        # shape
+      statistics$dr_model_direction <- model_direction   # direction
       
-      # Compare models
+      # Store per-model information criteria.
+      # WARNING: linear_aic and nonlinear_aic are NOT directly comparable.
+      # stats::lm and drc::drm use different likelihood parameterisations
+      # (drc omits the log(2π) constant and estimates a separate variance
+      # parameter), so their AIC values are on different scales. Use them
+      # within each model family only; do not use delta-AIC for model selection.
       statistics$linear_aic <- AIC(linear_model)
       statistics$nonlinear_aic <- AIC(dr_model)
       statistics$linear_bic <- BIC(linear_model)
       statistics$nonlinear_bic <- BIC(dr_model)
-      
+      statistics$aic_comparison_note <-
+        "AIC/BIC values from lm and drc are not on the same scale and cannot be directly compared for model selection."
+
+      # CODE_REVIEW.md DIAGNOSTICS gap (5) — frequentist dose-response had no
+      # goodness-of-fit diagnostics. Add lack-of-fit test, residuals plot, and
+      # a residual-summary table so the dashboard's DR Diagnostics tab has
+      # something to render.
+      statistics$dr_lack_of_fit <- tryCatch({
+        # drc::modelFit returns a data frame with one row per nested model:
+        # ANOVA F vs smoother (default), one DF per dose level. A small
+        # p-value indicates the parametric model fits worse than a one-mean-
+        # per-dose smoother — i.e., lack of fit.
+        as.data.frame(drc::modelFit(dr_model))
+      }, error = function(e) NULL)
+
+      statistics$dr_residuals_df <- tryCatch({
+        data.frame(
+          Dose      = drc_data[[dose_column]],
+          Observed  = drc_data[[volume_column]],
+          Fitted    = stats::fitted(dr_model),
+          Residual  = stats::residuals(dr_model),
+          stringsAsFactors = FALSE
+        )
+      }, error = function(e) NULL)
+
+      statistics$dr_residuals_plot <- tryCatch({
+        if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
+        rd <- statistics$dr_residuals_df
+        if (is.null(rd)) return(NULL)
+        ggplot2::ggplot(rd, ggplot2::aes(x = .data[["Dose"]],
+                                         y = .data[["Residual"]])) +
+          ggplot2::geom_point(alpha = 0.6) +
+          ggplot2::geom_hline(yintercept = 0, linetype = "dashed",
+                              colour = "red") +
+          ggplot2::geom_smooth(method = "loess", se = FALSE,
+                               colour = "steelblue", formula = y ~ x) +
+          ggplot2::theme_classic() +
+          ggplot2::labs(title = "Dose-response residuals",
+                        subtitle = "Systematic curvature → wrong functional form",
+                        x = "Dose", y = "Residual")
+      }, error = function(e) NULL)
+
     }, error = function(e) {
       message("Non-linear regression failed: ", e$message)
       message("Continuing with linear analysis only.")
@@ -389,9 +475,19 @@ analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_
   # Only run if we have multiple time points
   if (length(unique(df[[day_column]])) > 1) {
     # Calculate growth rate for each mouse
+    # Zero-handling: use log(x) with x[x<=0] replaced by min_positive/2.
+    # Matches tumor_growth_statistics() / bayesian_tumor_growth() canonical
+    # pattern (was log1p — divergence noted in CODE_REVIEW.md G.8).
     growth_rates <- df %>%
       dplyr::group_by(.data[[dose_column]], .data[[id_column]]) %>%
-      dplyr::mutate(log_volume = log1p(.data[[volume_column]])) %>%
+      dplyr::mutate(
+        log_volume = {
+          v <- .data[[volume_column]]
+          pos <- v[is.finite(v) & v > 0]
+          if (length(pos) > 0L) v[!(is.finite(v) & v > 0)] <- min(pos) / 2
+          log(v)
+        }
+      ) %>%
       dplyr::arrange(.data[[day_column]]) %>%
       dplyr::summarize(
         growth_rate = if(dplyr::n() >= 3) {
@@ -432,24 +528,39 @@ analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_
 #' 
 #' @return Updated statistics list
 #' @keywords internal
-analyze_polynomial_trends <- function(analysis_data, dose_column = "Dose", volume_column = "Volume", 
-                                 statistics = list()) {
+analyze_polynomial_trends <- function(analysis_data, dose_column = "Dose",
+                                 volume_column = "Volume",
+                                 statistics = list(), verbose = TRUE) {
   tryCatch({
     # Check if we have enough dose levels
     if (length(unique(analysis_data[[dose_column]])) >= 3) {
-      # Create categorical factor for dose
-      analysis_data$dose_factor <- factor(analysis_data[[dose_column]], 
-                                       levels = sort(unique(analysis_data[[dose_column]])))
-      
-      # Set up polynomial contrasts
-      stats::contrasts(analysis_data$dose_factor) <- stats::contr.poly(levels(analysis_data$dose_factor))
+      # Create categorical factor for dose. CODE_REVIEW.md G.7: when doses
+      # are unequally spaced (the common preclinical pattern 0, 10, 30, 100
+      # mg/kg etc.), the default contr.poly() generates orthogonal contrasts
+      # for evenly-spaced indices 1, 2, 3, … — NOT for the actual dose
+      # scores. Reported linear / quadratic / cubic p-values would then be
+      # the orthogonal decomposition on the *index axis*, not on the true
+      # dose scale.
+      #
+      # Pass the numeric dose levels as `scores` so contr.poly() builds the
+      # contrast matrix on the actual dose values.
+      sorted_doses <- sort(unique(as.numeric(analysis_data[[dose_column]])))
+      analysis_data$dose_factor <- factor(
+        analysis_data[[dose_column]],
+        levels = sorted_doses
+      )
+
+      stats::contrasts(analysis_data$dose_factor) <- stats::contr.poly(
+        n      = length(sorted_doses),
+        scores = sorted_doses
+      )
       
       # Fit model with polynomial contrasts
       poly_model <- stats::lm(as.formula(paste(volume_column, "~ dose_factor")), data = analysis_data)
       poly_summary <- summary(poly_model)
       poly_anova <- stats::anova(poly_model)
       
-      if (verbose) {
+      if (isTRUE(verbose)) {
         message("Polynomial contrasts for dose-response trends:")
         message(paste(utils::capture.output(print(summary(poly_model))), collapse = "\n"))
         message(paste(utils::capture.output(print(poly_anova)), collapse = "\n"))

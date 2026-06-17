@@ -26,6 +26,10 @@
 #'   \item{results}{Data frame with hazard ratios, confidence intervals, p-values, and median survival times}
 #'   \item{reference_group}{The treatment group used as reference}
 #'   \item{method_used}{The statistical method used ("cox", "coxphf", or "logrank")}
+#'   \item{ph_test}{A \code{cox.zph} object (Schoenfeld-residual proportional-hazards
+#'     test) when the standard Cox path is used; \code{NULL} for the Firth and
+#'     log-rank fallbacks. A small global p-value indicates the PH assumption is
+#'     violated and hazard ratios should be interpreted with caution.}
 #' }
 #'
 #' @details
@@ -92,16 +96,17 @@ survival_statistics <- function(df,
   
   # Choose and fit appropriate model
   model_results <- fit_survival_model(
-    df, 
-    surv_obj, 
-    cox_formula, 
-    treatment_column, 
+    df,
+    surv_obj,
+    cox_formula,
+    treatment_column,
     treatment_groups,
     reference_group,
     time_column,
     censor_column,
     separation_info,
-    firth_correction
+    firth_correction,
+    verbose = verbose
   )
   
   # Extract model results
@@ -117,7 +122,7 @@ survival_statistics <- function(df,
   km_fit <- survival::survfit(surv_formula, data = df)
   
   # Display median survival information
-  if (verbose) message(paste(utils::capture.output(print(km_fit)), collapse = "\n"))
+  if (isTRUE(verbose)) message(paste(utils::capture.output(print(km_fit)), collapse = "\n"))
   
   # Calculate and add median survival times
   median_survival <- NULL
@@ -238,7 +243,7 @@ survival_statistics <- function(df,
   results$Note <- ifelse(results$Group == reference_group, "Reference group", "")
   
   # Print formatted results
-  if (verbose) print_results(results, df, treatment_column, time_column, censor_column)
+  if (isTRUE(verbose)) print_results(results, df, treatment_column, time_column, censor_column)
   
   # Build our result list
   result_list <- list(
@@ -256,7 +261,17 @@ survival_statistics <- function(df,
   if (!is.null(model)) {
     result_list$model <- model
   }
-  
+
+  # Add cox.zph proportional-hazards check when available (cox path only)
+  if (!is.null(model_results$ph_test)) {
+    result_list$ph_test <- model_results$ph_test
+  }
+
+  # Add concordance / C-index when available (cox path only)
+  if (!is.null(model_results$c_index)) {
+    result_list$c_index <- model_results$c_index
+  }
+
   return(result_list)
 }
 
@@ -327,7 +342,7 @@ check_separation <- function(df, treatment_column, censor_column) {
 #' @noRd
 fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, treatment_groups,
                               reference_group, time_column, censor_column, separation_info,
-                              firth_correction) {
+                              firth_correction, verbose = TRUE) {
   
   # Try standard Cox model first
   cox_model <- tryCatch({
@@ -439,50 +454,72 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
       model <- NULL
       results <- data.frame()
     } else {
+      method_used <- results$method_used
       model <- results$model
       results <- results$results
-      method_used <- results$method_used
     }
     
   } else if (has_issues) {
-    # Use Log-Rank test as fallback
+    # Use pairwise log-rank tests as fallback (one per non-reference group).
+    # An omnibus logrank p-value must not be assigned to all groups — it is a
+    # single test for any difference and is not a valid per-comparison p-value.
     method_used <- "logrank"
-    message("One or more groups have zero events. Using log-rank test to estimate HRs for these groups.")
-    
-    # Fit Log-Rank test
+    message("One or more groups have zero events. Using pairwise log-rank tests.")
+
+    # Omnibus test (stored separately for reference; not used as per-group p-values)
     surv_diff <- survival::survdiff(cox_formula, data = df)
-    if (verbose) message(paste(utils::capture.output(print(surv_diff)), collapse = "\n"))
-    
-    # Calculate p-value
-    chisq <- surv_diff$chisq
-    p_value <- 1 - stats::pchisq(chisq, df = length(treatment_groups) - 1)
-    
-    # Create basic results without HRs (not estimable in this case)
+    if (isTRUE(verbose)) message(paste(utils::capture.output(print(surv_diff)), collapse = "\n"))
+    omnibus_p <- 1 - stats::pchisq(surv_diff$chisq, df = length(treatment_groups) - 1L)
+
+    # Create basic results without HRs (not estimable when a group has zero events)
     results <- data.frame(
-      Group = treatment_groups,
-      HR = NA,
+      Group    = treatment_groups,
+      HR       = NA,
       CI_Lower = NA,
       CI_Upper = NA,
-      P_Value = NA,
+      P_Value  = NA,
       stringsAsFactors = FALSE
     )
-    
-    # Set reference group values
+
     ref_idx <- which(results$Group == reference_group)
-    results$HR[ref_idx] <- 1
+    results$HR[ref_idx]       <- 1
     results$CI_Lower[ref_idx] <- 1
     results$CI_Upper[ref_idx] <- 1
-    
-    # Set p-value for non-reference groups
-    results$P_Value[-ref_idx] <- p_value
-    
+
+    # Pairwise log-rank: compare each treatment group vs. reference individually
+    for (grp in treatment_groups[treatment_groups != reference_group]) {
+      pair_data <- df[df[[treatment_column]] %in% c(reference_group, grp), ]
+      pair_p <- tryCatch({
+        pair_diff <- survival::survdiff(cox_formula, data = pair_data)
+        1 - stats::pchisq(pair_diff$chisq, df = 1L)
+      }, error = function(e) omnibus_p)
+      results$P_Value[results$Group == grp] <- pair_p
+    }
+
     model <- surv_diff
     
   } else {
     # Use standard Cox model
     method_used <- "cox"
     model <- cox_model
-    
+
+    # Proportional-hazards check via Schoenfeld residuals (cox.zph).
+    # Surface global + per-covariate test for downstream display.
+    ph_test <- tryCatch(survival::cox.zph(model), error = function(e) NULL)
+    if (!is.null(ph_test) && isTRUE(verbose)) {
+      global_p <- tryCatch(ph_test$table["GLOBAL", "p"], error = function(e) NA_real_)
+      if (is.finite(global_p) && global_p < 0.05) {
+        message(sprintf("Proportional-hazards check: global p = %.4f (< 0.05) — PH assumption may be violated.", global_p))
+      }
+    }
+
+    # Concordance (C-index) — survival analogue of AUC-ROC; values around
+    # 0.5 indicate no discrimination, 1.0 perfect discrimination.
+    c_index <- tryCatch(
+      survival::concordance(model),
+      error = function(e) NULL
+    )
+
     # Extract the hazard ratios, CIs, and p-values
     model_summary <- summary(model)
     
@@ -514,11 +551,13 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
       idx <- which(results$Group == group_name)
       
       if (length(idx) > 0) {
-        # Extract values
-        hr <- exp(model_summary$coefficients[i, "coef"])
-        ci_lower <- exp(model_summary$coefficients[i, "coef"] - 1.96 * model_summary$coefficients[i, "se(coef)"])
-        ci_upper <- exp(model_summary$coefficients[i, "coef"] + 1.96 * model_summary$coefficients[i, "se(coef)"])
-        p_value <- model_summary$coefficients[i, "Pr(>|z|)"]
+        # Use summary(coxph)$conf.int directly — already contains exp(coef),
+        # lower .95, and upper .95 at the proper qnorm(0.975) ≈ 1.959964.
+        ci_row   <- model_summary$conf.int[i, , drop = TRUE]
+        hr       <- unname(ci_row["exp(coef)"])
+        ci_lower <- unname(ci_row["lower .95"])
+        ci_upper <- unname(ci_row["upper .95"])
+        p_value  <- model_summary$coefficients[i, "Pr(>|z|)"]
         
         # Assign values
         results$HR[idx] <- hr
@@ -532,7 +571,9 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
   return(list(
     model = model,
     results = results,
-    method_used = method_used
+    method_used = method_used,
+    ph_test = if (exists("ph_test", inherits = FALSE)) ph_test else NULL,
+    c_index = if (exists("c_index", inherits = FALSE)) c_index else NULL
   ))
 }
 
@@ -570,45 +611,7 @@ print_results <- function(results, df = NULL, treatment_column = NULL, time_colu
       if (!is.na(results$Median_Survival[i])) {
         message(sprintf("Median Survival: %.1f days", results$Median_Survival[i]))
       } else {
-        # Check if we have event rate information
-        if ("Event_Rate" %in% colnames(results) && !is.na(results$Event_Rate[i])) {
-          # If more than 50% of subjects had events, try to calculate it
-          if (results$Event_Rate[i] > 0.5) {
-            # We need to calculate the median survival since we have >50% events
-            if (!is.null(df) && !is.null(treatment_column) && !is.null(time_column) && !is.null(censor_column)) {
-              group_data <- df[df[[treatment_column]] == results$Group[i], ]
-              if (nrow(group_data) > 0) {
-                # Create a survfit object for just this group
-                group_surv_formula <- stats::as.formula(paste("Surv(", time_column, ",", censor_column, ") ~ 1"))
-                group_km_fit <- survival::survfit(group_surv_formula, data = group_data)
-                
-                # Try to extract the median survival
-                if (!is.null(group_km_fit$median)) {
-                  med_surv <- group_km_fit$median
-                  if (!is.na(med_surv) && med_surv > 0) {
-                    # Update the results data frame with the calculated median
-                    results$Median_Survival[i] <- med_surv
-                    message(sprintf("Median Survival: %.1f days", med_surv))
-                  } else {
-                    message("Median Survival: Error calculating median")
-                  }
-                } else {
-                  message("Median Survival: Error extracting median from survfit")
-                }
-              } else {
-                message("Median Survival: No data available for group")
-              }
-            } else {
-              message("Median Survival: Required data for calculation not provided")
-            }
-          } else {
-            # Less than 50% had events, so "Not Reached" is accurate
-            message("Median Survival: Not reached")
-          }
-        } else {
-          # If we don't have event rate info, use original behavior
-          message("Median Survival: Not reached")
-        }
+        message("Median Survival: Not reached")
       }
     }
     
@@ -659,49 +662,9 @@ print_results <- function(results, df = NULL, treatment_column = NULL, time_colu
   
   # Add median survival to table if available
   if ("Median_Survival" %in% colnames(results)) {
-    formatted_table$"Median Survival" <- sapply(1:nrow(results), function(i) {
-      if (is.na(results$Median_Survival[i])) {
-        # Check if we have event rate information
-        if ("Event_Rate" %in% colnames(results) && !is.na(results$Event_Rate[i])) {
-          # If more than 50% of subjects had events, try to calculate it
-          if (results$Event_Rate[i] > 0.5) {
-            # We need to calculate the median survival since we have >50% events
-            if (!is.null(df) && !is.null(treatment_column) && !is.null(time_column) && !is.null(censor_column)) {
-              group_data <- df[df[[treatment_column]] == results$Group[i], ]
-              if (nrow(group_data) > 0) {
-                # Create a survfit object for just this group
-                group_surv_formula <- stats::as.formula(paste("Surv(", time_column, ",", censor_column, ") ~ 1"))
-                group_km_fit <- survival::survfit(group_surv_formula, data = group_data)
-                
-                # Try to extract the median survival
-                if (!is.null(group_km_fit$median)) {
-                  med_surv <- group_km_fit$median
-                  if (!is.na(med_surv) && med_surv > 0) {
-                    # Update the results data frame with the calculated median
-                    results$Median_Survival[i] <- med_surv
-                    return(sprintf("%.1f days", med_surv))
-                  }
-                }
-                
-                # If we're here, we couldn't calculate it despite having >50% events
-                return("Error calculating median")
-              } else {
-                return("No data available")
-              }
-            } else {
-              return("Required data not provided")
-            }
-          } else {
-            # Less than 50% had events, so "Not Reached" is accurate
-            return("Not reached")
-          }
-        } else {
-          # If we don't have event rate info, use original behavior
-          return("Not reached")
-        }
-      } else {
-        return(sprintf("%.1f days", results$Median_Survival[i]))
-      }
+    formatted_table$"Median Survival" <- sapply(seq_len(nrow(results)), function(i) {
+      if (is.na(results$Median_Survival[i])) "Not reached"
+      else sprintf("%.1f days", results$Median_Survival[i])
     })
   }
   

@@ -2,82 +2,106 @@
 % Please edit documentation in R/plot_auc.R
 \name{plot_auc}
 \alias{plot_auc}
-\title{Plot AUC (Area Under the Curve) Data}
+\title{Plot Area Under the Curve (AUC) Values by Treatment Group}
 \usage{
 plot_auc(
   auc_data,
+  auc_column = "AUC",
+  group_column = "Group",
+  title = "Area Under the Curve (AUC) by Treatment Group",
   colors = NULL,
-  title = "AUC Values by Treatment Group",
   show_mean = TRUE,
-  error_bar_type = c("SEM", "SD", "CI", "none"),
+  error_bar_type = c("none", "SEM", "SD", "CI"),
   extrapolated_column = NULL,
   group_order = NULL,
-  point_size = 3,
+  caption = NULL,
+  point_size = 2.5,
   jitter_width = 0.2
 )
 }
 \arguments{
-\item{auc_data}{A data frame containing AUC values for individual subjects.
-Must include columns: 'Group' (treatment group) and 'AUC' (AUC values).
-May also include 'ID', 'Cage', or 'Mouse_ID' columns for more detailed visualization.}
+\item{auc_data}{A data frame containing AUC values for each subject.
+Must have columns for AUC values and group/treatment information.}
 
-\item{colors}{An optional vector of colors for treatment groups. If NULL, default ggplot colors are used.}
+\item{auc_column}{Name of the column containing AUC values. Default is "AUC".}
 
-\item{title}{An optional title for the plot. If NULL, a default title is used.}
+\item{group_column}{Name of the column containing group/treatment information. Default is "Group".}
 
-\item{show_mean}{Logical indicating whether to display a mean line for each group. Default is TRUE.}
+\item{title}{Plot title. Default is "Area Under the Curve (AUC) by Treatment Group".}
 
-\item{error_bar_type}{Character string specifying the type of error bars to display. Options are:
-"none" (no error bars),
-"SEM" (standard error of the mean),
-"SD" (standard deviation),
-"CI" (95\% confidence interval). Default is "SEM".}
+\item{colors}{Optional named vector of colors for each group. If NULL, default colors are used.}
 
-\item{extrapolated_column}{Character string specifying the column name that indicates whether a data point
+\item{show_mean}{Logical indicating whether to show lines for group means. Default is TRUE.}
+
+\item{error_bar_type}{Type of error bars to display. Options are "none", "SEM" (standard error of mean),
+"SD" (standard deviation), or "CI" (95\% confidence interval). Default is "none".}
+
+\item{extrapolated_column}{Name of column indicating whether a data point
 was extrapolated. Values should be TRUE/FALSE or 1/0. If NULL, all points are treated as non-extrapolated.
 Default is NULL.}
 
 \item{group_order}{Optional vector specifying the order of groups to display.
 If NULL, groups are ordered alphabetically. Default is NULL.}
 
-\item{point_size}{Numeric value specifying the size of the individual data points. Default is 3.}
+\item{caption}{Optional caption text for the plot. Default is NULL.}
 
-\item{jitter_width}{Numeric value specifying the width of the jitter for individual points. Default is 0.2.}
+\item{point_size}{Size of the points in the plot. Default is 2.5.}
+
+\item{jitter_width}{Width of the jitter for the points. Default is 0.2.}
 }
 \value{
-A ggplot object representing the AUC plot.
+A ggplot object that can be further customized or displayed.
 }
 \description{
-This function creates a visualization for Area Under the Curve (AUC) data from tumor growth experiments.
-It produces a single plot showing AUC values by treatment group as individual points with optional
-mean lines and error bars.
+Creates a visualization of Area Under the Curve (AUC) values by treatment group,
+with options for displaying mean values, error bars, and differentiation between
+extrapolated and non-extrapolated data points.
 }
 \examples{
 \dontrun{
-# Generate example data
+# Generate some example data
 auc_data <- data.frame(
-  ID = paste0("Mouse", 1:20),
-  Group = rep(c("Control", "Treatment A", "Treatment B", "Treatment C"), each=5),
-  AUC = c(runif(5, 10, 15), runif(5, 8, 12), runif(5, 5, 10), runif(5, 3, 8))
+  Subject = paste0("S", 1:20),
+  Group = rep(c("Control", "Treatment"), each = 10),
+  AUC = c(rnorm(10, 100, 15), rnorm(10, 70, 10)),
+  Extrapolated = c(rep(FALSE, 15), rep(TRUE, 5))
 )
 
-# Basic usage
+# Basic plot
 plot_auc(auc_data)
 
-# With custom error bars and no mean line
-plot_auc(auc_data, show_mean = FALSE, error_bar_type = "SD")
+# With mean, SEM error bars, and differentiation of extrapolated points
+plot_auc(
+  auc_data,
+  title = "Tumor Growth AUC by Group",
+  show_mean = TRUE,
+  error_bar_type = "SEM",
+  extrapolated_column = "Extrapolated"
+)
 
-# With extrapolated data points marked differently
-auc_data$Extrapolated <- rep(c(TRUE, FALSE), 10)
-plot_auc(auc_data, extrapolated_column = "Extrapolated")
+# With custom colors, point size, and jitter width
+plot_auc(
+  auc_data,
+  colors = c("Control" = "blue", "Treatment" = "red"),
+  point_size = 3.5,
+  jitter_width = 0.3,
+  show_mean = TRUE,
+  error_bar_type = "SD"
+)
 
-# Create a custom color palette for treatment groups
-colors <- c("Control" = "gray", "Treatment A" = "blue", 
-           "Treatment B" = "green", "Treatment C" = "red")
-plot_auc(auc_data, colors = colors)
-
-# Specify a custom order for the groups
-plot_auc(auc_data, group_order = c("Control", "Treatment B", "Treatment A", "Treatment C"))
+# Specifying multiple plotting options
+group_colors <- c("Control" = "#1f77b4", "Treatment" = "#ff7f0e")
+plot_auc(
+  auc_data,
+  group_column = "Group",
+  colors = group_colors,
+  show_mean = TRUE,
+  error_bar_type = "CI",
+  extrapolated_column = "Extrapolated",
+  point_size = 3,
+  jitter_width = 0.15,
+  caption = "Custom visualization with color-coding and extrapolation markers"
+)
 }
 
 }

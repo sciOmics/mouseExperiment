@@ -8,7 +8,8 @@ analyze_polynomial_trends(
   analysis_data,
   dose_column = "Dose",
   volume_column = "Volume",
-  statistics = list()
+  statistics = list(),
+  verbose = TRUE
 )
 }
 \arguments{

@@ -27,8 +27,14 @@ vignettes/*.pdf
 *.knit.md
 # R Environment Variables
 .Renviron
-# pkgdown site
-docs/
+# pkgdown site (generated HTML) — keep hand-authored docs/*.md tracked
+docs/*.html
+docs/articles/
+docs/reference/
+docs/pkgdown/
+docs/sitemap.xml
+docs/authors.html
+docs/404.html
 # translation temp files
 po/*~
 # Mac files

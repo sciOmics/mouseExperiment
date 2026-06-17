@@ -1,3 +1,24 @@
+#' Build a composite mouse key from two or three fields
+#'
+#' Uses \code{"|||"} as the separator, which is safe for IDs, treatment names,
+#' and cage labels containing letters, digits, spaces, hyphens, underscores, or
+#' dots. Pass arguments in a consistent order (e.g. Treatment, ID, Cage) and
+#' use \code{split_mouse_key()} to reverse the operation.
+#'
+#' @param ... Character vectors to paste together (recycled).
+#' @return Character vector of composite keys.
+#' @noRd
+#' @keywords internal
+make_mouse_key <- function(...) paste(..., sep = "|||")
+
+#' Split a composite mouse key back into its components
+#'
+#' @param key Single character string produced by \code{make_mouse_key()}.
+#' @return Character vector of components.
+#' @noRd
+#' @keywords internal
+split_mouse_key <- function(key) strsplit(key, "|||", fixed = TRUE)[[1]]
+
 #' Calculate Area Under the Curve (Trapezoidal Rule)
 #'
 #' Computes the area under the curve for paired time-value vectors using the
