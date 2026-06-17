@@ -1023,8 +1023,10 @@ tumorGrowthUI <- function(id) {
             fluidRow(
               column(6,
                 h4("Q-Q Plot of Residuals"),
-                shinycssloaders::withSpinner(
-                  plotOutput(ns("tg_diag_qq"), height = "350px")
+                div(style = "margin-bottom: 24px;",
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tg_diag_qq"), height = "380px")
+                  )
                 ),
                 tags$details(
                   tags$summary(tags$small("How to read this plot")),
@@ -1041,8 +1043,10 @@ tumorGrowthUI <- function(id) {
               ),
               column(6,
                 h4("Residuals vs Fitted"),
-                shinycssloaders::withSpinner(
-                  plotOutput(ns("tg_diag_resid_fitted"), height = "350px")
+                div(style = "margin-bottom: 24px;",
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tg_diag_resid_fitted"), height = "380px")
+                  )
                 ),
                 tags$details(
                   tags$summary(tags$small("How to read this plot")),
@@ -1058,11 +1062,14 @@ tumorGrowthUI <- function(id) {
                 )
               )
             ),
+            br(),
             fluidRow(
               column(6,
                 h4("Scale-Location"),
-                shinycssloaders::withSpinner(
-                  plotOutput(ns("tg_diag_scale_location"), height = "350px")
+                div(style = "margin-bottom: 24px;",
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tg_diag_scale_location"), height = "380px")
+                  )
                 ),
                 tags$details(
                   tags$summary(tags$small("How to read this plot")),
@@ -1078,8 +1085,10 @@ tumorGrowthUI <- function(id) {
               ),
               column(6,
                 h4("Random-effects Q-Q"),
-                shinycssloaders::withSpinner(
-                  plotOutput(ns("tg_diag_re_qq"), height = "350px")
+                div(style = "margin-bottom: 24px;",
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tg_diag_re_qq"), height = "380px")
+                  )
                 ),
                 tags$details(
                   tags$summary(tags$small("How to read this plot")),

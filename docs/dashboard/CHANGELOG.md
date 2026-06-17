@@ -4,6 +4,24 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.06.009] 2026 June 17th
+
+### Fixed
+
+- **Diagnostic plot overlap on TG and Toxicity Diagnostics tabs.**
+  Plot images were rendering taller than their declared
+  `plotOutput(height = "350px")` containers, overlapping the
+  "How to read this plot" details element below. Two-part fix:
+  - Backend v0.4.10 ships compact-theme ggplots (smaller title,
+    tighter margins) so the plot fits its canvas
+  - Dashboard wraps each plot in a `div(style = "margin-bottom:
+    24px;")` and bumps `plotOutput` height from 350 → 380 px on
+    each diagnostic plot (TG Diagnostics × 4 plots; Toxicity / BW
+    Diagnostics × 4 plots) so the details element sits visually
+    apart from the plot
+
+Requires backend ≥ 0.4.10 to get the compact ggplots.
+
 ## [v26.06.008] 2026 June 2nd
 
 Closes the remaining DIAGNOSTICS audit items (2, 10, 11, 12) plus the
