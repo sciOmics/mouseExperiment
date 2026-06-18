@@ -501,11 +501,13 @@ bayesian_body_weight <- function(
     )
 
     if (requireNamespace("bayesplot", quietly = TRUE)) {
-      draws_arr <- tryCatch(brms::as.array(model), error = function(e) NULL)
+      draws_arr <- tryCatch(posterior::as_draws_array(model),
+                            error = function(e) NULL)
       if (!is.null(draws_arr)) {
         all_pars <- dimnames(draws_arr)$variable
         safe_tx  <- gsub(
-          "([.^$*+?()\\[\\]{}|])", "\\\\\\1", treatment_column
+          "([.^$*+?()\\[\\]{}|])", "\\\\\\1", treatment_column,
+          perl = TRUE
         )
         tx_pars  <- grep(
           paste0("^b_", safe_tx), all_pars, value = TRUE

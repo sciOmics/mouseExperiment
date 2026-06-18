@@ -473,7 +473,8 @@ bayesian_dose_response <- function(
     )
 
     if (requireNamespace("bayesplot", quietly = TRUE)) {
-      draws_arr <- tryCatch(brms::as.array(model), error = function(e) NULL)
+      draws_arr <- tryCatch(posterior::as_draws_array(model),
+                            error = function(e) NULL)
       if (!is.null(draws_arr)) {
         all_pars  <- dimnames(draws_arr)$variable
         hill_pars <- grep("^b_log", all_pars, value = TRUE)

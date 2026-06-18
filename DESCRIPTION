@@ -1,6 +1,6 @@
 Package: mouseExperiment
 Title: Analysis of Mouse Tumor Growth Experiments
-Version: 0.4.12
+Version: 0.4.13
 Date: 2026-06-18
 Authors@R: 
     person("David", "Woods", , "david@sciomics.bio", role = c("aut", "cre", "cph"))

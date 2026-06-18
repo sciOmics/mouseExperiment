@@ -540,12 +540,15 @@ bayesian_tumor_growth <- function(
 
     # Treatment-parameter posterior densities and trace plots
     if (requireNamespace("bayesplot", quietly = TRUE)) {
-      draws_arr <- tryCatch(brms::as.array(model), error = function(e) NULL)
+      draws_arr <- tryCatch(posterior::as_draws_array(model),
+                            error = function(e) NULL)
 
       if (!is.null(draws_arr)) {
         all_pars <- dimnames(draws_arr)$variable
         tx_pars  <- grep(
-          paste0("^b_", gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1", treatment_column)),
+          paste0("^b_",
+                 gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1",
+                      treatment_column, perl = TRUE)),
           all_pars, value = TRUE
         )
 
@@ -773,7 +776,8 @@ tg_brms_per_animal_growth_rates <- function(model, treatment_column,
     # "<treatment_column><level>:<time>" — drop the reference level.
     int_for_treat <- grep(
       paste0("^", treatment_column,
-             gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1", treat),
+             gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1", treat,
+                  perl = TRUE),
              ":", time_column, "$"),
       int_cols, value = TRUE
     )

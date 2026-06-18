@@ -5,6 +5,30 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.13] - 2026-06-18 (staging)
+
+### Fixed
+
+- **MCMC trace + posterior-density plots now populate on the Bayesian
+  "MCMC Diagnostics" tab.** Two bugs combined to leave them blank:
+    1. `brms::as.array(model)` was used to extract a 3-D draws array,
+       but brms 2.23 (the VPS image) no longer exports `as.array`
+       (errors with "'as.array' is not an exported object from
+       'namespace:brms'"). Replaced all 4 call sites (TG, BW, DR,
+       survival) with `posterior::as_draws_array(model)`, which has
+       been the canonical interface since posterior 1.0 and is a hard
+       dependency of brms.
+    2. The treatment-column regex-escape `gsub("([.^$*+?()\\[\\]{}|])",
+       ...)` failed on R 4.4's TRE engine with "Invalid contents of
+       {}" because TRE rejects `{}` inside a character class. Added
+       `perl = TRUE` at all 6 call sites; the same regex is well-formed
+       under PCRE. Previously masked because the upstream
+       `brms::as.array` failure short-circuited the path via
+       tryCatch-NULL.
+
+  Net effect: `posterior_dist_plot`, `mcmc_trace_plot`, and
+  `prior_posterior_plot` populate for all Bayesian analyses.
+
 ## [0.4.12] - 2026-06-18
 
 ### Fixed

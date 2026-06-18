@@ -685,7 +685,7 @@ bayesian_synergy <- function(
       bayesplot::mcmc_trace(
         brms::as_draws_df(model),
         regex_pars = paste0("^b_", gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1",
-                                         treatment_column))
+                                         treatment_column, perl = TRUE))
       )
     } else NULL,
     error = function(e) NULL

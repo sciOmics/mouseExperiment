@@ -367,7 +367,8 @@ bayes_prior_posterior_plot <- function(model, treatment_column) {
   post <- tryCatch(brms::as_draws_df(model), error = function(e) NULL)
   if (is.null(post)) return(NULL)
 
-  safe_tx <- gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1", treatment_column)
+  safe_tx <- gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1", treatment_column,
+                  perl = TRUE)
   tx_cols <- grep(paste0("^b_", safe_tx), names(post), value = TRUE)
   if (length(tx_cols) == 0) return(NULL)
 
