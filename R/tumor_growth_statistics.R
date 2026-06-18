@@ -855,7 +855,10 @@ tumor_growth_statistics <- function(df,
       include_necrotic_covariate = include_necrotic_covariate
     )
     if (is.null(gam_result)) {
-      stop("model_type = 'gam' failed to fit. See warnings above.")
+      gam_err <- attr(gam_result, "gamm4_error")
+      stop("model_type = 'gam' failed to fit",
+           if (!is.null(gam_err)) paste0(": ", gam_err) else ".",
+           call. = FALSE)
     }
 
     gam_fit  <- gam_result$model
