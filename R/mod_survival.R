@@ -251,7 +251,16 @@ survivalUI <- function(id) {
             )
           ),
 
-          tabPanel("PH Assumption",
+          tabPanel("Diagnostics",
+            tab_info(
+              strong("Model-fit diagnostics. "),
+              "Cox PH: proportional-hazards assumption check (Schoenfeld). ",
+              "Bayesian (brms): MCMC convergence + posterior diagnostics. ",
+              "The view switches based on the selected Statistical Model."
+            ),
+            # ── Freq diagnostics (Cox PH) ──────────────────────────────────
+            conditionalPanel(ns = ns,
+                            "input.surv_model_type != 'bayes'",
             tab_info(
               strong("Cox proportional-hazards assumption check via Schoenfeld residuals (cox.zph). "),
               "The Cox model assumes the hazard ratio is constant over time. A small global p-value indicates the assumption is violated and the reported HRs / CIs may be misleading (a treatment whose effect accelerates or attenuates over time gives inconsistent HRs depending on when you look).",
@@ -285,8 +294,36 @@ survivalUI <- function(id) {
             shinycssloaders::withSpinner(
               plotOutput(ns("surv_schoenfeld_plot"), height = "500px")
             )
+            ),  # /freq conditionalPanel
+            # ── Bayes MCMC diagnostics ─────────────────────────────────────
+            conditionalPanel(ns = ns,
+                            "input.surv_model_type == 'bayes'",
+              tab_info(
+                strong("MCMC convergence diagnostics"),
+                " for all fixed-effect parameters. All chains should have ",
+                "converged (R̂ ≈ 1.00) and have sufficient effective ",
+                "samples before interpreting results.",
+                tags$ul(
+                  tags$li(strong("Rhat"), " — potential scale-reduction factor; values > 1.01 indicate non-convergence."),
+                  tags$li(strong("Bulk_ESS"), " — bulk effective sample size; aim for > 400 per chain."),
+                  tags$li(strong("Tail_ESS"), " — tail ESS; important for credible interval accuracy."),
+                  tags$li(strong("Converged"), " — TRUE when R̂ ≤ 1.01.")
+                ),
+                em("If Rhat > 1.01, try increasing iterations or chains before reporting results.")
+              ),
+              uiOutput(ns("surv_bayes_diagnostics")),
+              shinycssloaders::withSpinner(DTOutput(ns("surv_mcmc_diag_table"))),
+              br(),
+              h5(strong("Influential observations (Pareto-k > 0.7)")),
+              em(class = "text-muted",
+                 "Observations the LOO approximation can't reliably estimate. Investigate these mice individually."),
+              shinycssloaders::withSpinner(DTOutput(ns("surv_bayes_influential"))),
+              br(),
+              shinycssloaders::withSpinner(
+                plotOutput(ns("surv_mcmc_trace_plot"), height = "500px"))
+            )
           ),
-          
+
           tabPanel("Plots",
             fluidRow(
               column(3,
@@ -874,37 +911,6 @@ survival_server <- function(id, rv) {
         select = FALSE
       )
       appendTab(inputId = tabs_id,
-        tabPanel("MCMC Diagnostics",
-          tab_info(
-            strong("MCMC convergence diagnostics"), " for all fixed-effect parameters. All chains should have converged (R̂ ≈ 1.00) and have sufficient effective samples before interpreting results.",
-            tags$ul(
-              tags$li(strong("Rhat"), " — potential scale-reduction factor; values > 1.01 indicate non-convergence."),
-              tags$li(strong("Bulk_ESS"), " — bulk effective sample size; aim for > 400 per chain."),
-              tags$li(strong("Tail_ESS"), " — tail ESS; important for credible interval accuracy."),
-              tags$li(strong("Converged"), " — TRUE when R̂ ≤ 1.01.")
-            ),
-            em("If Rhat > 1.01, try increasing iterations or chains before reporting results.")
-          ),
-          # Round 2 D — NUTS banner + Bayes R² + PPC coverage + LOO summary.
-          uiOutput(session$ns("surv_bayes_diagnostics")),
-          shinycssloaders::withSpinner(
-            DTOutput(session$ns("surv_mcmc_diag_table"))
-          ),
-          br(),
-          h5(strong("Influential observations (Pareto-k > 0.7)")),
-          em(class = "text-muted",
-             "Observations the LOO approximation can't reliably estimate. Investigate these mice individually."),
-          shinycssloaders::withSpinner(
-            DTOutput(session$ns("surv_bayes_influential"))
-          ),
-          br(),
-          shinycssloaders::withSpinner(
-            plotOutput(session$ns("surv_mcmc_trace_plot"), height = "500px")
-          )
-        ),
-        select = FALSE
-      )
-      appendTab(inputId = tabs_id,
         tabPanel("Prior vs Posterior",
           tab_info(
             strong("Prior vs Posterior density overlay"), " — shows how much the data have updated each parameter's prior distribution.",
@@ -922,7 +928,6 @@ survival_server <- function(id, rv) {
       bayes_surv_tabs_inserted(TRUE)
     } else if (!isTRUE(input$surv_model_type == "bayes") && isTRUE(bayes_surv_tabs_inserted())) {
       removeTab(inputId = tabs_id, target = "Posterior Check")
-      removeTab(inputId = tabs_id, target = "MCMC Diagnostics")
       removeTab(inputId = tabs_id, target = "Prior vs Posterior")
       bayes_surv_tabs_inserted(FALSE)
     }

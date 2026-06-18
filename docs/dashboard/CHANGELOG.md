@@ -4,6 +4,31 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.06.013] 2026 June 18th (staging)
+
+### Changed
+
+- **One "Diagnostics" tab per Bayesian module instead of a separate
+  "MCMC Diagnostics" tab.** Previously the dashboard appended a
+  "MCMC Diagnostics" tab when Bayes mode was selected, while the
+  frequentist "Diagnostics" tab sat next to it (and in survival's
+  case the freq tab was called "PH Assumption"). Now each Bayesian
+  module has a single "Diagnostics" tab whose content switches via
+  `conditionalPanel` keyed off the module's `_model_type` input:
+    - Tumor Growth: freq residual plots ↔ MCMC traces / rank /
+      Pareto-k / posterior densities.
+    - Dose-Response: drc lack-of-fit + residuals ↔ MCMC convergence
+      table + traces.
+    - Synergy: per-group Q-Q + boxplot ↔ MCMC convergence + traces.
+    - Toxicity (BW): LMM residual plots ↔ MCMC convergence + traces.
+    - Survival: Cox PH Schoenfeld checks (previously "PH Assumption"
+      tab — now folded in) ↔ MCMC convergence + traces.
+
+  The `appendTab("MCMC Diagnostics", ...)` blocks were dropped from
+  all five module servers. The freq Schoenfeld content in Survival
+  was renamed from "PH Assumption" to "Diagnostics" so that switching
+  from Cox to Bayes doesn't change which tab to look at.
+
 ## [v26.06.012] 2026 June 18th (staging)
 
 ### Added

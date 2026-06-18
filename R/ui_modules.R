@@ -684,7 +684,7 @@ tumorGrowthUI <- function(id) {
                       tags$li(strong("Treatment Effects"), " — group-level estimated marginal means (posterior) at the mean study day."),
                       tags$li(strong("Comparisons"), " — posterior contrasts of each group vs the reference."),
                       tags$li(strong("Posterior Check"), " — overlay of observed data density vs 50 draws from the posterior predictive distribution. Systematic mismatch indicates model mis-specification."),
-                      tags$li(strong("MCMC Diagnostics"), " — Rhat and effective sample size (ESS) per parameter. Rhat > 1.01 indicates non-convergence; increase iterations or inspect trace plots."),
+                      tags$li(strong("Diagnostics"), " (Bayesian view) — Rhat and effective sample size (ESS) per parameter. Rhat > 1.01 indicates non-convergence; increase iterations or inspect trace plots."),
                       tags$li(strong("Growth Rates"), " — per-animal log-linear regression rates (same as LME4, not MCMC-based).")
                     ),
 
@@ -1014,12 +1014,15 @@ tumorGrowthUI <- function(id) {
           
           tabPanel("Diagnostics",
             tab_info(
-              strong("Residual diagnostics for the fitted model. "),
-              "Each plot checks one assumption — read the help text under each one.",
-              br(),
-              em("These are not shown in Bayesian mode; see the Posterior Check ",
-                 "and MCMC Diagnostics tabs instead.")
+              strong("Model-fit diagnostics. "),
+              "Frequentist fits: residual diagnostics. Bayesian fits: MCMC ",
+              "convergence + posterior diagnostics. The view switches based ",
+              "on the selected model type."
             ),
+            # ── Freq diagnostics (LME4 / GAM / AUC) ──────────────────────
+            conditionalPanel(
+              ns = ns,
+              condition = "input.tg_model_type != 'bayes' && input.tg_model_type != 'bayes_gam'",
             fluidRow(
               column(6,
                 h4("Q-Q Plot of Residuals"),
@@ -1164,8 +1167,96 @@ tumorGrowthUI <- function(id) {
                 )
               )
             )
+            ),  # /freq conditionalPanel
+            # ── Bayes MCMC diagnostics ────────────────────────────────────
+            conditionalPanel(
+              ns = ns,
+              condition = "input.tg_model_type == 'bayes' || input.tg_model_type == 'bayes_gam'",
+              tab_info(
+                strong("MCMC convergence diagnostics"),
+                " for all fixed-effect parameters. All chains should have ",
+                "converged (R̂ ≈ 1.00) and sufficient effective ",
+                "samples before interpreting results.",
+                tags$ul(
+                  tags$li(strong("Parameter"), " — model parameter name."),
+                  tags$li(strong("Rhat"), " — potential scale-reduction factor; values > 1.01 indicate non-convergence."),
+                  tags$li(strong("Bulk_ESS"), " — bulk effective sample size; aim for > 400 per chain."),
+                  tags$li(strong("Tail_ESS"), " — tail effective sample size; important for credible interval accuracy."),
+                  tags$li(strong("Converged"), " — TRUE when R̂ ≤ 1.01.")
+                ),
+                em("If Rhat > 1.01, try increasing iterations or chains before reporting results.")
+              ),
+              uiOutput(ns("tg_bayes_diagnostics")),
+              shinycssloaders::withSpinner(DTOutput(ns("tg_mcmc_diag_table"))),
+              br(),
+              h5(strong("Influential observations (Pareto-k > 0.7)")),
+              em(class = "text-muted",
+                 "Observations the LOO approximation can't reliably estimate. Investigate these mice individually."),
+              shinycssloaders::withSpinner(DTOutput(ns("tg_bayes_influential"))),
+              br(),
+              fluidRow(
+                column(6,
+                  h5(strong("Pareto-k distribution (all observations)")),
+                  tags$details(
+                    tags$summary(tags$small("How to read this plot")),
+                    tags$small(
+                      "Histogram of LOO Pareto-k values across all observations. ",
+                      strong("All bars left of 0.5 (orange dotted): "), "LOO is reliable. ",
+                      strong("Some bars between 0.5 and 0.7: "), "moderate influence; estimates usable but inspect. ",
+                      strong("Bars right of 0.7 (red dashed): "), "those observations are too influential for PSIS-LOO to estimate reliably — see the table above for which.")
+                  ),
+                  shinycssloaders::withSpinner(plotOutput(ns("tg_pareto_k_plot"), height = "300px"))
+                ),
+                column(6,
+                  h5(strong("Posterior predictive coverage")),
+                  tags$details(
+                    tags$summary(tags$small("How to read this plot")),
+                    tags$small(
+                      "Each bar = empirical coverage of the corresponding nominal posterior-predictive interval. ",
+                      strong("Bars near red dashed line: "), "well-calibrated. ",
+                      strong("Bars below: "), "under-coverage — model intervals are too narrow. ",
+                      strong("Bars above: "), "over-coverage — too wide; model is being conservative.")
+                  ),
+                  shinycssloaders::withSpinner(plotOutput(ns("tg_ppc_coverage_plot"), height = "300px"))
+                )
+              ),
+              br(),
+              shinycssloaders::withSpinner(plotOutput(ns("tg_mcmc_trace_plot"), height = "500px")),
+              br(),
+              h5(strong("MCMC rank plots")),
+              tags$details(
+                tags$summary(tags$small("How to read these plots")),
+                tags$small(
+                  "Modern convergence diagnostic. Each chain's draws are rank-normalised; chains that have converged look like uniform draws (flat histograms) and resemble each other. ",
+                  strong("Distinctly non-uniform shapes or chain-specific patterns: "), "the chain hasn't mixed and the posterior estimate is unreliable.")
+              ),
+              shinycssloaders::withSpinner(plotOutput(ns("tg_mcmc_rank_plot"), height = "500px")),
+              br(),
+              fluidRow(
+                column(6,
+                  h5(strong("Treatment-parameter posterior densities")),
+                  tags$details(
+                    tags$summary(tags$small("How to read this plot")),
+                    tags$small(
+                      "Posterior density (filled area) for each treatment coefficient. ",
+                      "Look for: (a) modes shifted from the prior (the data informed the parameter), (b) credible-interval bars that don't include zero (significant posterior direction), (c) heavy tails / multiple modes (potential identifiability issue).")
+                  ),
+                  shinycssloaders::withSpinner(plotOutput(ns("tg_posterior_dist_plot"), height = "400px"))
+                ),
+                column(6,
+                  h5(strong("Bayesian residuals vs day")),
+                  tags$details(
+                    tags$summary(tags$small("How to read this plot")),
+                    tags$small(
+                      "Posterior-mean residuals plotted against study day, faceted by treatment, with a loess smoother. Flat horizontal line at zero per group = the linear-time assumption is satisfied. ",
+                      strong("Systematic curvature: "), "the log-linear time assumption is violated; consider a GAMM or a more flexible mean function.")
+                  ),
+                  shinycssloaders::withSpinner(plotOutput(ns("tg_bayes_residuals_plot"), height = "400px"))
+                )
+              )
+            )  # /bayes conditionalPanel
           ),
-          
+
           tabPanel(
             title = tags$span(icon("file-zipper"), " Download All"),
             value = "__download_all__",

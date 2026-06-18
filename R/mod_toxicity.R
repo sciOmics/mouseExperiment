@@ -541,11 +541,14 @@ toxicityUI <- function(id) {
           tabPanel("Diagnostics",
             conditionalPanel(ns = ns, "output.tox_model_type_val == 'bw'",
               tab_info(
-                strong("Mixed-effects model diagnostics "), "for the body weight trajectory model. ",
-                "Each plot checks one assumption — expand the help text under each one for interpretation.",
-                br(),
-                em("Diagnostics are only available in Body Weight Analysis mode.")
+                strong("Body-weight model diagnostics. "),
+                "Frequentist (LME4): residual diagnostics. ",
+                "Bayesian: MCMC convergence + posterior diagnostics. ",
+                "The view switches based on the Statistical Model selected."
               ),
+              # ── Freq diagnostics (LME4 BW) ─────────────────────────────
+              conditionalPanel(ns = ns,
+                              "input.tox_bw_method != 'bayes'",
               fluidRow(
                 column(6,
                   h4("Q-Q Plot of Residuals"),
@@ -647,6 +650,25 @@ toxicityUI <- function(id) {
                     )
                   )
                 )
+              )
+              ),  # /freq BW conditionalPanel
+              # ── Bayes MCMC diagnostics (BW Bayesian) ──────────────────
+              conditionalPanel(ns = ns,
+                              "input.tox_bw_method == 'bayes'",
+                tab_info(
+                  strong("MCMC convergence diagnostics. "),
+                  "All Rhat values should be ≤ 1.01 before interpreting results."
+                ),
+                uiOutput(ns("tox_bw_bayes_diagnostics")),
+                shinycssloaders::withSpinner(DTOutput(ns("tox_bw_mcmc_diag_table"))),
+                br(),
+                h5(strong("Influential observations (Pareto-k > 0.7)")),
+                em(class = "text-muted",
+                   "Observations the LOO approximation can't reliably estimate."),
+                shinycssloaders::withSpinner(DTOutput(ns("tox_bw_bayes_influential"))),
+                br(),
+                shinycssloaders::withSpinner(
+                  plotOutput(ns("tox_bw_mcmc_trace_plot"), height = "500px"))
               )
             ),
             conditionalPanel(ns = ns, "output.tox_model_type_val == 'et'",
@@ -950,30 +972,6 @@ toxicity_server <- function(id, rv) {
         select = FALSE
       )
       appendTab(inputId = tabs_id,
-        tabPanel("MCMC Diagnostics",
-          tab_info(
-            strong("MCMC convergence diagnostics. "),
-            "All Rhat values should be ≤ 1.01 before interpreting results."
-          ),
-          uiOutput(ns_here("tox_bw_bayes_diagnostics")),
-          shinycssloaders::withSpinner(
-            DTOutput(ns_here("tox_bw_mcmc_diag_table"))
-          ),
-          br(),
-          h5(strong("Influential observations (Pareto-k > 0.7)")),
-          em(class = "text-muted",
-             "Observations the LOO approximation can't reliably estimate."),
-          shinycssloaders::withSpinner(
-            DTOutput(ns_here("tox_bw_bayes_influential"))
-          ),
-          br(),
-          shinycssloaders::withSpinner(
-            plotOutput(ns_here("tox_bw_mcmc_trace_plot"), height = "500px")
-          )
-        ),
-        select = FALSE
-      )
-      appendTab(inputId = tabs_id,
         tabPanel("Prior vs Posterior",
           tab_info(
             strong("Prior vs Posterior density overlay"), " — shows how much the data have updated each parameter's prior distribution."
@@ -990,7 +988,6 @@ toxicity_server <- function(id, rv) {
       bayes_bw_tabs_inserted(TRUE)
     } else if (!is_bayes && isTRUE(bayes_bw_tabs_inserted())) {
       removeTab(inputId = tabs_id, target = "Posterior Check")
-      removeTab(inputId = tabs_id, target = "MCMC Diagnostics")
       removeTab(inputId = tabs_id, target = "Prior vs Posterior")
       bayes_bw_tabs_inserted(FALSE)
     }

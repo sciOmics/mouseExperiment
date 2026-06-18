@@ -349,58 +349,77 @@ doseResponseUI <- function(id) {
           # goodness-of-fit. v0.4.8 surfaces drc::modelFit + residuals plot.
           tabPanel("Diagnostics",
             tab_info(
-              strong("Goodness-of-fit checks for the non-linear (Hill / Emax) ",
-                     "dose-response model. "),
-              "If the lack-of-fit p-value is < 0.05, the parametric Hill ",
-              "model fits worse than a model with one mean per dose level ",
-              "\u2014 reconsider the functional form (try a different ",
-              "Hill variant, a simpler 3-parameter logistic, or transform ",
-              "the volume axis). Use the residuals plot to spot systematic ",
-              "patterns the lack-of-fit test would miss at small N.",
-              br(),
-              em("Only available when the drc Hill / Emax fit converged; ",
-                 "in pure-linear mode this tab will be empty.")
+              strong("Model-fit diagnostics. "),
+              "Frequentist (Hill / Emax): lack-of-fit + residuals. ",
+              "Bayesian: MCMC convergence + posterior diagnostics. ",
+              "The view switches based on the selected model type."
             ),
-            fluidRow(
-              column(6,
-                h4("Lack-of-fit test"),
-                tags$details(
-                  tags$summary(tags$small("How to read this table")),
-                  tags$small(
-                    "drc::modelFit compares the Hill fit against a one-mean-",
-                    "per-dose smoother via an F-test. ",
-                    strong("Large p (\u2265 0.05): "),
-                    "the Hill model is as good as the smoother \u2014 ",
-                    "functional form is adequate. ",
-                    strong("Small p (< 0.05): "),
-                    "the smoother fits significantly better \u2014 the Hill ",
-                    "equation may be the wrong shape; inspect the residuals ",
-                    "plot for clues."
+            # \u2500\u2500 Freq diagnostics \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+            conditionalPanel(
+              ns = ns,
+              condition = "input.dr_model_type != 'bayes'",
+              em("Only available when the drc Hill / Emax fit converged; ",
+                 "in pure-linear mode this section will be empty."),
+              fluidRow(
+                column(6,
+                  h4("Lack-of-fit test"),
+                  tags$details(
+                    tags$summary(tags$small("How to read this table")),
+                    tags$small(
+                      "drc::modelFit compares the Hill fit against a one-mean-",
+                      "per-dose smoother via an F-test. ",
+                      strong("Large p (\u2265 0.05): "),
+                      "the Hill model is as good as the smoother \u2014 ",
+                      "functional form is adequate. ",
+                      strong("Small p (< 0.05): "),
+                      "the smoother fits significantly better \u2014 the Hill ",
+                      "equation may be the wrong shape; inspect the residuals ",
+                      "plot for clues."
+                    )
+                  ),
+                  shinycssloaders::withSpinner(
+                    DTOutput(ns("dr_lack_of_fit_table"))
                   )
                 ),
-                shinycssloaders::withSpinner(
-                  DTOutput(ns("dr_lack_of_fit_table"))
-                )
-              ),
-              column(6,
-                h4("Residuals vs Dose"),
-                tags$details(
-                  tags$summary(tags$small("How to read this plot")),
-                  tags$small(
-                    "Points should scatter around the red zero line with no ",
-                    "trend. ",
-                    strong("Curved blue smoother: "),
-                    "the Hill function misses curvature at some dose range ",
-                    "\u2014 try a different model. ",
-                    strong("Fan shape (variance grows with dose): "),
-                    "heteroscedasticity; consider log-transforming the ",
-                    "volume axis or weighting."
+                column(6,
+                  h4("Residuals vs Dose"),
+                  tags$details(
+                    tags$summary(tags$small("How to read this plot")),
+                    tags$small(
+                      "Points should scatter around the red zero line with no ",
+                      "trend. ",
+                      strong("Curved blue smoother: "),
+                      "the Hill function misses curvature at some dose range ",
+                      "\u2014 try a different model. ",
+                      strong("Fan shape (variance grows with dose): "),
+                      "heteroscedasticity; consider log-transforming the ",
+                      "volume axis or weighting."
+                    )
+                  ),
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("dr_residuals_plot"), height = "400px")
                   )
-                ),
-                shinycssloaders::withSpinner(
-                  plotOutput(ns("dr_residuals_plot"), height = "400px")
                 )
               )
+            ),
+            # \u2500\u2500 Bayes MCMC diagnostics \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+            conditionalPanel(
+              ns = ns,
+              condition = "input.dr_model_type == 'bayes'",
+              tab_info(
+                strong("MCMC convergence diagnostics. "),
+                "All Rhat values should be \u2264 1.01 before interpreting results."
+              ),
+              uiOutput(ns("dr_bayes_diagnostics")),
+              shinycssloaders::withSpinner(DTOutput(ns("dr_mcmc_diag_table"))),
+              br(),
+              h5(strong("Influential observations (Pareto-k > 0.7)")),
+              em(class = "text-muted",
+                 "Observations the LOO approximation can't reliably estimate."),
+              shinycssloaders::withSpinner(DTOutput(ns("dr_bayes_influential"))),
+              br(),
+              shinycssloaders::withSpinner(
+                plotOutput(ns("dr_mcmc_trace_plot"), height = "500px"))
             )
           )
         )
@@ -441,30 +460,6 @@ dose_response_server <- function(id, rv) {
         select = FALSE
       )
       appendTab(inputId = tabs_id,
-        tabPanel("MCMC Diagnostics",
-          tab_info(
-            strong("MCMC convergence diagnostics. "),
-            "All Rhat values should be ≤ 1.01 before interpreting results."
-          ),
-          uiOutput(session$ns("dr_bayes_diagnostics")),
-          shinycssloaders::withSpinner(
-            DTOutput(session$ns("dr_mcmc_diag_table"))
-          ),
-          br(),
-          h5(strong("Influential observations (Pareto-k > 0.7)")),
-          em(class = "text-muted",
-             "Observations the LOO approximation can't reliably estimate."),
-          shinycssloaders::withSpinner(
-            DTOutput(session$ns("dr_bayes_influential"))
-          ),
-          br(),
-          shinycssloaders::withSpinner(
-            plotOutput(session$ns("dr_mcmc_trace_plot"), height = "500px")
-          )
-        ),
-        select = FALSE
-      )
-      appendTab(inputId = tabs_id,
         tabPanel("Prior vs Posterior",
           tab_info(
             strong("Prior vs Posterior density overlay"), " — shows how much the data have updated the model's prior distributions."
@@ -481,7 +476,6 @@ dose_response_server <- function(id, rv) {
       bayes_dr_tabs_inserted(TRUE)
     } else if (!isTRUE(input$dr_model_type == "bayes") && isTRUE(bayes_dr_tabs_inserted())) {
       removeTab(inputId = tabs_id, target = "Posterior Check")
-      removeTab(inputId = tabs_id, target = "MCMC Diagnostics")
       removeTab(inputId = tabs_id, target = "Prior vs Posterior")
       bayes_dr_tabs_inserted(FALSE)
     }
