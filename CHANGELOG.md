@@ -5,6 +5,21 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.14] - 2026-06-18 (staging)
+
+### Fixed
+
+- **Bayesian dose-response: ref-group "Control 0" no longer fails when
+  controls were euthanised before the global max day.** When
+  `endpoint_day` was unspecified (dashboard "All dates") the function
+  filtered to the single global max day, which dropped any reference
+  animals that had reached the IACUC volume limit and been euthanised
+  earlier — leaving zero reference-group rows and the error
+  "Reference group 'X' has no valid volume observations at day N."
+  Mirrors the frequentist path: when `endpoint_day` is NULL, take each
+  mouse's last observation (grouped by `id_column`, filter on per-mouse
+  max day). When `endpoint_day` is set, behaviour is unchanged.
+
 ## [0.4.13] - 2026-06-18 (staging)
 
 ### Fixed

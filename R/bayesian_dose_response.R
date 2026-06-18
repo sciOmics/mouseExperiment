@@ -207,20 +207,34 @@ bayesian_dose_response <- function(
     )
   }
 
-  # ── Endpoint day filter ────────────────────────────────────────────────────
+  # ── Endpoint observations per mouse ────────────────────────────────────────
+  # When endpoint_day is unspecified ("All dates") we mirror the frequentist
+  # path: take each mouse's LAST observation. This avoids dropping reference
+  # animals euthanised before the global max day (typical in dose-escalation
+  # studies where controls reach the IACUC volume limit first).
   all_days <- sort(unique(as.numeric(df[[day_column]])))
-  ep_day   <- if (!is.null(endpoint_day)) {
-    as.numeric(endpoint_day)
+  ep_label <- if (!is.null(endpoint_day)) {
+    paste0("day ", endpoint_day)
   } else {
-    all_days[length(all_days)]
+    "last observation per mouse"
   }
 
-  ep_df <- df[as.numeric(df[[day_column]]) == ep_day, ]
-  if (nrow(ep_df) == 0L) {
-    stop(
-      "No observations found at endpoint day ", ep_day,
-      ". Available days: ", paste(all_days, collapse = ", ")
-    )
+  if (!is.null(endpoint_day)) {
+    ep_day <- as.numeric(endpoint_day)
+    ep_df  <- df[as.numeric(df[[day_column]]) == ep_day, ]
+    if (nrow(ep_df) == 0L) {
+      stop(
+        "No observations found at endpoint day ", ep_day,
+        ". Available days: ", paste(all_days, collapse = ", ")
+      )
+    }
+  } else {
+    ep_df <- df %>%
+      dplyr::group_by(.data[[id_column]]) %>%
+      dplyr::filter(as.numeric(.data[[day_column]]) ==
+                      max(as.numeric(.data[[day_column]]), na.rm = TRUE)) %>%
+      dplyr::ungroup() %>%
+      as.data.frame()
   }
 
   # ── Control mean volume ────────────────────────────────────────────────────
@@ -230,7 +244,7 @@ bayesian_dose_response <- function(
   if (length(ctrl_vols) == 0L || all(is.na(ctrl_vols))) {
     stop(
       "Reference group '", reference_group,
-      "' has no valid volume observations at day ", ep_day, "."
+      "' has no valid volume observations at ", ep_label, "."
     )
   }
   ctrl_mean <- mean(ctrl_vols, na.rm = TRUE)
