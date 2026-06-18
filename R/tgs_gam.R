@@ -103,7 +103,22 @@ tgs_fit_gamm4_model <- function(analysis_df,
             " (auto-chosen from ", n_days, " unique time points)")
   }
 
+  # gamm4 requires the `by` variable in s(x, by = ...) to be a factor.
+  # If treatment / cage are character vectors at this point, gamm4 fails
+  # with the cryptic message "Can't find by variable". Coerce here so the
+  # GAMM4 fit doesn't depend on the caller having done it. Same for
+  # cage_column when it's used as a fixed-effect by-variable.
+  if (!is.factor(analysis_df[[treatment_column]])) {
+    analysis_df[[treatment_column]] <- factor(analysis_df[[treatment_column]])
+  }
+  if ((include_cage_fixed || include_cage_random) &&
+      !is.null(cage_column) && cage_column %in% colnames(analysis_df) &&
+      !is.factor(analysis_df[[cage_column]])) {
+    analysis_df[[cage_column]] <- factor(analysis_df[[cage_column]])
+  }
+
   # Fit. gamm4 returns list(mer = lmer model, gam = mgcv gam-like object).
+  fit_err <- NULL
   fit <- tryCatch(
     gamm4::gamm4(
       formula  = formula_obj,
@@ -112,13 +127,42 @@ tgs_fit_gamm4_model <- function(analysis_df,
       REML     = TRUE
     ),
     error = function(e) {
-      warning("gamm4() failed: ", conditionMessage(e),
+      fit_err <<- conditionMessage(e)
+      warning("gamm4() failed: ", fit_err,
               "\nReturning NULL; caller should fall back.")
       NULL
     }
   )
 
-  if (is.null(fit)) return(NULL)
+  if (is.null(fit)) {
+    # Surface the underlying gamm4 message via an attribute so the caller's
+    # stop() can include it. Without this the dashboard's safe_analysis
+    # only ever sees the generic "failed to fit" stop message and the
+    # actual cause is hidden in server logs.
+    out <- NULL
+    attr(out, "gamm4_error") <- if (!is.null(fit_err)) fit_err else "unknown gamm4 failure"
+    return(out)
+  }
+
+  # gamm4's $gam component is a "stub" mgcv::gam object missing two things
+  # that downstream emmeans dispatch needs:
+  #   * class vector lacks "glm" and "lm" (emmeans dispatches by class)
+  #   * `$call` is NULL (emmeans::recover_data.gam reads class(object$call)
+  #     and rejects with "Can't handle an object of class 'NULL'")
+  # Both downstream `tgs_gam_treatment_effects` and
+  # `tgs_gam_treatment_effects_over_time` call emmeans on `fit$gam`; without
+  # this patch they silently return NULL and the dashboard's TG GAM result
+  # has empty Treatment Effects + Pairwise Comparisons tables. Patch here so
+  # both consumers benefit.
+  if (!is.null(fit$gam)) {
+    if (!all(c("glm", "lm") %in% class(fit$gam))) {
+      class(fit$gam) <- unique(c(class(fit$gam), "glm", "lm"))
+    }
+    if (is.null(fit$gam$call)) {
+      fit$gam$call <- call("gam", formula = fit$gam$formula,
+                           data = quote(analysis_df))
+    }
+  }
 
   model_selection <- list(
     aic            = stats::AIC(fit$mer),

@@ -5,6 +5,45 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.11] - 2026-06-17
+
+### Fixed
+
+- **GAMM model_type now fits successfully on real data.** User-reported
+  on production: `tumor_growth_statistics(model_type = "gam")` failed
+  with "model_type = 'gam' failed to fit. See warnings above." The
+  underlying gamm4 warning — swallowed by the dashboard's
+  `safe_analysis` wrapper — was `"Can't find by variable"`. Root
+  cause: `gamm4::gamm4()` requires the `by` variable in
+  `s(x, by = …)` to be a factor, but `tgs_fit_gamm4_model` was
+  passing `analysis_df` with `Treatment` (and sometimes `Cage`)
+  as character columns. Now coerced inside the GAM fit helper so
+  the caller doesn't have to know. Same coercion applied to
+  `cage_column` when it's used as a fixed-effect by-variable.
+
+- **GAM result populates `treatment_effects` + `pairwise_comparisons`
+  correctly.** Latent bug uncovered once the GAM fit succeeded:
+  `gamm4`'s `$gam` "stub" object lacks two things emmeans dispatch
+  needs — `c("glm","lm")` in the class vector and a non-NULL `$call`.
+  Without them, `emmeans::recover_data.gam` rejects with the same
+  unhelpful "Can't handle an object of class 'NULL'" error and the
+  downstream Treatment Effects + Pairwise Comparisons tables come
+  back empty. `tgs_fit_gamm4_model` now restores both before
+  returning so every emmeans-based downstream helper works.
+
+- **`stop()` message now includes the underlying gamm4 error.**
+  Was: "model_type = 'gam' failed to fit. See warnings above." —
+  but the dashboard's `safe_analysis` only catches the stop, not the
+  preceding warning, so users saw a generic message with no
+  actionable info. Now the gamm4 error is captured via an attribute
+  on the helper's NULL return and surfaced in the stop message
+  ("model_type = 'gam' failed to fit: Can't find by variable.").
+
+### Tests
+
+- 316 PASS (was 311) — five `test-gam.R` cases that were latently
+  broken now pass. Pre-existing 7 K.11 stale-test failures unchanged.
+
 ## [0.4.10] - 2026-06-17
 
 ### Fixed
