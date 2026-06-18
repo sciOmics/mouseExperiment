@@ -46,7 +46,13 @@ attach_bayes_poller <- function(input, output, session, rv,
     }
     if (job$status == "running") return()
     if (job$status == "completed") {
-      finalize_success(job$result, job$context, input, output, session, rv)
+      result <- job$result
+      if (is.list(result) &&
+          !is.null(job$started_at) && !is.null(job$completed_at)) {
+        result$elapsed_seconds <- as.numeric(
+          difftime(job$completed_at, job$started_at, units = "secs"))
+      }
+      finalize_success(result, job$context, input, output, session, rv)
     } else if (job$status == "failed") {
       finalize_failure(job$error, input, output, session, rv)
     } else if (job$status == "cancelled") {

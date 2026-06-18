@@ -63,8 +63,7 @@ synergyUI <- function(id) {
             numericInput(ns("syn_bayes_iter"), "Post-warmup draws per chain",
                          value = 500, min = 200, max = 5000, step = 100),
             selectInput(ns("syn_bayes_backend"), "Stan backend",
-                        choices = c("RStan (default)" = "rstan",
-                                    "cmdstanr (faster, requires install)" = "cmdstanr"),
+                        choices = c("rstan", "cmdstanr"),
                         selected = "rstan"),
             div(class = "alert alert-warning",
                 style = "font-size:0.85em; padding:8px; margin-top:6px;",
@@ -825,6 +824,9 @@ synergy_server <- function(id, rv) {
           cat("  Synergistic:    ", bi$synergy, "\n")
         }
       }
+      elapsed_str <- format_elapsed(rv$syn_results$elapsed_seconds)
+      if (!is.null(elapsed_str))
+        cat("\nCOMPUTATION TIME:", elapsed_str, "\n")
     }), collapse = "\n")
   })
   

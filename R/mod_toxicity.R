@@ -92,8 +92,7 @@ toxicityUI <- function(id) {
                 numericInput(ns("tox_bw_bayes_iter"), "Post-warmup draws per chain",
                              value = 500, min = 200, max = 5000, step = 100),
                 selectInput(ns("tox_bw_bayes_backend"), "Stan backend",
-                            choices = c("RStan (default)" = "rstan",
-                                        "cmdstanr (faster, requires install)" = "cmdstanr"),
+                            choices = c("rstan", "cmdstanr"),
                             selected = "rstan"),
                 div(class = "alert alert-warning",
                     style = "font-size:0.85em; padding:8px; margin-top:6px;",
@@ -1419,6 +1418,10 @@ toxicity_server <- function(id, rv) {
       lines <- c(lines, sprintf("Total Benefit (lambda = %.1f):", res$benefit$lambda), "")
       for (i in seq_len(nrow(bt)))
         lines <- c(lines, sprintf("  %s:  Benefit = %.2f", bt$Treatment[i], bt$Benefit[i]))
+    }
+    elapsed_str <- format_elapsed(res$elapsed_seconds)
+    if (!is.null(elapsed_str)) {
+      lines <- c(lines, "", paste("COMPUTATION TIME:", elapsed_str))
     }
     paste(lines, collapse = "\n")
   })

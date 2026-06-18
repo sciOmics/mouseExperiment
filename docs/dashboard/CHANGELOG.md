@@ -4,6 +4,27 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.06.012] 2026 June 18th (staging)
+
+### Added
+
+- **Computation-time line on every Bayesian Summary tab.** Wall-clock
+  duration of the fit (formatted "X min Y s") is appended to the
+  Summary text in the Tumor Growth, Dose-Response, Synergy, Toxicity,
+  and Survival modules. Sourced from the job registry's `started_at` /
+  `completed_at` timestamps, stamped onto the result by
+  `attach_bayes_poller()`. No per-module backend changes needed.
+
+### Changed
+
+- **Stan backend selector shows just the engine names** ("rstan",
+  "cmdstanr"). Removed the "(default)" / "(faster, requires install)"
+  parenthetical labels and the helpText below the selectInput.
+- **Survival module: the IACUC-endpoint clarifying note moved from
+  above the analysis pane into the top of the Info tab.** Same wording,
+  better location — first-time users now see it where they go to read
+  about the analysis, instead of every time they open the tab.
+
 ## [v26.06.011] 2026 June 18th (staging)
 
 ### Fixed

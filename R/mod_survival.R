@@ -7,26 +7,7 @@ survivalUI <- function(id) {
        tags$small(class = "text-muted", style = "font-size:0.55em; margin-left:0.6em;",
                   "(Time-to-Endpoint)")),
 
-    div(class = "alert alert-warning", style = "font-size:0.88em; margin-bottom:12px; padding:10px 14px;",
-      icon("triangle-exclamation"), " ",
-      strong("Note on \u2018survival\u2019 in mouse tumour experiments: "),
-      "Most IACUC protocols require euthanasia once tumour volume exceeds a set limit ",
-      "(e.g.\u202f2000\u202fmm\u00b3). The recorded endpoint is therefore ",
-      strong("time until tumour volume threshold"),
-      ", not true death. This is mathematically identical to survival analysis, but results ",
-      "should be labelled as \u2018Time-to-Endpoint\u2019 or \u2018Time-to-Tumour-Volume-Threshold\u2019 ",
-      "rather than \u2018survival\u2019 in publications.",
-      tags$br(),
-      tags$span(style = "color:#555; font-size:0.95em;",
-        "Occasionally a mouse dies before reaching the volume limit. ",
-        "Competing-risks models (e.g.\u202fFine\u2013Gray) are the rigorous solution, but they require ",
-        "large per-group sample sizes rarely achievable in mouse experiments. ",
-        "The recommended pragmatic approach is to treat any death as an event (\u2018endpoint reached\u2019), ",
-        "because the animal did not survive the study regardless of cause. ",
-        "The sidebar \u2018Natural death\u2019 option controls this behaviour."
-      )
-    ),
-    
+
     tags$div(class = "row collapsible-sidebar-row",
       tags$div(class = "col-sm-3 sidebar-panel-col",
         wellPanel(
@@ -73,8 +54,7 @@ survivalUI <- function(id) {
             numericInput(ns("surv_bayes_iter"), "Post-warmup draws per chain",
                          value = 500, min = 200, max = 5000, step = 100),
             selectInput(ns("surv_bayes_backend"), "Stan backend",
-                        choices = c("RStan (default)" = "rstan",
-                                    "cmdstanr (faster, requires install)" = "cmdstanr"),
+                        choices = c("rstan", "cmdstanr"),
                         selected = "rstan"),
             div(class = "alert alert-warning",
                 style = "font-size:0.85em; padding:8px; margin-top:6px;",
@@ -132,6 +112,28 @@ survivalUI <- function(id) {
             fluidRow(
               column(10, offset = 1,
                 br(),
+
+                # ── Note on "survival" semantics ────────────────────────────
+                div(class = "alert alert-warning",
+                    style = "font-size:0.88em; margin-bottom:12px; padding:10px 14px;",
+                  icon("triangle-exclamation"), " ",
+                  strong("Note on ‘survival’ in mouse tumour experiments: "),
+                  "Most IACUC protocols require euthanasia once tumour volume exceeds a set limit ",
+                  "(e.g. 2000 mm³). The recorded endpoint is therefore ",
+                  strong("time until tumour volume threshold"),
+                  ", not true death. This is mathematically identical to survival analysis, but results ",
+                  "should be labelled as ‘Time-to-Endpoint’ or ‘Time-to-Tumour-Volume-Threshold’ ",
+                  "rather than ‘survival’ in publications.",
+                  tags$br(),
+                  tags$span(style = "color:#555; font-size:0.95em;",
+                    "Occasionally a mouse dies before reaching the volume limit. ",
+                    "Competing-risks models (e.g. Fine–Gray) are the rigorous solution, but they require ",
+                    "large per-group sample sizes rarely achievable in mouse experiments. ",
+                    "The recommended pragmatic approach is to treat any death as an event (‘endpoint reached’), ",
+                    "because the animal did not survive the study regardless of cause. ",
+                    "The sidebar ‘Natural death’ option controls this behaviour."
+                  )
+                ),
 
                 # ── Overview ────────────────────────────────────────────────
                 div(class = "panel panel-default",
@@ -1027,8 +1029,11 @@ survival_server <- function(id, rv) {
           cat(sprintf("  %-20s %s%s\n", res$Group[i], med, note))
         }
       }
+      elapsed_str <- format_elapsed(rv$surv_results$elapsed_seconds)
+      if (!is.null(elapsed_str))
+        cat("\nCOMPUTATION TIME:", elapsed_str, "\n")
     })
-    
+
     paste(summary_text, collapse = "\n")
   })
   

@@ -865,7 +865,13 @@ tumor_growth_server <- function(id, rv) {
       "NOTES:",
       paste("  ", paste(summary_list$notes, collapse="\n  "))
     )
-    
+
+    elapsed_str <- format_elapsed(rv$tg_results$elapsed_seconds)
+    if (!is.null(elapsed_str)) {
+      summary_lines <- c(summary_lines, "",
+        paste("COMPUTATION TIME:", elapsed_str))
+    }
+
     paste(summary_lines, collapse = "\n")
   })
 

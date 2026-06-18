@@ -4,6 +4,30 @@
 #' surface — used by every Bayesian module — lives in its own file rather
 #' than buried among 38 unrelated utility functions.
 
+# ---- Elapsed-time formatter -------------------------------------------------
+
+#' Human-readable elapsed time string.
+#'
+#' Used in the Summary tab of each Bayesian module to show how long the
+#' fit took. attach_bayes_poller stamps `elapsed_seconds` onto every
+#' completed-Bayesian result based on the job registry's started_at /
+#' completed_at.
+#'
+#' @param seconds Numeric seconds. NA / NULL returns NULL.
+#' @return Character string like "47 s", "3 min 12 s", or NULL.
+#' @keywords internal
+format_elapsed <- function(seconds) {
+  if (is.null(seconds) || is.na(seconds) || !is.finite(seconds) ||
+      seconds < 0) return(NULL)
+  if (seconds < 60) return(sprintf("%.0f s", seconds))
+  mins <- floor(seconds / 60)
+  secs <- round(seconds - mins * 60)
+  if (mins < 60) return(sprintf("%d min %d s", mins, secs))
+  hrs  <- floor(mins / 60)
+  rem  <- mins - hrs * 60
+  sprintf("%d h %d min", hrs, rem)
+}
+
 # ---- Bayesian diagnostics panel (CODE_REVIEW.md Round 2 D-series) -----------
 
 #' Standard Bayesian diagnostics panel (model-fit + sampler banner)

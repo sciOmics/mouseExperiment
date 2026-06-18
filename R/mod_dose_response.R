@@ -65,8 +65,7 @@ doseResponseUI <- function(id) {
               numericInput(ns("dr_bayes_iter"), "Post-warmup draws per chain",
                            value = 500, min = 200, max = 5000, step = 100),
               selectInput(ns("dr_bayes_backend"), "Stan backend",
-                          choices = c("RStan (default)" = "rstan",
-                                      "cmdstanr (faster, requires install)" = "cmdstanr"),
+                          choices = c("rstan", "cmdstanr"),
                           selected = "rstan"),
               div(class = "alert alert-warning",
                   style = "font-size:0.85em; padding:8px; margin-top:6px;",
@@ -795,6 +794,11 @@ dose_response_server <- function(id, rv) {
         sprintf("  Quadratic trend p: %.4g", stats$quadratic_trend_pvalue %||% NA),
         ""
       )
+    }
+
+    elapsed_str <- format_elapsed(rv$dr_results$elapsed_seconds)
+    if (!is.null(elapsed_str)) {
+      lines <- c(lines, paste("COMPUTATION TIME:", elapsed_str))
     }
 
     paste(lines, collapse = "\n")
