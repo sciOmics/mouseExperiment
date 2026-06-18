@@ -1720,7 +1720,7 @@ tumor_growth_server <- function(id, rv) {
     req(isTRUE(rv$tg_results$model_type_used == "bayes"))
     req(!isTRUE(rv$tg_results$error))
     req(!is.null(rv$bayes_models$tg))
-    bayesplot::mcmc_trace(brms::as.array(rv$bayes_models$tg))
+    bayesplot::mcmc_trace(posterior::as_draws_array(rv$bayes_models$tg))
   })
 
   # CODE_REVIEW.md DIAGNOSTICS gaps (10), (11), (12) — Bayesian extras.

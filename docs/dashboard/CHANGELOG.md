@@ -4,6 +4,32 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [v26.06.011] 2026 June 18th (staging)
+
+### Fixed
+
+- **MCMC rank plot + trace plot now render on the Bayesian "MCMC
+  Diagnostics" tab.** Used `brms::as.array(brmsfit)` to extract the
+  3-D draws array, but brms 2.23 (current VPS image) no longer
+  exports `as.array`. Replaced with `posterior::as_draws_array()` and
+  updated the dimnames key from `$parameters` (old brms convention)
+  to `$variable` (posterior convention) in
+  `build_mcmc_rank_plot()`. Same swap applied to the 5 inline
+  `mcmc_trace(brms::as.array(rv$bayes_models$…))` render blocks in
+  the tumor-growth / dose-response / synergy / toxicity / survival
+  modules.
+
+### Changed
+
+- **"App stays usable" copy on Bayesian fit alerts is now accurate.**
+  The alert previously claimed the dashboard remained interactive
+  while the model ran; in practice a progress modal blocks all other
+  tabs. Updated the alert in 5 modules (tumor-growth, dose-response,
+  synergy, toxicity, survival) to explain that the modal blocks the
+  UI but the user can safely close the browser and reconnect later —
+  the fit continues on the server and results return on reconnect
+  via the F.7 session-resume registry.
+
 ## [v26.06.010] 2026 June 17th
 
 ### Changed

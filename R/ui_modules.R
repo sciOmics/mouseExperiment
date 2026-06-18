@@ -518,7 +518,10 @@ tumorGrowthUI <- function(id) {
                      "is always available."),
             div(class = "alert alert-warning", style = "font-size:0.85em; padding:8px; margin-top:6px;",
               icon("clock"), " Bayesian fitting takes ~3–12 minutes. ",
-              "The app stays usable while the model runs in the background."
+              "A progress modal will block other tabs while the model runs, ",
+              "but you can safely close the browser and return later — the ",
+              "fit continues on the server and the results will be waiting ",
+              "when you reconnect."
             )
           ),
 

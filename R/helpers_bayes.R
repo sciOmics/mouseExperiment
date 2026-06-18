@@ -259,12 +259,12 @@ build_pareto_k_plot <- function(result) {
 build_mcmc_rank_plot <- function(brmsfit, pars = NULL) {
   if (is.null(brmsfit)) return(NULL)
   if (!requireNamespace("bayesplot", quietly = TRUE)) return(NULL)
-  if (!requireNamespace("brms",      quietly = TRUE)) return(NULL)
+  if (!requireNamespace("posterior", quietly = TRUE)) return(NULL)
   tryCatch({
-    draws <- brms::as.array(brmsfit)
+    draws <- posterior::as_draws_array(brmsfit)
     # Drop lp__ which adds noise; keep treatment-relevant params.
     if (is.null(pars)) {
-      keep <- dimnames(draws)$parameters
+      keep <- dimnames(draws)$variable
       keep <- keep[!grepl("^lp__$", keep)]
       # Limit to first 12 to keep the plot legible
       if (length(keep) > 12L) keep <- keep[seq_len(12L)]
