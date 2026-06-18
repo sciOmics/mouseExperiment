@@ -5,6 +5,24 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.12] - 2026-06-18
+
+### Fixed
+
+- **Bayesian tumor growth / body weight no longer fails with "non-numeric
+  argument to mathematical function".** User-reported on production
+  immediately after the v0.4.11 GAMM fix went live: the brms-LMM fit
+  completed, then `bayesian_tumor_growth()` blew up inside the
+  `treatment_effects` `data.frame()` call. Root cause: for brmsfit
+  models, `summary(emmeans::emmeans(...), point.est = median)` returns
+  a frame with `emmean`, `lower.HPD`, `upper.HPD` but **no** `SE`
+  column. The code path that builds `treatment_effects` accessed
+  `emm_df$SE` directly, yielding `NULL`, then `round(NULL, 3)` threw
+  the math error. The sibling pairwise-contrast block already guarded
+  this with `if ("SE" %in% names(pc_df))`; the treatment-effects block
+  did not. Same fix applied to `bayesian_body_weight()` which had the
+  identical pattern.
+
 ## [0.4.11] - 2026-06-17
 
 ### Fixed
