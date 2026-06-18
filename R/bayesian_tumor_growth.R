@@ -446,7 +446,8 @@ bayesian_tumor_growth <- function(
       treatment_effects <- data.frame(
         Group         = as.character(emm_df[[treatment_column]]),
         Adjusted_Mean = round(emm_df$emmean,          3),
-        SE            = round(emm_df$SE,               3),
+        SE            = if ("SE" %in% names(emm_df))
+                          round(emm_df$SE, 3) else NA_real_,
         DF            = NA_real_,
         Lower_CrI     = round(emm_df[[lower_col]],    3),
         Upper_CrI     = round(emm_df[[upper_col]],    3),
