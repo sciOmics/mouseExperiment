@@ -14,8 +14,11 @@ therapeutic_window_metric(
   cage_column = NULL,
   adjust_tumor_weight = TRUE,
   tumor_density = 1,
+  volume_units = NULL,
   reference_group = NULL,
-  noise_floor = 1
+  noise_floor = 1,
+  n_boot = 2000L,
+  boot_seed = NULL
 )
 }
 \arguments{
@@ -31,26 +34,54 @@ therapeutic_window_metric(
 
 \item{id_column}{Name of the mouse/subject ID column.}
 
+\item{cage_column}{Name of the cage column. NULL to omit. Part of the
+composite mouse key so reused IDs across cages are not collapsed.}
+
 \item{adjust_tumor_weight}{Logical; subtract estimated tumor weight.}
 
 \item{tumor_density}{Density in g/cm³ (default 1.0).}
 
+\item{volume_units}{Units of \code{volume_column}: "mm3", "cm3", or NULL
+(default) to auto-detect from the data and report the inference.}
+
 \item{reference_group}{Name of the control/reference group.}
 
 \item{noise_floor}{Minimum group-mean per-mouse maximum weight loss (percent)
-below which the ratio TGI / weight_loss\\% is numerically unstable. When
-below this floor, \code{TWM = abs(TGI)} (pure efficacy score) instead of
-the ratio. Default 1.0 — an experimentally pragmatic threshold chosen to
-avoid division by near-zero weight loss in well-tolerated treatments. No
-formal clinical basis; users with experiment-specific noise estimates
-(e.g. scale precision) should tune accordingly.}
+used as a floor on the ratio's denominator, so
+\code{TWM = max(TGI, 0) / max(weight_loss\%, noise_floor)}. This keeps TWM
+continuous for any \code{noise_floor} (CODE_REVIEW.md R3.18) and reduces to
+\code{TWM = max(TGI, 0)} for well-tolerated arms. Default 1.0 — an
+experimentally pragmatic threshold that avoids dividing by near-zero weight
+loss. No formal clinical basis; users with experiment-specific noise
+estimates (e.g. scale precision) should tune accordingly.}
+
+\item{n_boot}{Integer >= 0. Mouse-level bootstrap resamples used to attach
+95\\% percentile intervals to TGI, mean weight loss, and TWM. Mice are
+resampled within group including the control arm, so the interval
+propagates the TGI denominator's uncertainty (CODE_REVIEW.md R3.6 / R3.7).
+Default 2000; set 0 to skip.}
+
+\item{boot_seed}{Optional integer seed for reproducible resampling.}
 }
 \value{
-A list with: twm_table, tgi_data, weight_loss_data.
+A list with: \code{twm_table} (point estimates plus bootstrap
+bounds), \code{twm_ci}, \code{tgi_data}, \code{weight_loss_data},
+\code{n_at_endpoint} (animals contributing at the endpoint day, per arm),
+and \code{endpoint_day}.
 }
 \description{
-Computes TWM = TGI / MeanWeightLoss\% per treatment group.
-When weight loss is negligible (≤ noise floor), the safety score equals TGI.
+Computes TWM = max(TGI, 0) / max(MeanWeightLoss\%, noise_floor) per treatment
+group, so a well-tolerated arm scores its TGI and the metric stays continuous
+at the floor.
 The denominator uses the group mean of per-mouse maximum weight loss, not the
 single worst-case mouse, to give a representative measure of typical toxicity.
 }
+\section{Interpreting the ranking}{
+
+\code{twm_table} is sorted by TWM, which reads as a ranking. Check
+\code{TWM_Lower} / \code{TWM_Upper} before acting on the order: with typical
+group sizes the intervals overlap heavily and the ordering of adjacent arms is
+often not resolvable. \code{n_at_endpoint} shows how many animals in each arm
+actually reached the endpoint day.
+}
+

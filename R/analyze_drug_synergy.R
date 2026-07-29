@@ -54,6 +54,14 @@
 #' to demonstrate synergy by this criterion regardless of the true biological interaction.
 #' Interpret Bliss results cautiously when individual-agent TGIs exceed 50\%.
 #'
+#' \strong{Point estimates and labels:} the \code{synergy_label} and
+#' \code{synergy_interpretation} strings are derived from three group means via
+#' fixed thresholds. They are descriptive summaries, not test results. Read them
+#' alongside \code{synergy_ci} (mouse-level bootstrap 95\% intervals) and
+#' \code{group_n}: a "Strong Synergy" label whose \code{Bliss_Excess_FE}
+#' interval spans zero is not evidence of synergy. For a model-based posterior
+#' treatment of the same question, use \code{\link{bayesian_synergy}}.
+#'
 #' \strong{Loewe Additivity single-dose approximation:} The CI formula
 #' \code{min(FE_A + FE_B, 1) / FE_combo} assumes a linear dose-response relationship, which
 #' is appropriate when only single-dose data are available but is an approximation. Without
@@ -83,6 +91,22 @@
 #'
 #' @import dplyr
 #' @import ggplot2
+#' @param id_column Column identifying individual animals. Used to resample
+#'   mice for the bootstrap; also used to report per-group n.
+#' @param ci_thresholds Length-2 numeric giving the Loewe combination-index band
+#'   treated as indistinguishable from additive. Default \code{c(0.85, 1.15)} —
+#'   a convention, not a derived quantity (CODE_REVIEW.md R3.28).
+#' @param strong_synergy_delta Numeric. Excess fractional effect (Bliss *and*
+#'   Loewe) above which the label is "Strong Synergy". Default 0.1, also a
+#'   convention.
+#' @param n_boot Integer >= 0. Number of bootstrap resamples used to attach
+#'   confidence intervals to the synergy metrics. Mice are resampled with
+#'   replacement *within* treatment group, including the control arm, and the
+#'   whole statistic is recomputed per resample — so the interval propagates
+#'   both the sampling error of each arm and the sampling error of the control
+#'   mean that forms the TGI denominator (CODE_REVIEW.md R3.6 / R3.7 / G.6).
+#'   Default 2000. Set 0 to skip.
+#' @param boot_seed Optional integer seed for reproducible resampling.
 #' @export
 analyze_drug_synergy <- function(df, 
                                treatment_column = "Treatment",
@@ -93,6 +117,11 @@ analyze_drug_synergy <- function(df,
                                combo_name,
                                control_name = "Control",
                                eval_time_point = NULL,
+                               id_column = "ID",
+                               ci_thresholds = c(0.85, 1.15),
+                               strong_synergy_delta = 0.1,
+                               n_boot = 2000L,
+                               boot_seed = NULL,
                                verbose = TRUE) {
   
   # Input validation
@@ -128,9 +157,24 @@ analyze_drug_synergy <- function(df,
   
   # Filter data for the evaluation time point
   analysis_data <- df[df[[time_column]] == eval_time_point, ]
-  
-  # Calculate mean volumes for each treatment group
-  group_means <- tapply(analysis_data[[volume_column]], analysis_data[[treatment_column]], mean)
+
+  # CODE_REVIEW.md R3.7 — tapply()'s default na.rm = FALSE meant a single
+  # missing volume at the evaluation day silently NA'd that group's mean and
+  # every quantity derived from it.
+  group_means <- tapply(analysis_data[[volume_column]],
+                        analysis_data[[treatment_column]],
+                        mean, na.rm = TRUE)
+  group_n <- tapply(analysis_data[[volume_column]],
+                    analysis_data[[treatment_column]],
+                    function(x) sum(is.finite(x)))
+
+  # Fail loudly rather than propagating NA when a named arm is absent.
+  for (nm in c(control_name, drug_a_name, drug_b_name, combo_name)) {
+    if (!nm %in% names(group_means) || !is.finite(group_means[[nm]])) {
+      stop("Treatment group '", nm, "' has no usable volume observations at ",
+           "day ", eval_time_point, ".", call. = FALSE)
+    }
+  }
   
   # Extract mean volumes for each group
   control_mean <- group_means[control_name]
@@ -148,6 +192,24 @@ analyze_drug_synergy <- function(df,
   fe_b <- tgi_b / 100
   fe_combo <- tgi_combo / 100
   
+  # CODE_REVIEW.md R3.6 / R3.7 / G.6 — attach mouse-level bootstrap intervals to
+  # every synergy metric. Resampling the control arm too propagates the TGI
+  # denominator's uncertainty, which was previously treated as a known constant.
+  per_mouse_vols <- list(
+    control = as.numeric(analysis_data[[volume_column]][
+      analysis_data[[treatment_column]] == control_name]),
+    drug_a  = as.numeric(analysis_data[[volume_column]][
+      analysis_data[[treatment_column]] == drug_a_name]),
+    drug_b  = as.numeric(analysis_data[[volume_column]][
+      analysis_data[[treatment_column]] == drug_b_name]),
+    combo   = as.numeric(analysis_data[[volume_column]][
+      analysis_data[[treatment_column]] == combo_name])
+  )
+  synergy_ci <- if (n_boot > 0L) {
+    synergy_bootstrap(per_mouse_vols, n_boot = as.integer(n_boot),
+                      seed = boot_seed)
+  } else NULL
+
   # Calculate expected effect using Bliss Independence model.
   # Shared scalar/vector formula in R/utils_synergy.R.
   bliss_expected_fe <- synergy_bliss_expected(fe_a, fe_b)
@@ -170,28 +232,37 @@ analyze_drug_synergy <- function(df,
     warning("Cannot calculate Combination Index: Combination effect is zero or negative")
   }
   
-  # Determine synergy interpretation based on CI
-  # CI < 1 indicates synergy, CI = 1 indicates additivity, CI > 1 indicates antagonism
+  # Determine synergy interpretation based on CI.
+  # CODE_REVIEW.md R3.28 — the 0.85 / 1.15 band was hardcoded and undocumented.
+  # It is a convention, not a derived quantity: the interval is a pragmatic
+  # "indistinguishable from additive" zone, and different labs use different
+  # widths. It is now an argument so the choice is explicit and tunable.
+  lo <- min(ci_thresholds); hi <- max(ci_thresholds)
   if (is.na(ci_value)) {
     synergy_interpretation <- "Cannot determine (CI calculation error)"
-  } else if (ci_value < 0.85) {
-    synergy_interpretation <- "Synergistic (CI < 0.85)"
-  } else if (ci_value < 1.15) {
-    synergy_interpretation <- "Additive (0.85 <= CI <= 1.15)"
+  } else if (ci_value < lo) {
+    synergy_interpretation <- paste0("Synergistic (CI < ", lo, ")")
+  } else if (ci_value <= hi) {
+    synergy_interpretation <- paste0("Additive (", lo, " <= CI <= ", hi, ")")
   } else {
-    synergy_interpretation <- "Antagonistic (CI > 1.15)"
+    synergy_interpretation <- paste0("Antagonistic (CI > ", hi, ")")
   }
   
   # Calculate the difference between observed and expected effects
   bliss_difference <- fe_combo - bliss_expected_fe
   loewe_difference <- fe_combo - loewe_expected_fe
   
-  # Determine synergy label based on both models
-  if (bliss_difference > 0.1 && loewe_difference > 0.1) {
+  # Determine synergy label based on both models.
+  # CODE_REVIEW.md R3.28 — `strong_synergy_delta` replaces the hardcoded 0.1.
+  # NOTE these labels are computed from three group means with no uncertainty
+  # attached; see the `synergy_ci` element and the Assumptions section for why
+  # a label alone should not drive a decision.
+  d <- strong_synergy_delta
+  if (bliss_difference > d && loewe_difference > d) {
     synergy_label <- "Strong Synergy"
   } else if (bliss_difference > 0 && loewe_difference > 0) {
     synergy_label <- "Synergy"
-  } else if (bliss_difference > -0.1 && loewe_difference > -0.1) {
+  } else if (bliss_difference > -d && loewe_difference > -d) {
     synergy_label <- "Additivity"
   } else {
     synergy_label <- "Antagonism"
@@ -327,6 +398,13 @@ analyze_drug_synergy <- function(df,
   return(list(
     summary = summary_df,
     synergy_metrics = synergy_metrics,
+    # CODE_REVIEW.md R3.6 / R3.7 — bootstrap percentile CIs for every metric,
+    # plus per-group n so a reader can weigh the point estimates.
+    synergy_ci  = synergy_ci,
+    group_n     = group_n,
+    eval_time_point = eval_time_point,
+    thresholds  = list(ci_thresholds = ci_thresholds,
+                       strong_synergy_delta = strong_synergy_delta),
     bliss_independence = list(
       expected_effect = bliss_expected_fe,
       observed_effect = fe_combo,

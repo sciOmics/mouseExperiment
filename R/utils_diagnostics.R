@@ -17,6 +17,7 @@
 #' @return Named list with `diag_qq_plot`, `diag_resid_fitted_plot`,
 #'   `diag_scale_location_plot`. Any element is `NULL` if construction
 #'   fails or `ggplot2` is unavailable.
+#' @noRd
 #' @keywords internal
 build_residual_diagnostic_plots <- function(model, title_prefix = "Model") {
   out <- list(diag_qq_plot             = NULL,
@@ -102,6 +103,7 @@ build_residual_diagnostic_plots <- function(model, title_prefix = "Model") {
 #'   in the model.
 #' @param title_prefix Character prefix for the plot title.
 #' @return A ggplot, or `NULL` on failure.
+#' @noRd
 #' @keywords internal
 build_random_effects_qq_plot <- function(model,
                                          id_column = NULL,
@@ -173,6 +175,7 @@ build_random_effects_qq_plot <- function(model,
 #'
 #' @param model A fitted `lmerMod` object.
 #' @return A list with `cooks_distance` and `dfbetas`, or `NULL`.
+#' @noRd
 #' @keywords internal
 build_lmm_influence <- function(model) {
   if (is.null(model)) return(NULL)

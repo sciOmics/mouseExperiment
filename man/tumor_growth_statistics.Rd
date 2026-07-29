@@ -15,9 +15,11 @@ tumor_growth_statistics(
   transform = c("log", "sqrt", "none"),
   model_type = c("lme4", "gam", "auc"),
   random_effects_specification = c("intercept_only", "slope", "none"),
-  handle_cage_effects = c("include_if_not_collinear", "always_include", "never_include",
-    "as_random_effect"),
-  p_adjust_method = c("bonferroni", "holm", "fdr", "none"),
+  handle_cage_effects = c("auto", "include_if_not_collinear", "always_include",
+    "never_include", "as_random_effect"),
+  comparison_family = c("vs_reference", "all_pairs", "custom"),
+  custom_contrasts = NULL,
+  p_adjust_method = c("bonferroni", "holm", "fdr", "dunnett", "tukey", "none"),
   reference_group = NULL,
   return_model = TRUE,
   include_diagnostics = TRUE,
@@ -68,12 +70,52 @@ Default is "lme4".}
 "slope": (Day|ID) - random intercepts and slopes by subject
 "none": No random effects}
 
-\item{handle_cage_effects}{Method for handling cage effects: "include_if_not_collinear", "always_include",
-"never_include", or "as_random_effect". Default is "include_if_not_collinear".}
+\item{handle_cage_effects}{How cage enters the model. Default \code{"auto"}
+picks the correct treatment for the detected design structure:
+\itemize{
+\item \strong{crossed} (cages hold more than one treatment) — cage as a
+fixed effect;
+\item \strong{nested with replication} (one treatment per cage, >= 2
+cages per arm — the usual preclinical design) — cage as a random
+intercept \code{(1|cage)}. A fixed effect is not estimable here
+because cage is perfectly aliased with treatment, but the random
+intercept is, and omitting it understates every standard error by the
+design effect \eqn{1 + (m - 1)\rho} for \eqn{m} mice per cage and
+cage-level ICC \eqn{\rho};
+\item \strong{completely confounded} (one cage per arm) — cage omitted,
+with a warning that any cage effect is inseparable from the treatment
+effect.
+}
+The explicit options \code{"always_include"} (fixed), \code{"never_include"},
+and \code{"as_random_effect"} are honoured where estimable and rejected
+where not. \code{"include_if_not_collinear"} is retained for backward
+compatibility: it reproduces the pre-0.6.0 behaviour of dropping cage
+whenever it is nested, which discards estimable cage variance.
+The detected structure, the placement chosen, and the reason are returned
+in \code{summary$model_specification}; the cage ICC is in
+\code{cage_analysis$icc}.}
 
-\item{p_adjust_method}{Method for p-value adjustment in pairwise comparisons:
-"bonferroni" (default, conservative), "holm" (step-down, less conservative),
-"fdr" (Benjamini-Hochberg false discovery rate), or "none" (no adjustment).}
+\item{comparison_family}{Which set of comparisons to report and adjust over:
+"vs_reference" (default; each treatment against \code{reference_group}),
+"all_pairs" (every pairwise comparison), or "custom" (supply
+\code{custom_contrasts}). The multiplicity adjustment is applied over
+exactly this family, so the family and the correction always agree.}
+
+\item{custom_contrasts}{Named list of contrast coefficient vectors over the
+treatment levels, required when \code{comparison_family = "custom"}. The
+names label the comparisons in the output. Not supported for
+\code{model_type = "auc"}, which runs independent Welch t-tests rather
+than fitting a joint model.}
+
+\item{p_adjust_method}{Multiplicity adjustment applied across the comparison
+family: "bonferroni" (default, conservative), "holm" (step-down, less
+conservative), "fdr" (Benjamini-Hochberg), "dunnett" (exact many-to-one
+via the multivariate-t; requires \code{comparison_family = "vs_reference"}),
+"tukey" (HSD; requires \code{comparison_family = "all_pairs"}), or "none".
+"dunnett" and "tukey" need comparisons from a single fitted model and are
+therefore rejected for \code{model_type = "auc"}. The family and method
+actually applied are returned in \code{comparison_family} and
+\code{p_adjust_method_used}.}
 
 \item{reference_group}{Optional. A character string specifying which treatment group should be used as the reference
 for statistical comparisons. If NULL, the first treatment group alphabetically will be used.}

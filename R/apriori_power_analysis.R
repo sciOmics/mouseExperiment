@@ -64,6 +64,22 @@
 #'   \item{\code{mode}}{Analysis mode.}
 #' }
 #'
+#' @param n_comparisons Integer. Number of treatment-vs-control comparisons the
+#'   analysis will make. Used with \code{p_adjust_method = "bonferroni"} to
+#'   derive the effective per-comparison alpha. Defaults to \code{n_groups - 1}
+#'   (the vs-control family these designs normally use).
+#' @param p_adjust_method \code{"none"} (default, backward compatible) or
+#'   \code{"bonferroni"}. When \code{"bonferroni"}, the sample size is computed
+#'   at \code{alpha / n_comparisons} rather than at \code{alpha}, so the
+#'   calculation matches the analysis that will actually be run. Powering at an
+#'   unadjusted alpha and then analysing with an adjustment delivers materially
+#'   less power than the nominal target.
+#' @param dropout_rate Numeric in [0, 1). Expected proportion of enrolled
+#'   animals that will not be analysable (euthanasia for tumour burden,
+#'   technical failure). \code{Required_N} is the number that must be
+#'   analysable; \code{Enroll_N = ceiling(Required_N / (1 - dropout_rate))} is
+#'   the number to enrol. Default 0 for backward compatibility, but in
+#'   preclinical oncology it is rarely 0.
 #' @export
 apriori_power_analysis <- function(effect_size   = NULL,
                                    delta         = NULL,
@@ -73,9 +89,36 @@ apriori_power_analysis <- function(effect_size   = NULL,
                                    target_power  = c(0.80, 0.90),
                                    n_per_group   = NULL,
                                    mode          = c("find_n", "find_power"),
+                                   n_comparisons = NULL,
+                                   p_adjust_method = c("none", "bonferroni"),
+                                   dropout_rate  = 0,
                                    sd_sensitivity_range = 0.4) {
 
   mode <- match.arg(mode)
+  p_adjust_method <- match.arg(p_adjust_method)
+
+  # CODE_REVIEW.md R3.15 — two omissions made Required_N an underestimate of
+  # what a study needs.
+  #
+  # (1) Multiplicity. These designs are analysed as k-1 vs-control contrasts
+  #     with an adjustment (the package's own default is Bonferroni), but the
+  #     power calculation used `alpha` as given. A 4-arm study powered at
+  #     alpha = 0.05 is actually analysed at an effective 0.0167 per
+  #     comparison, so the delivered power falls well short of the target.
+  # (2) Attrition. Required_N is the number of *analysable* animals. Animals
+  #     are lost to euthanasia and technical failure, differentially by arm
+  #     (controls first), so the number to enrol is larger than the number the
+  #     calculation assumed would complete.
+  if (!is.numeric(dropout_rate) || length(dropout_rate) != 1L ||
+      dropout_rate < 0 || dropout_rate >= 1) {
+    stop("'dropout_rate' must be a single number in [0, 1).", call. = FALSE)
+  }
+  if (!is.null(n_comparisons)) {
+    n_comparisons <- as.integer(n_comparisons)
+    if (is.na(n_comparisons) || n_comparisons < 1L) {
+      stop("'n_comparisons' must be a positive integer.", call. = FALSE)
+    }
+  }
   n_groups <- as.integer(n_groups)
   if (n_groups < 2L) stop("n_groups must be >= 2")
 
@@ -92,6 +135,22 @@ apriori_power_analysis <- function(effect_size   = NULL,
     stop("'effect_size' must be a single positive finite number.")
 
   stored_pooled_sd <- if (!is.null(pooled_sd)) as.numeric(pooled_sd) else NA_real_
+
+  # Effective per-comparison alpha. Defaults to the k-1 vs-control family when
+  # the user does not say otherwise, which is what these studies actually run.
+  n_comp_used <- if (!is.null(n_comparisons)) {
+    n_comparisons
+  } else if (p_adjust_method == "none") {
+    1L
+  } else {
+    max(1L, n_groups - 1L)
+  }
+  alpha_requested <- alpha
+  alpha_effective <- if (p_adjust_method == "bonferroni") {
+    alpha / n_comp_used
+  } else {
+    alpha
+  }
 
   # ---- Build scenario table --------------------------------------------------
   power_fn <- if (n_groups == 2L) {
@@ -159,11 +218,21 @@ apriori_power_analysis <- function(effect_size   = NULL,
   }
 
   if (mode == "find_n") {
-    rows <- lapply(alpha, function(a) {
+    rows <- lapply(seq_along(alpha), function(i) {
+      a_req <- alpha_requested[i]
+      a_eff <- alpha_effective[i]
       lapply(target_power, function(tp) {
+        n_analysable <- n_fn(a_eff, tp)
         data.frame(Effect_Size = effect_size, N_Groups = n_groups,
-                   Alpha = a, Target_Power = tp,
-                   Required_N = n_fn(a, tp),
+                   Alpha = a_req,
+                   Alpha_Per_Comparison = a_eff,
+                   N_Comparisons = n_comp_used,
+                   Target_Power = tp,
+                   # The number that must be analysable to hit the target...
+                   Required_N = n_analysable,
+                   # ...and the number to actually enrol to end up with it.
+                   Enroll_N = ceiling(n_analysable / (1 - dropout_rate)),
+                   Dropout_Rate = dropout_rate,
                    stringsAsFactors = FALSE)
       })
     })
@@ -172,10 +241,18 @@ apriori_power_analysis <- function(effect_size   = NULL,
     if (is.null(n_per_group) || length(n_per_group) == 0)
       stop("'n_per_group' must be supplied when mode = 'find_power'.")
     rows <- lapply(as.integer(n_per_group), function(n) {
-      lapply(alpha, function(a) {
+      lapply(seq_along(alpha), function(i) {
+        a <- alpha_effective[i]; a_req <- alpha_requested[i]
+        # n is what the user has; attrition reduces it to n_analysable.
+        n_analysable <- max(2L, floor(n * (1 - dropout_rate)))
         data.frame(Effect_Size = effect_size, N_Groups = n_groups,
-                   Alpha = a, N_Per_Group = n,
-                   Achieved_Power = power_fn(n, a),
+                   Alpha = a_req,
+                   Alpha_Per_Comparison = a,
+                   N_Comparisons = n_comp_used,
+                   N_Per_Group = n,
+                   N_Analysable = n_analysable,
+                   Dropout_Rate = dropout_rate,
+                   Achieved_Power = power_fn(n_analysable, a),
                    stringsAsFactors = FALSE)
       })
     })
@@ -184,12 +261,14 @@ apriori_power_analysis <- function(effect_size   = NULL,
 
   # ---- Power curve data ------------------------------------------------------
   n_seq <- seq(2L, 80L, by = 1L)
-  curve_rows <- lapply(alpha, function(a) {
+  curve_rows <- lapply(seq_along(alpha), function(i) {
+    a_eff <- alpha_effective[i]
     data.frame(
       Effect_Size = effect_size,
       N_Per_Group = n_seq,
-      Power       = vapply(n_seq, function(n) power_fn(n, a), numeric(1)),
-      Alpha       = a,
+      Power       = vapply(n_seq, function(n) power_fn(n, a_eff), numeric(1)),
+      Alpha       = alpha_requested[i],
+      Alpha_Per_Comparison = a_eff,
       stringsAsFactors = FALSE
     )
   })

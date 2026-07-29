@@ -5,6 +5,286 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-07-29
+
+Round 3, third batch. Adds uncertainty to the derived metrics (the maintainer
+chose G.6 Option A), makes cage clustering count in the Cox model, and connects
+the power calculation to the analysis it is meant to size.
+
+### BREAKING — results will change
+
+- **Cox standard errors now account for cage clustering (R3.13).** `cage_column`
+  was accepted, printed about, and never entered the model. When cage is crossed
+  with treatment or nested with replication, the fit gains
+  `+ cluster(cage)` — point estimates are unchanged, the variance becomes a
+  robust sandwich estimate that accounts for within-cage dependence. Completely
+  confounded designs (one cage per arm) get a warning instead, since there is no
+  replication to estimate from.
+
+- **The AUC omnibus test is now Welch's ANOVA (R3.22).** It was `aov()`, which
+  assumes equal variances, while the pairwise tests deliberately used
+  `var.equal = FALSE` because "variances between treatment groups may differ".
+  The two now make the same assumption. A Brown-Forsythe variance-homogeneity
+  check is reported in `variance_test`.
+
+### Added — uncertainty for the derived metrics (G.6 Option A)
+
+- **`analyze_drug_synergy()` returns `synergy_ci` (R3.6, R3.7).** A mouse-level
+  bootstrap (default 2000 resamples) gives 95 % percentile intervals for TGI of
+  each single agent, combination TGI, Bliss excess, and the Loewe combination
+  index. Mice are resampled *within group including the control arm*, so the
+  interval propagates the uncertainty of the TGI denominator that was previously
+  treated as a known constant — R3.6 and R3.7 close in the same pass. Also
+  returns `group_n`.
+- **`therapeutic_window_metric()` returns `twm_ci` and `n_at_endpoint`.** Same
+  bootstrap, applied to TGI, mean weight loss, and TWM. The table is still
+  sorted by TWM, but now carries `TWM_Lower` / `TWM_Upper` so a reader can see
+  that adjacent arms are usually not separable, plus the number of animals that
+  actually reached the endpoint day.
+- **Competing-risks view for the weight-loss endpoint (R3.26).** Censoring there
+  is informative — an animal whose record ends early usually ended because it
+  was euthanised for tumour burden, which shares a cause with weight loss.
+  `event_data` gains `Censor_Type` ("event" / "administrative" /
+  "early_removal") and `Status_CR`; new `cuminc` gives the Aalen-Johansen
+  cumulative incidence treating early removal as a competing event, and
+  `censoring_summary` shows how much of the censoring is informative. `1 - km_fit`
+  overstates weight-loss incidence whenever such removals occur.
+- **`apriori_power_analysis()` gains `n_comparisons`, `p_adjust_method`, and
+  `dropout_rate` (R3.15).** Two omissions made `Required_N` an underestimate:
+  the calculation used the nominal alpha while the analysis applies a
+  multiplicity adjustment (a 4-arm study powered at 0.05 is analysed at an
+  effective 0.0167), and `Required_N` counted analysable animals with no
+  allowance for attrition. The scenario table now reports
+  `Alpha_Per_Comparison`, `N_Comparisons`, and `Enroll_N` alongside
+  `Required_N`. Defaults are backward compatible (`"none"`, `dropout_rate = 0`).
+
+### Fixed
+
+- **Synergy thresholds are arguments, not magic numbers (R3.28).** The Loewe
+  band (`ci_thresholds`, default `c(0.85, 1.15)`) and the strong-synergy cut
+  (`strong_synergy_delta`, default 0.1) were hardcoded and undocumented; both
+  are conventions rather than derived quantities and are now explicit and
+  tunable, with the chosen values interpolated into the interpretation string.
+- **A single missing volume no longer NAs the whole synergy analysis (R3.7).**
+  `tapply(..., mean)` used the default `na.rm = FALSE`. A named arm that is
+  absent or has no usable observations now errors clearly instead of silently
+  propagating `NA` through every derived quantity.
+- **`split()` no longer allocates the full factor cross-product (R3.24).**
+  Per-subject growth rates split on a list of three factors, allocating one
+  element per *combination of levels* — 6 treatments x 60 IDs x 12 cages is
+  4,320 elements of which ~60 are non-empty. Splits on the composite mouse key
+  now.
+- TWM's documentation described the removed `abs(TGI)` branch; corrected to the
+  continuous denominator-floor form actually implemented in v0.5.0.
+
+### Tests
+
+- 398 passing, 0 failing (unchanged count; these changes are additive or
+  covered by existing assertions — batch-specific regression tests follow with
+  the remaining Round 3 work).
+
+## [0.6.0] - 2026-07-29
+
+Round 3 code review, second batch (CODE_REVIEW.md §R3). **Contains two
+deliberate behaviour changes that will alter published numbers — see the
+BREAKING section.**
+
+### BREAKING — results will change
+
+- **Pairwise p-values on the `lme4` and `gam` tumour-growth paths are now
+  adjusted (R3.1).** They previously were not. `p_adjust_method` was documented
+  with `"bonferroni"` as the default but only ever reached the AUC path; the
+  lme4 path passed a custom contrast list to `emmeans::contrast()`, for which
+  emmeans defaults to `adjust = "none"`, and the gam path hardcoded by-day
+  Dunnett. Any previously-reported p-value from the default model path was
+  unadjusted despite the signature promising Bonferroni. **Re-run anything you
+  have published from those paths.**
+
+- **Cage now enters the model as a random intercept on nested designs
+  (R3.17).** The default `handle_cage_effects` changes from
+  `"include_if_not_collinear"` to `"auto"`, which classifies the design
+  structurally instead of by a chi-square p-value on observation counts. In the
+  standard preclinical layout — one treatment per cage, two or more cages per
+  arm — cage is *not* estimable as a fixed effect but *is* estimable as
+  `(1|cage)`, and the old default dropped it entirely. Standard errors were
+  correspondingly too small: on a 2-cages-per-arm, 4-mice-per-cage design with a
+  real cage effect, the SEs of the treatment contrasts more than doubled once
+  cage was restored. Pass `handle_cage_effects = "include_if_not_collinear"` to
+  reproduce the old numbers.
+
+### Added
+
+- **`comparison_family` (G.1)** on `tumor_growth_statistics()` and
+  `analyze_body_weight()`: `"vs_reference"` (default), `"all_pairs"`, or
+  `"custom"` with `custom_contrasts`. The multiplicity adjustment now covers
+  exactly the set of comparisons returned, so the family and the correction can
+  no longer disagree — previously the AUC path adjusted over all k(k-1)/2 pairs
+  while returning a reference-ordered table, and the lme4 path returned k-1
+  contrasts adjusted over nothing (R3.21).
+- **`p_adjust_method` gains `"dunnett"` and `"tukey"`.** `"dunnett"` maps to
+  emmeans' exact `"mvt"`; note that passing the literal string `"dunnett"` to
+  emmeans silently downgrades to the `dunnettx` approximation, which is what the
+  dashboard was doing. Invalid family/method pairings are rejected rather than
+  silently substituted: Dunnett requires `vs_reference`, Tukey requires
+  `all_pairs`, and both are refused on the AUC path because independent Welch
+  t-tests have no joint covariance to exploit.
+- **`analyze_body_weight()` returns `pairwise_comparisons` (R3.12).** It
+  previously returned group marginal means and nothing inferential, so it could
+  not answer "did this arm lose more weight than control" — the primary
+  toxicity question. Its EMMs are now also marginalised explicitly at the mean
+  study day, matching how `tumor_growth_statistics()` defines an adjusted mean.
+- **Cage design diagnostics.** `cage_analysis$structure` (crossed /
+  nested_replicated / nested_confounded, classified from *mice* rather than
+  observations), `cage_analysis$handling`, `cage_analysis$icc` (cage-level
+  intraclass correlation), and `cage_placement` / `cage_reason` in the summary.
+  The ICC is the number that tells a reader how much the clustering mattered.
+- `R/utils_contrasts.R` and `R/utils_cage.R`.
+
+### Fixed
+
+- **Body-weight GAM path returned an empty marginal-means table (R3.4).**
+  `analyze_body_weight()` fits gamm4 inline rather than calling
+  `tgs_fit_gamm4_model()`, so it never received the v0.4.11 patch that repairs
+  the `$gam` stub's class vector and `$call` for emmeans dispatch. Every
+  `emmeans()` call errored, `tryCatch` turned it into `NULL`, and the result was
+  indistinguishable from "no effect". The patch is now a shared helper
+  (`patch_gamm4_stub()`) used by both paths.
+- **`always_include` no longer produces a rank-deficient design.** Asking for a
+  fixed cage effect on a nested design now errors with an explanation instead
+  of silently fitting an aliased term.
+- Complete cage/treatment confounding (one cage per arm) now emits a warning
+  that the two are inseparable, rather than passing silently.
+
+### Tests
+
+- **398 passing, 0 failing** (was 359/0 at v0.5.0, 352/7 at v0.4.14).
+- 15 new regression tests covering R3.1, R3.4, R3.12, R3.17 and R3.21,
+  including assertions that the adjustment demonstrably changes the p-values,
+  that Bonferroni over 6 pairs is exactly twice as harsh as over 3, that Dunnett
+  is never more conservative than Bonferroni, and that restoring the cage random
+  intercept increases the contrast standard errors.
+
+## [0.5.0] - 2026-07-29
+
+Round 3 code review (CODE_REVIEW.md §R3) — first batch of fixes. Two of these
+correct earlier fixes that were written but never executed at runtime.
+
+### Fixed
+
+- **Pairwise log-rank tests now actually run (R3.2).** Round 1 §2.8 replaced the
+  omnibus log-rank p-value with per-group pairwise tests, but the replacement
+  built `survdiff(cox_formula, data = pair_data)` where `cox_formula` referenced
+  a full-length `Surv` object from the calling environment. Every call failed
+  with "variable lengths differ" and a `tryCatch` handler silently substituted
+  the omnibus p-value for every group — reproducing exactly the defect §2.8 was
+  written to remove. The formula is now built from column names, and failures
+  surface as `NA` plus a warning instead of a plausible-looking wrong number.
+
+- **`p_adjust_method` is applied to survival comparisons (R3.1, partial).**
+  New `p_adjust_method` argument on `survival_statistics()`, applied once
+  centrally across the k-1 vs-reference comparisons so all three model paths
+  (Cox / Firth / log-rank) agree. Results gain `P_Value_Unadjusted`,
+  `P_Adjust_Method`, and `Comparison_Family` so the output is self-describing.
+  The omnibus log-rank result is retained as an attribute, never as a per-group
+  p-value. *The lme4 / gam tumour-growth paths are not yet fixed — see R3.1.*
+
+- **`survival_statistics()` rejects longitudinal input (R3.14).** The function
+  builds its `Surv` object from `df` directly, so a frame with one row per
+  measurement occasion made every measurement an independent subject at risk.
+  The one-row-per-animal contract is now documented and enforced. The roxygen
+  example, which previously passed a 448-row longitudinal frame (and referenced
+  a column that dataset does not have), has been rewritten.
+
+- **All-events groups no longer routed to Firth (R3.27).** Both
+  `survival_statistics()` and `weight_loss_threshold()` treated a group in
+  which every animal has an event as separation, contradicting the former's own
+  message that this "is not a problem for Cox models". Only zero-event groups
+  cause separation.
+
+- **Tumour-mass adjustment no longer assumes mm³ (R3.30).** `analyze_body_weight()`,
+  `weight_loss_threshold()` and `therapeutic_window_metric()` hard-coded
+  `Volume / 1000 * tumor_density`. On a cm³ upload the subtracted mass was
+  1000× too small, so `Net_Weight` was effectively unadjusted body weight while
+  still labelled "Net Weight (body - tumor)" — silently disabling the very
+  adjustment that stops a large tumour masking treatment-induced weight loss.
+  New `volume_units` argument (`"mm3"` / `"cm3"` / `NULL` to auto-detect and
+  report), with a plausibility check against body weight. Shared helpers in
+  `R/utils_volume.R`.
+
+- **Body weight no longer double-adjusts for tumour burden (R3.10).** The
+  shipped defaults subtracted tumour mass from the response *and* entered
+  `Volume` as a covariate predicting that response, making the coefficient
+  uninterpretable and adjusting for the same confounder twice. The redundant
+  covariate is now dropped with a message.
+
+- **Body-weight baseline uses the composite mouse key (R3.11).** `Initial_Mass`
+  was aggregated by `ID` alone, collapsing mice that share a numeric ear-tag ID
+  across groups or cages. Now keyed on Treatment/ID/Cage and filtered to each
+  mouse's own earliest day rather than relying on row order.
+
+- **TWM is continuous across the noise floor (R3.18).** The two-branch form
+  returned TGI (percentage points) below the floor and TGI/WL% (a ratio) above
+  it, then sorted both into one ranking; the branches agreed only at the default
+  `noise_floor = 1.0`. Now `TGI / pmax(WL%, noise_floor)` — identical at 1.0,
+  continuous everywhere else.
+
+- **`weight_loss_threshold()` keys mice on cage (R3.25).** New `cage_column`
+  argument; the composite key previously omitted it, so same-ID mice in
+  different cages within one arm collapsed into a single subject.
+
+- **Jonckheere-Terpstra trend test re-enabled (R3.31).** It was hardwired to
+  `NULL` under a comment referencing "mentioned issues" that appear nowhere in
+  the source, leaving `clinfun` a declared dependency the package never loaded,
+  `trend_test$jonckheere_test` permanently `NULL`, and two reporting branches
+  unreachable — while the test suite verified the test by calling `clinfun`
+  directly, so it was green on disabled functionality. JT is the canonical
+  permutation test for an ordered dose alternative and, because it uses only
+  the *ordering* of dose levels, is immune to the unequal-dose-spacing problem
+  affecting the polynomial decomposition (Round 2 §G.7). Direction is derived
+  from the data rather than hard-coded, so stimulatory data works too.
+
+- **AUC path no longer claims a transform it did not apply (R3.16).** The AUC
+  working copy is taken before the transform, so AUC is always computed on the
+  raw volume scale — but the methods metadata reported the requested transform,
+  putting a false statement into the dashboard methods panel and the HTML
+  report export.
+
+- **Growth-rate methods text corrected (R3.19).** Claimed `log1p`-transformed
+  volumes; the code uses `log()` with a half-minimum-positive fill.
+
+- **Log transform guards the all-non-positive case (R3.20).** `min(numeric(0))`
+  is `Inf`, so the zero-fill silently became `Inf` and `log(Inf)` corrupted the
+  fit. The Bayesian path was hardened against this in §B3.3; the frequentist
+  entry point and the per-subject growth-rate loop were not.
+
+### Added
+
+- `transform_used` and `model_type_used` on all frequentist tumour-growth
+  returns (R3.29). Every `bayesian_*` function returned these; no frequentist
+  path did, so a caller handed a result object had no programmatic way to learn
+  what scale the numbers were on.
+- `R/utils_volume.R` — `detect_volume_units()`, `volume_to_mass()`,
+  `resolve_volume_units()`, `check_tumor_mass_plausible()`.
+
+### Removed
+
+- Dead `unique_id` construction and merge in `tgs_compute_auc()` (R3.23) — built
+  and merged on, then never used; the merge also silently reordered rows.
+- `tests/testthat/test-post_power_analysis.R` — tested `post_power_analysis()`,
+  deleted in v0.3.4 (Round 2 §K.11).
+
+### Tests
+
+- **359 passing, 0 failing** (was 352 passing / 7 failing). All seven
+  pre-existing failures were stale tests referencing removed APIs; they are now
+  fixed or removed, unblocking the `covr` baseline noted in §K.10.
+- New `tests/testthat/test-code_review_round3.R` — a regression test per fix,
+  labelled with its finding ID, closing the §K.11 process gap. R3.1 and R3.2
+  assert observable behaviour rather than the presence of code, since both
+  correct fixes that existed but never ran.
+- `@noRd` added to three internal helpers in `utils_diagnostics.R` that were
+  generating manual pages (Round 1 §4.2 pattern).
+
 ## [0.4.14] - 2026-06-18 (staging)
 
 ### Fixed

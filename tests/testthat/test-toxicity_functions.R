@@ -237,7 +237,7 @@ test_that("therapeutic_window_metric returns expected structure", {
 
   expect_type(res, "list")
   expect_true(is.data.frame(res$twm_table))
-  expect_true(all(c("Treatment", "TGI", "Max_Pct_Weight_Loss", "TWM") %in%
+  expect_true(all(c("Treatment", "TGI", "Mean_Pct_Weight_Loss", "TWM") %in%
                   names(res$twm_table)))
   # DrugA should have higher TWM than DrugB (effective + less toxic)
   twm_a <- res$twm_table$TWM[res$twm_table$Treatment == "DrugA"]
@@ -303,27 +303,25 @@ test_that("efficacy_toxicity_bivariate works with tumor_auc metric", {
   expect_true(is.data.frame(res$per_mouse))
 })
 
-test_that("efficacy_toxicity_bivariate works with log_cell_kill metric", {
+test_that("efficacy_toxicity_bivariate rejects a removed efficacy_metric", {
   df <- make_weight_data()
-  res <- efficacy_toxicity_bivariate(
-    df,
-    weight_column    = "Weight",
-    volume_column    = "Volume",
-    time_column      = "Day",
-    treatment_column = "Treatment",
-    id_column        = "ID",
-    reference_group  = "Control",
-    efficacy_metric  = "log_cell_kill"
+  # "log_cell_kill" was removed as a choice; match.arg must reject it rather
+  # than silently falling back to the first option.
+  expect_error(
+    efficacy_toxicity_bivariate(
+      df,
+      weight_column    = "Weight",
+      volume_column    = "Volume",
+      time_column      = "Day",
+      treatment_column = "Treatment",
+      id_column        = "ID",
+      reference_group  = "Control",
+      efficacy_metric  = "log_cell_kill"
+    ),
+    regexp = "should be one of"
   )
-
-  expect_equal(res$efficacy_metric, "log_cell_kill")
-  expect_true(is.data.frame(res$per_mouse))
 })
 
-
-# =============================================================================
-# total_benefit_area
-# =============================================================================
 test_that("total_benefit_area returns expected structure", {
   df <- make_weight_data()
   res <- total_benefit_area(

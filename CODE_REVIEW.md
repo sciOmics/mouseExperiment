@@ -1608,3 +1608,889 @@ The class exists but isn't constructed by any analysis function (J.8). The test 
 | K.10 | No code-coverage measurement | Architecture | ✅ Fixed v0.4.7 (covr added to Suggests; `coverage.R` script written; baseline blocked by pre-existing stale tests under K.11 — fix those first to get a clean run) |
 | K.11 | No regression tests for prior Round 1 / Round 2 fixes | Process | Open |
 | K.12 | `me_result` tested in isolation; not exercised end-to-end | Minor | Open |
+
+---
+
+# Review Round 3 (v0.4.14 — 2026-07-29)
+
+**Reviewer:** Claude Code
+**Scope:** Fresh statistical-validity audit of the whole analysis surface, independent of Rounds 1–2. Focus areas chosen to be ones the earlier rounds did *not* cover: multiplicity handling, informative dropout / survivor bias, the experimental unit, ratio-statistic uncertainty, prior scaling, and the internal consistency of the three tumour-growth model paths.
+
+## Round-1 / Round-2 status
+
+Most Round 1–2 items verify as genuinely resolved. **Two do not**, and are re-opened below as R3.1 and R3.2 — both are cases where a fix was written but does not take effect at runtime. Both were confirmed by executing the failing code path, not by reading it.
+
+Findings are graded **Critical** (produces a wrong number that a user will act on), **Major** (statistically unsound or systematically biased), **Minor** (correctness-adjacent, inconsistency, or efficiency).
+
+---
+
+## R3-A. Critical
+
+### R3.1 `p_adjust_method` is silently ignored in the `lme4` and `gam` paths — **Critical**
+**Files:** `R/tumor_growth_statistics.R:731, 752, 1113`; `R/tgs_gam.R:299-307`
+
+`p_adjust_method` is `match.arg`'d, documented with `"bonferroni"` as the default and described as "Method for p-value adjustment in pairwise comparisons". It is threaded into `tgs_path_auc()` and used there (`R/tgs_path_auc.R:146`). It is **never referenced again** in the `lme4` or `gam` paths — including `model_type = "lme4"`, which is the function default.
+
+What the `lme4` path actually does:
+
+```r
+pairwise_comp <- emmeans::contrast(lsmeans_obj, method = contrasts)   # :1113
+```
+
+`emmeans::contrast()` defaults `adjust` to `"tukey"` only for `method = "pairwise"`, `"dunnettx"` for `"trt.vs.ctrl"`, and **`"none"` for a user-supplied list of contrast coefficients** — which is exactly what `contrasts` is here. Verified by execution: a 4-group LMM returns three vs-reference p-values with no adjustment and no "P value adjustment" footnote.
+
+The `gam` path (`tgs_gam_pairwise()`) hardcodes `method = "trt.vs.ctrl", by = time_column`, so it applies Dunnett *within each of the five quantile days* and nothing across them — again independent of `p_adjust_method`.
+
+Consequences:
+- The documented default (`bonferroni`) is never applied on the default model path. A user who reads the signature and reports "Bonferroni-adjusted" in a methods section is reporting something the software did not do.
+- The three model paths adjust over three different families: `lme4` → none (k−1 contrasts); `gam` → Dunnett within-day, nothing across 5 correlated days; `auc` → `p_adjust_method` over all k(k−1)/2 pairs. The same dataset gives three different multiplicity regimes depending on `model_type`.
+- The dashboard does not expose `p_adjust_method` at all (grep across `mouseExperimentDashboard/R/` returns no input binding), so the argument is unreachable from the UI and inert on the default backend path — it is effectively dead except for direct `model_type = "auc"` callers.
+
+This is the third instance of the same bug class (Round 1 §1.1 `handle_cage_effects`; Round 2 §A.3 `auc_method`; Round 2 §J.11 `cage_column`). The parameter-sensitivity tests added in v0.4.6 (`test-param_sensitivity.R`, closing K.4) did not include `p_adjust_method` and so did not catch it.
+
+**Fix:** pass `adjust = p_adjust_method` into the `emmeans::contrast()` calls in both paths. For the GAM path also decide whether the family is per-day or across all (day × contrast) cells and adjust accordingly. Add `p_adjust_method` to `test-param_sensitivity.R`.
+
+**Open question for the maintainer:** what should the canonical comparison family be — vs-reference only (Dunnett), or all pairs (Tukey)? The three paths currently disagree with each other *and* with the dashboard (see dashboard review R3.D1).
+
+---
+
+### R3.2 Round 1 §2.8 is not actually fixed — every pairwise log-rank silently falls back to the omnibus p-value — **Critical**
+**File:** `R/survival_statistics.R:487-497`
+
+Round 1 §2.8 replaced the single omnibus log-rank p-value with per-group pairwise tests. The replacement code cannot run:
+
+```r
+# in survival_statistics():
+surv_obj    <- survival::Surv(df[[time_column]], df[[censor_column]])   # length = nrow(df)
+cox_formula <- stats::as.formula(paste("surv_obj ~", treatment_column))
+...
+# in fit_survival_model(), logrank branch:
+pair_data <- df[df[[treatment_column]] %in% c(reference_group, grp), ]
+pair_p <- tryCatch({
+  pair_diff <- survival::survdiff(cox_formula, data = pair_data)        # :493
+  1 - stats::pchisq(pair_diff$chisq, df = 1L)
+}, error = function(e) omnibus_p)                                       # :495
+```
+
+`surv_obj` is not a column of `pair_data`, so `model.frame()` resolves it from `environment(cox_formula)` — the full-length object — while `Treatment` comes from the subset. Reproduced directly:
+
+```
+ERROR (falls back to omnibus p): variable lengths differ (found for 'Treatment')
+```
+
+Because the `tryCatch` handler returns `omnibus_p`, the failure is invisible and **the function reproduces the exact behaviour §2.8 was written to eliminate**: one omnibus p-value stamped onto every non-reference row, presented as a per-group comparison.
+
+The sibling Firth-convergence fallback at `:426-432` builds its formula correctly (`Surv(time_col, censor_col) ~ treatment_col` as a string), which is why that path works and this one does not.
+
+**Fix:** build the formula from column names inside the loop, as the Firth branch does, and do not swallow the error into a silent fallback:
+
+```r
+pair_formula <- stats::as.formula(
+  paste0("survival::Surv(", time_column, ", ", censor_column, ") ~ ", treatment_column)
+)
+pair_diff <- survival::survdiff(pair_formula, data = pair_data)
+```
+
+Add a regression test that asserts the non-reference p-values are **not** all identical when the groups genuinely differ.
+
+---
+
+### R3.3 AUC is integrated over each mouse's own follow-up window — unequal dropout makes the groups non-comparable — **Critical**
+**Files:** `R/tumor_growth_statistics.R:481-575` (`tgs_compute_auc`), `R/tgs_path_auc.R:55-126`
+
+`calculate_auc()` integrates from each subject's first to last observed day. `tgs_compute_auc()` records `First_Day` and `Last_Day` per mouse — and then **never uses them**. `tgs_path_auc()` feeds the raw AUCs straight into `aov(AUC ~ Treatment)` and Welch t-tests.
+
+In a preclinical oncology study the follow-up window is not a nuisance — it is an outcome. Control animals reach the IACUC volume limit first and are euthanised; treated animals survive longer. So the control group's AUC is integrated over a *shorter* interval than the treated group's. Because the integrand is a growing quantity, extending the window always adds area. A well-tolerated, genuinely efficacious treatment can therefore accumulate a **larger** AUC than control purely because its animals lived longer, reversing the sign of the estimated effect.
+
+Nothing in the code path detects, corrects, or warns about this. `Extrapolated` and `NumPoints` are carried through to the output table but are not used in the analysis either.
+
+**Fix (pick one and document it):**
+1. **Common window (recommended default):** integrate every mouse over `[min_day, T*]` where `T*` is the largest day at which all groups still have data, and report `T*` and the number of animals truncated.
+2. **Normalise:** report AUC / (Last_Day − First_Day) (mean volume over follow-up) so the metric is duration-free.
+3. **At minimum:** warn when the between-group range of `Last_Day` exceeds some fraction of the study length, and surface per-group median follow-up alongside the AUC table.
+
+Note that the same window is what `extrapolation_points` was presumably meant to paper over — see R3.9 for why that is not an acceptable substitute.
+
+---
+
+### R3.4 `analyze_body_weight(model_type = "gam")` always returns an empty EMM table — **Critical**
+**File:** `R/analyze_body_weight.R:120-206`, esp. `:161-168`
+
+v0.4.11 fixed the tumour-growth GAM path by patching the `gamm4` `$gam` stub before handing it to `emmeans` — the stub's class vector lacks `"glm"`/`"lm"` and its `$call` is `NULL`, and without both `emmeans::recover_data.gam` rejects it. That patch lives in `tgs_fit_gamm4_model()` (`R/tgs_gam.R:157-165`).
+
+`analyze_body_weight()` does **not** call `tgs_fit_gamm4_model()`. It fits `gamm4::gamm4()` inline (`:150-159`) and calls `emmeans` on the unpatched stub:
+
+```r
+emm <- tryCatch({
+  em <- emmeans::emmeans(gam_fit$gam, ~ Treatment, at = list(Day = mean(wd$Day)))
+  as.data.frame(em)
+}, error = function(e) NULL)          # :167 — swallows the known failure
+```
+
+So the body-weight GAM path hits the exact error v0.4.11 diagnosed, the `tryCatch` converts it to `NULL`, and `emmeans_table` comes back empty with no message. The dashboard's Toxicity GAM results panel renders nothing and the user has no way to tell whether that means "no effect" or "the call failed".
+
+Compounding this, the roxygen on `tgs_fit_gamm4_model()` (`R/tgs_gam.R:6-7`) states it is "used by `tumor_growth_statistics()` **and `analyze_body_weight()`**". It is not — `grep` finds exactly one call site, in `tumor_growth_statistics.R:851`.
+
+**Fix:** route `analyze_body_weight()`'s GAM path through `tgs_fit_gamm4_model()` (it already accepts a generic `response_column`, which is why it was written that way), deleting the duplicated inline fit. Correct the roxygen either way. Replace the bare `error = function(e) NULL` with something that records the message.
+
+---
+
+## R3-B. Major — statistical validity
+
+### R3.5 Survivor bias in every endpoint-day TGI — **Major**
+**Files:** `R/therapeutic_window_metric.R:77-84`, `R/analyze_drug_synergy.R:128-143`, `R/weight_corrected_tgi.R:83-96`, `R/efficacy_toxicity_bivariate.R:93-114`, `R/analyze_drug_synergy_over_time.R:160`
+
+The shared idiom:
+
+```r
+max_day <- max(wd$Day, na.rm = TRUE)
+final   <- wd[wd$Day == max_day, ]
+ctrl_mean_vol <- mean(final$Volume[final$Treatment == reference_group], na.rm = TRUE)
+```
+
+Only animals still on study at the global last day contribute. Since animals leave the study *because their tumours got large*, conditioning on survival to `max_day` selects the slowest-growing animals in every group — and most severely in the control group, which loses animals earliest. `ctrl_mean_vol` is therefore biased downward, and every TGI computed against it is biased **downward** (efficacy understated). In the limit where no control animal reaches `max_day`, `ctrl_mean_vol` is `NaN` and every TGI silently becomes `NaN`.
+
+`R/efficacy_toxicity_bivariate.R:114` has an additional failure mode: `final_vol <- sub$Volume[sub$Day == max_day]` yields `numeric(0)` for any animal that dropped out, which will either error or drop the row depending on how it is consumed downstream.
+
+v0.4.14 fixed precisely this in `bayesian_dose_response()` — "when `endpoint_day` is NULL, take each mouse's last observation (grouped by `id_column`, filter on per-mouse max day)". That fix was not propagated to the five frequentist siblings, and the frequentist functions do not even expose an `endpoint_day` argument.
+
+**Fix:** add an `endpoint_day = NULL` argument to each, with the v0.4.14 semantics (per-mouse last observation when `NULL`), and report per-group *n* at the endpoint alongside every TGI so the reader can see how much of each group survived to contribute.
+
+---
+
+### R3.6 TGI is a ratio statistic and its denominator uncertainty is never propagated — **Major**
+**Files:** all TGI consumers, including `R/bayesian_dose_response.R:250-263`
+
+Everywhere in the package, TGI is `1 − V_treated / mean(V_control)`. The denominator is an estimate with its own sampling error, and it is treated as a known constant in every downstream calculation. Two consequences:
+
+1. **Understated uncertainty.** In `bayesian_dose_response()`, every per-animal `TGI` row shares the same plug-in `ctrl_mean` (`:250`), so the observations handed to `brms` are mutually correlated through a source of variation the model does not see. The posterior credible intervals on `Emax`, `EC50`, and `Hill` are consequently too narrow — the Bayesian machinery propagates uncertainty faithfully through everything *except* the one quantity that was silently fixed before the model saw the data.
+2. **Arithmetic vs geometric mean inconsistency.** `mean(V_control)` is the arithmetic mean of a right-skewed, approximately log-normal quantity. Every other part of the package models `log(Volume)` — i.e. it assumes the *geometric* mean is the meaningful centre. Using the arithmetic mean in the TGI denominator and the geometric mean in the LMM means the two headline numbers in a report are not describing the same population parameter.
+
+**Fix:** for `bayesian_dose_response()`, model volume directly with the control arm as a group and derive TGI as a posterior transform, so the denominator's uncertainty is inside the model. For the frequentist TGI functions, at minimum add a bootstrap CI (resample animals within group, recompute TGI) and state which mean is used. Pick geometric or arithmetic package-wide and document the choice.
+
+---
+
+### R3.7 `analyze_drug_synergy()` classifies synergy from point estimates with no uncertainty at all — **Major**
+**File:** `R/analyze_drug_synergy.R:141-200`
+
+The function reduces each arm to a single group mean, forms three scalar TGIs, and then makes a categorical scientific call from hard-coded thresholds:
+
+```r
+if (bliss_difference > 0.1 && loewe_difference > 0.1)  "Strong Synergy"
+...
+if (ci_value < 0.85)  "Synergistic"   else if (ci_value < 1.15)  "Additive"
+```
+
+There is no standard error, no confidence interval, and no test anywhere in the frequentist synergy path. With the group sizes typical of these studies (n = 8–10), the sampling SD of a single TGI is easily 10 percentage points, so `bliss_difference` crossing 0.1 is well within noise. The function will label noise "Strong Synergy" with complete confidence, and the returned `$bliss_independence$synergy` is a bare logical (`bliss_difference > 0`) with no qualification.
+
+Two further defects in the same block:
+- `tapply(analysis_data[[volume_column]], analysis_data[[treatment_column]], mean)` (`:132`) uses the default `na.rm = FALSE`; a single missing volume at the evaluation day makes that group's mean `NA` and silently `NA`s every derived quantity.
+- `group_means[control_name]` (`:135`) returns `NA` rather than erroring when the named group is absent.
+
+`bayesian_synergy()` does this correctly (draw-wise Bliss/Loewe with credible intervals). The frequentist entry point should either gain a bootstrap CI on `bliss_difference` and `ci_value`, or its documentation should state prominently that it returns descriptive point estimates only and direct inferential use to `bayesian_synergy()`.
+
+---
+
+### R3.8 Bayesian priors are neither per-coefficient nor scaled to the response — **Major**
+**Files:** `R/bayesian_tumor_growth.R:364-372`, `R/utils_bayes.R` (`bayes_prior_params`), and the same pattern in BW / survival / synergy
+
+```r
+selected_priors <- c(
+  brms::prior_string(paste0("normal(0, ", b_sd,       ")"), class = "b"),
+  brms::prior_string(paste0("normal(0, ", b_sd * 2.5, ")"), class = "Intercept"),
+  ...
+)
+```
+
+**(a) One prior for coefficients on incommensurable scales.** `class = "b"` applies a single `normal(0, b_sd)` to *every* fixed effect in `Volume ~ Treatment * Day`: the Treatment main effects (differences in log-volume, plausibly ±0.5), the `Day` slope (log-growth per day, ~0.10–0.25), and the `Treatment:Day` interactions (differences in growth rate, ~0.01–0.08). Under the default `prior_strength = "skeptical"` (`b_sd = 0.25`), the prior is meaningfully informative on the Treatment main effect but effectively flat on the interaction — which is the parameter the whole analysis exists to estimate. The prior-strength ladder does not do what its name promises: **"skeptical" is not skeptical about the treatment effect.**
+
+**(b) The Intercept prior ignores the response scale.** With `skeptical`, the Intercept prior is `normal(0, 0.625)`. For the package's own `master_synthetic_data`, volumes span 9.6–4217 mm³, so log-volume spans 2.26–8.35 and the centred intercept sits near 5.5 — about **nine prior SDs** from the prior mean. brms's own default (`student_t(3, median(y), 2.5 * mad(y))`) is data-scaled for exactly this reason. With a few hundred observations the likelihood dominates and the point estimate survives, but: the prior predictive distribution is nonsense (tumours of ~1 mm³), `prior_posterior_plot` — the package's own prior-sensitivity tool — will show extreme prior/data conflict on every real dataset, and on a small pilot the shrinkage is not negligible.
+
+**Fix:** scale the Intercept prior to the data (`normal(median(y), 2.5 * mad(y))` or leave brms's default in place), and set the `class = "b"` priors per coefficient — at minimum split the interaction terms from the main effects via `coef = `. Document the units each prior is expressed in. Re-tune the skeptical/weakly-informative/informative/diffuse ladder against the interaction scale, since that is the estimand.
+
+**Open question:** what volume units do your real uploads use — mm³ (as in `master_synthetic_data`) or cm³ (as in `combo_treatment_synthetic_data`, where volumes are ~0.1–2)? The two differ by a factor of 1000, i.e. ~6.9 on the log scale, which changes how badly (b) bites. If both occur in practice, data-scaled priors are not optional.
+
+---
+
+### R3.9 `tgs_extrapolate()` is unflagged single imputation over informative dropout — **Major**
+**File:** `R/tumor_growth_statistics.R:16-117`, called at `:790-793`
+
+When `extrapolation_points > 0`, every subject whose last observation precedes the study maximum gets one synthetic row appended, produced by an OLS fit to its last ≤3 points and then treated by the LMM as an ordinary observation.
+
+Problems, in order of severity:
+
+1. **The dropout is informative and the imputation ignores that.** Animals are missing at the final day mostly because they were euthanised for tumour burden. Extrapolating their trajectory forward and feeding it in as data assumes MAR *within* the fitted model, which is exactly the assumption that fails here.
+2. **No uncertainty inflation.** This is single imputation: the predicted value enters with the same weight as a measured one. The LMM's residual variance, standard errors, and p-values are all computed as if the imputed points were observed. Everything downstream is anti-conservative. Multiple imputation or a joint longitudinal-survival model is the statistically defensible route; a single deterministic fill is not.
+3. **Linear extrapolation of an exponential process.** `tgs_extrapolate()` runs before the transform at `:817`, so `lm(Volume ~ Day)` is fitted on the **raw** scale for a quantity the rest of the package models as log-linear. The extrapolation is systematically biased low, and `max(0, ...)` at `:68` truncates at zero, creating an artificial floor that then meets the `vol[vol <= 0] <- min(vol[vol > 0])/2` fill.
+4. **Covariates are copied from the wrong row.** `new_row <- subject_data[1, ]` (`:71`) clones the subject's **first** observation, so the synthetic final-day row carries day-0 values for every column other than time and volume — including `necrotic_cov_flag` when `necrotic_handling = "covariate"`.
+5. **The parameter's value is ignored.** `extrapolation_points` is used only as `if (extrapolation_points > 0)`; the count never reaches `tgs_extrapolate()`, which hardcodes `n_points <- min(3, nrow(subject_data))` and appends exactly one row. `extrapolation_points = 1` and `= 50` do the same thing.
+6. **The same name means something else elsewhere.** `plot_tumor_growth(extrapolation_points = "all" | <numeric>)` (`R/plot_tumor_growth.R:52`) uses the name for "how many recent points to fit", which is what a reader would assume it means here too.
+
+**Fix:** at minimum, rename to `extrapolate_to_final_day = FALSE` (logical), fit on the transformed scale, carry the *last* row's covariates, and keep the `Extrapolated` flag in the model frame so imputed points can be excluded or down-weighted. Better: deprecate it in favour of handling the last-day imbalance in the estimand (R3.3 option 1) rather than in the data.
+
+---
+
+### R3.10 `analyze_body_weight()` double-adjusts for tumour burden by default — **Major**
+**File:** `R/analyze_body_weight.R:66-73, 104-107`
+
+Defaults are `adjust_tumor_weight = TRUE` and `covariates = c("volume")`. Together they:
+
+```r
+wd$Net_Weight <- wd$Weight - wd$Volume / 1000 * tumor_density   # response is now a function of Volume
+...
+fixed_terms <- paste("Treatment * Day", "+ Volume")             # ...and Volume is a predictor of it
+```
+
+The response has had a deterministic linear function of `Volume` subtracted from it, and `Volume` is then entered as a fixed effect predicting that response. The `Volume` coefficient no longer estimates anything interpretable — it absorbs the residual of a quantity already removed by construction — and the treatment effect is adjusted twice for the same confounder, in two different functional forms.
+
+The two adjustments answer different questions and should be mutually exclusive: subtract tumour mass *or* condition on it, not both. As shipped, the default call does both.
+
+**Fix:** make them mutually exclusive (warn and drop `"volume"` from `covariates` when `adjust_tumor_weight` is `TRUE`), and document which question each answers.
+
+---
+
+### R3.11 `analyze_body_weight()` baseline aggregation drops the composite key — **Major**
+**File:** `R/analyze_body_weight.R:90-93`
+
+```r
+baseline <- stats::aggregate(Net_Weight ~ ID, data = wd, FUN = function(x) x[1])
+```
+
+Grouped by `ID` alone. This is the bug fixed in `body_weight_auc.R` (v0.3.1), in `weight_corrected_tgi.R` (Round 1 §1.8), in `therapeutic_window_metric.R` (§J.14) and in `efficacy_toxicity_bivariate.R` (§J.18) — recurring here untouched. When numeric ear-tag IDs are reused across treatment groups (the normal case), all mice sharing an ID collapse to a single `Initial_Mass`, which is then merged back onto every one of them and, if `"initial_mass" %in% covariates`, entered as a model covariate.
+
+Note the neighbouring `weight_corrected_tgi.R:66` does use `~ ID + Treatment`, so the two files disagree within the same package.
+
+Second, subtler issue in the same block: `Initial_Mass` is derived from the mouse's first observation, and that observation is **retained in the response vector**. Regressing a response on a covariate computed from one of its own elements gives that row an exact-fit contribution and biases the covariate's coefficient. The standard remedy is to drop the baseline occasion from the response when it is used as a covariate (constrained-baseline / ANCOVA formulation).
+
+**Fix:** aggregate on `make_mouse_key(Treatment, ID, Cage)` like the rest of the package; drop `Day == min(Day)` rows from the response when `"initial_mass"` is in `covariates`, or document the choice not to.
+
+---
+
+### R3.12 `analyze_body_weight()` returns no pairwise comparisons — **Major (gap)**
+**File:** `R/analyze_body_weight.R:260-263, 313`
+
+The result list carries `emmeans_table` (one marginal mean per group) and nothing else inferential — no contrasts, no p-values, no adjustment. Every other analysis function in the package returns a pairwise-comparison table; the dashboard's Toxicity module has a "Pairwise Comparisons" tab. The frequentist body-weight path cannot answer "did this arm lose more weight than control", which is the primary toxicity question.
+
+Also note `emmeans::emmeans(model, ~ Treatment)` at `:261` marginalises over the reference grid's `Day` values rather than an explicit `at = list(Day = ...)`, so it is not the same marginalisation the tumour-growth path uses (`:1052`, mean day). Two functions in one package answering "the group's adjusted mean" two different ways.
+
+**Fix:** add `emmeans::contrast(emm, method = "trt.vs.ctrl", ref = ..., adjust = <p_adjust_method>)` and return it. Add a `p_adjust_method` argument for consistency with `tumor_growth_statistics()`.
+
+---
+
+### R3.13 The frequentist Cox model ignores cage clustering — **Major**
+**File:** `R/survival_statistics.R:88-93`, `check_cage_distribution()` at `:281-303`
+
+`cage_column` is accepted, and `check_cage_distribution()` prints a cage × treatment table and a message about collinearity. Cage then **never enters the model** — the Cox fit is `Surv(...) ~ Treatment` with no `cluster(Cage)` or `frailty(Cage)` term.
+
+Cage is a real source of correlation in these studies (shared environment, shared food/water, social hierarchy, and cage is frequently the unit of randomisation). Ignoring it makes the standard errors and p-values anti-conservative when treatment is not perfectly confounded with cage. Where treatment *is* nested in cage, the correct response is to say so loudly — that design cannot separate cage from treatment at all, and the effective sample size is the number of cages, not the number of mice.
+
+`bayesian_survival()` exposes `include_cage_effect`; the frequentist sibling does not. Same asymmetry as J.11.
+
+**Fix:** add `+ cluster(<cage>)` (robust sandwich SEs) or `+ frailty(<cage>)` when cage is not nested within treatment, gated by the same structural check as R3.17; when it *is* nested, emit a warning that the design is confounded rather than a `message()`.
+
+---
+
+### R3.14 `survival_statistics()` requires one row per mouse but neither documents nor validates it — **Major**
+**File:** `R/survival_statistics.R:89, 118, 65-66 (roxygen example)`
+
+`Surv(df[[time_column]], df[[censor_column]])` and `survfit(... , data = df)` treat every row of `df` as an independent subject. The function's own event-counting code (`:166-190`) explicitly compensates for "possible duplicates in the data (multiple rows per subject)" — so the code knows the input may be longitudinal, corrects the summary table, and leaves the *model* uncorrected.
+
+If a longitudinal frame is passed, each mouse contributes one row per measurement day: nine censored pseudo-subjects and one event, for a mouse measured ten times. Risk sets, hazard ratios, log-rank statistics, and the KM curve are all wrong, and n is inflated by the number of timepoints.
+
+The dashboard reduces to one row per animal before calling in (`mod_survival.R:640-657`), so UI users are safe. Direct API users are not, and the shipped roxygen example (`:45-56`) passes `combo_treatment_synthetic_data` after `calculate_volume()` + `calculate_dates()` — the full 448-row longitudinal frame, 14 rows per mouse. (It happens to `stop()` first on the missing `Survival_Censor` column, so the example is broken in a second, unrelated way.)
+
+**Fix:** validate at entry — if `id_column` is present and any ID appears more than once, either reduce to the per-mouse last observation or `stop()` with a clear message. Fix the roxygen example to use `master_synthetic_data` (which has `Survival_Censor`) reduced to one row per mouse. State the one-row-per-animal contract in `@param df`.
+
+**Open question:** should the function reduce internally, or refuse and make the caller reduce? Reducing internally would let the dashboard drop its own 18-line reduction loop and remove a divergence point.
+
+---
+
+### R3.15 Power analysis is disconnected from the analysis it is meant to size — **Major**
+**File:** `R/apriori_power_analysis.R:96-160`
+
+Two omissions make the returned `Required_N` an underestimate of what the study needs:
+
+1. **No multiplicity.** `alpha` is used as-is. But the analysis these studies actually run is k−1 vs-control contrasts with an adjustment — the package's own documented default is Bonferroni. A 4-arm study powered at `alpha = 0.05` will be analysed at an effective 0.0167 per comparison, and the delivered power is materially below the nominal target. There is no `n_comparisons` or `p_adjust_method` argument to bridge the two.
+2. **No attrition.** `Required_N` is the number of *analysable* animals. In this setting animals are lost to euthanasia and to technical failures, and losses are differential by arm (controls first). There is no `dropout_rate` parameter, so the number a user enrols equals the number the calculation assumed would complete.
+
+Separately, when `n_groups >= 3` the calculation answers "power for the omnibus one-way F-test", which is rarely the question — the study is designed to detect specific arm-vs-control differences. The `method_note` added in Round 1 §2.3 documents the d→f conversion caveat but not this framing mismatch.
+
+**Fix:** add `n_comparisons = NULL` (applying the chosen adjustment to `alpha`) and `dropout_rate = 0` (inflating `Required_N` to `ceiling(N / (1 - dropout_rate))`), and report both the analysable and enrolment N. Consider making the k−1 contrast family, not the omnibus F, the default target for `n_groups >= 3`.
+
+---
+
+### R3.16 The AUC path never applies `transform`, but reports that it did — **Major (reporting)**
+**File:** `R/tumor_growth_statistics.R:799 vs 817-826`; `R/tgs_path_auc.R:209, 225`
+
+`auc_df <- df` is taken at `:799`, *before* the transform block at `:817`. So AUC is always computed on raw volumes regardless of `transform`. That is arguably the right default — but the summary metadata says otherwise:
+
+```r
+volume_transformation  = transform,                                        # tgs_path_auc.R:209
+notes = c(if (transform != "none") paste("Volume data was", transform,
+          "transformed prior to analysis") ...)                            # :225
+```
+
+With the default `transform = "log"`, an AUC run reports "Volume data was log transformed prior to analysis" in the metadata block that feeds the dashboard's methods text and the HTML report export. That statement is false for this path.
+
+**Fix:** in `tgs_path_auc()`, report `volume_transformation = "none (AUC computed on the raw volume scale)"` and drop the note, or plumb the transform through if log-scale AUC is ever wanted.
+
+---
+
+### R3.17 Cage/treatment confounding is decided by a chi-square p-value on observation counts — **Major**
+**File:** `R/tumor_growth_statistics.R:185-197, 837-838`
+
+```r
+cage_treatment_table <- table(analysis_df[[cage_column]], analysis_df[[treatment_column]])
+cage_analysis$collinearity_test <- stats::chisq.test(cage_treatment_table)
+...
+cage_collinear <- isTRUE(cage_analysis$collinearity_test$p.value < 0.05)
+```
+
+`cage_collinear` then decides whether cage enters the model under the default `handle_cage_effects = "include_if_not_collinear"`. Three problems:
+
+1. **Confounding is structural, not a hypothesis.** Whether cage is nested within treatment is a deterministic property of the design: check `all(rowSums(table(cage, treatment) > 0) == 1)`. A significance test is the wrong instrument, and its answer depends on sample size rather than on the design.
+2. **The unit is the observation, not the mouse.** Counts are inflated by the number of timepoints, so the chi-square statistic is inflated by roughly that factor and will reject for arbitrarily mild imbalance. `check_cage_distribution()` in `survival_statistics.R:295-301` does the structural check correctly — the two files disagree on how to answer the same question.
+3. **Sparse-table warnings.** `chisq.test` on a sparse cage × treatment table will warn about expected counts < 5 on essentially every real study; the warning is neither caught nor surfaced.
+
+**Fix:** replace with the structural nesting check (`survival_statistics.R`'s version), keep the chi-square only as a descriptive extra, and make `handle_cage_effects = "include_if_not_collinear"` branch on the structural result.
+
+---
+
+### R3.18 TWM's noise-floor branch is discontinuous for any `noise_floor != 1.0` — **Major**
+**File:** `R/therapeutic_window_metric.R:118-129`
+
+```r
+twm$TWM <- ifelse(twm$Mean_Pct_Weight_Loss <= noise_floor,
+                  tgi_pos,                                   # units: TGI percentage points
+                  tgi_pos / twm$Mean_Pct_Weight_Loss)        # units: dimensionless ratio
+twm <- twm[order(-twm$TWM), ]                                # the two are then ranked together
+```
+
+The two branches return quantities on different scales, and the rows are sorted into a single ranking. They agree at the boundary **only when `noise_floor == 1.0`**, because dividing by 1 is the identity — the continuity is an accident of the default value, not a property of the formula. `noise_floor` is a user-facing argument documented as tunable ("users with experiment-specific noise estimates should tune accordingly"); setting it to 5 introduces a 5× jump discontinuity at the threshold, and a well-tolerated arm just below the floor will outrank a more effective arm just above it purely from the branch change.
+
+Relatedly, `twm_table` carries no uncertainty of any kind — it is a ratio of two group means with no CI, no n, and no test, and is then sorted to produce what reads as a ranking of treatments. `bayesian_therapeutic_window()` does this properly.
+
+**Fix:** make the transition continuous, e.g. `tgi_pos / pmax(Mean_Pct_Weight_Loss, noise_floor)`, which reduces to the current behaviour at `noise_floor = 1.0` and stays continuous for any value. Add per-group *n* and a bootstrap CI to `twm_table`, or mark the table descriptive-only and point to the Bayesian version for inference.
+
+---
+
+## R3-C. Minor
+
+### R3.19 Growth-rate methods text says `log1p`; the code uses `log()` with a min/2 fill
+**Files:** `R/tumor_growth_statistics.R:1173`, `R/tgs_path_auc.R:218` (text) vs `R/tumor_growth_statistics.R:145-146` (code)
+
+Both `analysis_summary$methods$growth_rate_calculation` strings state growth rates are fitted to "log1p-transformed volume data". `tgs_compute_growth_rates()` actually applies `raw_vol[raw_vol <= 0] <- min(raw_vol[raw_vol > 0])/2; log(raw_vol)`. These strings are surfaced verbatim in the dashboard methods panel and the HTML report export, so the discrepancy propagates into anything a user writes up.
+
+### R3.20 The frequentist log transform lacks the all-non-positive guard added to the Bayesian path
+**File:** `R/tumor_growth_statistics.R:819-821`
+
+```r
+vol[vol <= 0] <- min(vol[vol > 0], na.rm = TRUE) / 2
+```
+
+Round 1 §B3.3 added a guard for this exact pattern in `bayesian_tumor_growth` / `bayesian_body_weight` / `bayesian_synergy`, because `min(numeric(0))` is `Inf` and the fill silently becomes `Inf`, then `log(Inf) = Inf`. The frequentist entry point still has the unguarded version, as does `tgs_compute_growth_rates()` at `:145`. Low probability, but it is the same defect the Bayesian side was hardened against, and the fix is three lines.
+
+### R3.21 The `lme4` and `auc` paths adjust over different comparison families
+Beyond R3.1: `tgs_path_auc()` builds `utils::combn(treatments, 2)` — all k(k−1)/2 pairs — and adjusts over that family, even though `reference_group` is supplied and the results are then reordered to put reference comparisons first. The `lme4` path builds only the k−1 vs-reference contrasts. For k = 5 that is 10 tests versus 4, so the same `p_adjust_method` means materially different stringency depending on `model_type`.
+
+### R3.22 The AUC path pairs an equal-variance omnibus test with unequal-variance pairwise tests
+**File:** `R/tgs_path_auc.R:55-56, 95`
+
+`stats::aov(AUC ~ Treatment)` assumes homoscedasticity; the pairwise tests deliberately use `t.test(..., var.equal = FALSE)` because, per the function's own note, "variances between treatment groups may differ". Both cannot be right. Use `stats::oneway.test(AUC ~ Treatment, var.equal = FALSE)` (Welch ANOVA) for the omnibus so the two agree, and add a Levene / Brown–Forsythe check to the diagnostics (already listed as missing in Round 2 §C).
+
+### R3.23 Dead `unique_id` merge in `tgs_compute_auc()`
+**File:** `R/tumor_growth_statistics.R:491-501`
+
+`unique_combinations`, the sequential `unique_id`, and the `merge()` that attaches it are computed and never used — the loop keys on `composite_id` from `make_mouse_key()`. The `merge()` also silently reorders rows and would duplicate rows if `unique_combinations` were ever non-unique. Delete lines 491-495 and index `auc_df` directly.
+
+### R3.24 `tgs_compute_growth_rates()` splits over the full factor cross-product
+**File:** `R/tumor_growth_statistics.R:135-137`
+
+`split(auc_df, list(treatment, id, cage))` allocates one list element per *combination* of levels, not per observed combination. For 6 treatments × 60 IDs × 12 cages that is 4,320 elements of which ~60 are non-empty. Pass `drop = TRUE`, or split on `make_mouse_key(...)` directly.
+
+### R3.25 `weight_loss_threshold()` mouse key omits cage, and the function has no cage argument
+**File:** `R/weight_loss_threshold.R:57`
+
+`make_mouse_key(wd$Treatment, wd$ID)` — two fields. `therapeutic_window_metric()` uses three (`ID|||Treatment|||Cage`), and `tumor_growth_statistics()` uses three. Same-ID mice in different cages within one treatment arm still collapse here. The function does not accept a `cage_column` at all, so a caller cannot fix it.
+
+### R3.26 Time-to-weight-loss censoring is informative and treated as independent
+**File:** `R/weight_loss_threshold.R:96-106`
+
+Animals that never reach the threshold are censored at their last observation. But the dominant reason for a short observation record is euthanasia for tumour burden — which is not independent of the weight-loss hazard. This is a competing-risks setting, and the KM estimate here systematically overestimates weight-loss-free survival. Either move to a cumulative-incidence / Fine–Gray formulation, or document the assumption explicitly and report how many censorings were administrative versus event-driven.
+
+### R3.27 "All events" is treated as separation, contradicting the package's own comment
+**Files:** `R/weight_loss_threshold.R:156-157`, `R/survival_statistics.R:325-333`
+
+```r
+has_separation <- any(ev_by_grp == 0L) || any(ev_by_grp == n_by_grp)
+```
+
+`survival_statistics.R:331` prints "Note: Groups with all events: ... (this is not a problem for Cox models)" and then includes that case in `has_separation` anyway, routing an ordinary dataset to Firth. A group in which every animal has an event is perfectly estimable in a Cox model; only a group with *zero* events causes separation. Drop the `ev_by_grp == n_by_grp` term from both.
+
+### R3.29 No frequentist path returns `transform_used`, so callers cannot tell what scale the results are on
+**Files:** `R/tumor_growth_statistics.R:1210-1234` (lme4 return), `:927-955` (gam return), `R/tgs_path_auc.R:250-267`
+
+Every `bayesian_*()` function returns `transform_used`. No frequentist path does — `grep -rn "transform_used" R/` matches only the Bayesian files. `treatment_effects$Adjusted_Mean` from a default `tumor_growth_statistics()` call is a log-volume with nothing in the returned object marking it as such; the only record is the free-text `summary$methods$volume_transformation` string, which is itself wrong for the AUC path (R3.16).
+
+The dashboard works around this by overwriting the field from its own UI input, with an explicit comment saying the backend metadata "is not reliably populated for all paths" (`mouseExperimentDashboard/R/mod_tumor_growth.R:748-750`). That workaround is only available to a caller who already knows what it asked for; a downstream consumer handed a result object cannot recover the scale, which is exactly what it needs in order to back-transform correctly.
+
+This is the concrete cost of Round 2 §B7.1 (schema inconsistency between Bayesian and frequentist returns) being left open.
+
+**Fix:** add `transform_used` (and `model_type_used`, which the `lme4` and `auc` paths also omit while the `gam` path sets it) to all three frequentist return lists.
+
+---
+
+### R3.28 Magic thresholds are undocumented
+`0.85` / `1.15` for the Loewe combination-index bands and `±0.1` for the Bliss/Loewe difference bands (`R/analyze_drug_synergy.R:174-200`) are asserted without citation or rationale, and are not exposed as arguments. Round 2 §I.2 made the same observation about `noise_floor`; the resolution there was to document it. Apply the same treatment: cite the source or expose the thresholds.
+
+---
+
+## R3-D. Cross-cutting themes
+
+These are not individual defects so much as patterns the package should decide a policy on.
+
+**D1. The experimental unit is never stated.** Cage appears as a fixed effect, a random effect, a chi-square test, and a printed message, in four functions, with four different treatments — and is absent from the frequentist Cox model entirely (R3.13). If cages are the randomisation unit, the effective n is the number of cages and most of the package is anti-conservative. A single documented policy, applied uniformly, would settle roughly six of the findings above.
+
+**D2. Dropout is treated as a nuisance to be patched, not as a feature of the design.** It surfaces as extrapolation (R3.9), as survivor-biased endpoint TGI (R3.5), as incomparable AUC windows (R3.3), and as informative censoring (R3.26). Each site handles it differently and none handles it correctly. The principled options are a joint longitudinal-survival model, a common analysis window, or an explicitly-stated estimand ("volume among animals surviving to day T"). Any of the three would be defensible; the current mixture is not.
+
+**D3. Derived ratio metrics carry no uncertainty.** TGI, TWM, Bliss difference, and the Combination Index are all reported as bare point estimates by the frequentist path, and several are used to produce categorical scientific calls or rankings. Every one of these has a Bayesian sibling that does it properly. Either add bootstrap CIs across the board or restructure the frequentist functions as descriptive-only with the inferential answer delegated to the Bayesian path.
+
+**D4. Multiplicity has no owner.** Three model paths, the dashboard, and the power module each make their own independent choice, and none of them consults `p_adjust_method` (R3.1, R3.15, dashboard R3.D1). A single `comparison_family` policy — chosen once, threaded everywhere, and reported in the results object — would replace all of it.
+
+**D5. "Silently ignored parameter" is now a five-time recurring bug class.** Round 1 §1.1 (`handle_cage_effects`, `random_effects_specification`, `polynomial_degree`), Round 2 §A.3 (`auc_method`), §J.4 (`baseline_sd`), §J.11 (`cage_column`), and now R3.1 (`p_adjust_method`) and R3.9 item 5 (`extrapolation_points`). The v0.4.6 parameter-sensitivity tests were the right response but cover only the arguments already known to be broken. The generalisable fix is a test that, for each exported analysis function, calls it twice with each documented argument set to two different values and asserts the results differ — driven off the formals list, so new arguments are covered automatically.
+
+---
+
+## R3-E. Status table — Round 3
+
+| ID | Issue | Severity | File | Status |
+|---|---|---|---|---|
+| R3.1 | `p_adjust_method` ignored in `lme4` + `gam` paths (default path unadjusted) | **Critical** | `tumor_growth_statistics.R:1113`, `tgs_gam.R:299` | ✅ Fixed v0.6.0 |
+| R3.2 | Pairwise log-rank always errors → omnibus p reused (Round 1 §2.8 not actually fixed) | **Critical** | `survival_statistics.R:493` | ✅ Fixed v0.5.0 |
+| R3.3 | AUC integrated over per-mouse windows; unequal dropout can reverse the effect | **Critical** | `tumor_growth_statistics.R:481`, `tgs_path_auc.R` | Open |
+| R3.4 | BW GAM emmeans always NULL — v0.4.11 gamm4 patch not applied in duplicated path | **Critical** | `analyze_body_weight.R:161` | ✅ Fixed v0.6.0 |
+| R3.5 | Survivor bias in every endpoint-day TGI (v0.4.14 fix not propagated) | Major | 5 files | Open |
+| R3.6 | TGI denominator uncertainty never propagated; arithmetic vs geometric mean | Major | all TGI consumers | Open |
+| R3.7 | Frequentist synergy classifies from point estimates, no uncertainty | Major | `analyze_drug_synergy.R:141` | Open |
+| R3.8 | Bayesian priors not per-coefficient and not response-scaled | Major | `bayesian_*.R`, `utils_bayes.R` | Open |
+| R3.9 | `tgs_extrapolate()` = unflagged single imputation over informative dropout | Major | `tumor_growth_statistics.R:16` | Open |
+| R3.10 | BW double-adjusts for tumour burden by default | Major | `analyze_body_weight.R:66,104` | ✅ Fixed v0.5.0 |
+| R3.11 | BW baseline aggregated by ID only; baseline used as covariate on itself | Major | `analyze_body_weight.R:91` | ✅ Fixed v0.5.0 |
+| R3.12 | BW returns no pairwise comparisons | Major | `analyze_body_weight.R:261` | ✅ Fixed v0.6.0 |
+| R3.13 | Frequentist Cox ignores cage clustering | Major | `survival_statistics.R:88` | 🟡 Partial v0.6.0 (structure check available; Cox term pending) |
+| R3.14 | `survival_statistics()` one-row-per-mouse contract undocumented/unvalidated | Major | `survival_statistics.R:89` | ✅ Fixed v0.5.0 |
+| R3.15 | Power analysis ignores multiplicity and attrition | Major | `apriori_power_analysis.R:96` | Open |
+| R3.16 | AUC path never applies `transform` but reports that it did | Major | `tgs_path_auc.R:209` | ✅ Fixed v0.5.0 |
+| R3.17 | Cage confounding decided by chi-square p on observation counts | Major | `tumor_growth_statistics.R:191` | ✅ Fixed v0.6.0 |
+| R3.18 | TWM noise-floor branch discontinuous unless `noise_floor == 1.0` | Major | `therapeutic_window_metric.R:119` | ✅ Fixed v0.5.0 |
+| R3.19 | Methods text says `log1p`, code uses `log()` + min/2 fill | Minor | `tumor_growth_statistics.R:1173` | ✅ Fixed v0.5.0 |
+| R3.20 | Frequentist log fill lacks the all-non-positive guard (cf. §B3.3) | Minor | `tumor_growth_statistics.R:820` | ✅ Fixed v0.5.0 |
+| R3.21 | `auc` adjusts over all pairs, `lme4` over k−1 — different families | Minor | `tgs_path_auc.R:64` | ✅ Fixed v0.6.0 |
+| R3.22 | Equal-variance `aov` omnibus + Welch pairwise in the same path | Minor | `tgs_path_auc.R:55` | Open |
+| R3.23 | Dead `unique_id` merge in `tgs_compute_auc()` | Minor | `tumor_growth_statistics.R:491` | ✅ Fixed v0.5.0 |
+| R3.24 | `split()` over full factor cross-product in growth rates | Minor | `tumor_growth_statistics.R:135` | Open |
+| R3.25 | `weight_loss_threshold()` key omits cage; no cage argument | Minor | `weight_loss_threshold.R:57` | ✅ Fixed v0.5.0 |
+| R3.26 | Time-to-weight-loss censoring is informative (competing risks) | Minor | `weight_loss_threshold.R:96` | Open |
+| R3.27 | "All events" wrongly treated as separation, contradicting own comment | Minor | `weight_loss_threshold.R:156`, `survival_statistics.R:331` | ✅ Fixed v0.5.0 |
+| R3.28 | Undocumented magic thresholds (0.85 / 1.15 / ±0.1) | Minor | `analyze_drug_synergy.R:174` | Open |
+| R3.29 | No frequentist path returns `transform_used` / `model_type_used` | Minor | `tumor_growth_statistics.R`, `tgs_path_auc.R` | ✅ Fixed v0.5.0 |
+| R3.30 | mm³ hard-coded in tumour-mass adjustment; cm³ input silently disables it | Major | `analyze_body_weight.R:69`, `weight_loss_threshold.R:50`, `therapeutic_window_metric.R:61` | ✅ Fixed v0.5.0 |
+| R3.31 | Jonckheere-Terpstra hardwired to NULL; `clinfun` + 2 reporting branches dead | Major | `dose_response_statistics.R:293` | ✅ Fixed v0.5.0 |
+
+---
+
+## R3-F. Open questions for the maintainer
+
+These change what the fix should be, so they are worth answering before the work starts.
+
+1. **What is the canonical comparison family** — vs-reference only (Dunnett) or all pairs (Tukey)? Right now `lme4`, `gam`, `auc`, and the dashboard each answer differently (R3.1, R3.21, dashboard R3.D1).
+2. **Is the cage the randomisation unit** in your studies, or are animals randomised individually and merely housed together? This determines whether the package is currently anti-conservative throughout (R3-D1, R3.13, R3.17).
+3. **For unequal follow-up (R3.3), which estimand do you want** — a common window truncated at the last day all groups survive to, duration-normalised AUC, or per-mouse last observation? Each is defensible; they answer different questions and give different numbers.
+4. **Should `extrapolation_points` survive at all** (R3.9)? Given that the animals it imputes are almost always animals removed for tumour burden, my recommendation is to deprecate it rather than repair it — but if it is in active use for a specific study design I would want to know that design first.
+5. **What volume units do real uploads use** — mm³ or cm³? Both appear in the bundled data, and the answer determines how badly the un-scaled Bayesian intercept prior bites (R3.8).
+6. **Should `survival_statistics()` reduce longitudinal input to one row per mouse itself**, or refuse it (R3.14)? Reducing internally would let the dashboard delete its own reduction loop and remove a place the two can diverge.
+7. **Is the frequentist path meant to be inferential or descriptive?** Several functions (`analyze_drug_synergy`, `therapeutic_window_metric`, `total_benefit_area`) produce categorical scientific calls from bare point estimates while a fully inferential Bayesian sibling exists. Declaring them descriptive-only would be a legitimate and much cheaper resolution than retrofitting bootstrap CIs onto all of them (R3-D3).
+
+---
+
+## R3-G. Maintainer decisions and revised recommendations (2026-07-29)
+
+The §R3-F questions were answered by the maintainer. This section records the answers, the design consequences, and — where an answer changes the analysis — the revised finding. Two findings are **upgraded** on the strength of the answers (R3.17 → Critical, R3.5 → Critical); two are **simplified** to a settled decision (R3.9, R3.1).
+
+---
+
+### G.1 Comparison family — *"Users should be able to define the comparison of interest."*
+
+Settles R3.1, R3.21, and dashboard R3.D1/R3.D3 as a single piece of work rather than a choice between them.
+
+**Design:** add a `comparison_family` argument alongside a *working* `p_adjust_method`, threaded identically through all three model paths:
+
+```r
+comparison_family = c("vs_reference", "all_pairs", "custom")
+custom_contrasts  = NULL   # named list of coefficient vectors, when "custom"
+p_adjust_method   = c("bonferroni", "holm", "fdr", "dunnett", "tukey", "none")
+```
+
+Rules that make this coherent:
+- The adjustment family must be the set of comparisons actually returned. Today the AUC path adjusts over all k(k−1)/2 pairs while returning a reference-ordered table, and the `lme4` path returns k−1 contrasts adjusted over nothing (R3.21). Deriving the family from `comparison_family` removes the discrepancy by construction.
+- `"dunnett"` is only valid with `vs_reference`; `"tukey"` only with `all_pairs`. Validate rather than silently substituting — and note the dashboard currently passes `adjust = "dunnett"` to emmeans, which is not a recognised value and is silently downgraded to the `dunnettx` approximation (dashboard R3.D2). Exact Dunnett is `adjust = "mvt"`.
+- The returned object must record what was actually applied (`$comparison_family`, `$p_adjust_method_used`), so the dashboard and the HTML report can state it rather than assert a default.
+- The dashboard's existing "Post-hoc Comparisons" dropdown is the natural home for `comparison_family`; add a second control for the correction, and delete the recomputation block at `mod_tumor_growth.R:633-653` so there is exactly one implementation.
+
+**Note on the GAM path:** for `model_type = "gam"` the contrasts are evaluated at five study-day quantiles, so the family is (k−1) × 5 or k(k−1)/2 × 5 cells, not k−1. Decide explicitly whether the day dimension is part of the family. Recommendation: adjust across all returned cells and say so in the table header, since the five days are reported together and read together.
+
+---
+
+### G.2 Cage structure — *"In most experiments, all mice in one cage belong to the same treatment group. Individual mice are treated independently. In some cases the cage may have mice with different treatments."*
+
+**This upgrades R3.17 from Major to Critical**, because the answer reveals that the current default does the opposite of the right thing in the standard design.
+
+The bundled `master_synthetic_data` is exactly the design described — and it is the informative case:
+
+```
+        Vehicle  Drug_A Low  Drug_A Mid  Drug_A High  Drug_B  Drug_A Mid + Drug_B
+  C01         4           0           0            0       0                    0
+  C02         4           0           0            0       0                    0
+  C03         0           4           0            0       0                    0
+  ...
+  cages holding >1 treatment: 0 of 12
+  cages per treatment: 2, 2, 2, 2, 2, 2
+```
+
+Two cages per treatment, four mice per cage, no mixed cages. There are three structurally distinct cases and they need different handling:
+
+| Case | Structure | Cage as fixed effect | Cage as random effect | Current behaviour |
+|---|---|---|---|---|
+| **(a) Crossed** | cages contain multiple treatments | Estimable | Estimable | chi-square non-significant → cage included as fixed. Reasonable. |
+| **(b) Nested with replication** | ≥2 cages per treatment, one treatment each | **Aliased — not estimable** | **Estimable and required** | chi-square significant → cage dropped entirely. **Wrong.** |
+| **(c) Nested, no replication** | exactly 1 cage per treatment | Aliased | Not estimable | chi-square significant → cage dropped, no warning. Should warn loudly. |
+
+Case (b) is the maintainer's stated norm and the shipped dataset's structure. In it, cage cannot enter as a fixed effect — it is perfectly aliased with treatment — but `(1 | Cage)` is fully estimable *because there are two cages per arm*, and fitting it is the statistically correct model. The current default `handle_cage_effects = "include_if_not_collinear"` resolves `cage_collinear = TRUE` and drops cage from the model altogether, discarding a variance component that the design supports estimating.
+
+The consequence is a straightforward understatement of uncertainty. With m = 4 mice per cage, the design effect is `1 + (m − 1) · ICC = 1 + 3·ICC`. At a cage-level ICC of 0.10 the effective n per arm is 8/1.3 ≈ 6.2 rather than 8 and standard errors are understated by roughly 14 %; at ICC = 0.20 it is ~26 %. Cage-level ICCs in that range are ordinary in rodent studies (shared food/water, shared handling, cage position in the rack, social hierarchy). Every p-value and confidence interval from the default path is anti-conservative by that factor.
+
+The maintainer's point that "individual mice are treated independently" is correct and matters — it establishes that the **mouse**, not the cage, is the experimental unit for the intervention, so the design is not pseudoreplicated in the strong sense and cage does not need to be the unit of analysis. But independent *treatment assignment* does not imply independent *outcomes*: co-housed mice share an environment, and that shared environment induces residual correlation which `(1 | Cage)` is exactly the tool for. Both statements are true simultaneously.
+
+**Revised recommendation:**
+
+1. Replace the chi-square test (R3.17) with the structural check already used correctly in `survival_statistics.R:295-301`, and classify into (a) / (b) / (c).
+2. Change the default from `include_if_not_collinear` to a structure-aware `"auto"`:
+   - case (a) → cage as fixed effect (or random; both are defensible — document the choice)
+   - case (b) → `(1 | Cage)` random intercept, **added to the model, not dropped**
+   - case (c) → cage omitted, with a `warning()` that cage and treatment are completely confounded and that any cage effect is absorbed into the treatment estimate
+3. Make `always_include` error rather than silently produce a rank-deficient design in cases (b) and (c).
+4. Apply the same logic to `survival_statistics()` (R3.13 — add `+ cluster(Cage)` or `+ frailty(Cage)` in case (b)) and to `analyze_body_weight()`, whose `re_full` already includes `(1 | Cage)` and is therefore the one function currently getting this right.
+5. Report the estimated cage ICC in the diagnostics so users can see how much it mattered.
+
+---
+
+### G.3 Dropout — *"Mice often die earlier than the final time point due to the tumor or being euthanized due to exceeding an IACUC set maximum tumor size or general poor health. The statistical design needs to incorporate this and not discard or truncate."*
+
+This is the right requirement, and the good news is that **the LMM/GAMM path already satisfies it**; what violates it is every derived endpoint-day metric. **R3.5 is upgraded to Critical** on this basis, and R3.3's recommended fix changes.
+
+**Why the mechanism matters.** Euthanasia triggered by a *measured* tumour volume crossing a protocol threshold is missingness that depends only on **observed** data. That is Missing At Random (MAR), not MNAR — and likelihood-based methods (`lmer`, `gamm4`, `brms`) are valid under MAR without modelling the dropout process at all, provided the model conditions on the information that drove the decision (the trajectory up to that point, which it does). Death from general poor health not reflected in measured volume is closer to MNAR and warrants a sensitivity analysis, but the dominant mechanism here is favourable.
+
+This splits the package cleanly into three tiers:
+
+**Tier 1 — already correct; discards nothing.** `tumor_growth_statistics(model_type = "lme4" | "gam")` and `bayesian_tumor_growth()`. Every mouse contributes every observation it has; a mouse euthanised on day 20 still informs its group's intercept and slope. No truncation, no imputation, no exclusion. This is the right foundation and needs no change for dropout.
+
+**Tier 2 — silently broken; used by most of the derived metrics.** Anything computed as a raw mean at a fixed day:
+
+```r
+max_day <- max(wd$Day); final <- wd[wd$Day == max_day, ]      # R3.5
+ctrl_mean_vol <- mean(final$Volume[final$Treatment == reference_group])
+```
+
+These are not likelihood-based, so MAR affords them no protection. They condition on survival to `max_day` and therefore estimate "mean volume **among mice that survived to day T**" — a different quantity, biased hardest against the control arm because control animals hit the IACUC limit first. `therapeutic_window_metric()`, `analyze_drug_synergy()`, `weight_corrected_tgi()`, `efficacy_toxicity_bivariate()`, and the AUC path (R3.3) are all in this tier.
+
+**Tier 3 — treats dropout as the outcome.** Time-to-event endpoints: time to 2× or 4× baseline volume, time to the IACUC limit. Defined for every mouse, uses the death/euthanasia as information rather than as missingness. The package already has this machinery (`survival_statistics()`, and the dashboard's volume-threshold event derivation).
+
+**Revised recommendation — this replaces the three options offered under R3.3:**
+
+> **Derive the endpoint metrics from the fitted model's estimated marginal means at day T, not from raw means of survivors.**
+
+The LMM already estimates each group's mean log-volume at any day T using every observation from every mouse. Computing TGI as `1 − exp(emm_treated(T)) / exp(emm_control(T))` uses the full dataset, discards nobody, truncates nothing, and — unlike appending synthetic rows — propagates the extrapolation uncertainty into the standard error, because it is the model's own uncertainty. This is precisely the "incorporate, don't discard or truncate" behaviour requested, and it is why it also settles G.4.
+
+Supporting changes:
+- Report **n at risk at day T** per group alongside every endpoint metric, so a reader can see how much of each arm was still on study. This is the number the current output hides.
+- Surface the dropout itself as a first-class result: a Kaplan–Meier or cumulative-incidence curve of time-to-removal per arm, shown next to the efficacy result rather than buried in the Survival tab.
+- For AUC (R3.3): compute the model-based integral of the fitted trajectory over `[0, T]` rather than the per-mouse trapezoid over each mouse's own window. Retain the per-mouse trapezoidal AUC as a descriptive column with its `First_Day`/`Last_Day` shown, clearly marked as observed-window-dependent.
+- For weight-loss endpoints (R3.26): removal for tumour burden is a **competing risk** for time-to-weight-loss. Report cumulative incidence rather than 1 − KM, and state how many censorings were administrative versus event-driven.
+- Where the MNAR concern bites (death from general poor health, not volume-driven), add a documented sensitivity analysis — e.g. refit with a pattern-mixture shift on the dropouts — rather than assuming it away.
+
+---
+
+### G.4 Extrapolation — *"If the proper statistical designs do not need extrapolation, this functionality can be dropped. However, the ability to extrapolate for plotting purposes must remain."*
+
+**Decided.** Under G.3 the statistical path does not need it: the model extrapolates to day T internally and carries the uncertainty, which appending an imputed row never did (R3.9 item 2).
+
+**Action:**
+- Remove `extrapolation_points` from `tumor_growth_statistics()` and delete `tgs_extrapolate()` (`R/tumor_growth_statistics.R:16-117`). Deprecate with a warning for one release rather than removing outright, pointing users to the model-based endpoint means.
+- **Keep `plot_tumor_growth(extrapolation_points = ...)` unchanged** (`R/plot_tumor_growth.R:52`). It is a separate implementation with different semantics ("all" or the number of recent points to fit) and is genuinely useful for visualising a projected trajectory. The name collision (R3.9 item 6) resolves itself once the statistical one is gone.
+- Plots that display extrapolated segments should render them visually distinct — dashed line, or a shaded projection band — so a reader never mistakes a projection for data. Worth checking `plot_tumor_growth()` already does this.
+- Drop `Extrapolated` handling from `tgs_compute_auc()` (`:521-542`) once the source of extrapolated rows is gone.
+
+---
+
+### G.5 Volume units — *"Users can upload data that is either in cubic mm or cm, but mm is most common."*
+
+**Confirms R3.8 as a real problem in the common case.** For mm³, log-volume runs roughly 2–9 (`master_synthetic_data`: 2.26–8.35). The default `prior_strength = "skeptical"` sets the Intercept prior to `normal(0, 0.625)` — about nine prior SDs from where the data actually sit. For cm³ the same prior is roughly reasonable. A fixed prior cannot serve both, and it is mis-specified for the more common of the two.
+
+**Action:**
+1. **Scale the Intercept prior to the response**, as brms does by default: `normal(median(y), 2.5 * mad(y))` computed on the modelling scale after transformation. This is unit-agnostic and eliminates the problem for both inputs.
+2. **Set `class = "b"` priors per coefficient**, splitting the `Treatment:Day` interaction terms from the main effects (R3.8a). The interaction is the estimand and its plausible scale (~0.01–0.08 per day on the log scale) is unit-*independent* — a growth-rate difference does not change when volumes are rescaled — so a fixed prior is defensible there in a way it is not for the intercept. Re-tune the skeptical/weakly-informative/informative/diffuse ladder against that scale.
+3. **Detect and record the unit.** A median volume below ~50 on input is almost certainly cm³; above, mm³. Surface the inference in the result object and the dashboard, and let the user override. This is worth doing independently of priors, because TGI, AUC units (mm³·day vs cm³·day), and the `Net_Weight` tumour-mass adjustment in `analyze_body_weight()` (`wd$Volume / 1000 * tumor_density`, `:69`) **all assume mm³**. A cm³ upload silently under-subtracts tumour mass by a factor of 1000, making the adjustment a no-op and the toxicity result wrong with no warning. That is a net-new finding from this answer — logged as **R3.30** below.
+
+---
+
+### R3.30 The tumour-mass weight adjustment hard-codes mm³ and fails silently on cm³ input — **Major (new, from G.5)**
+**Files:** `R/analyze_body_weight.R:69`, `R/weight_loss_threshold.R:50`, `R/therapeutic_window_metric.R:61`
+
+```r
+wd$Tumor_Weight <- wd$Volume / 1000 * tumor_density   # mm³ → cm³ → g
+```
+
+Correct for mm³. For a cm³ upload the conversion should be `Volume * tumor_density` — the `/ 1000` makes the subtracted mass 1000× too small, so `Net_Weight` is effectively unadjusted body weight while the result is labelled "Net Weight (body − tumor)". Since the whole point of the adjustment is to stop a large tumour masking treatment-induced weight loss, a silent no-op inverts the conclusion for exactly the animals it matters most for.
+
+The same hard-coded `/ 1000` appears in all three toxicity functions. None validates the input scale.
+
+**Fix:** add a `volume_units = c("mm3", "cm3")` argument (or take it from the unit detection in G.5 item 3), and range-check: warn when the implied tumour mass exceeds a plausible fraction of body weight, which catches the error from either direction.
+
+---
+
+### G.6 Frequentist inference vs description — answered separately
+
+The maintainer asked for more information before deciding. See the analysis returned in-session; the choice and its consequences are:
+
+- **Option A (make them inferential):** add a nonparametric bootstrap to `analyze_drug_synergy()` and `therapeutic_window_metric()`. Resample **mice within group** (not observations), including the control arm, and recompute the entire statistic per resample. This produces a percentile CI *and* propagates the TGI denominator uncertainty (R3.6) in the same pass, since the control mean is recomputed on each resample. ~40 lines per function, no new dependency, and `tgs_boot_diff_ci()` (`R/tumor_growth_statistics.R:457`) is already the pattern to follow.
+- **Option B (make them descriptive):** keep the point estimates, remove or clearly demote the categorical verdicts, and document that inference comes from `bayesian_synergy()` / `bayesian_therapeutic_window()`.
+
+Recommendation: **A for `analyze_drug_synergy()` and `therapeutic_window_metric()`** — both produce headline results that drive decisions and figures, and both currently emit a categorical verdict from an unqualified point estimate. **B for `total_benefit_area()`, `weight_corrected_tgi()`, and `efficacy_toxicity_bivariate()`**, which are exploratory summaries. Pending confirmation.
+
+---
+
+### G.7 Revised severities and settled items
+
+| ID | Change | Reason |
+|---|---|---|
+| R3.17 | Major → **Critical** | Default cage handling discards estimable cage variance in the maintainer's stated standard design (G.2 case b); SEs understated ~14–26 % at plausible ICC |
+| R3.5 | Major → **Critical** | Confirmed against the stated dropout mechanism; endpoint-day means estimate a survivor-conditional quantity, biased hardest against control (G.3) |
+| R3.3 | Fix revised | Model-based endpoint means replace the three truncation/normalisation options originally offered (G.3) |
+| R3.9 | **Settled — deprecate** | Statistical extrapolation removed; `plot_tumor_growth()` extrapolation retained (G.4) |
+| R3.1 | **Settled — design agreed** | `comparison_family` + working `p_adjust_method`, one implementation shared with the dashboard (G.1) |
+| R3.8 | **Settled — data-scale priors** | mm³ confirmed as the common case; fixed intercept prior cannot serve both units (G.5) |
+| R3.13 | Scope extended | Cox needs `cluster()`/`frailty()` in case (b), gated on the same structural check as R3.17 (G.2) |
+| R3.30 | **New — Major** | mm³ hard-coded in the tumour-mass adjustment; cm³ input silently disables it (G.5) |
+| R3.6 | Fix unified | Bootstrap in G.6 Option A resolves denominator uncertainty in the same pass |
+
+---
+
+## R3-H. Resampling strategy — where bootstrap, where permutation (2026-07-29)
+
+**Decision recorded:** G.6 Option A is confirmed. `analyze_drug_synergy()` and `therapeutic_window_metric()` gain a mouse-level nonparametric bootstrap; `total_benefit_area()`, `weight_corrected_tgi()`, and `efficacy_toxicity_bivariate()` are documented as descriptive.
+
+The maintainer then asked whether permutation testing is worth adding elsewhere. It is, in four specific places and not in the others — the two techniques answer different questions and are not interchangeable. The governing distinction:
+
+> **A bootstrap estimates the sampling distribution of an estimator** — use it when you want an interval around a quantity (TGI, TWM, Bliss excess, a mean difference).
+> **A permutation test generates a null distribution by re-randomising labels** — use it when the null hypothesis is genuinely "the labels carry no information", and only when the thing you permute is exchangeable under that null.
+
+Applying that test to each candidate site:
+
+### H.1 Dose-response trend — the Jonckheere-Terpstra test is already built and switched off — **Major (new finding, R3.31)**
+
+The canonical permutation-based test for an ordered alternative across dose groups is Jonckheere–Terpstra, and this package already has the whole apparatus for it:
+
+- `clinfun` is declared in `DESCRIPTION` `Suggests` **solely** for this test — nothing else in `R/` references the package.
+- `dose_response_statistics()` returns `trend_test$jonckheere_test` (`R/dose_response_statistics.R:90`).
+- Two reporting branches consume a non-NULL result (`:629-635`, `:675-679`).
+- `tests/testthat/test-dose_response_statistics.R:126-136` calls `clinfun::jonckheere.test()` **directly** and asserts significance on the fixture.
+
+And then:
+
+```r
+# Jonckheere-Terpstra test not run due to mentioned issues
+jt_result <- NULL                                          # :293-294
+```
+
+There are no "mentioned issues" anywhere in the file — the comment refers to something that does not exist in the source. So `jonckheere_test` is permanently `NULL`, both reporting branches are unreachable, `clinfun` is a dependency the package never loads, and the test suite verifies a test the package does not run. That last point is the worst of it: the suite is green on a feature that is disabled, which is exactly the false-assurance pattern flagged in Round 2 §K.2.
+
+This is also the cleanest available fix for Round 2 §G.7 (unequal dose spacing breaking `contr.poly`). Jonckheere–Terpstra uses only the **ordering** of the dose levels, never their spacing, so doses of 0/10/30/100 mg/kg pose it no difficulty at all. It is strictly more robust than the orthogonal-polynomial decomposition for the question "does response change monotonically with dose", and it makes no normality assumption.
+
+**Action:** re-enable it (`clinfun::jonckheere.test(volume, dose, alternative = ...)` guarded by `requireNamespace`), pick the alternative from the observed direction rather than hardcoding, document the field in the `@return` block, and note in `@details` that it is a permutation test insensitive to dose spacing. If it was disabled for a real reason, that reason needs to be written down — as it stands the comment is unactionable.
+
+### H.2 AUC pairwise comparisons — permutation p-value to pair with the existing bootstrap CI — **worth it**
+
+`tgs_path_auc()` uses Welch's t-test on per-mouse AUCs, with an optional percentile bootstrap CI (`auc_bootstrap_n`, `tgs_boot_diff_ci()` at `R/tumor_growth_statistics.R:457`). At n = 8–10 per group, on a derived statistic whose distribution is right-skewed, Welch's t is precisely the approximation a permutation test improves on — and the null ("group label carries no information about a mouse's AUC") is exactly a label-exchangeability null, so permutation is licensed here.
+
+The natural pairing is **bootstrap for the interval, permutation for the p-value**; they are not redundant. Roughly 20 lines reusing the existing helper's structure, no new dependency. Worth gating behind the same `auc_bootstrap_n`-style argument so it stays optional.
+
+### H.3 Global test of a treatment effect on trajectory — **valuable, but blocked on one question**
+
+Permuting treatment labels across whole mouse trajectories and refitting gives an exact test of "treatment has no effect on the growth trajectory", free of two assumptions the current path leans on: the Kenward–Roger / Satterthwaite denominator-df approximation (known to be anti-conservative at these group sizes) and normality of the random effects.
+
+**The blocker is what to permute, and it must mirror how randomisation was actually done.** Given G.2 (one treatment per cage, ≥2 cages per arm), there are two possibilities with different consequences:
+
+- **Mice individually randomised to treatment, then re-housed by group.** Permutation unit is the mouse; 48 mice give ample resolution. But cage then becomes a *post-randomisation* variable, and permuting mice across cages breaks the cage structure that G.2 establishes is real.
+- **Cages assigned to treatments.** Permutation unit is the cage. With 12 cages across 6 arms there are 12!/(2!)^6 ≈ 7.5 million distinct assignments, so enumeration is not the constraint — but the *effective* sample size for the test is 12, not 48, and power drops accordingly.
+
+That second number is uncomfortable and it is also honest: if cages were the unit of assignment, 12 is the real replication and the current analysis is overstating precision regardless of whether a permutation test is run. The permutation framing makes that unavoidable rather than optional, which is an argument for doing it.
+
+**Open question:** *In your studies, are individual mice randomised to treatment and then re-housed by group, or are cages assigned to treatments?* This determines the permutation unit here and also refines the G.2 cage recommendation.
+
+### H.4 Survival with separation — exact permutation log-rank — **worth it, and it routes around R3.2**
+
+When a group has zero events, the Cox partial likelihood is not estimable, and the package falls back to Firth (`coxphf`) or an asymptotic log-rank whose chi-square approximation is poor at low event counts. A permutation log-rank (`coin::logrank_test(..., distribution = "exact")`) is valid in exactly that regime: it makes no large-sample appeal and needs no bias correction, because it is not estimating a hazard ratio at all.
+
+Note the division of labour — Firth corrects the **estimate's** small-sample bias, permutation gives a valid **p-value**. They are complementary, and reporting a Firth hazard ratio alongside a permutation p-value is a defensible pairing in the separation case.
+
+This would also make R3.2's broken pairwise fallback moot: rather than repairing a `survdiff()` call that has never executed, replace the branch with pairwise permutation log-rank tests, which are correct by construction in the regime that triggers the branch. Cost: a new `coin` dependency (well-maintained, in Suggests, gated by `requireNamespace`).
+
+### H.5 Synergy — permutation is the **wrong** tool here
+
+This is the case most likely to be reached for by analogy, and it does not work. The Bliss / Loewe null is not a label-exchangeability null; it is a **structural** null — "the combination arm's effect equals what Bliss (or Loewe) predicts from the two monotherapy arms". There is no permutation of treatment labels that generates a null distribution for that hypothesis, because permuting the labels destroys the monotherapy-vs-combination structure in terms of which the null is defined. Shuffling `Drug A` / `Drug B` / `A + B` / `Control` labels produces a world in which "the combination arm" is no longer the combination arm.
+
+The bootstrap in G.6 Option A is the right and sufficient tool: it delivers a credible interval on the Bliss/Loewe excess and, because the control arm is resampled too, propagates the TGI denominator uncertainty (R3.6) in the same pass. If a formal test of the additivity null is wanted later, it needs a model with an explicit interaction term (which is what `bayesian_synergy()` already provides), not resampling.
+
+### H.6 TWM, TGI, total benefit area — bootstrap only
+
+These are **estimands**, not hypotheses. The question is "how large is it, and how sure are we", not "could the labels have produced this by chance". Bootstrap intervals; no permutation.
+
+### H.7 Not a substitute for the mixed model
+
+A permutation test returns a p-value and nothing else — no estimate, no interval, no variance components, no marginal means, and no way to compute the model-based endpoint means that G.3 depends on. It is a complement to the LMM path, never a replacement for it.
+
+### H.8 Caveat — permutation interacts with informative dropout
+
+Permuting treatment labels permutes each mouse's dropout pattern along with its trajectory. Under the **strong global null** (treatment affects nothing, including time on study) that is correct and the test is exact. But bolting a permutation test onto a survivor-conditional endpoint statistic — a mean at `max_day` among survivors — makes the null distribution inherit the same survivor bias as the observed statistic, so the test comes out valid for a null nobody intended. **Sequence matters: fix the estimand (G.3) first, then permute.** Do not use a permutation p-value to paper over Tier 2 metrics.
+
+### H.9 Priority and cost
+
+| # | Site | Technique | Cost | Priority |
+|---|---|---|---|---|
+| H.1 | Dose-response trend (R3.31) | Permutation (Jonckheere–Terpstra) | ~free — already built, one line disabled | **1st** |
+| H.2 | AUC pairwise | Permutation p-value + existing bootstrap CI | ~20 LOC, no new dependency | 2nd |
+| — | Synergy / TWM (G.6 Option A) | Bootstrap | ~40 LOC each | 2nd |
+| H.4 | Survival under separation | Exact permutation log-rank | new `coin` Suggests; also retires R3.2 | 3rd |
+| H.3 | Global trajectory null | Permutation of treatment labels | moderate; **blocked on randomisation unit** | 4th |
+
+---
+
+### R3.31 Jonckheere-Terpstra test is hardwired to NULL; `clinfun` dependency and two reporting branches are dead — **Major (new)**
+**File:** `R/dose_response_statistics.R:293-294`, with consumers at `:90`, `:629-635`, `:675-679`
+
+See H.1 above for the full analysis. Summary: the test is disabled by `jt_result <- NULL` under a comment referencing "mentioned issues" that appear nowhere in the file; `clinfun` is a `Suggests` dependency used only by the test suite; the returned `trend_test$jonckheere_test` field is always `NULL` and undocumented in the `.Rd`; two reporting branches are unreachable; and `tests/testthat/test-dose_response_statistics.R:126-136` verifies the test independently, so the suite reports green on functionality the package does not execute.
+
+
+---
+
+## R3-I. Implementation log — v0.5.0 (2026-07-29)
+
+First batch of Round 3 fixes landed. Selection criterion: findings that are
+self-contained, produce a demonstrably wrong number today, and are unblocked by
+the §R3-F/§R3-G decisions.
+
+**Closed:** R3.2, R3.10, R3.11, R3.14, R3.16, R3.18, R3.19, R3.20, R3.23,
+R3.25, R3.27, R3.29, R3.30, R3.31. **Partial:** R3.1 (survival path done; the
+lme4 / gam `comparison_family` work is the larger G.1 change and is still open).
+
+Each fix has a regression test in `tests/testthat/test-code_review_round3.R`
+labelled with its finding ID — closing the §K.11 gap for Round 3 at least.
+R3.1 and R3.2 assert observable behaviour rather than the presence of code,
+because both were cases where a fix existed in the source and never executed.
+
+Test suite: **359 passing / 0 failing**, up from 352 passing / 7 failing. All
+seven baseline failures were §K.11 stale tests referencing APIs removed in
+v0.3.4 and earlier; removing or repairing them unblocks the `covr` baseline
+that §K.10 flagged as blocked.
+
+### Still open, in suggested order
+
+| Priority | Finding | Why it is next | Blocked on |
+|---|---|---|---|
+| 1 | **R3.1** (lme4/gam) + G.1 | Default model path still reports unadjusted p-values as Bonferroni | — |
+| 2 | **R3.17** + R3.13 (cage) | Default discards estimable cage variance; SEs understated 14–26 % | — |
+| 3 | **R3.5** + R3.3 (endpoint estimand) | Survivor-biased TGI across 5 functions; needs model-based EMMs | — |
+| 4 | **R3.4** (BW GAM) | Marginal-means table silently empty | — |
+| 5 | **G.6 Option A** + R3.6 | Bootstrap CIs for synergy / TWM; fixes denominator uncertainty in the same pass | — |
+| 6 | **R3.9** / G.4 | Deprecate statistical extrapolation, keep the plotting one | depends on 3 |
+| 7 | **R3.8** / G.5 | Data-scaled Bayesian priors; per-coefficient `class = "b"` | — |
+| 8 | **H.2, H.4** | Permutation p-value for AUC; permutation log-rank (retires R3.2's branch) | — |
+| 9 | **H.3** | Global trajectory permutation test | **randomisation unit question** |
+| — | R3.12, R3.15, R3.21, R3.22, R3.24, R3.26, R3.28 | Smaller items | — |
+
+Dashboard items (R3.D1–R3.D5) are mostly blocked on backend G.1; R3.D5 (sort by
+day before taking the per-animal last row) is unblocked and small.
+
+
+---
+
+## R3-J. Implementation log — v0.6.0 (2026-07-29)
+
+Second batch. Two deliberate behaviour changes here, both of which alter numbers
+users may already have published — flagged as BREAKING in the changelog.
+
+**Closed:** R3.1 (all paths), R3.4, R3.12, R3.17, R3.21.
+**Partial:** R3.13 — `classify_cage_structure()` now exists and gives the Cox
+path everything it needs, but the `cluster()` / `frailty()` term is not yet
+added to `survival_statistics()`.
+
+### G.1 as built
+
+`comparison_family` (`"vs_reference"` / `"all_pairs"` / `"custom"`) plus a
+working `p_adjust_method` (now including `"dunnett"` → exact `mvt`, and
+`"tukey"`), resolved once by `resolve_comparison_spec()` and shared by all three
+tumour-growth paths and `analyze_body_weight()`. The adjustment covers exactly
+the returned family, so the two can no longer diverge. Invalid pairings are
+rejected: Dunnett requires `vs_reference`, Tukey requires `all_pairs`, and both
+are refused on the AUC path, whose independent Welch t-tests have no joint
+covariance to exploit.
+
+For the GAM path the family is every returned (contrast × day) cell rather than
+each day in isolation — the five quantile days are reported and read together.
+Tukey/Dunnett cannot be re-derived across strata without the full joint
+covariance, so those stay within-day and are labelled as such in
+`Adjust_Scope`. Verified: Bonferroni over 15 GAM cells, 6 all-pairs, and 3
+vs-reference contrasts all differ by exactly the expected factors.
+
+### G.2 as built
+
+`classify_cage_structure()` operates on **mice**, not observations — the old
+chi-square counted rows, so its statistic was inflated by the number of
+timepoints. The new `handle_cage_effects = "auto"` default maps structure to
+placement: crossed → fixed, nested-with-replication → `(1|cage)`,
+completely-confounded → omitted with a warning.
+
+Measured impact on a 2-cages-per-arm / 4-mice-per-cage design with a real cage
+effect (ICC 0.66): treatment-contrast SEs went from 0.141 under the old default
+to 0.305 with cage restored — a factor of 2.2. At the more typical ICC of
+0.1–0.2 the factor is ~1.15–1.25. Either way the old default was
+anti-conservative, and it was anti-conservative *specifically* in the design the
+maintainer identified as standard.
+
+`cage_analysis$icc` now reports the cage ICC so this is visible rather than
+inferred; the design effect on effective sample size is 1 + (m − 1) × ICC.
+
+### Still open, in suggested order
+
+| Priority | Finding | Why it is next | Blocked on |
+|---|---|---|---|
+| 1 | **R3.5** + R3.3 | Survivor-biased endpoint TGI in 5 functions; needs model-based EMMs at day T (G.3) | — |
+| 2 | **G.6 Option A** + R3.6 | Bootstrap CIs for synergy / TWM; fixes denominator uncertainty in the same pass | — |
+| 3 | **R3.13** (finish) | Add `cluster()` / `frailty()` to the Cox path, gated on the structure check | — |
+| 4 | **R3.9** / G.4 | Deprecate statistical extrapolation, keep the plotting one | depends on 1 |
+| 5 | **R3.8** / G.5 | Data-scaled Bayesian priors; per-coefficient `class = "b"` | — |
+| 6 | **H.2, H.4** | Permutation p-value for AUC; permutation log-rank | — |
+| 7 | **R3.15** | Power analysis: multiplicity + attrition | — |
+| 8 | **H.3** | Global trajectory permutation test | **randomisation unit question** |
+| — | R3.22, R3.24, R3.26, R3.28 | Smaller items | — |
+
+### Dashboard
+
+R3.D1–R3.D4 are now **unblocked** — the backend applies the adjustment and
+records `comparison_family` / `p_adjust_method_used`, so the dashboard should
+delete its recomputation block (`mod_tumor_growth.R:633-653`) and render
+`result$pairwise_comparisons` directly. That also resolves R3.D4 (the GAM
+"All Comparisons" tab) as a side effect, since the failing `emmeans()` call on
+the raw `gamm4` object goes away with the block. R3.D5 remains unblocked and
+small. New dashboard work: surface `cage_analysis$icc`, and relabel the
+cage-handling selector for the `"auto"` default.

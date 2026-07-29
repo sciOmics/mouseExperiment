@@ -14,6 +14,11 @@ analyze_drug_synergy(
   combo_name,
   control_name = "Control",
   eval_time_point = NULL,
+  id_column = "ID",
+  ci_thresholds = c(0.85, 1.15),
+  strong_synergy_delta = 0.1,
+  n_boot = 2000L,
+  boot_seed = NULL,
   verbose = TRUE
 )
 }
@@ -36,6 +41,27 @@ analyze_drug_synergy(
 
 \item{eval_time_point}{Optional. A numeric value specifying a specific time point to evaluate synergy.
 If NULL (default), the function will use the last time point in the data.}
+
+\item{id_column}{Column identifying individual animals. Used to resample
+mice for the bootstrap; also used to report per-group n.}
+
+\item{ci_thresholds}{Length-2 numeric giving the Loewe combination-index band
+treated as indistinguishable from additive. Default \code{c(0.85, 1.15)} —
+a convention, not a derived quantity (CODE_REVIEW.md R3.28).}
+
+\item{strong_synergy_delta}{Numeric. Excess fractional effect (Bliss \emph{and}
+Loewe) above which the label is "Strong Synergy". Default 0.1, also a
+convention.}
+
+\item{n_boot}{Integer >= 0. Number of bootstrap resamples used to attach
+confidence intervals to the synergy metrics. Mice are resampled with
+replacement \emph{within} treatment group, including the control arm, and the
+whole statistic is recomputed per resample — so the interval propagates
+both the sampling error of each arm and the sampling error of the control
+mean that forms the TGI denominator (CODE_REVIEW.md R3.6 / R3.7 / G.6).
+Default 2000. Set 0 to skip.}
+
+\item{boot_seed}{Optional integer seed for reproducible resampling.}
 
 \item{verbose}{Logical. If TRUE, prints detailed results to the console.
 Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.}
@@ -82,6 +108,14 @@ common pragmatic choice but carries a ceiling effect: when individual drug TGIs 
 (each > 50\\%), the Bliss expected combined TGI approaches 100\\%, making it nearly impossible
 to demonstrate synergy by this criterion regardless of the true biological interaction.
 Interpret Bliss results cautiously when individual-agent TGIs exceed 50\\%.
+
+\strong{Point estimates and labels:} the \code{synergy_label} and
+\code{synergy_interpretation} strings are derived from three group means via
+fixed thresholds. They are descriptive summaries, not test results. Read them
+alongside \code{synergy_ci} (mouse-level bootstrap 95\\% intervals) and
+\code{group_n}: a "Strong Synergy" label whose \code{Bliss_Excess_FE}
+interval spans zero is not evidence of synergy. For a model-based posterior
+treatment of the same question, use \code{\link{bayesian_synergy}}.
 
 \strong{Loewe Additivity single-dose approximation:} The CI formula
 \code{min(FE_A + FE_B, 1) / FE_combo} assumes a linear dose-response relationship, which
