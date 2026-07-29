@@ -4,6 +4,77 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.07.001] - 2026-07-29
+
+Round 3 code review (CODE_REVIEW.md §R3.D). Closes every dashboard finding; four
+of the five were blocked on backend work that landed in mouseExperiment v0.6.0.
+
+### BREAKING — displayed p-values will change
+
+- **The dashboard no longer recomputes pairwise contrasts (R3.D1).** It used to
+  discard `result$pairwise_comparisons` and rebuild them from `result$model` with
+  a hardcoded Tukey/Dunnett adjustment. Because the backend applied *no*
+  adjustment at the time (backend R3.1), the same contrast carried one p-value in
+  the UI and a different one in an R session — a product reporting two answers to
+  one question. The backend now honours `comparison_family` and
+  `p_adjust_method`, so the recomputation is deleted and the UI renders the
+  package's own table. There is one implementation and the two agree by
+  construction.
+
+### Added
+
+- **Correction selector (R3.D3).** `p_adjust_method` was documented by the
+  backend with four options and exposed by the UI with none, so users got
+  whichever correction each code path happened to hardcode. New
+  "Multiple-comparison correction" control offering Dunnett (exact),
+  Tukey HSD, Bonferroni, Holm, Benjamini-Hochberg FDR, and none. Invalid
+  family/correction pairings are silently substituted with the closest valid
+  default rather than surfacing a backend error the user cannot act on.
+- **Cage structure and ICC in the model summary.** New CAGE STRUCTURE block
+  showing the detected design (crossed / nested-with-replication /
+  confounded), where cage ended up (fixed effect / random intercept / omitted),
+  the reason, and the cage ICC. The ICC is what tells a reader how much the
+  clustering mattered — the design effect on effective sample size is
+  1 + (mice per cage − 1) × ICC.
+- **COMPARISONS provenance block** stating the family and correction actually
+  applied, so the panel reports rather than assumes (partial R3.D7).
+
+### Fixed
+
+- **`adjust = "dunnett"` was silently downgraded (R3.D2).** That is not a value
+  emmeans recognises; it fell back to the `dunnettx` approximation while the help
+  text claimed exact Dunnett. The backend now maps "dunnett" to the exact
+  multivariate-t, and the table header states what was applied instead of
+  asserting a default.
+- **The GAM "All Comparisons" tab could never populate (R3.D4).** emmeans cannot
+  dispatch on a `gamm4` object, so the recomputation errored into
+  `log_caught_error()` and the tab rendered "Comparisons not available for
+  tukey". Resolved as a side effect of R3.D1 — rendering the backend's table
+  removes the failing call entirely.
+- **The survival reduction took the last row, not the last day (R3.D5).**
+  Reducing to one row per animal is what makes the backend Cox fit valid, but it
+  assumed the upload was sorted by day within animal. A file exported grouped by
+  measurement session, sorted descending, or with a re-measure appended out of
+  order silently used an arbitrary observation's survival time and event
+  indicator. Now sorts by day first, and takes the animal's maximum event
+  indicator so an event flagged at an intermediate visit is not dropped.
+
+### Changed
+
+- **Cage Effect Handling** gains "Auto (match the design)" as the default and
+  "As random effect" as an option; "Include if not collinear" is relabelled
+  legacy, since it drops cage whenever it is nested and so discards variance the
+  design can estimate.
+- **Extrapolation Points** is relabelled "(plots only)". It no longer feeds the
+  statistical model — the backend deprecated that in v0.9.0 because appending an
+  imputed observation and treating it as measured data made standard errors
+  ignore the imputation. Plot-side projection is unchanged and still drawn
+  dashed.
+
+### Tests
+
+- 210 passing, 0 failing.
+
 ## [v26.06.013] 2026 June 18th (staging)
 
 ### Changed

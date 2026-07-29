@@ -651,7 +651,27 @@ survival_server <- function(id, rv) {
         }
         animal_rows <- data[mask, , drop = FALSE]
         if (nrow(animal_rows) > 0) {
-          survival_rows[[i]] <- animal_rows[nrow(animal_rows), , drop = FALSE]
+          # CODE_REVIEW.md R3.D5 — take the animal's LAST DAY, not its last row.
+          # This reduction is what makes the backend Cox fit valid, but it
+          # assumed the upload was sorted by day within animal. A file exported
+          # grouped by measurement session, sorted descending, or with a
+          # re-measure appended out of order silently yielded the survival time
+          # and event indicator of an arbitrary observation. Same defect class as
+          # backend Round 1 1.7 (aggregate(x[1]) without an ordering guarantee).
+          ord <- order(suppressWarnings(as.numeric(animal_rows[[time_col]])))
+          animal_rows <- animal_rows[ord, , drop = FALSE]
+          last_row <- animal_rows[nrow(animal_rows), , drop = FALSE]
+          # An event recorded at any point in the record is an event for the
+          # animal; taking only the last row would drop an event flagged at an
+          # intermediate visit.
+          ev_col <- rv$settings$col_survival_event
+          if (!is.null(ev_col) && nzchar(ev_col) && ev_col %in% names(animal_rows)) {
+            ev <- suppressWarnings(as.numeric(animal_rows[[ev_col]]))
+            if (any(is.finite(ev))) {
+              last_row[[ev_col]] <- max(ev, na.rm = TRUE)
+            }
+          }
+          survival_rows[[i]] <- last_row
         }
       }
       survival_data <- do.call(rbind, Filter(Negate(is.null), survival_rows))

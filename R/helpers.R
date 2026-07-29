@@ -1151,3 +1151,34 @@ group_order_and_color_ui <- function(prefix, groups, ns = NS(NULL)) {
   )
 }
 
+
+#' Build a comparisons-table title that states what was actually applied
+#'
+#' CODE_REVIEW.md R3.D1 / R3.D2 — the headers used to assert "Dunnett-Adjusted"
+#' / "Tukey HSD Adjusted" regardless of what had been computed, and for the GAM
+#' path the table silently held per-day contrasts under a header that did not say
+#' so. Read the adjustment from the result instead of asserting it.
+#'
+#' @param res A tumour-growth result list.
+#' @param family_label Human-readable family name.
+#' @return A character title.
+#' @keywords internal
+comparisons_title <- function(res, family_label) {
+  adj   <- res$p_adjust_method_used %||% NULL
+  scope <- if (!is.null(res$pairwise_comparisons) &&
+               is.data.frame(res$pairwise_comparisons) &&
+               "Adjust_Scope" %in% names(res$pairwise_comparisons)) {
+    unique(res$pairwise_comparisons$Adjust_Scope)[1]
+  } else NULL
+
+  adj_txt <- if (is.null(adj)) "" else {
+    pretty <- switch(adj,
+      bonferroni = "Bonferroni", holm = "Holm",
+      fdr = "Benjamini-Hochberg FDR",
+      dunnett = "Dunnett (exact, multivariate-t)",
+      tukey = "Tukey HSD", none = "unadjusted", adj)
+    paste0(" (", pretty, ")")
+  }
+  scope_txt <- if (is.null(scope)) "" else paste0(" — ", scope)
+  paste0("Comparisons: ", family_label, adj_txt, scope_txt)
+}

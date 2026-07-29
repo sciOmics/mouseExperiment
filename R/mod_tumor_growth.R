@@ -274,9 +274,27 @@ tumor_growth_server <- function(id, rv) {
         random_effects_specification = input$tg_random_effects,
         handle_cage_effects = input$tg_cage_effect,
         reference_group = input$tg_reference,  # Already validated to not be empty
-        extrapolation_points = if (!is.null(input$tg_extrapolation_points) &&
-                                    !is.na(input$tg_extrapolation_points))
-                                 as.integer(input$tg_extrapolation_points) else 0L,
+        # CODE_REVIEW.md R3.D1 / R3.D3 — pass the user's comparison family and
+        # correction to the backend, which now honours both, instead of
+        # recomputing contrasts here with a hardcoded adjustment.
+        comparison_family = if (identical(input$tg_comparison_type, "tukey")) {
+          "all_pairs"
+        } else "vs_reference",
+        p_adjust_method = local({
+          req_adj <- input$tg_p_adjust %||% "dunnett"
+          fam <- if (identical(input$tg_comparison_type, "tukey")) {
+            "all_pairs"
+          } else "vs_reference"
+          # Dunnett is only defined for vs-reference and Tukey only for
+          # all-pairs; the backend rejects a mismatch, so substitute the closest
+          # valid default rather than surfacing an error the user cannot act on.
+          if (req_adj == "dunnett" && fam != "vs_reference") "tukey"
+          else if (req_adj == "tukey" && fam != "all_pairs") "dunnett"
+          else req_adj
+        }),
+        # extrapolation_points is deprecated in backend v0.8.0 — the model-based
+        # endpoint means extrapolate inside the model and carry the uncertainty.
+        # Plot-side extrapolation is unaffected.
         necrotic_column   = rv$necrotic_col,
         necrotic_handling = input$tg_necrotic_handling %||% "none",
         return_model = TRUE,
@@ -631,25 +649,40 @@ tumor_growth_server <- function(id, rv) {
           }
 
         } else {
-          # --- LME4 / other modes: derive comparisons via emmeans ---
-          emm <- emmeans::emmeans(result$model, as.formula(paste("~", treatment_col_name)))
-          emm_levels <- levels(emm)[[1]]   # character vector of factor levels
-
-          # Type 1: All pairwise comparisons with Tukey adjustment
-          # infer=c(TRUE,TRUE) returns both CIs and test statistics (t.ratio, p.value)
-          result$all_pairwise_comparisons <- as.data.frame(
-            summary(pairs(emm, adjust = "tukey"), infer = c(TRUE, TRUE))
-          )
-
-          # Type 2: vs Reference Group with Dunnett correction
-          ref_group <- if (!is.null(input$tg_reference) && nzchar(input$tg_reference))
-            input$tg_reference else emm_levels[1]
-          ref_idx <- which(emm_levels == ref_group)
-          if (length(ref_idx) == 1) {
-            result$reference_comparisons_dunnett <- as.data.frame(
-              summary(emmeans::contrast(emm, method = "trt.vs.ctrl", ref = ref_idx, adjust = "dunnett"),
-                      infer = c(TRUE, TRUE))
+          # CODE_REVIEW.md R3.D1 / R3.D2 / R3.D4 — the dashboard used to discard
+          # result$pairwise_comparisons and rebuild contrasts here from
+          # result$model. Three problems, all now fixed upstream:
+          #
+          #  * The backend applied no adjustment at all (backend R3.1) while this
+          #    block applied Tukey/Dunnett, so the same contrast carried one
+          #    p-value in the UI and a different one in an R session. As of
+          #    backend v0.6.0 the package applies the user's chosen
+          #    comparison_family + p_adjust_method itself, so there is exactly one
+          #    implementation and the two agree by construction.
+          #  * adjust = "dunnett" is not a value emmeans recognises; it silently
+          #    downgraded to the "dunnettx" approximation while the help text
+          #    claimed exact Dunnett. The backend now maps "dunnett" to the exact
+          #    multivariate-t ("mvt").
+          #  * emmeans cannot dispatch on a gamm4 object, so for model_type =
+          #    "gam" this errored into log_caught_error() and the "All
+          #    Comparisons" tab could never populate. Rendering the backend's
+          #    table removes that failure mode entirely.
+          pw_backend <- result$pairwise_comparisons
+          if (!is.null(pw_backend)) {
+            pw_df <- as.data.frame(
+              if (inherits(pw_backend, "emmGrid")) {
+                summary(pw_backend, infer = c(TRUE, TRUE))
+              } else pw_backend
             )
+            if ("p_value" %in% names(pw_df) && !"p.value" %in% names(pw_df)) {
+              pw_df$p.value <- pw_df$p_value
+            }
+            fam <- result$comparison_family %||% "vs_reference"
+            if (identical(fam, "all_pairs")) {
+              result$all_pairwise_comparisons  <- pw_df
+            } else {
+              result$reference_comparisons_dunnett <- pw_df
+            }
           }
         }
 
@@ -857,6 +890,43 @@ tumor_growth_server <- function(id, rv) {
         paste("  Fixed Effects:", summary_list$model_specification$fixed_effects),
         paste("  Random Effects:", summary_list$model_specification$random_effects),
         paste("  Smoother basis k:", summary_list$model_specification$smoother_k %||% "(linear time — LME4)")
+      )
+    }
+
+    # CODE_REVIEW.md R3.17 / G.2 — surface the detected cage design, where cage
+    # ended up, and the cage ICC. The ICC is what tells a reader how much the
+    # clustering mattered: the design effect on effective sample size is
+    # 1 + (mice per cage - 1) x ICC, so an ICC of 0.2 with 4 mice per cage means
+    # the effective n is about 1.6x smaller than the animal count suggests.
+    cage_struct <- summary_list$model_specification$cage_structure
+    if (!is.null(cage_struct)) {
+      icc_df <- rv$tg_results$cage_analysis$icc
+      icc_line <- if (!is.null(icc_df) && is.finite(icc_df$ICC[1])) {
+        paste0("  Cage ICC: ", round(icc_df$ICC[1], 3),
+               "  (variance ", signif(icc_df$Variance[1], 3), " of ",
+               signif(icc_df$Total_Variance[1], 3), " total)")
+      } else {
+        "  Cage ICC: not estimated (cage is not in the model)"
+      }
+      summary_lines <- c(summary_lines,
+        "",
+        "CAGE STRUCTURE:",
+        paste("  Detected design:", cage_struct),
+        paste("  Cage entered as:",
+              summary_list$model_specification$cage_placement %||% "(unknown)"),
+        icc_line,
+        paste("  Reason:", summary_list$model_specification$cage_reason %||% "")
+      )
+    }
+
+    # Multiplicity provenance — state what was applied rather than leaving the
+    # reader to assume a default (CODE_REVIEW.md R3.D1 / R3.D7).
+    if (!is.null(rv$tg_results$comparison_family)) {
+      summary_lines <- c(summary_lines,
+        "",
+        "COMPARISONS:",
+        paste("  Family:", rv$tg_results$comparison_family),
+        paste("  Correction:", rv$tg_results$p_adjust_method_used %||% "(none)")
       )
     }
 
@@ -1216,16 +1286,15 @@ tumor_growth_server <- function(id, rv) {
       # vs Reference with Dunnett correction (preferred), fallback to unadjusted
       if (!is.null(rv$tg_results$reference_comparisons_dunnett)) {
         comp_df <- as.data.frame(rv$tg_results$reference_comparisons_dunnett)
-        table_title <- "Comparisons: vs Reference Group (Dunnett-Adjusted)"
+        table_title <- comparisons_title(rv$tg_results, "vs Reference Group")
       } else if (!is.null(rv$tg_results$pairwise_comparisons)) {
         comp_df <- as.data.frame(rv$tg_results$pairwise_comparisons)
-        table_title <- "Comparisons: vs Reference Group"
+        table_title <- comparisons_title(rv$tg_results, "vs Reference Group")
       }
     } else if (comp_type == "tukey") {
-      # All pairwise with Tukey HSD adjustment
       if (!is.null(rv$tg_results$all_pairwise_comparisons)) {
         comp_df <- as.data.frame(rv$tg_results$all_pairwise_comparisons)
-        table_title <- "Comparisons: All Pairwise (Tukey HSD Adjusted)"
+        table_title <- comparisons_title(rv$tg_results, "All Pairwise")
       }
     }
     

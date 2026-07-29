@@ -370,12 +370,26 @@ tumorGrowthUI <- function(id) {
                      choices = c("vs Reference Group" = "reference",
                                 "All Comparisons" = "tukey"),
                      selected = "reference"),
-          helpText("Determines which group comparisons are performed after the primary ",
-                   "model. 'vs Reference' tests each treatment against the reference ",
-                   "group using Dunnett's correction, which is designed for this ",
-                   "comparison structure and is less conservative than Bonferroni. ",
-                   "'All Comparisons' tests every pair with Tukey HSD familywise error ",
-                   "correction."),
+          # CODE_REVIEW.md R3.D3 — p_adjust_method was documented by the backend
+          # with four options and exposed by the UI with none, so users got
+          # whichever correction each code path happened to hardcode. The
+          # backend now honours the argument (backend R3.1), so surface it.
+          selectInput(ns("tg_p_adjust"),
+                     "Multiple-comparison correction",
+                     choices = c("Dunnett (exact, vs reference)" = "dunnett",
+                                 "Tukey HSD (all pairs)"         = "tukey",
+                                 "Bonferroni"                    = "bonferroni",
+                                 "Holm"                          = "holm",
+                                 "Benjamini-Hochberg FDR"        = "fdr",
+                                 "None (unadjusted)"             = "none"),
+                     selected = "dunnett"),
+          helpText("The correction is applied over exactly the set of ",
+                   "comparisons shown, so the family and the correction always ",
+                   "agree. Dunnett is only valid for 'vs Reference Group' and ",
+                   "Tukey only for 'All Comparisons'; the other options work ",
+                   "with either. Dunnett exploits the correlation between ",
+                   "vs-control contrasts, so it is less conservative than ",
+                   "Bonferroni for the same family."),
 
           # 4. Data Transformation (LME4 only)
           conditionalPanel(ns = ns,
@@ -392,29 +406,46 @@ tumorGrowthUI <- function(id) {
                      "for already-linear data.")
           ),
 
-          # 5. Extrapolation Points (always visible)
+          # 5. Extrapolation Points — PLOTTING ONLY as of backend v0.8.0
           numericInput(ns("tg_extrapolation_points"),
-                      "Extrapolation Points",
+                      "Extrapolation Points (plots only)",
                       value = 3, min = 0, max = 10, step = 1),
-          helpText("Number of recent timepoints used to estimate the growth slope for ",
-                   "extrapolating tumor volumes of mice that died before the study end. ",
-                   "Set to 0 to disable. If an Event/Censor column is mapped in Data ",
-                   "Upload it will be used; otherwise mice that disappear before the ",
-                   "final timepoint are automatically detected."),
+          helpText(strong("Affects the growth-trajectory plots only."), " Number of ",
+                   "recent timepoints used to estimate the slope when projecting ",
+                   "the curve for mice that left the study early; projected ",
+                   "segments are drawn dashed. Set to 0 to disable. ",
+                   "This no longer feeds the statistical model: appending an ",
+                   "imputed observation and treating it as measured data made ",
+                   "standard errors and p-values ignore the imputation. The ",
+                   "endpoint metrics now extrapolate inside the model, which ",
+                   "propagates that uncertainty (CODE_REVIEW.md R3.9 / G.4)."),
 
           # 6. Cage Effect Handling (LME4 only)
           conditionalPanel(ns = ns,
             condition = "input.tg_model_type == 'lme4'",
             selectInput(ns("tg_cage_effect"),
                        "Cage Effect Handling",
-                       choices = c("Include if not collinear" = "include_if_not_collinear",
+                       choices = c("Auto (match the design)" = "auto",
+                                  "Include if not collinear (legacy)" = "include_if_not_collinear",
                                   "Always include" = "always_include",
-                                  "Never include" = "never_include"),
-                       selected = "include_if_not_collinear"),
-            helpText("Controls whether cage is included as a covariate to account for ",
-                     "housing effects on tumor growth. 'Include if not collinear' adds ",
-                     "cage automatically when it is statistically separable from ",
-                     "treatment. Requires a Cage ID column to be mapped in Data Upload.")
+                                  "Never include" = "never_include",
+                                  "As random effect" = "as_random_effect"),
+                       selected = "auto"),
+            helpText("How cage housing enters the model. ", strong("Auto"),
+                     " classifies the design and picks the correct treatment: ",
+                     "cage as a fixed effect when cages hold more than one ",
+                     "treatment; as a random intercept (1|Cage) when each cage ",
+                     "holds one treatment but there are two or more cages per ",
+                     "arm — the usual layout, where a fixed effect is not ",
+                     "estimable but the random intercept is; and omitted with a ",
+                     "warning when each arm has a single cage, since cage and ",
+                     "treatment are then inseparable. ",
+                     strong("Include if not collinear"), " reproduces the ",
+                     "pre-0.6.0 behaviour, which dropped cage whenever it was ",
+                     "nested and so discarded variance the design could estimate ",
+                     "— that understates standard errors. The detected structure ",
+                     "and the cage ICC are shown in the model summary. Requires a ",
+                     "Cage ID column mapped in Data Upload.")
           ),
 
           # 7. Random Effects (LME4 and Bayesian)

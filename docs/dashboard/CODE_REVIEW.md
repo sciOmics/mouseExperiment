@@ -676,3 +676,227 @@ The module-server fixture sets `tg_results = NULL`, `surv_results = NULL`, etc. 
 | I.5 | shinytest2 covers only the Data tab | Minor | ✅ Fixed v26.06.002 (end-to-end workflow added) |
 | I.6 | No CI smoke test against deployed staging | Architecture | ❌ Open (VPS-side) |
 | I.7 | `make_test_rv()` doesn't support `with_results` | Minor | ✅ Fixed v26.06.001 |
+
+---
+
+# Review Round 3 (v26.06.013 — 2026-07-29)
+
+**Reviewer:** Claude Code
+**Scope:** Statistical correctness of what the dashboard *displays*, as distinct from what the backend computes. Round 1 and Round 2 covered Shiny mechanics, deployment, and module harmonisation thoroughly; this round looks specifically at the places where the dashboard re-derives or re-labels a statistic rather than passing the backend's through, since those are the points where the UI can disagree with the package.
+
+Round-1 and Round-2 items spot-check as resolved. All findings below are net-new. Backend findings referenced as `R3.n` live in `mouseExperiment/CODE_REVIEW.md` Round 3.
+
+---
+
+## R3.D1 The dashboard silently discards the backend's pairwise comparisons and recomputes its own — **Major**
+**File:** `R/mod_tumor_growth.R:633-653`
+
+For every non-AUC model the dashboard ignores `result$pairwise_comparisons` and rebuilds contrasts from `result$model`:
+
+```r
+emm <- emmeans::emmeans(result$model, as.formula(paste("~", treatment_col_name)))
+result$all_pairwise_comparisons <- as.data.frame(
+  summary(pairs(emm, adjust = "tukey"), infer = c(TRUE, TRUE)))
+result$reference_comparisons_dunnett <- as.data.frame(
+  summary(emmeans::contrast(emm, method = "trt.vs.ctrl", ref = ref_idx, adjust = "dunnett"),
+          infer = c(TRUE, TRUE)))
+```
+
+The point estimates agree with the backend's (both marginalise `Day` at its mean — the backend via an explicit `at =`, the dashboard via emmeans' default reference grid), but the **p-values do not**: the backend applies no adjustment at all (backend R3.1), the dashboard applies Tukey or Dunnett. The same contrast on the same data therefore yields one p-value in the Shiny table and a different one from `results$pairwise_comparisons` in an R session or a downstream script.
+
+This is not primarily a dashboard defect — the dashboard's behaviour is the *more* defensible of the two — but a product that reports two different p-values for one comparison cannot be used for a regulatory submission or a manuscript. Whichever adjustment is decided on (see backend R3-F question 1), one implementation should produce it and the other should consume it.
+
+**Fix:** have the backend apply `p_adjust_method` (backend R3.1) and have the dashboard render `result$pairwise_comparisons` directly, deleting the recomputation. That also removes the dependency on `return_model = TRUE` that currently forces full model objects into the reactive values Round 2 §3.3 tried to keep out.
+
+---
+
+## R3.D2 `adjust = "dunnett"` is silently downgraded to the `dunnettx` approximation — **Minor**
+**File:** `R/mod_tumor_growth.R:650`; help text at `:1098`
+
+`"dunnett"` is not one of emmeans' recognised `adjust` values. emmeans falls back to `"dunnettx"` — its fast approximation to the Dunnett procedure — without erroring. Verified by execution; the returned summary footnote reads:
+
+```
+Conf-level adjustment: dunnettx method for 2 estimates
+P value adjustment: dunnettx method for 2 tests
+```
+
+The help text at `:1098` tells the user "adjusted p-value (Dunnett correction for 'vs Reference')". `dunnettx` is documented in emmeans as an approximation that is accurate for two-sided tests with equal correlations and degrades otherwise; the exact procedure is `adjust = "mvt"`, which is affordable at the group counts these studies use.
+
+**Fix:** use `adjust = "mvt"` and label it "Dunnett (exact, multivariate-t)", or keep `dunnettx` and say "Dunnett (approximate)" in the help text. Either is fine; claiming exact Dunnett while computing the approximation is not.
+
+---
+
+## R3.D3 `p_adjust_method` is not exposed anywhere in the UI — **Minor**
+`tumor_growth_statistics()` documents four multiplicity options. No `selectInput`, `radioButtons`, or any other binding for it exists across `R/` — grep returns nothing. Dashboard users get whatever each code path hardcodes: Tukey or `dunnettx` for lme4/GAM (D1, D2), Bonferroni over all pairs for AUC. The "Post-hoc Comparisons" dropdown chooses the *family* (reference vs all-pairs) but not the correction.
+
+Worth deciding alongside backend R3.1 — if the backend gains a working `p_adjust_method`, the UI control is a two-line addition and the comparison type dropdown becomes a natural place for it.
+
+---
+
+## R3.D4 The Tumor Growth "All Comparisons" tab is permanently empty for GAM models — **Major**
+**File:** `R/mod_tumor_growth.R:633`, table renderer at `:1224-1231`
+
+For `model_type = "gam"`, `result$model` is a `gamm4` object — a bare `list(mer =, gam =)` with class `c("gamm4", "list")`. `emmeans::emmeans()` does not support it:
+
+```
+ERROR: Can't handle an object of class  "gamm4"
+```
+
+(Verified by execution. The backend works around this internally by handing emmeans the patched `$gam` stub — see backend R3.4 — but the dashboard passes the whole `gamm4` object.)
+
+The error is caught by the enclosing `tryCatch` at `:566` and routed to `log_caught_error()`, so:
+- `comp_type == "tukey"` → `all_pairwise_comparisons` is `NULL` → the tab renders `"Comparisons not available for tukey"`. There is no path by which it can ever populate for a GAM model.
+- `comp_type == "reference"` → falls back to `rv$tg_results$pairwise_comparisons`, which for GAM is the backend's per-day smooth-difference table (one row per contrast × quantile day). That table is rendered under the header `"Comparisons: vs Reference Group"`, which does not tell the user the rows are per-day rather than one-per-contrast.
+
+**Fix:** pass `result$model$gam` when `model_type_used == "gam"` (after applying the same class/`$call` patch the backend uses), or short-circuit the recomputation for GAM and render the backend's table with a header that says the contrasts are evaluated at five study-day quantiles.
+
+---
+
+## R3.D5 Survival per-animal reduction takes the last *row*, not the last *day* — **Major**
+**File:** `R/mod_survival.R:645-657`
+
+```r
+animal_rows <- data[mask, , drop = FALSE]
+survival_rows[[i]] <- animal_rows[nrow(animal_rows), , drop = FALSE]
+```
+
+The reduction to one row per animal — which is what makes the backend Cox fit valid (backend R3.14) — assumes the uploaded file is sorted by day within animal. There is no `order(animal_rows[[time_col]])` before the subset. A file exported in a different order (grouped by measurement session, sorted descending, or with a re-measure appended out of order) yields a survival time and event indicator taken from an arbitrary observation, and the analysis proceeds with no warning.
+
+This is the same defect class as backend Round 1 §1.7 (`aggregate(..., FUN = function(x) x[1])` without an ordering guarantee), which was fixed in three backend files by filtering on `Day == min(Day)` first. The dashboard's reduction never got the same treatment.
+
+**Fix:** `animal_rows <- animal_rows[order(as.numeric(animal_rows[[time_col]])), ]` before taking the last row. Consider also asserting that the resulting event indicator is the animal's maximum, since an event flagged at an intermediate day would otherwise be dropped.
+
+---
+
+## R3.D6 Displayed scale metadata is what the user *asked for*, not what the backend *did* — **Minor**
+**File:** `R/mod_survival.R` n/a; `R/mod_tumor_growth.R:748-750`
+
+```r
+# (the backend result$methods list is not reliably populated for all paths)
+result$transform_used  <- input$tg_transform   %||% "none"
+result$model_type_used <- input$tg_model_type  %||% "lme4"
+```
+
+The comment is correct — no frequentist backend path returns `transform_used` (backend R3.29) — and reconstructing it from the input is a reasonable workaround. It is nonetheless recording the *request*, not the *outcome*, and the two diverge: the AUC path ignores `transform` entirely and computes on raw volumes (backend R3.16), so an AUC run with the default `transform = "log"` is tagged `transform_used = "log"`.
+
+Today this is benign — both consumers of the field (`:1239` Fold_Change, `:1284` scale-note) are gated on `model_type_used == "lme4"`, so the AUC path escapes both. It is a latent trap: the next feature that reads `transform_used` without that gate will mislabel AUC output. Once backend R3.29 lands, read the field from the result instead.
+
+---
+
+## R3.D7 Analysis-parameter provenance is not captured in the HTML report — **Enhancement**
+**File:** `R/helpers_report.R`
+
+Round 2 §F.1 added HTML report export. For the report to serve the audit-artifact purpose stated there, it needs to record the settings that produced the numbers — reference group, transform, model type, random-effects specification, cage handling, endpoint day, prior strength and MCMC settings for Bayesian runs, and the multiplicity adjustment actually applied (which, per D1–D3, is currently not the one any argument names). A short "Analysis provenance" table at the head of the report would make each export self-describing and independently reproducible.
+
+This becomes more valuable, not less, once the backend multiplicity work lands, because it is the natural place to state which correction was used.
+
+---
+
+## R3.D8 Round 2 §A.3 remains genuinely open — worth re-confirming against live NPM
+**Cross-repo:** `mouseExperimentVPS/scripts/06-configure-npm.sh`
+
+Round 2 §A.3 is marked "⚠ Partial — script fixed; live NPM still needs PUT". The provisioner fix is committed (`043419e`), but the live proxy host update was to be applied out-of-band via the API. Nothing in either repo records whether that was done. Since the symptom (Shiny's `#shiny-disconnected-overlay` appearing mid-fit) only reproduces on Bayesian runs longer than 60 s, it will not surface in routine testing.
+
+**Suggestion:** add a one-line check to `scripts/99-diagnose-shiny-dashboard.sh` that reads the live NPM host config and asserts `proxy_read_timeout` ≥ 3600 and `allow_websocket_upgrade` is true, so the state is verifiable on demand rather than remembered.
+
+---
+
+## R3.D9 Status table — Round 3
+
+| ID | Issue | Severity | File | Status |
+|---|---|---|---|---|
+| R3.D1 | Dashboard recomputes contrasts; p-values disagree with the package's | **Major** | `mod_tumor_growth.R:633` | ✅ Fixed v26.07.001 |
+| R3.D2 | `adjust = "dunnett"` silently becomes `dunnettx`; help text claims exact Dunnett | Minor | `mod_tumor_growth.R:650` | ✅ Fixed v26.07.001 |
+| R3.D3 | `p_adjust_method` not exposed in the UI at all | Minor | — | ✅ Fixed v26.07.001 |
+| R3.D4 | "All Comparisons" tab permanently empty for GAM (emmeans can't take a `gamm4` object) | **Major** | `mod_tumor_growth.R:633` | ✅ Fixed v26.07.001 |
+| R3.D5 | Survival reduction takes last row by position, not by max day | **Major** | `mod_survival.R:655` | ✅ Fixed v26.07.001 |
+| R3.D6 | `transform_used` records the request, not what the backend did | Minor | `mod_tumor_growth.R:749` | Open |
+| R3.D7 | HTML report lacks an analysis-provenance block | Enhancement | `helpers_report.R` | 🟡 Partial v26.07.001 (provenance in summary; report block pending) |
+| R3.D8 | Round 2 §A.3 live-NPM state unverified and unrecorded | Process | VPS repo | Open |
+
+---
+
+## R3.D10 Cross-reference — backend findings that surface in the UI
+
+These need no dashboard code change, but they change what users are looking at and should be tracked alongside the backend fix:
+
+| Backend finding | What the dashboard currently shows |
+|---|---|
+| R3.1 (`p_adjust_method` inert) | Unaffected for TG (D1 recomputes), but no UI control exists to choose the correction |
+| R3.3 (AUC over unequal windows) | The AUC results tab presents group AUCs as comparable; `Last_Day` is shown in the per-animal table but nothing flags the imbalance |
+| R3.4 (BW GAM emmeans NULL) | Toxicity → GAM → marginal-means table renders empty, indistinguishable from "no effect" |
+| R3.5 (survivor-biased TGI) | TWM, Synergy, and Efficacy–Toxicity tabs all display endpoint-day TGI with no denominator *n* |
+| R3.7 (synergy point estimates) | Synergy tab shows a categorical "Strong Synergy / Additive / Antagonistic" call with no interval |
+| R3.16 (AUC ignores `transform`) | Methods text in the results panel and HTML report states the transform was applied |
+| R3.18 (TWM discontinuity) | TWM table is sorted by a metric that changes scale across the noise floor |
+
+---
+
+## R3.D11 Maintainer decisions (2026-07-29) — dashboard consequences
+
+The backend §R3-F questions were answered; see `mouseExperiment/CODE_REVIEW.md` §R3-G. Three answers land directly on this repo.
+
+**G.1 — "Users should be able to define the comparison of interest."** This settles R3.D1, R3.D2, and R3.D3 as one piece of work rather than a choice:
+
+- The backend gains `comparison_family = c("vs_reference", "all_pairs", "custom")` plus a *working* `p_adjust_method`. The dashboard's existing "Post-hoc Comparisons" dropdown becomes the `comparison_family` control; add a second `selectInput` for the correction (closing R3.D3).
+- **Delete the recomputation block at `mod_tumor_growth.R:633-653`** and render `result$pairwise_comparisons` directly. That removes the package/dashboard p-value divergence (R3.D1), removes the `emmeans` call that cannot handle a `gamm4` object (R3.D4, which then fixes itself), and removes the dependency on `return_model = TRUE` that currently forces full model objects into reactive values against Round 2 §3.3.
+- When the backend implements the correction, use `adjust = "mvt"` for exact Dunnett rather than `"dunnett"`, which emmeans does not recognise and silently downgrades to the `dunnettx` approximation (R3.D2). Update the help text at `:1098` to name whichever is used.
+- Display `result$comparison_family` / `result$p_adjust_method_used` in the table header, so the panel states what was applied instead of asserting a default.
+
+**G.2 — cage structure.** The maintainer confirms the standard design is one treatment per cage with ≥2 cages per arm, which is estimable as `(1 | Cage)` and is currently being discarded (backend R3.17, upgraded to Critical). Once the backend fits it, the dashboard should surface the **cage ICC** in the model-summary panel — it is the number that tells a user how much the clustering mattered, and there is nowhere to see it today. The cage-handling selector should also be relabelled to match the new structure-aware `"auto"` default.
+
+**G.3 — dropout.** Endpoint metrics move from raw survivor means to model-based estimated marginal means at day T. Dashboard work:
+- Add **n at risk at day T** as a column beside every TGI / TWM / synergy figure. This is the number that currently makes survivor bias invisible.
+- Add a dropout curve (time-to-removal per arm) to the Tumor Growth results panel, not only the Survival tab — the point is for it to be visible next to the efficacy result that depends on it.
+- The Synergy tab's categorical verdict should not render at all until the backend supplies an interval for it (backend G.6).
+
+**G.4 — extrapolation.** `extrapolation_points` is being removed from `tumor_growth_statistics()`. If any sidebar control is currently bound to it, remove that control. The `plot_tumor_growth()` extrapolation is explicitly retained, so plot-side projection controls stay — but projected segments should be rendered visually distinct (dashed, or a shaded band) so a reader cannot mistake a projection for measured data.
+
+| ID | Item | Blocked on | Status |
+|---|---|---|---|
+| R3.D1 | Delete contrast recomputation; render backend output | backend `comparison_family` | Agreed, blocked |
+| R3.D2 | Use `mvt`, or relabel as approximate Dunnett | — | Agreed |
+| R3.D3 | Expose comparison family + correction in the UI | backend `p_adjust_method` | Agreed, blocked |
+| R3.D4 | Resolved as a side-effect of R3.D1 | R3.D1 | Agreed |
+| R3.D5 | Sort by day before taking the per-animal last row | — | Agreed, unblocked |
+| — | Surface cage ICC in model summary | backend G.2 | New |
+| — | n-at-risk column + dropout curve on efficacy panels | backend G.3 | New |
+
+
+---
+
+## R3.D12 Round 3 closed (v26.07.001, 2026-07-29)
+
+R3.D1–R3.D5 closed; R3.D7 partial (the analysis-provenance block is in the model
+summary, not yet in the HTML report export); R3.D8 remains a VPS-side item.
+
+The theme of this round was **the dashboard silently disagreeing with the
+package**. Four of the five findings traced to one cause: the UI re-derived a
+statistic instead of rendering the backend's, so a backend defect (unadjusted
+p-values) and a UI workaround (hardcoded Tukey/Dunnett) coexisted and produced
+two different answers for the same contrast. Deleting the recomputation once the
+backend was fixed closed R3.D1, R3.D2 and R3.D4 together.
+
+**Worth carrying forward:** when the dashboard re-derives anything the package
+already returns, that is a divergence waiting to happen. The remaining instances
+are worth auditing on the same principle — grep for `emmeans::`, `lme4::` and
+`survival::` calls in `R/mod_*.R` and ask whether the backend already provides
+the answer.
+
+### New dashboard work created by the backend changes
+
+| Backend addition | Dashboard status |
+|---|---|
+| `comparison_family` / `p_adjust_method_used` | ✅ selector added, provenance shown |
+| `cage_analysis$icc`, `cage_structure`, `cage_placement` | ✅ CAGE STRUCTURE block |
+| `attrition` (N enrolled / at endpoint / % lost) | ❌ **not yet surfaced** — should sit beside every TGI / TWM / synergy figure, since it is what makes survivor attrition visible |
+| `endpoint_method` on TWM / synergy / weight-corrected TGI | ❌ **no UI control** — the backend default ("model") is the right one, but users cannot select `"survivors"` to reproduce pre-0.8.0 numbers |
+| `synergy_ci`, `twm_ci` (bootstrap intervals) | ❌ **not yet displayed** — the Synergy verdict and the TWM ranking are exactly the outputs that need their intervals shown |
+| `auc_permutations` / `perm_p_value` | ❌ no UI control (off by default, so no silent change) |
+| `cuminc` / `censoring_summary` (competing risks) | ❌ not surfaced; the weight-loss KM tab still shows 1 − KM only |
+| `variance_test` (Brown-Forsythe on AUC) | ❌ not surfaced |
+
+These are additions rather than defects — nothing displays a wrong number — but
+the bootstrap intervals and the attrition counts are the two that most change how
+a reader should interpret what is already on screen, and are the natural next
+piece of dashboard work.
