@@ -17,6 +17,8 @@ therapeutic_window_metric(
   volume_units = NULL,
   reference_group = NULL,
   noise_floor = 1,
+  endpoint_day = NULL,
+  endpoint_method = c("model", "last_obs", "survivors"),
   n_boot = 2000L,
   boot_seed = NULL
 )
@@ -54,6 +56,19 @@ continuous for any \code{noise_floor} (CODE_REVIEW.md R3.18) and reduces to
 experimentally pragmatic threshold that avoids dividing by near-zero weight
 loss. No formal clinical basis; users with experiment-specific noise
 estimates (e.g. scale precision) should tune accordingly.}
+
+\item{endpoint_day}{Day at which efficacy is evaluated. \code{NULL}
+(default) uses the maximum observed day.}
+
+\item{endpoint_method}{How the endpoint volume per arm is obtained
+(CODE_REVIEW.md R3.5 / G.3):
+\code{"model"} (default) takes each arm's geometric mean at
+\code{endpoint_day} from a log-scale mixed model fitted to every
+observation, so animals euthanised earlier still contribute;
+\code{"last_obs"} uses each animal's own last observation at or before the
+endpoint day; \code{"survivors"} reproduces the pre-0.8.0 raw mean among
+animals observed at the endpoint day, which conditions on survival and
+biases TGI downward — it warns when animals were lost.}
 
 \item{n_boot}{Integer >= 0. Mouse-level bootstrap resamples used to attach
 95\\% percentile intervals to TGI, mean weight loss, and TWM. Mice are

@@ -27,6 +27,17 @@
 #'   experimentally pragmatic threshold that avoids dividing by near-zero weight
 #'   loss. No formal clinical basis; users with experiment-specific noise
 #'   estimates (e.g. scale precision) should tune accordingly.
+#' @param endpoint_day Day at which efficacy is evaluated. \code{NULL}
+#'   (default) uses the maximum observed day.
+#' @param endpoint_method How the endpoint volume per arm is obtained
+#'   (CODE_REVIEW.md R3.5 / G.3):
+#'   \code{"model"} (default) takes each arm's geometric mean at
+#'   \code{endpoint_day} from a log-scale mixed model fitted to every
+#'   observation, so animals euthanised earlier still contribute;
+#'   \code{"last_obs"} uses each animal's own last observation at or before the
+#'   endpoint day; \code{"survivors"} reproduces the pre-0.8.0 raw mean among
+#'   animals observed at the endpoint day, which conditions on survival and
+#'   biases TGI downward — it warns when animals were lost.
 #' @param n_boot Integer >= 0. Mouse-level bootstrap resamples used to attach
 #'   95\% percentile intervals to TGI, mean weight loss, and TWM. Mice are
 #'   resampled within group including the control arm, so the interval
@@ -57,8 +68,12 @@ therapeutic_window_metric <- function(df,
                                       volume_units     = NULL,
                                       reference_group  = NULL,
                                       noise_floor      = 1.0,
+                                      endpoint_day     = NULL,
+                                      endpoint_method  = c("model", "last_obs", "survivors"),
                                       n_boot           = 2000L,
                                       boot_seed        = NULL) {
+
+  endpoint_method <- match.arg(endpoint_method)
 
   # --- Validate ---
   required <- c(weight_column, volume_column, time_column, treatment_column, id_column)
@@ -102,15 +117,30 @@ therapeutic_window_metric <- function(df,
   }
 
   # --- TGI per treatment group ---
-  # Final timepoint mean volume
-  max_day <- max(wd$Day, na.rm = TRUE)
-  final <- wd[wd$Day == max_day, ]
-  ctrl_mean_vol <- mean(final$Volume[final$Treatment == reference_group], na.rm = TRUE)
+  # CODE_REVIEW.md R3.5 / G.3 — this used to take the raw mean among animals
+  # still observed at the global last day, which conditions on survival and
+  # biases TGI downward (hardest against the control arm, which loses animals
+  # first). The default now reads each arm's geometric mean at the endpoint day
+  # off a log-scale LMM fitted to every observation from every animal.
+  ep <- endpoint_volumes(
+    wd, id_column = "MouseKey", treatment_column = "Treatment",
+    time_column = "Day", volume_column = "Volume",
+    endpoint_day = endpoint_day, endpoint_method = endpoint_method
+  )
+  max_day  <- ep$endpoint_day
+  tgi_data <- endpoint_tgi(ep$group_means, reference_group)
 
-  tgi_data <- stats::aggregate(Volume ~ Treatment, data = final, FUN = mean)
-  names(tgi_data)[2] <- "Mean_Volume"
-  tgi_data$TGI <- (1 - tgi_data$Mean_Volume / ctrl_mean_vol) * 100
-  tgi_data$TGI[tgi_data$Treatment == reference_group] <- 0
+  # Per-mouse endpoint volumes for the bootstrap. The model path has no
+  # per-mouse draw, so resample the last-observation values, which use every
+  # animal too.
+  final <- if (!is.null(ep$per_mouse)) {
+    ep$per_mouse
+  } else {
+    endpoint_volumes(wd, id_column = "MouseKey", treatment_column = "Treatment",
+                     time_column = "Day", volume_column = "Volume",
+                     endpoint_day = endpoint_day,
+                     endpoint_method = "last_obs")$per_mouse
+  }
 
   # --- Max % weight loss per group ---
   # Per mouse: baseline weight, nadir weight, max % loss
@@ -179,9 +209,7 @@ therapeutic_window_metric <- function(df,
 
   # Per-group n at the endpoint day — the number that makes survivor attrition
   # visible instead of implicit (see R3.5).
-  n_at_endpoint <- as.data.frame(table(Treatment = final$Treatment),
-                                 stringsAsFactors = FALSE)
-  names(n_at_endpoint)[2] <- "N_At_Endpoint"
+  n_at_endpoint <- ep$attrition
 
   list(
     twm_table        = twm,
@@ -189,7 +217,9 @@ therapeutic_window_metric <- function(df,
     tgi_data         = tgi_data,
     weight_loss_data = mouse_wl,
     n_at_endpoint    = n_at_endpoint,
-    endpoint_day     = max_day
+    attrition        = ep$attrition,
+    endpoint_day     = max_day,
+    endpoint_method  = ep$method
   )
 }
 

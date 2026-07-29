@@ -14,6 +14,8 @@ weight_corrected_tgi(
   adjust_tumor_weight = TRUE,
   tumor_density = 1,
   reference_group = NULL,
+  endpoint_day = NULL,
+  endpoint_method = c("model", "last_obs", "survivors"),
   safety_threshold = 0.2
 )
 }
@@ -35,6 +37,14 @@ weight_corrected_tgi(
 \item{tumor_density}{Density in g/cm³ (default 1.0).}
 
 \item{reference_group}{Name of the control/reference group.}
+
+\item{endpoint_day}{Day at which TGI is evaluated. NULL uses the maximum
+observed day.}
+
+\item{endpoint_method}{How each arm's endpoint volume is obtained:
+"model" (default, log-scale LMM marginal means using every observation),
+"last_obs", or "survivors" (pre-0.8.0 behaviour; warns, and understates
+efficacy because it conditions on survival). See CODE_REVIEW.md R3.5 / G.3.}
 
 \item{safety_threshold}{Fractional weight loss threshold (default 0.20 = 20\%).}
 }

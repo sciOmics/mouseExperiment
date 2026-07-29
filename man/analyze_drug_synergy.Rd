@@ -15,6 +15,7 @@ analyze_drug_synergy(
   control_name = "Control",
   eval_time_point = NULL,
   id_column = "ID",
+  endpoint_method = c("model", "last_obs", "survivors"),
   ci_thresholds = c(0.85, 1.15),
   strong_synergy_delta = 0.1,
   n_boot = 2000L,
@@ -44,6 +45,11 @@ If NULL (default), the function will use the last time point in the data.}
 
 \item{id_column}{Column identifying individual animals. Used to resample
 mice for the bootstrap; also used to report per-group n.}
+
+\item{endpoint_method}{How each arm's volume at \code{eval_time_point} is
+obtained: "model" (default, log-scale LMM marginal means using every
+observation), "last_obs", or "survivors" (pre-0.8.0 behaviour; conditions
+on survival and understates TGI). See CODE_REVIEW.md R3.5 / G.3.}
 
 \item{ci_thresholds}{Length-2 numeric giving the Loewe combination-index band
 treated as indistinguishable from additive. Default \code{c(0.85, 1.15)} —

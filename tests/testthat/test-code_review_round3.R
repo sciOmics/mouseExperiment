@@ -579,3 +579,223 @@ test_that("R3.12: analyze_body_weight returns adjusted pairwise comparisons", {
   expect_equal(nrow(r$pairwise_comparisons), 3L)
   expect_identical(r$p_adjust_method_used, "tukey")
 })
+
+# =============================================================================
+# Batch B — R3.5 / R3.3 / G.3: endpoint estimand
+# =============================================================================
+
+# A study whose dropout mechanism is the real one: each animal has its own
+# growth rate and is removed the first day its volume crosses the IACUC limit.
+# Fast growers therefore leave first, so survivors at the last day are the slow
+# growers — most severely in the control arm, which loses animals earliest.
+make_attrition_df <- function(seed = 101, limit = 2000) {
+  set.seed(seed)
+  mk <- function(tx, rate_mu, n = 10) do.call(rbind, lapply(seq_len(n), function(i) {
+    rate <- stats::rnorm(1, rate_mu, 0.030)
+    days <- seq(0, 28, 4)
+    v <- exp(log(150) + stats::rnorm(1, 0, 0.15) + rate * days +
+               stats::rnorm(length(days), 0, 0.08))
+    hit  <- which(v >= limit)
+    keep <- if (length(hit)) seq_len(hit[1]) else seq_along(days)
+    data.frame(ID = paste0(tx, i), Treatment = tx, Day = days[keep],
+               Volume = v[keep], TrueRate = rate,
+               Weight = 25 - 0.015 * days[keep] +
+                 stats::rnorm(length(keep), 0, 0.1),
+               stringsAsFactors = FALSE)
+  }))
+  rbind(mk("Control", 0.115), mk("DrugA", 0.075), mk("DrugB", 0.060))
+}
+
+test_that("R3.5: the endpoint estimand corrects survivor bias in TGI", {
+  full <- make_attrition_df()
+  df   <- full[, c("ID", "Treatment", "Day", "Volume", "Weight")]
+
+  # Ground truth: each arm's geometric mean volume at day 28 had nobody been
+  # removed, computed from the simulation's own per-animal growth rates.
+  mice  <- unique(full[, c("ID", "Treatment", "TrueRate")])
+  truth <- vapply(split(mice, mice$Treatment),
+                  function(g) exp(mean(log(150) + g$TrueRate * 28)), numeric(1))
+  true_tgi <- (1 - truth / truth[["Control"]]) * 100
+
+  tgi_for <- function(m) {
+    r <- suppressWarnings(suppressMessages(therapeutic_window_metric(
+      df, reference_group = "Control", endpoint_method = m,
+      n_boot = 0, adjust_tumor_weight = FALSE)))
+    stats::setNames(r$tgi_data$TGI, r$tgi_data$Treatment)
+  }
+  surv  <- tgi_for("survivors")
+  model <- tgi_for("model")
+
+  err <- function(x) mean(abs(x[c("DrugA", "DrugB")] -
+                                true_tgi[c("DrugA", "DrugB")]))
+
+  # Survivor conditioning understates efficacy; the model estimand recovers it.
+  expect_true(all(surv[c("DrugA", "DrugB")] < true_tgi[c("DrugA", "DrugB")]))
+  expect_lt(err(model), err(surv))
+  # On this fixture the improvement is large, not marginal.
+  expect_lt(err(model), err(surv) / 2)
+})
+
+test_that("R3.5: attrition is reported so survivor selection is visible", {
+  df <- make_attrition_df()[, c("ID", "Treatment", "Day", "Volume", "Weight")]
+  r <- suppressWarnings(suppressMessages(therapeutic_window_metric(
+    df, reference_group = "Control", endpoint_method = "model",
+    n_boot = 0, adjust_tumor_weight = FALSE)))
+
+  a <- r$attrition
+  expect_true(all(c("N_Enrolled", "N_At_Endpoint", "Pct_Lost") %in% names(a)))
+  # The control arm must show the heaviest loss — that is the whole point.
+  expect_gt(a$Pct_Lost[a$Treatment == "Control"],
+            max(a$Pct_Lost[a$Treatment != "Control"]))
+  # Every enrolled animal still contributes under the model estimand.
+  expect_true(all(r$tgi_data$N == a$N_Enrolled[match(r$tgi_data$Treatment,
+                                                     a$Treatment)]))
+})
+
+test_that("R3.5: 'survivors' warns that it conditions on survival", {
+  df <- make_attrition_df()[, c("ID", "Treatment", "Day", "Volume", "Weight")]
+  expect_warning(
+    suppressMessages(therapeutic_window_metric(
+      df, reference_group = "Control", endpoint_method = "survivors",
+      n_boot = 0, adjust_tumor_weight = FALSE)),
+    regexp = "conditions on being observed"
+  )
+})
+
+test_that("R3.5: the endpoint estimand reaches synergy and the other consumers", {
+  df <- make_attrition_df()[, c("ID", "Treatment", "Day", "Volume", "Weight")]
+  # A real fourth arm: slow-growing, so every Combo animal reaches day 28 and
+  # the "survivors" comparison is well defined for it.
+  set.seed(77)
+  combo <- do.call(rbind, lapply(1:10, function(i) {
+    rate <- stats::rnorm(1, 0.030, 0.02); days <- seq(0, 28, 4)
+    data.frame(
+      ID = paste0("Combo", i), Treatment = "Combo", Day = days,
+      Volume = exp(log(150) + stats::rnorm(1, 0, 0.15) + rate * days +
+                     stats::rnorm(length(days), 0, 0.08)),
+      Weight = 25 - 0.015 * days + stats::rnorm(length(days), 0, 0.1),
+      stringsAsFactors = FALSE)
+  }))
+  df <- rbind(df, combo)
+
+  syn <- function(m) suppressWarnings(suppressMessages(analyze_drug_synergy(
+    df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
+    control_name = "Control", eval_time_point = 28, endpoint_method = m,
+    n_boot = 0, verbose = FALSE)))
+
+  s_surv  <- syn("survivors")
+  s_model <- syn("model")
+  tgi <- function(r) r$summary$TGI_Percent[r$summary$Treatment == "DrugA"]
+  expect_gt(tgi(s_model), tgi(s_surv))
+  expect_false(is.null(s_model$attrition))
+
+  # weight_corrected_tgi and efficacy_toxicity_bivariate take the same argument.
+  expect_no_error(suppressWarnings(suppressMessages(
+    weight_corrected_tgi(df, reference_group = "Control",
+                         endpoint_method = "model"))))
+  expect_no_error(suppressWarnings(suppressMessages(
+    efficacy_toxicity_bivariate(df, reference_group = "Control",
+                                endpoint_method = "model"))))
+})
+
+test_that("R3.5: an animal with no row at the endpoint day still contributes", {
+  df <- make_attrition_df()[, c("ID", "Treatment", "Day", "Volume", "Weight")]
+  r <- suppressWarnings(suppressMessages(efficacy_toxicity_bivariate(
+    df, reference_group = "Control", endpoint_method = "model")))
+  # Previously `sub$Volume[sub$Day == max_day]` was numeric(0) for any animal
+  # removed early; every enrolled animal must appear exactly once.
+  expect_equal(nrow(r$per_mouse), length(unique(df$ID)))
+  expect_true(all(is.finite(r$per_mouse$Efficacy)))
+})
+
+# ---- G.6 / R3.6 / R3.7: bootstrap intervals ---------------------------------
+
+test_that("R3.6/R3.7: synergy metrics carry bootstrap intervals", {
+  set.seed(12)
+  mk <- function(tx, mu, n = 9) data.frame(
+    Treatment = tx, Day = 21, ID = paste0(tx, seq_len(n)),
+    Volume = stats::rlnorm(n, log(mu), 0.35), stringsAsFactors = FALSE)
+  df <- rbind(mk("Control", 1500), mk("DrugA", 900),
+              mk("DrugB", 1000), mk("Combo", 300))
+
+  r <- suppressWarnings(suppressMessages(analyze_drug_synergy(
+    df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
+    control_name = "Control", eval_time_point = 21,
+    endpoint_method = "survivors", n_boot = 1000, boot_seed = 1,
+    verbose = FALSE)))
+
+  ci <- r$synergy_ci
+  expect_false(is.null(ci))
+  expect_true(all(c("TGI_A_pct", "TGI_Combo_pct", "Bliss_Excess_FE",
+                    "Loewe_CI") %in% ci$Metric))
+  expect_true(all(ci$CI_Lower <= ci$Estimate & ci$Estimate <= ci$CI_Upper,
+                  na.rm = TRUE))
+  # Reproducible given a seed.
+  r2 <- suppressWarnings(suppressMessages(analyze_drug_synergy(
+    df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
+    control_name = "Control", eval_time_point = 21,
+    endpoint_method = "survivors", n_boot = 1000, boot_seed = 1,
+    verbose = FALSE)))
+  expect_equal(ci$CI_Lower, r2$synergy_ci$CI_Lower)
+  # n_boot = 0 skips it.
+  r0 <- suppressWarnings(suppressMessages(analyze_drug_synergy(
+    df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
+    control_name = "Control", eval_time_point = 21,
+    endpoint_method = "survivors", n_boot = 0, verbose = FALSE)))
+  expect_null(r0$synergy_ci)
+})
+
+test_that("R3.6/R3.7: TWM carries bootstrap intervals for its ranking", {
+  df <- make_attrition_df()[, c("ID", "Treatment", "Day", "Volume", "Weight")]
+  r <- suppressWarnings(suppressMessages(therapeutic_window_metric(
+    df, reference_group = "Control", endpoint_method = "model",
+    n_boot = 500, boot_seed = 2, adjust_tumor_weight = FALSE)))
+
+  expect_false(is.null(r$twm_ci))
+  expect_true(all(c("TWM_Lower", "TWM_Upper") %in% names(r$twm_table)))
+  ok <- is.finite(r$twm_table$TWM_Lower) & is.finite(r$twm_table$TWM_Upper)
+  expect_true(all(r$twm_table$TWM_Lower[ok] <= r$twm_table$TWM_Upper[ok]))
+})
+
+# ---- R3.15 ------------------------------------------------------------------
+
+test_that("R3.15: power analysis accounts for multiplicity and attrition", {
+  base <- apriori_power_analysis(effect_size = 0.8, n_groups = 4,
+                                 alpha = 0.05, target_power = 0.8)
+  adj  <- apriori_power_analysis(effect_size = 0.8, n_groups = 4,
+                                 alpha = 0.05, target_power = 0.8,
+                                 p_adjust_method = "bonferroni")
+  drop <- apriori_power_analysis(effect_size = 0.8, n_groups = 4,
+                                 alpha = 0.05, target_power = 0.8,
+                                 dropout_rate = 0.2)
+
+  # Adjusting for 3 vs-control comparisons needs more animals.
+  expect_gt(adj$scenario_table$Required_N[1], base$scenario_table$Required_N[1])
+  expect_equal(adj$scenario_table$Alpha_Per_Comparison[1], 0.05 / 3)
+  expect_equal(adj$scenario_table$N_Comparisons[1], 3L)
+
+  # Attrition leaves Required_N alone but raises the number to enrol.
+  expect_equal(drop$scenario_table$Required_N[1],
+               base$scenario_table$Required_N[1])
+  expect_gt(drop$scenario_table$Enroll_N[1], drop$scenario_table$Required_N[1])
+  expect_equal(drop$scenario_table$Enroll_N[1],
+               ceiling(drop$scenario_table$Required_N[1] / 0.8))
+})
+
+# ---- R3.22 ------------------------------------------------------------------
+
+test_that("R3.22: the AUC omnibus test is Welch's, matching its pairwise tests", {
+  df <- make_tg_df()
+  r <- suppressWarnings(suppressMessages(tumor_growth_statistics(
+    df, model_type = "auc", plots = FALSE, verbose = FALSE)))
+
+  expect_true(grepl("Welch", r$anova$Method[1]))
+  expect_equal(
+    r$anova$p_value[1],
+    stats::oneway.test(AUC ~ Treatment, data = r$auc_analysis$individual,
+                       var.equal = FALSE)$p.value,
+    tolerance = 1e-10)
+  # Variance homogeneity is reported rather than assumed.
+  skip_if_not_installed("car")
+  expect_false(is.null(r$variance_test))
+})

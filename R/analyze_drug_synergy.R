@@ -93,6 +93,10 @@
 #' @import ggplot2
 #' @param id_column Column identifying individual animals. Used to resample
 #'   mice for the bootstrap; also used to report per-group n.
+#' @param endpoint_method How each arm's volume at \code{eval_time_point} is
+#'   obtained: "model" (default, log-scale LMM marginal means using every
+#'   observation), "last_obs", or "survivors" (pre-0.8.0 behaviour; conditions
+#'   on survival and understates TGI). See CODE_REVIEW.md R3.5 / G.3.
 #' @param ci_thresholds Length-2 numeric giving the Loewe combination-index band
 #'   treated as indistinguishable from additive. Default \code{c(0.85, 1.15)} —
 #'   a convention, not a derived quantity (CODE_REVIEW.md R3.28).
@@ -118,11 +122,14 @@ analyze_drug_synergy <- function(df,
                                control_name = "Control",
                                eval_time_point = NULL,
                                id_column = "ID",
+                               endpoint_method = c("model", "last_obs", "survivors"),
                                ci_thresholds = c(0.85, 1.15),
                                strong_synergy_delta = 0.1,
                                n_boot = 2000L,
                                boot_seed = NULL,
                                verbose = TRUE) {
+
+  endpoint_method <- match.arg(endpoint_method)
   
   # Input validation
   required_columns <- c(treatment_column, volume_column, time_column)
@@ -155,18 +162,39 @@ analyze_drug_synergy <- function(df,
     }
   }
   
-  # Filter data for the evaluation time point
-  analysis_data <- df[df[[time_column]] == eval_time_point, ]
+  # CODE_REVIEW.md R3.5 / G.3 — filtering to rows observed exactly at
+  # eval_time_point conditions on survival to that day. Animals leave because
+  # their tumours grew, so this selects the slowest growers, hardest in the
+  # control arm, and biases every TGI downward. Route through the shared
+  # endpoint helper: the default reads each arm's geometric mean at the
+  # evaluation day off a log-scale LMM fitted to every observation, and the
+  # per-mouse table it returns keeps all animals for the bootstrap.
+  ep <- endpoint_volumes(
+    df, id_column = id_column, treatment_column = treatment_column,
+    time_column = time_column, volume_column = volume_column,
+    endpoint_day = eval_time_point, endpoint_method = endpoint_method
+  )
+  # Per-mouse endpoint volumes (all animals) for the group means and bootstrap.
+  analysis_data <- if (!is.null(ep$per_mouse)) {
+    data.frame(Treatment = ep$per_mouse$Treatment,
+               Volume    = ep$per_mouse$Volume,
+               stringsAsFactors = FALSE)
+  } else {
+    pm <- endpoint_volumes(
+      df, id_column = id_column, treatment_column = treatment_column,
+      time_column = time_column, volume_column = volume_column,
+      endpoint_day = eval_time_point, endpoint_method = "last_obs")$per_mouse
+    data.frame(Treatment = pm$Treatment, Volume = pm$Volume,
+               stringsAsFactors = FALSE)
+  }
+  names(analysis_data) <- c(treatment_column, volume_column)
 
   # CODE_REVIEW.md R3.7 — tapply()'s default na.rm = FALSE meant a single
   # missing volume at the evaluation day silently NA'd that group's mean and
   # every quantity derived from it.
-  group_means <- tapply(analysis_data[[volume_column]],
-                        analysis_data[[treatment_column]],
-                        mean, na.rm = TRUE)
-  group_n <- tapply(analysis_data[[volume_column]],
-                    analysis_data[[treatment_column]],
-                    function(x) sum(is.finite(x)))
+  group_means <- stats::setNames(ep$group_means$Mean_Volume,
+                                ep$group_means$Treatment)
+  group_n <- stats::setNames(ep$group_means$N, ep$group_means$Treatment)
 
   # Fail loudly rather than propagating NA when a named arm is absent.
   for (nm in c(control_name, drug_a_name, drug_b_name, combo_name)) {
@@ -402,6 +430,8 @@ analyze_drug_synergy <- function(df,
     # plus per-group n so a reader can weigh the point estimates.
     synergy_ci  = synergy_ci,
     group_n     = group_n,
+    attrition   = ep$attrition,
+    endpoint_method = ep$method,
     eval_time_point = eval_time_point,
     thresholds  = list(ci_thresholds = ci_thresholds,
                        strong_synergy_delta = strong_synergy_delta),

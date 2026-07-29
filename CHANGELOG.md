@@ -5,6 +5,83 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-07-29
+
+Round 3, fourth batch: the endpoint estimand (CODE_REVIEW.md R3.5 / R3.3 / G.3).
+**This changes the headline efficacy number in five functions.**
+
+### BREAKING — TGI values will change, substantially
+
+Every endpoint metric was computed as a raw mean among animals still observed at
+the global last study day:
+
+```r
+max_day <- max(wd$Day); final <- wd[wd$Day == max_day, ]
+ctrl_mean <- mean(final$Volume[final$Treatment == reference_group])
+```
+
+Animals leave these studies *because their tumours got large*, so conditioning on
+survival selects the slowest growers in every arm — most severely in the control
+arm, which loses animals earliest. The TGI denominator was therefore biased
+downward and every TGI with it, understating efficacy. When no control animal
+reached the last day the denominator was `NaN` and every TGI silently became
+`NaN`.
+
+`therapeutic_window_metric()`, `analyze_drug_synergy()`,
+`weight_corrected_tgi()`, and `efficacy_toxicity_bivariate()` now take
+`endpoint_method`:
+
+- **`"model"` (new default)** — each arm's geometric mean at the endpoint day,
+  read off a log-scale mixed model fitted to *every observation from every
+  animal*. An animal euthanised on day 20 still informs its arm's intercept and
+  slope at day 28. Nothing is discarded, nothing is truncated, and no synthetic
+  data rows are fabricated: the extrapolation is the model's and carries the
+  model's uncertainty. This is what makes the v0.4.5 `tgs_extrapolate()`
+  machinery unnecessary rather than merely unwise.
+- **`"last_obs"`** — each animal's last observation at or before the endpoint
+  day. Uses all animals, but evaluates them at *different days*, so it is not an
+  estimate of volume at the endpoint. On the simulation below it was *more*
+  biased than `"survivors"`, not less, because it understates the control arm
+  most. Kept as a fallback for when the model cannot be fitted.
+- **`"survivors"`** — the pre-0.8.0 behaviour, for reproducing existing numbers.
+  Warns when animals were lost.
+
+Measured on a simulated study with the real dropout mechanism (per-animal growth
+rates; each animal removed the first day its volume crosses a 2000 mm³ limit;
+60 % of controls lost by day 28), against ground truth computed from the
+simulation's own growth rates:
+
+| estimand | TGI DrugA | TGI DrugB | mean absolute error |
+|---|---|---|---|
+| truth | 65.6 | 83.0 | — |
+| `"survivors"` (old default) | 38.4 | 63.6 | 23.3 |
+| `"last_obs"` | 35.4 | 55.6 | 28.9 |
+| `"model"` (new default) | 58.5 | 79.5 | **5.3** |
+
+Because `exp()` of a log-scale marginal mean is a geometric mean, this also
+resolves the arithmetic-vs-geometric inconsistency noted in R3.6: the TGI
+denominator and the modelling scale now describe the same population parameter.
+
+### Added
+
+- `attrition` on every affected result — `N_Enrolled`, `N_At_Endpoint`,
+  `Pct_Lost` per arm. This is the number that made survivor selection invisible.
+- `R/utils_endpoint.R`: `endpoint_volumes()`, `model_endpoint_means()`,
+  `endpoint_tgi()`.
+
+### Fixed
+
+- **An animal with no row at the endpoint day is no longer dropped.**
+  `efficacy_toxicity_bivariate()` used `sub$Volume[sub$Day == max_day]`, which
+  is `numeric(0)` for any animal removed early (Round 2 flagged this under
+  R3.5). Every enrolled animal now contributes.
+
+### Tests
+
+- 418 passing, 0 failing. New assertions compare each estimand against
+  simulation ground truth and require the model estimand's error to be less than
+  half the survivor estimand's.
+
 ## [0.7.0] - 2026-07-29
 
 Round 3, third batch. Adds uncertainty to the derived metrics (the maintainer
