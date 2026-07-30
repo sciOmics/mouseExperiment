@@ -4,6 +4,23 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.07.011] - 2026-07-30
+
+### Removed — the dosing-schedule annotation added in 26.07.010
+
+The toggle, the dosing-days field, the style selector and the warning banner are
+gone from the Tumor Growth, Toxicity and Survival sidebars, along with the
+annotation on the growth, body-weight and Kaplan-Meier plots and the Info-tab
+documentation for it. The feature did not work in practice and has been withdrawn
+rather than patched.
+
+The two treatment-schedule CSVs removed in 26.07.010 stay removed — nothing in
+the app ever reached them. Every file in `inst/sample_data/` remains loadable
+from the demo selector.
+
+Suite: 621 → 551 passing, no skips. The drop is the 70 assertions that covered
+the withdrawn feature.
+
 ## [26.07.010] - 2026-07-30
 
 ### Added — dosing schedules drawn onto the plots (D.15)

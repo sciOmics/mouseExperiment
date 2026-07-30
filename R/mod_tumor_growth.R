@@ -4,11 +4,6 @@
 tumor_growth_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
 
-  # D.15 -- surface dosing-schedule parse warnings. A mistyped arm name
-  # silently dropping its row is the failure this review has found five times.
-  output$tg_dosing_msg <- renderUI({
-    dose_schedule_msg_ui(input, "tg", ordered_tg_grps())
-  })
   
   # D.7: `rv$tg_results <- NULL` removed here for the same reason as the other
   # five modules — it wiped the slot at module init, so testServer() could never

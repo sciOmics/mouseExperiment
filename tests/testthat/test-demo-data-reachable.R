@@ -5,7 +5,7 @@
 # `synthetic_data`) had no CSV here and no entry in the loader, so neither could
 # ever be selected. Two further files — the treatment schedules — sat in this
 # package's own `inst/sample_data/` with nothing in the app able to open them;
-# they were removed under D.15 when dosing moved onto the plots themselves.
+# they were removed under D.15 along with plot_treatments().
 #
 # Nothing detected any of it, because a demo dataset that is never offered
 # produces no error — it simply is not there. That is the §K.2 shape again: the
@@ -34,10 +34,10 @@ loader_keys <- function() {
   sub('.*"([^"]+)".*', "\\1", files)
 }
 
-# D.15: the two schedule CSVs that used to sit here unreachable were removed
-# along with plot_treatments(). Dosing information is now entered as text in the
-# sidebar and drawn into the plots themselves, so there is nothing left that
-# ships without being loadable — the exemption list is empty and should stay so.
+# D.15/D.16: the two schedule CSVs that used to sit here unreachable were removed
+# along with plot_treatments(). The dosing-annotation feature that briefly replaced
+# it was withdrawn too (D.16), but the files stay gone either way — nothing ships
+# that cannot be loaded, so the exemption list is empty and should stay so.
 SCHEDULE_FILES <- character(0)
 
 test_that("D.12: every shipped sample file is loadable from the demo selector", {

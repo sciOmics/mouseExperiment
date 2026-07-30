@@ -126,8 +126,6 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     # Annotate hollow circles = extrapolated when extrapolation is active
     if (isTRUE(do_extrapolate))
       p <- p + ggplot2::labs(caption = "Hollow circles / dashed lines = extrapolated data points after mouse death")
-    # D.15 -- dosing marks last, so they sit below the finished y-scale.
-    p <- apply_dose_schedule(p, input, "tg", ordered_grps, colors)
     p
     }, error = function(e) {
       msg <- conditionMessage(e)

@@ -1454,3 +1454,36 @@ stronger invariant and the one now enforced.
 | D.15 | Schedule data unreachable; no dosing context on plots | Enhancement | ✅ Resolved v26.07.010 |
 
 Suite: 557 → 621 passing, no skips.
+
+---
+
+# Review Round 13 (v26.07.011 — 2026-07-30)
+
+## D.16 The dosing-schedule annotation is withdrawn
+
+Added in 26.07.010, removed here — it did not work in practice. Removed from all
+three modules: the sidebar controls, the message outputs, the four plot call
+sites (growth, both body-weight trajectory branches, and the KM curve) and the
+Info-tab documentation. `tumorGrowthUI` is back to its exact pre-feature size,
+which is the cheap check that the removal was complete.
+
+The schedule CSVs stay removed and the demo-reachability exemption list stays
+empty: every file in `inst/sample_data/` is loadable from the selector.
+
+**What this says about the dashboard tests.** The feature had 102 assertions
+here, all passing. They verified that the controls existed in the UI source, that
+the toggle gated the annotation, that both toxicity branches were wired, that
+parse warnings reached a banner, and that failure degraded to the unannotated
+plot. Every one of those was about wiring — whether a call site existed, whether
+a layer count changed — and none about whether the result was usable.
+
+This is §I.2 in a new costume. That finding was that the module tests asserted
+`inherits(session, "session_proxy")` and so verified the harness rather than the
+module. These assertions verified the plumbing rather than the picture. Counting
+call sites did catch a real half-application (only one of the two toxicity
+branches was wired at first), so the approach has value — it just cannot
+substitute for looking at the output in the running app.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| D.16 | Dosing-schedule annotation non-functional in practice | — | ✅ Removed v26.07.011 |

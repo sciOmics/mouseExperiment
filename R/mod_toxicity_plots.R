@@ -187,7 +187,7 @@ add_tox_plots <- function(input, output, session, rv,
           linewidth = line_w * 2.2, inherit.aes = FALSE)
       }
       if (!is.null(colors)) p <- p + ggplot2::scale_color_manual(values = colors)
-      apply_dose_schedule(p, input, "tox", ordered_grps, colors)
+      p
     } else {
       agg <- stats::aggregate(Weight ~ Treatment + Day, data = td, FUN = function(x)
         c(mean = mean(x, na.rm = TRUE), sd = stats::sd(x, na.rm = TRUE), n = length(x)))
@@ -210,7 +210,7 @@ add_tox_plots <- function(input, output, session, rv,
         ggplot2::theme_classic(base_size = text_sz)
       if (!is.null(colors)) p <- p + ggplot2::scale_color_manual(values = colors) +
                                      ggplot2::scale_fill_manual(values = colors)
-      apply_dose_schedule(p, input, "tox", ordered_grps, colors)
+      p
     }
   }, width  = function() input$tox_plot_width  %||% 800,
      height = function() input$tox_plot_height %||% 500)
