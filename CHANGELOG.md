@@ -5,6 +5,65 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-07-30
+
+Closes H.3, the one Round 3 finding deliberately left open. Round 3 is now fully
+closed.
+
+### Added — randomisation test with a declared unit
+
+`perm_spec()` and `trajectory_permutation_test()`, plus a `permutation_test =`
+argument on `tumor_growth_statistics()`.
+
+H.3 was held open because a permutation test is a *randomisation* test: it is only
+valid if what you permute mirrors how the study randomised, and building it on a
+guess produces something that looks rigorous while being calibrated for the wrong
+design. The maintainer confirmed mice are usually the unit but that it varies — so
+the caller **declares** the unit and the test is built to match.
+`perm_spec(unit = "mouse")` is the default; `unit = "cage"` relabels whole cages and
+is rejected on a crossed design, where a cage has no single label to permute.
+
+**Why it is worth having.** On a 3-arm, 24-mouse fixture with a real interaction the
+asymptotic chi-square LRT reports p = 3.35e-28; the randomisation test reports
+0.0033 at mouse level and 0.0667 at cage level. The asymptotic value is off by ~25
+orders of magnitude — the denominator-df problem flagged since Round 2 §C, made
+concrete. And the mouse/cage gap shows the unit is not bookkeeping: if cages were
+the assignment unit, that dataset yields the most extreme result the design can
+produce and it is still 0.067.
+
+**Validity was checked, not assumed.** 60 datasets under the strict null give
+P(p<0.05) = 0.050 and mean p = 0.491 at mouse level — essentially exact
+calibration.
+
+### Fixed — two bugs the null calibration exposed before release
+
+- **The resolution floor was understated by a factor of g! (R5.3).** The
+  interaction statistic depends only on the *partition* of units into groups, not
+  on which label each group gets, so with g equal-sized groups g! assignments tie
+  with the observed one. For 6 cages in 3 arms of 2 there are 90 assignments but
+  only 15 distinct statistic values, making the floor 6/90 = 0.067 rather than the
+  1/90 = 0.011 first reported — and p < 0.05 **unattainable**. The cage column's
+  0-of-60 was arithmetic, not conservatism. `min_attainable_p` is now
+  `n_sym / n_assign`, `n_distinct_statistics` is returned, and the warning names
+  the floor and says outright when p < 0.05 cannot be reached.
+- **A Monte-Carlo p-value could land below the exact floor (R5.4)** — 0.040 against
+  a 0.067 floor — because too few sampled relabellings happened to tie with the
+  observed one. Designs with few distinct assignments (≤ 2000) are now
+  **enumerated exhaustively**: exact, deterministic, floor-respecting by
+  construction, and often cheaper than sampling (90 assignments vs a 999-permutation
+  run). `exhaustive` in the return value says which route ran.
+
+### Worth knowing when designing studies
+
+**Two cages per arm cannot produce a significant cage-level randomisation test, at
+any effect size.** If cage is the unit of assignment, three or more cages per arm is
+the minimum for this test to be able to say anything.
+
+### Tests
+
+159 passing in the Round 3/5 regression file, including the crossed-design
+rejection, floor arithmetic, exactness, and reproducibility.
+
 ## [0.10.0] - 2026-07-29
 
 Dependency declarations (CODE_REVIEW.md Round 4). The statistical dependencies are

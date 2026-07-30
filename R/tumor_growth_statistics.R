@@ -634,6 +634,14 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'   \code{0} (skip; \code{boot_ci_*} columns are \code{NA}).
 #' @param auc_bootstrap_seed Optional integer seed for reproducible bootstrap
 #'   resampling. \code{NULL} (default) uses the caller's RNG state.
+#' @param permutation_test Optional \code{\link{perm_spec}} object. When supplied
+#'   (and \code{model_type = "lme4"}), a randomisation test of the treatment x
+#'   time interaction is run and returned as \code{permutation_test}. Unlike the
+#'   model's own p-values it assumes neither the Kenward-Roger / Satterthwaite
+#'   denominator-df approximation nor normal random effects — but it is only valid
+#'   if \code{unit} matches how the study actually randomised, so the unit is an
+#'   explicit choice rather than a default. See \code{\link{perm_spec}}.
+#'   CODE_REVIEW.md H.3.
 #' @param auc_permutations Integer >= 0. When > 0 and
 #'   \code{model_type = "auc"}, each pairwise comparison additionally gains a
 #'   two-sided permutation p-value (\code{perm_p_value}, plus
@@ -747,7 +755,8 @@ tumor_growth_statistics <- function(df,
                                   necrotic_handling = c("exclude", "covariate", "none"),
                                   auc_bootstrap_n = 0L,
                                   auc_bootstrap_seed = NULL,
-                                  auc_permutations = 0L) {
+                                  auc_permutations = 0L,
+                                  permutation_test = NULL) {
   # Check for required packages
   
   # Match arguments
@@ -1300,6 +1309,30 @@ tumor_growth_statistics <- function(df,
       cage_icc(model, cage_column)
     } else NULL
 
+    # CODE_REVIEW.md H.3 — randomisation test of the interaction, run only when
+    # the caller has told us what the unit of randomisation was.
+    perm_result <- NULL
+    if (!is.null(permutation_test)) {
+      perm_result <- tryCatch(
+        trajectory_permutation_test(
+          df               = df,
+          time_column      = time_column,
+          volume_column    = volume_column,
+          treatment_column = treatment_column,
+          id_column        = id_column,
+          cage_column      = if (no_cage_mode) NULL else cage_column,
+          transform        = transform,
+          spec             = permutation_test,
+          verbose          = verbose
+        ),
+        error = function(e) {
+          warning("Permutation test skipped: ", conditionMessage(e),
+                  call. = FALSE)
+          NULL
+        }
+      )
+    }
+
     # Return the results
     results <- list(
       model = if (return_model) model else NULL,
@@ -1331,6 +1364,7 @@ tumor_growth_statistics <- function(df,
       diag_dfbetas             = if (!is.null(lmm_infl)) lmm_infl$dfbetas,
       data_summary = data_summary,
       plots = plots_list,
+      permutation_test = perm_result,
       necrosis_summary = necrosis_summary
     )
 

@@ -945,3 +945,149 @@ test_that("R3.8: interaction coefficients get their own prior", {
   expect_identical(attr(pr, "me_prior_scaling")$rate_coefficients,
                    c("Day", "TreatmentDrugA:Day"))
 })
+
+# =============================================================================
+# H.3 — randomisation test of the treatment x time interaction
+#
+# Held open through Round 3 because a permutation test is only valid if what you
+# permute mirrors how the study randomised. The maintainer confirmed mice are
+# usually the unit, so the unit is an explicit argument and both choices are
+# tested here.
+# =============================================================================
+
+# 2 cages per arm, 4 mice per cage, WITH a real cage effect so mouse-level and
+# cage-level permutation genuinely differ.
+make_perm_df <- function(seed = 11, trt_slopes = list(Control = 0, DrugA = -0.030,
+                                                      DrugB = -0.045),
+                         cage_sd = 0.30) {
+  set.seed(seed)
+  rows <- list(); cg <- 0L
+  for (tx in names(trt_slopes)) {
+    for (c_i in 1:2) {
+      cg <- cg + 1L
+      cage_re <- stats::rnorm(1, 0, cage_sd)
+      for (m in 1:4) {
+        b <- stats::rnorm(1, 0, 0.15); days <- seq(0, 20, 4)
+        rows[[length(rows) + 1L]] <- data.frame(
+          ID = paste0("C", cg, "_m", m), Cage = paste0("C", cg), Treatment = tx,
+          Day = days,
+          Volume = exp(log(200) + cage_re + b +
+                         (0.10 + trt_slopes[[tx]]) * days +
+                         stats::rnorm(length(days), 0, 0.12)),
+          stringsAsFactors = FALSE)
+      }
+    }
+  }
+  do.call(rbind, rows)
+}
+
+test_that("H.3: perm_spec validates its inputs", {
+  expect_s3_class(perm_spec(), "perm_spec")
+  expect_identical(perm_spec()$unit, "mouse")          # the maintainer's norm
+  expect_error(perm_spec(n_perm = 0), regexp = "positive integer")
+  expect_error(perm_spec(unit = "litter"), regexp = "'arg'")
+})
+
+test_that("H.3: the test detects a real interaction at the mouse level", {
+  df <- make_perm_df()
+  r <- suppressWarnings(trajectory_permutation_test(
+    df, spec = perm_spec(unit = "mouse", n_perm = 299, seed = 1)))
+
+  expect_identical(r$unit, "mouse")
+  expect_equal(r$n_units, 24L)                          # animals, not rows
+  expect_lt(r$p_value, 0.05)
+  # Never exactly zero — the (1 + count) / (1 + n) estimator.
+  expect_gt(r$p_value, 0)
+  expect_true(is.finite(r$observed_statistic))
+  expect_equal(length(r$perm_statistics), r$n_perm_converged)
+})
+
+test_that("H.3: the randomisation unit changes the answer, as it must", {
+  df <- make_perm_df()
+  rm_ <- suppressWarnings(trajectory_permutation_test(
+    df, spec = perm_spec(unit = "mouse", n_perm = 299, seed = 1)))
+  rc_ <- suppressWarnings(trajectory_permutation_test(
+    df, spec = perm_spec(unit = "cage", n_perm = 299, seed = 1)))
+
+  # Cage-level permutation has 6 exchangeable units, not 24, so it is far less
+  # powerful on the same data. That is the honest consequence of assigning cages
+  # rather than animals, and the whole reason the unit must be declared.
+  expect_equal(rc_$n_units, 6L)
+  expect_gt(rc_$p_value, rm_$p_value)
+
+  # Both are dramatically more conservative than the asymptotic chi-square LRT,
+  # which is the point of running them at all.
+  expect_lt(rm_$lrt_p_asymptotic, rm_$p_value)
+  expect_lt(rm_$lrt_p_asymptotic, 1e-10)
+})
+
+test_that("H.3: resolution limits are reported, not left to be discovered", {
+  df <- make_perm_df()
+  r <- suppressWarnings(trajectory_permutation_test(
+    df, spec = perm_spec(unit = "cage", n_perm = 49, seed = 1)))
+
+  # 6 cages into 3 arms of 2 = 6!/(2!)^3 = 90 distinct labellings. But the
+  # statistic is invariant to relabelling the 3 groups, so 3! = 6 assignments tie
+  # with the observed one and there are only 15 distinct statistic values. The
+  # floor is therefore 6/90 = 0.067, NOT 1/90 = 0.011 -- so p < 0.05 is
+  # unattainable at cage level on this design. A null-calibration run (0 of 60
+  # null datasets ever reaching p < 0.05) is what surfaced the original error.
+  expect_equal(r$n_distinct_assignments, 90, tolerance = 1e-8)
+  expect_equal(r$n_distinct_statistics, 15, tolerance = 1e-8)
+  expect_equal(r$min_attainable_p, 6 / 90, tolerance = 1e-8)
+  expect_gt(r$min_attainable_p, 0.05)
+  expect_gte(r$p_value, r$min_attainable_p - 1e-9)
+
+  # A design too coarse to resolve a small p-value says so.
+  coarse <- df[df$Cage %in% c("C1", "C3", "C5"), ]   # 1 cage per arm
+  expect_warning(
+    trajectory_permutation_test(coarse,
+                                spec = perm_spec(unit = "cage", n_perm = 19)),
+    regexp = "smallest attainable p-value"
+  )
+})
+
+test_that("H.3: cage-level permutation is refused when the design is crossed", {
+  df <- make_perm_df()
+  crossed <- df
+  crossed$Cage <- rep(c("X1", "X2", "X3"), length.out = nrow(crossed))
+
+  # A cage holding several treatments has no single label to permute. The error
+  # must point the user at the mouse-level alternative.
+  expect_error(
+    trajectory_permutation_test(crossed,
+                                spec = perm_spec(unit = "cage", n_perm = 19)),
+    regexp = "crossed"
+  )
+  # Mouse level is still fine on the same data.
+  expect_no_error(suppressWarnings(trajectory_permutation_test(
+    crossed, spec = perm_spec(unit = "mouse", n_perm = 19, seed = 1))))
+})
+
+test_that("H.3: results are reproducible and the spec type is enforced", {
+  df <- make_perm_df()
+  p1 <- suppressWarnings(trajectory_permutation_test(
+    df, spec = perm_spec(n_perm = 49, seed = 99)))$p_value
+  p2 <- suppressWarnings(trajectory_permutation_test(
+    df, spec = perm_spec(n_perm = 49, seed = 99)))$p_value
+  expect_identical(p1, p2)
+
+  # A bare list must be rejected — the unit choice is too consequential to guess.
+  expect_error(trajectory_permutation_test(df, spec = list(unit = "mouse",
+                                                           n_perm = 9)),
+               regexp = "perm_spec")
+})
+
+test_that("H.3: tumor_growth_statistics runs it only when asked", {
+  df <- make_perm_df()
+  with_perm <- suppressWarnings(suppressMessages(tumor_growth_statistics(
+    df, plots = FALSE, verbose = FALSE,
+    permutation_test = perm_spec(unit = "mouse", n_perm = 49, seed = 3))))
+  without <- suppressWarnings(suppressMessages(tumor_growth_statistics(
+    df, plots = FALSE, verbose = FALSE)))
+
+  expect_false(is.null(with_perm$permutation_test))
+  expect_identical(with_perm$permutation_test$unit, "mouse")
+  expect_true(is.finite(with_perm$permutation_test$p_value))
+  expect_null(without$permutation_test)
+})

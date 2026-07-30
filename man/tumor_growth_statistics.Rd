@@ -30,7 +30,8 @@ tumor_growth_statistics(
   necrotic_handling = c("exclude", "covariate", "none"),
   auc_bootstrap_n = 0L,
   auc_bootstrap_seed = NULL,
-  auc_permutations = 0L
+  auc_permutations = 0L,
+  permutation_test = NULL
 )
 }
 \arguments{
@@ -158,6 +159,15 @@ a right-skewed derived statistic, this is more trustworthy than Welch's
 normal-theory approximation, and the null here is genuinely label
 exchangeability. A typical value is \code{2000}. Default \code{0} (skip).
 CODE_REVIEW.md H.2.}
+
+\item{permutation_test}{Optional \code{\link{perm_spec}} object. When supplied
+(and \code{model_type = "lme4"}), a randomisation test of the treatment x
+time interaction is run and returned as \code{permutation_test}. Unlike the
+model's own p-values it assumes neither the Kenward-Roger / Satterthwaite
+denominator-df approximation nor normal random effects — but it is only valid
+if \code{unit} matches how the study actually randomised, so the unit is an
+explicit choice rather than a default. See \code{\link{perm_spec}}.
+CODE_REVIEW.md H.3.}
 
 \item{auc_method}{Removed in v0.4.5. The AUC path now always uses the
 trapezoidal rule. For last-observation-carried-forward (LOCF) AUC, use

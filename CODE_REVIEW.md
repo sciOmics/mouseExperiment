@@ -2861,3 +2861,117 @@ would have left the suite free to keep skipping the paths where the bugs live.
 | R4.4 | `pwr` never installed; ANOVA power path never ran; fallbacks give different numbers | Major | ✅ Fixed v0.10.0 |
 | R4.5 | Dashboard suite ran against installed backend 0.4.10, not the source | Major (process) | ⚠ Documented; needs a CI step |
 | R4.6 | 26 test skips + 29 dead guards removed | Process | ✅ Fixed v0.10.0 |
+
+
+---
+
+# Round 5 — H.3 closed: randomisation test with a declared unit (2026-07-30)
+
+H.3 was the one Round 3 finding deliberately left open, blocked on how the studies
+actually randomise. **Maintainer answer:** mice are most often randomised to
+treatment groups, though it varies.
+
+That answer points at the right design: rather than the package picking a unit, the
+**caller declares it** and the test is built to match. `perm_spec(unit = "mouse")`
+is the default because it is the stated norm; `unit = "cage"` is available and
+validated against the design.
+
+## R5.1 What was built
+
+`perm_spec(unit, n_perm, seed)` — a config helper following the established
+`tg_priors()` / `tg_mcmc()` pattern (Round 2 §D.2) — plus
+`trajectory_permutation_test()`, and a `permutation_test =` argument on
+`tumor_growth_statistics()` that runs it and returns the result.
+
+Statistic: the ML likelihood-ratio for the interaction, full
+(`y ~ trt * time + (1|id)`) against reduced (`y ~ trt + time + (1|id)`). Its own
+distributional properties are irrelevant — it only ranks permutations, which is the
+point of the approach.
+
+Guards, because the unit choice is what makes or breaks validity:
+- `unit = "cage"` on a **crossed** design is rejected (a cage holding several
+  treatments has no single label to permute), with the error pointing at
+  `unit = "mouse"`.
+- A bare list is rejected in favour of `perm_spec()` — the choice is too
+  consequential to accept implicitly.
+- Units carrying more than one label are rejected.
+- `lrt_p_asymptotic` is returned alongside, so the two can be compared.
+
+## R5.2 Why the test earns its keep
+
+On a 3-arm, 24-mouse fixture with a real interaction:
+
+| method | p-value |
+|---|---|
+| asymptotic chi-square LRT | 3.35e-28 |
+| randomisation test, `unit = "mouse"` | 0.0033 |
+| randomisation test, `unit = "cage"` | 0.0667 |
+
+The asymptotic LRT is off by roughly **25 orders of magnitude**. That is the
+Kenward-Roger / Satterthwaite-adjacent problem the review has flagged since Round 2
+§C, made concrete: at n = 24 animals the chi-square approximation to the mixed-model
+LRT is not merely imprecise, it is meaningless.
+
+The mouse-vs-cage gap (0.0033 vs 0.0667) is the second lesson. If cages were the
+unit of assignment, this dataset gives the **most extreme result the design can
+produce** and it is still 0.067. Declaring the unit is not bookkeeping; it changes
+the conclusion.
+
+## R5.3 Null calibration — and the bug it exposed
+
+Validity was checked rather than assumed: 60 datasets simulated under the strict
+null (no treatment effect, real cage effect present).
+
+| method | P(p<0.05) | P(p<0.10) | mean p |
+|---|---|---|---|
+| randomisation, `unit = "mouse"` | **0.050** | 0.083 | 0.491 |
+| randomisation, `unit = "cage"` | 0.000 | 0.000 | 0.561 |
+| asymptotic chi-square LRT | 0.050 | 0.150 | 0.478 |
+
+The mouse-level test is essentially exactly calibrated. The cage-level column
+looked like over-conservatism and was in fact **a bug in the reported resolution
+floor**:
+
+> The interaction statistic depends only on the *partition* of units into groups,
+> not on which label each group receives. So with `g` equal-sized groups, `g!`
+> assignments tie with the observed one. For 6 cages in 3 arms of 2 there are 90
+> distinct assignments but only **15 distinct statistic values**, so the floor is
+> `6/90 = 0.067`, not the `1/90 = 0.011` originally reported — and **p < 0.05 is
+> unattainable**. The 0/60 was not conservatism; it was arithmetic.
+
+Fixed: `min_attainable_p = n_sym / n_assign` where `n_sym` is the product of
+factorials of the counts of equal group sizes, plus `n_distinct_statistics` in the
+return value and a warning that names the floor explicitly (and says outright when
+p < 0.05 cannot be reached).
+
+## R5.4 Exact enumeration for small designs
+
+Correcting the floor surfaced a second problem: a Monte-Carlo p-value can land
+*below* the exact floor, purely because too few sampled relabellings happened to
+tie with the observed one. A test reported 0.040 against a 0.067 floor.
+
+So when the number of distinct assignments is small (≤ 2000, or ≤ `n_perm`), the
+test now **enumerates every distinct assignment** instead of sampling. This is
+exact, deterministic, respects the floor by construction, and is frequently
+*cheaper* — 90 assignments versus a 999-permutation run. `exhaustive` in the return
+value says which route was taken. The cage case above now returns exactly 0.0667,
+the floor, which is the honest answer.
+
+## R5.5 Status
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| H.3 | Global trajectory permutation test | Enhancement | ✅ Fixed v0.11.0 |
+| R5.3 | Resolution floor understated by a factor of g! | Major (caught pre-release) | ✅ Fixed v0.11.0 |
+| R5.4 | Monte-Carlo p-value could fall below the exact floor | Major (caught pre-release) | ✅ Fixed v0.11.0 |
+
+**Round 3 is now fully closed.** Nothing in Rounds 3–5 remains open.
+
+Two notes for whoever reads this next. First, R5.3 and R5.4 were both found by the
+null-calibration run, not by inspection — the same lesson as §R3-L, that a
+statistical routine has to be *exercised* against known truth before it is trusted.
+Second, the cage-level result sitting exactly on its floor is worth remembering when
+designing studies: **two cages per arm cannot produce a significant randomisation
+test at the cage level, no matter how large the effect.** If cage is the unit of
+assignment, three or more cages per arm is the minimum for this test to be able to
+say anything.
