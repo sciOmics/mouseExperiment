@@ -79,16 +79,26 @@ test_that("missing date column raises an error", {
 })
 
 test_that("demo CSV dates round-trip correctly (combo dataset)", {
-  # The demo combo CSV has dates in the form "03/24/2025"
-  demo_path <- system.file(
-    "sample_data", "combo_treatment_synthetic_data.csv",
-    package = "mouseExperiment"
-  )
-  skip_if_not(nzchar(demo_path) && file.exists(demo_path),
-              "Demo data not installed")
+  # R8.7: this test looked for the CSV under inst/sample_data/, where nothing has
+  # ever been shipped — the demo CSVs live in data/. system.file() returned "",
+  # the guard read that as "demo data not installed", and the test skipped on
+  # every run since it was written. Both guards below are now hard failures: the
+  # file is in the repository, so its absence is a packaging regression, and a
+  # missing Date column in a fixture whose whole purpose is dates is a defect.
+  demo_path <- system.file("data", "combo_treatment_synthetic_data.csv",
+                           package = "mouseExperiment")
+  if (!nzchar(demo_path) || !file.exists(demo_path)) {
+    # devtools::load_all() does not always route system.file() to the source
+    # tree; fall back to the repo layout rather than giving up.
+    demo_path <- testthat::test_path("..", "..", "data",
+                                     "combo_treatment_synthetic_data.csv")
+  }
+  expect_true(file.exists(demo_path),
+              info = "combo demo CSV must ship in data/")
 
   raw <- utils::read.csv(demo_path, stringsAsFactors = FALSE)
-  skip_if_not("Date" %in% colnames(raw), "Date column not present")
+  expect_true("Date" %in% colnames(raw),
+              info = "the combo demo CSV is the Date-format fixture")
 
   out <- suppressMessages(
     calculate_dates(raw, start_date = "03/24/2025", date_format = "%m/%d/%Y")
@@ -97,4 +107,6 @@ test_that("demo CSV dates round-trip correctly (combo dataset)", {
   expect_true("Day" %in% colnames(out))
   expect_true(all(out$Day >= 0))
   expect_equal(min(out$Day), 0)
+  # Day must be a real elapsed-time conversion, not a constant.
+  expect_gt(max(out$Day), 0)
 })

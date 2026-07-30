@@ -3,43 +3,11 @@
 # =============================================================================
 
 # --- Helper: create test data with weight ---
-make_weight_data <- function() {
-  set.seed(123)
-  days <- c(0, 7, 14, 21)
+# make_weight_data() moved to helper-fixtures.R (CODE_REVIEW.md K.8) so the
+# toxicity fixture is shared and maintained in one place. It is deliberately
+# NOT merged with make_bw_simple(): this one carries Volume and uses four
+# timepoints, so they are different fixtures, not duplicates.
 
-  make_mouse <- function(id, treatment, base_weight, weight_slope, vol_slope) {
-    vol <- 200 * exp(vol_slope * days) + rnorm(4, 0, 5)
-    wt  <- base_weight + weight_slope * days + rnorm(4, 0, 0.3)
-    data.frame(
-      ID        = id,
-      Treatment = treatment,
-      Day       = days,
-      Volume    = pmax(round(vol, 2), 1),
-      Weight    = round(wt, 2),
-      Sex       = ifelse(id %in% c("C01", "C02", "T01", "T02"), "M", "F"),
-      Cage      = paste0(substring(treatment, 1, 1), "1"),
-      stringsAsFactors = FALSE
-    )
-  }
-
-  rbind(
-    # Control: moderate tumor growth, stable weight
-    make_mouse("C01", "Control", 22, -0.02, 0.05),
-    make_mouse("C02", "Control", 21, -0.01, 0.05),
-    make_mouse("C03", "Control", 23, -0.03, 0.05),
-    make_mouse("C04", "Control", 20, -0.02, 0.05),
-    # Drug A: effective drug, moderate toxicity
-    make_mouse("T01", "DrugA", 22, -0.15, 0.02),
-    make_mouse("T02", "DrugA", 21, -0.12, 0.02),
-    make_mouse("T03", "DrugA", 20, -0.18, 0.02),
-    make_mouse("T04", "DrugA", 23, -0.10, 0.02),
-    # Drug B: ineffective, high toxicity
-    make_mouse("T05", "DrugB", 22, -0.25, 0.04),
-    make_mouse("T06", "DrugB", 21, -0.30, 0.04),
-    make_mouse("T07", "DrugB", 20, -0.28, 0.04),
-    make_mouse("T08", "DrugB", 23, -0.22, 0.04)
-  )
-}
 
 
 # =============================================================================

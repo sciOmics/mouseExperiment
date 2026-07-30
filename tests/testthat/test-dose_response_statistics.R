@@ -63,34 +63,27 @@ test_that("trend test detects significant dose-response (p < 0.01)", {
     )
   ))
 
-  # Check dose_effect_test or trend_test for a significant p-value
-  all_p <- c()
+  # R8.6 / K.2: this test used to sniff for a p-value across the field names
+  # c("p.value", "p_value", "P_Value", "pvalue", "statistic_p", "Pr(>F)") and
+  # skip if it found none. It found none — the fields are actually called
+  # `linear_pvalue` and `linear_trend_pvalue` — so the assertion below had never
+  # once executed. Assert the real names directly; a rename should fail here.
+  expect_true(is.numeric(res$dose_effect_test$linear_pvalue))
+  expect_lt(res$dose_effect_test$linear_pvalue, 0.01)
 
-  extract_p <- function(x) {
-    if (is.list(x)) {
-      p_fields <- c("p.value", "p_value", "P_Value", "pvalue",
-                    "statistic_p", "Pr(>F)")
-      found <- x[intersect(p_fields, names(x))]
-      if (length(found) > 0) return(as.numeric(found[[1]]))
-    }
-    if (is.data.frame(x)) {
-      p_col <- intersect(c("p.value", "p_value", "P_Value"), colnames(x))[1]
-      if (!is.na(p_col)) return(min(as.numeric(x[[p_col]]), na.rm = TRUE))
-    }
-    NULL
-  }
+  expect_true(is.numeric(res$trend_test$linear_trend_pvalue))
+  expect_lt(res$trend_test$linear_trend_pvalue, 0.01)
 
-  for (nm in c("dose_effect_test", "trend_test", "linear_model", "anova_model")) {
-    if (nm %in% names(res)) {
-      p <- extract_p(res[[nm]])
-      if (!is.null(p)) all_p <- c(all_p, p)
-    }
-  }
+  # The Jonckheere–Terpstra test is the one that actually respects dose ordering,
+  # so it is the one that matters most for a monotone dose-response claim.
+  jt <- res$trend_test$jonckheere_test
+  expect_s3_class(jt, "htest")
+  expect_lt(jt$p.value, 0.01)
 
-  skip_if(length(all_p) == 0, "No p-values found in dose_response_statistics output")
-
-  expect_true(any(all_p < 0.01, na.rm = TRUE),
-              info = paste("Smallest p-value:", min(all_p, na.rm = TRUE)))
+  # Direction, not just significance: the fixture is built so volume falls as
+  # dose rises. A significant p-value with a positive slope would be a failure
+  # the old sniff-and-skip could never have caught.
+  expect_lt(res$dose_effect_test$slope, 0)
 })
 
 test_that("mean volume decreases with dose in summary_table", {

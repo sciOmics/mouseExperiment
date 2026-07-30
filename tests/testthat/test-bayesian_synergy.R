@@ -35,7 +35,7 @@ local({
           transform        = "log",
           prior_strength   = "skeptical",
           n_chains         = 2L,
-          n_iter           = 600L,
+          n_iter           = me_test_niter(600L),
           seed             = 42L,
           return_model     = TRUE,
           plots            = TRUE,
@@ -266,7 +266,7 @@ test_that("bayesian_synergy: model is NULL when return_model = FALSE", {
       drug_b_name  = "DrugB",
       combo_name   = "DrugA+DrugB",
       transform    = "log",
-      n_chains     = 2L, n_iter = 600L, seed = 1L,
+      n_chains     = 2L, n_iter = me_test_niter(600L), seed = 1L,
       return_model = FALSE, plots = FALSE, verbose = FALSE
     )
   ))
@@ -284,7 +284,7 @@ test_that("bayesian_synergy: plots are NULL when plots = FALSE", {
       drug_b_name  = "DrugB",
       combo_name   = "DrugA+DrugB",
       transform    = "log",
-      n_chains     = 2L, n_iter = 600L, seed = 2L,
+      n_chains     = 2L, n_iter = me_test_niter(600L), seed = 2L,
       return_model = FALSE, plots = FALSE, verbose = FALSE
     )
   ))

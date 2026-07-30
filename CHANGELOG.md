@@ -5,6 +5,88 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-07-30
+
+Follow-through on the first working coverage baseline (54.4 % of the non-Bayesian
+surface). The breakdown named `R/apriori_power_simulation.R` at **0.00 %** —
+exported, used by the dashboard, and never once called by a test. Everything here
+came out of writing its first tests.
+
+### Added — `dropout_limit` for `apriori_power_simulation()` (K.15)
+
+The simulation gave every animal every timepoint. Real studies euthanise on an
+IACUC volume limit, which is the mechanism the whole of Round 3 turned on, so
+every power figure the package produced was an idealised upper bound.
+
+Measured on a two-arm design (control 0.13/day, effect 0.018/day, 400 replicates):
+power runs 0.770 at complete data, 0.708 at 30 % observations lost, and 0.645 at
+39 %. The optimism is real but graceful — this dropout is MAR given the observed
+trajectory, so the LMM stays unbiased and loses only information. A design
+reported at 0.77 is really near 0.71 at 30 % attrition: worth an extra animal or
+two per arm, not worth alarm.
+
+`dropout_limit` defaults to `Inf`, so no existing result changes. Results now
+carry an `attrition` table, and the dashboard states the assumption even when no
+dropout is modelled.
+
+### Fixed — `baseline_sd` does not affect power, and never could (K.14)
+
+v0.4.5 wired `baseline_sd` into the simulation under §J.4 with the comment that
+this "makes the baseline_sd argument materially affect the simulation". It does
+not. Power is identical at `baseline_sd` = 1, 20, 60 and 200.
+
+This is structural, not a coding error: the test is on `Treatment:Day`, a contrast
+of growth *rates*, while `baseline_sd` injects only per-mouse *intercept*
+variation, which `(Day | ID)` absorbs exactly. The same data at `baseline_sd` = 1
+and 200 give the same p-value to ten significant figures. `random_intercept_sd` is
+inert for the same reason across a 30-fold range, and the two are aliased with
+each other — only their root-sum-square is identifiable.
+
+No attempt was made to force the parameter to matter; that would fabricate an
+effect. The invariance is now documented as a property of the estimand, and the
+tests pin it. The dashboard claimed "Random intercept SD … Higher values require
+larger N" — false — while under-describing `random_slope_sd`, which actually moves
+power from 1.00 to 0.15. Both corrected.
+
+### Fixed — `rnorm(sd = 0)` silently shifted the RNG stream (K.14b)
+
+R's `rnorm()` returns `mu` without calling `norm_rand()` when `sigma == 0`, so an
+SD of zero consumed fewer draws and reshuffled everything downstream. That made
+`baseline_sd = 0` *appear* to change power when nothing else did — an artefact
+easily misread as evidence the parameter worked. Now draws standard normals and
+scales; bit-identical for `sd > 0`.
+
+### Fixed — two tests that had never actually run (R8.6, R8.7)
+
+v0.13.0 reported that no `skip()` call remained. True of bare `skip()`, but the
+full run still showed three skips, and two were masking real gaps.
+
+The dose-response trend test sniffed for a p-value across
+`c("p.value", "p_value", "P_Value", ...)`. The function names its p-values
+`linear_pvalue` and `linear_trend_pvalue`, so the sniff always came back empty,
+the skip always fired, and the assertion under it — in a test called *"trend test
+detects significant dose-response (p < 0.01)"* — had never executed. The values
+were never the problem: linear 5.0e-06, linear-trend 6.0e-12, Jonckheere–Terpstra
+1.6e-08. It would always have passed. That is the point — a skip that fires every
+run looks exactly like a pass in the summary line. Now asserts the real field
+names, plus the sign of the slope, which no sniff could have caught.
+
+The demo-date test looked for its CSV under `inst/sample_data/`, where nothing has
+ever shipped — the demo data lives in `data/`. It had skipped on every run since it
+was written, reporting an environment problem that did not exist. Both guards are
+now hard assertions.
+
+The third skip (brms missing-package path, which cannot run where brms is
+installed) is legitimate and left as is.
+
+### Added — first tests for `apriori_power_simulation()` (K.13)
+
+29 assertions: structure, monotonicity in N and effect size, type-I error under
+the null, argument validation, reproducibility, and parameter-sensitivity checks.
+The function had been the target of three prior fixes (§2.2, §3.7, §J.4) with
+nothing exercising it — the third instance this review has found of a fix marked
+"Fixed" that never worked.
+
 ## [0.13.0] - 2026-07-30
 
 Closes K.11 and K.2. No test in the suite can now skip.

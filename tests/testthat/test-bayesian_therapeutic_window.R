@@ -60,7 +60,7 @@ local({
           transform        = "log",
           prior_strength   = "skeptical",
           n_chains         = 2L,
-          n_iter           = 600L,
+          n_iter           = me_test_niter(600L),
           seed             = 42L,
           return_model     = TRUE,
           plots            = FALSE,
@@ -83,7 +83,7 @@ local({
           reference_group  = "Control",
           prior_strength   = "skeptical",
           n_chains         = 2L,
-          n_iter           = 600L,
+          n_iter           = me_test_niter(600L),
           seed             = 42L,
           return_model     = TRUE,
           plots            = FALSE,
@@ -288,7 +288,7 @@ test_that("bayesian_therapeutic_window: plots NULL when plots = FALSE", {
       make_tg_for_twm(),
       reference_group = "Control", transform = "log",
       prior_strength  = "skeptical",
-      n_chains = 2L, n_iter = 600L, seed = 10L,
+      n_chains = 2L, n_iter = me_test_niter(600L), seed = 10L,
       return_model = TRUE, plots = FALSE, verbose = FALSE
     )
   ))
@@ -296,7 +296,7 @@ test_that("bayesian_therapeutic_window: plots NULL when plots = FALSE", {
     bayesian_body_weight(
       make_bw_simple(),
       reference_group = "Control", prior_strength = "skeptical",
-      n_chains = 2L, n_iter = 600L, seed = 10L,
+      n_chains = 2L, n_iter = me_test_niter(600L), seed = 10L,
       return_model = TRUE, plots = FALSE, verbose = FALSE
     )
   ))

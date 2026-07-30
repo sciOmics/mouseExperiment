@@ -3142,3 +3142,217 @@ the non-Bayesian surface".
 | K.9 | Plot return values untested | ✅ Fixed v0.13.0 |
 | K.10 | Coverage baseline blocked | ✅ Unblocked; caveat rewritten |
 | R4.6 | 9 cosmetic guards | Declined — attempt recorded |
+
+---
+
+# Review Round 8 (v0.14.0 — 2026-07-30)
+
+**Reviewer:** Claude Code
+**Scope:** Follow-through on the first working coverage baseline. Round 7 finally
+got `covr` to produce a number — **54.4 % line coverage of the non-Bayesian
+surface** — and the per-file breakdown named one file at exactly **0.00 %**:
+`R/apriori_power_simulation.R`. Everything below came out of writing that file's
+first tests.
+
+The pattern is by now familiar and worth stating plainly: *this is the third time
+a fix marked "✅ Fixed" turned out never to have worked.* R3.35 and R3.37 were the
+first two. In each case nothing exercised the code, so the claim went unchallenged.
+
+## R8.1 K.13: `apriori_power_simulation()` had zero tests — Major
+
+Exported, wired into the dashboard's Power module, and the target of three
+substantive prior fixes: §2.2 rewrote its data-generating model from the linear to
+the log scale, §3.7 inverted a p-value extraction whose LRT branch was
+unreachable, and §J.4 promoted `baseline_sd` from ghost parameter to functional.
+Three corrections to a function no test ever called.
+
+Now covered by 29 assertions: structure, monotonicity in N and in effect size,
+type-I error under the null, argument validation, reproducibility, and the
+parameter-sensitivity checks that §K.4 established as the house pattern.
+
+## R8.2 K.14: the §J.4 `baseline_sd` fix does not do what it claims — Major
+
+§J.4 wired `baseline_sd` into the simulation with the source comment *"This makes
+the baseline_sd argument materially affect the simulation"*. It does not, and no
+wiring could. Measured:
+
+| `baseline_sd` | Power |
+|---|---|
+| 1 | 0.6000 |
+| 20 | 0.6000 |
+| 60 | 0.6000 |
+| 200 | 0.6000 |
+
+The reason is structural rather than a coding error. The test is on
+`Treatment:Day` — a contrast of growth **rates** — while `baseline_sd` injects
+only per-mouse **intercept** variation, which the `(Day | ID)` random intercept
+absorbs exactly. In a balanced design the slope contrast is orthogonal to
+per-mouse intercepts. Fitting the same data at `baseline_sd` = 1 and 200
+reproduces the `Treatment:Day` p-value to ten significant figures
+(2.270866651519e-06 vs 2.270866651580e-06; the residual difference is optimiser
+noise).
+
+`random_intercept_sd` is inert for the same reason, over a 30-fold range:
+
+| `random_intercept_sd` | Power | | `random_slope_sd` | Power |
+|---|---|---|---|---|
+| 0.05 | 0.6667 | | 0.01 | 1.0000 |
+| 0.20 | 0.6667 | | 0.05 | 0.6667 |
+| 0.60 | 0.6667 | | 0.15 | 0.1500 |
+| 1.50 | 0.6667 | | | |
+
+The two are also **aliased with each other** — both are drawn independently and
+summed into the same per-mouse offset, so only their root-sum-square is
+identifiable.
+
+This mattered because the dashboard was actively directing users at the wrong
+dial. Its Method panel claimed *"Random intercept SD … Higher values require
+larger N"* — false — while describing `random_slope_sd`, which moves power from
+1.00 to 0.15, as merely "between-animal variability in growth rate".
+
+**Resolution.** No attempt to force the parameter to matter, which would be
+fabricating an effect. The invariance is documented as a property of the estimand
+in a new *Baseline variability* roxygen section, the dashboard text is corrected
+to name `random_slope_sd` as the dominant driver, and the tests **pin the
+invariance** so a future change to the fitted model surfaces rather than hides.
+
+## R8.3 K.14b: `sd = 0` silently reshuffled the RNG stream — Minor
+
+Found while testing the aliasing. R's `rnorm()` returns `mu` *without calling*
+`norm_rand()` when `sigma == 0`:
+
+```c
+if(sigma == 0 || !R_FINITE(mu)) return mu;
+```
+
+So `baseline_sd = 0` consumed `n` fewer draws per group per replicate than any
+non-zero value, shifting every subsequent draw and making zero a discontinuity
+rather than the limiting case it reads as. This is what made `baseline_sd = 0`
+appear to change power (0.5667 vs 0.6000) when nothing else did — an RNG artefact
+that would have been easy to misread as evidence the parameter worked.
+
+Fixed by drawing standard normals and scaling (`sd * rnorm(n)`), which consumes
+the stream identically at every SD. Bit-identical to the old form for `sd > 0`,
+so no existing result changes.
+
+## R8.4 K.15: the power simulation assumed zero dropout — Major
+
+Every animal contributed every timepoint. Round 3 established that attrition is
+the defining feature of these studies — animals are euthanised on an IACUC volume
+limit — and the survivor-bias work (§R3.4) turned entirely on it. A power
+calculation that assumes complete data is therefore optimistic for every study
+the package is built to plan.
+
+Quantified on a two-arm design (control 0.13/day, effect 0.018/day, 400
+replicates per cell):
+
+| Observations lost | Power (n=8) | Power (n=12) |
+|---|---|---|
+| 0 % | 0.770 | 0.917 |
+| 21 % | 0.738 | 0.905 |
+| 30 % | 0.708 | 0.890 |
+| 39 % | 0.645 | 0.835 |
+
+The optimism is real but graceful, and the reason is worth recording: this
+dropout is MAR given the observed trajectory, so the LMM likelihood stays
+unbiased and power degrades through lost information alone. A design reported at
+0.77 is really running near 0.71 at 30 % attrition — enough to justify an extra
+animal or two per arm, not enough to invalidate the exercise. **This is a case
+where the honest quantification argued against alarm**, and it is recorded so the
+next reviewer does not re-litigate it.
+
+New `dropout_limit` argument (default `Inf`, preserving existing behaviour), a
+returned `attrition` table, and dashboard controls. The Summary tab now states
+the assumption even when no dropout is modelled, so a complete-data power figure
+is never read as unconditional.
+
+## R8.5 D.4: dashboard fallbacks encoded the abandoned parameter scale — Major
+
+`mod_power.R` passed `%||%` fallbacks from the **percent-scale** parameterisation
+that §2.2 abandoned when the data-generating model moved to the log scale:
+
+```r
+control_growth_rate = input$pw_lmm_ctrl_rate     %||% 15,   # should be 0.15
+treatment_effect    = input$pw_lmm_tx_effect     %||% 10,   # should be 0.10
+random_slope_sd     = input$pw_lmm_rand_slope_sd %||% 3,    # should be 0.05
+```
+
+All six input IDs exist with correct log-scale UI defaults, so the fallbacks only
+fire when an input reads `NULL` — transiently before the client syncs. Had one
+fired, `control_growth_rate = 15` makes `exp(15 · t)` overflow to `Inf` by day 14
+and the fit dies with an opaque error. Latent, but a live landmine and a
+one-character-per-line fix. Corrected to match the backend defaults.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| K.13 | `apriori_power_simulation()` at 0.00 % coverage | Major | ✅ Fixed v0.14.0 — 29 assertions |
+| K.14 | §J.4 `baseline_sd` fix is inert for the estimand | Major | ✅ Fixed v0.14.0 — documented + pinned |
+| K.14b | `rnorm(sd = 0)` discontinuity in the RNG stream | Minor | ✅ Fixed v0.14.0 |
+| K.15 | Power simulation assumed complete data | Major | ✅ Fixed v0.14.0 — `dropout_limit` |
+| D.4 | Dashboard fallbacks on the abandoned percent scale | Major | ✅ Fixed v26.07.005 |
+
+## R8.6 K.2 again: a sniffed p-value turned an assertion into a permanent skip — Major
+
+Round 7 reported *"No live `skip()` call remains anywhere in the test suite."* That
+was true of bare `skip()`, but the full-suite run for this round still reported
+three skips. One of them is a §K.2 name-sniff of exactly the kind Round 7 was
+removing:
+
+```r
+p_fields <- c("p.value", "p_value", "P_Value", "pvalue", "statistic_p", "Pr(>F)")
+...
+skip_if(length(all_p) == 0, "No p-values found in dose_response_statistics output")
+expect_true(any(all_p < 0.01, na.rm = TRUE))
+```
+
+`dose_response_statistics()` names its p-values `linear_pvalue`,
+`linear_trend_pvalue` and `quadratic_trend_pvalue`. None matches the sniff list, so
+`all_p` was always empty, the skip always fired, and **the assertion beneath it had
+never once executed** — in a test named *"trend test detects significant
+dose-response (p < 0.01)"*.
+
+The values were never the problem. All four are strongly significant on the
+fixture: linear 5.0e-06, linear-trend 6.0e-12, quadratic 3.1e-08, Jonckheere–
+Terpstra 1.6e-08. The test would have passed for its whole life had it run. That is
+what makes this worth recording rather than quietly fixing: **a skip that fires on
+every run is indistinguishable from a pass in the summary line**, and no amount of
+green told anyone the dose-response trend test was unverified.
+
+Rewritten against the real field names, plus a direction assertion (`slope < 0`) —
+a significant p-value with the wrong sign was previously uncatchable here.
+
+## R8.7 A test that had skipped on every run since it was written — Major
+
+```r
+demo_path <- system.file("sample_data", "combo_treatment_synthetic_data.csv", ...)
+skip_if_not(nzchar(demo_path) && file.exists(demo_path), "Demo data not installed")
+```
+
+Nothing has ever shipped under `inst/sample_data/`; the demo CSVs live in `data/`.
+`system.file()` returned `""`, the guard read that as a legitimate "not installed"
+condition, and the test skipped unconditionally — reporting an environment problem
+that did not exist while the file sat in the repository the whole time.
+
+The second guard (`skip_if_not("Date" %in% colnames(raw))`) was unreachable, and
+would have been wrong too: the CSV carries a UTF-8 BOM, which was worth confirming
+does not break column detection. It does not — modern `read.csv()` strips it — but
+that had never been verified either.
+
+Both guards are now hard assertions: the file is in the repository, so its absence
+is a packaging regression rather than a reason to stand down. Added a check that
+`Day` actually varies, since the original three assertions would all pass on a
+column of zeros.
+
+## R8.8 The one remaining skip is legitimate
+
+`test-bayesian_tumor_growth.R` skips *"brms is installed — cannot test
+missing-package path"*. This is an inverse environment guard: the test exercises the
+error raised when **brms is absent**, and cannot run where it is present. Correct as
+written, and left alone. Recorded here so the next reviewer does not spend time on
+it.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| R8.6 | Sniffed p-value made a trend-test assertion a permanent skip | Major | ✅ Fixed v0.14.0 |
+| R8.7 | Demo-data test skipped on every run since written | Major | ✅ Fixed v0.14.0 |
+| R8.8 | brms missing-package guard | — | Legitimate; no action |

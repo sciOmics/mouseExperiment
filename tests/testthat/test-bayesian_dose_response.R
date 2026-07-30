@@ -30,7 +30,7 @@ local({
           reference_group  = "Control",
           prior_strength   = "skeptical",
           n_chains         = 2L,
-          n_iter           = 600L,
+          n_iter           = me_test_niter(600L),
           seed             = 42L,
           return_model     = TRUE,
           plots            = FALSE,
@@ -201,7 +201,7 @@ test_that("bayesian_dose_response: model is NULL when return_model = FALSE", {
     bayesian_dose_response(
       make_dose_response(),
       endpoint_day = 21L, reference_group = "Control",
-      n_chains = 2L, n_iter = 600L, seed = 1L,
+      n_chains = 2L, n_iter = me_test_niter(600L), seed = 1L,
       return_model = FALSE, plots = FALSE, verbose = FALSE
     )
   ))
@@ -216,7 +216,7 @@ test_that("bayesian_dose_response: dose_response_curve_plot is a ggplot when plo
     bayesian_dose_response(
       make_dose_response(),
       endpoint_day = 21L, reference_group = "Control",
-      n_chains = 2L, n_iter = 600L, seed = 2L,
+      n_chains = 2L, n_iter = me_test_niter(600L), seed = 2L,
       return_model = FALSE, plots = TRUE, verbose = FALSE
     )
   ))

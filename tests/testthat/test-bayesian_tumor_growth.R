@@ -30,7 +30,7 @@ local({
           random_effects_specification = "intercept_only",
           reference_group  = "Control",
           n_chains         = 2L,
-          n_iter           = 500L,
+          n_iter           = me_test_niter(),
           seed             = 42L,
           return_model     = TRUE,
           plots            = FALSE,
@@ -142,7 +142,7 @@ local({
         treatment_column = "Treatment",
         id_column        = "ID",
         n_chains         = 2L,
-        n_iter           = 500L,
+        n_iter           = me_test_niter(),
         seed             = 42L,
         return_model     = FALSE,
         plots            = FALSE

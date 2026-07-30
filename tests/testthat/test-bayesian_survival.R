@@ -32,7 +32,7 @@ local({
           reference_group  = "Control",
           prior_strength   = "weakly_informative",
           n_chains         = 2L,
-          n_iter           = 500L,
+          n_iter           = me_test_niter(),
           seed             = 42L,
           return_model     = TRUE,
           plots            = FALSE,
@@ -182,7 +182,7 @@ test_that("bayesian_survival: lognormal family runs and returns HR = NA for non-
   res <- suppressWarnings(suppressMessages(
     bayesian_survival(
       df, family = "lognormal", reference_group = "Control",
-      include_cage_effect = FALSE, n_chains = 2L, n_iter = 500L,
+      include_cage_effect = FALSE, n_chains = 2L, n_iter = me_test_niter(),
       plots = FALSE, verbose = FALSE, seed = 1L
     )
   ))
@@ -199,7 +199,7 @@ test_that("bayesian_survival: frailty_used is FALSE when no cage_column supplied
   res <- suppressWarnings(suppressMessages(
     bayesian_survival(
       df, cage_column = NULL, reference_group = "Control",
-      n_chains = 2L, n_iter = 500L, plots = FALSE, verbose = FALSE, seed = 2L
+      n_chains = 2L, n_iter = me_test_niter(), plots = FALSE, verbose = FALSE, seed = 2L
     )
   ))
   expect_false(res$frailty_used)

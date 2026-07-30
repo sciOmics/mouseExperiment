@@ -243,6 +243,20 @@ test_that("repeated_measures_anova returns an me_result", {
   ))
 
   expect_s3_class(res, "me_result")
+
+  # CODE_REVIEW.md K.12 -- the class documents a seven-field contract, and until
+  # now nothing checked it was honoured. J.8 found the docs had over-claimed
+  # (every analysis function was said to return one; only this one does), so the
+  # contract that IS claimed should be enforced.
+  for (f in c("analysis_type", "data", "results", "plots", "summary",
+              "call", "timestamp")) {
+    expect_true(f %in% names(res), info = paste("me_result missing field:", f))
+  }
+  expect_type(res$analysis_type, "character")
+  expect_type(res$results, "list")
+  expect_s3_class(res$timestamp, "POSIXct")
+  # The print method is the reason the class exists; it must not error.
+  expect_output(print(res))
 })
 
 test_that("repeated_measures_anova results contain anova_table", {

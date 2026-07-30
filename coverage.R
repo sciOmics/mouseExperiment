@@ -1,7 +1,8 @@
 # Coverage baseline runner (CODE_REVIEW.md Round 2 K.10).
 #
 # Usage from package root:
-#   Rscript coverage.R           # print per-file coverage summary to stdout
+#   Rscript coverage.R           # non-Bayesian surface (fast)
+#   Rscript coverage.R --bayes   # include the Bayesian paths (slow: Stan compiles)
 #   Rscript coverage.R --html    # also write HTML report (covr_report.html)
 #
 # Output is a `covr::package_coverage()` result with line-, branch-, and
@@ -28,24 +29,51 @@
 # coverage.
 
 stopifnot(requireNamespace("covr", quietly = TRUE))
+suppressMessages({
+  library(covr); library(testthat); library(mouseExperiment)
+})
 
 args <- commandArgs(trailingOnly = TRUE)
-want_html <- "--html" %in% args
+want_html     <- "--html"  %in% args
+# Bayesian coverage requires compiling every Stan model -- slow, but the only
+# honest way to quote an overall figure. Off by default.
+include_bayes <- "--bayes" %in% args
 
-cov <- covr::package_coverage(
-  type                = "tests",
-  function_exclusions = c(
-    "^bayesian_tumor_growth$",
-    "^bayesian_body_weight$",
-    "^bayesian_survival$",
-    "^bayesian_synergy(_over_time)?$",
-    "^bayesian_therapeutic_window$",
-    "^bayesian_dose_response$",
-    "^bayesian_power_analysis$"
-  ),
-  quiet = FALSE
-)
+# `covr::package_coverage(function_exclusions = ...)` fails inside covr's own
+# exclude() machinery on this package ("operations are possible only for numeric,
+# logical or complex types", from Ops.data.frame on the exclusion list). Use
+# file_coverage(), which pairs source files to test files directly and bypasses
+# that path entirely.
+# ALL source files must be listed: file_coverage() only makes the listed files
+# available, and the tests call package internals across file boundaries
+# (make_mouse_key, synergy_bliss_expected, me_result_meta, ...). Excluding a
+# source file therefore breaks the tests rather than merely omitting it from the
+# report. Only the TEST files are filtered.
+src_files <- list.files("R", pattern = "[.]R$", full.names = TRUE)
+tst_files <- list.files("tests/testthat", pattern = "^test-.*[.]R$",
+                        full.names = TRUE)
 
+if (!include_bayes) {
+  tst_files <- tst_files[!grepl("/test-bayesian", tst_files)]
+}
+
+# file_coverage() sys.source()s each test file directly; unlike test_dir() it does
+# NOT load helper-*.R first, so every fixture (make_tg_simple, make_bw_simple, ...)
+# would be missing. Prepend them.
+helper_files <- list.files("tests/testthat", pattern = "^helper-.*[.]R$",
+                           full.names = TRUE)
+tst_files <- c(helper_files, tst_files)
+
+cov <- covr::file_coverage(source_files = src_files, test_files = tst_files)
+
+cat(sprintf("\n%s LINE COVERAGE: %.1f%%\n",
+            if (include_bayes) "OVERALL" else "NON-BAYESIAN TESTS ONLY",
+            covr::percent_coverage(cov)))
+if (!include_bayes) {
+  cat("NOTE: the bayesian_*.R files are measured but their tests were not run,\n",
+      "      so their low figures are an artefact of this lane, not a finding.\n",
+      "      Use --bayes for a number you can quote.\n", sep = "")
+}
 print(cov)
 
 if (want_html) {

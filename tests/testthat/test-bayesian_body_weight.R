@@ -41,7 +41,7 @@ local({
           reference_group              = "Control",
           prior_strength               = "weakly_informative",
           n_chains                     = 2L,
-          n_iter                       = 1500L,
+          n_iter                       = me_test_niter_deep(),
           seed                         = 42L,
           return_model                 = TRUE,
           plots                        = FALSE,
@@ -205,7 +205,7 @@ test_that("bayesian_body_weight: model is NULL when return_model = FALSE", {
     bayesian_body_weight(
       make_bw_simple(),
       reference_group = "Control",
-      n_chains = 2L, n_iter = 500L,
+      n_chains = 2L, n_iter = me_test_niter(),
       return_model = FALSE, plots = FALSE, verbose = FALSE, seed = 1L
     )
   ))
@@ -220,7 +220,7 @@ test_that("bayesian_body_weight: weight_trajectory_plot is a ggplot when plots =
     bayesian_body_weight(
       make_bw_simple(),
       reference_group = "Control",
-      n_chains = 2L, n_iter = 500L,
+      n_chains = 2L, n_iter = me_test_niter(),
       return_model = FALSE, plots = TRUE, verbose = FALSE, seed = 2L
     )
   ))
