@@ -761,17 +761,6 @@ survival_server <- function(id, rv) {
 
     # ── Bayesian async path ────────────────────────────────────────────────────
     if (isTRUE(input$surv_model_type == "bayes")) {
-      if (!all(c(requireNamespace("brms",     quietly = TRUE),
-                 requireNamespace("future",   quietly = TRUE),
-                 requireNamespace("promises", quietly = TRUE)))) {
-        output$surv_status_msg <- renderUI({
-          status_alert(paste0("Bayesian mode requires 'brms', 'future', and 'promises'. ",
-                              "Install with: install.packages(c('brms', 'future', 'promises'))"),
-                       "danger")
-        })
-        rv$surv_running <- FALSE
-        return()
-      }
 
       bayes_params <- list(
         data           = data,

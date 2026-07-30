@@ -4,6 +4,43 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.07.002] - 2026-07-29
+
+Dependency declarations (CODE_REVIEW.md Round 4).
+
+### BREAKING — installation now requires the Stan stack
+
+`brms`, `bayesplot`, `future` and `promises` moved from `Suggests` to `Imports`
+(R4.D1). All four were optional in `DESCRIPTION` and mandatory in practice: every
+analysis module offers a Bayesian model type in its UI, the F.7 job registry exists
+solely to keep `future` promises alive across reconnects, and the VPS image installs
+all four. Five dead "Bayesian mode requires 'brms', 'future', and 'promises'" banner
+blocks removed.
+
+`mouseExperiment` floor raised to `>= 0.10.0`.
+
+### Known issue — the test suite has been running against a stale backend (R4.D2)
+
+`devtools::load_all()` resolves `Imports: mouseExperiment` against the **installed**
+library, not the sibling source tree. The installed backend was **0.4.10** while the
+source under review was 0.9.0 — six releases and the whole of Round 3 apart. So the
+previously-reported "210 passing" was passing against a backend from before any of
+that work, and every dashboard test exercising backend behaviour was testing code
+that had not changed.
+
+This is the dashboard's version of the brms skip in the backend: a green suite that
+is not testing what it appears to test, for a structural reason rather than a coding
+mistake. **Not yet fixed** — needs a `Remotes:` entry, a test preamble that installs
+the sibling source, or at minimum a helper that fails loudly on version skew. Raising
+the floor to `>= 0.10.0` at least makes the skew *visible* (load now errors rather
+than silently using 0.4.10) instead of silent.
+
+Re-running against the freshly-installed 0.10.0 gives **210 passing / 0 failing —
+the same 210 as against 0.4.10**. No break was hidden, but that identical result is
+the real finding: a suite whose outcome does not move across six releases of its
+primary dependency is not exercising it, which corroborates §I.1 and §I.2 on thin
+coverage from a different direction.
+
 ## [26.07.001] - 2026-07-29
 
 Round 3 code review (CODE_REVIEW.md §R3.D). Closes every dashboard finding; four

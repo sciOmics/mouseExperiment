@@ -900,3 +900,72 @@ These are additions rather than defects — nothing displays a wrong number — 
 the bootstrap intervals and the attrition counts are the two that most change how
 a reader should interpret what is already on screen, and are the natural next
 piece of dashboard work.
+
+
+---
+
+# Review Round 4 — Dependency declarations (2026-07-29)
+
+Companion to `mouseExperiment/CODE_REVIEW.md` §R4. Two findings here.
+
+## R4.D1 Async Bayesian dependencies were optional for a feature the app advertises — **Major**
+
+`brms`, `bayesplot`, `future` and `promises` sat in `Suggests`, and five code paths
+guarded on them to show a "Bayesian mode requires 'brms', 'future', and 'promises'.
+Install with: install.packages(...)" danger banner.
+
+That is a reasonable pattern for a genuinely optional feature. It is the wrong
+pattern here: every analysis module offers a Bayesian model type in its UI, the
+job registry (F.7) exists solely to keep `future` promises alive across
+reconnects, and the VPS image installs all four. The dependency was optional in
+`DESCRIPTION` and mandatory in practice.
+
+All four moved to `Imports`; the five dead banner blocks removed. The
+`mouseExperiment` floor was raised to `>= 0.10.0`.
+
+## R4.D2 The test suite was running against a stale installed backend — **Major (process)**
+
+`devtools::load_all()` resolves `Imports: mouseExperiment` against the **installed**
+library, not the sibling source tree. The installed backend was **0.4.10**; the
+source under review was 0.9.0 — six releases and the whole of Round 3 apart.
+
+So "210 passing" was 210 passing against a backend from before any of the Round 3
+work. Every dashboard test that exercises backend behaviour — comparison families,
+cage handling, endpoint estimands, the result-object fields the render paths read
+— was testing code that had not changed.
+
+This is the dashboard's version of the brms skip in the backend §R3-L: a green
+suite that is not testing what it appears to test, for a structural reason rather
+than a coding mistake.
+
+**What re-running actually showed.** After installing the backend from source
+(0.10.0) the suite reports **210 passing / 0 failing / 0 errors — the same 210 as
+against 0.4.10.** No break was hidden. But that identical result is itself the
+finding: a suite whose outcome does not move across six releases of its primary
+dependency — including Round 3's changes to comparison families, cage handling,
+endpoint estimands, and the result-object fields the render paths read — is not
+exercising that dependency. This corroborates §I.1 (`expect_true(TRUE)`
+placeholders) and §I.2 (the three largest server modules untested) from a
+different direction: the coverage is thin enough that the version skew could not
+have mattered.
+
+So R4.D2 did not hide a defect this time. It would hide the next one, and the
+"210 either way" result means the suite currently cannot tell the difference
+between a working backend and a six-release-stale one.
+
+**Fix required (not yet applied):** install the backend from source before running
+dashboard tests. Options, roughly in order of preference:
+
+1. A `Remotes:` entry or a documented test preamble
+   (`devtools::install("../mouseExperiment", upgrade = "never")`).
+2. A CI step that installs the sibling source, so the version skew cannot recur
+   silently.
+3. At minimum, a `testthat` helper that compares
+   `packageVersion("mouseExperiment")` against the `DESCRIPTION` floor and fails
+   loudly on skew — the same "fail rather than skip" principle that Round 3 applied
+   to brms.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| R4.D1 | brms/bayesplot/future/promises optional for an advertised feature | Major | ✅ Fixed v26.07.002 |
+| R4.D2 | Test suite ran against installed backend 0.4.10, not the source | Major (process) | ⚠ Documented; needs a CI/preamble step |

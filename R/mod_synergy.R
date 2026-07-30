@@ -602,16 +602,6 @@ synergy_server <- function(id, rv) {
 
     # ── Bayesian async path ────────────────────────────────────────────────────
     if (isTRUE(input$syn_model_type == "bayes")) {
-      if (!all(c(requireNamespace("brms",     quietly = TRUE),
-                 requireNamespace("future",   quietly = TRUE),
-                 requireNamespace("promises", quietly = TRUE)))) {
-        output$syn_status_msg <- renderUI({
-          status_alert(paste0("Bayesian mode requires 'brms', 'future', and 'promises'. ",
-                              "Install with: install.packages(c('brms', 'future', 'promises'))"),
-                       "danger")
-        })
-        return()
-      }
 
       syn_bayes_params <- list(
         data       = analysis_data,

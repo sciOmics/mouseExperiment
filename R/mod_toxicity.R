@@ -1167,16 +1167,6 @@ toxicity_server <- function(id, rv) {
         })
         return()
       }
-      if (!all(c(requireNamespace("brms",     quietly = TRUE),
-                 requireNamespace("future",   quietly = TRUE),
-                 requireNamespace("promises", quietly = TRUE)))) {
-        output$tox_status_msg <- renderUI({
-          status_alert(paste0("Bayesian mode requires 'brms', 'future', and 'promises'. ",
-                              "Install with: install.packages(c('brms', 'future', 'promises'))"),
-                       "danger")
-        })
-        return()
-      }
 
       tg_for_twm <- list(model = rv$bayes_models$tg)
       bw_for_twm <- list(model = rv$bayes_models$bw)
@@ -1216,16 +1206,6 @@ toxicity_server <- function(id, rv) {
     results$model_type <- model_type
 
     if (model_type == "bw" && isTRUE(input$tox_bw_method == "bayes")) {
-      if (!all(c(requireNamespace("brms",     quietly = TRUE),
-                 requireNamespace("future",   quietly = TRUE),
-                 requireNamespace("promises", quietly = TRUE)))) {
-        output$tox_status_msg <- renderUI({
-          status_alert(paste0("Bayesian mode requires 'brms', 'future', and 'promises'. ",
-                              "Install with: install.packages(c('brms', 'future', 'promises'))"),
-                       "danger")
-        })
-        return()
-      }
       # Cancel the frequentist on.exit(removeModal) registered above — otherwise it
       # tears down the Bayesian modal shown below the moment this branch returns.
       # The future_promise callbacks remove the modal when the fit completes.
