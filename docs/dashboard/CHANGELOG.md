@@ -4,6 +4,27 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.07.006] - 2026-07-30
+
+### Fixed — scale metadata records what the backend did, not what was asked (R3.D6)
+
+R3.D6 was left open pending backend R3.29, which has landed: `me_result_meta()`
+makes every analysis function declare `transform_used` and `model_type_used`,
+with `"none"` meaning none was applied rather than the field being absent.
+
+The predicted divergence is real. An AUC run submitted with the default
+`transform = "log"` returns `transform_used == "none"`, because that path computes
+on raw volumes and ignores the argument. The module recorded `input$tg_transform`
+and so labelled that output `"log"`.
+
+Resolution is now `result$meta$…` → top-level field → input, so an older backend
+degrades to the previous behaviour rather than erroring. Two contract tests pin
+it: one asserts the backend's own AUC/lme4 divergence, so the fix cannot rot if
+the backend changes; the other asserts the module's resolution order.
+
+Benign today — both consumers are gated on `model_type_used == "lme4"` — and fixed
+because that gate is what the next feature forgets.
+
 ## [26.07.005] - 2026-07-30
 
 Power module, reached from the backend side. The backend's first working coverage

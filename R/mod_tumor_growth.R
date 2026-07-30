@@ -790,10 +790,21 @@ tumor_growth_server <- function(id, rv) {
       })
     }
 
-    # Persist the settings used so renderDTs can condition on them correctly
-    # (the backend result$methods list is not reliably populated for all paths)
-    result$transform_used  <- input$tg_transform   %||% "none"
-    result$model_type_used <- input$tg_model_type  %||% "lme4"
+    # Persist what the backend actually did, so renderDTs condition on the
+    # outcome rather than the request (CODE_REVIEW.md R3.D6). These diverge: the
+    # AUC path ignores `transform` and computes on raw volumes, so an AUC run
+    # submitted with the default transform = "log" reports transform_used
+    # "none". Recording the input would label that output "log" and mis-scale
+    # any consumer not gated on model_type_used == "lme4".
+    #
+    # $meta is the backend's own declaration (B7.1/B7.2); the top-level field and
+    # then the input are fallbacks for a backend older than that.
+    result$transform_used  <- result$meta$transform_used %||%
+                              result$transform_used      %||%
+                              input$tg_transform         %||% "none"
+    result$model_type_used <- result$meta$model_type_used %||%
+                              result$model_type_used      %||%
+                              input$tg_model_type         %||% "lme4"
 
     # CODE_REVIEW.md Round 2 F.3 — preserve previous result for compare tab
     # when the model_type just changed.

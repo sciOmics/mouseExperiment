@@ -810,7 +810,7 @@ Round 2 §A.3 is marked "⚠ Partial — script fixed; live NPM still needs PUT"
 | R3.D3 | `p_adjust_method` not exposed in the UI at all | Minor | — | ✅ Fixed v26.07.001 |
 | R3.D4 | "All Comparisons" tab permanently empty for GAM (emmeans can't take a `gamm4` object) | **Major** | `mod_tumor_growth.R:633` | ✅ Fixed v26.07.001 |
 | R3.D5 | Survival reduction takes last row by position, not by max day | **Major** | `mod_survival.R:655` | ✅ Fixed v26.07.001 |
-| R3.D6 | `transform_used` records the request, not what the backend did | Minor | `mod_tumor_growth.R:749` | Open |
+| R3.D6 | `transform_used` records the request, not what the backend did | Minor | `mod_tumor_growth.R:749` | ✅ Fixed v26.07.006 |
 | R3.D7 | HTML report lacks an analysis-provenance block | Enhancement | `helpers_report.R` | 🟡 Partial v26.07.001 (provenance in summary; report block pending) |
 | R3.D8 | Round 2 §A.3 live-NPM state unverified and unrecorded | Process | VPS repo | Open |
 
@@ -1123,6 +1123,29 @@ attrition and 12 at 40 %.
 | D.4 | Fallbacks on the abandoned percent scale | Major | ✅ Fixed v26.07.005 |
 | D.5 | Method panel named the wrong power driver | Major | ✅ Fixed v26.07.005 |
 | D.6 | No way to plan against dropout | Major | ✅ Fixed v26.07.005 |
+
+## R3.D6 closed: scale metadata now records the outcome
+
+R3.D6 was left open with the note *"Once backend R3.29 lands, read the field from
+the result instead."* It has landed — `me_result_meta()` (B7.1/B7.2) makes every
+analysis function declare `transform_used` and `model_type_used`, with `"none"`
+meaning none was applied rather than the field being absent.
+
+The divergence R3.D6 predicted is real and now measured: an AUC run submitted with
+the default `transform = "log"` returns `meta$transform_used == "none"`, because
+that path computes on raw volumes and ignores the argument (backend R3.16).
+Recording `input$tg_transform` labelled that output `"log"`.
+
+Resolution order is now `result$meta$…` → top-level field → input, so an older
+backend still degrades to the previous behaviour rather than erroring. Two
+contract tests pin it: one asserts the backend's AUC/lme4 divergence directly (so
+the fix cannot rot if the backend changes), the other asserts the module's
+resolution order.
+
+This was benign today — both consumers are gated on `model_type_used == "lme4"` —
+and is fixed because that gate is exactly the kind of thing the next feature
+forgets.
+
 
 Suite went from 251 to 285 passing. §I.1 / §I.2 remain the substantive gap: these
 are source-level assertions, not `testServer` exercises of the reactives.

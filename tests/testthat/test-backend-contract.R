@@ -205,3 +205,36 @@ test_that("R4.D5: meta declares which kind of interval it is", {
   expect_identical(res$meta$interval_type, "confidence")
   expect_identical(res$meta$estimate_scale, "log volume")
 })
+
+# ---- R3.D6: scale metadata must record the outcome, not the request ---------
+
+test_that("R3.D6: the AUC path reports the transform it actually applied", {
+  # The divergence that makes reading input$tg_transform wrong: AUC ignores the
+  # transform argument and computes on raw volumes, so a run submitted with the
+  # default transform = "log" must not be labelled "log".
+  auc <- suppressWarnings(suppressMessages(
+    mouseExperiment::tumor_growth_statistics(
+      contract_df(), model_type = "auc", transform = "log",
+      plots = FALSE, verbose = FALSE)))
+
+  expect_identical(auc$meta$transform_used, "none",
+                   info = "AUC computes on raw volumes regardless of `transform`")
+  expect_identical(auc$meta$model_type_used, "auc")
+
+  # And the lme4 path does honour it, so the field is not simply always "none".
+  lme <- suppressWarnings(suppressMessages(
+    mouseExperiment::tumor_growth_statistics(
+      contract_df(), model_type = "lme4", transform = "log",
+      plots = FALSE, verbose = FALSE)))
+  expect_identical(lme$meta$transform_used, "log")
+})
+
+test_that("R3.D6: the module prefers meta over the input when recording scale", {
+  # Guards the resolution order in mod_tumor_growth.R. Reading the input would
+  # tag AUC output "log" and mis-scale any consumer not gated on model_type.
+  src <- paste(readLines(testthat::test_path("..", "..", "R",
+                                             "mod_tumor_growth.R"),
+                         warn = FALSE), collapse = "\n")
+  expect_match(src, "result\\$transform_used\\s*<-\\s*result\\$meta\\$transform_used")
+  expect_match(src, "result\\$model_type_used\\s*<-\\s*result\\$meta\\$model_type_used")
+})
