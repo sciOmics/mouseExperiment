@@ -135,9 +135,10 @@ run, immediately exposing two pre-existing defects (CODE_REVIEW.md §R3-L):
 
 ### Tests
 
-- Bayesian and permutation paths are now genuinely exercised: `brms` 2.23 and
-  `coin` 1.4.5 installed locally, so the ~112 previously-skipped Bayesian
-  assertions run.
+- **644 passing, 0 failing, 0 errors, 3 skipped** — full suite, verified after all
+  Round 3 work. Skips fell from 112 to 3 because `brms` 2.23 and `coin` 1.4.5 are
+  now installed, so the Bayesian and permutation paths actually execute instead
+  of skipping.
 - New regression tests for R3.8 (data-driven and time-unit-invariant scales,
   interaction gets its own prior), R3.9 (deprecation is a true no-op, helper
   gone), H.2 (permutation p-values distinct, never zero, off by default, coarse-n

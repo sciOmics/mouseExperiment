@@ -2675,9 +2675,11 @@ single most transferable lesson from this round and is recorded in
 
 ### Test surface
 
-- **Backend:** 352 passing / 7 failing at the start of Round 3 → all green, with
-  the suite now genuinely exercising the Bayesian paths (`brms` 2.23) and the
-  permutation paths (`coin` 1.4.5) that previously skipped. The seven baseline
+- **Backend:** 352 passing / 7 failing at the start of Round 3 → **644 passing /
+  0 failing / 0 errors / 3 skipped**, verified on the full suite. Skips fell from
+  112 to 3 because `brms` 2.23 and `coin` 1.4.5 are now installed, so the
+  Bayesian and permutation paths actually execute rather than skipping — which is
+  how §R3-L's six findings surfaced in the first place. The seven baseline
   failures were §K.11 stale tests referencing APIs removed in v0.3.4 and earlier;
   clearing them also unblocks the `covr` baseline §K.10 flagged.
 - **Dashboard:** 210 passing / 0 failing.
