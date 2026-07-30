@@ -10,7 +10,8 @@ An R package for statistical analysis of mouse tumor growth experiments. Covers 
 - **Drug synergy** — Bliss Independence, Loewe Combination Index, Bayesian synergy, Bayesian synergy over time
 - **Dose-response** — Frequentist + Bayesian Hill / Emax curve fitting
 - **Therapeutic window** — TWM from frequentist or Bayesian TG + BW models; single-call `bayesian_twm_from_data()` wrapper
-- **Power analysis** — Analytic (t-test / ANOVA), LMM simulation, Bayesian simulation
+- **Power analysis** — Analytic (t-test / ANOVA), LMM simulation, Bayesian simulation; multiplicity- and attrition-aware (`n_comparisons`, `dropout_rate`)
+- **Randomisation tests** — `trajectory_permutation_test()` tests the treatment × time interaction without the denominator-df or normality approximations. You declare the unit of randomisation via `perm_spec(unit = "mouse" | "cage")`, because a permutation test is only valid if it mirrors how the study randomised; small designs are enumerated exhaustively for an exact p-value, and the design's resolution floor is reported so a null result cannot be over-read
 - **Bayesian diagnostics** — Rhat, ESS, NUTS divergences / max_treedepth / E-BFMI, Bayes R², PPC coverage, PSIS-LOO with Pareto-k, posterior P(effect ≠ 0)
 - **Comprehensive plots** — KM curves, growth trajectories, synergy bar charts, dose-response curves, forest plots, MCMC diagnostics
 - **Config helpers** — `tg_priors()` and `tg_mcmc()` bundle prior + MCMC arguments so Bayesian entry-point signatures stay readable
@@ -20,11 +21,27 @@ An R package for statistical analysis of mouse tumor growth experiments. Covers 
 
 | Item | State |
 |---|---|
-| Version | 0.4.7 |
-| `CODE_REVIEW.md` (Round 1 + Round 2) | All 25 items closed |
+| Version | 0.11.0 |
+| `CODE_REVIEW.md` | Rounds 1–5 complete; Rounds 3–5 fully closed |
 | Bayesian diagnostics surface | Rhat / ESS / NUTS / Bayes R² / PPC coverage / LOO / Pareto-k / posterior P direction |
-| Test suite | testthat (≈300 tests; Bayesian paths are skip-if-no-brms) |
-| Coverage measurement | `Rscript coverage.R` (see K.10 caveat re pre-existing stale tests under K.11) |
+| Test suite | testthat, 644 tests. **No test skips a required dependency** — the Bayesian and permutation paths always run (see below) |
+| Coverage measurement | `Rscript coverage.R` |
+
+### A note on dependencies
+
+As of v0.10.0 the statistical packages (`brms`, `bayesplot`, `gamm4`, `mgcv`,
+`pwr`, `coin`, `clinfun`, `ggpubr`, `posterior`) are **required**, not suggested.
+Installing therefore needs a working C++ toolchain, because `brms` pulls the Stan
+stack.
+
+That cost is deliberate. While `brms` sat in `Suggests`, the Bayesian tests skipped
+wholesale whenever it was absent — and two Critical defects survived five releases
+behind that skip, including `bayesian_synergy()` being entirely non-functional from
+v0.4.6 to v0.9.0 while this README advertised it. Optionality was not free; it was
+the mechanism. See `CODE_REVIEW.md` §R3-L and §R4.
+
+`cmdstanr` remains genuinely optional — it is a user-selected *alternative* Stan
+backend and fails loudly with install instructions when chosen and missing.
 
 ## Installation
 
@@ -347,11 +364,13 @@ Build with `quarto render` (for `.qmd`) or `devtools::build_vignettes()` (for `.
 
 ```r
 devtools::load_all()
-devtools::test()                # ≈300 tests; Bayesian paths skip if brms missing
+devtools::test()                # 644 tests; nothing skips a required dependency
 devtools::test(filter = "bayesian_tumor_growth")
 devtools::document()            # regenerate NAMESPACE + .Rd files
 devtools::check()               # R CMD check
-Rscript coverage.R              # K.10 coverage baseline
+Rscript coverage.R              # coverage baseline (excludes Bayesian fits by
+                                # default -- a large exclusion now that the whole
+                                # Bayesian surface is required and tested)
 ```
 
 ## License
