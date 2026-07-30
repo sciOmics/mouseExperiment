@@ -1,0 +1,121 @@
+"Mouse_ID","Day","Treatment","Volume","Group","ID","Cage"
+"M1",0,"Control",143.788760062307,"Control","1",2
+"M1",3,"Control",394.152567721903,"Control","1",2
+"M1",6,"Control",204.48846090585,"Control","1",2
+"M1",9,"Control",441.508702002466,"Control","1",2
+"M1",12,"Control",470.233642146923,"Control","1",2
+"M1",15,"Control",22.7782496949658,"Control","1",2
+"M1",18,"Control",264.052744023502,"Control","1",2
+"M1",21,"Control",446.209522197023,"Control","1",2
+"M1",24,"Control",275.717507232912,"Control","1",2
+"M1",27,"Control",228.307367651723,"Control","1",2
+"M2",0,"Control",478.416672674939,"Control","2",3
+"M2",3,"Control",226.667078095488,"Control","2",3
+"M2",6,"Control",338.785317726433,"Control","2",3
+"M2",9,"Control",286.316700978205,"Control","2",3
+"M2",12,"Control",51.4623413328081,"Control","2",3
+"M2",15,"Control",449.912485200912,"Control","2",3
+"M2",18,"Control",123.04386717733,"Control","2",3
+"M2",21,"Control",21.0297667654231,"Control","2",3
+"M2",24,"Control",163.960359641351,"Control","2",3
+"M2",27,"Control",477.251824573614,"Control","2",3
+"M3",0,"Control",444.769658031873,"Control","3",4
+"M3",3,"Control",346.4017030783,"Control","3",4
+"M3",6,"Control",320.253406884149,"Control","3",4
+"M3",9,"Control",497.134888311848,"Control","3",4
+"M3",12,"Control",327.852899557911,"Control","3",4
+"M3",15,"Control",354.265234083869,"Control","3",4
+"M3",18,"Control",272.033012355678,"Control","3",4
+"M3",21,"Control",297.07101022359,"Control","3",4
+"M3",24,"Control",144.57986864727,"Control","3",4
+"M3",27,"Control",73.556823655963,"Control","3",4
+"M4",0,"Control",481.512116268277,"Control","4",1
+"M4",3,"Control",451.149522559717,"Control","4",1
+"M4",6,"Control",345.352639211342,"Control","4",1
+"M4",9,"Control",397.733708843589,"Control","4",1
+"M4",12,"Control",12.3068422544748,"Control","4",1
+"M4",15,"Control",238.897985545918,"Control","4",1
+"M4",18,"Control",379.229768761434,"Control","4",1
+"M4",21,"Control",108.203967916779,"Control","4",1
+"M4",24,"Control",159.090503817424,"Control","4",1
+"M4",27,"Control",115.812892676331,"Control","4",1
+"M5",0,"Treatment A",71.4000111911446,"Treatment A","5",2
+"M5",3,"Treatment A",207.27316790726,"Treatment A","5",2
+"M5",6,"Treatment A",206.862163147889,"Treatment A","5",2
+"M5",9,"Treatment A",184.422725462355,"Treatment A","5",2
+"M5",12,"Treatment A",76.2223738711327,"Treatment A","5",2
+"M5",15,"Treatment A",69.4030317245051,"Treatment A","5",2
+"M5",18,"Treatment A",116.517049726099,"Treatment A","5",2
+"M5",21,"Treatment A",232.981225126423,"Treatment A","5",2
+"M5",24,"Treatment A",132.986320182681,"Treatment A","5",2
+"M5",27,"Treatment A",428.913857671432,"Treatment A","5",2
+"M6",0,"Treatment A",22.9155833367258,"Treatment A","6",3
+"M6",3,"Treatment A",221.100037102588,"Treatment A","6",3
+"M6",6,"Treatment A",399.462422821671,"Treatment A","6",3
+"M6",9,"Treatment A",60.94962998759,"Treatment A","6",3
+"M6",12,"Treatment A",280.473991879262,"Treatment A","6",3
+"M6",15,"Treatment A",103.265694808215,"Treatment A","6",3
+"M6",18,"Treatment A",63.7658251216635,"Treatment A","6",3
+"M6",21,"Treatment A",376.653932151385,"Treatment A","6",3
+"M6",24,"Treatment A",447.52267957665,"Treatment A","6",3
+"M6",27,"Treatment A",187.231387943029,"Treatment A","6",3
+"M7",0,"Treatment A",332.557597314008,"Treatment A","7",4
+"M7",3,"Treatment A",47.420330462046,"Treatment A","7",4
+"M7",6,"Treatment A",191.984818899073,"Treatment A","7",4
+"M7",9,"Treatment A",137.191822286695,"Treatment A","7",4
+"M7",12,"Treatment A",407.320019439794,"Treatment A","7",4
+"M7",15,"Treatment A",224.258170695975,"Treatment A","7",4
+"M7",18,"Treatment A",405.032176524401,"Treatment A","7",4
+"M7",21,"Treatment A",406.194754759781,"Treatment A","7",4
+"M7",24,"Treatment A",397.171160555445,"Treatment A","7",4
+"M7",27,"Treatment A",219.915843801573,"Treatment A","7",4
+"M8",0,"Treatment A",377.237579319626,"Treatment A","8",1
+"M8",3,"Treatment A",314.610565779731,"Treatment A","8",1
+"M8",6,"Treatment A",355.091200675815,"Treatment A","8",1
+"M8",9,"Treatment A",0.312386662699282,"Treatment A","8",1
+"M8",12,"Treatment A",237.658287049271,"Treatment A","8",1
+"M8",15,"Treatment A",110.059442580678,"Treatment A","8",1
+"M8",18,"Treatment A",189.908268861473,"Treatment A","8",1
+"M8",21,"Treatment A",306.385501637124,"Treatment A","8",1
+"M8",24,"Treatment A",175.898954621516,"Treatment A","8",1
+"M8",27,"Treatment A",55.5677121737972,"Treatment A","8",1
+"M9",0,"Treatment B",121.809736359864,"Treatment B","9",2
+"M9",3,"Treatment B",334.02779372409,"Treatment B","9",2
+"M9",6,"Treatment B",208.823389839381,"Treatment B","9",2
+"M9",9,"Treatment B",394.097917014733,"Treatment B","9",2
+"M9",12,"Treatment B",51.4323221286759,"Treatment B","9",2
+"M9",15,"Treatment B",217.446370748803,"Treatment B","9",2
+"M9",18,"Treatment B",492.478489992209,"Treatment B","9",2
+"M9",21,"Treatment B",446.525557199493,"Treatment B","9",2
+"M9",24,"Treatment B",443.234530393966,"Treatment B","9",2
+"M9",27,"Treatment B",87.5263251364231,"Treatment B","9",2
+"M10",0,"Treatment B",65.3478457825258,"Treatment B","10",3
+"M10",3,"Treatment B",326.550962519832,"Treatment B","10",3
+"M10",6,"Treatment B",171.7582361307,"Treatment B","10",3
+"M10",9,"Treatment B",328.379063983448,"Treatment B","10",3
+"M10",12,"Treatment B",160.186621244065,"Treatment B","10",3
+"M10",15,"Treatment B",93.845559633337,"Treatment B","10",3
+"M10",18,"Treatment B",391.147150658071,"Treatment B","10",3
+"M10",21,"Treatment B",46.79749335628,"Treatment B","10",3
+"M10",24,"Treatment B",233.38952078484,"Treatment B","10",3
+"M10",27,"Treatment B",255.752729950473,"Treatment B","10",3
+"M11",0,"Treatment B",299.994479632005,"Treatment B","11",4
+"M11",3,"Treatment B",166.411770158447,"Treatment B","11",4
+"M11",6,"Treatment B",244.306516833603,"Treatment B","11",4
+"M11",9,"Treatment B",477.236913749948,"Treatment B","11",4
+"M11",12,"Treatment B",241.4511985844,"Treatment B","11",4
+"M11",15,"Treatment B",445.175111060962,"Treatment B","11",4
+"M11",18,"Treatment B",457.219093455933,"Treatment B","11",4
+"M11",21,"Treatment B",304.367491160519,"Treatment B","11",4
+"M11",24,"Treatment B",205.344888265245,"Treatment B","11",4
+"M11",27,"Treatment B",73.5473454697058,"Treatment B","11",4
+"M12",0,"Treatment B",467.649901635014,"Treatment B","12",1
+"M12",3,"Treatment B",150.614449987188,"Treatment B","12",1
+"M12",6,"Treatment B",30.3602857748047,"Treatment B","12",1
+"M12",9,"Treatment B",473.863470018841,"Treatment B","12",1
+"M12",12,"Treatment B",360.298136714846,"Treatment B","12",1
+"M12",15,"Treatment B",71.1471477989107,"Treatment B","12",1
+"M12",18,"Treatment B",274.642328033224,"Treatment B","12",1
+"M12",21,"Treatment B",477.045619278215,"Treatment B","12",1
+"M12",24,"Treatment B",292.741676559672,"Treatment B","12",1
+"M12",27,"Treatment B",202.255140873604,"Treatment B","12",1

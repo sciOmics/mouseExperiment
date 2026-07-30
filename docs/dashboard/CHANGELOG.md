@@ -4,6 +4,69 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.07.009] - 2026-07-30
+
+Demo data that could not be loaded, and Info/Help tabs describing an app that no
+longer exists. Both are the same failure: prose and packaged assets have no
+failure mode, so they stop being true without anything noticing.
+
+### Added — two demo datasets that shipped but were unreachable (D.12)
+
+`master_synthetic_data` (619 × 13) and `synthetic_data` (120 × 7) were shipped by
+the backend with no CSV here and no entry in the demo loader, so neither could
+ever be selected. `master` carries length/width/**height**, body weight, dose,
+cage, necrosis flags and survival censoring across six arms — the only demo that
+reaches every module without the user supplying their own data.
+
+Both are now exported and wired into the loader and selector.
+`test-demo-data-reachable.R` (32 assertions) closes the loop both ways: every
+shipped file must be reachable or explicitly classified, every loader entry must
+resolve to a file that parses, and the master demo must retain every optional
+column.
+
+### Fixed — Info and Help tabs (D.13)
+
+Corrected, all user-visible:
+
+- "two statistical modeling approaches" → **five** (LME4, GAMM, AUC, Bayesian
+  LMM, Bayesian GAMM)
+- "Type III ANOVA F-test" → Wald **chi-square**, with why it is a chi-square and
+  when that matters
+- AUC "Kruskal-Wallis / pairwise Wilcoxon" → **Welch one-way ANOVA** plus an
+  equal-variance test
+- "emmeans with Tukey adjustment" → comparison family and correction are separate
+  settings; the default is an exact Dunnett
+- "LOCF can extrapolate AUC to a common endpoint" → extrapolation was removed
+  from the statistical path and now affects plots only
+- cage "included as a covariate if not collinear" → structure-aware handling
+  (crossed / nested-replicated / nested-confounded)
+- Power's "Bayesian simulation" mode → removed; the selector offers two modes
+
+Added: the randomisation test and its exchangeability requirement, the five
+non-Dunnett corrections, GAMM with its k-check and concurvity diagnostics,
+Bayesian GAMM, scale-location and random-effects Q–Q plots, influence measures
+and Pareto-k, the endpoint estimand, bootstrap intervals, TWM ranking bounds,
+per-arm attrition, competing risks and Aalen-Johansen, dose-response trend tests,
+four auto-detected column roles (Date, Sex, Necrotic, Survival_Time), the Height
+column, and five of the six volume formulas.
+
+Limitations that could not be fixed are now stated rather than omitted: AUC
+penalising early-removed animals, the observed estimand flattering the control
+arm, and the chi-square being anti-conservative in small samples.
+
+The Survival Info tab was audited and found already accurate.
+
+### Added — a guard against documentation drift (D.14)
+
+`test-docs-current.R`, 47 assertions pinning the checkable claims to the source of
+truth: the documented model count must equal the number of selector choices,
+every selectable model must be named, every auto-detected column role must appear
+in the Help table, and the removed terms must not reappear. It cannot verify the
+prose is good — only that its falsifiable claims are still true, which is the part
+that rots silently.
+
+Suite: 478 → 557 passing, no skips.
+
 ## [26.07.008] - 2026-07-30
 
 Addresses D.1 (files over 1,000 LOC), reframed after looking at what was in them.

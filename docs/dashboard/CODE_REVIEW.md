@@ -1321,3 +1321,95 @@ modules as a side effect. Recorded as the next step rather than done here.
 | D.11 | Extract render decision logic into pure functions | Enhancement | Open — the split that would pay |
 
 Suite: 314 → 478 passing, no skips.
+
+---
+
+# Review Round 11 (v26.07.009 — 2026-07-30)
+
+**Scope:** Reported by the user — demo data that ships but cannot be loaded, and
+Info/Help tabs describing functionality that no longer exists while omitting what
+does. Both are the same failure: **prose and packaged assets have no failure
+mode.** They are not executed, so they cannot be wrong in a way a test suite
+notices. They just quietly stop being true, which is worse than an error because
+users act on them.
+
+## D.12 Demo data that shipped but could never be loaded — Major
+
+`master_synthetic_data` (619 × 13) and `synthetic_data` (120 × 7) are shipped by
+the backend and appear in no CSV here and in no entry of the demo loader, so
+neither could ever be selected. `master` is the most complete dataset in the
+package — length/width/**height**, body weight, dose, cage, necrosis flags and
+survival censoring across six arms — which makes it the only demo that reaches
+every module without the user supplying their own data. It was unreachable.
+
+Both are now exported to `inst/sample_data/` and wired into the loader and the
+selector. `test-demo-data-reachable.R` (32 assertions) closes the loop in both
+directions: every shipped file must be reachable or explicitly classified, and
+every loader entry must resolve to a file that parses. It also asserts that the
+master demo still carries every optional column, since a demo that silently loses
+a column stops covering a module.
+
+**Still open:** `combo_treatment_schedule.csv` and
+`dose_levels_treatment_schedule.csv` ship in this package's `inst/sample_data/`
+and nothing can open them. They are dosing tables (Treatment / Day / Dose), not
+measurement data — loading one as the main dataset would break every analysis —
+so they are deliberately excluded from the selector and classified as such in the
+test rather than left ambiguous. The backend has `plot_treatments()`, which
+consumes exactly this shape and is **not exposed anywhere in the dashboard**.
+Wiring it up is a feature decision, not a documentation fix, and is left for the
+user to call.
+
+## D.13 Info and Help tabs describing an app that no longer exists — Major
+
+The specific errors, all user-visible:
+
+| Claim | Reality |
+|---|---|
+| "two statistical modeling approaches" | **five** — LME4, GAMM, AUC, Bayesian LMM, Bayesian GAMM |
+| "Type III ANOVA F-test" | Wald **chi-square** (`Chisq` / `Df` / `Pr(>Chisq)`) |
+| AUC compared by "Kruskal-Wallis / pairwise Wilcoxon" | **Welch one-way ANOVA** plus an equal-variance test |
+| "emmeans with Tukey adjustment" | family and correction are **separate**; default is exact Dunnett |
+| "LOCF can extrapolate AUC to a common endpoint" | extrapolation was **removed** from the statistical path; plots only |
+| cage "included as a covariate … if not collinear" | structure-aware: crossed / nested-replicated / nested-confounded |
+| Power offers "Bayesian simulation" | the selector offers **two** modes; there is no Bayesian power mode |
+
+Missing entirely: the randomisation test, the five non-Dunnett corrections, GAMM
+and its k-check/concurvity diagnostics, Bayesian GAMM, scale-location and
+random-effects Q–Q plots, influence measures, Pareto-k, trace and rank plots, the
+endpoint estimand, bootstrap intervals, TWM ranking bounds, per-arm attrition,
+competing risks and Aalen-Johansen, dose-response trend tests, four auto-detected
+column roles (Date, Sex, Necrotic, Survival_Time), the Height column, and five of
+the six volume formulas.
+
+All corrected or added. Where a limitation could not be fixed it is now stated
+rather than omitted — AUC penalising early-removed animals, the observed
+estimand flattering the control arm, the chi-square being anti-conservative in
+small samples, and the randomisation test's dependence on the user correctly
+naming the randomisation unit.
+
+The Survival Info tab was audited and found **already accurate** — Firth
+correction, the proportional-hazards test, competing risks and the natural-death
+option were all current. Recorded so it is not re-audited.
+
+## D.14 What makes this not recur
+
+`test-docs-current.R` (47 assertions) pins the checkable claims to the source of
+truth: the documented model count must equal the number of `selectInput` choices;
+every selectable model must be named in the Info tab; every auto-detected column
+role must appear in the Help table; every module offering an endpoint estimand or
+bootstrap control must document it; and the removed terms ("Type III ANOVA
+F-test", "Kruskal-Wallis", "Bayesian simulation", the old LOCF sentence) must not
+reappear.
+
+This cannot verify the prose is *good* — only that its falsifiable claims are
+still true. That is the part that rots silently, and it is now the part that
+fails a test run.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| D.12 | Two demo datasets shipped but unreachable | Major | ✅ Fixed v26.07.009 |
+| D.13 | Info/Help describe removed functionality, omit current | Major | ✅ Fixed v26.07.009 |
+| D.14 | No guard against documentation drift | Process | ✅ Fixed v26.07.009 — 47 assertions |
+| D.15 | Treatment schedules unreachable; `plot_treatments()` unexposed | Enhancement | Open — needs a product decision |
+
+Suite: 478 → 557 passing, no skips.

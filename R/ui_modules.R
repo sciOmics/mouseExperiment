@@ -102,6 +102,8 @@ dataUploadUI <- function(id) {
               selectInput(ns("demo_dataset"), NULL,
                 choices = c(
                   "-- Select a demo dataset --" = "",
+                  "Master (all features: 6 arms, dose, cage, weight, necrosis, survival, L/W/H)" = "master",
+                  "Simple (3 arms, pre-calculated volume — quickest way to see the app work)" = "simple",
                   "Combo Treatment (Control / HDACi / aPD1 / HDACi+PD1, survival data)" = "combo",
                   "Dose Levels (dose-response data with survival)" = "dose_levels",
                   "Necrotic Data (None / Drug, length & width columns)" = "necrotic",
@@ -605,16 +607,28 @@ tumorGrowthUI <- function(id) {
                 div(class = "panel panel-default",
                   div(class = "panel-heading", h4(class = "panel-title", "Overview")),
                   div(class = "panel-body",
-                    p("The Tumor Growth tab provides two statistical modeling approaches selectable from the ",
+                    p("The Tumor Growth tab provides five statistical modeling approaches selectable from the ",
                       strong("Statistical Model"), " dropdown:"),
                     tags$ul(
                       tags$li(strong("Linear Mixed-Effects Model (LME4)"), " — fits a mixed-effects model to repeated tumor volume measurements. Accounts for inter-animal variability and unequal observation times. Recommended for most longitudinal datasets."),
-                      tags$li(strong("Area Under Curve (AUC)"), " — summarises each animal’s total tumor burden as the trapezoidal AUC of its growth curve. Non-parametric and robust to missing timepoints, but discards trajectory shape information.")
+                      tags$li(strong("GAMM (smooth time × treatment)"), " — fits a group-specific smoother on Day via gamm4. Use this instead of a high-order polynomial when growth is visibly non-linear: it estimates the shape from the data rather than assuming log-linearity. Diagnostics include a basis-dimension (k) check and a concurvity report."),
+                      tags$li(strong("Area Under Curve (AUC)"), " — summarises each animal’s total tumor burden as the trapezoidal AUC of its growth curve. Robust to missing timepoints, but discards trajectory shape information."),
+                      tags$li(strong("Bayesian LMM (brms)"), " — the LME4 model fitted by MCMC, returning full posterior distributions instead of point estimates and p-values."),
+                      tags$li(strong("Bayesian GAMM (brms + smoothers)"), " — the GAMM equivalent, with the smoother fitted in Stan.")
                     ),
                     p(tags$small(class = "text-muted",
-                      "Both modes compute Tumor Growth Inhibition (TGI) for each treatment group relative to the reference. ",
-                      "TGI = (1 − V_treated / V_control) × 100 at the final timepoint."
-                    ))
+                      "All modes compute Tumor Growth Inhibition (TGI) for each treatment group relative to the reference. ",
+                      "TGI = (1 − V_treated / V_control) × 100 at the endpoint."
+                    )),
+                    div(class = "alert alert-info", style = "font-size:0.9em; margin-bottom:0;",
+                      icon("circle-info"), " ",
+                      strong("Which endpoint?"), " Animals removed before study end make “the final timepoint” ",
+                      "ambiguous, and taking it literally computes TGI among survivors only — which flatters ",
+                      "the control arm, because the fastest-growing controls are exactly the ones that left. ",
+                      "The Toxicity and Synergy tabs expose an ", strong("Endpoint estimand"), " selector for this; ",
+                      "here TGI is derived from the fitted model, which uses every observation each animal ",
+                      "contributed rather than only those present at the end."
+                    )
                   )
                 ),
 
@@ -629,24 +643,64 @@ tumorGrowthUI <- function(id) {
                     tags$blockquote(tags$code("log(Volume) ~ Treatment × Day + (1 | ID)")),
                     p("The Treatment × Day interaction captures whether treatment groups differ in their growth ", em("trajectories"), " over time, not just at a single endpoint."),
                     tags$dl(class = "dl-horizontal",
-                      tags$dt("Transformation"), tags$dd("Log (default) stabilises variance and linearises exponential growth. Square root suits moderate heteroscedasticity. Use ‘None’ only for already-linear data."),
-                      tags$dt("Random Effects"), tags$dd("‘Intercept only’ allows each animal to have its own baseline volume. ‘Intercept + Slope’ additionally allows individual growth rates — more flexible but may fail to converge with small groups."),
-                      tags$dt("Cage Effect"), tags$dd("When a cage ID is mapped in Data Upload, cage can be included as a covariate to account for housing-level clustering. ‘Include if not collinear’ adds it automatically when it is statistically separable from treatment.")
+                      tags$dt("Transformation"), tags$dd("Log (default) stabilises variance and linearises exponential growth. Square root suits moderate heteroscedasticity. Use 'None' only for already-linear data."),
+                      tags$dt("Random Effects"), tags$dd("'Intercept only' (default) allows each animal its own baseline volume. 'Intercept + Slope' additionally allows individual growth rates \u2014 more flexible but may fail to converge with small groups. 'None' drops the animal-level term entirely and is appropriate only when each animal contributes a single observation, since it otherwise treats repeated measures as independent."),
+                      tags$dt("Cage Effect"),
+                      tags$dd(strong("Auto (default)"), " classifies the housing design and applies the matching treatment, because the correct handling depends on the design rather than on preference:",
+                              tags$ul(
+                                tags$li(em("Crossed"), " \u2014 a cage holds more than one treatment. Cage is separable from treatment and enters as a random intercept."),
+                                tags$li(em("Nested, replicated"), " \u2014 one treatment per cage, several cages per arm. Cage nests within treatment as a random effect; ignoring it treats cagemates as independent and understates standard errors."),
+                                tags$li(em("Nested, confounded"), " \u2014 one cage per treatment. Cage and treatment are the same variable and no model can separate them. The result reports the effect as inseparable rather than silently crediting it to treatment.")
+                              ),
+                              "The remaining options force a specific handling. ", em("Include if not collinear (legacy)"),
+                              " is the pre-v0.12 behaviour, kept so earlier analyses can be reproduced.")
                     ),
 
                     hr(),
                     h5(strong("ANOVA Tab")),
-                    p("Type III ANOVA F-test for Treatment, Day, and the Treatment × Day interaction. A significant interaction (p < 0.05) indicates that treatment groups differ in their growth trajectories — the primary analysis target."),
+                    p("Wald chi-square tests for Treatment, Day, and the Treatment \u00d7 Day interaction, reported as ",
+                      code("Chisq"), " / ", code("Df"), " / ", code("Pr(>Chisq)"), ". A significant interaction indicates that treatment groups differ in their growth trajectories \u2014 the primary analysis target."),
+                    p(tags$small(class = "text-muted",
+                      "These are chi-square rather than F tests because the model is fitted by maximum likelihood: a ",
+                      "mixed model has no exact residual degrees of freedom, so an F reference distribution would ",
+                      "need an approximation the chi-square avoids. The trade-off is that it is anti-conservative in ",
+                      "small samples \u2014 with few animals per arm, prefer the randomisation test below."
+                    )),
 
                     hr(),
                     h5(strong("Comparisons Tab")),
-                    p("Pairwise group comparisons at the mean observation day using estimated marginal means (EMMs):"),
-                    tags$ul(
-                      tags$li(strong("vs Reference (Dunnett)"), " — each treatment vs the reference group only. Dunnett correction controls the familywise error rate for this one-vs-many structure and is less conservative than Bonferroni."),
-                      tags$li(strong("All Comparisons (Tukey HSD)"), " — every pairwise combination. Use when all inter-group differences are of scientific interest.")
+                    p("Pairwise group comparisons at the mean observation day using estimated marginal means (EMMs). ",
+                      strong("Two independent settings"), " control this, and conflating them is the usual mistake:"),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Post-hoc Comparisons"),
+                      tags$dd("Which comparisons are made \u2014 ", em("vs Reference Group"), " (each treatment against the reference only) or ", em("All Comparisons"), " (every pair). This defines the family."),
+                      tags$dt("Correction"),
+                      tags$dd("How that family is corrected: Dunnett (exact, multivariate-t), Tukey HSD, Bonferroni, Holm, Benjamini-Hochberg FDR, or None. Dunnett is the default and is the right partner for a vs-reference family \u2014 it accounts for the correlation between comparisons that share a control arm, which Bonferroni ignores and therefore over-corrects.")
                     ),
                     p(tags$small(class = "text-muted",
-                      "Comparisons are marginalised at the mean study day. For trajectory differences across time, see the Treatment Effects tab."
+                      "The correction is applied over exactly the set of comparisons requested, and the table header ",
+                      "states which correction was actually used rather than asserting one. Comparisons are ",
+                      "marginalised at the mean study day; for differences in trajectory across time, see the ",
+                      "Treatment Effects tab."
+                    )),
+
+                    hr(),
+                    h5(strong("Randomisation Test")),
+                    p("An optional exact test of the Treatment \u00d7 Day interaction that avoids both the ",
+                      "denominator-degrees-of-freedom approximation and the assumption of normally distributed ",
+                      "random effects. Treatment labels are permuted and the model refitted; the p-value is the ",
+                      "proportion of permutations giving a statistic at least as extreme as the observed one."),
+                    div(class = "alert alert-warning", style = "font-size:0.9em;",
+                      icon("triangle-exclamation"), " ",
+                      strong("You must state the unit that was randomised."), " If animals were assigned to arms ",
+                      "individually, permute animals. If whole cages were assigned, permute cages \u2014 permuting ",
+                      "animals then breaks the exchangeability the test relies on and yields a p-value that is too ",
+                      "small. This cannot be inferred from the data; it is a fact about how the experiment was run."),
+                    p(tags$small(class = "text-muted",
+                      "The panel reports the number of exchangeable units, how many permutations converged, whether ",
+                      "the permutation set was enumerated exhaustively, and the smallest p-value the design can ",
+                      "attain. With few units that floor can exceed 0.05, in which case no amount of signal can ",
+                      "produce a significant result \u2014 and the asymptotic p-value beside it should not be trusted."
                     )),
 
                     hr(),
@@ -659,7 +713,48 @@ tumorGrowthUI <- function(id) {
 
                     hr(),
                     h5(strong("Diagnostics Tab")),
-                    p("Q–Q plot of residuals and residuals vs fitted values. Systematic curvature suggests the transformation choice should be revisited. Funnel-shaped spread indicates heteroscedasticity.")
+                    p("Four residual plots, each answering a different question about whether the model's ",
+                      "assumptions hold — which is what makes the p-values above mean anything:"),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Q–Q plot"),
+                      tags$dd("Are residuals normally distributed? Systematic curvature at the tails suggests the transformation choice should be revisited."),
+                      tags$dt("Residuals vs fitted"),
+                      tags$dd("Is the mean structure right? Curvature means the log-linear growth assumption is wrong — try GAMM."),
+                      tags$dt("Scale–location"),
+                      tags$dd("Is the variance constant on the modelling scale? A rising trend means heteroscedasticity survived the transformation."),
+                      tags$dt("Random-effects Q–Q"),
+                      tags$dd("Are the per-animal effects themselves normal? This is a separate assumption from residual normality and the one most often overlooked. If it fails, prefer the randomisation test, which assumes neither.")
+                    ),
+                    p(tags$small(class = "text-muted",
+                      "Influence measures (Cook's distance, DFBETAS) are also available: they identify individual ",
+                      "animals whose removal would materially change the conclusion. A result resting on one mouse ",
+                      "is worth knowing about before publication rather than after."
+                    ))
+                  )
+                ),
+
+                # ── GAMM Mode ────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-primary", "GAMM Mode"), " — Method & Outputs")),
+                  div(class = "panel-body",
+                    p("Fits a generalised additive mixed model via gamm4, replacing the linear Day term with a ",
+                      "group-specific smoother:"),
+                    tags$blockquote(tags$code("log(Volume) ~ Treatment + s(Day, by = Treatment) + (1 | ID)")),
+                    p("Use this when growth is visibly non-linear — plateauing, regression-then-regrowth, or a ",
+                      "delayed onset of effect — where forcing a single slope per arm would average across ",
+                      "distinct phases and understate the treatment effect. The smoother estimates the shape from ",
+                      "the data instead of assuming it, which is the advantage over adding polynomial terms."),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Basis dimension (k) check"),
+                      tags$dd("Tests whether the smoother had enough flexibility to capture the trend. A significant result means k was too small and the fitted curve is over-smoothed — the shape you are interpreting is partly an artefact of the basis."),
+                      tags$dt("Concurvity"),
+                      tags$dd("The smooth analogue of collinearity: whether one smoother can be approximated by another. High concurvity makes individual smooth terms unidentifiable, so their separate interpretation is unsafe even when the overall fit is good.")
+                    ),
+                    p(tags$small(class = "text-muted",
+                      "Comparisons on this path are per-day contrasts rather than a single slope difference, ",
+                      "because a smoother has no single slope. The Comparisons header states this explicitly."
+                    ))
                   )
                 ),
 
@@ -671,11 +766,29 @@ tumorGrowthUI <- function(id) {
                     p("Trapezoidal AUC of tumor volume over time is computed per animal. AUC (mm³·day) captures total tumor burden integrated over the study, not just the final timepoint."),
                     tags$dl(class = "dl-horizontal",
                       tags$dt("Individual AUC"), tags$dd("Per-animal AUC values with group summaries (mean, SD, SEM)."),
-                      tags$dt("AUC Summary"), tags$dd("Group comparisons via Welch t-tests with Benjamini–Hochberg correction.")
+                      tags$dt("AUC Summary"),
+                      tags$dd("An omnibus ", strong("Welch one-way ANOVA"), " across groups, followed by the pairwise ",
+                              "comparisons and correction selected in the sidebar. Welch is used rather than the ",
+                              "classical ANOVA because AUC variance almost always scales with the mean — a control ",
+                              "arm that grows unchecked is far more variable than a responding one — so the ",
+                              "equal-variance assumption is violated in exactly the comparison of interest."),
+                      tags$dt("Variance check"),
+                      tags$dd("A formal test of equal variances is reported beside the omnibus result, so the ",
+                              "assumption is visible rather than assumed. Welch already tolerates unequal variances; ",
+                              "the test tells you how far from equal they were.")
                     ),
+                    div(class = "alert alert-warning", style = "font-size:0.9em; margin-bottom:0;",
+                      icon("triangle-exclamation"), " ",
+                      strong("AUC and early removal."), " An animal euthanised on day 14 has a smaller AUC than one ",
+                      "followed to day 28 because it was measured for less time, not because its tumour was smaller. ",
+                      "AUC is computed over each animal's observed window, so arms losing animals early — typically ",
+                      "the controls — accumulate less area. Read this alongside the attrition figures, and prefer ",
+                      "the LME4 or GAMM paths when dropout is substantial: they use every observation without ",
+                      "needing a common window."),
                     p(tags$small(class = "text-muted",
-                      "LOCF (last observation carried forward) can extrapolate AUC to a common endpoint for animals censored early, ",
-                      "so all animals contribute to the same time window. Set Extrapolation Points to 0 to use only observed data."
+                      "Extrapolation no longer feeds this calculation. Appending an imputed observation and treating ",
+                      "it as measured data made standard errors and p-values ignore the imputation, understating ",
+                      "uncertainty. The Extrapolation Points control now affects the growth-trajectory plots only."
                     ))
                   )
                 ),
@@ -683,11 +796,11 @@ tumorGrowthUI <- function(id) {
                 # ── Bayesian LMM Mode ─────────────────────────────────────────
                 div(class = "panel panel-default",
                   div(class = "panel-heading",
-                    h4(class = "panel-title", tags$span(class = "label label-success", "Bayesian LMM Mode"), " — Method & Outputs")),
+                    h4(class = "panel-title", tags$span(class = "label label-success", "Bayesian Modes"), " — Method & Outputs")),
                   div(class = "panel-body",
 
                     h5(strong("Method")),
-                    p("Fits the same model formula as LME4 using full Bayesian inference via ",
+                    p("Two Bayesian modes are available: ", strong("Bayesian LMM"), " fits the same formula as LME4, and ", strong("Bayesian GAMM"), " fits the GAMM formula with the smoother estimated in Stan. Both use full Bayesian inference via ",
                       tags$a("brms", href = "https://paul-buerkner.github.io/brms/", target = "_blank"),
                       " / Stan. Instead of point estimates and p-values, every parameter has a ",
                       strong("posterior distribution"), ": a probability distribution over plausible values ",
@@ -736,8 +849,9 @@ tumorGrowthUI <- function(id) {
                       tags$li(strong("Summary"), " — posterior median and 95 % CrI for every model parameter."),
                       tags$li(strong("Treatment Effects"), " — group-level estimated marginal means (posterior) at the mean study day."),
                       tags$li(strong("Comparisons"), " — posterior contrasts of each group vs the reference."),
-                      tags$li(strong("Posterior Check"), " — overlay of observed data density vs 50 draws from the posterior predictive distribution. Systematic mismatch indicates model mis-specification."),
-                      tags$li(strong("Diagnostics"), " (Bayesian view) — Rhat and effective sample size (ESS) per parameter. Rhat > 1.01 indicates non-convergence; increase iterations or inspect trace plots."),
+                      tags$li(strong("Posterior Check"), " — overlay of observed data density vs draws from the posterior predictive distribution. Systematic mismatch indicates model mis-specification. A coverage plot reports whether the stated credible intervals actually contain the observed values at the claimed rate."),
+                      tags$li(strong("Diagnostics"), " (Bayesian view) — Rhat and effective sample size (ESS) per parameter, with trace and rank plots. Rhat > 1.01 indicates the chains have not mixed; low ESS means the posterior summaries are themselves noisy. Rank plots detect the mixing failures that trace plots hide once chains overlap."),
+                      tags$li(strong("Influence"), " — Pareto-k values from PSIS leave-one-out. Values above 0.7 mean the importance sampling is unreliable for that observation, which usually flags an animal the model fits badly rather than a coding error."),
                       tags$li(strong("Growth Rates"), " — per-animal log-linear regression rates (same as LME4, not MCMC-based).")
                     ),
 
@@ -790,9 +904,11 @@ tumorGrowthUI <- function(id) {
                       tags$dt("Reference Group"),
                       tags$dd("The vehicle/control group used as comparator. Auto-detected from common names (Vehicle, Control, DMSO, PBS, Saline) or defaults to the first group alphabetically."),
                       tags$dt("Post-hoc Comparisons"),
-                      tags$dd("Dunnett (vs reference, default) or Tukey HSD (all pairs). Applies to the Comparisons tab in LME4 mode."),
+                      tags$dd("Which family of comparisons to make — vs Reference Group (default) or All Comparisons. Paired with the separate Correction setting."),
+                      tags$dt("Correction"),
+                      tags$dd("How the chosen family is corrected: Dunnett (exact multivariate-t, default), Tukey HSD, Bonferroni, Holm, Benjamini-Hochberg FDR, or None."),
                       tags$dt("Extrapolation Points"),
-                      tags$dd("Number of recent timepoints used to fit a slope for animals that died before study end, then extrapolate their volume to the final day. Set to 0 to use observed data only."),
+                      tags$dd(strong("Affects the growth-trajectory plots only."), " Number of recent timepoints used to estimate a slope when projecting the curve for animals that left the study early; projected segments are drawn dashed. Set to 0 to disable. This no longer feeds any statistical model — treating an imputed point as measured data made standard errors ignore the imputation."),
                       tags$dt("Time Column"),
                       tags$dd("Numeric study day, or calculated from a date column mapped in Data Upload (days elapsed from first observation).")
                     )
@@ -1387,6 +1503,17 @@ helpUI <- function() {
     h3(icon("table"), " Data Format"),
     p("Upload data in ", strong("long format"), ": one row per measurement per animal. Accepted formats: CSV (.csv) or R data file (.rda / .rds)."),
 
+    h4("Demo data"),
+    p("No data of your own? The Data tab ships six demo datasets:"),
+    tags$ul(
+      tags$li(tags$strong("Master"), " \u2014 the most complete: 619 rows, six arms, with length/width/height, body weight, dose, cage, necrosis flags and survival censoring. This is the one that reaches every module."),
+      tags$li(tags$strong("Simple"), " \u2014 three arms with pre-calculated volume; the quickest way to see the app work."),
+      tags$li(tags$strong("Combo Treatment"), " \u2014 four arms with survival data, for the Drug Synergy tab."),
+      tags$li(tags$strong("Dose Levels"), " \u2014 graded doses with survival, for Dose Response."),
+      tags$li(tags$strong("Necrotic"), " \u2014 length and width columns with necrosis flags."),
+      tags$li(tags$strong("Weight"), " \u2014 four arms with body weight, for Toxicity.")
+    ),
+
     h4("Column auto-detection"),
     p("The dashboard detects columns by name. Recognised patterns (case-insensitive):"),
     tags$table(
@@ -1396,19 +1523,30 @@ helpUI <- function() {
         tags$tr(tags$th("Role"), tags$th("Recognised names"), tags$th("Required?"))
       ),
       tags$tbody(
-        tags$tr(tags$td("Animal ID"),         tags$td("ID, Mouse_ID, Animal_ID, Subject"),  tags$td("Yes")),
-        tags$tr(tags$td("Time / Day"),        tags$td("Day, Time, Timepoint"),              tags$td("Yes")),
-        tags$tr(tags$td("Tumor volume"),      tags$td("Volume, Tumor_Volume"),              tags$td("Yes \u2020")),
-        tags$tr(tags$td("Tumor length"),      tags$td("Length, Tumor_Length"),             tags$td("Yes \u2020")),
-        tags$tr(tags$td("Tumor width"),       tags$td("Width, Tumor_Width"),               tags$td("Yes \u2020")),
-        tags$tr(tags$td("Treatment / Group"), tags$td("Treatment, Group"),                 tags$td("Yes")),
-        tags$tr(tags$td("Cage"),              tags$td("Cage, Cage_ID"),                    tags$td("No")),
-        tags$tr(tags$td("Dose"),              tags$td("Dose, dose, DoseLevel"),            tags$td("No")),
-        tags$tr(tags$td("Body weight"),       tags$td("Weight, Mass, Body_Weight"),        tags$td("No")),
-        tags$tr(tags$td("Survival / Censor"), tags$td("Survival_Censor, Censor, Event"),   tags$td("No"))
+        tags$tr(tags$td("Animal ID"),         tags$td("ID, Mouse_ID, Animal_ID, Subject, Tag, Ear Tag, Mouse Tag"), tags$td("Yes")),
+        tags$tr(tags$td("Time / Day"),        tags$td("Day, Time, Timepoint, Day_Number"),  tags$td("Yes \u2021")),
+        tags$tr(tags$td("Date"),              tags$td("Date, Measurement_Date"),            tags$td("Yes \u2021")),
+        tags$tr(tags$td("Tumor volume"),      tags$td("Volume, Tumor_Volume, TV"),          tags$td("Yes \u2020")),
+        tags$tr(tags$td("Tumor length"),      tags$td("Length, Tumor_Length"),              tags$td("Yes \u2020")),
+        tags$tr(tags$td("Tumor width"),       tags$td("Width, Tumor_Width"),                tags$td("Yes \u2020")),
+        tags$tr(tags$td("Tumor height"),      tags$td("mapped manually in Data Upload"),    tags$td("No")),
+        tags$tr(tags$td("Treatment / Group"), tags$td("Treatment, Group, Treatment_Group"), tags$td("Yes")),
+        tags$tr(tags$td("Cage"),              tags$td("Cage, Cage_ID"),                     tags$td("No")),
+        tags$tr(tags$td("Dose"),              tags$td("Dose, Dose_Level, Concentration, Conc"), tags$td("No")),
+        tags$tr(tags$td("Body weight"),       tags$td("Weight, Mass, Body_Weight, Body Mass, BW"), tags$td("No")),
+        tags$tr(tags$td("Sex"),               tags$td("Sex, Gender, M/F"),                  tags$td("No")),
+        tags$tr(tags$td("Necrotic flag"),     tags$td("Necrotic, Necrosis, Necr, Is_Necrotic, Necrotic_Flag"), tags$td("No")),
+        tags$tr(tags$td("Survival / Censor"), tags$td("Survival_Censor, Censor, Event, Survival_Event"), tags$td("No")),
+        tags$tr(tags$td("Survival time"),     tags$td("Survival_Time, Time_To_Event, Days_To_Event"), tags$td("No"))
       )
     ),
-    p(tags$em("\u2020 Provide either a pre-calculated Volume column, or Length + Width columns (volume calculated automatically as V = \u03c0\u00b7L\u00b7W\u00b2/6).")),
+    p(tags$em("\u2020 Provide either a pre-calculated Volume column, or Length + Width columns."),
+      " When volume is calculated from calipers, six formulas are selectable in Data Upload: ",
+      "ellipsoid (default, ", tags$code("\u03c0\u00b7L\u00b7W\u00b2/6"), "), modified ellipsoid (",
+      tags$code("L\u00b7W\u00b2/2"), ") \u2014 the common preclinical convention \u2014 plus 3-axis ellipsoid, cylinder, ",
+      "sphere and box. The 3-axis and box formulas use a Height column if one is mapped; the others ",
+      "approximate height by width. Volumes may be supplied in mm\u00b3 or cm\u00b3."),
+    p(tags$em("\u2021 Supply either a numeric Day column or a Date column; elapsed days are derived from the date and a reference start date.")),
     p("Survival/Censor must be numeric: ", strong("1 = endpoint reached"), " (e.g. tumour exceeded IACUC volume limit), ",
       strong("0 = censored"), " (alive or study-end censored). If absent, use the volume-threshold derivation in the Survival tab sidebar."),
 
@@ -1420,11 +1558,15 @@ helpUI <- function() {
     h4("Tumor Growth"),
     tags$dl(
       tags$dt("LME4 (linear mixed-effects)"),
-      tags$dd("Log-transforms tumor volume and fits a linear mixed model with a Treatment \u00d7 Day interaction. Mouse ID is a random intercept; cage (if provided) is an additional random intercept. Pairwise contrasts via emmeans with Tukey adjustment. TGI (tumor growth inhibition) is derived from the estimated slopes."),
+      tags$dd("Log-transforms tumor volume and fits a linear mixed model with a Treatment \u00d7 Day interaction. Mouse ID is a random intercept. Cage handling is chosen to match the housing design rather than applied uniformly \u2014 see the tab's Info panel. Pairwise contrasts via emmeans; the comparison family and its correction are two separate settings, defaulting to vs-reference with an exact Dunnett correction."),
+      tags$dt("GAMM (smooth time \u00d7 treatment)"),
+      tags$dd("Replaces the linear Day term with a per-group smoother (gamm4). Use when growth is visibly non-linear \u2014 plateauing, regrowth, or delayed onset \u2014 where a single slope per arm would average across distinct phases. Includes a basis-dimension (k) check and a concurvity report."),
       tags$dt("AUC (area under the curve)"),
-      tags$dd("Computes per-mouse AUC by trapezoidal integration, then compares groups by Kruskal-Wallis / pairwise Wilcoxon tests."),
-      tags$dt("Bayesian LMM (brms)"),
-      tags$dd("Same structure as the LME4 model fitted via MCMC (Stan). Returns posterior distributions for treatment slopes, credible intervals, probability of direction, and ROPE analysis. Requires the brms package.")
+      tags$dd("Computes per-mouse AUC by trapezoidal integration, then compares groups with an omnibus Welch one-way ANOVA plus the selected pairwise correction, and reports a formal equal-variance test alongside. Note that an animal removed early accumulates less area purely from being measured for less time, so read AUC against the attrition figures."),
+      tags$dt("Bayesian LMM / Bayesian GAMM (brms)"),
+      tags$dd("The LME4 and GAMM models fitted via MCMC (Stan). Return posterior distributions for treatment effects with credible intervals, plus convergence diagnostics (Rhat, ESS, trace and rank plots) and PSIS-LOO influence measures. Requires the brms package."),
+      tags$dt("Randomisation test (optional, any frequentist mode)"),
+      tags$dd("Permutes treatment labels and refits, giving an exact p-value for the Treatment \u00d7 Day interaction that assumes neither a denominator-df approximation nor normal random effects. You must state whether animals or whole cages were randomised \u2014 the test is only valid if that matches how the experiment was actually run.")
     ),
 
     h4("Survival Analysis"),
@@ -1432,7 +1574,7 @@ helpUI <- function() {
       tags$dt("Kaplan-Meier"),
       tags$dd("Non-parametric survival estimates with 95% confidence bands. Log-rank test for group differences."),
       tags$dt("Cox proportional hazards"),
-      tags$dd("Semi-parametric Cox PH model. Hazard ratios with 95% CI for each treatment vs. reference."),
+      tags$dd("Semi-parametric Cox PH model. Hazard ratios with 95% CI for each treatment vs. reference. Firth's bias-reduced estimation is applied automatically when any arm has zero events, where the standard partial likelihood would return infinite coefficients. The proportional-hazards assumption is tested and reported \u2014 if it fails, the hazard ratio is an average over a period in which the true ratio changed, and should not be quoted as a single number."),
       tags$dt("Bayesian AFT (brms)"),
       tags$dd("Accelerated failure time model with choice of Weibull, log-normal, exponential, or gamma distribution. Returns time ratios and derived hazard ratios with credible intervals.")
     ),
@@ -1444,7 +1586,11 @@ helpUI <- function() {
       tags$dt("Bayesian body weight model"),
       tags$dd("Bayesian LMM for body weight via brms; same structure as the frequentist model."),
       tags$dt("Therapeutic Window Metric (TWM)"),
-      tags$dd("Combines tumor growth inhibition and body weight change into a single efficacy-toxicity ratio. Available in both frequentist and Bayesian variants.")
+      tags$dd("Combines tumor growth inhibition and body weight change into a single efficacy-toxicity ratio, with bootstrap intervals. Because it is a ratio of two estimated quantities its uncertainty is wide, so the ranking note states whether the top arm is genuinely separated from the second or whether their intervals overlap. Available in frequentist and Bayesian variants."),
+      tags$dt("Weight-loss time-to-event"),
+      tags$dd("Kaplan-Meier for time to crossing a weight-loss threshold. Where animals are also removed for tumour burden, those are competing events rather than ordinary censorings \u2014 an Aalen-Johansen cumulative incidence estimate and a per-arm censoring breakdown are reported alongside."),
+      tags$dt("Endpoint estimand"),
+      tags$dd("Shared by the Toxicity and Synergy tabs. \u2018Model\u2019 estimates endpoint means from the fitted model using every observation; \u2018Observed\u2019 uses only animals still present at the endpoint. They differ whenever animals leave early, and because the fastest-growing controls are the ones that leave, \u2018Observed\u2019 flatters the control arm.")
     ),
 
     h4("Drug Synergy"),
@@ -1454,7 +1600,9 @@ helpUI <- function() {
       tags$dt("Loewe Combination Index (CI)"),
       tags$dd("CI < 1 synergy, CI = 1 additivity, CI > 1 antagonism. Requires four groups: control, drug A alone, drug B alone, and combination."),
       tags$dt("Bayesian synergy"),
-      tags$dd("Propagates uncertainty from the growth model through Bliss and Loewe calculations, yielding posterior distributions for synergy metrics.")
+      tags$dd("Propagates uncertainty from the growth model through Bliss and Loewe calculations, yielding posterior distributions for synergy metrics."),
+      tags$dt("Interval on the verdict"),
+      tags$dd("The synergy verdict is a label derived from three group means. Bootstrap intervals are reported and the panel states explicitly whether the 95 % interval for Bliss excess excludes zero \u2014 a \u201cStrong Synergy\u201d whose interval spans zero is not evidence of synergy.")
     ),
 
     h4("Dose-Response"),
@@ -1462,7 +1610,9 @@ helpUI <- function() {
       tags$dt("Frequentist Hill / Emax"),
       tags$dd("Fits a four-parameter log-logistic (4PL) dose-response curve via nonlinear least squares. Reports IC50, Hill slope, and fitted curve."),
       tags$dt("Bayesian Hill / Emax"),
-      tags$dd("Same model fitted by MCMC with weakly informative priors. Returns posterior distributions for all curve parameters.")
+      tags$dd("Same model fitted by MCMC with weakly informative priors. Returns posterior distributions for all curve parameters."),
+      tags$dt("Trend tests"),
+      tags$dd("Alongside the curve fit, the tab reports linear and quadratic trend p-values and a Jonckheere-Terpstra test. The last is the one that respects dose ordering: it asks whether response is monotone in dose, which is the question a dose-response study is usually posing, rather than merely whether the groups differ.")
     ),
 
     h4("Power Analysis"),
@@ -1470,9 +1620,7 @@ helpUI <- function() {
       tags$dt("Analytic (a priori)"),
       tags$dd("Classical power calculation for t-test or one-way ANOVA across a range of effect sizes and sample sizes."),
       tags$dt("LMM simulation"),
-      tags$dd("Simulates repeated-measures data under a linear mixed model and estimates power empirically across a grid of sample sizes."),
-      tags$dt("Bayesian simulation"),
-      tags$dd("Simulates data, fits a Bayesian model to each replicate, and reports the proportion of replicates where the posterior probability of a directional effect exceeds a target threshold.")
+      tags$dd("Simulates repeated-measures data under a linear mixed model and estimates power empirically across a grid of sample sizes. An optional euthanasia volume limit models attrition; leaving it blank assumes every animal is measured at every timepoint, which overstates power by roughly 6 points at 30 % attrition. Note that baseline SD and random-intercept SD do not affect the answer \u2014 the test is on growth rates, which are orthogonal to per-animal baselines. Random-slope SD is the parameter that matters.")
     ),
 
     hr(),

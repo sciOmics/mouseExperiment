@@ -184,6 +184,33 @@ doseResponseUI <- function(id) {
                   )
                 ),
 
+                # ── Trend tests ──────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-danger", "Trend Tests"))),
+                  div(class = "panel-body",
+                    p("A dose-response study usually asks whether response is ", em("monotone in dose"),
+                      " \u2014 not merely whether the groups differ somewhere. Three tests address that directly:"),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Jonckheere\u2013Terpstra"),
+                      tags$dd("The test that actually respects dose ordering. It is sensitive to a consistent ",
+                              "monotone trend and, unlike ANOVA, gains power from the ordering rather than ",
+                              "discarding it. This is the primary trend result."),
+                      tags$dt("Linear trend"),
+                      tags$dd("p-value for a linear term in dose. Significant means a straight-line component ",
+                              "is present; it says nothing about whether the relationship is ", em("only"), " linear."),
+                      tags$dt("Quadratic trend"),
+                      tags$dd("Detects curvature \u2014 a plateau or a reversal at high dose. A significant quadratic ",
+                              "term alongside a significant linear one usually means the response saturates, which ",
+                              "matters when extrapolating to untested doses.")
+                    ),
+                    p(tags$small(class = "text-muted",
+                      "A Bayesian dose-response mode is also available, fitting the same curve by MCMC and ",
+                      "returning posterior distributions for ED50 and the slope rather than point estimates."
+                    ))
+                  )
+                ),
+
                 br()
               )
             )

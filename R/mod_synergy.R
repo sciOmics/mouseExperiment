@@ -166,6 +166,41 @@ synergyUI <- function(id) {
                   )
                 ),
 
+                # ── Uncertainty & estimand ───────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-danger", "Uncertainty"), " — how far to trust the verdict")),
+                  div(class = "panel-body",
+                    p("The synergy verdict is a categorical label derived from three group means. Without an ",
+                      "interval, a “Strong Synergy” resting on noise is indistinguishable on screen from one ",
+                      "resting on a real effect."),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Bootstrap resamples"),
+                      tags$dd("Mouse-level resampling produces confidence intervals for the Bliss and Loewe ",
+                              "metrics. The control arm is resampled too, so uncertainty in the denominator ",
+                              "propagates rather than being treated as known — which matters because every metric ",
+                              "here is a ratio against control. Set to 0 to skip; the verdict is then a point ",
+                              "estimate with no stated uncertainty."),
+                      tags$dt("Interval callout"),
+                      tags$dd("Beneath the verdict, an explicit statement of whether the 95 % interval for Bliss ",
+                              "excess excludes zero. This is the single most useful line in the tab: a verdict ",
+                              "whose interval spans zero is not evidence of synergy, whatever the label says."),
+                      tags$dt("Endpoint estimand"),
+                      tags$dd(strong("Model"), " (default) estimates endpoint group means from the fitted model, ",
+                              "using every observation each animal contributed. ", strong("Observed"), " uses only ",
+                              "animals still present at the endpoint. Because the fastest-growing controls are the ",
+                              "ones removed early, the observed estimand shrinks the control mean and inflates every ",
+                              "fractional effect derived from it — which propagates directly into both Bliss and ",
+                              "Loewe. Per-arm attrition is shown so the exposure is visible.")
+                    ),
+                    p(tags$small(class = "text-muted",
+                      "A Bayesian synergy mode is also available: it propagates posterior uncertainty from the ",
+                      "growth model through the Bliss and Loewe calculations, giving credible intervals for the ",
+                      "metrics directly rather than by resampling."
+                    ))
+                  )
+                ),
+
                 # ── Over-time ────────────────────────────────────────────────
                 div(class = "panel panel-default",
                   div(class = "panel-heading", h4(class = "panel-title", "Over-Time Analysis")),

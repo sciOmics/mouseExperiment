@@ -44,7 +44,23 @@ data_upload_server <- function(id, rv) {
   observeEvent(input$load_demo_data, {
     req(nzchar(input$demo_dataset))
 
+    # D.12: `master` and `simple` were shipped by the backend but had no CSV here
+    # and no entry in this list, so neither could ever be loaded. `master` is the
+    # most complete dataset in the package — 619 rows carrying Length/Width/Height,
+    # Weight, Dose, Cage, Necrotic and Survival_Censor across six arms — which
+    # makes it the only demo that exercises every module without the user having
+    # to supply their own data.
     demo_files <- list(
+      master = list(
+        data     = "master_synthetic_data.csv",
+        ref_date = "",
+        label    = "Master demo (all features)"
+      ),
+      simple = list(
+        data     = "synthetic_data.csv",
+        ref_date = "",
+        label    = "Simple demo (3 arms)"
+      ),
       combo = list(
         data     = "combo_treatment_synthetic_data.csv",
         ref_date = "2025-03-24",
