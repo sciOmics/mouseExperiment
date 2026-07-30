@@ -5,6 +5,61 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-07-30
+
+Closes K.11 and K.2. No test in the suite can now skip.
+
+### Added — regression tests for the Round 1/2 fixes (K.11)
+
+`test-code_review_rounds12.R`, 42 assertions. K.11 flagged that ~40 Round 1/2 fixes
+shipped without tests; Round 3 then showed the cost twice — **R3.35**
+(`bayesian_synergy()` non-functional across five releases) and **R3.37** (the TWM
+scatter plot always `NULL`). Both were *fixes that stopped working*, and neither had
+a test.
+
+Selection criterion: **fixes whose failure mode is silent.** A fix that fails loudly
+announces itself; one that quietly returns a wrong number or an empty result does
+not, and those are the ones that survived.
+
+Covered: composite keys round-tripping through every separator that occurs in real
+labels; same-ID-different-arm staying two animals; `calculate_auc()` checked against
+a hand computation including unsorted input and NA pairs; LOCF AUC returning an
+*area*, pinned by requiring a carried-forward animal to land on exactly the same area
+as animals that ran the full course; baselines invariant to row order; the shared
+Bliss formula including its ceiling; the gamm4 stub patch actually enabling emmeans
+dispatch; diagnostic plot slots holding ggplots rather than silent `NULL`s;
+`in_place` not mutating the caller's environment; `cox.zph()` and the C-index
+surviving on the Cox path.
+
+### Fixed — content-based skips (K.2)
+
+Three `skip()` calls keyed on result *content* rather than package availability, e.g.
+`if (!is.null(res$model)) { ... } else skip("model not available")`.
+`return_model = TRUE` is the default, so a missing model is a regression — the skip
+made it indistinguishable from a pass. All three are now assertions, and the
+`ph_test` one asserts the contract in both directions. **No live `skip()` call
+remains anywhere in the suite.**
+
+### Changed
+
+`coverage.R`'s stale caveat (about tests removed in v0.5.0) replaced with a warning
+that matters more: the script excludes the seven Bayesian entry points by default,
+and that is the package's most defect-prone surface — R3-L found two Critical bugs
+there that survived five releases. Read its figure as "coverage of the non-Bayesian
+surface".
+
+### Declined
+
+The 9 remaining `if (requireNamespace(x)) { plot } else { NULL }` guards. A
+mechanical collapse was attempted and reverted — the guards sit inside assignment
+expressions where a bare block does not substitute, and the package stopped parsing.
+Dead-code removal with no behavioural change; recorded under §R4.6 so it is not
+re-attempted blindly.
+
+### Tests
+
+748 passing, 0 failing, 0 errors (was 702).
+
 ## [0.12.0] - 2026-07-30
 
 Closes B7.1 and B7.2, open since Round 1.

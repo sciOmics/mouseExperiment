@@ -14,15 +14,18 @@
 # CI tip: piping the printed result through `grep "Coverage:"` gives a
 # single-line summary suitable for a build status check.
 #
-# Known caveat (2026-06-02): the test files `test-post_power_analysis.R` and
-# parts of `test-toxicity_functions.R` reference removed / renamed functions
-# (`post_power_analysis()` was deleted in v0.3.4; `efficacy_toxicity_bivariate`
-# no longer accepts the `"log_cell_kill"` metric). Until those stale tests
-# are fixed under CODE_REVIEW.md K.11, `covr::package_coverage()` exits with
-# a test-failure error before producing a summary. Either:
-#   (a) Fix the stale tests first (recommended), or
-#   (b) Use `covr::file_coverage()` on a per-file basis to bypass the test
-#       harness entirely.
+# The 2026-06-02 caveat is resolved: the stale tests that blocked this script
+# (`test-post_power_analysis.R`, and the `"log_cell_kill"` assertions in
+# `test-toxicity_functions.R`) were removed or repaired in v0.5.0, so
+# `covr::package_coverage()` now produces a summary.
+#
+# Read the Bayesian exclusion carefully. Those seven functions are the package's
+# heaviest and most defect-prone surface -- CODE_REVIEW.md R3-L found two Critical
+# bugs in them that had survived five releases -- so a headline number computed
+# with them excluded flatters the package. Treat the figure this script prints as
+# "coverage of the non-Bayesian surface", and run without `function_exclusions`
+# (slow: every Stan model compiles) before making any claim about overall
+# coverage.
 
 stopifnot(requireNamespace("covr", quietly = TRUE))
 

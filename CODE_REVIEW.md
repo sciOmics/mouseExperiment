@@ -1604,9 +1604,9 @@ The class exists but isn't constructed by any analysis function (J.8). The test 
 | K.6 | Rhat threshold 1.1 too permissive; no ESS assertions | Minor | ✅ Fixed v0.4.5 |
 | K.7 | n_iter = 500 is fast but light | Minor | Open |
 | K.8 | Toxicity fixture duplicates `make_bw_simple()` | Minor | Open |
-| K.9 | Plot return values not tested | Minor | Open |
+| K.9 | Plot return values not tested | Minor | ✅ Fixed v0.13.0 (diagnostic plot slots asserted) |
 | K.10 | No code-coverage measurement | Architecture | ✅ Fixed v0.4.7 (covr added to Suggests; `coverage.R` script written; baseline blocked by pre-existing stale tests under K.11 — fix those first to get a clean run) |
-| K.11 | No regression tests for prior Round 1 / Round 2 fixes | Process | Open |
+| K.11 | No regression tests for prior Round 1 / Round 2 fixes | Process | ✅ Fixed v0.13.0 |
 | K.12 | `me_result` tested in isolation; not exercised end-to-end | Minor | Open |
 
 ---
@@ -2842,9 +2842,14 @@ there is one numerical path.
 
 **Deliberately left:** 9 `if (requireNamespace(x)) { build plot } else { NULL }`
 blocks in the Bayesian plot sections. Their dead branch yields a NULL plot, so
-they are inert rather than wrong, and collapsing each one means restructuring
-plot assembly for no functional gain. Cosmetic cleanup, tracked here rather than
-risked now.
+they are inert rather than wrong.
+
+A mechanical collapse was attempted in v0.13.0 and **reverted**: the guards sit
+inside assignment expressions (`x <- if (...) { ... } else NULL`), so replacing the
+condition with a bare block does not substitute cleanly and the package stopped
+parsing. Each site needs an individual edit, and the payoff is dead-code removal
+with no behavioural change. Not worth the churn against a live release; recorded
+here so a future reader knows it was considered and why it was declined.
 
 ### The change that actually delivers
 
@@ -3062,3 +3067,78 @@ mechanisms because they check capability rather than a number.
 | B7.1 | Bayesian/frequentist schema inconsistency | Minor | ✅ Fixed v0.12.0 — `$meta` provenance |
 | B7.2 | `transform_used` absent from some functions | Minor | ✅ Fixed v0.12.0 |
 | R6.3 | Dashboard error bars were SE-derived, not the model CI | Major | ✅ Fixed (dashboard R4.D5) |
+
+
+---
+
+# Round 7 — K.11 closed, K.2 skips removed (v0.13.0, 2026-07-30)
+
+## R7.1 K.11: regression tests for the Round 1/2 fixes
+
+K.11 flagged that ~40 Round 1/2 fixes shipped without regression tests. Round 3 then
+demonstrated the cost twice: **R3.35** (`bayesian_synergy()` non-functional across
+five releases, because the §G.6 refactor moved a variable and left both consumers
+pointing at the old local) and **R3.37** (the TWM scatter plot always `NULL`,
+because the v0.4.5 fix for §J.2 introduced a reference to a data frame that does not
+exist). Both were *fixes that stopped working*, and neither had a test.
+
+`test-code_review_rounds12.R` adds 42 assertions, selected on one criterion:
+**fixes whose failure mode is silent**. A fix that fails loudly announces itself; one
+that quietly returns a wrong number or an empty result does not, and those are the
+ones that survived five releases.
+
+Covered: composite mouse keys round-tripping through every separator that occurs in
+real labels (§1.5 / §3.1); same-ID-different-arm remaining two animals (§1.8 and its
+four re-occurrences); `calculate_auc()` as the single implementation, checked against
+a hand computation including unsorted input and NA handling (§3.6); LOCF AUC
+returning an *area* — pinned by requiring a carried-forward animal to land on exactly
+the same area as animals that ran the full course (§2.5); baselines invariant to row
+order (§1.7); the shared Bliss formula including its documented ceiling (§2.4 / §I.1);
+the gamm4 stub patch actually enabling emmeans dispatch (§G.6 / R3.35); diagnostic
+plot slots holding ggplots rather than silent `NULL`s (§J.2 / R3.37); `in_place`
+not mutating the caller's environment (§3.3 / §J.20); and `cox.zph()` plus the
+C-index surviving on the Cox path (§A.1 / §E.2).
+
+## R7.2 K.2: content-based skips removed
+
+Three `skip()` calls remained that keyed on *result content* rather than package
+availability:
+
+```r
+if (!is.null(res$model)) { ... } else skip("model not available in ... result")
+```
+
+`return_model = TRUE` is the default, so a missing model is a regression — but the
+skip made it indistinguishable from a pass. Same for `growth_rates` (the fixture has
+≥ 3 timepoints per animal, so growth rates *must* be produced) and for `ph_test`.
+
+All three are now assertions. The `ph_test` one asserts the actual contract in both
+directions: `ph_test` present exactly when the Cox path ran, and the non-Cox path
+identifying itself. **No live `skip()` call remains anywhere in the test suite.**
+
+## R7.3 R4.6: the cosmetic guard collapse was attempted and reverted
+
+Recorded under §R4.6 — a mechanical collapse of the 9 remaining
+`if (requireNamespace(x)) { plot } else { NULL }` blocks broke the parse, because the
+guards sit inside assignment expressions where a bare block does not substitute.
+Reverted. Each site needs an individual edit for dead-code removal with no
+behavioural change; declined as not worth the churn, and noted so it is not
+re-attempted blindly.
+
+## R7.4 K.10: the coverage caveat is resolved
+
+`coverage.R`'s "known caveat" described stale tests that blocked `covr` — those were
+removed or repaired in v0.5.0, so the script runs. The note now warns about something
+more important: the script **excludes the seven Bayesian entry points by default**,
+which is the package's heaviest and most defect-prone surface — §R3-L found two
+Critical bugs there that survived five releases. A headline number computed with them
+excluded flatters the package, so the printed figure should be read as "coverage of
+the non-Bayesian surface".
+
+| ID | Issue | Status |
+|---|---|---|
+| K.11 | No regression tests for Round 1/2 fixes | ✅ Fixed v0.13.0 — 42 assertions |
+| K.2 | Content-based skips masking regressions | ✅ Fixed v0.13.0 — no live skips remain |
+| K.9 | Plot return values untested | ✅ Fixed v0.13.0 |
+| K.10 | Coverage baseline blocked | ✅ Unblocked; caveat rewritten |
+| R4.6 | 9 cosmetic guards | Declined — attempt recorded |

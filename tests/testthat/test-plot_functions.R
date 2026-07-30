@@ -134,12 +134,13 @@ test_that("plot_growth_rate returns a ggplot", {
   df  <- make_tg_simple()
   res <- call_tgs(df)
 
-  if (!is.null(res$growth_rates) && nrow(res$growth_rates) > 0) {
-    p <- plot_growth_rate(res$growth_rates)
-    expect_s3_class(p, "gg")
-  } else {
-    skip("growth_rates not available in tumor_growth_statistics result")
-  }
+  # CODE_REVIEW.md K.2 -- this used to skip() when growth_rates was absent, which
+  # made "the field disappeared" look identical to "the test passed". The fixture
+  # has >= 3 timepoints per animal, so growth rates MUST be produced.
+  expect_false(is.null(res$growth_rates))
+  expect_gt(nrow(res$growth_rates), 0L)
+  p <- plot_growth_rate(res$growth_rates)
+  expect_s3_class(p, "gg")
 })
 
 # ===========================================================================
@@ -233,12 +234,11 @@ test_that("plot_caterpillar returns a ggplot", {
   df  <- make_tg_simple()
   res <- call_tgs(df)
 
-  if (!is.null(res$model)) {
+  # CODE_REVIEW.md K.2 -- return_model = TRUE is the default, so a missing
+  # model is a regression, not a reason to skip.
+  expect_false(is.null(res$model))
     p <- plot_caterpillar(res$model)
     expect_s3_class(p, "gg")
-  } else {
-    skip("model not available in tumor_growth_statistics result")
-  }
 })
 
 test_that("plot_caterpillar works with show_intercept = FALSE", {
@@ -246,10 +246,9 @@ test_that("plot_caterpillar works with show_intercept = FALSE", {
   df  <- make_tg_simple()
   res <- call_tgs(df)
 
-  if (!is.null(res$model)) {
+  # CODE_REVIEW.md K.2 -- return_model = TRUE is the default, so a missing
+  # model is a regression, not a reason to skip.
+  expect_false(is.null(res$model))
     p <- plot_caterpillar(res$model, show_intercept = FALSE)
     expect_s3_class(p, "gg")
-  } else {
-    skip("model not available in tumor_growth_statistics result")
-  }
 })
