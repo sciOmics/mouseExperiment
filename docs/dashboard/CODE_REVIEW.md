@@ -1234,3 +1234,90 @@ read:
 | I.1 | `expect_true(TRUE)` placeholders | Major | ✅ Fixed — superseded by the above |
 
 Suite: 300 → 314 passing, no skips.
+
+---
+
+# Review Round 10 (v26.07.008 — 2026-07-30)
+
+**Scope:** D.1, the three files over 1,000 LOC — reframed after looking at what
+was actually in them.
+
+## D.1 revisited: length was the symptom, not the defect
+
+D.1 read as "these files are too long". The repo's own history says that framing
+does not pay. `mod_tumor_growth.R` had already been split once under C.1/C.3,
+from 2,659 to 1,877 LOC, and the extraction was done well — a named-list contract
+rather than lexical scope. It prevented nothing: **D.7 sat at line 7 of the file
+that had just been refactored.** D.8 was in a 653-line file. R3.D6 was a one-line
+resolution order.
+
+Nor are the three files one problem. `ui_modules.R` (1,563) and `helpers.R`
+(1,226) contain **zero** outputs, observers and reactives — static UI and pure
+functions. The server modules are the inverse: 42 and 49 render blocks against 6
+and 3 observers. Different shapes, different answers.
+
+So the split was done on the one file where it bought something, and declined
+where it did not.
+
+## D.9 `helpers.R`: 29 of 39 functions had no test referencing them — Major
+
+That is the finding length was hiding. Split by testability seam into
+`helpers_data.R` (423), `helpers_format.R` (216), `helpers_plot.R` (501) and
+`helpers_ui.R` (126), following the `helpers_*.R` convention already set by
+`helpers_bayes.R` / `helpers_report.R`. The partition was verified lossless
+before `helpers.R` was deleted, and all 39 functions were confirmed to still
+resolve. Suite was unchanged at 314 across the move, which is what makes it a
+refactor rather than a rewrite.
+
+The split is the means. **164 new assertions are the point**, and two of the
+functions they cover decide statistical results rather than presentation:
+
+**`back_transform()`** — the inverse of the modelling transform. The backend fits
+`log(Volume)`, not `log1p`, so `expm1()` here would be wrong by one unit at every
+point: invisible on a 2,000 mm³ tumour, badly wrong on a 20 mm³ one. Now pinned
+against `exp()` explicitly, with round-trip tests, and the silent fall-through for
+an unrecognised transform name documented rather than left to be discovered.
+
+**`synthesize_censor_column()`** — fabricates the event indicator the survival
+analysis consumes, by the rule *last observation before study end ⇒ event*. It is
+correct for the mechanism it models and it has a limitation that cannot be fixed
+in this function: an animal that survived but whose final measurement was skipped
+is coded identically to one that was euthanised. The information needed to
+separate them is not in the data frame. What the function does do is report
+`n_flagged`, and that contract is now pinned so the count stays available for the
+caller to display. This is the same informative-dropout question the review opened
+with, surfacing in the dashboard's data preparation.
+
+Also newly covered: `pick_reference_group()` (which determines what every contrast
+is measured against — its substring matching promotes an arm called "Uncontrolled"
+over a genuine "Vehicle", asserted rather than silently changed, since requiring
+exact equality would break the common "VEHICLE-1" style), `apply_subset_filter()`
+(exclusions fail safe — a mis-mapped column drops nothing rather than everything),
+`detect_date_format()` (a misread layout silently yields wrong elapsed days),
+`format_pval()` (a p-value displayed as "0" is a claim no test supports),
+`translate_error()` (unrecognised messages pass through verbatim rather than being
+replaced by a generic shrug), and `js_string()` (escaping for values interpolated
+into `runjs()`).
+
+## D.10 Declined: mechanical splits of `ui_modules.R` and the server modules
+
+`ui_modules.R` is 1,563 lines of static UI with no reactive coupling. Nothing can
+hide there, and a split buys merge conflicts and a regression window in exchange
+for a smaller number.
+
+The server modules are dominated by render blocks. Moving a renderer to another
+file does not make it more correct or more testable — `testServer()` does not care
+which file it was defined in, and what blocked I.2 for four rounds was
+`rv$x <- NULL`, not 1,877 lines. The move that would pay there is extracting the
+*decision logic* out of `renderUI` — the TWM separability rule, the Bliss-excess
+verdict, the interval-overlap checks — into pure functions, which shrinks the
+modules as a side effect. Recorded as the next step rather than done here.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| D.9 | 29/39 helpers untested; `back_transform` / `synthesize_censor_column` unverified | Major | ✅ Fixed v26.07.008 — 164 assertions |
+| D.1 | Files over 1,000 LOC | Architecture | ✅ Addressed — `helpers.R` split; see D.10 |
+| D.10 | Mechanical splits of `ui_modules.R` / server modules | Architecture | Declined, with reasoning |
+| D.11 | Extract render decision logic into pure functions | Enhancement | Open — the split that would pay |
+
+Suite: 314 → 478 passing, no skips.

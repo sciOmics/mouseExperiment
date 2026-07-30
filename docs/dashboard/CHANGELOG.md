@@ -4,6 +4,57 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.07.008] - 2026-07-30
+
+Addresses D.1 (files over 1,000 LOC), reframed after looking at what was in them.
+
+### Changed — `helpers.R` split into four themed files
+
+`helpers.R` (1,227 LOC) became `helpers_data.R` (423), `helpers_format.R` (216),
+`helpers_plot.R` (501) and `helpers_ui.R` (126), following the `helpers_*.R`
+convention already set by `helpers_bayes.R` / `helpers_report.R`. The partition
+was verified lossless before the original was deleted, all 39 functions confirmed
+to still resolve, and the suite was unchanged at 314 across the move — which is
+what makes it a refactor rather than a rewrite.
+
+### Added — 164 assertions for helpers that had none (D.9)
+
+The split is the means; this is the point. 29 of the 39 functions in `helpers.R`
+had no test referencing them, and two of those decide statistical results rather
+than presentation:
+
+- **`back_transform()`** inverts the modelling transform. The backend fits
+  `log(Volume)`, not `log1p`, so `expm1()` here would be wrong by one unit at
+  every point — invisible on a 2,000 mm³ tumour, badly wrong on a 20 mm³ one. Now
+  pinned against `exp()` with round-trip tests, and its silent fall-through for an
+  unrecognised transform documented rather than left to be found.
+- **`synthesize_censor_column()`** fabricates the event indicator the survival
+  analysis consumes, by the rule *last observation before study end ⇒ event*. It
+  is correct for the mechanism it models, and it has a limitation that cannot be
+  fixed in this function: a survivor whose final measurement was skipped is coded
+  identically to one that was euthanised. The data frame does not carry what would
+  separate them. It does report `n_flagged`, and that contract is now pinned so
+  the count stays available to display.
+
+Also covered for the first time: `pick_reference_group()` (its substring matching
+promotes an arm called "Uncontrolled" over a genuine "Vehicle" — asserted rather
+than silently changed, since requiring exact equality would break the common
+"VEHICLE-1" style), `apply_subset_filter()` (exclusions fail safe: a mis-mapped
+column drops nothing rather than everything), `detect_date_format()`,
+`format_pval()`, `translate_error()` (unrecognised messages pass through verbatim
+instead of being replaced by a generic shrug) and `js_string()`.
+
+### Declined — mechanical splits of `ui_modules.R` and the server modules (D.10)
+
+`ui_modules.R` is 1,563 lines of static UI with no reactive coupling; nothing can
+hide there. The server modules are dominated by render blocks, and moving a
+renderer between files makes it neither more correct nor more testable — what
+blocked I.2 for four rounds was `rv$x <- NULL`, not 1,877 lines. The move that
+would pay is extracting the decision logic out of `renderUI` into pure functions;
+recorded as D.11 rather than done here.
+
+Suite: 314 → 478 passing, no skips.
+
 ## [26.07.007] - 2026-07-30
 
 Closes I.2. Doing so turned up why it had resisted four rounds of attempts.
