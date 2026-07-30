@@ -389,7 +389,13 @@ power_server <- function(id, rv) {
 
   current_ap_plot    <- reactiveVal(NULL)
 
-  rv$ap_results <- NULL
+  # D.7: this was an unconditional `rv$ap_results <- NULL`. `rv` is created empty
+  # in app.R and each module mounts once, so the assignment never cleared anything
+  # in production -- but it wiped the slot at module init, which made these five
+  # modules impossible to drive through testServer() with a pre-populated result.
+  # That is why I.2 stayed open across four rounds: every attempt to assert render
+  # behaviour got the "run an analysis first" placeholder back. Removed; the slot
+  # reads NULL until an analysis writes it either way.
 
   # ---- Seed pooled SD from loaded data (analytic a priori) ------------------
   observeEvent(input$pw_seed_sd, {

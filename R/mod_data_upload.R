@@ -6,11 +6,23 @@ data_upload_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
 
   # Helper: reset all downstream analysis state when new data is loaded
+  #
+  # D.8: this cleared `rv$pw_results` and `rv$tox_results` was absent entirely.
+  # No module has ever written `pw_results` — the Power module uses `ap_results`
+  # (18 references). So loading a new dataset reset every tab except the two it
+  # named wrongly or not at all, leaving the Power and Toxicity tabs displaying
+  # results computed from the previous dataset. Power is mostly a priori, but
+  # "Seed SD from loaded data" ties it to whatever was loaded at the time, so the
+  # stale figure is genuinely wrong rather than merely old.
+  #
+  # Same failure mode as §K.2 throughout this review: a name that matches nothing
+  # fails silently and looks like it works.
   reset_analyses <- function(rv) {
     rv$tg_results       <- NULL
     rv$surv_results     <- NULL
     rv$syn_results      <- NULL
-    rv$pw_results       <- NULL
+    rv$ap_results       <- NULL
+    rv$tox_results      <- NULL
     rv$dr_results       <- NULL
     rv$processed_data   <- NULL
     rv$tg_running       <- FALSE

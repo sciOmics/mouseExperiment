@@ -451,7 +451,13 @@ survivalUI <- function(id) {
 survival_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
   
-  rv$surv_results <- NULL
+  # D.7: this was an unconditional `rv$surv_results <- NULL`. `rv` is created empty
+  # in app.R and each module mounts once, so the assignment never cleared anything
+  # in production -- but it wiped the slot at module init, which made these five
+  # modules impossible to drive through testServer() with a pre-populated result.
+  # That is why I.2 stayed open across four rounds: every attempt to assert render
+  # behaviour got the "run an analysis first" placeholder back. Removed; the slot
+  # reads NULL until an analysis writes it either way.
   rv$surv_running <- FALSE
 
   ordered_surv_grps <- reactive(

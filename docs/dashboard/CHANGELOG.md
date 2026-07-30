@@ -4,6 +4,54 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.07.007] - 2026-07-30
+
+Closes I.2. Doing so turned up why it had resisted four rounds of attempts.
+
+### Fixed — modules wiped their own result slot at init (D.7)
+
+Every module server opened with an unconditional `rv$<x>_results <- NULL`. Since
+`rv` is created empty in `app.R` and modules mount once, this never cleared
+anything in production. What it did do is make the modules impossible to drive
+through `testServer()` with a pre-populated result: the slot was wiped the instant
+the module initialised, so every attempt to assert render behaviour got the "run
+an analysis first" placeholder back.
+
+That is why I.2 stayed open. The existing tests assert
+`inherits(session, "session_proxy")` and that `session$ns()` returns a non-empty
+string — they verify testServer built a mock session, and never touch the module.
+They were not lazy; the harness made anything better impossible and nobody traced
+why. Removed in all six modules; behaviour is unchanged, since a missing key on a
+`reactiveValues` reads `NULL` either way. The deliberate reset on new data load is
+a different thing and is kept.
+
+### Fixed — the data-load reset named a slot that does not exist (D.8)
+
+`reset_analyses()` cleared `rv$pw_results`, which appears in exactly one place in
+the repository: that line. The Power module uses `ap_results`. `tox_results` was
+missing from the reset altogether.
+
+So loading a new dataset reset every analysis tab except Power and Toxicity, which
+kept showing results from the previous dataset. For Toxicity that is plainly
+wrong. For Power it is subtler — the a priori calculation is mostly
+data-independent, except that "Seed SD from loaded data" ties the pooled SD to
+whatever was loaded, so a stale curve can be calibrated against data the user has
+since replaced.
+
+Fifth instance in this review of the same root cause: a name written and never
+asserted on fails silently and looks like it works.
+
+### Added — render-logic tests (I.2)
+
+14 assertions that set `rv$<X>_results` to a realistic backend result and read the
+rendered output back: the Power summary's dropout statement in both directions, a
+pre-K.15 result still rendering, the randomisation panel distinguishing "not run"
+from a result, and the TWM ranking note separating a real ranking from arms whose
+intervals overlap — identical point estimates in both fixtures, so only the
+interval logic can produce the difference.
+
+Suite: 300 → 314 passing, no skips.
+
 ## [26.07.006] - 2026-07-30
 
 ### Fixed — scale metadata records what the backend did, not what was asked (R3.D6)

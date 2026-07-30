@@ -4,7 +4,11 @@
 tumor_growth_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
   
-  rv$tg_results    <- NULL
+  # D.7: `rv$tg_results <- NULL` removed here for the same reason as the other
+  # five modules — it wiped the slot at module init, so testServer() could never
+  # drive this module with a pre-populated result. `rv` is created empty in app.R
+  # and the module mounts once, so it never cleared anything in production.
+  # The two below are genuine initialisation of state this module owns.
   rv$tg_running    <- FALSE
   rv$bayes_models  <- list()
 

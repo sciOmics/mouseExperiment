@@ -1149,3 +1149,88 @@ forgets.
 
 Suite went from 251 to 285 passing. §I.1 / §I.2 remain the substantive gap: these
 are source-level assertions, not `testServer` exercises of the reactives.
+
+---
+
+# Review Round 9 (v26.07.007 — 2026-07-30)
+
+**Scope:** I.2, attacked properly this time. Closing it turned up why it had
+resisted four rounds of attempts.
+
+## D.7 Modules wiped their own result slot at init — Major
+
+Every module server opened with an unconditional clear:
+
+```r
+tumor_growth_server <- function(id, rv) {
+  moduleServer(id, function(input, output, session) {
+  rv$tg_results <- NULL          # and the same in five other modules
+```
+
+`rv` is created empty in `app.R` (`rv <- reactiveValues()`) and each module mounts
+exactly once, so this never cleared anything in production. What it did do is make
+the modules **impossible to drive through `testServer()` with a pre-populated
+result** — the slot was wiped the instant the module initialised, and every
+attempt to assert render behaviour got the "run an analysis first" placeholder
+back.
+
+That is the reason I.2 has stayed open. `test-module_servers.R` asserts
+`inherits(session, "session_proxy")` and that `session$ns()` returns a non-empty
+string, and it has been reported as closing I.2 twice. Those assertions verify
+that `testServer` built a mock session; they never touch the module. The
+placeholder tests were not lazy — the harness made anything better impossible, and
+nobody traced why.
+
+Removed in all six modules (`tumor_growth`, `power`, `toxicity`, `survival`,
+`synergy`, `dose_response`). Behaviour is unchanged: a missing key on a
+`reactiveValues` reads `NULL` either way. The deliberate reset on *new data load*
+in `mod_data_upload.R` is a different thing and is kept.
+
+## D.8 The data-load reset named a slot that does not exist — Major
+
+Found immediately once D.7 made the state inspectable:
+
+```r
+reset_analyses <- function(rv) {
+  ...
+  rv$pw_results <- NULL      # nothing has ever written this
+```
+
+`pw_results` appears in exactly one place in the repository — that line. The Power
+module uses `ap_results` (18 references). And `tox_results` was absent from the
+reset altogether.
+
+So loading a new dataset reset every analysis tab **except Power and Toxicity**,
+which kept displaying results computed from the previous dataset. For Toxicity
+that is unambiguously wrong. For Power it is subtler but still wrong: the a priori
+calculation is mostly data-independent, except that "Seed SD from loaded data"
+ties the pooled SD to whatever was loaded at the time, so a stale power curve can
+be calibrated against a dataset the user has since replaced.
+
+Same failure mode as §K.2, §R3.D4, §R4.D5 and §R8.6: **a name that matches nothing
+fails silently and looks like it works.** That is now five instances in this
+review from one root cause — writing a name and never asserting anything reads it.
+
+## I.2 closed: 14 render-logic assertions
+
+`test-render-logic.R` sets `rv$<X>_results` to a realistic backend result and reads
+the rendered output back, so the branches themselves are exercised rather than
+read:
+
+- the Power summary states the no-dropout assumption, reports realised attrition
+  when dropout ran, and does not claim complete data when it did not;
+- a pre-K.15 result with no `attrition` field still renders (resumed sessions);
+- the randomisation-test panel distinguishes "not run" from a result, and never
+  prints a p-value it does not have;
+- the TWM ranking note separates a genuine ranking from arms whose intervals
+  overlap — with identical point estimates in both fixtures, so only the interval
+  logic can produce the difference.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| D.7 | Modules wiped their result slot at init, blocking testServer | Major | ✅ Fixed v26.07.007 |
+| D.8 | `reset_analyses()` named a dead slot; `tox_results` never cleared | Major | ✅ Fixed v26.07.007 |
+| I.2 | Largest server modules had no behavioural tests | Major | ✅ Fixed v26.07.007 |
+| I.1 | `expect_true(TRUE)` placeholders | Major | ✅ Fixed — superseded by the above |
+
+Suite: 300 → 314 passing, no skips.
