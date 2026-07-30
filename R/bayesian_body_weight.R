@@ -273,22 +273,13 @@ bayesian_body_weight <- function(
       brms::prior_string(prior_sigma,     class = "sigma")
     )
   } else {
-    pp       <- bayes_prior_params(prior_strength)
-    b_sd     <- pp$b_sd
-    exp_rate <- pp$exp_rate
-    selected_priors <- c(
-      brms::prior_string(
-        paste0("normal(0, ", b_sd, ")"),        class = "b"
-      ),
-      brms::prior_string(
-        paste0("normal(0, ", b_sd * 2.5, ")"),  class = "Intercept"
-      ),
-      brms::prior_string(
-        paste0("exponential(", exp_rate, ")"),  class = "sd"
-      ),
-      brms::prior_string(
-        paste0("exponential(", exp_rate, ")"),  class = "sigma"
-      )
+    # CODE_REVIEW.md R3.8 / G.5 — data-scaled Intercept and per-coefficient b
+    # priors. Body weight in grams centres near 20-30, so a fixed
+    # normal(0, b_sd * 2.5) Intercept prior was even further from the data than
+    # on the log-volume scale.
+    selected_priors <- bayes_scaled_priors(
+      brms_formula, analysis_df, "Net_Weight", prior_strength,
+      time_column = time_column, include_sd = TRUE
     )
   }
 
@@ -677,6 +668,7 @@ bayesian_body_weight <- function(
   }
 
   # ── Analysis summary metadata ──────────────────────────────────────────────
+  .prior_desc <- describe_priors(selected_priors)
   analysis_summary <- list(
     analysis_type = "Bayesian Linear Mixed-Effects Model — Body Weight (brms)",
     data_description = list(
@@ -700,26 +692,13 @@ bayesian_body_weight <- function(
         "brms (", n_chains, " chains × ",
         n_iter, " draws + ", n_warmup, " warmup, seed = ", seed, ")"
       ),
-      prior_b = if (prior_strength == "manual") {
-        prior_b
-      } else {
-        paste0("normal(0, ", b_sd, ")")
-      },
-      prior_intercept = if (prior_strength == "manual") {
-        prior_intercept
-      } else {
-        paste0("normal(0, ", round(b_sd * 2.5, 2), ")")
-      },
-      prior_sd = if (prior_strength == "manual") {
-        prior_sd
-      } else {
-        paste0("exponential(", exp_rate, ")")
-      },
-      prior_sigma = if (prior_strength == "manual") {
-        prior_sigma
-      } else {
-        paste0("exponential(", exp_rate, ")")
-      }
+      # CODE_REVIEW.md R3.8 — report the priors actually used.
+      prior_b         = .prior_desc$prior_b,
+      prior_intercept = .prior_desc$prior_intercept,
+      prior_sd        = .prior_desc$prior_sd,
+      prior_table     = .prior_desc$all,
+      prior_scaling   = .prior_desc$scaling,
+      prior_sigma     = .prior_desc$prior_sigma
     )
   )
 

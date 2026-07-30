@@ -45,9 +45,13 @@ make_tox_df <- function(volume_scale = 1, reuse_ids = TRUE) {
 
 test_that("R3.2: pairwise log-rank p-values are per-comparison, not the omnibus", {
   df <- make_surv_df()
+  # Pin the asymptotic flavour: this test checks the formula-scoping fix by
+  # comparing against survdiff() directly. The permutation flavour (H.4) is
+  # exercised separately below.
   res <- suppressWarnings(suppressMessages(
     survival_statistics(df, reference_group = "Control",
-                        firth_correction = FALSE, verbose = FALSE)
+                        firth_correction = FALSE, permutation_logrank = FALSE,
+                        verbose = FALSE)
   ))
   expect_identical(res$method_used, "logrank")
 
@@ -78,7 +82,8 @@ test_that("R3.1: p_adjust_method changes the reported survival p-values", {
   df <- make_surv_df()
   run <- function(m) suppressWarnings(suppressMessages(
     survival_statistics(df, reference_group = "Control", firth_correction = FALSE,
-                        p_adjust_method = m, verbose = FALSE)
+                        p_adjust_method = m, permutation_logrank = FALSE,
+                        verbose = FALSE)
   ))$results
 
   none <- run("none")
@@ -798,4 +803,151 @@ test_that("R3.22: the AUC omnibus test is Welch's, matching its pairwise tests",
   # Variance homogeneity is reported rather than assumed.
   skip_if_not_installed("car")
   expect_false(is.null(r$variance_test))
+})
+
+# ---- H.4 --------------------------------------------------------------------
+
+test_that("H.4: the log-rank fallback uses an exact permutation test", {
+  skip_if_not_installed("coin")
+  df <- make_surv_df()
+
+  perm <- suppressWarnings(suppressMessages(survival_statistics(
+    df, reference_group = "Control", firth_correction = FALSE,
+    permutation_logrank = TRUE, verbose = FALSE)))
+  asym <- suppressWarnings(suppressMessages(survival_statistics(
+    df, reference_group = "Control", firth_correction = FALSE,
+    permutation_logrank = FALSE, verbose = FALSE)))
+
+  expect_identical(attr(perm$results, "logrank_flavour"),
+                   "permutation log-rank (coin)")
+  expect_identical(attr(asym$results, "logrank_flavour"),
+                   "asymptotic log-rank (survdiff)")
+
+  # The two agree in direction but not exactly — that is the point: the
+  # asymptotic chi-square approximation is least trustworthy in exactly this
+  # regime (a group with zero events, few events overall).
+  nr <- perm$results$Group != "Control"
+  expect_false(isTRUE(all.equal(perm$results$P_Value_Unadjusted[nr],
+                               asym$results$P_Value_Unadjusted[nr])))
+
+  # Must be deterministic: an analysis function cannot return a different
+  # number each time it is called.
+  perm2 <- suppressWarnings(suppressMessages(survival_statistics(
+    df, reference_group = "Control", firth_correction = FALSE,
+    permutation_logrank = TRUE, verbose = FALSE)))
+  expect_equal(perm$results$P_Value_Unadjusted, perm2$results$P_Value_Unadjusted)
+})
+
+# ---- H.2 --------------------------------------------------------------------
+
+test_that("H.2: AUC comparisons gain a permutation p-value", {
+  set.seed(3)
+  days <- c(0, 4, 8, 12, 16, 20)
+  rows <- list()
+  for (tx in c("Control", "DrugA", "DrugB")) {
+    rate <- if (tx == "Control") 0.10 else 0.075
+    for (i in 1:9) {
+      rows[[length(rows) + 1L]] <- data.frame(
+        ID = paste0(tx, i), Cage = paste0(tx, "_C", (i > 4) + 1),
+        Treatment = tx, Day = days,
+        Volume = exp(log(200) + stats::rnorm(1, 0, 0.2) + rate * days +
+                       stats::rnorm(6, 0, 0.15)),
+        stringsAsFactors = FALSE)
+    }
+  }
+  df <- do.call(rbind, rows)
+
+  r <- suppressWarnings(suppressMessages(tumor_growth_statistics(
+    df, model_type = "auc", auc_permutations = 2000, auc_bootstrap_seed = 1,
+    plots = FALSE, verbose = FALSE)))
+  pw <- r$pairwise_comparisons
+
+  expect_true(all(c("perm_p_value", "perm_p_adjusted") %in% names(pw)))
+  expect_true(all(is.finite(pw$perm_p_value)))
+  # The (1 + count) / (1 + n) estimator can never return exactly zero.
+  expect_true(all(pw$perm_p_value > 0))
+  # Distinct comparisons must get distinct p-values (each pair is seeded apart).
+  expect_equal(length(unique(pw$perm_p_value)), nrow(pw))
+  # Off by default so existing callers are unaffected.
+  r0 <- suppressWarnings(suppressMessages(tumor_growth_statistics(
+    df, model_type = "auc", plots = FALSE, verbose = FALSE)))
+  expect_true(all(is.na(r0$pairwise_comparisons$perm_p_value)))
+})
+
+test_that("H.2: the permutation test warns when its resolution is too coarse", {
+  # With 3 vs 3 there are only choose(6,3) = 20 label splits, so the smallest
+  # attainable two-sided p-value is 0.1 regardless of the observed difference.
+  expect_warning(tgs_perm_diff_p(stats::rnorm(3), stats::rnorm(3), n_perm = 200),
+                 regexp = "distinct label splits")
+  expect_no_warning(tgs_perm_diff_p(stats::rnorm(12), stats::rnorm(12),
+                                    n_perm = 200))
+})
+
+# ---- R3.9 -------------------------------------------------------------------
+
+test_that("R3.9: extrapolation_points is deprecated and ignored", {
+  df <- make_tg_df()
+  expect_warning(
+    r_extrap <- suppressMessages(tumor_growth_statistics(
+      df, extrapolation_points = 3, plots = FALSE, verbose = FALSE)),
+    regexp = "deprecated"
+  )
+  r_plain <- suppressWarnings(suppressMessages(tumor_growth_statistics(
+    df, plots = FALSE, verbose = FALSE)))
+
+  # Ignored means identical results, not merely similar.
+  expect_equal(as.data.frame(summary(r_extrap$pairwise_comparisons))$estimate,
+               as.data.frame(summary(r_plain$pairwise_comparisons))$estimate)
+  # The helper is gone.
+  expect_false(exists("tgs_extrapolate",
+                      envir = asNamespace("mouseExperiment"), inherits = FALSE))
+})
+
+# ---- R3.8 -------------------------------------------------------------------
+
+test_that("R3.8: prior scales are data-driven and time-unit invariant", {
+  set.seed(5)
+  logv <- stats::rnorm(200, log(400), 0.5)   # mm3-scale log volumes
+  days <- rep(seq(0, 28, 4), length.out = 200)
+
+  sc <- bayes_prior_scales(logv, days, "skeptical")
+  # The Intercept prior is centred on the data. The old fixed normal(0, 0.625)
+  # sat about nine prior SDs away on exactly this scale.
+  expect_equal(sc$response_median, stats::median(logv))
+  expect_gt(abs(sc$response_median) / 0.625, 5)
+
+  # b_sd is a TOTAL log-fold change over the study, so the per-time scale must
+  # rescale exactly with the time unit.
+  sc_weeks <- bayes_prior_scales(logv, days / 7, "skeptical")
+  expect_equal(sc_weeks$b_sd_per_time / sc$b_sd_per_time, 7, tolerance = 1e-8)
+
+  # The ladder still orders as its names promise.
+  strengths <- c("skeptical", "informative", "weakly_informative", "diffuse")
+  widths <- vapply(strengths,
+                   function(p) bayes_prior_scales(logv, days, p)$b_sd_total,
+                   numeric(1))
+  expect_true(all(diff(widths) > 0))
+})
+
+test_that("R3.8: interaction coefficients get their own prior", {
+  skip_if_not_installed("brms")
+  set.seed(5)
+  d <- data.frame(ID = rep(1:12, each = 6),
+                  Treatment = rep(c("Control", "DrugA"), each = 36),
+                  Day = rep(seq(0, 28, length.out = 6), 12))
+  d$logV <- log(400) + 0.10 * d$Day -
+    0.03 * d$Day * (d$Treatment == "DrugA") + stats::rnorm(72, 0, 0.25)
+
+  pr <- bayes_scaled_priors(stats::as.formula("logV ~ Treatment * Day + (1|ID)"),
+                            d, "logV", "skeptical", time_column = "Day")
+  pdf <- as.data.frame(pr)
+
+  # The interaction — the estimand — must not share the main-effect prior.
+  expect_true("TreatmentDrugA:Day" %in% pdf$coef)
+  expect_true("Day" %in% pdf$coef)
+  # Intercept prior centred on the data, not on zero.
+  icpt <- pdf$prior[pdf$class == "Intercept"]
+  expect_false(grepl("normal(0,", icpt, fixed = TRUE))
+  expect_identical(attr(pr, "me_prior_scaling")$rate_coefficients,
+                   c("Day", "TreatmentDrugA:Day"))
 })

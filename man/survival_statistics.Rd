@@ -15,6 +15,7 @@ survival_statistics(
   reference_group = NULL,
   firth_correction = TRUE,
   p_adjust_method = c("bonferroni", "holm", "fdr", "none"),
+  permutation_logrank = TRUE,
   verbose = TRUE
 )
 }
@@ -46,6 +47,15 @@ each animal's last observation, carrying its event indicator.}
 treatment-vs-reference comparisons: "bonferroni" (default), "holm", "fdr"
 (Benjamini-Hochberg), or "none". The unadjusted values are retained in
 \code{P_Value_Unadjusted} and the method used in \code{P_Adjust_Method}.}
+
+\item{permutation_logrank}{Logical. When the log-rank fallback is used (a
+group has zero events, so the Cox partial likelihood is not estimable), use
+an exact-style permutation log-rank via the \pkg{coin} package rather than
+the asymptotic chi-square approximation. That regime — few events, small n —
+is where the asymptotic test is least trustworthy and where permutation is
+valid without any large-sample appeal. Falls back to \code{survdiff()} with
+a message when \pkg{coin} is unavailable. Default TRUE.
+CODE_REVIEW.md H.4.}
 
 \item{verbose}{Whether to print analysis details to the console. Default: TRUE}
 }

@@ -191,9 +191,23 @@ make_bw_simple <- function() {
   set.seed(42)
   days <- c(0, 7, 14, 21, 28)
 
+  # CODE_REVIEW.md R3.36 — every mouse used to start at exactly 22 g, so the
+  # fixture had ZERO between-animal variance. That makes the random intercept in
+  # `random_effects_specification = "intercept_only"` unidentifiable: its true SD
+  # is 0, the sampler explores an Intercept<->sd funnel, and Intercept ESS
+  # collapses (Bulk 281 / Tail 71 at 3000 draws) while every other parameter sits
+  # comfortably above 900. Real mice differ in starting weight, and a body-weight
+  # fixture with no between-animal variation cannot exercise the very random
+  # effect the tests are asserting on. A 0.8 g per-animal SD is realistic for
+  # adult mice and makes the variance component estimable.
+  mouse_offset <- stats::setNames(
+    rnorm(11, mean = 0, sd = 0.8),
+    c(paste0("C0", 1:5), paste0("T0", 1:6))
+  )
+
   make_mouse <- function(id, cage, treatment, slope) {
     noise  <- rnorm(5, mean = 0, sd = 0.3)
-    weight <- 22 + slope * days + noise
+    weight <- 22 + (mouse_offset[[id]] %||% 0) + slope * days + noise
     data.frame(
       ID        = id,
       Cage      = cage,

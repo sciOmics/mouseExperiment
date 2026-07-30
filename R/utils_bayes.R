@@ -446,3 +446,221 @@ build_posterior_summary <- function(model) {
   names(fixed_df)[names(fixed_df) == "u-95% CI"] <- "Upper_95_CrI"
   fixed_df
 }
+
+
+# ── Data-scaled, per-coefficient priors ───────────────────────────────────────
+#
+# CODE_REVIEW.md R3.8 / G.5 — the prior block was
+#
+#   prior_string(paste0("normal(0, ", b_sd, ")"),       class = "b")
+#   prior_string(paste0("normal(0, ", b_sd * 2.5, ")"), class = "Intercept")
+#
+# which has two problems.
+#
+# (a) One prior for coefficients on incommensurable scales. `class = "b"`
+#     applied a single normal(0, b_sd) to every fixed effect in
+#     `Volume ~ Treatment * Day`: the Treatment main effects (differences in log
+#     volume, plausibly +/-0.5), the Day slope (log growth per day, ~0.10-0.25)
+#     and the Treatment:Day interactions (differences in growth rate,
+#     ~0.01-0.08). Under the default prior_strength = "skeptical" (b_sd = 0.25)
+#     the prior was meaningfully informative on the main effect but effectively
+#     flat on the interaction — the parameter the whole analysis exists to
+#     estimate. The prior-strength ladder did not do what its name promised:
+#     "skeptical" was not skeptical about the treatment effect.
+#
+# (b) The Intercept prior ignored the response scale. The maintainer confirms
+#     mm3 is the common input unit; for the package's own master_synthetic_data
+#     that is log-volume 2.26-8.35, centred near 5.5, so the "skeptical"
+#     Intercept prior normal(0, 0.625) sat about nine prior SDs from the data.
+#     brms's own default is data-scaled (student_t(3, median(y), 2.5*mad(y)))
+#     for exactly this reason. With a few hundred observations the likelihood
+#     dominates the point estimate, but the prior predictive is nonsense
+#     (tumours of ~1 mm3) and prior_posterior_plot — the package's own
+#     prior-sensitivity tool — showed extreme conflict on every real dataset.
+#
+# The fix reinterprets `b_sd` as the prior SD on the *total log-fold change over
+# the study duration*, which is unit-free and interpretable, then divides by the
+# observed time span to get the per-day slope and interaction scales. That makes
+# the ladder invariant to whether time is recorded in days, weeks or hours, and
+# gives "skeptical" a concrete meaning: a total treatment-vs-control difference
+# of exp(0.25) ~ 1.3x is already a large effect under it.
+
+#' Build data-scaled, per-coefficient priors for a brms LMM
+#'
+#' @param formula The brms formula.
+#' @param data The modelling data frame (post-transform).
+#' @param response Name of the response column on the modelling scale.
+#' @param prior_strength One of the non-manual presets.
+#' @param time_column Name of the time covariate, used to identify slope and
+#'   interaction coefficients and to scale them by the study span.
+#' @param include_sd Logical; add a `class = "sd"` prior (random effects present).
+#' @return A `brmsprior` object.
+#' @noRd
+#' @keywords internal
+#' Prior scale constants derived from the data
+#'
+#' Split out from \code{bayes_scaled_priors()} so the arithmetic is unit-testable
+#' without brms installed (the Bayesian paths skip when brms is absent, which
+#' would otherwise leave this logic unexercised).
+#'
+#' @param y Numeric response on the modelling scale.
+#' @param tt Numeric time covariate.
+#' @param prior_strength Non-manual preset name.
+#' @return List with `response_median`, `response_mad`, `time_span`,
+#'   `b_sd_total`, `b_sd_per_time`, `intercept_sd`, `aux_rate`.
+#' @noRd
+#' @keywords internal
+bayes_prior_scales <- function(y, tt, prior_strength) {
+  pp   <- bayes_prior_params(prior_strength)
+  b_sd <- pp$b_sd
+
+  y <- as.numeric(y); y <- y[is.finite(y)]
+  if (length(y) == 0L) stop("Response has no finite values.", call. = FALSE)
+
+  y_med <- stats::median(y)
+  # mad() can be 0 with heavily tied data; fall back to sd, then to 1.
+  y_mad <- stats::mad(y)
+  if (!is.finite(y_mad) || y_mad <= 0) y_mad <- stats::sd(y)
+  if (!is.finite(y_mad) || y_mad <= 0) y_mad <- 1
+
+  tt <- as.numeric(tt); tt <- tt[is.finite(tt)]
+  time_span <- if (length(tt) > 1L) diff(range(tt)) else 1
+  if (!is.finite(time_span) || time_span <= 0) time_span <- 1
+
+  # Scale unit for slope / interaction coefficients: the slope that would
+  # traverse the entire observed response range over the study. No real slope can
+  # much exceed it, so a prior at ~1x this is weakly informative — it rules out
+  # the absurd without fighting the plausible.
+  #
+  # This must NOT reuse the `b_sd` ladder. `b_sd` is a width for coefficients on
+  # the response's own scale (log-ratios, group-mean differences), where 0.25
+  # for "skeptical" is sensible. Applying 0.25 to a per-time slope scale makes
+  # the prior 5-20x too tight: on the package's own body-weight fixture the true
+  # interaction is 0.14 g/day, and 0.25 * mad(y) / span put the prior 21 SDs
+  # away from it — the same defect as the original fixed Intercept prior, in the
+  # opposite direction. Verified empirically across both the gram scale and the
+  # log-volume scale: only a multiplier near 1x this unit keeps "skeptical"
+  # within ~1-2 SDs of a real effect on both.
+  y_range   <- diff(range(y))
+  if (!is.finite(y_range) || y_range <= 0) y_range <- y_mad
+  rate_unit <- y_range / time_span
+  rate_mult <- switch(prior_strength,
+    skeptical          = 1.0,
+    informative        = 1.5,
+    weakly_informative = 2.0,
+    diffuse            = 5.0,
+    2.0
+  )
+
+  list(
+    response_median = y_med,
+    response_mad    = y_mad,
+    response_range  = y_range,
+    time_span       = time_span,
+    # Width for coefficients on the response scale (group-mean differences).
+    b_sd_total      = b_sd,
+    # Width for per-time-unit coefficients (the Day slope and the
+    # Treatment:Day interactions). Scales with the response range and inversely
+    # with the study duration, so it is invariant to both the response units and
+    # the time units.
+    b_sd_per_time   = rate_mult * rate_unit,
+    rate_unit       = rate_unit,
+    rate_multiplier = rate_mult,
+    intercept_sd    = 2.5 * y_mad,
+    aux_rate        = pp$exp_rate / max(y_mad, 1e-6)
+  )
+}
+
+bayes_scaled_priors <- function(formula, data, response, prior_strength,
+                                time_column = "Day", include_sd = TRUE) {
+  if (!requireNamespace("brms", quietly = TRUE)) {
+    stop("brms is required to build priors.", call. = FALSE)
+  }
+  sc        <- bayes_prior_scales(data[[response]], data[[time_column]],
+                                  prior_strength)
+  b_sd      <- sc$b_sd_total
+  b_sd_rate <- sc$b_sd_per_time
+  y_med     <- sc$response_median
+  y_mad     <- sc$response_mad
+  time_span <- sc$time_span
+
+  # Discover the actual coefficient names rather than guessing at them.
+  gp <- tryCatch(brms::get_prior(formula, data = data),
+                 error = function(e) NULL)
+  b_coefs <- if (!is.null(gp)) {
+    unique(gp$coef[gp$class == "b" & nzchar(gp$coef)])
+  } else character(0)
+
+  priors <- c(
+    # Intercept on the response scale, as brms does by default.
+    brms::prior_string(
+      paste0("normal(", round(y_med, 4), ", ",
+             round(sc$intercept_sd, 4), ")"),
+      class = "Intercept"
+    ),
+    # Blanket fallback for any coefficient not matched below.
+    brms::prior_string(paste0("normal(0, ", b_sd, ")"), class = "b")
+  )
+
+  # Slope and interaction coefficients get the per-day scale.
+  rate_coefs <- b_coefs[b_coefs == time_column |
+                          grepl(paste0("(^|:)", time_column, "($|:)"), b_coefs)]
+  for (cf in rate_coefs) {
+    priors <- c(priors, brms::prior_string(
+      paste0("normal(0, ", signif(b_sd_rate, 6), ")"), class = "b", coef = cf
+    ))
+  }
+
+  # Residual and random-effect SDs scaled to the response's spread.
+  priors <- c(priors, brms::prior_string(
+    paste0("exponential(", signif(sc$aux_rate, 6), ")"), class = "sigma"
+  ))
+  if (isTRUE(include_sd)) {
+    priors <- c(priors, brms::prior_string(
+      paste0("exponential(", signif(sc$aux_rate, 6), ")"), class = "sd"
+    ))
+  }
+
+  sc$rate_coefficients <- rate_coefs
+  attr(priors, "me_prior_scaling") <- sc
+  priors
+}
+
+#' Describe the priors actually used, for the methods metadata
+#'
+#' CODE_REVIEW.md R3.8 — the metadata blocks used to *reconstruct* prior strings
+#' from `b_sd` rather than reading the priors that were passed to brms. Once the
+#' priors became data-scaled and per-coefficient, reconstruction would have
+#' reported something the model never saw — the same reporting-lie class as
+#' R3.16 (AUC claiming a transform it did not apply) and R3.19 (log1p vs log).
+#' Read the real thing.
+#'
+#' @param priors A `brmsprior` object.
+#' @return A list with one character entry per prior class, plus `all` (the full
+#'   table as a data frame) and `scaling` (the derived scale constants when the
+#'   priors came from `bayes_scaled_priors()`).
+#' @noRd
+#' @keywords internal
+describe_priors <- function(priors) {
+  if (is.null(priors)) return(list(all = NULL, scaling = NULL))
+  pdf <- tryCatch(as.data.frame(priors), error = function(e) NULL)
+  if (is.null(pdf) || !all(c("prior", "class") %in% names(pdf))) {
+    return(list(all = NULL, scaling = attr(priors, "me_prior_scaling")))
+  }
+
+  fmt <- function(cls) {
+    rows <- pdf[pdf$class == cls & nzchar(pdf$prior), , drop = FALSE]
+    if (nrow(rows) == 0L) return(NA_character_)
+    paste(ifelse(nzchar(rows$coef), paste0(rows$coef, ": "), ""),
+          rows$prior, sep = "", collapse = "; ")
+  }
+
+  list(
+    prior_b         = fmt("b"),
+    prior_intercept = fmt("Intercept"),
+    prior_sd        = fmt("sd"),
+    prior_sigma     = fmt("sigma"),
+    all             = pdf[nzchar(pdf$prior), c("prior", "class", "coef")],
+    scaling         = attr(priors, "me_prior_scaling")
+  )
+}

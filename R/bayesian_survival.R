@@ -256,11 +256,20 @@ bayesian_survival <- function(
       stop("When prior_strength = 'manual', prior_b, prior_intercept, and ",
            "prior_sd must be supplied.")
     }
+    # CODE_REVIEW.md R3.32 — only declare a class = "sd" prior when the model
+    # actually HAS a random effect. brms rejects a prior that matches no model
+    # parameter ("The following priors do not correspond to any model
+    # parameter: sd ~ ..."), so with include_cage_effect = FALSE every fit
+    # errored. Masked until now because these tests skipped whenever brms was
+    # absent from the dev environment.
     selected_priors <- c(
       brms::prior_string(prior_b,         class = "b"),
-      brms::prior_string(prior_intercept, class = "Intercept"),
-      brms::prior_string(prior_sd,        class = "sd")
+      brms::prior_string(prior_intercept, class = "Intercept")
     )
+    if (use_cage_re) {
+      selected_priors <- c(selected_priors,
+                           brms::prior_string(prior_sd, class = "sd"))
+    }
     if (!is.null(prior_aux)) {
       aux_class <- if (family == "lognormal") "sigma" else "shape"
       selected_priors <- c(
@@ -272,14 +281,32 @@ bayesian_survival <- function(
     pp       <- bayes_prior_params(prior_strength)
     b_sd     <- pp$b_sd
     exp_rate <- pp$exp_rate
+    # CODE_REVIEW.md R3.8 / G.5 — the Intercept here is on the log-time scale
+    # (an AFT model), so for a study running to day 35 it centres near
+    # log(35) ~ 3.6. A fixed normal(0, b_sd * 2.5) prior put almost no mass
+    # there. Scale it to the observed event times. The `b` coefficients are
+    # log-time ratios, which are unit-free, so the ladder applies directly and
+    # there is no time covariate to divide by.
+    t_obs <- as.numeric(analysis_df[[time_column]])
+    t_obs <- t_obs[is.finite(t_obs) & t_obs > 0]
+    log_t_med <- if (length(t_obs)) stats::median(log(t_obs)) else 0
+    log_t_mad <- if (length(t_obs)) stats::mad(log(t_obs)) else 1
+    if (!is.finite(log_t_mad) || log_t_mad <= 0) log_t_mad <- 1
+
     selected_priors <- c(
       brms::prior_string(paste0("normal(0, ", b_sd, ")"),
                          class = "b"),
-      brms::prior_string(paste0("normal(0, ", b_sd * 2.5, ")"),
-                         class = "Intercept"),
-      brms::prior_string(paste0("exponential(", exp_rate, ")"),
-                         class = "sd")
+      brms::prior_string(
+        paste0("normal(", round(log_t_med, 4), ", ",
+               round(2.5 * log_t_mad, 4), ")"),
+        class = "Intercept")
     )
+    # See R3.32 above — a "sd" prior with no random effect makes brms error.
+    if (use_cage_re) {
+      selected_priors <- c(selected_priors,
+                           brms::prior_string(paste0("exponential(", exp_rate, ")"),
+                                              class = "sd"))
+    }
     if (family == "lognormal") {
       aux_class <- "sigma"
     } else if (family != "exponential") {

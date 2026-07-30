@@ -365,14 +365,14 @@ bayesian_tumor_growth <- function(
       brms::prior_string(prior_sigma,     class = "sigma")
     )
   } else {
-    pp       <- bayes_prior_params(prior_strength)
-    b_sd     <- pp$b_sd
-    exp_rate <- pp$exp_rate
-    selected_priors <- c(
-      brms::prior_string(paste0("normal(0, ", b_sd,        ")"), class = "b"),
-      brms::prior_string(paste0("normal(0, ", b_sd * 2.5,  ")"), class = "Intercept"),
-      brms::prior_string(paste0("exponential(", exp_rate,  ")"), class = "sd"),
-      brms::prior_string(paste0("exponential(", exp_rate,  ")"), class = "sigma")
+    # CODE_REVIEW.md R3.8 / G.5 — data-scaled Intercept and per-coefficient
+    # b priors. See R/utils_bayes.R for why the previous fixed
+    # normal(0, b_sd * 2.5) Intercept prior sat ~9 SDs from the data on a
+    # mm3-scale study, and why one blanket class = "b" prior left the
+    # Treatment:Day interaction effectively unconstrained.
+    selected_priors <- bayes_scaled_priors(
+      brms_formula, analysis_df, volume_column, prior_strength,
+      time_column = time_column, include_sd = TRUE
     )
   }
 
@@ -640,6 +640,7 @@ bayesian_tumor_growth <- function(
   }
 
   # ── Analysis summary metadata ──────────────────────────────────────────────
+  .prior_desc <- describe_priors(selected_priors)
   analysis_summary <- list(
     analysis_type = if (model_type == "gam") {
       "Bayesian Generalized Additive Mixed Model (brms, group-specific smooths)"
@@ -668,10 +669,15 @@ bayesian_tumor_growth <- function(
       engine          = paste0("brms (", n_chains, " chains × ",
                                n_iter, " draws + ", n_warmup,
                                " warmup, seed = ", seed, ")"),
-      prior_b         = if (prior_strength == "manual") prior_b         else paste0("normal(0, ", b_sd, ")"),
-      prior_intercept = if (prior_strength == "manual") prior_intercept else paste0("normal(0, ", round(b_sd * 2.5, 2), ")"),
-      prior_sd        = if (prior_strength == "manual") prior_sd        else paste0("exponential(", exp_rate, ")"),
-      prior_sigma     = if (prior_strength == "manual") prior_sigma     else paste0("exponential(", exp_rate, ")"),
+      # CODE_REVIEW.md R3.8 — report the priors actually handed to brms rather
+      # than reconstructing them from b_sd, which would now misreport the
+      # data-scaled Intercept and the per-coefficient rate priors.
+      prior_b         = .prior_desc$prior_b,
+      prior_intercept = .prior_desc$prior_intercept,
+      prior_sd        = .prior_desc$prior_sd,
+      prior_sigma     = .prior_desc$prior_sigma,
+      prior_table     = .prior_desc$all,
+      prior_scaling   = .prior_desc$scaling,
       treatment_effects_note = paste0(
         "Estimated marginal means and 95 % HPD credible intervals ",
         "at mean study day (day ", round(mean(analysis_df[[time_column]]), 1),

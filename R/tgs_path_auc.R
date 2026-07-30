@@ -28,6 +28,8 @@
 #'   validated comparison family and multiplicity adjustment.
 #' @param return_model,include_diagnostics See
 #'   \code{\link{tumor_growth_statistics}}.
+#' @param auc_permutations Number of label permutations for the permutation
+#'   p-value (CODE_REVIEW.md H.2). 0 skips.
 #' @param auc_bootstrap_n,auc_bootstrap_seed See
 #'   \code{\link{tumor_growth_statistics}}.
 #' @param cage_analysis,data_summary,necrosis_summary Already-computed
@@ -45,6 +47,7 @@ tgs_path_auc <- function(auc_analysis,
                          include_diagnostics,
                          auc_bootstrap_n,
                          auc_bootstrap_seed,
+                         auc_permutations,
                          cage_analysis,
                          data_summary,
                          necrosis_summary,
@@ -147,7 +150,8 @@ tgs_path_auc <- function(auc_analysis,
         ci_lower         = NA,
         ci_upper         = NA,
         boot_ci_lower    = NA_real_,
-        boot_ci_upper    = NA_real_
+        boot_ci_upper    = NA_real_,
+        perm_p_value     = NA_real_
       )
       pairwise_data[[paste(pair[1], "-", pair[2])]] <- list(
         group1 = pair[1],
@@ -172,6 +176,19 @@ tgs_path_auc <- function(auc_analysis,
                          seed   = auc_bootstrap_seed)
       } else c(lower = NA_real_, upper = NA_real_)
 
+      # CODE_REVIEW.md H.2 — permutation p-value alongside Welch's. Interval
+      # from the bootstrap, p-value from the permutation.
+      perm_p <- if (auc_permutations > 0L) {
+        # Offset the seed per comparison so the pairs do not all reuse the
+        # identical permutation draws (reproducible, but not degenerate).
+        pair_seed <- if (is.null(auc_bootstrap_seed)) NULL else {
+          as.integer(auc_bootstrap_seed) + length(pairwise_results)
+        }
+        tgs_perm_diff_p(group1_data, group2_data,
+                        n_perm = auc_permutations,
+                        seed   = pair_seed)
+      } else NA_real_
+
       pairwise_results[[paste(pair[1], "-", pair[2])]] <- list(
         comparison       = paste(pair[1], "-", pair[2]),
         mean_diff        = mean(group1_data) - mean(group2_data),
@@ -181,7 +198,8 @@ tgs_path_auc <- function(auc_analysis,
         ci_lower         = t_test_result$conf.int[1],
         ci_upper         = t_test_result$conf.int[2],
         boot_ci_lower    = unname(boot_ci["lower"]),
-        boot_ci_upper    = unname(boot_ci["upper"])
+        boot_ci_upper    = unname(boot_ci["upper"]),
+        perm_p_value     = perm_p
       )
       pairwise_data[[paste(pair[1], "-", pair[2])]] <- list(
         group1 = pair[1],
@@ -206,6 +224,7 @@ tgs_path_auc <- function(auc_analysis,
       ci_upper      = res$ci_upper,
       boot_ci_lower = res$boot_ci_lower,
       boot_ci_upper = res$boot_ci_upper,
+      perm_p_value  = res$perm_p_value,
       stringsAsFactors = FALSE
     )
   }))
@@ -214,6 +233,10 @@ tgs_path_auc <- function(auc_analysis,
   # above, and record what was applied so the result is self-describing.
   pairwise_df$p_adjusted        <- stats::p.adjust(
     pairwise_df$p_value, method = comparison_spec$padjust_method)
+  if (any(is.finite(pairwise_df$perm_p_value))) {
+    pairwise_df$perm_p_adjusted <- stats::p.adjust(
+      pairwise_df$perm_p_value, method = comparison_spec$padjust_method)
+  }
   pairwise_df$p_adjust_method   <- comparison_spec$p_adjust_method
   pairwise_df$Comparison_Family <- comparison_spec$family
 

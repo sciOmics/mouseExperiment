@@ -27,6 +27,14 @@
 #'   treatment-vs-reference comparisons: "bonferroni" (default), "holm", "fdr"
 #'   (Benjamini-Hochberg), or "none". The unadjusted values are retained in
 #'   `P_Value_Unadjusted` and the method used in `P_Adjust_Method`.
+#' @param permutation_logrank Logical. When the log-rank fallback is used (a
+#'   group has zero events, so the Cox partial likelihood is not estimable), use
+#'   an exact-style permutation log-rank via the \pkg{coin} package rather than
+#'   the asymptotic chi-square approximation. That regime — few events, small n —
+#'   is where the asymptotic test is least trustworthy and where permutation is
+#'   valid without any large-sample appeal. Falls back to \code{survdiff()} with
+#'   a message when \pkg{coin} is unavailable. Default TRUE.
+#'   CODE_REVIEW.md H.4.
 #' @param verbose Whether to print analysis details to the console. Default: TRUE
 #'
 #' @return A list containing:
@@ -94,6 +102,7 @@ survival_statistics <- function(df,
                               reference_group = NULL,
                               firth_correction = TRUE,
                               p_adjust_method = c("bonferroni", "holm", "fdr", "none"),
+                              permutation_logrank = TRUE,
                               verbose = TRUE) {
 
   p_adjust_method <- match.arg(p_adjust_method)
@@ -160,7 +169,8 @@ survival_statistics <- function(df,
     firth_correction,
     verbose = verbose,
     p_adjust_method = p_adjust_method,
-    cage_column = if (use_cage_cluster) cage_column else NULL
+    cage_column = if (use_cage_cluster) cage_column else NULL,
+    permutation_logrank = permutation_logrank
   )
   
   # Extract model results
@@ -464,7 +474,8 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
                               reference_group, time_column, censor_column, separation_info,
                               firth_correction, verbose = TRUE,
                               p_adjust_method = "bonferroni",
-                              cage_column = NULL) {
+                              cage_column = NULL,
+                              permutation_logrank = TRUE) {
   
   # Try standard Cox model first
   cox_model <- tryCatch({
@@ -632,11 +643,66 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
       paste0("survival::Surv(`", time_column, "`, `", censor_column, "`) ~ `",
              treatment_column, "`")
     )
+    # CODE_REVIEW.md H.4 — this branch runs precisely when a group has zero
+    # events, i.e. when the Cox partial likelihood is not estimable and the
+    # asymptotic chi-square approximation to the log-rank statistic is at its
+    # worst (few events, small n). A permutation log-rank is exactly valid in
+    # that regime: it makes no large-sample appeal and needs no bias
+    # correction, because it is not estimating a hazard ratio at all. Prefer it
+    # when `coin` is available and fall back to the asymptotic test otherwise.
+    #
+    # Note the division of labour with Firth: Firth corrects the small-sample
+    # bias of the *estimate*; permutation gives a valid *p-value*.
+    use_perm <- isTRUE(permutation_logrank) &&
+      requireNamespace("coin", quietly = TRUE)
+    if (isTRUE(permutation_logrank) && !use_perm) {
+      message("permutation_logrank = TRUE but the 'coin' package is not ",
+              "installed; using the asymptotic log-rank test. ",
+              "install.packages('coin') to enable it.")
+    }
+    logrank_flavour <- if (use_perm) {
+      "permutation log-rank (coin)"
+    } else "asymptotic log-rank (survdiff)"
+
     for (grp in treatment_groups[treatment_groups != reference_group]) {
       pair_data <- df[df[[treatment_column]] %in% c(reference_group, grp), , drop = FALSE]
+      pair_data[[treatment_column]] <- factor(
+        pair_data[[treatment_column]], levels = c(reference_group, grp)
+      )
       pair_p <- tryCatch({
-        pair_diff <- survival::survdiff(pair_formula, data = pair_data)
-        1 - stats::pchisq(pair_diff$chisq, df = 1L)
+        if (use_perm) {
+          # Prefer the EXACT permutation distribution: it is deterministic, so
+          # re-running gives the same p-value. Fall back to a Monte Carlo
+          # approximation only when the sample is too large to enumerate, and
+          # seed it so that path is reproducible too — an analysis function must
+          # not return a different number each time it is called.
+          n_pair <- nrow(pair_data)
+          lt <- if (n_pair <= 30L) {
+            tryCatch(
+              coin::logrank_test(pair_formula, data = pair_data,
+                                 distribution = "exact"),
+              error = function(e) NULL
+            )
+          } else NULL
+          if (is.null(lt)) {
+            withr_seed <- 20260729L
+            old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) {
+              get(".Random.seed", envir = .GlobalEnv)
+            } else NULL
+            set.seed(withr_seed)
+            lt <- coin::logrank_test(
+              pair_formula, data = pair_data,
+              distribution = coin::approximate(nresample = 20000L)
+            )
+            if (!is.null(old_seed)) {
+              assign(".Random.seed", old_seed, envir = .GlobalEnv)
+            }
+          }
+          as.numeric(coin::pvalue(lt))
+        } else {
+          pair_diff <- survival::survdiff(pair_formula, data = pair_data)
+          1 - stats::pchisq(pair_diff$chisq, df = 1L)
+        }
       }, error = function(e) {
         warning("Pairwise log-rank test failed for group '", grp, "': ",
                 conditionMessage(e), ". P-value reported as NA.", call. = FALSE)
@@ -644,6 +710,7 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
       })
       results$P_Value[results$Group == grp] <- pair_p
     }
+    attr(results, "logrank_flavour") <- logrank_flavour
 
     # Retain the omnibus test as an explicitly-labelled separate quantity so it
     # is available without ever being mistaken for a per-group comparison.

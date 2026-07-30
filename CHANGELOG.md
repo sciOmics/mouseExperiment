@@ -5,6 +5,145 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-07-29
+
+Round 3, final batch: Bayesian prior scaling, permutation tests, and the
+deprecation of statistical extrapolation. Completes every non-blocked Round 3
+finding.
+
+### BREAKING — Bayesian posteriors will shift
+
+- **Priors are now data-scaled and per-coefficient (R3.8 / G.5).** The old block
+  applied one `normal(0, b_sd)` to *every* fixed effect and a fixed
+  `normal(0, b_sd * 2.5)` to the Intercept. Two consequences:
+
+  The Intercept prior ignored the response scale. The maintainer confirms mm³ is
+  the common input unit, which for the bundled `master_synthetic_data` means
+  log-volume centred near 6 — about **nine prior SDs** from the default
+  "skeptical" `normal(0, 0.625)`. The prior predictive implied tumours of ~1 mm³,
+  and `prior_posterior_plot` (the package's own prior-sensitivity tool) showed
+  extreme conflict on every real dataset. The Intercept prior is now
+  `normal(median(y), 2.5 * mad(y))` on the modelling scale, as brms itself
+  defaults to.
+
+  One blanket `class = "b"` prior covered coefficients on incommensurable
+  scales: Treatment main effects (log-volume differences, ±0.5), the `Day` slope
+  (~0.10–0.25 per day) and the `Treatment:Day` interactions (~0.01–0.08 per day).
+  Under `prior_strength = "skeptical"` (`b_sd = 0.25`) the prior was informative
+  on the main effect but **effectively flat on the interaction** — the parameter
+  the analysis exists to estimate. So "skeptical" was not skeptical about the
+  treatment effect.
+
+  `b_sd` is now interpreted as the prior SD on the **total log-fold change across
+  the study**, divided by the observed time span to give the per-day slope and
+  interaction scales. That makes the prior-strength ladder invariant to whether
+  time is recorded in days, weeks, or hours (verified: rescaling days to weeks
+  multiplies the per-time scale by exactly 7), and gives the ladder a concrete
+  meaning — under "skeptical" a total treatment-vs-control difference of
+  exp(0.25) ≈ 1.3× is already a large effect.
+
+  Applied to `bayesian_tumor_growth()`, `bayesian_body_weight()`,
+  `bayesian_synergy()`, and the Intercept of `bayesian_survival()` (an AFT model,
+  where the Intercept is on the log-time scale and centred near log(35) ≈ 3.6 for
+  a 35-day study).
+
+- **`extrapolation_points` is deprecated and ignored (R3.9 / G.4).** It performed
+  single imputation: one synthetic final-day row per animal, produced by an OLS
+  fit to the last ≤3 points on the raw (exponential) scale, then handed to the
+  model as measured data. Residual variance, standard errors and p-values were
+  all computed as if the imputed points had been observed, making everything
+  anti-conservative; the linear fit biased a log-linear process downward; and
+  covariates were copied from the animal's *first* row. `tgs_extrapolate()` is
+  removed. It is unnecessary as of v0.8.0 — `endpoint_method = "model"`
+  extrapolates inside the model and propagates the uncertainty.
+  **Extrapolation for plotting is unaffected**: `plot_tumor_growth()` keeps its
+  own implementation and already draws projected segments dashed.
+
+### Added
+
+- **Permutation p-value for AUC comparisons (H.2).** New `auc_permutations`
+  argument adds `perm_p_value` and `perm_p_adjusted`. At n = 8–10 per arm on a
+  right-skewed derived statistic, this is more trustworthy than Welch's
+  normal-theory approximation, and the null here genuinely is label
+  exchangeability. Pairs with the existing bootstrap: interval from the
+  bootstrap, p-value from the permutation. Warns when the group sizes make the
+  permutation distribution too coarse to resolve small p-values — with 3 vs 3
+  there are only 20 label splits, so the smallest attainable two-sided p-value
+  is 0.1 regardless of the observed difference.
+- **Exact permutation log-rank (H.4).** New `permutation_logrank` (default TRUE)
+  on `survival_statistics()`. The log-rank fallback runs precisely when a group
+  has zero events — where the Cox partial likelihood is not estimable and the
+  asymptotic chi-square approximation is least trustworthy. The permutation test
+  is valid there without any large-sample appeal. Uses the exact distribution
+  when the pair is small enough to enumerate and a seeded Monte Carlo
+  approximation otherwise, so results are deterministic either way. Requires the
+  new `coin` suggested dependency; falls back with a message when absent.
+  Note the division of labour with Firth: Firth corrects the *estimate's*
+  small-sample bias, permutation gives a valid *p-value*.
+- `bayes_prior_scales()` — the prior scale arithmetic, split out so it is
+  unit-testable without brms installed.
+
+### Fixed
+
+- **Prior metadata reported reconstructed priors, not the real ones.** The
+  `methods$prior_*` fields rebuilt strings from `b_sd`; once priors became
+  data-scaled and per-coefficient that would have reported something the model
+  never saw — the same reporting-lie class as R3.16 and R3.19. New
+  `describe_priors()` reads the actual `brmsprior` object, and the result now
+  carries `prior_table` and `prior_scaling` too.
+
+### Fixed — surfaced by installing brms locally for the first time
+
+Installing `brms` 2.23 and `coin` 1.4.5 made ~150 previously-skipped assertions
+run, immediately exposing two pre-existing defects (CODE_REVIEW.md §R3-L):
+
+- **`bayesian_survival()` errored on every fit without a cage random effect
+  (R3.32).** It declared a `class = "sd"` prior unconditionally, but the formula
+  only contains a random effect when `include_cage_effect = TRUE` and a cage
+  column is present. brms rejects a prior matching no model parameter, so every
+  call with `include_cage_effect = FALSE` — a documented code path — failed
+  outright. The `sd` prior is now conditional. This had shipped since the
+  function was written; it was invisible because the test file skips wholesale
+  without brms.
+- **`test-bayesian_survival.R` passed `include_frailty` (R3.33)**, renamed to
+  `include_cage_effect` by Round 1 §B1.5. 38 assertions errored the moment brms
+  became available — the same "fix landed, test did not follow, nothing ran"
+  pattern as §K.1.
+- **`bayesian_synergy()` and `bayesian_synergy_over_time()` failed on every call
+  (R3.35).** Both referenced a bare `re_term` while assembling their summary; it
+  is built inside `bs_fit_synergy_model()` and returned as `fit$re_term`. The
+  v0.4.6 §G.6 refactor that extracted the shared helper left both consumers
+  pointing at the old local variable, so every call died with
+  `object 're_term' not found` *after* the Stan fit finished — the user paid the
+  full 3–12 minute fit and then got an error. **`bayesian_synergy()` has been
+  non-functional since v0.4.6**, across five releases, while the dashboard
+  advertised a Bayesian synergy mode. The test file went from 2 passing /
+  24 errors to 45 passing / 0 errors on a one-line fix.
+- **`bayesian_therapeutic_window()`'s efficacy-vs-safety plot was always NULL
+  (R3.37).** The TWM=1 isoline computed its x-range from `plot_df`, which is
+  never created — the frame is `scatter_df`. The undefined variable threw inside
+  the enclosing `tryCatch`, so `tgi_wl_plot` was permanently `NULL` and the
+  dashboard's TWM scatter tab always empty. Introduced by the v0.4.5 fix for
+  Round 2 §J.2, making that a third instance of a fix marked resolved that never
+  ran.
+- **The body-weight fixture had zero between-animal variance (R3.36).** Every
+  mouse started at exactly 22 g, making the random intercept unidentifiable and
+  Intercept ESS collapse. Given a realistic 0.8 g per-animal SD. This also
+  explains why the old mis-located Intercept prior passed where the corrected one
+  initially did not: a prior tight around the wrong value pins the intercept and
+  suppresses the funnel.
+
+### Tests
+
+- Bayesian and permutation paths are now genuinely exercised: `brms` 2.23 and
+  `coin` 1.4.5 installed locally, so the ~112 previously-skipped Bayesian
+  assertions run.
+- New regression tests for R3.8 (data-driven and time-unit-invariant scales,
+  interaction gets its own prior), R3.9 (deprecation is a true no-op, helper
+  gone), H.2 (permutation p-values distinct, never zero, off by default, coarse-n
+  warning), H.4 (flavour recorded, differs from asymptotic, deterministic across
+  runs).
+
 ## [0.8.0] - 2026-07-29
 
 Round 3, fourth batch: the endpoint estimand (CODE_REVIEW.md R3.5 / R3.3 / G.3).

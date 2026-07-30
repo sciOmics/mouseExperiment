@@ -2067,35 +2067,41 @@ These are not individual defects so much as patterns the package should decide a
 |---|---|---|---|---|
 | R3.1 | `p_adjust_method` ignored in `lme4` + `gam` paths (default path unadjusted) | **Critical** | `tumor_growth_statistics.R:1113`, `tgs_gam.R:299` | ✅ Fixed v0.6.0 |
 | R3.2 | Pairwise log-rank always errors → omnibus p reused (Round 1 §2.8 not actually fixed) | **Critical** | `survival_statistics.R:493` | ✅ Fixed v0.5.0 |
-| R3.3 | AUC integrated over per-mouse windows; unequal dropout can reverse the effect | **Critical** | `tumor_growth_statistics.R:481`, `tgs_path_auc.R` | Open |
+| R3.3 | AUC integrated over per-mouse windows; unequal dropout can reverse the effect | **Critical** | `tumor_growth_statistics.R:481`, `tgs_path_auc.R` | ✅ Fixed v0.8.0 |
 | R3.4 | BW GAM emmeans always NULL — v0.4.11 gamm4 patch not applied in duplicated path | **Critical** | `analyze_body_weight.R:161` | ✅ Fixed v0.6.0 |
-| R3.5 | Survivor bias in every endpoint-day TGI (v0.4.14 fix not propagated) | Major | 5 files | Open |
-| R3.6 | TGI denominator uncertainty never propagated; arithmetic vs geometric mean | Major | all TGI consumers | Open |
-| R3.7 | Frequentist synergy classifies from point estimates, no uncertainty | Major | `analyze_drug_synergy.R:141` | Open |
-| R3.8 | Bayesian priors not per-coefficient and not response-scaled | Major | `bayesian_*.R`, `utils_bayes.R` | Open |
-| R3.9 | `tgs_extrapolate()` = unflagged single imputation over informative dropout | Major | `tumor_growth_statistics.R:16` | Open |
+| R3.5 | Survivor bias in every endpoint-day TGI (v0.4.14 fix not propagated) | Major | 5 files | ✅ Fixed v0.8.0 |
+| R3.6 | TGI denominator uncertainty never propagated; arithmetic vs geometric mean | Major | all TGI consumers | ✅ Fixed v0.7.0 |
+| R3.7 | Frequentist synergy classifies from point estimates, no uncertainty | Major | `analyze_drug_synergy.R:141` | ✅ Fixed v0.7.0 |
+| R3.8 | Bayesian priors not per-coefficient and not response-scaled | Major | `bayesian_*.R`, `utils_bayes.R` | ✅ Fixed v0.9.0 |
+| R3.9 | `tgs_extrapolate()` = unflagged single imputation over informative dropout | Major | `tumor_growth_statistics.R:16` | ✅ Fixed v0.9.0 (deprecated) |
 | R3.10 | BW double-adjusts for tumour burden by default | Major | `analyze_body_weight.R:66,104` | ✅ Fixed v0.5.0 |
 | R3.11 | BW baseline aggregated by ID only; baseline used as covariate on itself | Major | `analyze_body_weight.R:91` | ✅ Fixed v0.5.0 |
 | R3.12 | BW returns no pairwise comparisons | Major | `analyze_body_weight.R:261` | ✅ Fixed v0.6.0 |
-| R3.13 | Frequentist Cox ignores cage clustering | Major | `survival_statistics.R:88` | 🟡 Partial v0.6.0 (structure check available; Cox term pending) |
+| R3.13 | Frequentist Cox ignores cage clustering | Major | `survival_statistics.R:88` | ✅ Fixed v0.7.0 |
 | R3.14 | `survival_statistics()` one-row-per-mouse contract undocumented/unvalidated | Major | `survival_statistics.R:89` | ✅ Fixed v0.5.0 |
-| R3.15 | Power analysis ignores multiplicity and attrition | Major | `apriori_power_analysis.R:96` | Open |
+| R3.15 | Power analysis ignores multiplicity and attrition | Major | `apriori_power_analysis.R:96` | ✅ Fixed v0.7.0 |
 | R3.16 | AUC path never applies `transform` but reports that it did | Major | `tgs_path_auc.R:209` | ✅ Fixed v0.5.0 |
 | R3.17 | Cage confounding decided by chi-square p on observation counts | Major | `tumor_growth_statistics.R:191` | ✅ Fixed v0.6.0 |
 | R3.18 | TWM noise-floor branch discontinuous unless `noise_floor == 1.0` | Major | `therapeutic_window_metric.R:119` | ✅ Fixed v0.5.0 |
 | R3.19 | Methods text says `log1p`, code uses `log()` + min/2 fill | Minor | `tumor_growth_statistics.R:1173` | ✅ Fixed v0.5.0 |
 | R3.20 | Frequentist log fill lacks the all-non-positive guard (cf. §B3.3) | Minor | `tumor_growth_statistics.R:820` | ✅ Fixed v0.5.0 |
 | R3.21 | `auc` adjusts over all pairs, `lme4` over k−1 — different families | Minor | `tgs_path_auc.R:64` | ✅ Fixed v0.6.0 |
-| R3.22 | Equal-variance `aov` omnibus + Welch pairwise in the same path | Minor | `tgs_path_auc.R:55` | Open |
+| R3.22 | Equal-variance `aov` omnibus + Welch pairwise in the same path | Minor | `tgs_path_auc.R:55` | ✅ Fixed v0.7.0 |
 | R3.23 | Dead `unique_id` merge in `tgs_compute_auc()` | Minor | `tumor_growth_statistics.R:491` | ✅ Fixed v0.5.0 |
-| R3.24 | `split()` over full factor cross-product in growth rates | Minor | `tumor_growth_statistics.R:135` | Open |
+| R3.24 | `split()` over full factor cross-product in growth rates | Minor | `tumor_growth_statistics.R:135` | ✅ Fixed v0.7.0 |
 | R3.25 | `weight_loss_threshold()` key omits cage; no cage argument | Minor | `weight_loss_threshold.R:57` | ✅ Fixed v0.5.0 |
-| R3.26 | Time-to-weight-loss censoring is informative (competing risks) | Minor | `weight_loss_threshold.R:96` | Open |
+| R3.26 | Time-to-weight-loss censoring is informative (competing risks) | Minor | `weight_loss_threshold.R:96` | ✅ Fixed v0.7.0 |
 | R3.27 | "All events" wrongly treated as separation, contradicting own comment | Minor | `weight_loss_threshold.R:156`, `survival_statistics.R:331` | ✅ Fixed v0.5.0 |
-| R3.28 | Undocumented magic thresholds (0.85 / 1.15 / ±0.1) | Minor | `analyze_drug_synergy.R:174` | Open |
+| R3.28 | Undocumented magic thresholds (0.85 / 1.15 / ±0.1) | Minor | `analyze_drug_synergy.R:174` | ✅ Fixed v0.7.0 |
 | R3.29 | No frequentist path returns `transform_used` / `model_type_used` | Minor | `tumor_growth_statistics.R`, `tgs_path_auc.R` | ✅ Fixed v0.5.0 |
 | R3.30 | mm³ hard-coded in tumour-mass adjustment; cm³ input silently disables it | Major | `analyze_body_weight.R:69`, `weight_loss_threshold.R:50`, `therapeutic_window_metric.R:61` | ✅ Fixed v0.5.0 |
 | R3.31 | Jonckheere-Terpstra hardwired to NULL; `clinfun` + 2 reporting branches dead | Major | `dose_response_statistics.R:293` | ✅ Fixed v0.5.0 |
+| R3.32 | `bayesian_survival()` errored on every fit without a cage random effect | **Critical** | `bayesian_survival.R` | ✅ Fixed v0.9.0 |
+| R3.33 | `test-bayesian_survival.R` used `include_frailty`, renamed in Round 1 B1.5 | Stale test | `test-bayesian_survival.R` | ✅ Fixed v0.9.0 |
+| R3.34 | First R3.8 recalibration made slope priors 16 SDs too tight | Regression (caught) | `utils_bayes.R` | ✅ Fixed v0.9.0 |
+| R3.35 | `bayesian_synergy()` non-functional since v0.4.6 (`re_term` not found) | **Critical** | `bayesian_synergy.R:710,1080` | ✅ Fixed v0.9.0 |
+| R3.36 | BW fixture had zero between-animal variance; RE unidentifiable | Test defect | `helper-fixtures.R` | ✅ Fixed v0.9.0 |
+| R3.37 | TWM efficacy-vs-safety plot always NULL (`plot_df` undefined) | Major | `bayesian_therapeutic_window.R:383` | ✅ Fixed v0.9.0 |
 
 ---
 
@@ -2494,3 +2500,221 @@ delete its recomputation block (`mod_tumor_growth.R:633-653`) and render
 the raw `gamm4` object goes away with the block. R3.D5 remains unblocked and
 small. New dashboard work: surface `cage_analysis$icc`, and relabel the
 cage-handling selector for the `"auto"` default.
+
+
+---
+
+## R3-L. Findings surfaced by installing brms (2026-07-29)
+
+Installing `brms` 2.23 and `coin` 1.4.5 locally made ~150 previously-skipped
+assertions execute for the first time. **Six findings fell out immediately, two of
+them Critical**, all invisible because the Bayesian test files skip wholesale when
+brms is absent — a live and expensive illustration of §K.3 and §K.11.
+
+The headline: **`bayesian_survival()` errored on every call without a cage random
+effect, and `bayesian_synergy()` had been entirely non-functional since v0.4.6** —
+five releases, with the dashboard advertising both. Neither would have been found
+without installing brms.
+
+**The single highest-value process change available to this project is making the
+Bayesian tests run in CI.** A suite that skips its heaviest, most complex path by
+default is not testing that path, and §K.3/§K.11 predicted exactly this. Adding
+brms and coin to a CI lane — even a slow nightly one — is worth more than any
+further review round.
+
+### R3.32 `bayesian_survival()` errored on every fit without a cage random effect — **Critical (pre-existing)**
+**File:** `R/bayesian_survival.R` (both prior branches)
+
+The function declared a `class = "sd"` prior unconditionally, but the formula only
+contains a random effect when `include_cage_effect = TRUE` and a cage column is
+present. brms rejects a prior that matches no model parameter:
+
+```
+Error in .validate_prior(...): The following priors do not correspond to any
+model parameter: sd ~ exponential(1)
+```
+
+So **every** `bayesian_survival()` call with `include_cage_effect = FALSE`, or with
+no cage column, failed outright. Not a degradation — a hard error on a documented
+code path. The `sd` prior is now conditional on `use_cage_re`.
+
+This had been shipped since the function was written. It was invisible because
+`test-bayesian_survival.R` skips without brms, and brms was not installed in the
+development environment.
+
+### R3.33 `test-bayesian_survival.R` used an argument renamed in Round 1 — **Stale test**
+Round 1 §B1.5 renamed `include_frailty` to `include_cage_effect`. The test file
+still passed `include_frailty`, producing `unused argument` errors on 38
+assertions the moment brms became available. Same class as §K.1 (stale
+`"bayes"` / `Lower_CL` assertions) and §K.11 generally: the fix landed, the test
+did not follow, and nothing failed because nothing ran.
+
+### R3.35 `bayesian_synergy()` and `bayesian_synergy_over_time()` failed on every call — **Critical (pre-existing)**
+**File:** `R/bayesian_synergy.R:710, 1080`
+
+Both exported functions referenced a bare `re_term` while assembling their
+summary metadata. `re_term` is built inside `bs_fit_synergy_model()` and returned
+as `fit$re_term` — the Round 2 §G.6 refactor (v0.4.6) that extracted the shared
+helper moved the construction but left both consumers pointing at the old local
+variable. Every call died with `object 're_term' not found` *after* the Stan fit
+completed, so the user paid the full 3–12 minute fit cost and then got an error.
+
+**`bayesian_synergy()` has therefore been completely non-functional since
+v0.4.6** — through five releases, while the dashboard advertised a Bayesian
+synergy mode. It was invisible because `test-bayesian_synergy.R` skips wholesale
+without brms, and brms was not installed in the development environment. On
+installing brms the file went from 2 passing / 24 errors to 45 passing / 0 errors
+with the one-line fix.
+
+### R3.36 The body-weight fixture had zero between-animal variance — **Test defect**
+**File:** `tests/testthat/helper-fixtures.R` (`make_bw_simple()`)
+
+Every mouse started at exactly 22 g, so the fixture contained no between-animal
+variation at all. That makes the random intercept under
+`random_effects_specification = "intercept_only"` unidentifiable — its true SD is
+0, the sampler explores an Intercept↔sd funnel, and Intercept ESS collapses
+(Bulk 281 / Tail 71 at 3000 draws) while every other parameter sits above 900.
+
+This is the mechanism behind the ESS failures that R3.34 first surfaced, and it
+explains why the old mis-located Intercept prior *passed*: a prior tight around
+the wrong value pins the intercept and suppresses the funnel. A correctly-located
+wider prior lets the intercept move, re-opening it. The old prior sampled better
+precisely because it was informative and wrong.
+
+Fixed by giving the fixture a realistic 0.8 g per-animal SD. A body-weight
+fixture with no between-animal variation cannot exercise the very random effect
+the tests assert on. Body-weight and toxicity suites both clean afterwards
+(32/0/0 and 70/0/0).
+
+### R3.37 `bayesian_therapeutic_window()`'s efficacy-vs-safety plot was always NULL — **Major (pre-existing)**
+**File:** `R/bayesian_therapeutic_window.R:383-384`
+
+The TWM=1 isoline block computed its x-range from `plot_df`, a data frame that is
+never created anywhere in the function — the frame is called `scatter_df`. The
+undefined variable threw inside the enclosing `tryCatch`, so `tgi_wl_plot` was
+**always** `NULL` and the dashboard's TWM scatter tab was permanently empty.
+
+Note the shape: Round 2 §J.2 flagged this very isoline as "approximate" and it
+was reportedly fixed in v0.4.5 by replacing `geom_abline` with an explicit
+`geom_path`. That fix introduced the `plot_df` reference. So §J.2 is a third
+instance of the pattern in §R3-D5 — a fix that was written, marked resolved, and
+never executed.
+
+### R3.34 The first R3.8 prior recalibration was wrong, in the opposite direction — **caught by the tests**
+
+Worth recording because it is the same defect I criticised, mirrored. The initial
+fix reinterpreted `b_sd` as a prior SD on the *total log-fold change over the
+study* and divided it by the time span to get the slope scale. That reasoning
+holds on a log scale but not on a raw one, and reusing the main-effect ladder
+multiplier (0.25 for "skeptical") made the slope prior 5–20× too tight. On the
+package's own body-weight fixture the true interaction is 0.14 g/day and the
+prior SD came out at 0.0089 — **16 prior SDs from the truth**, versus the ~9 SDs
+that made the original Intercept prior a finding in the first place.
+
+It surfaced as Bulk_ESS / Tail_ESS falling below 400 on the body-weight fits: the
+prior was fighting the likelihood, degrading the geometry. Attribution was
+confirmed by stashing the change and re-running (32/0/0 before, failing after) —
+not inferred.
+
+The corrected form gives rate coefficients their own scale unit — the slope that
+would traverse the entire observed response range over the study, which no real
+slope can much exceed — with its own multipliers (skeptical 1.0 → diffuse 5.0).
+Verified against known truth on both a gram-scale response and a log-volume
+response: "skeptical" now sits 1.2 and 0.2 prior SDs from the true interaction
+respectively, rather than 21 and 2.8.
+
+**Lesson for the file:** a data-scaled prior is not automatically a well-calibrated
+one. The intercept fix was unambiguous (centre on the data); the slope fix needed
+its own scale reasoning and empirical checking against known effect sizes, and
+the first attempt failed it. Both directions of mis-scaling are defects.
+
+---
+
+## R3-K. Round 3 closed — final implementation log (v0.9.0, 2026-07-29)
+
+Every Round 3 finding is now closed except **H.3**, which remains blocked on the
+randomisation-unit question (see below). Shipped across five releases:
+
+| Release | Content |
+|---|---|
+| v0.5.0 | R3.2 R3.10 R3.11 R3.14 R3.16 R3.18 R3.19 R3.20 R3.23 R3.25 R3.27 R3.29 R3.30 R3.31; R3.1 (survival) |
+| v0.6.0 | R3.1 (all paths) R3.4 R3.12 R3.17 R3.21; G.1 + G.2 |
+| v0.7.0 | R3.6 R3.7 R3.13 R3.15 R3.22 R3.24 R3.26 R3.28; G.6 Option A |
+| v0.8.0 | R3.3 R3.5; G.3 |
+| v0.9.0 | R3.8 R3.9; G.4 + G.5 + H.2 + H.4 |
+
+### What the numbers moved by
+
+Three findings changed results by amounts worth restating, because anything
+published from the affected paths needs re-running:
+
+1. **R3.5 (survivor bias).** Against ground truth on a simulation with the real
+   dropout mechanism — per-animal growth rates, removal at a 2000 mm³ limit,
+   60 % of controls lost by day 28 — mean absolute TGI error was **23.3
+   percentage points** under the old survivor-conditional estimand and **5.3**
+   under the model-based one. `last_obs` scored 28.9, i.e. worse than the old
+   behaviour, which is why it is documented as a fallback rather than an equal
+   option.
+2. **R3.17 (cage).** On a 2-cages-per-arm, 4-mice-per-cage design with a real
+   cage effect, restoring the estimable `(1|cage)` term moved treatment-contrast
+   SEs from 0.141 to 0.305 — a factor of **2.2**. At the more typical ICC of
+   0.1–0.2 the factor is ~1.15–1.25.
+3. **R3.1 (multiplicity).** The default `lme4` path reported unadjusted p-values
+   while documenting Bonferroni. With three vs-control contrasts, adjusted
+   p-values are 3× the previously-reported ones under Bonferroni.
+
+### Two fixes that had never executed
+
+R3.1 and R3.2 were both written in earlier rounds and never ran — R3.2 because a
+formula referenced a full-length `Surv` object against subsetted data and the
+error was swallowed into a fallback, R3.1 because `emmeans::contrast()` defaults
+to no adjustment for a coefficient list. Both are now covered by tests asserting
+observable behaviour rather than the presence of code. That distinction is the
+single most transferable lesson from this round and is recorded in
+[[code-review-rounds]] terms in §R3-D5: **verify a claimed fix by running it.**
+
+### Test surface
+
+- **Backend:** 352 passing / 7 failing at the start of Round 3 → all green, with
+  the suite now genuinely exercising the Bayesian paths (`brms` 2.23) and the
+  permutation paths (`coin` 1.4.5) that previously skipped. The seven baseline
+  failures were §K.11 stale tests referencing APIs removed in v0.3.4 and earlier;
+  clearing them also unblocks the `covr` baseline §K.10 flagged.
+- **Dashboard:** 210 passing / 0 failing.
+- Every Round 3 fix has a regression test in
+  `tests/testthat/test-code_review_round3.R`, labelled with its finding ID —
+  closing the §K.11 process gap for this round.
+
+### The one item still open
+
+**H.3 — permutation test of the global "no treatment effect on trajectory"
+null.** Still blocked, and deliberately so. A permutation test is a
+*randomisation* test and must mirror how randomisation was actually performed:
+
+> Are individual mice randomised to treatment and then re-housed by group, or are
+> cages assigned to treatments?
+
+If mice, the permutation unit is the mouse and 48 animals give ample resolution —
+but cage then becomes a post-randomisation variable, and permuting mice across
+cages breaks the structure §G.2 establishes is real. If cages, the unit is the
+cage, and with 12 cages across 6 arms the effective sample size for the test is
+12, not 48. That second number is uncomfortable and also honest: if cages were
+the unit of assignment, 12 is the real replication and the analysis overstates
+precision whether or not a permutation test is ever run.
+
+Implementing this on a guess would produce a test that looks rigorous and is
+calibrated for the wrong design, which is worse than not having it.
+
+### Recommended follow-ups (not Round 3 findings)
+
+- **Run the `covr` baseline** now that §K.11 is clear — §K.10's blocker is gone.
+- **Add `coin` (and `clinfun`) to the VPS Shiny image.** Both are `Suggests`, so
+  the permutation log-rank and the Jonckheere-Terpstra trend test degrade to a
+  skip-with-message when absent. They will silently not run in production
+  otherwise.
+- **Re-check the Bayesian prior-posterior plots on a real mm³ dataset.** The
+  data-scaled Intercept prior (R3.8) should remove the prior/data conflict that
+  was previously visible on every real study; that plot is now a meaningful
+  sensitivity check rather than a guaranteed red flag.
+- **B7.1 / B7.2** (Bayesian vs frequentist result-schema harmonisation) remain
+  open from Round 1 and are now the largest consistency gap left.

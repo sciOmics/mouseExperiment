@@ -106,18 +106,11 @@ bs_fit_synergy_model <- function(analysis_df,
       brms::prior_string(manual_priors$prior_sigma,     class = "sigma")
     )
   } else {
-    pp       <- bayes_prior_params(prior_str)
-    b_sd     <- pp$b_sd
-    exp_rate <- pp$exp_rate
-    priors   <- c(
-      brms::prior_string(paste0("normal(0, ", b_sd,       ")"),
-                         class = "b"),
-      brms::prior_string(paste0("normal(0, ", b_sd * 2.5, ")"),
-                         class = "Intercept"),
-      brms::prior_string(paste0("exponential(", exp_rate, ")"),
-                         class = "sd"),
-      brms::prior_string(paste0("exponential(", exp_rate, ")"),
-                         class = "sigma")
+    # CODE_REVIEW.md R3.8 / G.5 — data-scaled Intercept plus per-coefficient
+    # b priors, same reasoning as bayesian_tumor_growth().
+    priors <- bayes_scaled_priors(
+      brms_formula, analysis_df, "Response", prior_str,
+      time_column = time_column, include_sd = TRUE
     )
   }
 
@@ -714,7 +707,13 @@ bayesian_synergy <- function(
       n_warmup        = n_warmup,
       n_iter          = n_iter,
       seed            = seed,
-      random_effects  = re_term
+      # CODE_REVIEW.md R3.35 — `re_term` is built inside bs_fit_synergy_model()
+      # and returned as fit$re_term. The v0.4.6 G.6 refactor that extracted the
+      # helper left both consumers referencing the bare variable, so every call
+      # to bayesian_synergy() and bayesian_synergy_over_time() died with
+      # "object 're_term' not found" while assembling its summary. Invisible
+      # because the synergy test files skip without brms installed.
+      random_effects  = fit$re_term
     ),
     synergy_interpretation = list(
       bliss = bliss_summary,
@@ -1084,7 +1083,7 @@ bayesian_synergy_over_time <- function(
       n_chains       = n_chains,
       n_iter         = n_iter,
       seed           = seed,
-      random_effects = re_term
+      random_effects = fit$re_term   # CODE_REVIEW.md R3.35 — see above
     ),
     peak_synergy = list(
       bliss = peak_bliss_day,

@@ -1,121 +1,6 @@
 # Copyright (c) 2026 mouseExperiment Contributors
 # Licensed under the MIT License - see LICENSE file
 
-#' Extrapolate missing data points for subjects
-#'
-#' @param df Data frame with tumor growth data
-#' @param id_column Column name for subject IDs
-#' @param treatment_column Column name for treatment groups
-#' @param cage_column Column name for cage identifiers
-#' @param time_column Column name for time points
-#' @param volume_column Column name for tumor volume
-#' @param verbose Print progress messages
-#' @return Modified data frame with extrapolated points
-#' @noRd
-#' @keywords internal
-tgs_extrapolate <- function(df, id_column, treatment_column, cage_column,
-                            time_column, volume_column, verbose) {
-  if (isTRUE(verbose)) message("Extrapolating points for subjects with missing data at the last timepoint")
-  
-  # Find the true maximum day across all subjects (global maximum day of the study)
-  true_max_day <- max(df[[time_column]], na.rm = TRUE)
-  if (isTRUE(verbose)) message("True maximum day of the study: ", true_max_day)
-  
-  # Make sure all data has the Extrapolated column
-  if (!"Extrapolated" %in% colnames(df)) {
-    df$Extrapolated <- FALSE
-  }
-  
-  # Create a list to store results for each subject
-  subjects_with_extrapolation <- list()
-  
-  # Process each unique subject
-  unique_subjects <- unique(
-    make_mouse_key(df[[id_column]], df[[treatment_column]], df[[cage_column]])
-  )
-
-  for (subject_id in unique_subjects) {
-    # Parse the composite ID
-    id_parts <- split_mouse_key(subject_id)
-    id <- id_parts[1]
-    treatment <- id_parts[2]
-    cage <- id_parts[3]
-    
-    # Get data for this subject
-    subject_data <- df[df[[id_column]] == id & 
-                      df[[treatment_column]] == treatment & 
-                      df[[cage_column]] == cage, ]
-    
-    # Get the max day for this subject
-    max_subj_day <- max(subject_data[[time_column]])
-    
-    # Only extrapolate if the subject doesn't have data on the true max day
-    if (max_subj_day < true_max_day) {
-      # Need at least 2 points for extrapolation
-      if (nrow(subject_data) >= 2) {
-        # Use the last 3 points (or all if less than 3) to fit a linear model
-        n_points <- min(3, nrow(subject_data))
-        subject_data <- subject_data[order(subject_data[[time_column]]), ]
-        last_points <- tail(subject_data, n_points)
-        
-        # Try to fit model
-        tryCatch({
-          lm_fit <- stats::lm(paste(volume_column, "~", time_column), data = last_points)
-          
-          # Predict at true_max_day
-          new_data <- data.frame(time = true_max_day)
-          names(new_data) <- time_column
-          predicted_volume <- max(0, as.numeric(predict(lm_fit, newdata = new_data)))
-          
-          # Create a new row for the extrapolated point
-          new_row <- subject_data[1, ]
-          new_row[[time_column]] <- true_max_day
-          new_row[[volume_column]] <- predicted_volume
-          new_row$Extrapolated <- TRUE
-          
-          # Add the new extrapolated point to the subject data
-          subject_data <- rbind(subject_data, new_row)
-          
-          if (isTRUE(verbose)) {
-            message("Extrapolated subject ", id, " from day ", max_subj_day, " to day ", true_max_day)
-          }
-        }, error = function(e) {
-          if (isTRUE(verbose)) {
-            message("Failed to extrapolate subject ", id, ": ", conditionMessage(e))
-          }
-        })
-      }
-    }
-    
-    # Store the processed subject data
-    subjects_with_extrapolation[[subject_id]] <- subject_data
-  }
-  
-  # Combine all subject data
-  df <- do.call(rbind, subjects_with_extrapolation)
-  
-  # Count extrapolated subjects for verbose output.
-  # Previously: unique(df$Extrapolated[df$Extrapolated]) collapses to c(TRUE),
-  # so the count was always 0 or 1. Use composite mouse keys for the actual
-  # subject count.
-  if (isTRUE(verbose)) {
-    ex_rows <- df[df$Extrapolated, , drop = FALSE]
-    n_extrapolated <- if (nrow(ex_rows) > 0L) {
-      length(unique(make_mouse_key(
-        ex_rows[[id_column]],
-        ex_rows[[treatment_column]],
-        ex_rows[[cage_column]]
-      )))
-    } else 0L
-    if (n_extrapolated > 0) {
-      message("Successfully extrapolated ", n_extrapolated, " subjects to day ", true_max_day)
-    } else {
-      message("No subjects needed or qualified for extrapolation to day ", true_max_day)
-    }
-  }
-  df
-}
-
 #' Compute per-subject growth rates
 #'
 #' @param auc_df Untransformed data frame
@@ -463,6 +348,65 @@ tgs_compute_summary <- function(analysis_df, treatment_column, time_column,
 #' two observations or n_boot < 2.
 #'
 #' @noRd
+#' Two-sample permutation p-value for a difference in means
+#'
+#' CODE_REVIEW.md H.2 — at the group sizes these studies use (n = 8-10), on a
+#' derived statistic whose distribution is right-skewed, Welch's t is exactly
+#' the approximation a permutation test improves on. The null here genuinely is
+#' label exchangeability ("the group label carries no information about a
+#' mouse's AUC"), which is what licenses permutation; contrast the synergy null,
+#' which is structural rather than about labels and cannot be permuted (H.5).
+#'
+#' Pairs naturally with the bootstrap CI: interval from the bootstrap, p-value
+#' from the permutation. They answer different questions and are not redundant.
+#'
+#' @param x,y Numeric vectors (per-mouse AUCs for the two arms).
+#' @param n_perm Number of label permutations.
+#' @param seed Optional RNG seed; the caller's state is restored on exit.
+#' @return Two-sided permutation p-value, or `NA_real_` when either arm has
+#'   fewer than two mice. Uses the `(1 + #{|d*| >= |d|}) / (1 + n_perm)`
+#'   estimator so the p-value is never exactly zero.
+#' @noRd
+#' @keywords internal
+tgs_perm_diff_p <- function(x, y, n_perm = 2000L, seed = NULL) {
+  x <- x[is.finite(x)]; y <- y[is.finite(y)]
+  if (length(x) < 2L || length(y) < 2L || n_perm < 1L) return(NA_real_)
+
+  if (!is.null(seed)) {
+    old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) {
+      get(".Random.seed", envir = .GlobalEnv)
+    } else NULL
+    on.exit({
+      if (!is.null(old_seed)) assign(".Random.seed", old_seed, envir = .GlobalEnv)
+    }, add = TRUE)
+    set.seed(seed)
+  }
+
+  pooled <- c(x, y)
+  nx     <- length(x)
+  obs    <- abs(mean(x) - mean(y))
+
+  # The permutation distribution has only choose(nx + ny, nx) distinct points,
+  # so the smallest attainable two-sided p-value is 2 / choose(n, nx). With 3
+  # mice per arm that floor is ~0.10 — no permutation test can report anything
+  # smaller, however large the observed difference. Say so rather than letting a
+  # user read the floor as a real p-value.
+  n_splits  <- choose(length(pooled), nx)
+  p_floor   <- 2 / n_splits
+  if (is.finite(p_floor) && p_floor > 0.01) {
+    warning(sprintf(paste0(
+      "Permutation test has only %.0f distinct label splits (n = %d vs %d), so ",
+      "the smallest attainable two-sided p-value is %.3f. Values at or near ",
+      "that floor reflect the test's resolution, not the strength of evidence."),
+      n_splits, nx, length(pooled) - nx, p_floor), call. = FALSE)
+  }
+  perm   <- vapply(seq_len(n_perm), function(i) {
+    idx <- sample.int(length(pooled), nx)
+    abs(mean(pooled[idx]) - mean(pooled[-idx]))
+  }, numeric(1))
+  (1 + sum(perm >= obs - 1e-12)) / (1 + n_perm)
+}
+
 tgs_boot_diff_ci <- function(x, y, n_boot = 999L, seed = NULL) {
   if (length(x) < 2L || length(y) < 2L || n_boot < 2L) {
     return(c(lower = NA_real_, upper = NA_real_))
@@ -672,7 +616,14 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #' @param include_diagnostics Boolean. Should model diagnostic information be included? Default is TRUE.
 #' @param plots Boolean. Should standard plots be generated and returned? Default is TRUE.
 #' @param verbose Boolean. Should detailed information be printed during analysis? Default is FALSE.
-#' @param extrapolation_points Number of points to extrapolate for each subject (default: 0)
+#' @param extrapolation_points \strong{Deprecated} and ignored as of v0.8.0.
+#'   It appended one synthetic final-day observation per animal and handed it to
+#'   the model as measured data, so the fit's uncertainty did not reflect the
+#'   imputation, and the linear fit on the raw scale biased an exponential
+#'   process downward. Use the model-based endpoint means instead
+#'   (\code{endpoint_method = "model"}), which extrapolate inside the model and
+#'   propagate the uncertainty. Extrapolation for \emph{plotting} is unaffected
+#'   — see \code{\link{plot_tumor_growth}}. CODE_REVIEW.md R3.9 / G.4.
 #' @param auc_bootstrap_n Integer >= 0. When > 0 and \code{model_type = "auc"},
 #'   each pairwise Welch's t-test gains a non-parametric percentile-bootstrap
 #'   95\% CI for the mean difference (\code{boot_ci_lower}, \code{boot_ci_upper}
@@ -683,6 +634,14 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'   \code{0} (skip; \code{boot_ci_*} columns are \code{NA}).
 #' @param auc_bootstrap_seed Optional integer seed for reproducible bootstrap
 #'   resampling. \code{NULL} (default) uses the caller's RNG state.
+#' @param auc_permutations Integer >= 0. When > 0 and
+#'   \code{model_type = "auc"}, each pairwise comparison additionally gains a
+#'   two-sided permutation p-value (\code{perm_p_value}, plus
+#'   \code{perm_p_adjusted} over the comparison family). At n = 8-10 per arm on
+#'   a right-skewed derived statistic, this is more trustworthy than Welch's
+#'   normal-theory approximation, and the null here is genuinely label
+#'   exchangeability. A typical value is \code{2000}. Default \code{0} (skip).
+#'   CODE_REVIEW.md H.2.
 #'
 #' @return A list containing the following components:
 #' \describe{
@@ -787,7 +746,8 @@ tumor_growth_statistics <- function(df,
                                   necrotic_column  = NULL,
                                   necrotic_handling = c("exclude", "covariate", "none"),
                                   auc_bootstrap_n = 0L,
-                                  auc_bootstrap_seed = NULL) {
+                                  auc_bootstrap_seed = NULL,
+                                  auc_permutations = 0L) {
   # Check for required packages
   if (!requireNamespace("lme4", quietly = TRUE)) {
     stop("Please install the lme4 package: install.packages('lme4')")
@@ -846,10 +806,36 @@ tumor_growth_statistics <- function(df,
     message("Using ", reference_group, " as reference group for statistical comparisons")
   }
   
-  # Extrapolate data points if requested
-  if (extrapolation_points > 0) {
-    df <- tgs_extrapolate(df, id_column, treatment_column, cage_column,
-                          time_column, volume_column, verbose)
+  # CODE_REVIEW.md R3.9 / G.4 — statistical extrapolation is deprecated.
+  #
+  # tgs_extrapolate() was unflagged single imputation over informative dropout:
+  # it appended one synthetic row per animal, produced by an OLS fit to the last
+  # <=3 points on the RAW (exponential) scale, and the LMM then treated it as an
+  # ordinary observation. Consequences: no uncertainty inflation (residual
+  # variance, SEs and p-values were all computed as if the imputed points were
+  # measured, making everything anti-conservative); systematic downward bias
+  # from linear extrapolation of a log-linear process; and covariates copied
+  # from the animal's *first* row.
+  #
+  # It is unnecessary as of v0.8.0: endpoint_method = "model" extrapolates to
+  # the endpoint day inside the model, which propagates the extrapolation's
+  # uncertainty instead of hiding it. Extrapolation for *plotting* is unaffected
+  # — plot_tumor_growth(extrapolation_points = ...) is a separate implementation
+  # and is explicitly retained.
+  if (!missing(extrapolation_points) && isTRUE(extrapolation_points > 0)) {
+    warning(
+      "`extrapolation_points` is deprecated and will be removed in a future ",
+      "release. It performed single imputation of a synthetic final-day ",
+      "observation per animal and fed it to the model as measured data, so ",
+      "standard errors and p-values did not reflect the imputation. Model-based ",
+      "endpoint means (the default `endpoint_method = \"model\"` in ",
+      "therapeutic_window_metric(), analyze_drug_synergy(), ",
+      "weight_corrected_tgi() and efficacy_toxicity_bivariate()) extrapolate ",
+      "inside the model and carry the uncertainty. Extrapolation for plotting ",
+      "is unaffected: see plot_tumor_growth(extrapolation_points = ). ",
+      "Ignoring the request.",
+      call. = FALSE
+    )
   }
   
   # Create a copy of the data for analysis
@@ -1110,6 +1096,7 @@ tumor_growth_statistics <- function(df,
       include_diagnostics = include_diagnostics,
       auc_bootstrap_n     = auc_bootstrap_n,
       auc_bootstrap_seed  = auc_bootstrap_seed,
+      auc_permutations    = auc_permutations,
       cage_analysis       = cage_analysis,
       data_summary        = data_summary,
       necrosis_summary    = necrosis_summary,

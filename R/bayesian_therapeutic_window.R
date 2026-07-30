@@ -380,8 +380,13 @@ bayesian_therapeutic_window <- function(
         # correctly. (Previously a single geom_abline approximated it but
         # crossed the y axis at the wrong slope near the floor.)
         {
-          x_min      <- min(plot_df$WL_Median, na.rm = TRUE)
-          x_max      <- max(plot_df$WL_Median, na.rm = TRUE)
+          # CODE_REVIEW.md R3.37 — this referenced `plot_df`, which is never
+          # created anywhere in the function; the data frame is `scatter_df`.
+          # The undefined variable threw inside the enclosing tryCatch, so
+          # `tgi_wl_plot` was ALWAYS NULL and the dashboard's TWM scatter tab was
+          # always empty. Invisible because the test file skips without brms.
+          x_min      <- min(scatter_df$WL_Median, na.rm = TRUE)
+          x_max      <- max(scatter_df$WL_Median, na.rm = TRUE)
           x_pad      <- 0.05 * max(1, abs(x_max - x_min))
           x_lo       <- min(x_min - x_pad, -noise_floor * 2)
           x_hi       <- max(x_max + x_pad,  noise_floor * 2)

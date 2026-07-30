@@ -29,7 +29,8 @@ tumor_growth_statistics(
   necrotic_column = NULL,
   necrotic_handling = c("exclude", "covariate", "none"),
   auc_bootstrap_n = 0L,
-  auc_bootstrap_seed = NULL
+  auc_bootstrap_seed = NULL,
+  auc_permutations = 0L
 )
 }
 \arguments{
@@ -128,7 +129,14 @@ for statistical comparisons. If NULL, the first treatment group alphabetically w
 
 \item{verbose}{Boolean. Should detailed information be printed during analysis? Default is FALSE.}
 
-\item{extrapolation_points}{Number of points to extrapolate for each subject (default: 0)}
+\item{extrapolation_points}{\strong{Deprecated} and ignored as of v0.8.0.
+It appended one synthetic final-day observation per animal and handed it to
+the model as measured data, so the fit's uncertainty did not reflect the
+imputation, and the linear fit on the raw scale biased an exponential
+process downward. Use the model-based endpoint means instead
+(\code{endpoint_method = "model"}), which extrapolate inside the model and
+propagate the uncertainty. Extrapolation for \emph{plotting} is unaffected
+— see \code{\link{plot_tumor_growth}}. CODE_REVIEW.md R3.9 / G.4.}
 
 \item{auc_bootstrap_n}{Integer >= 0. When > 0 and \code{model_type = "auc"},
 each pairwise Welch's t-test gains a non-parametric percentile-bootstrap
@@ -141,6 +149,15 @@ higher (e.g. \code{4999}) gives smoother percentile estimates. Default
 
 \item{auc_bootstrap_seed}{Optional integer seed for reproducible bootstrap
 resampling. \code{NULL} (default) uses the caller's RNG state.}
+
+\item{auc_permutations}{Integer >= 0. When > 0 and
+\code{model_type = "auc"}, each pairwise comparison additionally gains a
+two-sided permutation p-value (\code{perm_p_value}, plus
+\code{perm_p_adjusted} over the comparison family). At n = 8-10 per arm on
+a right-skewed derived statistic, this is more trustworthy than Welch's
+normal-theory approximation, and the null here is genuinely label
+exchangeability. A typical value is \code{2000}. Default \code{0} (skip).
+CODE_REVIEW.md H.2.}
 
 \item{auc_method}{Removed in v0.4.5. The AUC path now always uses the
 trapezoidal rule. For last-observation-carried-forward (LOCF) AUC, use

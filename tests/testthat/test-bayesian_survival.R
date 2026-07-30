@@ -26,7 +26,7 @@ local({
           id_column        = "ID",
           cage_column      = "Cage",
           family           = "weibull",
-          include_frailty  = FALSE,   # only 1 cage per group in fixture
+          include_cage_effect  = FALSE,   # only 1 cage per group in fixture
           reference_group  = "Control",
           prior_strength   = "weakly_informative",
           n_chains         = 2L,
@@ -180,7 +180,7 @@ test_that("bayesian_survival: lognormal family runs and returns HR = NA for non-
   res <- suppressWarnings(suppressMessages(
     bayesian_survival(
       df, family = "lognormal", reference_group = "Control",
-      include_frailty = FALSE, n_chains = 2L, n_iter = 500L,
+      include_cage_effect = FALSE, n_chains = 2L, n_iter = 500L,
       plots = FALSE, verbose = FALSE, seed = 1L
     )
   ))
