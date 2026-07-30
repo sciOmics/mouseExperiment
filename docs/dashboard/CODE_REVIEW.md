@@ -1053,3 +1053,76 @@ backend). Suite went from 212 to 251 passing.
 (the interval comparison, the overlap check, the floor warning) is still only
 verified by reading it. Driving those through `shiny::testServer` is the next step
 and is what would finally make this suite able to detect a broken backend.
+
+---
+
+# Review Round 8 (v26.07.005 — 2026-07-30)
+
+**Scope:** The Power module, reached from the backend side. The backend's first
+working coverage baseline named `apriori_power_simulation()` at 0.00 %; testing it
+turned up two findings that live here rather than there.
+
+## D.4 `%||%` fallbacks encoded the abandoned percent scale — Major
+
+`mod_power.R` passed fallback values from the parameterisation the backend
+abandoned in §2.2, when its data-generating model moved from the linear to the log
+scale:
+
+```r
+control_growth_rate = input$pw_lmm_ctrl_rate     %||% 15,   # log rate; s/b 0.15
+treatment_effect    = input$pw_lmm_tx_effect     %||% 10,   #            s/b 0.10
+random_slope_sd     = input$pw_lmm_rand_slope_sd %||% 3,    #            s/b 0.05
+random_intercept_sd = input$pw_lmm_rand_int_sd   %||% 10,   #            s/b 0.20
+residual_sd         = input$pw_lmm_resid_sd      %||% 10,   #            s/b 0.10
+```
+
+All five input IDs exist and their UI defaults are correct, so a fallback fires
+only when an input reads `NULL` — transiently before the client syncs, or if an ID
+is ever renamed. Had one fired, `control_growth_rate = 15` makes `exp(15 · t)`
+overflow to `Inf` by day 14 and the fit dies with a message pointing nowhere near
+the cause.
+
+Latent rather than live, but free to fix and now held down by
+`test-power-params.R`, which additionally asserts each fallback equals the UI
+default sitting beside it so the two cannot drift apart again.
+
+## D.5 The Method panel pointed users at the one dial that does nothing — Major
+
+The panel described `random_intercept_sd` as *"Between-animal variability in
+baseline volume (log scale). **Higher values require larger N.**"*
+
+The claim is false, and measurably so. Backend §K.14 establishes that power is
+invariant to `random_intercept_sd` across a 30-fold range (0.05 → 1.50, power
+0.6667 throughout), because the `Treatment:Day` slope contrast is orthogonal to
+per-mouse intercepts, which `(Day | ID)` absorbs exactly. `baseline_sd` is inert
+for the same reason and is aliased with it.
+
+Meanwhile `random_slope_sd` — which moves power from 1.00 to 0.15 over
+0.01 → 0.15 on the same design — was described only as "between-animal variability
+in growth rate", with no indication that it dominates.
+
+The practical harm is a user calibrating carefully against historical data, seeing
+the answer not move, and concluding the tool is broken — or worse, not checking.
+Both entries rewritten: the inert parameters now say so and explain why, and
+`random_slope_sd` is labelled the dominant driver with the worked numbers.
+
+## D.6 Dropout exposed in the UI (backend K.15)
+
+The backend gained a `dropout_limit` argument so power can be planned against an
+IACUC euthanasia limit rather than an idealised complete-data study. Added as
+"Euthanasia volume limit (blank = none)", mapping blank/`NA`/non-positive to `Inf`
+so the backend's validation never sees a malformed value.
+
+The Summary tab now reports realised attrition, and — importantly — states the
+assumption *even when no dropout is modelled*, so a complete-data figure is never
+read as unconditional. Ignoring dropout costs roughly 6 points of power at 30 %
+attrition and 12 at 40 %.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| D.4 | Fallbacks on the abandoned percent scale | Major | ✅ Fixed v26.07.005 |
+| D.5 | Method panel named the wrong power driver | Major | ✅ Fixed v26.07.005 |
+| D.6 | No way to plan against dropout | Major | ✅ Fixed v26.07.005 |
+
+Suite went from 251 to 285 passing. §I.1 / §I.2 remain the substantive gap: these
+are source-level assertions, not `testServer` exercises of the reactives.

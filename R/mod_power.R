@@ -89,6 +89,12 @@ powerAnalysisUI <- function(id) {
             numericInput(ns("pw_lmm_baseline_sd"),
                          "Baseline tumor volume (SD)",
                          value = 20, min = 0.1, step = 0.1),
+            p(tags$small(tags$em(
+              "Baseline SD does not change the estimated power. The test is on ",
+              "Treatment × Day — a contrast of growth ", tags$em("rates"), " — and ",
+              "the per-mouse random intercept absorbs baseline spread exactly. ",
+              "It is here because it shapes the simulated volumes, not the ",
+              "sample-size answer."))),
             numericInput(ns("pw_lmm_ctrl_rate"),
                          "Control log-growth rate (/day)",
                          value = 0.15, min = 0, step = 0.01),
@@ -131,6 +137,14 @@ powerAnalysisUI <- function(id) {
             numericInput(ns("pw_lmm_day_interval"),
                          "Interval between days",
                          value = 1, min = 1, step = 1),
+            numericInput(ns("pw_lmm_dropout_limit"),
+                         "Euthanasia volume limit (blank = none)",
+                         value = NA, min = 1, step = 50),
+            p(tags$small(tags$em(
+              "Set your IACUC limit to plan against a study that loses animals. ",
+              "Leaving it blank assumes every animal is measured at every ",
+              "timepoint, which overstates power — by roughly 6 points at 30% ",
+              "attrition and 12 at 40%."))),
 
             hr(),
 
@@ -279,11 +293,17 @@ powerAnalysisUI <- function(id) {
                       tags$dt("Treatment rate reduction"),
                       tags$dd("Reduction in growth rate for treated vs control, on the log scale."),
                       tags$dt("Random intercept SD"),
-                      tags$dd("Between-animal variability in baseline volume (log scale). Higher values require larger N."),
+                      tags$dd("Between-animal variability in baseline volume (log scale). ",
+                              tags$strong("Does not affect the power estimate"),
+                              " — the test is on Treatment × Day, a contrast of growth rates, and the per-animal random intercept absorbs baseline spread exactly. Varying it from 0.05 to 1.50 leaves power unchanged. The same is true of Baseline SD, with which it is aliased."),
                       tags$dt("Random slope SD"),
-                      tags$dd("Between-animal variability in growth rate (log scale)."),
+                      tags$dd("Between-animal variability in growth ", tags$em("rate"), " (log scale). ",
+                              tags$strong("This is the dominant driver of power"),
+                              " — it is the noise the treatment effect must be detected against. In a worked 2-arm, n = 8 design, moving it from 0.01 to 0.15 dropped power from 1.00 to 0.15. Estimate it from your own historical control data before trusting a sample-size answer."),
                       tags$dt("Residual SD"),
                       tags$dd("Within-animal measurement noise (log scale)."),
+                      tags$dt("Euthanasia volume limit"),
+                      tags$dd("Removes an animal's observations once its simulated volume crosses the limit, mimicking an IACUC removal. Leaving it blank assumes complete data and overstates power — about 6 points at 30 % attrition, 12 at 40 %. Realised attrition is reported with the results."),
                       tags$dt("Simulations"),
                       tags$dd("Number of Monte Carlo draws. Use ≥ 1000 for publication-quality estimates; ≤ 500 for quick exploration. Power estimates are shown with ±1.96 × SE uncertainty bands in the Power Curves tab.")
                     )
@@ -567,12 +587,21 @@ power_server <- function(id, rv) {
           n_groups            = as.integer(input$pw_lmm_n_groups %||% 2),
           baseline_volume     = input$pw_lmm_baseline_mean %||% 100,
           baseline_sd         = input$pw_lmm_baseline_sd   %||% 20,
-          control_growth_rate = input$pw_lmm_ctrl_rate     %||% 15,
-          treatment_effect    = input$pw_lmm_tx_effect     %||% 10,
-          random_slope_sd     = input$pw_lmm_rand_slope_sd %||% 3,
-          random_intercept_sd = input$pw_lmm_rand_int_sd   %||% 10,
-          residual_sd         = input$pw_lmm_resid_sd      %||% 10,
+          # These fallbacks must stay on the log scale. They previously read
+          # 15 / 10 / 3 / 10 / 10 -- values from the percent-scale parameterisation
+          # the backend abandoned when the data-generating model moved to the log
+          # scale. Had one fired, control_growth_rate = 15/day would have made
+          # exp(15 * t) overflow to Inf and the fit fail with an opaque error.
+          control_growth_rate = input$pw_lmm_ctrl_rate     %||% 0.15,
+          treatment_effect    = input$pw_lmm_tx_effect     %||% 0.10,
+          random_slope_sd     = input$pw_lmm_rand_slope_sd %||% 0.05,
+          random_intercept_sd = input$pw_lmm_rand_int_sd   %||% 0.20,
+          residual_sd         = input$pw_lmm_resid_sd      %||% 0.10,
           timepoints          = timepoints,
+          dropout_limit       = {
+            dl <- suppressWarnings(as.numeric(input$pw_lmm_dropout_limit))
+            if (length(dl) != 1L || is.na(dl) || dl <= 0) Inf else dl
+          },
           alpha               = alpha_vals,
           n_simulations       = as.integer(input$pw_lmm_n_sims %||% 500)
         )
@@ -593,7 +622,8 @@ power_server <- function(id, rv) {
         sensitivity_table = NULL,
         mode              = "apriori_lmm",
         ap_submode        = "find_power",
-        lmm_params        = result_lmm$params
+        lmm_params        = result_lmm$params,
+        lmm_attrition     = result_lmm$attrition
       )
 
       shinyjs::runjs("window.trackAnalysisComplete('power', true);")
@@ -679,6 +709,29 @@ power_server <- function(id, rv) {
       paste0("A priori — ", mode_ap)
     )
 
+    # What the reported power was actually planned against. A power figure from a
+    # complete-data simulation is an upper bound for a study that loses animals,
+    # so the assumption is stated rather than left implicit.
+    attrition_html <- local({
+      att <- res$lmm_attrition
+      if (is.null(att) || !nrow(att)) return(NULL)
+      lost <- max(att$Pct_Obs_Lost, na.rm = TRUE)
+      if (!is.finite(lost) || lost <= 0) {
+        tags$p(tags$span(class = "text-muted",
+          tags$strong("Dropout:"), " none modelled — every animal contributes ",
+          "every timepoint. This is an upper bound on achievable power; a study ",
+          "losing 30 % of its observations runs roughly 6 points lower. Set an ",
+          "euthanasia volume limit to plan against your actual attrition."))
+      } else {
+        tags$p(
+          tags$strong("Dropout modelled:"), " ",
+          sprintf("limit %s — %.1f %% of observations lost, %.1f %% of animals truncated.",
+                  format(att$Dropout_Limit[1]), lost,
+                  max(att$Pct_Mice_Truncated, na.rm = TRUE))
+        )
+      }
+    })
+
     div(
       div(class = "panel panel-default",
         div(class = "panel-heading",
@@ -688,6 +741,7 @@ power_server <- function(id, rv) {
           tags$p(tags$strong("Scenarios:"), " ",
                  nrow(res$scenario_table), " row(s) in Scenario Table"),
           rec_n_html,
+          attrition_html,
           tags$hr(),
           tags$p(tags$small(class = "text-muted",
             "Full scenario grid is in the ", tags$strong("Scenario Table"),

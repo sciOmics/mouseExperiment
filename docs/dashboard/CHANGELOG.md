@@ -4,6 +4,46 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.07.005] - 2026-07-30
+
+Power module, reached from the backend side. The backend's first working coverage
+baseline named `apriori_power_simulation()` at 0.00 %; testing it turned up two
+findings that live here.
+
+### Fixed — fallbacks encoded the parameter scale the backend abandoned (D.4)
+
+`mod_power.R` passed `control_growth_rate %||% 15`, `treatment_effect %||% 10`,
+`random_slope_sd %||% 3` and two more — values from the percent-scale
+parameterisation the backend dropped when its data-generating model moved to the
+log scale. All five input IDs exist with correct UI defaults, so these only fire
+when an input reads `NULL`, transiently before the client syncs. Had one fired,
+`control_growth_rate = 15` makes `exp(15 · t)` overflow to `Inf` by day 14 and the
+fit dies pointing nowhere near the cause. Corrected, and `test-power-params.R` now
+asserts each fallback equals the UI default beside it so they cannot drift apart
+again.
+
+### Fixed — the Method panel named the wrong power driver (D.5)
+
+It described random intercept SD as *"Higher values require larger N."* That is
+false: power is identical across a 30-fold range of it (0.05 → 1.50), because the
+Treatment × Day slope contrast is orthogonal to per-mouse intercepts. Baseline SD
+is inert for the same reason and aliased with it.
+
+Meanwhile `random_slope_sd`, which moves power from 1.00 to 0.15 over 0.01 → 0.15
+on the same design, was described only as "between-animal variability in growth
+rate". A user calibrating carefully against historical data would have seen the
+answer refuse to move. Both entries rewritten with the worked numbers.
+
+### Added — plan against dropout (D.6)
+
+New "Euthanasia volume limit" control, mapping blank/`NA`/non-positive to `Inf` so
+the backend's validation never sees a malformed value. The Summary tab reports
+realised attrition and states the assumption **even when no dropout is modelled**,
+so a complete-data power figure is never read as unconditional. Ignoring dropout
+costs roughly 6 points of power at 30 % attrition, 12 at 40 %.
+
+Suite: 251 → 295 passing, no skips.
+
 ## [26.07.004] - 2026-07-30
 
 ### Added — the Round 3/5 backend outputs are now visible
