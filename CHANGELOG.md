@@ -5,6 +5,51 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-07-30
+
+Closes B7.1 and B7.2, open since Round 1.
+
+### Added — canonical result provenance (`$meta`)
+
+Every analysis entry point now returns a `$meta` block naming what the object is:
+`analysis_type`, `model_type_used`, `inference` (frequentist/bayesian),
+`interval_type` (confidence/credible/none), `interval_columns`, `transform_used`,
+`estimate_scale`, `comparison_family`, `p_adjust_method`, and the package version
+that built it.
+
+**B7.1 asked for the schema to be harmonised; renaming would have been wrong.**
+The difference was `Lower_CL` versus `Lower_CrI`, and Round 1 §B1.4 separated those
+deliberately — that finding exists *because* the Bayesian functions were
+mislabelling credible intervals as confidence limits. Undoing it to make a `grep`
+easier would reintroduce the defect. The real problem is that a consumer could not
+tell which it held without guessing, so `meta$interval_columns` declares it.
+
+`meta$estimate_scale` is what a caller needs to back-transform correctly. The AUC
+path reports `"AUC (volume x day, raw scale)"` with `transform_used = "none"`,
+which is the R3.16 truth rather than the requested transform.
+
+New `me_interval_cols()` reads a result's interval columns from that declaration
+and **warns** when `meta` disagrees with the actual columns — that is a bug in the
+analysis function, not something a caller should paper over.
+
+**B7.2** falls out: every function reports `transform_used`, with `"none"` meaning
+none was applied, so "no transform" is distinguishable from "field absent".
+`bayesian_survival()` reports `"none"` with `estimate_scale = "log time ratio"`, and
+carries an `interval_columns_override` because it reports hazard ratios in
+`CI_Lower`/`CI_Upper` rather than marginal means.
+
+Entirely additive — no existing field renamed or removed.
+
+### Why it mattered immediately
+
+Building the accessor found a live bug in the dashboard (its R4.D5): the
+treatment-effects plot resolved error bars with
+`intersect(c("lower.CL", "lower_CL", "Lower", "lower"), ...)`, none of which
+matches the `Lower_CL` that `treatment_effects` actually contains. So `has_ci` was
+always `FALSE` and the plot had been drawing SE-derived bars instead of the model's
+confidence interval. A failed sniff yields `NA`, the caller takes a fallback, and
+nothing fails — the §K.2 pattern with a concrete cost.
+
 ## [0.11.0] - 2026-07-30
 
 Closes H.3, the one Round 3 finding deliberately left open. Round 3 is now fully

@@ -347,6 +347,22 @@ survival_statistics <- function(df,
     result_list$ph_test <- model_results$ph_test
   }
 
+  # CODE_REVIEW.md B7.1 / B7.2 -- survival reports hazard ratios, not marginal
+  # means, so its table legitimately differs from the treatment-effects schema.
+  # `meta` says so explicitly rather than leaving a consumer to discover it.
+  result_list$meta <- me_result_meta(
+    analysis_type     = "Survival analysis (Cox PH / Firth / log-rank)",
+    model_type_used   = method_used,
+    inference         = "frequentist",
+    interval_type     = "confidence",
+    transform_used    = "none",
+    estimate_scale    = "hazard ratio",
+    comparison_family = "vs_reference",
+    p_adjust_method   = p_adjust_method,
+    extra = list(interval_columns_override = c(lower = "CI_Lower",
+                                               upper = "CI_Upper"))
+  )
+
   # Cage structure and whether a robust cage cluster was used (R3.13).
   result_list$cage_structure <- cage_structure
   result_list$cage_cluster_used <- use_cage_cluster && identical(method_used, "cox")

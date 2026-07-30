@@ -683,6 +683,14 @@ bayesian_tumor_growth <- function(
     model                   = if (isTRUE(return_model)) model else NULL,
     model_type_used         = if (model_type == "gam") "bayes_tg_gam" else "bayes_tg",
     transform_used          = transform,
+    meta = me_result_meta(
+      analysis_type   = "Bayesian linear mixed-effects model (brms)",
+      model_type_used = "bayes_tg",
+      inference       = "bayesian",
+      interval_type   = "credible",
+      transform_used  = transform,
+      estimate_scale  = switch(transform, log = "log volume", sqrt = "sqrt volume", "volume")
+    ),
     summary                 = analysis_summary,
     posterior_summary       = posterior_summary,
     treatment_effects       = treatment_effects,

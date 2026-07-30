@@ -701,6 +701,14 @@ bayesian_body_weight <- function(
     model                   = if (isTRUE(return_model)) model else NULL,
     model_type_used         = "bayes_bw",
     transform_used          = transform,
+    meta = me_result_meta(
+      analysis_type   = "Bayesian body-weight mixed model (brms)",
+      model_type_used = "bayes_bw",
+      inference       = "bayesian",
+      interval_type   = "credible",
+      transform_used  = transform,
+      estimate_scale  = "body weight (g)"
+    ),
     summary                 = analysis_summary,
     posterior_summary       = posterior_summary,
     treatment_effects       = treatment_effects,

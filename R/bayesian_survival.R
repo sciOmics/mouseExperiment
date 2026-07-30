@@ -454,6 +454,17 @@ bayesian_survival <- function(
   list(
     model               = if (isTRUE(return_model)) model else NULL,
     model_type_used     = "bayes_survival",
+    # B7.2 -- an AFT model applies no volume transform. Report "none"
+    # explicitly so a consumer can distinguish that from a missing field.
+    transform_used      = "none",
+    meta = me_result_meta(
+      analysis_type   = "Bayesian accelerated failure time model (brms)",
+      model_type_used = "bayes_survival",
+      inference       = "bayesian",
+      interval_type   = "credible",
+      transform_used  = "none",
+      estimate_scale  = "log time ratio"
+    ),
     family_used         = family,
     frailty_used        = use_cage_re,
     summary             = analysis_summary,

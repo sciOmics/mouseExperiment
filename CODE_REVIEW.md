@@ -827,8 +827,8 @@ All other Bayesian functions return `transform_used` in the result list. `bayesi
 | B6.1 | No `bayesian_power_analysis()` function | Enhancement | — | ✅ Fixed — `R/bayesian_power_analysis.R` |
 | B6.2 | No single-call wrapper for TWM (requires two pre-fitted models) | Enhancement | `bayesian_therapeutic_window.R` | ✅ Fixed — `bayesian_twm_from_data()` |
 | B6.3 | No `bayesian_synergy_over_time()` | Enhancement | — | ✅ Fixed — `R/bayesian_synergy.R` |
-| B7.1 | Treatment effects table schema not consistent across Bayesian/frequentist | Minor | Multiple | Open |
-| B7.2 | `bayesian_survival` does not return `transform_used` | Minor | `bayesian_survival.R` | Open |
+| B7.1 | Treatment effects table schema not consistent across Bayesian/frequentist | Minor | Multiple | ✅ Fixed v0.12.0 (resolved as provenance, not renaming) |
+| B7.2 | `bayesian_survival` does not return `transform_used` | Minor | `bayesian_survival.R` | ✅ Fixed v0.12.0 |
 
 ---
 
@@ -2975,3 +2975,90 @@ designing studies: **two cages per arm cannot produce a significant randomisatio
 test at the cage level, no matter how large the effect.** If cage is the unit of
 assignment, three or more cages per arm is the minimum for this test to be able to
 say anything.
+
+
+---
+
+# Round 6 — B7.1 / B7.2 resolved as provenance, not renaming (2026-07-30)
+
+## R6.1 Why renaming would have been the wrong fix
+
+B7.1 asked for the treatment-effects schema to be harmonised between the
+frequentist and Bayesian functions, the difference being `Lower_CL` versus
+`Lower_CrI`.
+
+Renaming one onto the other would trade a discoverability problem for a
+correctness problem. A confidence limit and a credible interval are different
+objects with different interpretations, and Round 1 §B1.4 separated them
+*deliberately* — that finding exists because the Bayesian functions were
+originally mislabelling credible intervals as `_CL`. Undoing it to make a `grep`
+easier would reintroduce the defect.
+
+The real defect is that a consumer cannot tell which it holds without guessing.
+
+## R6.2 What was built
+
+Every analysis entry point now returns `$meta`, a small uniform block:
+
+```
+<me_meta>
+  analysis      : Linear mixed-effects model
+  model_type    : lme4
+  inference     : frequentist
+  intervals     : confidence (Lower_CL / Upper_CL)
+  transform     : log
+  estimate scale: log volume
+  comparisons   : vs_reference (bonferroni)
+  built by      : mouseExperiment 0.12.0
+```
+
+`meta$interval_columns` names the columns actually used, so a consumer branches on
+a declaration rather than sniffing. `meta$estimate_scale` is what a caller needs to
+back-transform correctly — the AUC path reports
+`"AUC (volume x day, raw scale)"` and `transform_used = "none"`, which is the
+§R3.16 truth rather than the requested transform.
+
+`me_interval_cols()` reads a result's interval columns via that declaration and
+**warns** when a result's `meta` disagrees with its own columns, because that is a
+bug in the analysis function rather than something the caller should paper over.
+
+Purely additive: no existing field renamed or removed. **B7.2** falls out — every
+function reports `transform_used`, with `"none"` meaning none was applied, so
+"no transform" is now distinguishable from "field absent". `bayesian_survival()`
+reports `"none"` and `estimate_scale = "log time ratio"`; survival also carries an
+`interval_columns_override` because it reports hazard ratios in `CI_Lower` /
+`CI_Upper` rather than marginal means.
+
+## R6.3 The sniffing had already failed (dashboard R4.D5)
+
+Building the accessor immediately found a live bug. The dashboard's
+treatment-effects plot resolved its error bars with:
+
+```r
+intersect(c("lower.CL", "lower_CL", "Lower", "lower"), colnames(effects_df))[1]
+```
+
+`treatment_effects` contains **`Lower_CL`**, which matches none of those four. So
+`has_ci` was always `FALSE` and the plot silently fell back to SE-derived bars
+instead of the model's confidence interval — for as long as that plot has existed.
+
+This is the §K.2 pattern with a concrete cost: a failed sniff yields `NA`, the
+calling code takes a fallback, and nothing fails. It is also why the accessor
+returns a warning on mismatch rather than `NULL`.
+
+## R6.4 A limitation worth recording
+
+The dashboard's new version-skew check (§R4.D2) did **not** catch this round's
+feature addition, because I added `meta` to the backend without bumping the
+version — installed and source both read 0.11.0, so there was no skew to detect.
+The dashboard's contract tests caught it instead, failing on the missing field.
+
+The lesson is that version-based skew detection only works if versions are bumped
+when behaviour changes, and that the contract tests are the stronger of the two
+mechanisms because they check capability rather than a number.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| B7.1 | Bayesian/frequentist schema inconsistency | Minor | ✅ Fixed v0.12.0 — `$meta` provenance |
+| B7.2 | `transform_used` absent from some functions | Minor | ✅ Fixed v0.12.0 |
+| R6.3 | Dashboard error bars were SE-derived, not the model CI | Major | ✅ Fixed (dashboard R4.D5) |

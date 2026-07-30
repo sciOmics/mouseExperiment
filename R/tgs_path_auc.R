@@ -363,6 +363,17 @@ tgs_path_auc <- function(auc_analysis,
     # programmatic way to learn what scale the numbers are on. "none" here is
     # the truth for the AUC path (see R3.16).
     model_type_used      = "auc",
+    meta = me_result_meta(
+      analysis_type     = "Area under the curve (per-animal trapezoidal)",
+      model_type_used   = "auc",
+      inference         = "frequentist",
+      interval_type     = "confidence",
+      # R3.16 -- AUC is integrated on the RAW scale whatever `transform` says.
+      transform_used    = "none",
+      estimate_scale    = "AUC (volume x day, raw scale)",
+      comparison_family = comparison_spec$family,
+      p_adjust_method   = comparison_spec$p_adjust_method
+    ),
     comparison_family    = comparison_spec$family,
     p_adjust_method_used = comparison_spec$p_adjust_method,
     transform_used       = "none",

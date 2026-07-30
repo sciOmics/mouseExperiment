@@ -1013,6 +1013,17 @@ tumor_growth_statistics <- function(df,
       model                       = if (return_model) gam_fit else NULL,
       model_type_used             = "gam",
       transform_used              = transform,   # CODE_REVIEW.md R3.29
+      meta = me_result_meta(
+        analysis_type     = "Generalized additive mixed model (gamm4)",
+        model_type_used   = "gam",
+        inference         = "frequentist",
+        interval_type     = "confidence",
+        transform_used    = transform,
+        estimate_scale    = switch(transform, log = "log volume",
+                                   sqrt = "sqrt volume", "volume"),
+        comparison_family = comparison_spec$family,
+        p_adjust_method   = comparison_spec$p_adjust_method
+      ),
       comparison_family     = comparison_spec$family,
       p_adjust_method_used  = comparison_spec$p_adjust_method,
       anova                       = anova_table,
@@ -1341,6 +1352,19 @@ tumor_growth_statistics <- function(df,
       # what was requested.
       model_type_used = "lme4",
       transform_used  = transform,
+      # CODE_REVIEW.md B7.1 / B7.2 -- canonical provenance so consumers can
+      # interrogate the object instead of sniffing column names.
+      meta = me_result_meta(
+        analysis_type     = "Linear mixed-effects model",
+        model_type_used   = "lme4",
+        inference         = "frequentist",
+        interval_type     = "confidence",
+        transform_used    = transform,
+        estimate_scale    = switch(transform, log = "log volume",
+                                   sqrt = "sqrt volume", "volume"),
+        comparison_family = comparison_spec$family,
+        p_adjust_method   = comparison_spec$p_adjust_method
+      ),
       comparison_family     = comparison_spec$family,
       p_adjust_method_used  = comparison_spec$p_adjust_method,
       anova = anova_table,

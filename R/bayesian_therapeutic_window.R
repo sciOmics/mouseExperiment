@@ -452,6 +452,17 @@ bayesian_therapeutic_window <- function(
   # ── Return ─────────────────────────────────────────────────────────────────
   list(
     model_type_used = "bayes_twm",
+    meta = me_result_meta(
+      analysis_type   = "Bayesian therapeutic window (TG + BW posteriors)",
+      model_type_used = "bayes_twm",
+      inference       = "bayesian",
+      interval_type   = "credible",
+      # TWM combines a TG posterior (log volume) with a BW posterior (grams),
+      # so there is no single response transform. Report the TG one, which is
+      # what the TGI half is on, and name the composite scale explicitly.
+      transform_used  = tg_result$transform_used %||% "none",
+      estimate_scale  = "TWM (TGI / weight-loss %)"
+    ),
     twm_table       = twm_table,
     tgi_summary     = tgi_summary,
     wl_summary      = wl_summary,

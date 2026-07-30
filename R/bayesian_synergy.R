@@ -718,6 +718,14 @@ bayesian_synergy <- function(
   # ── Return ─────────────────────────────────────────────────────────────────
   out <- list(
     model_type_used     = "bayes_synergy",
+    meta = me_result_meta(
+      analysis_type   = "Bayesian synergy (brms)",
+      model_type_used = "bayes_synergy",
+      inference       = "bayesian",
+      interval_type   = "credible",
+      transform_used  = transform,
+      estimate_scale  = "fractional effect"
+    ),
     model               = if (isTRUE(return_model)) model else NULL,
     transform_used      = transform,
     tgi_summary         = tgi_summary,
@@ -1081,6 +1089,14 @@ bayesian_synergy_over_time <- function(
 
   list(
     model_type_used   = "bayes_synergy_ot",
+    meta = me_result_meta(
+      analysis_type   = "Bayesian synergy over time (brms)",
+      model_type_used = "bayes_synergy_ot",
+      inference       = "bayesian",
+      interval_type   = "credible",
+      transform_used  = transform,
+      estimate_scale  = "fractional effect"
+    ),
     model             = if (isTRUE(return_model)) model else NULL,
     transform_used    = transform,
     synergy_by_day    = synergy_by_day,

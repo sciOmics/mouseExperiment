@@ -1091,3 +1091,100 @@ test_that("H.3: tumor_growth_statistics runs it only when asked", {
   expect_true(is.finite(with_perm$permutation_test$p_value))
   expect_null(without$permutation_test)
 })
+
+# =============================================================================
+# B7.1 / B7.2 — canonical result provenance
+#
+# B7.1 asked for the treatment-effects schema to be harmonised. Renaming the
+# interval columns to match would be wrong: Lower_CL is a confidence limit and
+# Lower_CrI is a credible interval, and Round 1 §B1.4 separated them deliberately.
+# The actual defect is that a consumer cannot tell which it holds without guessing
+# at column names — so every result now carries a `meta` block that says.
+# =============================================================================
+
+meta_df <- function() {
+  set.seed(1)
+  d <- data.frame(
+    ID = rep(1:8, each = 5), Cage = rep(1:4, each = 10),
+    Treatment = rep(c("Control", "DrugA"), each = 20),
+    Day = rep(c(0, 5, 10, 15, 20), 8), stringsAsFactors = FALSE)
+  d$Volume <- exp(log(300) + 0.1 * d$Day -
+                    0.03 * d$Day * (d$Treatment == "DrugA") +
+                    stats::rnorm(nrow(d), 0, 0.25))
+  d
+}
+
+test_that("B7.1: every frequentist path reports canonical provenance", {
+  df <- meta_df()
+  for (mt in c("lme4", "auc")) {
+    r <- suppressWarnings(suppressMessages(tumor_growth_statistics(
+      df, model_type = mt, plots = FALSE, verbose = FALSE)))
+    m <- r$meta
+    expect_s3_class(m, "me_meta")
+    expect_identical(m$inference, "frequentist")
+    expect_identical(m$interval_type, "confidence")
+    expect_identical(unname(m$interval_columns[["lower"]]), "Lower_CL")
+    expect_identical(m$model_type_used, mt)
+    # Multiplicity provenance travels with the result.
+    expect_identical(m$comparison_family, "vs_reference")
+    expect_identical(m$p_adjust_method, "bonferroni")
+  }
+})
+
+test_that("B7.1: interval columns are read from meta, not guessed", {
+  df <- meta_df()
+  r <- suppressWarnings(suppressMessages(tumor_growth_statistics(
+    df, plots = FALSE, verbose = FALSE)))
+
+  ic <- me_interval_cols(r, r$treatment_effects)
+  expect_false(is.null(ic))
+  expect_identical(ic$lower, r$treatment_effects$Lower_CL)
+  expect_identical(ic$upper, r$treatment_effects$Upper_CL)
+
+  # A result whose meta disagrees with its own columns is a bug in the analysis
+  # function, and must warn rather than silently return NULL.
+  broken <- r
+  broken$meta$interval_columns <- c(lower = "Nope_L", upper = "Nope_U")
+  expect_warning(me_interval_cols(broken, r$treatment_effects),
+                 regexp = "not present")
+})
+
+test_that("B7.2: transform_used is always reported, never absent", {
+  df <- meta_df()
+  # The AUC path integrates on the raw scale whatever `transform` says (R3.16),
+  # and must say "none" rather than echo the request.
+  auc <- suppressWarnings(suppressMessages(tumor_growth_statistics(
+    df, model_type = "auc", transform = "log", plots = FALSE, verbose = FALSE)))
+  expect_identical(auc$meta$transform_used, "none")
+  expect_match(auc$meta$estimate_scale, "raw scale")
+
+  lme4_r <- suppressWarnings(suppressMessages(tumor_growth_statistics(
+    df, transform = "log", plots = FALSE, verbose = FALSE)))
+  expect_identical(lme4_r$meta$transform_used, "log")
+  expect_identical(lme4_r$meta$estimate_scale, "log volume")
+
+  # Never NULL — a consumer can always distinguish "none applied" from "missing".
+  for (r in list(auc, lme4_r)) {
+    expect_false(is.null(r$meta$transform_used))
+    expect_true(nzchar(r$meta$transform_used))
+  }
+})
+
+test_that("B7.1: survival declares that it reports hazard ratios, not means", {
+  set.seed(4)
+  sdf <- data.frame(
+    ID = 1:20, Cage = rep(1:5, each = 4),
+    Treatment = rep(c("Control", "DrugA"), each = 10),
+    Day = c(stats::rnorm(10, 15, 3), stats::rnorm(10, 24, 3)),
+    Survival_Censor = c(rep(1L, 9), 0L, rep(1L, 9), 0L),
+    stringsAsFactors = FALSE)
+  r <- suppressWarnings(suppressMessages(
+    survival_statistics(sdf, reference_group = "Control", verbose = FALSE)))
+
+  expect_s3_class(r$meta, "me_meta")
+  expect_identical(r$meta$estimate_scale, "hazard ratio")
+  # Its table legitimately differs from the treatment-effects schema, and the
+  # override names the columns it actually uses.
+  expect_identical(unname(r$meta$interval_columns_override[["lower"]]), "CI_Lower")
+  expect_identical(r$meta$transform_used, "none")
+})

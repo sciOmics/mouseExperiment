@@ -687,6 +687,16 @@ bayesian_dose_response <- function(
   list(
     model                    = if (isTRUE(return_model)) model else NULL,
     model_type_used          = "bayes_dr",
+    # B7.2 -- the response is TGI, already a ratio; no transform applied.
+    transform_used           = "none",
+    meta = me_result_meta(
+      analysis_type   = "Bayesian Hill/Emax dose-response (brms)",
+      model_type_used = "bayes_dr",
+      inference       = "bayesian",
+      interval_type   = "credible",
+      transform_used  = "none",
+      estimate_scale  = "TGI (fraction of control)"
+    ),
     summary                  = analysis_summary,
     posterior_summary        = posterior_summary,
     dr_parameters            = dr_parameters,
