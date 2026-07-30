@@ -71,6 +71,10 @@ survivalUI <- function(id) {
           uiOutput(ns("surv_endpoint_source_ui")),
 
           hr(),
+          # D.15 -- dosing marks on the KM curves.
+          dose_schedule_ui(ns, "surv"),
+
+          hr(),
           h5(strong("Natural Death")),
           checkboxInput(ns("surv_natural_death_as_event"),
             tagList("Treat natural death as event (recommended)",
@@ -450,6 +454,12 @@ survivalUI <- function(id) {
 #' @keywords internal
 survival_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
+
+  # D.15 -- surface dosing-schedule parse warnings. A mistyped arm name
+  # silently dropping its row is the failure this review has found five times.
+  output$surv_dosing_msg <- renderUI({
+    dose_schedule_msg_ui(input, "surv", ordered_surv_grps())
+  })
   
   # D.7: this was an unconditional `rv$surv_results <- NULL`. `rv` is created empty
   # in app.R and each module mounts once, so the assignment never cleared anything
@@ -1153,6 +1163,12 @@ survival_server <- function(id, rv) {
               fill = scales::alpha("white", 0.8), colour = NA))
       } else {
         km_obj$plot <- km_obj$plot + ggplot2::theme(legend.position = legend_pos)
+      }
+      # D.15 -- dosing marks. ggsurvplot returns a list whose $plot is the
+      # ggplot; annotating that leaves the risk table untouched.
+      if (inherits(km_obj$plot, "ggplot")) {
+        km_obj$plot <- apply_dose_schedule(km_obj$plot, input, "surv",
+                                           ordered_grps, pal)
       }
       km_obj
     }, error = function(e) rv$surv_results$km_plot)

@@ -4,6 +4,47 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.07.010] - 2026-07-30
+
+### Added — dosing schedules drawn onto the plots (D.15)
+
+Replaces the backend's removed `plot_treatments()`, which needed a schedule
+uploaded as its own file and a second panel kept aligned with the growth curve by
+hand. Its two schedule CSVs shipped here for months with nothing in the app able
+to open them.
+
+Dosing days are now entered as text in the sidebar and drawn in a strip below the
+plot, behind a toggle that is off by default. Available on the three time-axis
+plots: growth trajectories, body-weight trajectories (both the spaghetti and
+mean ± error variants), and Kaplan-Meier curves.
+
+- **Input.** A bare list — `1, 5, 9, 13` — marks every treated arm; one line per
+  arm (`DrugA: 1,5,9,13`) when schedules differ, in which case rows stack and
+  take their arm's colour. Dosing timing cannot be read from uploaded data: the
+  Dose column records how much, not when, and dosing days are usually not
+  measurement days. This is the one piece of study design that has to be typed.
+- **Marks.** Down-triangles for an intermittent schedule, a shaded window for a
+  continuous one, switching automatically above eight doses or at daily dosing,
+  and overridable. They sit below the panel rather than crossing it, so they
+  never obscure a curve.
+- **Feedback.** A mistyped arm name produces a warning banner beside the field
+  rather than a silently missing row — the §K.2 failure this review has found
+  five times. Annotation failure degrades to the unannotated plot; it never costs
+  the user their analysis.
+
+The Info tab documents the feature and one caveat worth stating plainly:
+separation appearing shortly after a dose mark is not evidence the dose caused
+it. With four doses and eight measurement days some separation will land near
+some dose by chance, and growth curves diverge steadily regardless. Onset timing
+needs a model with time-varying terms, not a visual coincidence.
+
+### Removed — the two treatment-schedule CSVs
+
+They ship no longer, and the demo-reachability exemption list is now empty — every
+file in `inst/sample_data/` is loadable from the selector.
+
+Suite: 557 → 621 passing, no skips.
+
 ## [26.07.009] - 2026-07-30
 
 Demo data that could not be loaded, and Info/Help tabs describing an app that no

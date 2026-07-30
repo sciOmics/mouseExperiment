@@ -3,17 +3,16 @@
 #
 # Two demo datasets shipped by the backend (`master_synthetic_data`,
 # `synthetic_data`) had no CSV here and no entry in the loader, so neither could
-# ever be selected. Two more files (`combo_treatment_schedule.csv`,
-# `dose_levels_treatment_schedule.csv`) sit in this package's own
-# `inst/sample_data/` with nothing in the app able to open them.
+# ever be selected. Two further files — the treatment schedules — sat in this
+# package's own `inst/sample_data/` with nothing in the app able to open them;
+# they were removed under D.15 when dosing moved onto the plots themselves.
 #
 # Nothing detected any of it, because a demo dataset that is never offered
 # produces no error — it simply is not there. That is the §K.2 shape again: the
 # absence is invisible.
 #
 # These tests close the loop in both directions: every file that ships must be
-# reachable or explicitly classified, and every loader entry must resolve to a
-# file that actually parses.
+# reachable, and every loader entry must resolve to a file that actually parses.
 # =============================================================================
 
 sample_dir <- function() {
@@ -35,14 +34,13 @@ loader_keys <- function() {
   sub('.*"([^"]+)".*', "\\1", files)
 }
 
-# Schedules are dosing tables (Treatment / Day / Dose), not measurement data.
-# Loading one as the main dataset would break every analysis, so they are
-# deliberately not in the demo selector. Listed here so the completeness test
-# below distinguishes "intentionally not offered" from "forgotten".
-SCHEDULE_FILES <- c("combo_treatment_schedule.csv",
-                    "dose_levels_treatment_schedule.csv")
+# D.15: the two schedule CSVs that used to sit here unreachable were removed
+# along with plot_treatments(). Dosing information is now entered as text in the
+# sidebar and drawn into the plots themselves, so there is nothing left that
+# ships without being loadable — the exemption list is empty and should stay so.
+SCHEDULE_FILES <- character(0)
 
-test_that("D.12: every shipped sample file is either loadable or a known schedule", {
+test_that("D.12: every shipped sample file is loadable from the demo selector", {
   shipped <- list.files(sample_dir(), pattern = "\\.csv$")
   offered <- loader_keys()
   unreachable <- setdiff(shipped, c(offered, SCHEDULE_FILES))

@@ -444,6 +444,12 @@ tumorGrowthUI <- function(id) {
                    "endpoint metrics now extrapolate inside the model, which ",
                    "propagates that uncertainty (CODE_REVIEW.md R3.9 / G.4)."),
 
+          # D.15 -- dosing-schedule annotation. Replaces plot_treatments(), which
+          # needed a separate uploaded schedule file and a second panel kept
+          # aligned by hand. Dosing timing is not in the measurement data, so it
+          # is supplied here as text.
+          dose_schedule_ui(ns, "tg"),
+
           # 6. Cage Effect Handling (LME4 only)
           conditionalPanel(ns = ns,
             condition = "input.tg_model_type == 'lme4'",
@@ -909,8 +915,24 @@ tumorGrowthUI <- function(id) {
                       tags$dd("How the chosen family is corrected: Dunnett (exact multivariate-t, default), Tukey HSD, Bonferroni, Holm, Benjamini-Hochberg FDR, or None."),
                       tags$dt("Extrapolation Points"),
                       tags$dd(strong("Affects the growth-trajectory plots only."), " Number of recent timepoints used to estimate a slope when projecting the curve for animals that left the study early; projected segments are drawn dashed. Set to 0 to disable. This no longer feeds any statistical model — treating an imputed point as measured data made standard errors ignore the imputation."),
+                      tags$dt("Dosing schedule"),
+                      tags$dd("Optional. Marks the days doses were given in a strip below the plot \u2014 individual down-triangles for an intermittent schedule, a shaded window for a continuous one, switching automatically at eight doses or daily dosing. Enter a bare list (",
+                              code("1, 5, 9, 13"), ") to mark every arm, or one line per arm (",
+                              code("DrugA: 1,5,9,13"), ") when schedules differ, in which case the rows stack and take their arm's colour. ",
+                              strong("Dosing days cannot be read from your data"),
+                              " \u2014 the Dose column records how much, not when, and dosing days are usually not measurement days \u2014 so this is the one piece of study design you have to type in. The marks sit below the panel rather than crossing it, so they never obscure a curve."),
                       tags$dt("Time Column"),
                       tags$dd("Numeric study day, or calculated from a date column mapped in Data Upload (days elapsed from first observation).")
+                    ),
+                    div(class = "alert alert-warning", style = "font-size:0.9em; margin-bottom:0;",
+                      icon("triangle-exclamation"), " ",
+                      strong("Reading dose marks."), " The annotation is descriptive context, not evidence. ",
+                      "Curves separating shortly after a dose mark is the single easiest thing to over-read ",
+                      "on these plots: with four doses and eight measurement days, some separation will fall ",
+                      "near some dose by chance, and tumour growth curves diverge steadily whether or not ",
+                      "anything was administered that week. Onset timing is a claim about ",
+                      em("when"), " an effect began, and answering it needs a model with time-varying terms ",
+                      "\u2014 the GAMM path, or per-day contrasts \u2014 not a visual coincidence."
                     )
                   )
                 ),

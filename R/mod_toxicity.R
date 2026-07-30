@@ -435,6 +435,9 @@ toxicityUI <- function(id) {
               column(3,
                 wellPanel(
                   conditionalPanel(ns = ns, "output.tox_model_type_val == 'bw'",
+                    # D.15 -- dosing marks on the body-weight trajectory.
+                    dose_schedule_ui(ns, "tox"),
+
                     selectInput(ns("tox_bw_plot_selector"), "Plot Type",
                       choices = c(
                         "Body Weight Trajectory"  = "trajectory",
@@ -759,6 +762,12 @@ toxicityUI <- function(id) {
 #' @keywords internal
 toxicity_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
+
+  # D.15 -- surface dosing-schedule parse warnings. A mistyped arm name
+  # silently dropping its row is the failure this review has found five times.
+  output$tox_dosing_msg <- renderUI({
+    dose_schedule_msg_ui(input, "tox", ordered_tox_grps())
+  })
 
   # D.7: this was an unconditional `rv$tox_results <- NULL`. `rv` is created empty
   # in app.R and each module mounts once, so the assignment never cleared anything

@@ -1413,3 +1413,44 @@ fails a test run.
 | D.15 | Treatment schedules unreachable; `plot_treatments()` unexposed | Enhancement | Open — needs a product decision |
 
 Suite: 478 → 557 passing, no skips.
+
+---
+
+# Review Round 12 (v26.07.010 — 2026-07-30)
+
+## D.15 resolved: dosing schedules moved onto the plots
+
+The backend removed `plot_treatments()` and its two schedule datasets; this side
+removes the schedule CSVs and adds the replacement UI. See the backend's Round 12
+entry for why removal was right and for the measurement that shaped the design —
+dosing timing is not recoverable from measurement data, so the user must supply
+it, which makes a text field correct rather than lazy.
+
+**Controls.** `dose_schedule_ui()` renders a toggle (off by default), a days
+field, a style selector and a message slot, and is mounted on all three
+time-axis modules. `apply_dose_schedule()` is one line at each plot's return
+point. The toxicity trajectory has **two** branches — spaghetti and mean ± error
+— and both are annotated; wiring only one would have made the marks vanish when
+the user switched plot type, which is the sort of half-application a test that
+counts call sites catches and a reading does not.
+
+**Feedback rather than silence.** `resolve_dose_schedule()` captures parser
+warnings and each module renders them beside the field. A mistyped arm name
+dropping its row silently is the §K.2 pattern that has now accounted for five
+findings in this review (K.2, R3.D4, R4.D5, R8.6, D.8); it is not repeated here.
+
+**Failure is non-destructive.** An annotation error is logged and the plot is
+returned unannotated. A decorative feature must never be able to take out the
+analysis it decorates.
+
+**The demo exemption list is now empty.** D.12 classified the two schedule CSVs
+as "shipped but intentionally not offered" so the reachability test could tell
+that apart from an oversight. With the files removed, `SCHEDULE_FILES` is
+`character(0)` and every file in `inst/sample_data/` is loadable — which is the
+stronger invariant and the one now enforced.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| D.15 | Schedule data unreachable; no dosing context on plots | Enhancement | ✅ Resolved v26.07.010 |
+
+Suite: 557 → 621 passing, no skips.

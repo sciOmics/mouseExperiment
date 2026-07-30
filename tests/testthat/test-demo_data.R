@@ -25,25 +25,21 @@ find_demo <- function(filename) {
 # ======================================================
 # File existence
 # ======================================================
+# D.15: the two treatment-schedule CSVs were removed with plot_treatments().
+# Dosing is now entered as text in the sidebar and drawn into the plots, so no
+# schedule file ships and none should be asserted here.
+
 test_that("combo_treatment_synthetic_data.csv exists", {
   p <- find_demo("combo_treatment_synthetic_data.csv")
   expect_true(!is.null(p) && file.exists(p))
 })
 
-test_that("combo_treatment_schedule.csv exists", {
-  p <- find_demo("combo_treatment_schedule.csv")
-  expect_true(!is.null(p) && file.exists(p))
-})
 
 test_that("dose_levels_synthetic_data.csv exists", {
   p <- find_demo("dose_levels_synthetic_data.csv")
   expect_true(!is.null(p) && file.exists(p))
 })
 
-test_that("dose_levels_treatment_schedule.csv exists", {
-  p <- find_demo("dose_levels_treatment_schedule.csv")
-  expect_true(!is.null(p) && file.exists(p))
-})
 
 # ======================================================
 # Load and basic structure
@@ -75,23 +71,7 @@ test_that("dose_levels data: loads without error and has Dose column", {
   }
 })
 
-test_that("combo treatment schedule: loads and has Date + Treatment columns", {
-  p <- find_demo("combo_treatment_schedule.csv")
-  skip_if(is.null(p), "Demo file not found")
 
-  df <- utils::read.csv(p, stringsAsFactors = FALSE)
-  expect_true("Date"      %in% colnames(df), info = "Missing Date column in schedule")
-  expect_true("Treatment" %in% colnames(df), info = "Missing Treatment column in schedule")
-})
-
-test_that("dose_levels treatment schedule: loads and has Date + Treatment columns", {
-  p <- find_demo("dose_levels_treatment_schedule.csv")
-  skip_if(is.null(p), "Demo file not found")
-
-  df <- utils::read.csv(p, stringsAsFactors = FALSE)
-  expect_true("Date"      %in% colnames(df), info = "Missing Date column in schedule")
-  expect_true("Treatment" %in% colnames(df), info = "Missing Treatment column in schedule")
-})
 
 # ======================================================
 # Data integrity: combo dataset
