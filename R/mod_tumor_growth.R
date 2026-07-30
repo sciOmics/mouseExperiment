@@ -435,9 +435,14 @@ tumor_growth_server <- function(id, rv) {
               effect_col <- if (length(num_cols) > 0) num_cols[1] else NA
             }
             if (!is.na(label_col) && !is.na(effect_col)) {
-              # Detect CI or SE columns for error bars
-              lower_col <- intersect(c("lower.CL", "lower_CL", "Lower", "lower"), colnames(effects_df))[1]
-              upper_col <- intersect(c("upper.CL", "upper_CL", "Upper", "upper"), colnames(effects_df))[1]
+              # CODE_REVIEW.md R4.D5 -- read the interval columns the backend
+              # says it used. The old sniff list omitted "Lower_CL", which is
+              # exactly what treatment_effects contains, so has_ci was always
+              # FALSE here and these bars were SE-derived rather than the model's
+              # confidence interval.
+              ic <- resolve_interval_cols(effects_df, rv$tg_results)
+              lower_col <- ic$lower
+              upper_col <- ic$upper
               se_col    <- intersect(c("SE", "se", "SEM", "sem"), colnames(effects_df))[1]
               has_ci    <- !is.na(lower_col) && !is.na(upper_col)
               has_se    <- !is.na(se_col)
@@ -1405,8 +1410,9 @@ tumor_growth_server <- function(id, rv) {
     model_type_used  <- rv$tg_results$model_type_used %||% "lme4"
     if (model_type_used == "lme4" && transform_used == "log") {
       est_col <- intersect(c("estimate", "Estimate"), colnames(comp_df))[1]
-      lo_col  <- intersect(c("lower.CL", "lower_CL", "Lower"), colnames(comp_df))[1]
-      hi_col  <- intersect(c("upper.CL", "upper_CL", "Upper"), colnames(comp_df))[1]
+      ic_c    <- resolve_interval_cols(comp_df, rv$tg_results)
+      lo_col  <- ic_c$lower
+      hi_col  <- ic_c$upper
       if (!is.na(est_col)) {
         comp_df$Fold_Change <- round(exp(as.numeric(comp_df[[est_col]])), 3)
         if (!is.na(lo_col)) comp_df$Fold_Change_Lower <- round(exp(as.numeric(comp_df[[lo_col]])), 3)

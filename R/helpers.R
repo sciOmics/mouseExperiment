@@ -1182,3 +1182,45 @@ comparisons_title <- function(res, family_label) {
   scope_txt <- if (is.null(scope)) "" else paste0(" — ", scope)
   paste0("Comparisons: ", family_label, adj_txt, scope_txt)
 }
+
+#' Resolve a result's interval columns, preferring the backend's declaration
+#'
+#' CODE_REVIEW.md R4.D5. Column sniffing —
+#' `intersect(c("lower.CL", "lower_CL", "Lower", "lower"), colnames(df))[1]` —
+#' is the §K.2 pattern: a miss yields `NA`, the calling code takes a silent
+#' fallback, and nothing fails. It had already gone wrong. The backend's
+#' `treatment_effects` carries `Lower_CL`, which matches none of the four names
+#' above, so the Treatment Effects plot had been drawing SE-derived error bars
+#' instead of the model's confidence interval.
+#'
+#' Backend v0.12.0 attaches `meta$interval_columns` declaring the names it used.
+#' Prefer that; fall back to sniffing only for results from an older backend, and
+#' widen the sniff list to include the names that were being missed.
+#'
+#' @param df The data frame to read.
+#' @param result Optional full result object carrying `$meta`.
+#' @return A list with `lower` / `upper` column names, either `NA` when absent.
+#' @keywords internal
+resolve_interval_cols <- function(df, result = NULL) {
+  meta <- result$meta
+  if (!is.null(meta) && !identical(meta$interval_type, "none")) {
+    lo <- meta$interval_columns[["lower"]]
+    hi <- meta$interval_columns[["upper"]]
+    if (!is.na(lo) && all(c(lo, hi) %in% names(df))) {
+      return(list(lower = lo, upper = hi))
+    }
+    # Some tables in a result use different names from the headline one (e.g.
+    # survival's CI_Lower/CI_Upper); honour an override when present.
+    ov <- meta$interval_columns_override
+    if (!is.null(ov) && all(ov %in% names(df))) {
+      return(list(lower = ov[["lower"]], upper = ov[["upper"]]))
+    }
+  }
+  # Legacy fallback. Note "Lower_CL"/"Upper_CL" and "Lower_CrI"/"Upper_CrI" —
+  # both were absent from the original list.
+  lo <- intersect(c("Lower_CL", "Lower_CrI", "lower.CL", "lower_CL",
+                    "Lower", "lower"), colnames(df))[1]
+  hi <- intersect(c("Upper_CL", "Upper_CrI", "upper.CL", "upper_CL",
+                    "Upper", "upper"), colnames(df))[1]
+  list(lower = lo, upper = hi)
+}

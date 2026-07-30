@@ -36,7 +36,7 @@ Imports:
     promises (>= 1.2.0),
     brms (>= 2.19),
     bayesplot (>= 1.10),
-    mouseExperiment (>= 0.10.0)
+    mouseExperiment (>= 0.12.0)
 Suggests:
     testthat (>= 3.0.0),
     shinytest2 (>= 0.2.0),

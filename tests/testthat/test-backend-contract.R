@@ -153,3 +153,55 @@ test_that("contract: comparison provenance fields the summary panel prints exist
   expect_false(is.null(res$summary$model_specification$cage_placement))
   expect_false(is.null(res$cage_analysis$structure))
 })
+
+# ---- R4.D5: interval columns resolved from meta, not sniffed -----------------
+
+test_that("R4.D5: the old sniff list missed the column the backend actually uses", {
+  res <- suppressWarnings(suppressMessages(
+    mouseExperiment::tumor_growth_statistics(contract_df(), plots = FALSE,
+                                             verbose = FALSE)))
+  te <- res$treatment_effects
+
+  # The historical sniff list. This is the bug: treatment_effects carries
+  # "Lower_CL", which matches none of these, so has_ci was always FALSE and the
+  # Treatment Effects plot drew SE-derived bars instead of the model CI.
+  legacy <- intersect(c("lower.CL", "lower_CL", "Lower", "lower"), colnames(te))[1]
+  expect_true(is.na(legacy),
+              info = "if this ever matches, the historical bug is gone upstream")
+  expect_true("Lower_CL" %in% colnames(te))
+
+  # The replacement resolves it from the backend's own declaration.
+  ic <- resolve_interval_cols(te, res)
+  expect_identical(ic$lower, "Lower_CL")
+  expect_identical(ic$upper, "Upper_CL")
+})
+
+test_that("R4.D5: resolution falls back cleanly for a meta-less result", {
+  res <- suppressWarnings(suppressMessages(
+    mouseExperiment::tumor_growth_statistics(contract_df(), plots = FALSE,
+                                             verbose = FALSE)))
+  te <- res$treatment_effects
+
+  # An older backend returns no meta; the widened fallback list must still find
+  # the columns rather than silently yielding NA.
+  ic <- resolve_interval_cols(te, result = NULL)
+  expect_identical(ic$lower, "Lower_CL")
+  expect_identical(ic$upper, "Upper_CL")
+
+  # A Bayesian-style table uses CrI names; both routes must handle it.
+  bayes_like <- data.frame(Group = "A", Adjusted_Mean = 1,
+                           Lower_CrI = 0.5, Upper_CrI = 1.5)
+  ic2 <- resolve_interval_cols(bayes_like, result = NULL)
+  expect_identical(ic2$lower, "Lower_CrI")
+})
+
+test_that("R4.D5: meta declares which kind of interval it is", {
+  res <- suppressWarnings(suppressMessages(
+    mouseExperiment::tumor_growth_statistics(contract_df(), plots = FALSE,
+                                             verbose = FALSE)))
+  # A consumer can now label the axis correctly without inspecting names:
+  # "confidence" vs "credible" is a real distinction, not a formatting choice.
+  expect_identical(res$meta$inference, "frequentist")
+  expect_identical(res$meta$interval_type, "confidence")
+  expect_identical(res$meta$estimate_scale, "log volume")
+})
