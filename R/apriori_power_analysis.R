@@ -171,22 +171,15 @@ apriori_power_analysis <- function(effect_size   = NULL,
     # Cohen's f directly rather than Cohen's d.
     f_val <- effect_size / sqrt(2)
     function(n, a) {
-      if (requireNamespace("pwr", quietly = TRUE)) {
-        tryCatch(
-          pwr::pwr.anova.test(k = n_groups, n = n, f = f_val,
-                              sig.level = a)$power,
-          error = function(e) NA_real_
-        )
-      } else {
-        # Non-central F approximation
-        tryCatch({
-          df1 <- n_groups - 1L
-          df2 <- n_groups * (n - 1L)
-          ncp  <- n * n_groups * f_val^2
-          crit <- stats::qf(1 - a, df1, df2)
-          1 - stats::pf(crit, df1, df2, ncp = ncp)
-        }, error = function(e) NA_real_)
-      }
+      # pwr is a hard Import as of v0.10.0. The former fallback here was a
+      # hand-rolled non-central F approximation that returned *different numbers*
+      # from pwr, so whether a user happened to have pwr installed silently
+      # changed the reported power. One numerical path now.
+      tryCatch(
+        pwr::pwr.anova.test(k = n_groups, n = n, f = f_val,
+                            sig.level = a)$power,
+        error = function(e) NA_real_
+      )
     }
   }
 
@@ -199,21 +192,13 @@ apriori_power_analysis <- function(effect_size   = NULL,
       )
     } else {
       f_val <- effect_size / sqrt(2)
-      if (requireNamespace("pwr", quietly = TRUE)) {
-        tryCatch(
-          ceiling(pwr::pwr.anova.test(k = n_groups, f = f_val,
-                                      sig.level = a, power = pwr)$n),
-          error = function(e) NA_integer_
-        )
-      } else {
-        # Binary search fallback
-        lo <- 2L; hi <- 10000L
-        while (lo < hi) {
-          mid <- (lo + hi) %/% 2L
-          if (isTRUE(power_fn(mid, a) >= pwr)) hi <- mid else lo <- mid + 1L
-        }
-        lo
-      }
+      # See above — pwr is required, so the binary-search-over-approximation
+      # fallback that used to live here is gone.
+      tryCatch(
+        ceiling(pwr::pwr.anova.test(k = n_groups, f = f_val,
+                                    sig.level = a, power = pwr)$n),
+        error = function(e) NA_integer_
+      )
     }
   }
 
@@ -296,11 +281,9 @@ apriori_power_analysis <- function(effect_size   = NULL,
       } else {
         n_fn_local <- function(a2, pwr2) {
           f2 <- d_i / sqrt(2)
-          if (requireNamespace("pwr", quietly = TRUE))
-            tryCatch(ceiling(pwr::pwr.anova.test(k = n_groups, f = f2,
-                                                 sig.level = a2, power = pwr2)$n),
-                     error = function(e) NA_integer_)
-          else NA_integer_
+          tryCatch(ceiling(pwr::pwr.anova.test(k = n_groups, f = f2,
+                                               sig.level = a2, power = pwr2)$n),
+                   error = function(e) NA_integer_)
         }
         n_fn_local(ref_a, ref_tp)
       }

@@ -5,6 +5,83 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-07-29
+
+Dependency declarations (CODE_REVIEW.md Round 4). The statistical dependencies are
+now **required rather than optional**, because optionality was not free — it was
+the mechanism that let two Critical Bayesian bugs survive five releases behind a
+test skip (§R3-L).
+
+### BREAKING — installation now requires a Stan toolchain
+
+`brms` (and therefore `rstan`/`StanHeaders`) moved from `Suggests` to `Imports`, so
+installing this package now needs a working C++ toolchain and pulls the Stan
+stack. That is a real cost, accepted deliberately: roughly half the advertised
+feature surface is Bayesian, the VPS image already installs it, and its being
+optional is precisely what hid the defects. `library(mouseExperiment)` will fail on
+a machine without Stan where it previously loaded with the Bayesian functions
+non-functional.
+
+### Moved `Suggests` → `Imports`
+
+`bayesplot`, `brms`, `clinfun`, `coin`, `gamm4`, `mgcv`, `pwr`, `ggpubr`.
+
+### Added to `Imports` — these were used but declared nowhere (R4.1)
+
+- **`posterior`** — `posterior::as_draws_array()` in four Bayesian files. v0.4.13
+  deliberately switched the trace-plot code *to* this interface when
+  `brms::as.array` was withdrawn, so the package has depended directly on it ever
+  since without declaring it. It arrived transitively via brms, which brms is free
+  to change at any release.
+- **`rstan`** — `rstan::get_bfmi()` in the E-BFMI NUTS diagnostic.
+- **`tools`** — `tools::toTitleCase()` in `bayesian_survival()`. Ships with R but
+  is not attached by default.
+
+### Removed from `Imports` (R4.2)
+
+`cowplot` and `MASS` had no `pkg::` call, no bare call, no `NAMESPACE` entry and no
+`@import` anywhere — three installs forced for nothing. `survminer` is used only by
+`vignettes/mouseExperiment_combo_demo.qmd`, so it moved to `Suggests` where
+vignette-only dependencies belong.
+
+### Fixed
+
+- **`importFrom(ggpubr, ggarrange)` with ggpubr in `Suggests` (R4.3)** — an
+  `R CMD check` violation, and the declared namespace imports disagreed with the
+  declared dependencies.
+- **`pwr` had never actually run (R4.4).** It was absent from the development
+  environment, so `apriori_power_analysis(n_groups >= 3)` always took its fallback
+  — a hand-rolled non-central F approximation — and the `pwr` branch had never
+  executed. The two return **different numbers**, so whether a user had `pwr`
+  installed silently changed the reported power and required N. Same shape for
+  `car` (its dead fallback ran `stats::anova()` instead of
+  `car::Anova(type = "III")`, a *different hypothesis test* for a `merMod`) and
+  `ggpubr` (its fallback returned a *different plot*). All three fallbacks are gone;
+  there is one numerical path.
+
+### Removed dead code
+
+Making a package required makes its `requireNamespace()` guard unreachable: 14
+`if (!requireNamespace(x)) stop(...)` blocks, 6 single-line `return(NULL)` guards,
+and 4 dead clauses inside compound conditions.
+
+Nine `if (requireNamespace(x)) { build plot } else { NULL }` blocks in the Bayesian
+plot sections were **deliberately left** — their dead branch yields a NULL plot, so
+they are inert rather than wrong, and collapsing each means restructuring plot
+assembly for no functional gain. Tracked in §R4.6.
+
+### Tests — the change that actually delivers
+
+**26 `skip_if_not_installed()` calls removed and all 7 `skip_bayes_*` / `skip_gam`
+helpers neutralised to no-ops.** No test can now silently skip a required
+dependency. The `DESCRIPTION` edit alone would have left the suite free to keep
+skipping exactly the paths where the bugs live.
+
+`cmdstanr` remains in `Suggests` — a user-selected *alternative* Stan backend, not
+on CRAN, and the code already fails loudly with install instructions when it is
+chosen and missing. `Additional_repositories: https://stan-dev.r-universe.dev`
+added so tooling can resolve it.
+
 ## [0.9.0] - 2026-07-29
 
 Round 3, final batch: Bayesian prior scaling, permutation tests, and the

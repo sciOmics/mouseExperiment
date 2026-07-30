@@ -124,7 +124,6 @@ test_that("mean volume decreases with dose in summary_table", {
 })
 
 test_that("cross-check: Jonckheere trend test directly (clinfun) also significant", {
-  skip_if_not_installed("clinfun")
   df <- make_dose_response()
 
   # Cast to per-dose vectors for direct clinfun call

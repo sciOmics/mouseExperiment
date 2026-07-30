@@ -315,9 +315,6 @@ repeated_measures_anova <- function(df,
                                     transform = c("log", "sqrt", "none")) {
   transform <- match.arg(transform)
   
-  if (!requireNamespace("lmerTest", quietly = TRUE)) {
-    stop("Package 'lmerTest' is required for Satterthwaite ANOVA.", call. = FALSE)
-  }
   
   # Validate columns
   required <- c(time_column, volume_column, treatment_column, id_column)

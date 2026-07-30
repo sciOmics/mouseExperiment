@@ -13,14 +13,15 @@
 # wider prior gives the sampler more room to explore on a weakly-identified
 # parameter; the old prior mixed better precisely because it was informative and
 # in the wrong place.
-# All tests are skipped when brms is not installed.
 # 2 chains × 500 iterations keeps each run under 90 s on CI while still
 # exercising every code path through the return list.
 # =============================================================================
 
-skip_bayes_bw <- function() {
-  skip_if_not_installed("brms")
-}
+# brms, bayesplot, gamm4 and mgcv are hard Imports as of v0.10.0, so this
+# helper can no longer skip. Retained as a no-op because the call sites are
+# numerous, and because a skip here is exactly what let bayesian_synergy()
+# stay broken for five releases (CODE_REVIEW.md R3-L).
+skip_bayes_bw <- function() invisible(NULL)
 
 local({
   .cached_result <- NULL
@@ -215,7 +216,6 @@ test_that("bayesian_body_weight: model is NULL when return_model = FALSE", {
 
 test_that("bayesian_body_weight: weight_trajectory_plot is a ggplot when plots = TRUE", {
   skip_bayes_bw()
-  skip_if_not_installed("bayesplot")
   res <- suppressWarnings(suppressMessages(
     bayesian_body_weight(
       make_bw_simple(),

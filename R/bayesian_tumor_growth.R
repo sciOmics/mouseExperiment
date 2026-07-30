@@ -229,12 +229,6 @@ bayesian_tumor_growth <- function(
 ) {
 
   # ── Dependency checks ──────────────────────────────────────────────────────
-  if (!requireNamespace("brms", quietly = TRUE)) {
-    stop(
-      "Package 'brms' is required for Bayesian analysis.\n",
-      "Install it with: install.packages('brms')"
-    )
-  }
 
   transform                    <- match.arg(transform)
   model_type                   <- match.arg(model_type)
@@ -498,9 +492,7 @@ bayesian_tumor_growth <- function(
   # Other paths (intercept_only, GAM) fall back to OLS.
   brms_growth_rates <- NULL
   if (model_type == "lmm" &&
-      random_effects_specification == "slope" &&
-      requireNamespace("brms", quietly = TRUE) &&
-      requireNamespace("posterior", quietly = TRUE)) {
+      random_effects_specification == "slope") {
     brms_growth_rates <- tryCatch(
       tg_brms_per_animal_growth_rates(model, treatment_column,
                                        id_column, time_column,

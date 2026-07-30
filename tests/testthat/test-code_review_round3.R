@@ -221,7 +221,6 @@ test_that("R3.18: TWM is continuous across the noise floor for any noise_floor",
 # ---- R3.31 ------------------------------------------------------------------
 
 test_that("R3.31: Jonckheere-Terpstra trend test actually runs", {
-  skip_if_not_installed("clinfun")
 
   # Deliberately UNEQUAL dose spacing — the case contr.poly gets wrong and JT
   # is immune to, since it uses only the ordering of the dose levels.
@@ -252,7 +251,6 @@ test_that("R3.31: Jonckheere-Terpstra trend test actually runs", {
 })
 
 test_that("R3.31: JT direction is derived from the data, not hardcoded", {
-  skip_if_not_installed("clinfun")
   set.seed(4)
   doses <- c(0, 10, 30, 100)
   # Stimulatory: volume INCREASES with dose.
@@ -550,7 +548,6 @@ make_bw_df <- function() {
 }
 
 test_that("R3.4: the body-weight GAM path returns a populated EMM table", {
-  skip_if_not_installed("gamm4")
   res <- suppressWarnings(suppressMessages(analyze_body_weight(
     make_bw_df(), volume_column = "Volume", cage_column = "Cage",
     model_type = "gam", reference_group = "Control", volume_units = "mm3")))
@@ -801,14 +798,12 @@ test_that("R3.22: the AUC omnibus test is Welch's, matching its pairwise tests",
                        var.equal = FALSE)$p.value,
     tolerance = 1e-10)
   # Variance homogeneity is reported rather than assumed.
-  skip_if_not_installed("car")
   expect_false(is.null(r$variance_test))
 })
 
 # ---- H.4 --------------------------------------------------------------------
 
 test_that("H.4: the log-rank fallback uses an exact permutation test", {
-  skip_if_not_installed("coin")
   df <- make_surv_df()
 
   perm <- suppressWarnings(suppressMessages(survival_statistics(
@@ -930,7 +925,6 @@ test_that("R3.8: prior scales are data-driven and time-unit invariant", {
 })
 
 test_that("R3.8: interaction coefficients get their own prior", {
-  skip_if_not_installed("brms")
   set.seed(5)
   d <- data.frame(ID = rep(1:12, each = 6),
                   Treatment = rep(c("Control", "DrugA"), each = 36),

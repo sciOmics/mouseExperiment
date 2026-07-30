@@ -138,12 +138,6 @@ bayesian_body_weight <- function(
 ) {
 
   # ── Dependency check ───────────────────────────────────────────────────────
-  if (!requireNamespace("brms", quietly = TRUE)) {
-    stop(
-      "Package 'brms' is required for Bayesian analysis.\n",
-      "Install it with: install.packages('brms')"
-    )
-  }
 
   transform                    <- match.arg(transform)
   random_effects_specification <- match.arg(random_effects_specification)

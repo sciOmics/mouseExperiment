@@ -189,12 +189,6 @@ analyze_body_weight <- function(df,
   # GAM path — fit via gamm4 with a group-specific smoother on Day and
   # return early with a compatible result-list shape.
   if (model_type == "gam") {
-    if (!requireNamespace("gamm4", quietly = TRUE)) {
-      stop(
-        "Package 'gamm4' is required for model_type = 'gam'.\n",
-        "Install it with: install.packages('gamm4')"
-      )
-    }
     n_days <- length(unique(wd$Day))
     k_val  <- max(3L, min(10L, n_days - 1L))
 

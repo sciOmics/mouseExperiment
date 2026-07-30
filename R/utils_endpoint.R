@@ -187,10 +187,6 @@ endpoint_volumes <- function(df,
 #' @noRd
 #' @keywords internal
 model_endpoint_means <- function(d, ep_day) {
-  if (!requireNamespace("lme4", quietly = TRUE) ||
-      !requireNamespace("emmeans", quietly = TRUE)) {
-    return(NULL)
-  }
   pos <- d$Volume[is.finite(d$Volume) & d$Volume > 0]
   if (length(pos) == 0L) return(NULL)
 

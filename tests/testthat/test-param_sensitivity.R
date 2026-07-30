@@ -111,7 +111,6 @@ test_that("survival_statistics: ph_test is returned on the standard-Cox path", {
 })
 
 test_that("analyze_body_weight: cage_column actually enters the model formula", {
-  skip_if_not_installed("lme4")
   df <- make_bw_simple()
   res_no_cage <- suppressWarnings(suppressMessages(
     analyze_body_weight(df, weight_column = "Weight",

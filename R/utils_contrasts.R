@@ -130,8 +130,6 @@ resolve_comparison_spec <- function(comparison_family,
 #' @keywords internal
 build_requested_contrasts <- function(emm, spec, reference_group = NULL,
                                       custom_contrasts = NULL, by = NULL) {
-  if (!requireNamespace("emmeans", quietly = TRUE)) return(NULL)
-
   lv <- tryCatch(levels(emm)[[1]], error = function(e) NULL)
 
   tryCatch(

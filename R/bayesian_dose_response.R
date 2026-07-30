@@ -161,12 +161,6 @@ bayesian_dose_response <- function(
 ) {
 
   # ── Dependency check ───────────────────────────────────────────────────────
-  if (!requireNamespace("brms", quietly = TRUE)) {
-    stop(
-      "Package 'brms' is required for Bayesian analysis.\n",
-      "Install it with: install.packages('brms')"
-    )
-  }
 
   prior_strength <- match.arg(prior_strength)
   backend        <- resolve_brms_backend(backend)

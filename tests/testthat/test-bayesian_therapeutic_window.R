@@ -8,10 +8,13 @@
 #
 # Both models fitted with 2 chains × 600 iterations and cached in a local()
 # so heavy MCMC runs happen only once per test session.
-# All tests are skipped when brms is not installed.
 # =============================================================================
 
-skip_bayes_twm <- function() skip_if_not_installed("brms")
+# brms, bayesplot, gamm4 and mgcv are hard Imports as of v0.10.0, so this
+# helper can no longer skip. Retained as a no-op because the call sites are
+# numerous, and because a skip here is exactly what let bayesian_synergy()
+# stay broken for five releases (CODE_REVIEW.md R3-L).
+skip_bayes_twm <- function() invisible(NULL)
 
 # Fixture: TG data where TreatmentA inhibits tumors (TGI > 0)
 make_tg_for_twm <- function() {

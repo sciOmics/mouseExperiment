@@ -82,7 +82,7 @@ make_nuts_diagnostics <- function(model) {
     clean           = NA,
     stringsAsFactors = FALSE
   )
-  if (!requireNamespace("brms", quietly = TRUE) || is.null(model)) return(default)
+  if (is.null(model)) return(default)
 
   np <- tryCatch(brms::nuts_params(model), error = function(e) NULL)
   if (is.null(np) || !is.data.frame(np) || !"Parameter" %in% colnames(np)) {
@@ -206,7 +206,7 @@ resolve_brms_backend <- function(backend = c("rstan", "cmdstanr")) {
 #' (\code{\link{bayes_loo}} for that).
 #' @noRd
 bayes_ppc_coverage <- function(model, response_var = NULL) {
-  if (!requireNamespace("brms", quietly = TRUE) || is.null(model)) return(NULL)
+  if (is.null(model)) return(NULL)
   yrep <- tryCatch(brms::posterior_predict(model),
                    error = function(e) NULL,
                    warning = function(w) NULL)
@@ -255,8 +255,7 @@ bayes_ppc_coverage <- function(model, response_var = NULL) {
 #' @noRd
 emm_p_direction <- function(emm_or_contrast, n_contrasts = NULL) {
   default <- if (is.null(n_contrasts)) NA_real_ else rep(NA_real_, n_contrasts)
-  if (!requireNamespace("emmeans", quietly = TRUE) ||
-      is.null(emm_or_contrast)) return(default)
+  if (is.null(emm_or_contrast)) return(default)
   draws_mat <- tryCatch({
     mc <- emmeans::as.mcmc.emmGrid(emm_or_contrast)
     as.matrix(mc)
@@ -278,7 +277,7 @@ emm_p_direction <- function(emm_or_contrast, n_contrasts = NULL) {
 #' \code{NULL} when the model can't be evaluated.
 #' @noRd
 bayes_r2_summary <- function(model) {
-  if (!requireNamespace("brms", quietly = TRUE) || is.null(model)) return(NULL)
+  if (is.null(model)) return(NULL)
   r2 <- tryCatch(brms::bayes_R2(model, summary = TRUE),
                  error = function(e) NULL,
                  warning = function(w) NULL)
@@ -316,7 +315,7 @@ bayes_r2_summary <- function(model) {
 #'
 #' @noRd
 bayes_loo <- function(model) {
-  if (!requireNamespace("brms", quietly = TRUE) || is.null(model)) return(NULL)
+  if (is.null(model)) return(NULL)
   loo_obj <- tryCatch(brms::loo(model, save_psis = TRUE),
                       error = function(e) NULL,
                       warning = function(w) NULL)
@@ -573,9 +572,6 @@ bayes_prior_scales <- function(y, tt, prior_strength) {
 
 bayes_scaled_priors <- function(formula, data, response, prior_strength,
                                 time_column = "Day", include_sd = TRUE) {
-  if (!requireNamespace("brms", quietly = TRUE)) {
-    stop("brms is required to build priors.", call. = FALSE)
-  }
   sc        <- bayes_prior_scales(data[[response]], data[[time_column]],
                                   prior_strength)
   b_sd      <- sc$b_sd_total

@@ -343,12 +343,6 @@ bayesian_synergy <- function(
 ) {
 
   # ── Dependency check ───────────────────────────────────────────────────────
-  if (!requireNamespace("brms", quietly = TRUE)) {
-    stop(
-      "'brms' is required for bayesian_synergy(). ",
-      "Install it with: install.packages('brms')"
-    )
-  }
 
   transform  <- match.arg(transform)
   re_spec    <- match.arg(random_effects_specification)
@@ -827,12 +821,6 @@ bayesian_synergy_over_time <- function(
   backend                      = c("rstan", "cmdstanr")
 ) {
 
-  if (!requireNamespace("brms", quietly = TRUE)) {
-    stop(
-      "'brms' is required for bayesian_synergy_over_time(). ",
-      "Install it with: install.packages('brms')"
-    )
-  }
 
   transform  <- match.arg(transform)
   re_spec    <- match.arg(random_effects_specification)

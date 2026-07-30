@@ -8,11 +8,11 @@
 # installed so CI without these heavy deps stays green.
 # =============================================================================
 
-skip_gam <- function() {
-  skip_if_not_installed("gamm4")
-  skip_if_not_installed("mgcv")
-  skip_if_not_installed("emmeans")
-}
+# brms, bayesplot, gamm4 and mgcv are hard Imports as of v0.10.0, so this
+# helper can no longer skip. Retained as a no-op because the call sites are
+# numerous, and because a skip here is exactly what let bayesian_synergy()
+# stay broken for five releases (CODE_REVIEW.md R3-L).
+skip_gam <- function() invisible(NULL)
 
 # Build longitudinal data with a non-linear "treated" trajectory so GAM is the
 # right tool. Control grows exponentially; Treatment grows exponentially then
@@ -172,7 +172,6 @@ test_that("analyze_body_weight(gam) returns expected structure", {
 
 test_that("bayesian_tumor_growth(gam) returns model_type_used 'bayes_tg_gam'", {
   skip_gam()
-  skip_if_not_installed("brms")
 
   df <- make_nonlinear_tg()
   res <- suppressWarnings(suppressMessages(

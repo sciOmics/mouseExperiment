@@ -4,13 +4,14 @@
 # Uses make_dose_response() fixture: Control (dose=0, mean vol≈500) +
 # DrugX at doses 1, 5, 25 (mean vols ≈380, 220, 90), 4 mice/dose.
 # Ground-truth: EC50 ≈ 4–5, Emax ≈ 0.88, Hill ≈ 1.5–2.
-# All tests are skipped when brms is not installed.
 # 2 chains × 600 iterations keeps each run under 90 s on CI.
 # =============================================================================
 
-skip_bayes_dr <- function() {
-  skip_if_not_installed("brms")
-}
+# brms, bayesplot, gamm4 and mgcv are hard Imports as of v0.10.0, so this
+# helper can no longer skip. Retained as a no-op because the call sites are
+# numerous, and because a skip here is exactly what let bayesian_synergy()
+# stay broken for five releases (CODE_REVIEW.md R3-L).
+skip_bayes_dr <- function() invisible(NULL)
 
 local({
   .cached_result <- NULL

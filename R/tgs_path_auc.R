@@ -88,18 +88,16 @@ tgs_path_auc <- function(auc_analysis,
   # Levene, robust to non-normality). Reported, not acted on: the analysis
   # already does not assume equal variances.
   variance_test <- tryCatch({
-    if (requireNamespace("car", quietly = TRUE)) {
-      lt <- car::leveneTest(AUC ~ factor(Treatment),
-                            data = auc_analysis$individual, center = stats::median)
-      data.frame(
-        Test    = "Brown-Forsythe (median-centred Levene)",
-        F_value = lt[1, "F value"],
-        df_num  = lt[1, "Df"],
-        df_den  = lt[2, "Df"],
-        p_value = lt[1, "Pr(>F)"],
-        stringsAsFactors = FALSE
-      )
-    } else NULL
+    lt <- car::leveneTest(AUC ~ factor(Treatment),
+                          data = auc_analysis$individual, center = stats::median)
+    data.frame(
+      Test    = "Brown-Forsythe (median-centred Levene)",
+      F_value = lt[1, "F value"],
+      df_num  = lt[1, "Df"],
+      df_den  = lt[2, "Df"],
+      p_value = lt[1, "Pr(>F)"],
+      stringsAsFactors = FALSE
+    )
   }, error = function(e) NULL)
 
   # Create pairwise comparisons for AUC using Welch's t-tests

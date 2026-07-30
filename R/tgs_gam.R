@@ -37,18 +37,6 @@ tgs_fit_gamm4_model <- function(analysis_df,
                                 verbose,
                                 include_necrotic_covariate = FALSE) {
 
-  if (!requireNamespace("gamm4", quietly = TRUE)) {
-    stop(
-      "Package 'gamm4' is required for model_type = 'gam'.\n",
-      "Install it with: install.packages('gamm4')"
-    )
-  }
-  if (!requireNamespace("mgcv", quietly = TRUE)) {
-    stop(
-      "Package 'mgcv' is required for model_type = 'gam'.\n",
-      "Install it with: install.packages('mgcv')"
-    )
-  }
 
   bt <- function(x) paste0("`", x, "`")
 
@@ -182,8 +170,6 @@ tgs_fit_gamm4_model <- function(analysis_df,
 #' @noRd
 tgs_gam_treatment_effects <- function(gam_obj, treatment_column, time_column,
                                       mean_day, reference_group) {
-  if (!requireNamespace("emmeans", quietly = TRUE)) return(NULL)
-
   emm <- tryCatch(
     emmeans::emmeans(
       gam_obj,
@@ -229,8 +215,6 @@ tgs_gam_treatment_effects <- function(gam_obj, treatment_column, time_column,
 #' @keywords internal
 #' @noRd
 tgs_gam_emm_time <- function(gam_obj, treatment_column, time_column, day_range) {
-  if (!requireNamespace("emmeans", quietly = TRUE)) return(NULL)
-
   quant_days <- unique(round(stats::quantile(
     day_range, probs = c(0, 0.25, 0.5, 0.75, 1), type = 1
   )))
@@ -267,8 +251,6 @@ tgs_gam_pairwise <- function(gam_obj, treatment_column, time_column,
                              day_range, reference_group,
                              comparison_spec = NULL,
                              custom_contrasts = NULL) {
-  if (!requireNamespace("emmeans", quietly = TRUE)) return(NULL)
-
   # CODE_REVIEW.md R3.1 — this used to hardcode trt.vs.ctrl with emmeans'
   # default by-day dunnettx, so `p_adjust_method` never reached it and the
   # family was silently "within one day" while five correlated days were

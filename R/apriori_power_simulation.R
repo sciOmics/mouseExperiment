@@ -86,8 +86,6 @@ apriori_power_simulation <- function(n_per_group          = c(5L, 8L, 10L, 12L, 
                                      seed                 = NULL,
                                      progress_fn          = NULL) {
 
-  if (!requireNamespace("lme4", quietly = TRUE))
-    stop("Package 'lme4' is required for simulation-based a priori power analysis.")
 
   n_groups     <- as.integer(n_groups)
   n_simulations <- as.integer(n_simulations)

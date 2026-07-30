@@ -749,9 +749,6 @@ tumor_growth_statistics <- function(df,
                                   auc_bootstrap_seed = NULL,
                                   auc_permutations = 0L) {
   # Check for required packages
-  if (!requireNamespace("lme4", quietly = TRUE)) {
-    stop("Please install the lme4 package: install.packages('lme4')")
-  }
   
   # Match arguments
   transform <- match.arg(transform)
@@ -1107,14 +1104,12 @@ tumor_growth_statistics <- function(df,
     ))
   } else {
     # Create ANOVA table
-    if (requireNamespace("car", quietly = TRUE)) {
-      anova_table <- car::Anova(model, type = "III")
-      anova_type <- "Type III ANOVA (car package)"
-    } else {
-      anova_table <- stats::anova(model)
-      anova_type <- "ANOVA (stats package)"
-      warning("Package 'car' not available. Using stats::anova instead of Type III tests.")
-    }
+    # car is a hard Import (and always was). The dead fallback ran
+    # stats::anova(), which for a merMod is a *different test* from
+    # car::Anova(type = "III") -- so a missing car would silently have changed
+    # which hypothesis was tested, not merely the formatting.
+    anova_table <- car::Anova(model, type = "III")
+    anova_type <- "Type III ANOVA (car package)"
     
     # Create pairwise comparisons
     if (requireNamespace("emmeans", quietly = TRUE)) {

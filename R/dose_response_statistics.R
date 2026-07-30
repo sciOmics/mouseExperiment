@@ -556,13 +556,6 @@ analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_
 #' @keywords internal
 run_jonckheere_test <- function(analysis_data, dose_column = "Dose",
                                 volume_column = "Volume", verbose = TRUE) {
-  if (!requireNamespace("clinfun", quietly = TRUE)) {
-    if (isTRUE(verbose)) {
-      message("Jonckheere-Terpstra trend test skipped: install the 'clinfun' ",
-              "package to enable it (install.packages('clinfun')).")
-    }
-    return(NULL)
-  }
 
   doses   <- as.numeric(analysis_data[[dose_column]])
   volumes <- as.numeric(analysis_data[[volume_column]])

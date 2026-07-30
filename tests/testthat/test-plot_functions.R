@@ -192,7 +192,6 @@ test_that("plot_combination_index returns a ggplot", {
 # 8. plot_synergy_combined
 # ===========================================================================
 test_that("plot_synergy_combined returns a ggplot or ggarrange object", {
-  skip_if_not_installed("ggpubr")
 
   df  <- make_synergy_multi_timepoint()
   res <- call_synergy_ot(df)
@@ -230,7 +229,6 @@ test_that("plot_synergy_trend returns a ggplot", {
 # 10. plot_caterpillar
 # ===========================================================================
 test_that("plot_caterpillar returns a ggplot", {
-  skip_if_not_installed("lme4")
 
   df  <- make_tg_simple()
   res <- call_tgs(df)
@@ -244,7 +242,6 @@ test_that("plot_caterpillar returns a ggplot", {
 })
 
 test_that("plot_caterpillar works with show_intercept = FALSE", {
-  skip_if_not_installed("lme4")
 
   df  <- make_tg_simple()
   res <- call_tgs(df)

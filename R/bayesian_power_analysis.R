@@ -120,12 +120,6 @@ bayesian_power_analysis <- function(
   backend             = c("rstan", "cmdstanr")
 ) {
 
-  if (!requireNamespace("brms", quietly = TRUE)) {
-    stop(
-      "'brms' is required for bayesian_power_analysis(). ",
-      "Install it with: install.packages('brms')"
-    )
-  }
 
   prior_str     <- match.arg(prior_strength)
   re_spec       <- match.arg(random_effects_specification)

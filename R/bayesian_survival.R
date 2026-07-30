@@ -170,9 +170,6 @@ bayesian_survival <- function(
 ) {
 
   # ── Dependency check ───────────────────────────────────────────────────────
-  if (!requireNamespace("brms", quietly = TRUE)) {
-    stop("Package 'brms' is required.\nInstall with: install.packages('brms')")
-  }
 
   family         <- match.arg(family)
   prior_strength <- match.arg(prior_strength)

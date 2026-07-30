@@ -8,10 +8,13 @@
 #
 # make_synergy_synergistic() is used for the P(synergy) smoke tests.
 # 2 chains × 600 iterations keeps each run < 90 s on CI.
-# All tests are skipped when brms is not installed.
 # =============================================================================
 
-skip_bayes_syn <- function() skip_if_not_installed("brms")
+# brms, bayesplot, gamm4 and mgcv are hard Imports as of v0.10.0, so this
+# helper can no longer skip. Retained as a no-op because the call sites are
+# numerous, and because a skip here is exactly what let bayesian_synergy()
+# stay broken for five releases (CODE_REVIEW.md R3-L).
+skip_bayes_syn <- function() invisible(NULL)
 
 local({
   .cached_additive <- NULL

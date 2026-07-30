@@ -653,13 +653,9 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     #
     # Note the division of labour with Firth: Firth corrects the small-sample
     # bias of the *estimate*; permutation gives a valid *p-value*.
-    use_perm <- isTRUE(permutation_logrank) &&
-      requireNamespace("coin", quietly = TRUE)
-    if (isTRUE(permutation_logrank) && !use_perm) {
-      message("permutation_logrank = TRUE but the 'coin' package is not ",
-              "installed; using the asymptotic log-rank test. ",
-              "install.packages('coin') to enable it.")
-    }
+    # coin is a hard Import as of v0.10.0, so this is purely the caller's
+    # choice now -- there is no "coin is missing" degradation path left.
+    use_perm <- isTRUE(permutation_logrank)
     logrank_flavour <- if (use_perm) {
       "permutation log-rank (coin)"
     } else "asymptotic log-rank (survdiff)"

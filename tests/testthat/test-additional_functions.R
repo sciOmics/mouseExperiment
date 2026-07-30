@@ -234,7 +234,6 @@ test_that("prepare_dose_data errors on non-existent time point", {
 # ===========================================================================
 
 test_that("repeated_measures_anova returns an me_result", {
-  skip_if_not_installed("lmerTest")
 
   df  <- make_tg_simple()
   res <- suppressWarnings(suppressMessages(
@@ -247,7 +246,6 @@ test_that("repeated_measures_anova returns an me_result", {
 })
 
 test_that("repeated_measures_anova results contain anova_table", {
-  skip_if_not_installed("lmerTest")
 
   df  <- make_tg_simple()
   res <- suppressWarnings(suppressMessages(
@@ -261,7 +259,6 @@ test_that("repeated_measures_anova results contain anova_table", {
 })
 
 test_that("repeated_measures_anova detects significant interaction (make_tg_simple)", {
-  skip_if_not_installed("lmerTest")
 
   df  <- make_tg_simple()
   res <- suppressWarnings(suppressMessages(
@@ -282,7 +279,6 @@ test_that("repeated_measures_anova detects significant interaction (make_tg_simp
 })
 
 test_that("repeated_measures_anova respects transform argument", {
-  skip_if_not_installed("lmerTest")
 
   df <- make_tg_simple()
   res_log <- suppressWarnings(suppressMessages(
@@ -297,7 +293,6 @@ test_that("repeated_measures_anova respects transform argument", {
 })
 
 test_that("repeated_measures_anova errors on missing columns", {
-  skip_if_not_installed("lmerTest")
 
   df <- make_tg_simple()
   expect_error(

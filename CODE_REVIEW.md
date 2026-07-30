@@ -2720,3 +2720,144 @@ calibrated for the wrong design, which is worse than not having it.
   sensitivity check rather than a guaranteed red flag.
 - **B7.1 / B7.2** (Bayesian vs frequentist result-schema harmonisation) remain
   open from Round 1 and are now the largest consistency gap left.
+
+
+---
+
+# Review Round 4 — Dependency declarations (2026-07-29)
+
+**Scope:** `DESCRIPTION` correctness in both R packages, prompted by the maintainer's
+decision to make the statistical dependencies required rather than optional. The
+audit turned up defects in both directions — undeclared packages that are used,
+and declared packages that are not.
+
+The motivating problem is §R3-L: `brms` sat in `Suggests`, the Bayesian tests
+skipped wholesale without it, and two Critical bugs survived five releases behind
+that skip. Optionality was not free — it was the mechanism.
+
+---
+
+## R4.1 Packages used in `R/` but declared nowhere — **Critical**
+
+| Package | Use | Consequence |
+|---|---|---|
+| `posterior` | `posterior::as_draws_array()` in 4 Bayesian files | MCMC trace / posterior-density plots |
+| `rstan` | `rstan::get_bfmi()` in the E-BFMI NUTS diagnostic | Energy diagnostic (§A.2) |
+| `tools` | `tools::toTitleCase()` in `bayesian_survival()` | Family label formatting |
+
+All three worked only because they arrive transitively — `posterior` and `rstan`
+via brms, `tools` because it ships with R but is not attached by default. Relying
+on a transitive dependency is fragile: brms is free to drop `posterior` from its
+own Imports at any release, and `R CMD check` flags all three. `posterior` is
+the one that matters most — v0.4.13 specifically switched the trace-plot code
+*to* `posterior::as_draws_array` because `brms::as.array` was withdrawn, so the
+package now depends directly on an interface it never declared.
+
+Note `loo` appears in a `\code{loo::loo_compare()}` documentation reference only.
+That is not a dependency and is correctly left undeclared.
+
+## R4.2 Packages declared in `Imports` and used nowhere — **Major**
+
+`cowplot`, `MASS`, and `survminer` were in `Imports` with **no** `pkg::` call, no
+bare call, no `NAMESPACE` entry and no `@import`. They forced three installs for
+nothing (`survminer` is not cheap — it pulls its own dependency tree).
+
+`survminer` turned out to be used by `vignettes/mouseExperiment_combo_demo.qmd`
+(`survminer::ggsurvplot`), so it moved to `Suggests` rather than being dropped —
+vignette-only dependencies belong there. `cowplot` and `MASS` are used nowhere at
+all and were removed.
+
+## R4.3 `importFrom(ggpubr, ggarrange)` in NAMESPACE while ggpubr sat in Suggests — **Major**
+
+An `@importFrom` on a `Suggests` package is an `R CMD check` violation
+("Namespace dependency not required"). It also meant the package's declared
+namespace imports and its declared dependencies disagreed with each other.
+Resolved by moving `ggpubr` to `Imports`, which is where its usage always implied
+it belonged.
+
+## R4.4 `pwr` was never installed here, so the ANOVA power path had never run — **Major**
+
+Discovered while verifying the new `Imports` were installable: `pwr` was absent
+from the development environment. `apriori_power_analysis()` with
+`n_groups >= 3` therefore always took its fallback — a hand-rolled non-central F
+approximation — and the `pwr` branch had *never executed*.
+
+The two branches return **different numbers**. Whether a user had `pwr` installed
+silently changed the reported power and required N. This is the same
+silent-numerical-difference class as §R3.16 (AUC claiming a transform it did not
+apply) and §R3.19 (`log1p` vs `log`), and it is exactly what "optional
+dependency with a fallback" buys you.
+
+The same shape appeared for `car`: its dead fallback ran `stats::anova()` instead
+of `car::Anova(type = "III")`, which for a `merMod` is a **different hypothesis
+test**, not a different formatting. And for `ggpubr`, whose fallback returned a
+*different plot* (trend only, not the combined figure).
+
+## R4.5 The dashboard test suite was running against a stale installed backend — **Major (process)**
+
+`devtools::load_all()` on the dashboard resolves `Imports: mouseExperiment` against
+the **installed** library, not the sibling source tree. The installed version was
+**0.4.10** while the source under review was 0.9.0 — six releases apart.
+
+So the dashboard's "210 passing" was passing against a backend from before the
+entire Round 3 effort. Any dashboard test that exercises backend behaviour was
+testing code nobody had changed. This is the dashboard analogue of the brms skip:
+a green suite that is not testing what it appears to test.
+
+**Fix:** install the backend from source before running dashboard tests, and add
+that step to any CI lane. Consider `Remotes:` or a documented
+`devtools::install("../mouseExperiment")` preamble so the coupling is explicit.
+
+---
+
+## R4.6 Resolution
+
+**Moved `Suggests` → `Imports`** (statistical functionality; silent degradation
+was the failure mode): `bayesplot`, `brms`, `clinfun`, `coin`, `gamm4`, `mgcv`,
+`pwr`, `ggpubr`. **Added to `Imports`** (were undeclared): `posterior`, `rstan`,
+`tools`.
+
+**Kept in `Suggests`** (genuinely optional at runtime): `covr`, `knitr`,
+`rmarkdown`, `testthat`, `withr` — build and test tooling, correctly optional —
+plus `survminer` (vignette-only) and `cmdstanr`. `cmdstanr` stays optional because
+it is a *user-selected alternative* Stan backend, is not on CRAN, and the code
+already fails loudly with install instructions when it is chosen and missing.
+`Additional_repositories: https://stan-dev.r-universe.dev` was added so tooling
+can resolve it.
+
+**Removed** (used nowhere): `cowplot`, `MASS`.
+
+**Dashboard:** `brms`, `bayesplot`, `future`, `promises` moved to `Imports` — the
+async Bayesian path is not optional if the app advertises Bayesian modes — and the
+`mouseExperiment` floor raised to `>= 0.10.0`.
+
+### Dead code removed with the guards
+
+Making a package required makes its `requireNamespace()` guard unreachable.
+Removed: 14 `if (!requireNamespace(x)) stop(...)` blocks, 6 single-line
+`return(NULL)` guards, 4 dead clauses inside compound conditions, and 5 dead
+"install brms" banners in the dashboard. Every fallback branch that computed a
+*different answer* — `pwr`, `car`, `ggpubr`, `clinfun`, `coin` — was removed so
+there is one numerical path.
+
+**Deliberately left:** 9 `if (requireNamespace(x)) { build plot } else { NULL }`
+blocks in the Bayesian plot sections. Their dead branch yields a NULL plot, so
+they are inert rather than wrong, and collapsing each one means restructuring
+plot assembly for no functional gain. Cosmetic cleanup, tracked here rather than
+risked now.
+
+### The change that actually delivers
+
+**26 `skip_if_not_installed()` calls removed and all 7 `skip_bayes_*` / `skip_gam`
+helpers neutralised to no-ops.** No test in the suite can now silently skip a
+required dependency. This is the point of the exercise: the DESCRIPTION edit alone
+would have left the suite free to keep skipping the paths where the bugs live.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| R4.1 | `posterior`, `rstan`, `tools` used but declared nowhere | **Critical** | ✅ Fixed v0.10.0 |
+| R4.2 | `cowplot`, `MASS`, `survminer` declared but unused | Major | ✅ Fixed v0.10.0 |
+| R4.3 | `importFrom(ggpubr)` while ggpubr in Suggests | Major | ✅ Fixed v0.10.0 |
+| R4.4 | `pwr` never installed; ANOVA power path never ran; fallbacks give different numbers | Major | ✅ Fixed v0.10.0 |
+| R4.5 | Dashboard suite ran against installed backend 0.4.10, not the source | Major (process) | ⚠ Documented; needs a CI step |
+| R4.6 | 26 test skips + 29 dead guards removed | Process | ✅ Fixed v0.10.0 |

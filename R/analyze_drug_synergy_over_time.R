@@ -478,14 +478,12 @@ plot_synergy_combined <- function(synergy_results, custom_title = NULL, custom_c
                                   ifelse(is.list(custom_title), custom_title$ci, custom_title))
   
   # Combine the plots
-  if (requireNamespace("ggpubr", quietly = TRUE)) {
-    combined_plot <- ggpubr::ggarrange(trend_plot, ci_plot, 
-                                     ncol = 1, nrow = 2, 
-                                     common.legend = FALSE,
-                                     heights = c(2, 1))
-    return(combined_plot)
-  } else {
-    warning("Package 'ggpubr' is required for creating combined plots. Returning trend plot only.")
-    return(trend_plot)
-  }
+  # ggpubr is a hard Import as of v0.10.0 (it was already in NAMESPACE via
+  # @importFrom while sitting in Suggests, which is an R CMD check violation).
+  # The dead fallback returned the trend plot alone, so a missing ggpubr silently
+  # returned a *different plot* than documented.
+  ggpubr::ggarrange(trend_plot, ci_plot,
+                    ncol = 1, nrow = 2,
+                    common.legend = FALSE,
+                    heights = c(2, 1))
 }

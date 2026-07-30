@@ -111,8 +111,6 @@ build_random_effects_qq_plot <- function(model,
   if (is.null(model)) return(NULL)
   if (!inherits(model, "lmerMod")) return(NULL)
   if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
-  if (!requireNamespace("lme4", quietly = TRUE))    return(NULL)
-
   tryCatch({
     re_list <- lme4::ranef(model)
     if (length(re_list) == 0L) return(NULL)
@@ -180,8 +178,6 @@ build_random_effects_qq_plot <- function(model,
 build_lmm_influence <- function(model) {
   if (is.null(model)) return(NULL)
   if (!inherits(model, "lmerMod")) return(NULL)
-  if (!requireNamespace("lme4", quietly = TRUE)) return(NULL)
-
   tryCatch({
     # Per-observation influence — most informative case-deletion view.
     infl <- lme4::influence(model, obs = TRUE)
