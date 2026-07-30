@@ -4,6 +4,63 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.07.004] - 2026-07-30
+
+### Added — the Round 3/5 backend outputs are now visible
+
+Six result fields the backend added were being ignored by the UI. Five are now
+shown, one partially.
+
+- **Synergy Metrics** — bootstrap interval table under the verdict, with an explicit
+  callout saying whether the Bliss-excess 95 % interval excludes zero. That callout
+  is the point: the verdict is a categorical label derived from three group means,
+  and a "Strong Synergy" whose interval spans zero was previously indistinguishable
+  on screen from one that does not. Plus per-arm attrition and an endpoint-estimand
+  selector.
+- **Therapeutic Window** — the table is sorted by TWM, so it reads as a ranking. A
+  note now compares the top two arms' intervals and says outright when they overlap,
+  because at typical group sizes they usually do and the order is not resolvable.
+  Plus attrition, endpoint day, and the estimand used.
+- **Weight-loss KM** — a competing-risks warning when animals left before the study
+  ended, stating that 1 − KM *overstates* weight-loss incidence in that case, plus a
+  censoring breakdown by type. (The Aalen-Johansen curve is in the result object but
+  not yet plotted.)
+- **ANOVA tab** — the Brown-Forsythe variance check, framed as "was the
+  unequal-variance choice needed" rather than a gate, since the AUC path uses Welch's
+  tests either way.
+- **ANOVA tab** — the H.3 randomisation test, opt-in via a sidebar checkbox that
+  requires you to state the unit randomised. Three interpretive aids matter more than
+  the p-value: a warning when the asymptotic p-value is >100× smaller than the
+  randomisation one (the norm at these group sizes), a warning when the design cannot
+  attain p < 0.05 at all, and the unit and exchangeable-unit count stated plainly.
+- **Endpoint estimand selectors** in both the Synergy and Toxicity sidebars,
+  defaulting to model-based, with the survivor-bias magnitude quoted (~23 points
+  versus ~5 on a simulated study) so the default is justified rather than asserted.
+
+`cage_column` is now passed to `weight_loss_threshold()` so reused IDs across cages
+are not collapsed into one subject (backend R3.25).
+
+### Added — backend contract tests
+
+`test-backend-contract.R`: 39 assertions that call the backend the way the dashboard
+does and verify every field the new renderers read exists with the expected name.
+This is the first test here that checks the dashboard/backend *interface* rather than
+module initialisation.
+
+It closes a specific gap. The new renderers read ~20 field names off result objects
+and nothing checked them; a rename upstream would have silently blanked a panel —
+the same failure class as §R3.D4 (the GAM tab that could never populate) and §R4.D2
+(a suite passing against a six-release-stale backend).
+
+### Tests
+
+251 passing (was 212), 0 failing.
+
+**Still the substantive gap:** §I.1 and §I.2. The contract tests verify the
+interface, not the Shiny reactives, so the render logic itself — the interval
+comparison, the overlap check, the floor warning — is still only verified by reading
+it. Driving those through `shiny::testServer` is the next step.
+
 ## [26.07.003] - 2026-07-30
 
 ### Fixed — R4.D2: tests could silently run against a stale backend

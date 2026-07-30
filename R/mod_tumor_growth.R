@@ -295,6 +295,14 @@ tumor_growth_server <- function(id, rv) {
         # extrapolation_points is deprecated in backend v0.8.0 — the model-based
         # endpoint means extrapolate inside the model and carry the uncertainty.
         # Plot-side extrapolation is unaffected.
+        # Backend H.3 -- only construct a perm_spec when the user opted in and
+        # declared the unit.
+        permutation_test = if (isTRUE(input$tg_run_perm)) {
+          mouseExperiment::perm_spec(
+            unit   = input$tg_perm_unit %||% "mouse",
+            n_perm = as.integer(input$tg_perm_n %||% 999L),
+            seed   = 20260730L)
+        } else NULL,
         necrotic_column   = rv$necrotic_col,
         necrotic_handling = input$tg_necrotic_handling %||% "none",
         return_model = TRUE,
@@ -1228,6 +1236,96 @@ tumor_growth_server <- function(id, rv) {
         "The ", em("Treatment:Time"), " interaction row is the most biologically informative: a significant interaction means treatment groups diverge in their growth trajectories over time, not just in overall volume."
       )
     }
+  })
+
+  # ── Welch ANOVA variance check + randomisation test (backend R3.22, H.3) ────
+
+  output$tg_variance_test_ui <- renderUI({
+    req(rv$tg_results)
+    if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$variance_test)) return(NULL)
+    vt <- rv$tg_results$variance_test
+    p_v <- suppressWarnings(as.numeric(vt$p_value[1]))
+    tagList(
+      tags$hr(),
+      h4("Variance homogeneity across groups"),
+      p(class = "text-muted",
+        "Brown-Forsythe (median-centred Levene) test. The AUC path uses Welch's ",
+        "ANOVA and Welch's pairwise t-tests, which do not assume equal variances, ",
+        "so this is reported rather than acted on \u2014 it tells you whether the ",
+        "unequal-variance choice was needed."),
+      if (is.finite(p_v)) {
+        status_alert(
+          if (p_v < 0.05) {
+            sprintf(paste0("Variances differ across groups (p = %.4g). Welch's ",
+                           "unequal-variance tests are the right choice here."), p_v)
+          } else {
+            sprintf(paste0("No evidence of unequal variances (p = %.3g). Welch's ",
+                           "tests remain valid and cost little power."), p_v)
+          },
+          "info")
+      }
+    )
+  })
+
+  output$tg_variance_test_table <- renderDT({
+    req(rv$tg_results)
+    if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$variance_test)) return(NULL)
+    datatable(format_df_for_display(as.data.frame(rv$tg_results$variance_test)),
+              options = list(paging = FALSE, searching = FALSE), rownames = FALSE)
+  })
+
+  output$tg_perm_test_ui <- renderUI({
+    req(rv$tg_results)
+    if (isTRUE(rv$tg_results$error)) return(NULL)
+    pt <- rv$tg_results$permutation_test
+    if (is.null(pt)) {
+      return(tagList(
+        tags$hr(),
+        h4("Randomisation test"),
+        p(class = "text-muted",
+          "Not run. Enable it in the sidebar to test the treatment \u00d7 time ",
+          "interaction without relying on the denominator-df approximation or on ",
+          "normally-distributed random effects. You must state the unit that was ",
+          "randomised \u2014 animals or cages \u2014 because the test is only valid if it ",
+          "mirrors how the study assigned treatment.")
+      ))
+    }
+
+    floor_note <- if (is.finite(pt$min_attainable_p) && pt$min_attainable_p > 0.05) {
+      status_alert(sprintf(paste0(
+        "This design cannot produce p < 0.05 at the %s level: %d %ss in these group ",
+        "sizes give only %.0f distinct statistic values, so the smallest attainable ",
+        "p-value is %.3f. A non-significant result here is a statement about the ",
+        "design's resolution, not about the treatment."),
+        pt$unit, pt$n_units, pt$unit, pt$n_distinct_statistics, pt$min_attainable_p),
+        "warning")
+    } else NULL
+
+    tagList(
+      tags$hr(),
+      h4("Randomisation test of the treatment \u00d7 time interaction"),
+      p(class = "text-muted", pt$method),
+      status_alert(sprintf(
+        "Permutation p = %.4f (%s). Asymptotic likelihood-ratio p = %.3g.",
+        pt$p_value,
+        if (isTRUE(pt$exhaustive)) "exact \u2014 every assignment enumerated"
+        else paste0(pt$n_perm_converged, " permutations"),
+        pt$lrt_p_asymptotic),
+        if (pt$p_value < 0.05) "success" else "info"),
+      if (is.finite(pt$lrt_p_asymptotic) && pt$lrt_p_asymptotic > 0 &&
+          pt$p_value / pt$lrt_p_asymptotic > 100) {
+        status_alert(paste0(
+          "The asymptotic p-value is more than 100\u00d7 smaller than the ",
+          "randomisation p-value. At these group sizes the chi-square ",
+          "approximation to the mixed-model likelihood-ratio test is unreliable, ",
+          "and the randomisation result is the one to report."),
+          "warning")
+      },
+      floor_note,
+      p(class = "text-muted",
+        strong("Unit randomised: "), pt$unit,
+        " \u2014 ", pt$n_units, " exchangeable units.")
+    )
   })
 
   output$tg_anova_table <- renderDT({

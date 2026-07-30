@@ -152,7 +152,29 @@ toxicityUI <- function(id) {
               hr(),
               h5(strong("Safety Threshold")),
               sliderInput(ns("tox_et_safety_threshold"), "Safety threshold (%)",
-                          min = 5, max = 40, value = 20, step = 1)
+                          min = 5, max = 40, value = 20, step = 1),
+              hr(),
+              # CODE_REVIEW.md backend R3.5 / G.3 + R3.6 / R3.7.
+              h5(strong("Endpoint & Uncertainty")),
+              selectInput(ns("tox_endpoint_method"), "Endpoint estimand",
+                choices = c(
+                  "Model-based (recommended)" = "model",
+                  "Each animal's last observation" = "last_obs",
+                  "Survivors at the endpoint day (legacy)" = "survivors"),
+                selected = "model"),
+              helpText(
+                "Animals leave these studies because their tumours grew, so ",
+                "restricting to survivors selects the slower growers \u2014 hardest ",
+                "in the control arm, which biases TGI downward. ",
+                strong("Model-based"), " instead reads each arm's geometric mean ",
+                "at the endpoint day from a log-scale mixed model fitted to every ",
+                "observation, so nothing is discarded. Use ", strong("Survivors"),
+                " only to reproduce a pre-0.8.0 figure."),
+              numericInput(ns("tox_n_boot"), "Bootstrap resamples (0 = skip)",
+                          value = 2000, min = 0, max = 20000, step = 500),
+              helpText("Mouse-level bootstrap giving 95% intervals for TGI, mean ",
+                       "weight loss and TWM. The TWM table is sorted, so the ",
+                       "intervals are what tell you whether the ranking is real.")
             ),
 
             br(),
@@ -496,7 +518,14 @@ toxicityUI <- function(id) {
                   h4("Weight Loss Kaplan-Meier Curve"),
                   shinycssloaders::withSpinner(
                     plotOutput(ns("tox_km_plot"), width = "auto", height = "auto")
-                  )
+                  ),
+                  # CODE_REVIEW.md backend R3.26 -- censoring here is informative:
+                  # an animal whose record ends early usually ended because it was
+                  # euthanised for tumour burden, which shares a cause with weight
+                  # loss. KM assumes a censored animal remains at risk, so 1 - KM
+                  # overstates weight-loss incidence whenever that happens.
+                  uiOutput(ns("tox_km_competing_note")),
+                  DTOutput(ns("tox_km_censoring_table"))
                 ),
                 conditionalPanel(ns = ns,
                   "output.tox_model_type_val == 'bw' && input.tox_bw_plot_selector == 'bw_forest'",
@@ -744,7 +773,13 @@ toxicity_server <- function(id, rv) {
             "TWM = TGI(%) / Mean Body Weight Loss(%). Higher values indicate a more ",
             "favourable efficacy-to-toxicity ratio."
           ),
+          # CODE_REVIEW.md R3.D9 -- the table is sorted by TWM, so it reads as a
+          # ranking. Backend v0.7.0 attaches bootstrap bounds; without them the
+          # order looks more resolved than the data supports.
+          uiOutput(ns("tox_twm_ranking_note")),
           shinycssloaders::withSpinner(DTOutput(ns("tox_et_twm_table"))),
+          uiOutput(ns("tox_twm_attrition_ui")),
+          DTOutput(ns("tox_twm_attrition_table")),
           downloadButton(ns("download_et_twm_csv"), "Download TWM CSV")
         )
       )
@@ -1267,6 +1302,9 @@ toxicity_server <- function(id, rv) {
         mouseExperiment::weight_loss_threshold(
           df = data, weight_column = wt_col, time_column = time_col,
           treatment_column = tx_col, id_column = id_col,
+          # Backend R3.25: cage is part of the mouse key, so reused IDs across
+          # cages are not collapsed into one subject.
+          cage_column = cage_col,
           volume_column = if (has_vol) vol_col else NULL,
           adjust_tumor_weight = adjust, tumor_density = density,
           threshold = threshold, baseline_day = baseline_day, reference_group = ref_group
@@ -1295,11 +1333,18 @@ toxicity_server <- function(id, rv) {
       lambda     <- input$tox_et_lambda            %||% 1
       threshold  <- (input$tox_et_safety_threshold %||% 20) / 100
 
+      # Backend v0.8.0+ / v0.7.0+: the endpoint estimand and the mouse-level
+      # bootstrap. Defaults are the statistically correct ones; "survivors"
+      # exists only to reproduce pre-0.8.0 figures. CODE_REVIEW.md R3.D9.
+      ep_method <- input$tox_endpoint_method %||% "model"
+      n_boot_tw <- as.integer(input$tox_n_boot %||% 2000L)
+
       results$twm <- safe_analysis(module = "et_twm", {
         mouseExperiment::therapeutic_window_metric(
           df = data, volume_column = vol_col, weight_column = wt_col,
           time_column = time_col, treatment_column = tx_col, id_column = id_col,
-          adjust_tumor_weight = adjust, tumor_density = density, reference_group = ref_group
+          adjust_tumor_weight = adjust, tumor_density = density, reference_group = ref_group,
+          endpoint_method = ep_method, n_boot = n_boot_tw, boot_seed = 20260730L
         )
       })
 
@@ -1308,7 +1353,8 @@ toxicity_server <- function(id, rv) {
           df = data, volume_column = vol_col, weight_column = wt_col,
           time_column = time_col, treatment_column = tx_col, id_column = id_col,
           adjust_tumor_weight = adjust, tumor_density = density,
-          efficacy_metric = eff_metric, reference_group = ref_group
+          efficacy_metric = eff_metric, reference_group = ref_group,
+          endpoint_method = ep_method
         )
       })
 
@@ -1326,7 +1372,8 @@ toxicity_server <- function(id, rv) {
           df = data, volume_column = vol_col, weight_column = wt_col,
           time_column = time_col, treatment_column = tx_col, id_column = id_col,
           adjust_tumor_weight = adjust, tumor_density = density,
-          safety_threshold = threshold, reference_group = ref_group
+          safety_threshold = threshold, reference_group = ref_group,
+          endpoint_method = ep_method
         )
       })
 
@@ -1505,6 +1552,107 @@ toxicity_server <- function(id, rv) {
     if (isTRUE(twm$error)) return(datatable(data.frame(Message = twm$message)))
     datatable(format_df_for_display(twm$twm_table),
               options = list(scrollX = TRUE), rownames = FALSE)
+  })
+
+  # Does the TWM ranking survive its own uncertainty? With typical group sizes the
+  # intervals overlap heavily and the order of adjacent arms is usually not
+  # resolvable -- worth saying before anyone acts on the top row.
+  output$tox_twm_ranking_note <- renderUI({
+    req(rv$tox_results, rv$tox_results$twm)
+    twm <- rv$tox_results$twm
+    if (isTRUE(twm$error)) return(NULL)
+    tbl <- twm$twm_table
+    if (is.null(tbl) || !all(c("TWM_Lower", "TWM_Upper") %in% names(tbl)) ||
+        nrow(tbl) < 2L) return(NULL)
+
+    ord <- tbl[order(-tbl$TWM), , drop = FALSE]
+    top <- ord[1, ]; second <- ord[2, ]
+    separable <- is.finite(top$TWM_Lower) && is.finite(second$TWM_Upper) &&
+      top$TWM_Lower > second$TWM_Upper
+
+    status_alert(
+      if (separable) {
+        sprintf(paste0("%s ranks highest and its 95%% interval does not overlap ",
+                       "the next arm's, so the top of this ranking is resolved."),
+                top$Treatment)
+      } else {
+        sprintf(paste0("The 95%% intervals for %s and %s overlap, so this ranking ",
+                       "does not distinguish them. Read the order as indicative ",
+                       "and check TWM_Lower / TWM_Upper before acting on it."),
+                top$Treatment, second$Treatment)
+      },
+      if (separable) "success" else "warning")
+  })
+
+  output$tox_twm_attrition_ui <- renderUI({
+    req(rv$tox_results, rv$tox_results$twm)
+    twm <- rv$tox_results$twm
+    if (isTRUE(twm$error) || is.null(twm$attrition)) return(NULL)
+    a <- twm$attrition
+    lost <- if (!is.null(a$Pct_Lost)) suppressWarnings(max(a$Pct_Lost, na.rm = TRUE)) else 0
+    tagList(
+      tags$hr(),
+      h4("Animals contributing at the endpoint day"),
+      p(class = "text-muted",
+        "Endpoint day: ", strong(twm$endpoint_day %||% "\u2014"),
+        ". Estimand: ", strong(twm$endpoint_method %||% "model"), "."),
+      if (is.finite(lost) && lost > 0 &&
+          identical(twm$endpoint_method, "survivors")) {
+        status_alert(sprintf(paste0(
+          "Up to %.0f%% of animals in one arm did not reach the endpoint day, and ",
+          "the survivor estimand conditions on reaching it. Because animals leave ",
+          "when their tumours grow, this biases TGI downward -- most in the ",
+          "control arm. Switch to the model-based estimand unless you are ",
+          "reproducing a pre-0.8.0 figure."), lost), "warning")
+      }
+    )
+  })
+
+  output$tox_twm_attrition_table <- renderDT({
+    req(rv$tox_results, rv$tox_results$twm)
+    twm <- rv$tox_results$twm
+    if (isTRUE(twm$error) || is.null(twm$attrition)) return(NULL)
+    datatable(format_df_for_display(as.data.frame(twm$attrition)),
+              options = list(paging = FALSE, searching = FALSE), rownames = FALSE)
+  })
+
+  output$tox_km_competing_note <- renderUI({
+    req(rv$tox_results, rv$tox_results$weight_loss)
+    wl <- rv$tox_results$weight_loss
+    if (isTRUE(wl$error)) return(NULL)
+    n_cr <- wl$n_competing_risk %||% 0L
+    if (!is.finite(n_cr) || n_cr == 0L) {
+      return(tagList(
+        tags$hr(),
+        p(class = "text-muted",
+          "All censoring here is administrative (animals still on study at the ",
+          "end), so the Kaplan-Meier curve is unbiased for this endpoint.")
+      ))
+    }
+    tagList(
+      tags$hr(),
+      h4("Competing risks"),
+      status_alert(sprintf(paste0(
+        "%d animal(s) left the study before the end without reaching the ",
+        "weight-loss threshold. That censoring is NOT independent \u2014 animals are ",
+        "usually removed for tumour burden, which shares a cause with weight loss. ",
+        "Kaplan-Meier assumes a censored animal stays at risk, so the curve above ",
+        "OVERSTATES weight-loss incidence. Use the Aalen-Johansen cumulative ",
+        "incidence in the result object (`cuminc`) for incidence statements."),
+        n_cr), "warning"),
+      p(class = "text-muted",
+        "Breakdown of how each animal left the study:")
+    )
+  })
+
+  output$tox_km_censoring_table <- renderDT({
+    req(rv$tox_results, rv$tox_results$weight_loss)
+    wl <- rv$tox_results$weight_loss
+    if (isTRUE(wl$error) || is.null(wl$censoring_summary)) return(NULL)
+    cs <- as.data.frame(wl$censoring_summary)
+    if (!nrow(cs)) return(NULL)
+    datatable(format_df_for_display(cs),
+              options = list(paging = FALSE, searching = FALSE), rownames = FALSE)
   })
 
   output$tox_et_per_mouse_table <- renderDT({

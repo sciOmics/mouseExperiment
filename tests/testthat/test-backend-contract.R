@@ -1,0 +1,155 @@
+# =============================================================================
+# Backend contract tests — CODE_REVIEW.md R3.D9 / I.2 / R4.D2
+#
+# The dashboard reads specific named fields out of backend result objects. Round 3
+# added several (attrition, synergy_ci, twm_ci, censoring_summary, variance_test,
+# permutation_test) and the render code added in v26.07.004 depends on their exact
+# names. Nothing verified those names, which is the same gap that let the suite
+# pass against a backend six releases stale (R4.D2).
+#
+# These tests call the backend the way the dashboard does and assert the contract.
+# They are deliberately about *field presence and shape*, not statistical values —
+# the statistics are the backend's own tests' job. A rename upstream should break
+# here rather than silently blank a panel.
+# =============================================================================
+
+# A study with the real dropout mechanism: per-animal growth rates, animals removed
+# when volume crosses a limit, so attrition is non-zero and the estimand matters.
+contract_df <- function(seed = 42, limit = 2000) {
+  set.seed(seed)
+  rows <- list(); cg <- 0L
+  arms <- list(Control = 0.115, DrugA = 0.075, DrugB = 0.060, Combo = 0.030)
+  for (tx in names(arms)) {
+    for (c_i in 1:2) {
+      cg <- cg + 1L
+      for (m in 1:4) {
+        rate <- stats::rnorm(1, arms[[tx]], 0.02)
+        days <- seq(0, 28, 4)
+        v <- exp(log(150) + stats::rnorm(1, 0, 0.15) + rate * days +
+                   stats::rnorm(length(days), 0, 0.08))
+        hit  <- which(v >= limit)
+        keep <- if (length(hit)) seq_len(hit[1]) else seq_along(days)
+        rows[[length(rows) + 1L]] <- data.frame(
+          ID = paste0("C", cg, "_m", m), Cage = paste0("C", cg), Treatment = tx,
+          Day = days[keep], Volume = v[keep],
+          Weight = 25 - 0.02 * days[keep] + stats::rnorm(length(keep), 0, 0.15),
+          stringsAsFactors = FALSE)
+      }
+    }
+  }
+  do.call(rbind, rows)
+}
+
+test_that("contract: synergy result carries the fields the Synergy tab renders", {
+  res <- suppressWarnings(suppressMessages(mouseExperiment::analyze_drug_synergy(
+    contract_df(), treatment_column = "Treatment", volume_column = "Volume",
+    time_column = "Day", id_column = "ID",
+    drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
+    control_name = "Control", eval_time_point = 28,
+    endpoint_method = "model", n_boot = 200, boot_seed = 1, verbose = FALSE)))
+
+  # syn_ci_table / syn_ci_verdict_note
+  expect_false(is.null(res$synergy_ci))
+  expect_true(all(c("Metric", "Estimate", "CI_Lower", "CI_Upper") %in%
+                    names(res$synergy_ci)))
+  expect_true("Bliss_Excess_FE" %in% res$synergy_ci$Metric,
+              info = "syn_ci_verdict_note keys on this exact metric name")
+
+  # syn_attrition_table / syn_attrition_heading
+  expect_false(is.null(res$attrition))
+  expect_true(all(c("Treatment", "N_Enrolled", "N_At_Endpoint", "Pct_Lost") %in%
+                    names(res$attrition)))
+  expect_false(is.null(res$endpoint_method))
+
+  # The existing metrics table still keys on Metric / Value.
+  expect_true(all(c("Metric", "Value") %in% names(res$synergy_metrics)))
+})
+
+test_that("contract: TWM result carries the ranking bounds and attrition", {
+  res <- suppressWarnings(suppressMessages(
+    mouseExperiment::therapeutic_window_metric(
+      contract_df(), volume_column = "Volume", weight_column = "Weight",
+      time_column = "Day", treatment_column = "Treatment", id_column = "ID",
+      reference_group = "Control", adjust_tumor_weight = FALSE,
+      endpoint_method = "model", n_boot = 200, boot_seed = 1)))
+
+  # tox_twm_ranking_note reads these off twm_table directly.
+  expect_true(all(c("Treatment", "TGI", "TWM", "TWM_Lower", "TWM_Upper") %in%
+                    names(res$twm_table)))
+  # tox_twm_attrition_ui / _table
+  expect_false(is.null(res$attrition))
+  expect_true(all(c("N_Enrolled", "N_At_Endpoint", "Pct_Lost") %in%
+                    names(res$attrition)))
+  expect_false(is.null(res$endpoint_day))
+  expect_false(is.null(res$endpoint_method))
+})
+
+test_that("contract: weight-loss result carries the competing-risks fields", {
+  res <- suppressWarnings(suppressMessages(
+    mouseExperiment::weight_loss_threshold(
+      contract_df(), weight_column = "Weight", time_column = "Day",
+      treatment_column = "Treatment", id_column = "ID", cage_column = "Cage",
+      adjust_tumor_weight = FALSE, threshold = 0.05)))
+
+  # tox_km_competing_note / tox_km_censoring_table
+  expect_false(is.null(res$n_competing_risk))
+  expect_true(is.numeric(res$n_competing_risk))
+  expect_false(is.null(res$censoring_summary))
+  expect_true(all(c("Treatment", "Censor_Type", "Freq") %in%
+                    names(res$censoring_summary)))
+  # The KM renderer still re-fits from event_data on Time / Event / Treatment.
+  expect_true(all(c("Time", "Event", "Treatment") %in% names(res$event_data)))
+})
+
+test_that("contract: AUC result carries variance_test for the ANOVA tab", {
+  res <- suppressWarnings(suppressMessages(
+    mouseExperiment::tumor_growth_statistics(
+      contract_df(), model_type = "auc", plots = FALSE, verbose = FALSE)))
+
+  # tg_variance_test_ui reads p_value; the table renders the whole frame.
+  expect_false(is.null(res$variance_test))
+  expect_true("p_value" %in% names(res$variance_test))
+  # The Welch omnibus replaced aov(); the ANOVA tab renders this frame.
+  expect_true("Method" %in% names(res$anova))
+  expect_match(res$anova$Method[1], "Welch")
+})
+
+test_that("contract: permutation result carries every field the panel reads", {
+  res <- suppressWarnings(suppressMessages(
+    mouseExperiment::tumor_growth_statistics(
+      contract_df(), plots = FALSE, verbose = FALSE,
+      permutation_test = mouseExperiment::perm_spec(
+        unit = "mouse", n_perm = 49, seed = 1))))
+
+  pt <- res$permutation_test
+  expect_false(is.null(pt))
+  # tg_perm_test_ui reads each of these by name.
+  for (f in c("p_value", "unit", "n_units", "n_perm_converged", "exhaustive",
+              "lrt_p_asymptotic", "min_attainable_p", "n_distinct_statistics",
+              "method")) {
+    expect_true(f %in% names(pt), info = paste("missing field:", f))
+  }
+  expect_true(is.character(pt$method))
+  expect_true(pt$unit %in% c("mouse", "cage"))
+
+  # Absent unless requested, which is what the "Not run" branch relies on.
+  plain <- suppressWarnings(suppressMessages(
+    mouseExperiment::tumor_growth_statistics(contract_df(), plots = FALSE,
+                                             verbose = FALSE)))
+  expect_null(plain$permutation_test)
+})
+
+test_that("contract: comparison provenance fields the summary panel prints exist", {
+  res <- suppressWarnings(suppressMessages(
+    mouseExperiment::tumor_growth_statistics(
+      contract_df(), plots = FALSE, verbose = FALSE,
+      comparison_family = "all_pairs", p_adjust_method = "tukey")))
+
+  # comparisons_title() and the COMPARISONS summary block read these.
+  expect_identical(res$comparison_family, "all_pairs")
+  expect_identical(res$p_adjust_method_used, "tukey")
+  # The CAGE STRUCTURE block reads these.
+  expect_false(is.null(res$summary$model_specification$cage_structure))
+  expect_false(is.null(res$summary$model_specification$cage_placement))
+  expect_false(is.null(res$cage_analysis$structure))
+})

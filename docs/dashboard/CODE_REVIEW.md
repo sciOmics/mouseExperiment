@@ -889,12 +889,12 @@ the answer.
 |---|---|
 | `comparison_family` / `p_adjust_method_used` | ✅ selector added, provenance shown |
 | `cage_analysis$icc`, `cage_structure`, `cage_placement` | ✅ CAGE STRUCTURE block |
-| `attrition` (N enrolled / at endpoint / % lost) | ❌ **not yet surfaced** — should sit beside every TGI / TWM / synergy figure, since it is what makes survivor attrition visible |
-| `endpoint_method` on TWM / synergy / weight-corrected TGI | ❌ **no UI control** — the backend default ("model") is the right one, but users cannot select `"survivors"` to reproduce pre-0.8.0 numbers |
-| `synergy_ci`, `twm_ci` (bootstrap intervals) | ❌ **not yet displayed** — the Synergy verdict and the TWM ranking are exactly the outputs that need their intervals shown |
-| `auc_permutations` / `perm_p_value` | ❌ no UI control (off by default, so no silent change) |
-| `cuminc` / `censoring_summary` (competing risks) | ❌ not surfaced; the weight-loss KM tab still shows 1 − KM only |
-| `variance_test` (Brown-Forsythe on AUC) | ❌ not surfaced |
+| `attrition` (N enrolled / at endpoint / % lost) | ✅ v26.07.004 — shown on the Synergy Metrics and Therapeutic Window tabs, with a warning when the survivor estimand is combined with real attrition |
+| `endpoint_method` on TWM / synergy / weight-corrected TGI | ✅ v26.07.004 — selector in both the Synergy and Toxicity sidebars, defaulting to model-based, with the survivor-bias magnitude quoted in the help text |
+| `synergy_ci`, `twm_ci` (bootstrap intervals) | ✅ v26.07.004 — interval table under the synergy verdict with an explicit "does the Bliss-excess interval exclude zero?" callout, and a ranking-resolvability note above the TWM table |
+| `auc_permutations` / `perm_p_value` | Open — still no UI control; off by default so nothing changes silently |
+| `cuminc` / `censoring_summary` (competing risks) | 🟡 v26.07.004 — the KM tab now warns that 1 − KM overstates incidence when animals were removed early, and breaks the censoring down by type. The Aalen-Johansen curve itself is still not plotted |
+| `variance_test` (Brown-Forsythe on AUC) | ✅ v26.07.004 — on the ANOVA tab, framed as "was the unequal-variance choice needed" rather than a gate |
 
 These are additions rather than defects — nothing displays a wrong number — but
 the bootstrap intervals and the attrition counts are the two that most change how
@@ -998,3 +998,58 @@ backend from a stale one — it can now only detect that the *versions* differ. 
 (`expect_true(TRUE)` placeholders) and §I.2 (the three largest server modules
 untested) remain the substantive gap, and closing them is what would make this
 check redundant.
+
+
+---
+
+## R4.D4 Backend outputs surfaced (v26.07.004, 2026-07-30)
+
+Round 3 and Round 5 added six result fields the UI ignored. Five are now shown; one
+is partially done.
+
+**Synergy Metrics tab** — bootstrap interval table under the verdict, with an
+explicit callout stating whether the Bliss-excess 95 % interval excludes zero. That
+callout is the point of the whole exercise: the verdict above it is a categorical
+label derived from three group means, and a "Strong Synergy" whose interval spans
+zero was previously indistinguishable on screen from one that does not. Plus an
+attrition table and an endpoint-estimand selector.
+
+**Therapeutic Window tab** — the table is sorted by TWM, so it reads as a ranking.
+A note now compares the top two arms' intervals and says outright when they overlap,
+because with typical group sizes they usually do and the order is not resolvable.
+Plus attrition, endpoint day, and the estimand used.
+
+**Weight-loss KM tab** — a competing-risks warning when animals left before the
+study ended, stating that 1 − KM *overstates* weight-loss incidence in that case,
+plus a censoring breakdown by type (event / administrative / early removal). The
+Aalen-Johansen curve is available in the result object but not yet plotted, so this
+row stays partial.
+
+**ANOVA tab** — the Brown-Forsythe variance check, framed as "was the
+unequal-variance choice needed" rather than as a gate, since the AUC path uses
+Welch's tests either way.
+
+**ANOVA tab, randomisation test** — the H.3 result, with three interpretive aids
+that matter more than the p-value itself: a warning when the asymptotic p-value is
+more than 100× smaller than the randomisation one (which is the norm at these group
+sizes), a warning when the design cannot attain p < 0.05 at all, and the unit and
+number of exchangeable units stated plainly.
+
+### The part worth keeping
+
+`test-backend-contract.R` — 39 assertions that call the backend the way the dashboard
+does and check that every field the new renderers read exists with the expected
+name. This is the first test in this repo that verifies the dashboard/backend
+interface rather than module initialisation.
+
+It closes a specific gap: the renderers above read roughly twenty field names off
+result objects, and nothing checked them. A rename upstream would have silently
+blanked a panel — the same class of failure as §R3.D4 (the GAM "All Comparisons" tab
+that could never populate) and §R4.D2 (a suite passing against a six-release-stale
+backend). Suite went from 212 to 251 passing.
+
+**Still the substantive gap:** §I.1 and §I.2. The contract tests verify the
+*interface*; they do not exercise the Shiny reactives, so the render logic itself
+(the interval comparison, the overlap check, the floor warning) is still only
+verified by reading it. Driving those through `shiny::testServer` is the next step
+and is what would finally make this suite able to detect a broken backend.

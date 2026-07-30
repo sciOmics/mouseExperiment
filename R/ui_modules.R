@@ -374,6 +374,28 @@ tumorGrowthUI <- function(id) {
           # with four options and exposed by the UI with none, so users got
           # whichever correction each code path happened to hardcode. The
           # backend now honours the argument (backend R3.1), so surface it.
+          # Backend H.3 -- opt-in because each permutation refits the model, and
+          # because the unit has to be a deliberate statement about the design
+          # rather than a default someone accepts without reading.
+          checkboxInput(ns("tg_run_perm"),
+                       "Run randomisation test of treatment \u00d7 time", value = FALSE),
+          conditionalPanel(ns = ns, condition = "input.tg_run_perm == true",
+            selectInput(ns("tg_perm_unit"), "Unit that was randomised",
+                       choices = c("Individual animals" = "mouse",
+                                   "Whole cages"        = "cage"),
+                       selected = "mouse"),
+            numericInput(ns("tg_perm_n"), "Permutations",
+                        value = 999, min = 99, max = 9999, step = 100),
+            helpText(
+              "Tests the interaction without the denominator-df approximation or ",
+              "normal random effects. It is only valid if the unit matches how ",
+              "treatment was actually assigned: if animals were randomised and ",
+              "then re-housed by group, the unit is ", strong("animals"),
+              " and cage is a post-randomisation variable. Cage-level tests are ",
+              "far less powerful \u2014 two cages per arm cannot reach p < 0.05 at ",
+              "any effect size. Small designs are enumerated exactly.")
+          ),
+
           selectInput(ns("tg_p_adjust"),
                      "Multiple-comparison correction",
                      choices = c("Dunnett (exact, vs reference)" = "dunnett",
@@ -801,7 +823,18 @@ tumorGrowthUI <- function(id) {
             shinycssloaders::withSpinner(
               DTOutput(ns("tg_anova_table"))
             ),
-            downloadButton(ns("download_tg_anova"), "Download ANOVA")
+            downloadButton(ns("download_tg_anova"), "Download ANOVA"),
+
+            # Backend R3.22 -- the AUC path's omnibus test is Welch's ANOVA, and
+            # the variance-homogeneity check it is based on is worth showing
+            # rather than leaving in the result object.
+            uiOutput(ns("tg_variance_test_ui")),
+            DTOutput(ns("tg_variance_test_table")),
+
+            # Backend H.3 -- randomisation test of the interaction. Reported here
+            # because it answers the same question as the ANOVA row above but
+            # without the denominator-df or normality approximations.
+            uiOutput(ns("tg_perm_test_ui"))
           ),
           
           tabPanel("Comparisons",

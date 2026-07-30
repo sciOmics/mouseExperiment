@@ -214,7 +214,21 @@ synergyUI <- function(id) {
             ),
             shinycssloaders::withSpinner(
               DTOutput(ns("syn_metrics_table"))
-            )
+            ),
+
+            # CODE_REVIEW.md R3.D9 / backend R3.6-R3.7 -- the verdict above is
+            # derived from three group means. Without an interval a "Strong
+            # Synergy" label whose Bliss-excess CI spans zero is
+            # indistinguishable on screen from one that does not.
+            uiOutput(ns("syn_ci_heading")),
+            uiOutput(ns("syn_ci_verdict_note")),
+            DTOutput(ns("syn_ci_table")),
+
+            # Backend R3.5 -- animals leave these studies because their tumours
+            # grew, so how many reached the evaluation day is part of reading
+            # any TGI figure.
+            uiOutput(ns("syn_attrition_heading")),
+            DTOutput(ns("syn_attrition_table"))
           ),
           
           tabPanel("Plots",
@@ -516,7 +530,32 @@ synergy_server <- function(id, rv) {
       
       selectInput(session$ns("syn_control"), "Reference Group",
                  choices = choices,
-                 selected = pick_reference_group(groups))
+                 selected = pick_reference_group(groups)),
+
+      # CODE_REVIEW.md backend R3.5 / G.3 -- the estimand, exposed. The default
+      # is the statistically correct one; "survivors" exists to reproduce
+      # pre-0.8.0 figures.
+      selectInput(session$ns("syn_endpoint_method"), "Endpoint estimand",
+                 choices = c(
+                   "Model-based (recommended)" = "model",
+                   "Each animal's last observation" = "last_obs",
+                   "Survivors at the evaluation day (legacy)" = "survivors"),
+                 selected = "model"),
+      helpText(
+        strong("Model-based"), " reads each arm's geometric mean at the ",
+        "evaluation day from a log-scale mixed model fitted to every ",
+        "observation, so animals removed earlier still contribute. ",
+        strong("Survivors"), " uses only animals present on that day \u2014 which ",
+        "conditions on survival and biases TGI downward, because animals leave ",
+        "when their tumours grow. On a simulated study with volume-triggered ",
+        "euthanasia the survivor estimand understated TGI by ~23 percentage ",
+        "points where the model-based one was off by ~5."),
+
+      numericInput(session$ns("syn_n_boot"),
+                  "Bootstrap resamples (0 = skip)",
+                  value = 2000, min = 0, max = 20000, step = 500),
+      helpText("Mouse-level bootstrap giving 95% intervals for every synergy ",
+               "metric. Set 0 for a faster point-estimate-only run.")
     )
   })
 
@@ -585,6 +624,19 @@ synergy_server <- function(id, rv) {
     vol_col  <- pp$vol_col
     time_col <- pp$time_col
     tx_col   <- pp$tx_col
+    # Animal identifier: needed by the backend's mouse-level bootstrap and by its
+    # endpoint helper. Fall back to the mapped ID column, then to "ID".
+    id_col_syn <- if (!is.null(rv$settings$col_id) && nzchar(rv$settings$col_id)) {
+      rv$settings$col_id
+    } else if ("ID" %in% colnames(analysis_data)) "ID" else NULL
+    if (is.null(id_col_syn)) {
+      showNotification(
+        paste0("No animal ID column is mapped, so the synergy bootstrap and the ",
+               "model-based endpoint cannot resample animals. Map an ID column in ",
+               "Data Upload to enable the confidence intervals."),
+        type = "warning", duration = 10)
+      id_col_syn <- "ID"
+    }
     
     # Coerce time and volume to numeric (guard against CSV character reads)
     if (time_col %in% colnames(analysis_data))
@@ -654,11 +706,21 @@ synergy_server <- function(id, rv) {
           treatment_column = tx_col,
           volume_column    = vol_col,
           time_column      = time_col,
+          id_column        = id_col_syn,
           drug_a_name      = input$syn_drug_a,
           drug_b_name      = input$syn_drug_b,
           combo_name       = input$syn_combo,
           control_name     = input$syn_control,
           eval_time_point  = eval_tp,
+          # Backend v0.8.0+: "model" reads each arm's geometric mean at the
+          # evaluation day off a log-scale LMM fitted to every observation, so
+          # animals removed earlier still contribute. "survivors" reproduces the
+          # pre-0.8.0 raw survivor mean.
+          endpoint_method  = input$syn_endpoint_method %||% "model",
+          # Backend v0.7.0+: mouse-level bootstrap so the verdict carries an
+          # interval instead of standing on a bare point estimate.
+          n_boot           = as.integer(input$syn_n_boot %||% 2000L),
+          boot_seed        = 20260730L,
           verbose          = FALSE
         )
       })
@@ -831,6 +893,104 @@ synergy_server <- function(id, rv) {
     datatable(df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE), rownames = FALSE)
   })
   
+  # ── Bootstrap intervals + attrition (CODE_REVIEW.md R3.D9) ─────────────────
+  #
+  # The Synergy Metrics table above states a categorical verdict derived from
+  # three group means. Backend v0.7.0 attaches a mouse-level bootstrap so that
+  # verdict can be read against its uncertainty, and v0.8.0 reports how many
+  # animals actually reached the evaluation day. Neither was surfaced.
+
+  output$syn_ci_heading <- renderUI({
+    req(rv$syn_results)
+    if (isTRUE(rv$syn_results$error) || is.null(rv$syn_results$synergy_ci)) return(NULL)
+    tagList(
+      tags$hr(),
+      h4("Uncertainty \u2014 mouse-level bootstrap 95% intervals"),
+      p(class = "text-muted",
+        "Animals are resampled within group, ", strong("including the control arm"),
+        ", and every metric recomputed. Resampling the control propagates the ",
+        "uncertainty of the TGI denominator, which a point estimate treats as a ",
+        "known constant.")
+    )
+  })
+
+  output$syn_ci_table <- renderDT({
+    req(rv$syn_results)
+    if (isTRUE(rv$syn_results$error)) return(NULL)
+    ci <- rv$syn_results$synergy_ci
+    if (is.null(ci)) return(NULL)
+    df <- format_df_for_display(as.data.frame(ci))
+    datatable(df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+              rownames = FALSE)
+  })
+
+  # The single most important reading aid: does the Bliss-excess interval exclude
+  # zero? If it does not, the verdict above is not evidence of synergy.
+  output$syn_ci_verdict_note <- renderUI({
+    req(rv$syn_results)
+    if (isTRUE(rv$syn_results$error)) return(NULL)
+    ci <- rv$syn_results$synergy_ci
+    if (is.null(ci) || !"Metric" %in% names(ci)) return(NULL)
+    row <- ci[ci$Metric == "Bliss_Excess_FE", , drop = FALSE]
+    if (!nrow(row) || !is.finite(row$CI_Lower[1]) || !is.finite(row$CI_Upper[1])) {
+      return(NULL)
+    }
+    spans_zero <- row$CI_Lower[1] <= 0 && row$CI_Upper[1] >= 0
+    if (spans_zero) {
+      status_alert(paste0(
+        "The Bliss-excess 95% interval [",
+        signif(row$CI_Lower[1], 3), ", ", signif(row$CI_Upper[1], 3),
+        "] includes zero, so this data does not distinguish the combination from ",
+        "Bliss additivity. Read the synergy label above as descriptive only."),
+        "warning")
+    } else {
+      status_alert(paste0(
+        "The Bliss-excess 95% interval [",
+        signif(row$CI_Lower[1], 3), ", ", signif(row$CI_Upper[1], 3),
+        "] excludes zero, consistent with a departure from Bliss additivity in ",
+        "the ", if (row$CI_Lower[1] > 0) "synergistic" else "antagonistic",
+        " direction."),
+        "success")
+    }
+  })
+
+  output$syn_attrition_heading <- renderUI({
+    req(rv$syn_results)
+    if (isTRUE(rv$syn_results$error) || is.null(rv$syn_results$attrition)) return(NULL)
+    a <- rv$syn_results$attrition
+    lost <- if (!is.null(a$Pct_Lost)) max(a$Pct_Lost, na.rm = TRUE) else 0
+    tagList(
+      tags$hr(),
+      h4("Animals contributing at the evaluation day"),
+      p(class = "text-muted",
+        "Animals leave these studies because their tumours grew, so survivors are ",
+        "systematically the slower growers \u2014 most severely in the control arm, ",
+        "which loses animals first. The endpoint method shown in the sidebar ",
+        "controls whether the analysis conditions on survival or models through it."),
+      if (is.finite(lost) && lost > 0) {
+        status_alert(sprintf(
+          paste0("Up to %.0f%% of animals in one arm did not reach the evaluation ",
+                 "day. With endpoint method '%s' this %s."),
+          lost, rv$syn_results$endpoint_method %||% "model",
+          if (identical(rv$syn_results$endpoint_method, "survivors")) {
+            "biases TGI downward -- switch to 'model' unless you are reproducing an older figure"
+          } else {
+            "is handled by fitting through the dropout rather than discarding it"
+          }),
+          if (identical(rv$syn_results$endpoint_method, "survivors")) "warning" else "info")
+      }
+    )
+  })
+
+  output$syn_attrition_table <- renderDT({
+    req(rv$syn_results)
+    if (isTRUE(rv$syn_results$error)) return(NULL)
+    a <- rv$syn_results$attrition
+    if (is.null(a)) return(NULL)
+    datatable(format_df_for_display(as.data.frame(a)),
+              options = list(paging = FALSE, searching = FALSE), rownames = FALSE)
+  })
+
   # TGI Table removed (duplicate of Synergy Metrics)
 
   output$syn_download_plot_btn <- renderUI({
