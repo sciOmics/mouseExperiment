@@ -5,6 +5,25 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-07-30
+
+### Removed — the dosing-schedule annotation added in 0.15.0 (**breaking**)
+
+`parse_dose_schedule()`, `dose_schedule_style()` and `annotate_dose_schedule()`
+are removed. The feature did not work in practice and has been withdrawn rather
+than patched.
+
+`plot_treatments()` and the two schedule datasets removed in 0.15.0 stay removed
+— nothing in the app ever reached them, and restoring them was not the ask. The
+package now has no dosing-schedule functionality of any kind.
+
+The unit tests for the annotation passed, which is worth recording: they asserted
+that layers were added, that marks fell below the data range on linear, log and
+sqrt scales, and that the plot rendered to a PNG without error. None of that
+established the annotation was usable in the app, which is the gap between
+"builds and draws" and "works". A layer can be present, correctly positioned in
+data space, and still be wrong on screen.
+
 ## [0.15.0] - 2026-07-30
 
 ### Removed — `plot_treatments()` and the two schedule datasets (**breaking**)

@@ -273,7 +273,6 @@ bayes_power <- bayesian_power_analysis(
 | `tumor_doubling_time()` | Doubling time estimation |
 | `plot_tumor_growth()` | Growth trajectory plot |
 | `plot_growth_rate()` | Growth-rate forest plot |
-| `parse_dose_schedule()`, `annotate_dose_schedule()` | Draw dosing days in a strip below any time-axis plot. Dosing timing is not recoverable from measurement data — `Dose` records how much, not when — so the schedule is supplied as text (`"1, 5, 9, 13"`, or `"DrugA: 1,5,9,13"` per arm) |
 
 ### Survival
 | Function | Description |

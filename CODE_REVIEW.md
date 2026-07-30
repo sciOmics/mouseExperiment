@@ -3423,3 +3423,45 @@ contrasts — not a visual coincidence. The Info tab says so.
 | D.15 | Schedule data unreachable; `plot_treatments()` unexposed | Enhancement | ✅ Resolved v0.15.0 — removed and replaced |
 
 Backend suite: +50 assertions. Dashboard: +102.
+
+---
+
+# Review Round 13 (v0.16.0 — 2026-07-30)
+
+## D.16 The dosing-schedule annotation is withdrawn
+
+Added in v0.15.0 (§D.15), removed here. It did not work in practice, and the
+decision was to withdraw rather than patch it. `plot_treatments()` and the
+schedule datasets stay removed, so the package now carries no dosing-schedule
+functionality at all.
+
+**The part worth keeping from this.** The feature shipped with 50 backend and 102
+dashboard assertions, all passing. They checked that annotation layers were
+added, that marks were positioned below the data range on linear, log and sqrt
+scales, that the automatic rug/band switch fired at the right density, that
+per-arm rows stacked only when schedules genuinely differed, and that the plot
+rendered to a PNG without error.
+
+None of that established the thing that mattered. Every assertion was about the
+*construction* of the plot object — layer counts, coordinate values, absence of
+errors — and none about what the result looked like to someone using it. A ggplot
+layer can be present, correctly positioned in data space, and render without
+complaint while still being unusable on screen.
+
+That is a distinction this review has otherwise been good about: §R3.35 and §R3.37
+were found precisely by *running* code rather than reading it, and §D.7 by
+noticing that the existing testServer assertions verified the harness rather than
+the module. The same standard was not met here. The render check produced a PNG
+and asserted it was non-empty; it never checked what the PNG contained, and I
+inspected the three example images by eye and judged them fine. That judgement
+was the weakest link in the chain and it was not treated as such.
+
+For any future plotting feature: an assertion that a layer exists is not evidence
+the plot works, and a rendered file of non-zero size is not evidence it is
+legible. Either verify against the running app, or treat the feature as
+unvalidated regardless of the assertion count.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| D.16 | Dosing-schedule annotation non-functional in practice | — | ✅ Removed v0.16.0 |
+| D.15 | `plot_treatments()` / schedule datasets | Enhancement | Remains removed |
