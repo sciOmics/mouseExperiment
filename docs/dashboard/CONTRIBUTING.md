@@ -135,11 +135,21 @@ The codebase is intentionally permissive on lint warnings — many existing file
 
 ## Testing
 
-Run the full test suite:
+**Install the sibling backend first.** `devtools::load_all()` resolves
+`Imports: mouseExperiment` against the **installed** library, not
+`../mouseExperiment`, so testing against a stale backend is the default failure
+mode rather than an unlikely accident:
 
 ```r
+devtools::install("../mouseExperiment", upgrade = FALSE)
 devtools::test()
 ```
+
+`test-backend-version.R` **fails** — it does not skip — when the installed backend
+is older than the sibling source, and tells you the command above. That is
+deliberate: during the Round 3 review this suite reported 210 passing against a
+backend six releases behind the code under review, and a green run against the
+wrong backend is worse than no run. See `CODE_REVIEW.md` §R4.D2.
 
 Targeted runs:
 

@@ -968,4 +968,33 @@ dashboard tests. Options, roughly in order of preference:
 | ID | Issue | Severity | Status |
 |---|---|---|---|
 | R4.D1 | brms/bayesplot/future/promises optional for an advertised feature | Major | ✅ Fixed v26.07.002 |
-| R4.D2 | Test suite ran against installed backend 0.4.10, not the source | Major (process) | ⚠ Documented; needs a CI/preamble step |
+| R4.D2 | Test suite ran against installed backend 0.4.10, not the source | Major (process) | ✅ Fixed v26.07.003 |
+
+
+---
+
+## R4.D3 R4.D2 resolved (v26.07.003, 2026-07-30)
+
+`test-backend-version.R` compares the installed `mouseExperiment` against the
+sibling source's `DESCRIPTION` and **fails** when the installed copy is older.
+
+It fails rather than skips, on purpose. Skipping is the exact failure mode Round 3
+spent its effort removing (§R3-L): a suite that quietly declines to test something
+reports green, and green against the wrong backend is worse than no run at all. The
+failure message names the fix (`devtools::install("../mouseExperiment")`) so it is
+actionable rather than merely alarming.
+
+Verified in both directions: passes when the versions align, and fails when the
+sibling `DESCRIPTION` is temporarily bumped ahead of the installed copy. When there
+is no sibling checkout — a CI job installing from GitHub, say — it succeeds quietly,
+since `load_all()` has already enforced the `DESCRIPTION` floor by that point and
+there is nothing to compare against.
+
+`CONTRIBUTING.md` now leads its Testing section with the install step.
+
+**What this does not fix:** the coverage problem underneath. The same 210 tests pass
+against backend 0.4.10 and 0.11.0, so the suite still cannot distinguish a working
+backend from a stale one — it can now only detect that the *versions* differ. §I.1
+(`expect_true(TRUE)` placeholders) and §I.2 (the three largest server modules
+untested) remain the substantive gap, and closing them is what would make this
+check redundant.

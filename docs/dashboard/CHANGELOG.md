@@ -4,6 +4,36 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.07.003] - 2026-07-30
+
+### Fixed — R4.D2: tests could silently run against a stale backend
+
+`devtools::load_all()` resolves `Imports: mouseExperiment` against the **installed**
+library, not `../mouseExperiment`. During the Round 3 review the installed backend
+was 0.4.10 while the source under review was 0.9.0, so this suite reported 210
+passing against a backend six releases behind the code being reviewed.
+
+New `test-backend-version.R` compares the installed backend against the sibling
+source's `DESCRIPTION` and **fails** when the installed copy is older, naming the fix
+(`devtools::install("../mouseExperiment", upgrade = FALSE)`).
+
+It fails rather than skips deliberately: skipping is the failure mode Round 3 spent
+its effort removing, and a green run against the wrong backend is worse than no run.
+Verified in both directions — passes when aligned, fails when the sibling is bumped
+ahead. Succeeds quietly with no sibling checkout (a CI job installing from GitHub),
+where `load_all()` has already enforced the `DESCRIPTION` floor.
+
+`CONTRIBUTING.md` now opens its Testing section with the install step.
+
+**Not fixed by this:** the coverage problem underneath. The same 210 tests pass
+against backend 0.4.10 and 0.11.0, so the suite still cannot tell a working backend
+from a stale one — only that the versions differ. §I.1 and §I.2 remain the
+substantive gap.
+
+### Tests
+
+212 passing (210 + the 2 new skew assertions), 0 failing.
+
 ## [26.07.002] - 2026-07-29
 
 Dependency declarations (CODE_REVIEW.md Round 4).
