@@ -40,21 +40,6 @@
 #' head(combo_treatment_synthetic_data)
 "combo_treatment_synthetic_data"
 
-#' Combination treatment schedule
-#' 
-#' A dataset specifying the dosing schedule for combination treatments.
-#' 
-#' @format A data frame with 20 rows and 3 variables:
-#' \describe{
-#'   \item{Treatment}{Treatment group (Control, aPD1, HDACi, HDACi + PD1)}
-#'   \item{Day}{Day of dose administration}
-#'   \item{Dose}{Dose amount}
-#' }
-#' @source Synthetic treatment schedule
-#' @examples
-#' data(combo_treatment_schedule)
-#' head(combo_treatment_schedule)
-"combo_treatment_schedule"
 
 #' Dose levels synthetic data
 #' 
@@ -163,19 +148,3 @@
 #'                 Treatment %in% c("Vehicle","Drug_A Low","Drug_A Mid","Drug_A High"))
 "master_synthetic_data"
 
-#' Dose levels treatment schedule
-#' 
-#' A dataset specifying the dosing schedule for different dose levels.
-#' 
-#' @format A data frame with 20 rows and 4 variables:
-#' \describe{
-#'   \item{Treatment}{Treatment name (always "Drug X")}
-#'   \item{Dose}{Dose group level (0, 10, 25, 50, 100)}
-#'   \item{Day}{Day of dose administration}
-#'   \item{Administered_Dose}{Actual dose administered}
-#' }
-#' @source Synthetic treatment schedule
-#' @examples
-#' data(dose_levels_treatment_schedule)
-#' head(dose_levels_treatment_schedule)
-"dose_levels_treatment_schedule"

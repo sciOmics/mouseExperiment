@@ -143,20 +143,6 @@ test_that("plot_growth_rate returns a ggplot", {
   expect_s3_class(p, "gg")
 })
 
-# ===========================================================================
-# 4. plot_treatments
-# ===========================================================================
-test_that("plot_treatments returns a ggplot", {
-  # Create a simple treatment schedule
-  treatment_schedule <- data.frame(
-    Day       = c(0, 3, 7, 10, 14, 0, 7, 14),
-    Treatment = c(rep("DrugA", 5), rep("DrugB", 3)),
-    stringsAsFactors = FALSE
-  )
-  tumor_data <- make_tg_simple()
-  p <- plot_treatments(treatment_schedule, tumor_data)
-  expect_s3_class(p, "gg")
-})
 
 # ===========================================================================
 # 5. plot_bliss

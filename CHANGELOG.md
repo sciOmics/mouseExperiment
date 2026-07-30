@@ -5,6 +5,55 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-07-30
+
+### Removed — `plot_treatments()` and the two schedule datasets (**breaking**)
+
+`plot_treatments()`, `combo_treatment_schedule` and `dose_levels_treatment_schedule`
+are gone. The function drew a standalone panel (y = arm, x = day, down-triangles
+at each dosing day) intended to be stacked beneath a growth curve with the axes
+aligned by hand. Two things made that not worth keeping: it required a schedule
+uploaded as a separate file, and keeping two independently-built plots aligned is
+fragile. The dashboard never exposed it, and the schedule CSVs shipped there for
+months with nothing able to open them.
+
+### Added — dosing-schedule annotation drawn into the plot itself
+
+`parse_dose_schedule()`, `dose_schedule_style()` and `annotate_dose_schedule()`
+replace it. Dosing days are drawn in a strip below the panel of any time-axis
+plot: down-triangles for an intermittent schedule, a shaded window for a
+continuous one, switching automatically above eight doses or at daily dosing.
+Arms with differing schedules stack one row each, colour-matched to their curves,
+which is the information the removed panel carried — without a second plot to
+keep aligned.
+
+Marks sit below the panel rather than crossing it. Vertical lines through the
+data region compete with the curves, which is exactly why the original put the
+schedule in its own panel.
+
+**The constraint that shaped this:** dosing timing is not recoverable from
+measurement data. `Dose` is constant within an animal in every dataset this
+package ships — it records how much, not when — and dosing days are typically not
+measurement days (1, 5, 9, 13 against a 0, 2, 4, 6 grid). So the schedule has to
+be supplied by the user, and the design problem was getting a handful of integers
+out of them without a file-upload path. Hence a text field:
+
+```r
+parse_dose_schedule("1, 5, 9, 13", groups = c("Control", "DrugA"))  # all arms
+parse_dose_schedule("DrugA: 1,5,9,13\nCombo: 1,5", groups = ...)    # per arm
+```
+
+Placement inverts the y-scale transform, so the strip sits below the data on
+linear, log and sqrt axes alike — a mark landing among the curves is the failure
+mode, and it is asserted against on all three.
+
+Unmatched group names warn rather than being dropped silently (§K.2), and blank
+input returns `NULL` rather than erroring, since the dashboard's toggle can be on
+with the field still empty.
+
+50 assertions in `test-dose_schedule.R`, including an end-to-end render, since
+ggplot defers errors to draw time and building a plot is not proof it draws.
+
 ## [0.14.0] - 2026-07-30
 
 Follow-through on the first working coverage baseline (54.4 % of the non-Bayesian

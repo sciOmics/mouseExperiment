@@ -3356,3 +3356,70 @@ it.
 | R8.6 | Sniffed p-value made a trend-test assertion a permanent skip | Major | ✅ Fixed v0.14.0 |
 | R8.7 | Demo-data test skipped on every run since written | Major | ✅ Fixed v0.14.0 |
 | R8.8 | brms missing-package guard | — | Legitimate; no action |
+
+---
+
+# Review Round 12 (v0.15.0 — 2026-07-30)
+
+## D.15 resolved: `plot_treatments()` removed, dosing moved onto the plots
+
+D.15 was left open as needing a product decision. The decision: remove it, and
+put the information it carried into the plots themselves.
+
+**Why removal was right.** `plot_treatments()` produced a separate panel meant to
+be stacked under a growth curve with manually aligned x-axes. It required a
+schedule uploaded as its own file; the dashboard never exposed it; and the two
+schedule CSVs sat in the dashboard's `inst/sample_data/` for months with nothing
+able to open them (§D.12). A visualisation nobody can reach is not a feature.
+
+**The constraint that shaped the replacement**, established by measurement rather
+than assumption: dosing timing is not in the data. Across every dataset this
+package ships, `Dose` is constant within an animal — 0 of 48 animals in
+`master_synthetic_data` have it vary across days. It records *how much*, not
+*when*. And the schedule's dosing days (1, 5, 9, 13) are not on the measurement
+grid (0, 2, 4, 6, …), so they cannot be inferred from which days were measured
+either.
+
+That result is what makes the text-field input correct rather than a shortcut.
+Since the user must supply the timing regardless, the design problem is getting a
+handful of integers out of them with the least ceremony — not building a richer
+import path. A file upload for four numbers is the ceremony that made the old
+approach unsmooth.
+
+**What replaced it.** `parse_dose_schedule()` accepts either a bare list applying
+to every arm or one line per arm; `dose_schedule_style()` chooses between
+discrete marks and a dosing window; `annotate_dose_schedule()` draws the result
+in a strip below the panel of any time-axis plot.
+
+Three design points worth recording:
+
+- **Below the panel, not across it.** Vertical lines at dose days cross the data
+  and compete with the curves — which is precisely why the original used a
+  separate panel. A margin strip keeps that separation without a second plot.
+- **Density-adaptive.** Twenty-one daily doses drawn as twenty-one triangles is
+  noise; the same schedule as a shaded window reads instantly. Conversely a band
+  spanning four intermittent doses hides that dosing was intermittent. The switch
+  is automatic at eight doses or ≤1-day spacing, and overridable.
+- **Stack only when schedules differ.** The bare input form expands to one entry
+  per group, so counting groups would draw N identical rows and imply a per-arm
+  difference that does not exist. The check is on the days themselves, which also
+  collapses a per-group spec whose arms happen to coincide. This was a real bug,
+  caught by a test asserting row counts rather than by reading the code.
+
+**Placement across scales.** The strip is positioned by inverting the y-scale
+transform, so it sits below the data on linear, log and sqrt axes alike. This is
+the part most likely to be silently wrong — a mark landing among the curves —
+and it is asserted on all three.
+
+**The statistical caveat is documented, not omitted.** Marking dose days invites
+reading "the curve bent after dose 3" off the picture. With four doses and eight
+measurement days some separation will fall near some dose by chance, and growth
+curves diverge steadily whether or not anything was given that week. Onset timing
+is a claim needing a model with time-varying terms — the GAMM path, or per-day
+contrasts — not a visual coincidence. The Info tab says so.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| D.15 | Schedule data unreachable; `plot_treatments()` unexposed | Enhancement | ✅ Resolved v0.15.0 — removed and replaced |
+
+Backend suite: +50 assertions. Dashboard: +102.

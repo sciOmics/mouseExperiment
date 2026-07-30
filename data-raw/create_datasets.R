@@ -94,30 +94,8 @@ for (treat in treatments) {
 # Save the dataset
 usethis::use_data(combo_treatment_synthetic_data, overwrite = TRUE)
 
-# Create combo_treatment_schedule
-combo_treatment_schedule <- data.frame(
-  Treatment = c(
-    rep("Control", 4),
-    rep("aPD1", 4),
-    rep("HDACi", 4),
-    rep("HDACi + PD1", 8)
-  ),
-  Day = c(
-    1, 5, 9, 13,
-    1, 5, 9, 13,
-    1, 5, 9, 13,
-    1, 5, 9, 13, 1, 5, 9, 13
-  ),
-  Dose = c(
-    rep(0, 4),
-    rep(10, 4),
-    rep(50, 4),
-    rep(c(50, 10), each = 4)
-  )
-)
 
 # Save the dataset
-usethis::use_data(combo_treatment_schedule, overwrite = TRUE)
 
 # Create dose_levels_synthetic_data
 set.seed(789)
@@ -176,21 +154,7 @@ for (dose in doses) {
 # Save the dataset
 usethis::use_data(dose_levels_synthetic_data, overwrite = TRUE)
 
-# Create dose_levels_treatment_schedule
-dose_levels_treatment_schedule <- data.frame(
-  Treatment = rep("Drug X", 20),
-  Dose = rep(doses, each = 4),
-  Day = rep(c(1, 5, 9, 13), 5),
-  Administered_Dose = c(
-    rep(0, 4),
-    rep(10, 4),
-    rep(25, 4),
-    rep(50, 4),
-    rep(100, 4)
-  )
-)
 
 # Save the dataset
-usethis::use_data(dose_levels_treatment_schedule, overwrite = TRUE)
 
 cat("All datasets have been recreated and saved to the data/ directory.\n")
