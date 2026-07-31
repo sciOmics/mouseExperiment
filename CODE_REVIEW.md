@@ -3465,3 +3465,140 @@ unvalidated regardless of the assertion count.
 |---|---|---|---|
 | D.16 | Dosing-schedule annotation non-functional in practice | — | ✅ Removed v0.16.0 |
 | D.15 | `plot_treatments()` / schedule datasets | Enhancement | Remains removed |
+
+---
+
+# Review Round 14 (v0.17.0 — 2026-07-30)
+
+**Scope:** Statistical-correctness audit of the analysis surface, driven by
+known-answer tests rather than reading. Every finding below survived twelve
+previous rounds because the code runs without error and produces output the
+dashboard renders.
+
+## R14.1 Every dose-response curve parameter was NA — **Critical**
+
+`dose_response_statistics()` reported `ec50`, `hill_slope`, `lower_limit` and
+`upper_limit` as `NA` on every run since the §G.2 rename. The `LL.4()`/`LL.5()`
+calls pass `names = c("Slope", "Lower Limit", "Upper Limit", "EC50")`, so the
+fitted object carries those; the extraction looked up the drc defaults
+`b:(Intercept)`, `c:(Intercept)`, `d:(Intercept)`, `e:(Intercept)`. **Zero of
+four matched.**
+
+The tell was in the same file: the direction check twenty lines earlier reads
+`coef(dr_model)["Slope:(Intercept)"]` — updated when the names were introduced.
+The parameter block was not.
+
+A second bug sat underneath: `statistics$ec50 <- exp(params[...])`. In `LL.4` the
+`e` parameter is the EC50 on the natural dose scale, so once the lookup started
+working this would have returned ~1e13. (`LL2.4` is the log-parameterised variant
+where `exp()` is correct.) Fixing only the names would have replaced NA with a
+number wrong by twelve orders of magnitude.
+
+The dashboard rendered all four verbatim — "EC50: NA" in the summary and a table
+of NAs — so the entire non-linear dose-response output was dead on screen.
+
+**Fixed.** Parameters are now read by position with a name-based fast path, so a
+future relabelling cannot reintroduce this. Verified by simulating from a known
+curve (EC50 25, slope 1.5, top 1000) and recovering 29.8 / 1.24 / 997.
+
+**Added:** an EC50 confidence interval. `drc::ED(model, 50, interval = "delta")`
+supplies it from the same fit at no cost, and a potency estimate published
+without one is a point estimate presented as a fact. The worked example gives
+EC50 29.8, 95 % CI [24.4, 35.2].
+
+## R14.2 A harmful single agent was reported as synergy — **Critical**
+
+Fractional effect is `1 − treated/control`, so an arm that *accelerates* growth
+has FE < 0. The Loewe index is `min(FE_A + FE_B, 1) / FE_combo`, and the verdict
+thresholds are one-sided: `CI < 0.85 ⇒ synergistic`. A negative CI therefore
+always cleared the synergy threshold.
+
+Worked case, run end to end: DrugA accelerating growth (rate 0.130 vs control
+0.100), DrugB inert, combination near control. Result: **CI = −29.19,
+"Synergistic (CI < 0.85)"**. The Bliss difference was +1.24 and the Loewe
+difference +1.15, so the combined label logic agreed. The verdict is exactly
+inverted, on the arm configuration a reviewer would scrutinise hardest.
+
+Both models are defined for inhibitory agents — Bliss multiplies surviving
+fractions, Loewe adds dose-equivalents — so neither has a meaning at negative
+effect. The honest output is that the analysis does not apply, not a number
+pushed through a threshold.
+
+**Fixed.** When either single agent fails to inhibit, the CI is `NA`, the
+interpretation reads "Not evaluable — a single agent did not inhibit growth
+relative to control", the overall assessment matches, and a warning fires. This
+also removes an inconsistency: the Toxicity path already took this view via
+`max(TGI, 0)`, while synergy did not — a disagreement between two modules about
+the same edge case is itself evidence one had not considered it.
+
+## R14.3 The Tumor Growth tab claimed a metric it does not produce — **Major**
+
+The Info panel stated *"All modes compute Tumor Growth Inhibition (TGI) for each
+treatment group relative to the reference."* `tumor_growth_statistics()` returns
+no TGI field, and the tab renders none. TGI is produced only by
+`therapeutic_window_metric()` and `weight_corrected_tgi()`, and computed
+independently inside `analyze_drug_synergy()`.
+
+The claim predates this review (it read "Both modes…" before Round 11 widened it
+to "All"), and Round 11 propagated it without checking — the exact failure that
+round was convened to fix.
+
+**Fixed**, and the replacement text says where TGI actually lives and why a
+trajectory model does not report it: collapsing a trajectory to a one-day ratio
+of group means discards most of what was measured, and a ratio of endpoint means
+is precisely where early removals bias the answer.
+
+## R14.4 `pairwise_comparisons` returns three different classes — **Major**
+
+| `model_type` | class of `pairwise_comparisons` |
+|---|---|
+| `lme4` (default) | `emmGrid` — **not a data frame** |
+| `gam` | `summary_emm`, `data.frame` |
+| `auc` | `data.frame` |
+
+Consumers written against one shape misbehave on another, silently. The live
+instance: `comparisons_title()` guards with `is.data.frame()` before reading
+`Adjust_Scope`, so on the **default** path the adjustment-scope suffix is
+silently dropped from the table header — the header states the correction but
+omits the scope it was applied over, which is the more useful half.
+
+Not fixed here: normalising the return type is a contract change across three
+model paths and their tests, and it needs its own round rather than being folded
+into a correctness audit. Recorded with the evidence so it is not rediscovered.
+
+## R14.5 Loewe and Bliss disagree structurally, and only one is shown — **Major**
+
+Not a coding error; a property of the linear-Loewe approximation that users are
+not told about. For two agents each at fractional effect *f*, Bliss expects
+`2f − f²` and linear-Loewe expects `min(2f, 1)`. Setting the combination to
+**exactly Bliss-additive** and asking what the Loewe index says:
+
+| FE each | Bliss expected | Loewe expected | CI | verdict |
+|---|---|---|---|---|
+| 0.20 | 0.360 | 0.400 | 1.11 | additive |
+| 0.30 | 0.510 | 0.600 | 1.18 | **antagonistic** |
+| 0.40 | 0.640 | 0.800 | 1.25 | **antagonistic** |
+| 0.50 | 0.750 | 1.000 | 1.33 | **antagonistic** |
+| 0.60 | 0.840 | 1.000 | 1.19 | **antagonistic** |
+| 0.70 | 0.910 | 1.000 | 1.10 | additive |
+
+So across roughly FE 0.25–0.65 — the range most active single agents occupy — a
+combination that is exactly additive under Bliss is labelled antagonistic by the
+index. On a real fitted example the two differences pointed in opposite
+directions on identical data: Bliss +0.085, Loewe −0.067.
+
+The dashboard renders only `combination_index$interpretation`. The
+`overall_assessment` field, which requires both models to agree before claiming
+synergy, is computed and returned but **never displayed** — so users see the
+single verdict most prone to this bias and not the conservative one.
+
+Recorded rather than fixed: which model to headline is a scientific choice for
+the package owner, not a defect to patch silently.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| R14.1 | All four dose-response parameters NA; spurious `exp()` | **Critical** | ✅ Fixed v0.17.0 |
+| R14.2 | Harmful single agent reported as synergy | **Critical** | ✅ Fixed v0.17.0 |
+| R14.3 | Tumor Growth tab claims TGI it does not produce | Major | ✅ Fixed (dashboard) |
+| R14.4 | `pairwise_comparisons` has three return classes | Major | Open — needs its own round |
+| R14.5 | Loewe/Bliss structural disagreement; conservative label hidden | Major | Open — owner's call |

@@ -396,12 +396,40 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
         message(paste(utils::capture.output(print(dr_summary)), collapse = "\n"))
       }
       
-      # Extract parameters
-      params <- dr_model$coefficients
-      statistics$ec50 <- exp(params["e:(Intercept)"])
-      statistics$hill_slope <- params["b:(Intercept)"]
-      statistics$lower_limit <- params["c:(Intercept)"]
-      statistics$upper_limit <- params["d:(Intercept)"]
+      # Extract parameters.
+      #
+      # R14.1: these four lookups used the drc default names b/c/d/e, but the
+      # LL.4()/LL.5() calls above pass `names = c("Slope", "Lower Limit",
+      # "Upper Limit", "EC50")`, so the fitted object carries those instead.
+      # Zero of the four matched, and every dose-response run reported EC50,
+      # Hill slope and both asymptotes as NA — which the dashboard rendered
+      # verbatim. The direction check at the Slope line above was updated when
+      # the names were introduced (§G.2); this block was not.
+      #
+      # The `exp()` was wrong too. In LL.4 the `e` parameter is the EC50 on the
+      # natural dose scale; exponentiating it would have returned ~1e13 once the
+      # name lookup started working. (LL2.4 is the log-parameterised variant
+      # where exp() would be correct.)
+      #
+      # Read by position rather than by name so a future relabelling cannot
+      # silently reintroduce this: LL.4 is always ordered b, c, d, e.
+      params  <- stats::coef(dr_model)
+      pick <- function(pattern, index) {
+        hit <- params[grep(pattern, names(params))]
+        if (length(hit) == 1L) unname(hit[1]) else unname(params[index])
+      }
+      statistics$hill_slope  <- pick("^Slope",       1L)
+      statistics$lower_limit <- pick("^Lower Limit", 2L)
+      statistics$upper_limit <- pick("^Upper Limit", 3L)
+      statistics$ec50        <- pick("^EC50",        4L)
+
+      # EC50 without an interval is a point estimate presented as a fact. drc
+      # supplies a delta-method interval from the same fit at no extra cost.
+      statistics$ec50_ci <- tryCatch({
+        ed <- drc::ED(dr_model, 50, interval = "delta", display = FALSE)
+        c(lower = unname(ed[1, "Lower"]), upper = unname(ed[1, "Upper"]),
+          se = unname(ed[1, "Std. Error"]))
+      }, error = function(e) NULL)
       
       # Store model. dr_model_type now reports the *shape* (symmetric or
       # asymmetric); dr_model_direction reports the inferred direction

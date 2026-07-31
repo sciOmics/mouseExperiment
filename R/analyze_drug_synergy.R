@@ -250,14 +250,33 @@ analyze_drug_synergy <- function(df,
   loewe_expected_fe <- min(fe_a + fe_b, 1.0)
   loewe_expected_tgi <- loewe_expected_fe * 100
   
-  # Calculate Combination Index (CI) based on Loewe Additivity
-  # CI = Loewe_Expected_FE / FE_combo = min(FE_A + FE_B, 1) / FE_combo
-  # CI < 1 indicates synergy, CI = 1 indicates additivity, CI > 1 indicates antagonism
-  if (fe_combo > 0) {
+  # R14.2: a single agent that INCREASES tumour burden relative to control gives a
+  # negative fractional effect, and the ratio below then goes negative. Because
+  # the verdict thresholds are one-sided ("CI < 0.85 => synergistic"), any
+  # negative CI was classified as synergy. A worked case: DrugA accelerating
+  # growth, DrugB inert and the combination roughly matching control produced
+  # CI = -29.2 reported as "Synergistic (CI < 0.85)" — the verdict exactly
+  # inverted, on the arm configuration a reviewer would scrutinise hardest.
+  #
+  # Both synergy models are defined for *inhibitory* agents: Bliss multiplies
+  # surviving fractions, Loewe adds dose-equivalents. Neither has a meaning when
+  # an arm's effect is negative, so the honest answer is that the analysis does
+  # not apply, not a number pushed through a threshold. The Toxicity path already
+  # takes this view — TWM uses max(TGI, 0) — so this also removes an
+  # inconsistency between the two.
+  agents_inhibitory <- is.finite(fe_a) && is.finite(fe_b) && fe_a > 0 && fe_b > 0
+  if (!agents_inhibitory) {
+    ci_value <- NA_real_
+    warning("Combination Index not computed: a single-agent arm did not inhibit ",
+            "growth relative to control (fractional effect <= 0). Bliss and Loewe ",
+            "are both defined for inhibitory agents; a synergy verdict here would ",
+            "be meaningless.", call. = FALSE)
+  } else if (fe_combo > 0) {
     ci_value <- loewe_expected_fe / fe_combo
   } else {
-    ci_value <- NA
-    warning("Cannot calculate Combination Index: Combination effect is zero or negative")
+    ci_value <- NA_real_
+    warning("Cannot calculate Combination Index: Combination effect is zero or negative",
+            call. = FALSE)
   }
   
   # Determine synergy interpretation based on CI.
@@ -267,7 +286,11 @@ analyze_drug_synergy <- function(df,
   # widths. It is now an argument so the choice is explicit and tunable.
   lo <- min(ci_thresholds); hi <- max(ci_thresholds)
   if (is.na(ci_value)) {
-    synergy_interpretation <- "Cannot determine (CI calculation error)"
+    synergy_interpretation <- if (!agents_inhibitory) {
+      "Not evaluable - a single agent did not inhibit growth relative to control"
+    } else {
+      "Cannot determine (CI calculation error)"
+    }
   } else if (ci_value < lo) {
     synergy_interpretation <- paste0("Synergistic (CI < ", lo, ")")
   } else if (ci_value <= hi) {
@@ -286,7 +309,12 @@ analyze_drug_synergy <- function(df,
   # attached; see the `synergy_ci` element and the Assumptions section for why
   # a label alone should not drive a decision.
   d <- strong_synergy_delta
-  if (bliss_difference > d && loewe_difference > d) {
+  if (!agents_inhibitory) {
+    # Same reasoning as the CI guard above: the Bliss/Loewe differences are large
+    # and positive here precisely *because* a single agent did harm, so the label
+    # logic would read the harm as evidence of synergy.
+    synergy_label <- "Not evaluable (a single agent did not inhibit growth)"
+  } else if (bliss_difference > d && loewe_difference > d) {
     synergy_label <- "Strong Synergy"
   } else if (bliss_difference > 0 && loewe_difference > 0) {
     synergy_label <- "Synergy"

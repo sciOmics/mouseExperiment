@@ -5,6 +5,49 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-07-30
+
+Statistical-correctness audit driven by known-answer tests. Both fixes below are
+defects that ran without error and produced output the dashboard rendered.
+
+### Fixed — every dose-response curve parameter was NA (R14.1)
+
+`ec50`, `hill_slope`, `lower_limit` and `upper_limit` were `NA` on every run.
+`LL.4()`/`LL.5()` are called with `names = c("Slope","Lower Limit","Upper
+Limit","EC50")`, so the fitted object carries those; the extraction looked up the
+drc defaults `b`/`c`/`d`/`e`. Zero of four matched. The direction check twenty
+lines earlier had been updated when the names were introduced; this block was
+not.
+
+A second bug sat underneath: `exp(params[...])` on the EC50. In `LL.4` the `e`
+parameter is already on the natural dose scale, so fixing only the names would
+have replaced NA with a number wrong by twelve orders of magnitude.
+
+Parameters are now read by position with a name-based fast path. Verified by
+recovering a known curve: simulated at EC50 25 / slope 1.5 / top 1000, fitted
+29.8 / 1.24 / 997.
+
+### Added — a confidence interval on EC50 (R14.1)
+
+`drc::ED(model, 50, interval = "delta")` gives it from the same fit at no cost. A
+potency estimate published without one is a point estimate presented as a fact.
+
+### Fixed — a harmful single agent was reported as synergy (R14.2)
+
+Fractional effect is `1 − treated/control`, so an arm that accelerates growth has
+FE < 0, and `min(FE_A + FE_B, 1) / FE_combo` goes negative. The verdict thresholds
+are one-sided (`CI < 0.85 ⇒ synergistic`), so every negative CI cleared the
+synergy threshold.
+
+Worked case: DrugA accelerating growth, DrugB inert, combination near control
+gave **CI = −29.2, "Synergistic (CI < 0.85)"** — the verdict exactly inverted, on
+the configuration a reviewer would scrutinise hardest.
+
+Both models are defined for inhibitory agents. When either single agent fails to
+inhibit, the CI is now `NA`, the interpretation and overall assessment read "Not
+evaluable", and a warning fires. This also aligns synergy with the Toxicity path,
+which already clamped via `max(TGI, 0)`.
+
 ## [0.16.0] - 2026-07-30
 
 ### Removed — the dosing-schedule annotation added in 0.15.0 (**breaking**)
