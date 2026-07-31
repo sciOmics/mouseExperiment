@@ -72,11 +72,10 @@ weight_corrected_tgi <- function(df,
 
   # Baseline per mouse+treatment at the earliest study day.
   # Aggregate by both ID and Treatment to handle IDs shared across groups.
-  min_day <- min(wd$Day, na.rm = TRUE)
-  baseline <- stats::aggregate(Net_Weight ~ ID + Treatment,
-                               data = wd[wd$Day == min_day, ],
-                               FUN = mean, na.rm = TRUE)
-  names(baseline)[3] <- "Baseline_Weight"
+  # R15.2 -- per-animal baseline, not the global first day (see
+  # me_per_mouse_baseline). Here the all.x merge gave a late-enrolling animal an
+  # NA baseline, which then propagated into every percentage derived from it.
+  baseline <- me_per_mouse_baseline(wd, c("ID", "Treatment"), "Net_Weight")
   wd <- merge(wd, baseline, by = c("ID", "Treatment"), all.x = TRUE)
   wd$Pct_Loss <- (wd$Baseline_Weight - wd$Net_Weight) / wd$Baseline_Weight
 

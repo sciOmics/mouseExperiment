@@ -76,13 +76,8 @@ efficacy_toxicity_bivariate <- function(df,
   # The efficacy arm below already uses make_mouse_key — bring toxicity inline.
   # Also filter to the earliest study day so x[1] is unambiguous (Round 1 1.7).
   wt$.MouseKey <- make_mouse_key(wt$Treatment, wt$ID)
-  min_day_w <- min(wt$Day, na.rm = TRUE)
-  baseline_w <- stats::aggregate(
-    Net_Weight ~ .MouseKey,
-    data = wt[wt$Day == min_day_w, ],
-    FUN  = mean, na.rm = TRUE
-  )
-  names(baseline_w)[2] <- "Baseline_Weight"
+  # R15.2 -- per-animal baseline, not the global first day.
+  baseline_w <- me_per_mouse_baseline(wt, ".MouseKey", "Net_Weight")
   wt <- merge(wt, baseline_w, by = ".MouseKey", all.x = TRUE)
   wt$Pct_Weight_Loss <- (wt$Baseline_Weight - wt$Net_Weight) / wt$Baseline_Weight * 100
 

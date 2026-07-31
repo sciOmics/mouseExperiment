@@ -3701,3 +3701,99 @@ claims them now. If they are wanted, they are additions, not repairs.
 | R14.5 | Consensus synergy verdict computed but never shown | Major | ✅ Fixed (dashboard) |
 | R14.7 | Bayesian intervals labelled median/HPD; are mean/equal-tailed | Major | ✅ Fixed (dashboard) |
 | — | Bayesian growth recovers known truth | — | Verified |
+
+---
+
+# Review Round 16 (v0.19.0 — 2026-07-30)
+
+**Scope:** the surface Round 15 left unaudited — survival, the toxicity metrics,
+and the analytic power path. Two defects found, both reachable from the dashboard
+with ordinary data.
+
+## R15.1 Survival could not run without a cage column — **Major**
+
+`survival_statistics()` defaults `cage_column = "Cage"` and used it in three
+unguarded places. Both ways of expressing "no cage" failed:
+
+| call | error |
+|---|---|
+| `cage_column = NULL` (what the dashboard passes) | `argument is of length zero` |
+| `cage_column = "Cage"`, column absent | `undefined columns selected` |
+
+`NULL %in% colnames(df)` is `logical(0)`, so `if (cage_column %in% colnames(df))`
+errors rather than skipping. The dashboard passes `NULL` whenever the user has not
+mapped a cage column, so **the Survival tab failed for every such upload**, with a
+message pointing nowhere near the cause.
+
+Notably `classify_cage_structure()` — added later, under §G.2 — guards correctly
+with `is.null(cage_column) || !cage_column %in% names(df)`. The newer code knew;
+the older code was never revisited.
+
+Fixed by normalising once, early: a `cage_column` naming a column that is not
+present becomes `NULL`, and every downstream use guards `NULL`. Verified the
+hazard ratio is identical across all three spellings, and that a genuine cage
+column is still classified rather than discarded by the new guard.
+
+## R15.2 Weight-loss baselines silently dropped animals — **Critical**
+
+Four functions computed a baseline as `data[data$Day == min(data$Day), ]` — the
+**global** earliest study day:
+
+- `therapeutic_window_metric.R`
+- `weight_corrected_tgi.R`
+- `efficacy_toxicity_bivariate.R`
+- `total_benefit_area.R`
+
+Any animal without an observation on that exact day was dropped by the subsequent
+merge (therapeutic window) or given an `NA` baseline that propagated into every
+percentage derived from it (the other three). Staggered enrolment, a missed first
+weighing, or an animal added after the study opened all produce it.
+
+**The bias has a direction, and it is the dangerous one.** Excluded animals leave
+the toxicity *denominator*, so reported weight loss is understated and the
+therapeutic window reads safer than it is. Worked case — six animals per arm, two
+enrolling on day 3 and losing 30 % against 10 % for the rest:
+
+```
+reported                 10.000   <- exactly the mean of the four retained animals
+truth (all six)          15.622
+```
+
+The two most-toxic animals in the arm vanished from the safety metric without a
+warning.
+
+The replacement uses **each animal's own first observation**, which is the correct
+estimand anyway: percentage weight change is a within-animal quantity, and
+anchoring it to a day the animal was not measured on is meaningless even when the
+row happens to exist. Note the corrected figure is 15.622 rather than 16.667 —
+the late animals' true observable loss is measured from day 3 (26.9 %), not from a
+day-0 weight they never had. A test asserting 16.667 would be asserting an
+unobservable quantity.
+
+## Verified correct (recorded so it is not re-audited)
+
+**Survival estimates.** Exponential survival simulated at 0.10/day against
+0.05/day (true HR 0.5, n = 60/arm): estimated HR **0.5216**, 95 % CI
+[0.345, 0.788] containing the truth. Median survival matched `survfit` exactly
+(9.699 for both), and the KM median CI [6.63, 13.74] contains the theoretical
+6.93 — the apparent gap from the theoretical median is sampling variability in
+that draw, not a defect.
+
+**Analytic power.** Matches `stats::power.t.test` to the printed precision across
+every cell tested:
+
+| d | n | package | `power.t.test` | diff |
+|---|---|---|---|---|
+| 0.5 | 10 | 0.18384 | 0.18384 | 0.00000 |
+| 0.5 | 20 | 0.33771 | 0.33771 | 0.00000 |
+| 0.8 | 10 | 0.39494 | 0.39494 | 0.00000 |
+| 0.8 | 20 | 0.69340 | 0.69340 | 0.00000 |
+| 1.0 | 10 | 0.56198 | 0.56198 | 0.00000 |
+| 1.0 | 20 | 0.86895 | 0.86895 | 0.00000 |
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| R15.2 | Weight-loss baselines dropped animals; understated toxicity | **Critical** | ✅ Fixed v0.19.0 |
+| R15.1 | Survival could not run without a cage column | Major | ✅ Fixed v0.19.0 |
+| — | Survival HR / median / median CI | — | Verified correct |
+| — | Analytic power vs `power.t.test` | — | Verified exact |

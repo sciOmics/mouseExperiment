@@ -109,6 +109,18 @@ survival_statistics <- function(df,
 
   # Validate inputs
   validate_inputs(df, time_column, censor_column, treatment_column)
+  # R15.1: cage_column arrives either as NULL (the dashboard passes NULL when no
+  # cage column is mapped) or as a name that may not be present -- the default is
+  # "Cage", which is absent from plenty of real uploads. Both cases used to fail
+  # opaquely: NULL gave "argument is of length zero" from an unguarded
+  # `if (cage_column %in% colnames(df))`, and a missing name gave "undefined
+  # columns selected" from a bare data-frame subset. There was no way to run this
+  # function on data without a cage column, and the dashboard's Survival tab hit
+  # the NULL branch for every such upload.
+  #
+  # Normalise here so everything below can assume NULL means "no cage information".
+  if (!is.null(cage_column) && !cage_column %in% colnames(df)) cage_column <- NULL
+
   validate_one_row_per_subject(df, id_column, treatment_column, cage_column)
   
   # Setup parameters
@@ -256,10 +268,13 @@ survival_statistics <- function(df,
   # Aggregate to get maximum event per subject (1 if any event occurred, 0 otherwise)
   event_by_subject <- stats::aggregate(
     event_data[[censor_column]], 
-    by = list(
-      ID = event_data[[id_column]], 
-      Treatment = event_data[[treatment_column]],
-      Cage = event_data[[cage_column]]
+    by = c(
+      list(
+        ID = event_data[[id_column]],
+        Treatment = event_data[[treatment_column]]
+      ),
+      # Grouping by cage only when there is one; event_data[[NULL]] errors.
+      if (!is.null(cage_column)) list(Cage = event_data[[cage_column]]) else NULL
     ), 
     FUN = max
   )
@@ -429,8 +444,9 @@ validate_inputs <- function(df, time_column, censor_column, treatment_column) {
 #' Check Cage Distribution
 #' @noRd
 check_cage_distribution <- function(df, treatment_column, cage_column) {
-  # Only check if cage column exists
-  if (cage_column %in% colnames(df)) {
+  # Only check if a cage column was supplied AND exists. `NULL %in% colnames(df)`
+  # is logical(0), which makes a bare `if` error rather than skip (R15.1).
+  if (!is.null(cage_column) && cage_column %in% colnames(df)) {
     cage_treatment_table <- table(df[[cage_column]], df[[treatment_column]])
     message("Cage distribution across treatment groups:")
     message(paste(utils::capture.output(print(cage_treatment_table)), collapse = "\n"))

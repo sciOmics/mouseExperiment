@@ -147,11 +147,13 @@ therapeutic_window_metric <- function(df,
   # Filter to the earliest study day before aggregating so x[1] is ordered.
   # Aggregate by MouseKey (ID|||Treatment|||Cage) so reused IDs across cages
   # don't collapse — same fix class as Round 1 1.8 for weight_corrected_tgi.
-  min_day <- min(wd$Day, na.rm = TRUE)
-  baseline <- stats::aggregate(Weight ~ MouseKey + Treatment,
-                               data = wd[wd$Day == min_day, ],
-                               FUN = mean, na.rm = TRUE)
-  names(baseline)[3] <- "Baseline_Weight"
+  # R15.2: was `wd[wd$Day == min(wd$Day), ]` -- the GLOBAL earliest day. Any
+  # animal without an observation on that exact day was dropped by the merge
+  # below, and the bias has a direction: those animals leave the toxicity
+  # denominator, so weight loss is understated and the window looks safer than it
+  # is. A worked case dropped the two most-toxic animals in an arm and reported
+  # 10.0 % mean loss against a true 16.7 %.
+  baseline <- me_per_mouse_baseline(wd, c("MouseKey", "Treatment"), "Weight")
 
   nadir <- stats::aggregate(Weight ~ MouseKey + Treatment, data = wd,
                             FUN = min, na.rm = TRUE)

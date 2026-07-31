@@ -247,3 +247,55 @@ endpoint_tgi <- function(group_means, reference_group) {
   group_means$TGI[group_means$Treatment == reference_group] <- 0
   group_means
 }
+
+#' Per-animal baseline at each animal's own first observation
+#'
+#' CODE_REVIEW.md R15.2. Four toxicity functions computed a baseline as
+#' `data[data$Day == min(data$Day), ]` — the *global* earliest study day. Any
+#' animal without an observation on that exact day is then either dropped by the
+#' subsequent merge (therapeutic window) or carries an `NA` baseline that
+#' propagates through every percentage derived from it.
+#'
+#' That is not an edge case. Staggered enrolment, a missed first weighing, or an
+#' animal added after the study opened all produce it, and the bias has a
+#' direction: the excluded animals are removed from the toxicity denominator, so
+#' the reported weight loss is **understated** and the therapeutic window looks
+#' better than it is. A worked example dropped the two most-toxic animals in an
+#' arm and reported 10.0 % mean loss where the true figure across all six was
+#' 16.7 %.
+#'
+#' Each animal's own first observation is the right baseline anyway: percentage
+#' weight change is a within-animal quantity, and anchoring it to a day the animal
+#' was not measured on is meaningless even when the row happens to exist.
+#'
+#' @param df Long-format data.
+#' @param key_cols Character vector identifying an animal (e.g. `"MouseKey"`, or
+#'   `c("ID", "Treatment")`).
+#' @param value_col Name of the measurement column.
+#' @param day_col Name of the time column.
+#' @param out_name Name for the returned baseline column.
+#' @return A data frame of `key_cols` plus `out_name`, one row per animal.
+#'   Duplicate rows on an animal's first day are averaged, matching the previous
+#'   behaviour.
+#' @noRd
+#' @keywords internal
+me_per_mouse_baseline <- function(df, key_cols, value_col, day_col = "Day",
+                                  out_name = "Baseline_Weight") {
+  keep <- stats::complete.cases(df[, c(key_cols, day_col), drop = FALSE])
+  d <- df[keep, , drop = FALSE]
+  if (!nrow(d)) {
+    out <- d[, key_cols, drop = FALSE]
+    out[[out_name]] <- numeric(0)
+    return(out)
+  }
+  key <- do.call(paste, c(lapply(key_cols, function(k) as.character(d[[k]])),
+                          list(sep = "\r")))
+  first_day <- stats::ave(as.numeric(d[[day_col]]), key,
+                          FUN = function(x) min(x, na.rm = TRUE))
+  at_first <- d[as.numeric(d[[day_col]]) == first_day, , drop = FALSE]
+
+  fml <- stats::as.formula(paste(value_col, "~", paste(key_cols, collapse = " + ")))
+  out <- stats::aggregate(fml, data = at_first, FUN = mean, na.rm = TRUE)
+  names(out)[ncol(out)] <- out_name
+  out
+}

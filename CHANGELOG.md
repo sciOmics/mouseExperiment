@@ -5,6 +5,52 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-07-30
+
+Audit of the surface the previous round left uncovered: survival, the toxicity
+metrics, and the analytic power path.
+
+### Fixed — weight-loss baselines silently dropped animals (R15.2, **Critical**)
+
+Four functions computed a baseline as `data[data$Day == min(data$Day), ]` — the
+**global** earliest study day. Any animal without an observation on that exact day
+was dropped by the following merge (`therapeutic_window_metric`) or given an `NA`
+baseline that propagated into every percentage derived from it
+(`weight_corrected_tgi`, `efficacy_toxicity_bivariate`, `total_benefit_area`).
+Staggered enrolment, a missed first weighing, or an animal added after the study
+opened all produce it.
+
+The bias has a direction, and it is the dangerous one: excluded animals leave the
+toxicity *denominator*, so weight loss is understated and the therapeutic window
+reads safer than it is. Worked case — two of six animals enrolling on day 3 and
+losing 30 % against 10 % for the rest — reported **10.0 %**, exactly the mean of
+the four retained animals, against a true **15.6 %**. The two most-toxic animals
+in the arm vanished from the safety metric without a warning.
+
+Now uses each animal's own first observation, which is the correct estimand
+anyway: percentage weight change is a within-animal quantity, and anchoring it to
+a day the animal was not measured on is meaningless even when the row exists.
+
+### Fixed — survival could not run without a cage column (R15.1)
+
+`cage_column = NULL` (what the dashboard passes when no cage is mapped) gave
+`argument is of length zero`; the `"Cage"` default on data lacking that column
+gave `undefined columns selected`. `NULL %in% colnames(df)` is `logical(0)`, so
+the unguarded `if` errors instead of skipping — and the Survival tab failed for
+every upload without a cage column, with a message pointing nowhere near the
+cause.
+
+`classify_cage_structure()`, added later under §G.2, guards this correctly. The
+newer code knew; the older code was never revisited.
+
+### Verified — survival estimates and analytic power are correct
+
+Exponential survival at 0.10/day against 0.05/day (true HR 0.5): estimated
+**0.5216**, 95 % CI [0.345, 0.788]. Median survival matches `survfit` exactly.
+
+Analytic power matches `stats::power.t.test` to printed precision across six
+(effect size × n) cells — differences of 0.00000 throughout.
+
 ## [0.18.0] - 2026-07-30
 
 ### Fixed — `p_value` meant "adjusted" on one path and "raw" on another (R14.6)
