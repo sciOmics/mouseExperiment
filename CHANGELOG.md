@@ -5,6 +5,71 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] - 2026-07-31
+
+### Fixed — the max-treedepth diagnostic counted healthy sampling as saturation (R16.1)
+
+`n_max_treedepth` compared each draw against `max(treedepth)` — the maximum the
+sampler *happened to reach* — rather than against the configured `max_treedepth`
+limit. When sampling is healthy and never approaches the limit, that counts every
+draw at the modal depth as a hit.
+
+On a two-parameter Weibull AFT whose treedepths were 1, 2 and 3 against a limit
+of 10, it reported **1425 of 1500 draws** hitting max treedepth. The true count
+was **zero**.
+
+This is the first finding in the review that errs toward false alarm rather than
+silence, and the cost is the same: a number that is always large is one nobody
+can act on, and it masks the genuine saturation the metric exists to detect. Now
+reads the configured limit from the fitted object, falling back to Stan's default
+of 10 rather than inferring it from the draws.
+
+The roxygen also claimed `clean = TRUE` required "no max-treedepth hits", which
+`clean_flag` has never enforced. The code is right — hitting the limit makes
+sampling slow, not wrong — so the documentation was corrected to match.
+
+### Verified — the last two Bayesian modules
+
+- **Bayesian dose-response** — from a known Emax curve (EC50 25, Hill 1.5, Emax
+  0.90): posterior medians 25.65 [22.27, 29.66], 1.48 [1.28, 1.74] and 0.902
+  [0.848, 0.952]. All three intervals contain the truth. On the same generating
+  curve the frequentist `drc` fit gave EC50 29.83 [24.4, 35.2] — also containing
+  the truth but shifted high and wider.
+- **Bayesian body weight** — true interaction −0.08 recovered as −0.0845
+  [−0.0908, −0.0783].
+
+`n_max_treedepth` reads 0 on both, confirming the R16.1 fix generalises beyond
+the model it was found on.
+
+### Correction
+
+A note in the previous round's review stated that no probability-of-direction
+implementation exists. That was wrong: `emm_p_direction()` computes
+`max(P(θ>0), P(θ<0))` from the posterior draws and is reported as `P_direction`
+in the pairwise tables of `bayesian_tumor_growth()` and `bayesian_body_weight()`.
+The probe behind that claim printed `posterior_summary` and `treatment_effects`
+but not `pairwise_comparisons`. ROPE genuinely is absent.
+
+### Verified — the survival internals and Bayesian modules are sound
+
+Recorded so none of this is re-audited:
+
+- **Competing risks / Aalen-Johansen** — with heavy tumour-burden removals, 1 − KM
+  gives 0.4366 and 0.3190 against AJ estimates of 0.30 and 0.25. KM overstates
+  weight-loss incidence by 14 and 7 points, exactly as the estimator exists to
+  correct. `pstate` rows sum to 1.0.
+- **Firth correction** — under monotone likelihood (an arm with zero events) it
+  returns a finite HR of 0.0066, CI [0.00033, 0.133] via `coxphf`, degrading to
+  log-rank when disabled.
+- **Proportional hazards** — `cox.zph` p = 0.426 when PH holds, p = 0.011 when
+  hazards deliberately cross.
+- **Bayesian survival** — true time ratio 2.0 recovered as 1.798 [1.259, 2.490],
+  true HR 0.5 as 0.549, with near-nominal posterior-predictive coverage
+  (0.5125 / 0.800 / 0.975) and zero divergences.
+- **Bayesian synergy** — true interactions −0.030 / −0.025 / −0.070 recovered as
+  −0.0319 / −0.0272 / −0.0727, with a credible interval on Bliss excess
+  (median 0.071, lower 0.040).
+
 ## [0.19.0] - 2026-07-30
 
 Audit of the surface the previous round left uncovered: survival, the toxicity

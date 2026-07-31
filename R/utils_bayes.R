@@ -68,12 +68,35 @@ make_mcmc_diagnostics <- function(posterior_summary_df, total_draws = NULL) {
 #'     is struggling to explore the typical set.
 #' }
 #'
-#' \code{clean = TRUE} iff all three pass (no divergences, no max-treedepth
-#' hits, E-BFMI \eqn{\ge} 0.3).
+#' \code{clean = TRUE} iff there are no divergences and E-BFMI \eqn{\ge} 0.3.
+#' Max-treedepth hits are reported but deliberately excluded: hitting the limit
+#' makes sampling slow, not wrong, so a run that is merely inefficient should not
+#' be flagged as untrustworthy. (The documentation previously claimed all three
+#' were required, which the code has never done — R16.1.)
 #'
 #' Returns a one-row data frame so it can be displayed in a dashboard table
 #' alongside the per-parameter diagnostics.
 #' @noRd
+# Configured max_treedepth for a fitted brms model. Stan's default is 10; brms
+# passes it through `control`. Read defensively across backends and fall back to
+# the Stan default rather than guessing from the observed draws (R16.1).
+.me_max_treedepth <- function(model) {
+  if (is.null(model)) return(10)
+  cand <- list(
+    tryCatch(model$stan_args$control$max_treedepth, error = function(e) NULL),
+    tryCatch(model$fit@stan_args[[1]]$control$max_depth, error = function(e) NULL),
+    tryCatch(model$fit@stan_args[[1]]$control$max_treedepth, error = function(e) NULL),
+    tryCatch(attr(model$fit@sim$samples[[1]], "args")$control$max_depth,
+             error = function(e) NULL)
+  )
+  for (v in cand) {
+    if (!is.null(v) && length(v) == 1L && is.finite(as.numeric(v))) {
+      return(as.numeric(v))
+    }
+  }
+  10  # Stan default
+}
+
 make_nuts_diagnostics <- function(model) {
   default <- data.frame(
     n_divergent     = NA_integer_,
@@ -91,10 +114,22 @@ make_nuts_diagnostics <- function(model) {
 
   div <- np$Value[np$Parameter == "divergent__"]
   td  <- np$Value[np$Parameter == "treedepth__"]
-  max_td_val <- if (length(td) > 0) max(td, na.rm = TRUE) else NA_real_
-  n_div   <- if (length(div) > 0) as.integer(sum(div > 0, na.rm = TRUE)) else NA_integer_
-  n_maxtd <- if (length(td) > 0 && is.finite(max_td_val)) {
-    as.integer(sum(td >= max_td_val, na.rm = TRUE))
+  n_div <- if (length(div) > 0) as.integer(sum(div > 0, na.rm = TRUE)) else NA_integer_
+
+  # R16.1: this compared each draw against max(td) -- the maximum treedepth the
+  # sampler HAPPENED to reach -- rather than against the configured max_treedepth
+  # limit. When sampling is healthy and never approaches the limit, that counts
+  # every draw at the modal depth as a "hit". A worked case: a two-parameter
+  # Weibull AFT whose treedepths were 1, 2 and 3 against a limit of 10 reported
+  # 1425 of 1500 draws hitting max treedepth. The true count was zero.
+  #
+  # The direction of this error is unusual for this review -- it cries wolf
+  # rather than staying silent -- but the cost is the same. A number that is
+  # always alarming is one nobody can act on, and it hides the genuine
+  # saturation it exists to detect.
+  max_td_limit <- .me_max_treedepth(model)
+  n_maxtd <- if (length(td) > 0 && is.finite(max_td_limit)) {
+    as.integer(sum(td >= max_td_limit, na.rm = TRUE))
   } else NA_integer_
 
   ebfmi <- tryCatch({

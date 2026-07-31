@@ -3690,9 +3690,19 @@ Day                  estimate  0.1202   95% CrI [ 0.1183,  0.1222]
 Both intervals contain the truth, Rhat ≤ 1.01, bulk ESS > 3600. The prior scaling
 repaired under §R3.34 is not distorting the posterior.
 
-**No ROPE or probability-of-direction implementation exists** anywhere in the
-package. The Help tab claimed both until Round 11 removed the claim; nothing
-claims them now. If they are wanted, they are additions, not repairs.
+**No ROPE implementation exists** anywhere in the package. The Help tab claimed
+it until Round 11 removed the claim; nothing claims it now. If it is wanted, it is
+an addition, not a repair.
+
+**Correction (Round 17):** the sentence above originally also claimed probability
+of direction was absent. That was wrong. `emm_p_direction()`
+(`utils_bayes.R`) computes it as `max(P(θ>0), P(θ<0))` from the posterior draws,
+and it is reported as the `P_direction` column of the pairwise tables in both
+`bayesian_tumor_growth()` and `bayesian_body_weight()`. The Round 15 probe
+printed `posterior_summary` and `treatment_effects` but not
+`pairwise_comparisons`, so the column was never in view. Recorded rather than
+quietly edited, because "I looked and it is not there" is a claim a reader would
+otherwise act on.
 
 | ID | Issue | Severity | Status |
 |---|---|---|---|
@@ -3797,3 +3807,157 @@ every cell tested:
 | R15.1 | Survival could not run without a cage column | Major | ✅ Fixed v0.19.0 |
 | — | Survival HR / median / median CI | — | Verified correct |
 | — | Analytic power vs `power.t.test` | — | Verified exact |
+
+---
+
+# Review Round 17 (v0.20.0 — 2026-07-31)
+
+**Scope:** the survival internals and Bayesian modules flagged as unaudited. One
+defect, and a good deal verified correct.
+
+## R16.1 The max-treedepth diagnostic counted healthy sampling as saturation — **Major**
+
+```r
+max_td_val <- max(td, na.rm = TRUE)             # the OBSERVED maximum
+n_maxtd    <- sum(td >= max_td_val, na.rm = TRUE)
+```
+
+The count compared each draw against the maximum treedepth the sampler *happened
+to reach*, not against the configured `max_treedepth` limit. When sampling is
+healthy and never approaches the limit, this counts every draw at the modal depth
+as a hit.
+
+Measured on a two-parameter Weibull AFT:
+
+```
+treedepth distribution:   1 -> 106 draws,  2 -> 1469,  3 -> 1425
+configured limit:         10
+draws at the limit:       0          <- the true diagnostic
+reported:                 1425       <- 95% of draws, apparently alarming
+```
+
+**This is the first finding in the review that errs toward false alarm rather
+than silence**, and the cost is the same in the end. A number that is always
+large is one nobody can act on, and it hides the genuine saturation the metric
+exists to detect. A user seeing "1425 iterations hit max treedepth" would
+reasonably raise the treedepth or start reparameterising a model that was
+sampling perfectly.
+
+Fixed by reading the configured limit from the fitted object, defensively across
+backends, falling back to Stan's default of 10 rather than inferring it from the
+draws. Reported count on the same model: **0**.
+
+A documentation mismatch surfaced alongside. The roxygen claimed
+*"`clean = TRUE` iff all three pass (no divergences, no max-treedepth hits,
+E-BFMI ≥ 0.3)"*, but `clean_flag` has never included treedepth. The code is right
+— hitting the limit makes sampling slow, not wrong, so an inefficient run should
+not be labelled untrustworthy — so the documentation was corrected to match.
+
+## Verified correct (recorded so none of this is re-audited)
+
+**Competing risks / Aalen-Johansen.** Built a case with heavy tumour-burden
+removals and compared against Kaplan-Meier:
+
+| arm | 1 − KM | Aalen-Johansen | competing removals |
+|---|---|---|---|
+| Control | 0.4366 | 0.30 | 8 |
+| DrugA | 0.3190 | 0.25 | 7 |
+
+KM overstates weight-loss incidence by 14 and 7 percentage points — exactly the
+direction and magnitude the AJ estimator exists to correct. The `pstate` rows sum
+to 1.0, the internal consistency check for a multi-state fit, and the states are
+correctly labelled `(s0) / weight_loss / removed`.
+
+**Firth correction.** Under monotone likelihood (one arm with zero events, where
+the standard partial likelihood diverges to −∞): finite HR 0.0066, 95 % CI
+[0.00033, 0.133], `method_used = "coxphf"`. With `firth_correction = FALSE` it
+degrades to a log-rank test rather than reporting a broken Cox fit.
+
+**Proportional-hazards test.** Correct in both directions — `cox.zph` global
+p = 0.426 on PH-holding data (not flagged), p = 0.011 on deliberately crossing
+hazards (flagged).
+
+**Bayesian survival.** Weibull AFT on exponential data with a true time ratio of
+2.0 and true HR 0.5: time ratio **1.798**, 95 % CrI [1.259, 2.490]; HR **0.549**.
+Posterior-predictive coverage is near-nominal (0.5125 / 0.800 / 0.975 against
+0.50 / 0.80 / 0.95), zero divergences.
+
+**Bayesian synergy.** True interaction terms −0.030 / −0.025 / −0.070 recovered
+as −0.0319 / −0.0272 / −0.0727. Bliss excess carries a credible interval
+(median 0.071, lower bound 0.040 excluding zero), so the Bayesian path answers the
+"does the interval exclude zero" question directly rather than by resampling.
+
+Worth noting this run reproduces §R14.5 independently: with FE_A ≈ 0.49 and
+FE_B ≈ 0.44 the observed combination TGI of 78.7 % exceeds the Bliss expectation
+of 71.6 % (synergy) while falling below the linear-Loewe expectation of 93.2 %
+(antagonism). The structural disagreement is not confined to the frequentist path.
+
+## Recorded, not fixed
+
+**API inconsistency.** `survival_statistics()` takes `censor_column`;
+`bayesian_survival()` takes `event_column` for the same quantity. The dashboard
+passes each correctly so nothing is broken, but a user moving between the two
+functions has to know. Renaming is a breaking change and belongs in a deliberate
+API pass, not a correctness audit.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| R16.1 | Max-treedepth counted against the observed max, not the limit | Major | ✅ Fixed v0.20.0 |
+| R16.2 | `censor_column` vs `event_column` across survival entry points | Minor | Recorded |
+| — | Competing risks / Aalen-Johansen | — | Verified correct |
+| — | Firth correction under monotone likelihood | — | Verified correct |
+| — | `cox.zph`, both directions | — | Verified correct |
+| — | Bayesian survival recovery + PPC calibration | — | Verified correct |
+| — | Bayesian synergy recovery + Bliss interval | — | Verified correct |
+
+## Round 17 addendum — the last two Bayesian modules
+
+**Bayesian dose-response.** Simulated from a known Emax curve (EC50 25, Hill 1.5,
+top 1000, bottom 100):
+
+| parameter | truth | posterior median | 95 % CrI |
+|---|---|---|---|
+| EC50 | 25 | **25.65** | [22.27, 29.66] |
+| Hill | 1.5 | **1.48** | [1.28, 1.74] |
+| Emax | 0.90 | **0.902** | [0.848, 0.952] |
+
+All three intervals contain the truth, Bayesian R² 0.957, zero divergences.
+
+Worth noting against §R14.1: on the *same* generating curve the frequentist `drc`
+fit returned EC50 29.83, 95 % CI [24.4, 35.2] — also containing the truth, but
+shifted high and wider. The Bayesian path is the better-behaved of the two here,
+which is the opposite of the usual assumption that the frequentist fit is the
+conservative default.
+
+**Bayesian body weight.** True control slope −0.02 g/day against −0.10 for the
+treated arm (true interaction −0.08): interaction estimated **−0.0845**, 95 % CrI
+[−0.0908, −0.0783]; control slope −0.0165, CrI [−0.0208, −0.0122]. Both contain
+the truth.
+
+`n_max_treedepth` reads **0** on both modules, confirming the §R16.1 fix on models
+other than the one it was found on.
+
+**Probability of direction is implemented and correct.** `emm_p_direction()`
+returns `max(P(θ>0), P(θ<0))` from `emmeans::as.mcmc.emmGrid` draws — the standard
+definition, correctly bounded to [0.5, 1] — and appears as `P_direction` in the
+pairwise tables of `bayesian_tumor_growth()` and `bayesian_body_weight()`.
+
+### Audit coverage at the close of Round 17
+
+Every analysis entry point has now been either verified against a known answer or
+repaired:
+
+| Surface | Outcome |
+|---|---|
+| Tumour growth (lme4 / GAMM / AUC) | Verified; R14.4 / R14.6 fixed |
+| Dose-response (frequentist) | R14.1 fixed (all four parameters were NA) |
+| Drug synergy | R14.2 fixed; R14.5 recorded as a design choice |
+| Therapeutic window / weight loss | R15.2 fixed (animals silently dropped) |
+| Survival (Cox / KM / Firth / PH / competing risks) | Verified; R15.1 fixed |
+| Analytic power | Verified exact against `power.t.test` |
+| LMM power simulation | K.13–K.15 fixed in an earlier round |
+| Bayesian tumour growth | Verified |
+| Bayesian survival | Verified; R16.1 fixed |
+| Bayesian synergy | Verified |
+| Bayesian dose-response | Verified |
+| Bayesian body weight | Verified |
