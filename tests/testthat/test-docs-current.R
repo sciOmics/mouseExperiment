@@ -188,3 +188,13 @@ test_that("D.13: competing risks are documented in the toxicity KM section", {
   expect_match(src, "Competing risks", fixed = TRUE)
   expect_match(src, "Aalen-Johansen", fixed = TRUE)
 })
+
+test_that("R14.3: the Tumor Growth tab does not claim to report TGI", {
+  # tumor_growth_statistics() returns no TGI field and the tab renders none, but
+  # the Info panel stated "All modes compute Tumor Growth Inhibition (TGI) ...".
+  # Promising a number the tab does not produce sends users looking for it.
+  ui <- read_src("ui_modules.R")
+  expect_false(grepl("All modes compute Tumor Growth Inhibition", ui, fixed = TRUE))
+  expect_false(grepl("Both modes compute Tumor Growth Inhibition", ui, fixed = TRUE))
+  expect_match(ui, "does ", fixed = TRUE)
+})

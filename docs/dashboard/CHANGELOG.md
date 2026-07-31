@@ -4,6 +4,37 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.07.012] - 2026-07-30
+
+### Fixed — the Tumor Growth tab claimed a metric it does not produce (R14.3)
+
+The Info panel stated "All modes compute Tumor Growth Inhibition (TGI) for each
+treatment group relative to the reference." `tumor_growth_statistics()` returns no
+TGI field and the tab renders none. TGI is produced by the Toxicity path (as the
+efficacy half of the therapeutic window) and computed inside Drug Synergy (as the
+fractional effect the models act on) — nowhere else.
+
+The claim predates this review and Round 11 propagated it without checking, which
+is the exact failure that round existed to fix. The replacement says where TGI
+actually lives and why a trajectory model does not report it: collapsing a
+trajectory to a one-day ratio of group means discards most of what was measured,
+and a ratio of endpoint means is precisely where early removals bias the answer.
+
+Pinned by `test-docs-current.R` so it cannot return.
+
+### Known — the synergy verdict shown is the one most prone to bias (R14.5)
+
+Backend R14.5 establishes that the linear-Loewe index labels a combination
+"antagonistic" across roughly FE 0.25–0.65 even when it is exactly additive under
+Bliss — the range most active single agents occupy. The Synergy tab renders only
+`combination_index$interpretation`. The backend also returns `overall_assessment`,
+which requires both models to agree before claiming synergy, and the dashboard
+never displays it.
+
+Not changed here: which model to headline is a scientific choice for the package
+owner rather than a defect to patch silently. Recorded so the decision is
+explicit.
+
 ## [26.07.011] - 2026-07-30
 
 ### Removed — the dosing-schedule annotation added in 26.07.010

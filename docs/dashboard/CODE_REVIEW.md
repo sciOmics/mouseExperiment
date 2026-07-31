@@ -1487,3 +1487,39 @@ substitute for looking at the output in the running app.
 | ID | Issue | Severity | Status |
 |---|---|---|---|
 | D.16 | Dosing-schedule annotation non-functional in practice | — | ✅ Removed v26.07.011 |
+
+---
+
+# Review Round 14 (v26.07.012 — 2026-07-30)
+
+## R14.3 The Tumor Growth Info tab claimed TGI it does not produce — Major
+
+*"All modes compute Tumor Growth Inhibition (TGI) for each treatment group
+relative to the reference."* `tumor_growth_statistics()` returns no TGI field and
+the tab renders none.
+
+The claim predates this review — it read "Both modes…" before Round 11 widened it
+to "All" — and Round 11 propagated it without checking. That is precisely the
+failure Round 11 was convened to fix, which is worth stating plainly rather than
+quietly correcting: an audit that rewrites a claim without verifying it has
+laundered the error, not caught it.
+
+Fixed, and the replacement explains where TGI lives and why a trajectory model
+does not report one. Pinned by `test-docs-current.R`.
+
+## R14.5 The Synergy tab shows the more biased of two verdicts — Major
+
+See the backend's Round 14 entry for the numbers. Summary: the linear-Loewe index
+calls a Bliss-additive combination "antagonistic" across roughly FE 0.25–0.65,
+and the tab renders only that index. The backend's `overall_assessment` — which
+requires Bliss *and* Loewe to agree before claiming synergy — is returned and
+never displayed.
+
+Left to the owner: headlining the conservative label, showing both, or keeping
+the current behaviour with a caveat are all defensible, and the choice is
+scientific rather than technical.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| R14.3 | Info tab claims TGI the tab does not produce | Major | ✅ Fixed v26.07.012 |
+| R14.5 | Conservative synergy label computed but never shown | Major | Open — owner's call |

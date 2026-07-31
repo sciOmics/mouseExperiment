@@ -617,8 +617,16 @@ tumorGrowthUI <- function(id) {
                       tags$li(strong("Bayesian GAMM (brms + smoothers)"), " — the GAMM equivalent, with the smoother fitted in Stan.")
                     ),
                     p(tags$small(class = "text-muted",
-                      "All modes compute Tumor Growth Inhibition (TGI) for each treatment group relative to the reference. ",
-                      "TGI = (1 − V_treated / V_control) × 100 at the endpoint."
+                      "R14.3: this tab does ", strong("not"), " report Tumor Growth Inhibition. ",
+                      "TGI is an endpoint summary — a ratio of two group means on one day — ",
+                      "while every model here estimates a growth ", em("trajectory"), ", and ",
+                      "collapsing a trajectory to a single-day ratio discards most of what was ",
+                      "measured. TGI is computed where it belongs to the question being asked: ",
+                      "the ", strong("Toxicity"), " tab (as the efficacy half of the therapeutic ",
+                      "window) and the ", strong("Drug Synergy"), " tab (as the fractional effect ",
+                      "the Bliss and Loewe models act on). Both expose an endpoint-estimand ",
+                      "selector, because a ratio of endpoint means is exactly where early ",
+                      "removals bias the answer."
                     )),
                     div(class = "alert alert-info", style = "font-size:0.9em; margin-bottom:0;",
                       icon("circle-info"), " ",
