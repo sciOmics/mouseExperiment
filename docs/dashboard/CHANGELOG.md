@@ -4,6 +4,49 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.07.013] - 2026-07-30
+
+### Fixed — the forest plot marked significance from unadjusted p-values on AUC (R14.6)
+
+`p_col <- intersect(c("p.value", "p_value", "p.adj", "adj.p.value", "P_Value"), ...)`
+never listed `p_adjusted`. On the AUC path `p_value` is the **raw** t-test
+p-value, so the Treatment Effects forest plot marked significance without any
+multiplicity correction — while the GAM path, where `p_value` holds the adjusted
+value, used corrected ones. Same plot, same legend, two different multiplicity
+regimes depending on a model selection invisible in the figure.
+
+Backend v0.18.0 now supplies `P_Value_Adjusted` on every path; the sniff prefers
+it and keeps the old list only as a fallback for older backends.
+
+### Added — the consensus synergy verdict is now shown (R14.5)
+
+`overall_assessment` requires Bliss **and** Loewe to agree before claiming
+synergy. It was computed by the backend, returned, and never displayed: the tab
+showed only the Combination Index verdict, which reads "antagonistic" for a
+genuinely Bliss-additive combination across roughly FE 0.25–0.65 — the range most
+active single agents occupy.
+
+It now appears above the CI verdict, styled by outcome, with a note that the CI
+verdict reflects Loewe alone. When the two models point opposite ways the panel
+says so explicitly, rather than leaving the reader to reconcile two contradictory
+labels: they encode different null hypotheses, so disagreement is information
+rather than an error.
+
+### Fixed — Bayesian intervals were mislabelled (R14.7)
+
+The Info tab said results are "posterior medians with 95 % highest posterior
+density (HPD) credible intervals". Checked against brms directly: the point
+estimate is the posterior **mean** (3.89831 vs a median of 3.89553) and the
+interval is **equal-tailed**, matching `quantile(draws, c(.025, .975))` exactly.
+
+The subtler part is that both interval types ship under the same column names.
+`posterior_summary` comes from `summary(brmsfit)` and is equal-tailed; the
+Treatment Effects and Comparisons tables come from emmeans and are genuine
+highest-density intervals — and both are relabelled `Lower_95_CrI`/`Upper_95_CrI`.
+They coincide for symmetric posteriors and diverge for skewed ones, which is
+exactly the case for variance components and the back-transformed time ratios in
+the Bayesian survival model. The tab now says which table is which.
+
 ## [26.07.012] - 2026-07-30
 
 ### Fixed — the Tumor Growth tab claimed a metric it does not produce (R14.3)

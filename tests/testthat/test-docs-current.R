@@ -198,3 +198,14 @@ test_that("R14.3: the Tumor Growth tab does not claim to report TGI", {
   expect_false(grepl("Both modes compute Tumor Growth Inhibition", ui, fixed = TRUE))
   expect_match(ui, "does ", fixed = TRUE)
 })
+
+test_that("R14.7: the Bayesian summary is not described as medians or blanket HPD", {
+  # brms summary() reports the posterior MEAN with an EQUAL-TAILED interval;
+  # emmeans-derived tables report a genuine highest-density interval. Both appear
+  # under Lower_95_CrI / Upper_95_CrI, so the tab has to say which is which.
+  ui <- read_src("ui_modules.R")
+  expect_false(grepl("posterior medians with", ui, fixed = TRUE))
+  expect_match(ui, "posterior means", fixed = TRUE)
+  expect_match(ui, "equal-tailed", fixed = TRUE)
+  expect_match(ui, "highest-density", fixed = TRUE)
+})

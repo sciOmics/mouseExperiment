@@ -255,6 +255,13 @@ synergyUI <- function(id) {
             # derived from three group means. Without an interval a "Strong
             # Synergy" label whose Bliss-excess CI spans zero is
             # indistinguishable on screen from one that does not.
+            # R14.5 -- the CI-threshold verdict alone is the more biased of the
+            # two available: linear-Loewe calls a Bliss-additive combination
+            # antagonistic across roughly FE 0.25-0.65, the range most active
+            # single agents occupy. The backend also returns overall_assessment,
+            # which requires Bliss AND Loewe to agree before claiming synergy,
+            # and it was computed and never shown.
+            uiOutput(ns("syn_consensus_note")),
             uiOutput(ns("syn_ci_heading")),
             uiOutput(ns("syn_ci_verdict_note")),
             DTOutput(ns("syn_ci_table")),
@@ -967,6 +974,49 @@ synergy_server <- function(id, rv) {
 
   # The single most important reading aid: does the Bliss-excess interval exclude
   # zero? If it does not, the verdict above is not evidence of synergy.
+  # R14.5: the consensus verdict. Shown above the CI verdict because it is the
+  # conservative one -- it requires both models to agree -- and because the two
+  # can point in opposite directions on identical data (a worked example gave
+  # Bliss +0.085 against Loewe -0.067).
+  output$syn_consensus_note <- renderUI({
+    req(rv$syn_results)
+    if (isTRUE(rv$syn_results$error)) return(NULL)
+    oa <- rv$syn_results$overall_assessment
+    if (is.null(oa) || !nzchar(oa)) return(NULL)
+
+    ci_txt <- rv$syn_results$combination_index$interpretation %||% ""
+    style  <- if (grepl("Not evaluable", oa)) "warning"
+              else if (grepl("Synergy", oa)) "success"
+              else if (grepl("Antagonism", oa)) "danger" else "info"
+
+    # When the two models disagree, say so rather than letting the reader
+    # reconcile two verdicts sitting next to each other.
+    disagree <- !grepl("Not evaluable", oa) &&
+      ((grepl("Synerg", oa) && grepl("Antagonistic", ci_txt)) ||
+       (grepl("Antagonism", oa) && grepl("Synergistic", ci_txt)))
+
+    tagList(
+      div(class = paste0("alert alert-", style),
+        tags$strong("Consensus verdict: "), oa,
+        tags$br(),
+        tags$small(
+          "Requires the Bliss and Loewe models to agree. The Combination Index ",
+          "verdict below reflects Loewe alone, which reads antagonistic for a ",
+          "genuinely additive combination whenever both single agents are ",
+          "moderately effective."
+        )
+      ),
+      if (disagree) div(class = "alert alert-warning",
+        icon("triangle-exclamation"), " ",
+        tags$strong("The two models disagree on this dataset."),
+        " Bliss and Loewe encode different null hypotheses \u2014 Bliss multiplies ",
+        "surviving fractions, Loewe adds dose-equivalents \u2014 so disagreement is ",
+        "informative rather than an error. Treat neither label as decisive and ",
+        "read the interval on Bliss excess below."
+      ) else NULL
+    )
+  })
+
   output$syn_ci_verdict_note <- renderUI({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error)) return(NULL)

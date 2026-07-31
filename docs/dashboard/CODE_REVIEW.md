@@ -1523,3 +1523,42 @@ scientific rather than technical.
 |---|---|---|---|
 | R14.3 | Info tab claims TGI the tab does not produce | Major | ✅ Fixed v26.07.012 |
 | R14.5 | Conservative synergy label computed but never shown | Major | Open — owner's call |
+
+---
+
+# Review Round 15 (v26.07.013 — 2026-07-30)
+
+## R14.6 The forest plot used unadjusted p-values on the AUC path — **Critical**
+
+`mod_tumor_growth_plots.R` sniffed
+`intersect(c("p.value", "p_value", "p.adj", "adj.p.value", "P_Value"), ...)` and
+never listed `p_adjusted`. The AUC path's `p_value` is the raw t-test result, so
+the Treatment Effects forest plot marked significance with no multiplicity
+correction, while the GAM path — where `p_value` holds the adjusted value — used
+corrected ones. Same figure, same legend, two multiplicity regimes, switching on a
+model selection the reader cannot see from the plot.
+
+This is the §K.2 sniff pattern again, and the sixth finding traceable to it. What
+makes this instance the worst so far is that the sniff *succeeded*: it found a
+column, so nothing was blank or missing. It simply found the wrong one.
+
+Fixed by preferring the backend's new `P_Value_Adjusted`.
+
+## R14.5 The consensus synergy verdict is now displayed — **Fixed**
+
+Backend `overall_assessment` requires both models to agree before claiming
+synergy, and was never rendered. Now shown above the CI verdict, with an explicit
+disagreement warning when Bliss and Loewe point opposite ways.
+
+## R14.7 Bayesian intervals were labelled median/HPD; they are mean/equal-tailed
+
+See the backend's Round 15 entry for the verification against brms. Both interval
+types appear under `Lower_95_CrI`/`Upper_95_CrI` — equal-tailed from
+`summary(brmsfit)`, highest-density from emmeans — and the tab now distinguishes
+them.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| R14.6 | Forest plot used unadjusted p-values on the AUC path | **Critical** | ✅ Fixed v26.07.013 |
+| R14.5 | Consensus synergy verdict never shown | Major | ✅ Fixed v26.07.013 |
+| R14.7 | Bayesian intervals mislabelled | Major | ✅ Fixed v26.07.013 |

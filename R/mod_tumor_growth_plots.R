@@ -525,7 +525,14 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     se_col    <- intersect(c("SE"), colnames(pc_df))[1]
     lower_col <- intersect(c("lower.CL", "Lower", "lower_CL", "lower"), colnames(pc_df))[1]
     upper_col <- intersect(c("upper.CL", "Upper", "upper_CL", "upper"), colnames(pc_df))[1]
-    p_col     <- intersect(c("p.value", "p_value", "p.adj", "adj.p.value", "P_Value"), colnames(pc_df))[1]
+    # R14.6: "p_value" held the ADJUSTED p-value on the GAM path and the RAW
+    # one on the AUC path, so this sniff marked significance from unadjusted
+    # p-values on AUC while using adjusted ones on GAM. Backend R14.4 now
+    # supplies P_Value_Adjusted on every path; prefer it and keep the old
+    # list only as a fallback for results from an older backend.
+    p_col     <- intersect(c("P_Value_Adjusted", "p_adjusted", "p.value",
+                             "p_value", "p.adj", "adj.p.value", "P_Value"),
+                           colnames(pc_df))[1]
     if (is.na(label_col) || is.na(est_col)) return(NULL)
 
     if (is.na(lower_col) && !is.na(se_col)) {
