@@ -5,6 +5,42 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-07-30
+
+### Fixed — `p_value` meant "adjusted" on one path and "raw" on another (R14.6)
+
+Closing the R14.4 return-type finding surfaced something worse underneath. The
+GAM path adjusts its p-values in place and calls the result `p_value`; the AUC
+path keeps `p_value` raw and puts the adjusted values in `p_adjusted`. The
+dashboard's forest plot sniffed `intersect(c("p.value", "p_value", ...))` and
+never listed `p_adjusted`, so significance markers came from **unadjusted**
+p-values on the AUC path and adjusted ones on GAM — the same plot, the same
+legend, two different multiplicity regimes depending on a model selection the
+reader cannot see from the figure.
+
+### Fixed — `pairwise_comparisons` returned three different classes (R14.4)
+
+`emmGrid` for lme4 (not a data frame at all), `summary_emm`/`data.frame` for GAM,
+plain `data.frame` for AUC — with `contrast` on two paths and `comparison` on the
+third.
+
+Both are fixed additively, following the B7.1 precedent of declaring rather than
+renaming. Every path now returns a data frame carrying `contrast`,
+`P_Value_Adjusted`, `P_Value_Raw` (where the path reports one), `Adjust_Scope`,
+`Comparison_Family` and `P_Adjust_Method`. All original columns are preserved, so
+existing consumers keep working.
+
+This also fixes the consequence R14.4 recorded: `comparisons_title()` guards with
+`is.data.frame()` before reading `Adjust_Scope`, so the default path had been
+silently dropping the adjustment scope from the table header.
+
+### Verified — the Bayesian growth model recovers a known truth
+
+Simulated at control 0.120/day against treated 0.070/day (true interaction
+−0.050): estimate −0.0487, 95 % CrI [−0.0514, −0.0459], Rhat 1.001, bulk ESS
+> 3600. Both intervals contain the truth. The prior scaling repaired under §R3.34
+is not distorting the posterior. Recorded so it is not re-audited.
+
 ## [0.17.0] - 2026-07-30
 
 Statistical-correctness audit driven by known-answer tests. Both fixes below are

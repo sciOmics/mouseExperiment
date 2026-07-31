@@ -156,3 +156,91 @@ test_that("R14.2: TWM and synergy now agree on how to treat a harmful arm", {
                         Combo = 0.098)))
   expect_true(is.na(r$combination_index$ci))
 })
+
+# ---- R14.4 / R14.6 pairwise_comparisons contract ----------------------------
+
+tg_three_arm <- function(seed = 2) {
+  set.seed(seed)
+  rows <- list(); k <- 0L
+  for (tx in c("Control", "DrugA", "DrugB")) for (m in 1:8) {
+    k <- k + 1L
+    d <- seq(0, 21, 3)
+    r0 <- switch(tx, Control = 0.12, DrugA = 0.08, DrugB = 0.06)
+    rows[[k]] <- data.frame(
+      ID = paste0(tx, m), Treatment = tx, Day = d,
+      Volume = exp(log(150) + stats::rnorm(1, 0, 0.08) + r0 * d +
+                     stats::rnorm(length(d), 0, 0.05)),
+      stringsAsFactors = FALSE)
+  }
+  do.call(rbind, rows)
+}
+
+test_that("R14.4: pairwise_comparisons is a data frame on every model path", {
+  # lme4 returned a raw emmGrid. Consumers guarding with is.data.frame() skipped
+  # it silently, which is how the adjustment scope went missing from the header
+  # on the default path.
+  df <- tg_three_arm()
+  for (mt in c("lme4", "gam", "auc")) {
+    r <- suppressWarnings(suppressMessages(
+      tumor_growth_statistics(df, model_type = mt, plots = FALSE, verbose = FALSE)))
+    expect_s3_class(r$pairwise_comparisons, "data.frame")
+    expect_gt(nrow(r$pairwise_comparisons), 0L)
+  }
+})
+
+test_that("R14.4: every path carries the same canonical columns", {
+  df <- tg_three_arm()
+  need <- c("contrast", "P_Value_Adjusted", "Adjust_Scope",
+            "Comparison_Family", "P_Adjust_Method")
+  for (mt in c("lme4", "gam", "auc")) {
+    r <- suppressWarnings(suppressMessages(
+      tumor_growth_statistics(df, model_type = mt, plots = FALSE, verbose = FALSE)))
+    missing <- setdiff(need, names(r$pairwise_comparisons))
+    expect_length(missing, 0L)
+  }
+})
+
+test_that("R14.6: the adjusted p-value is unambiguous across paths", {
+  # The defect: `p_value` held the ADJUSTED value on the GAM path and the RAW
+  # value on the AUC path, so a consumer sniffing for that name got different
+  # quantities depending on the model the user picked. P_Value_Adjusted is now
+  # always the adjusted one.
+  df <- tg_three_arm()
+
+  auc <- suppressWarnings(suppressMessages(
+    tumor_growth_statistics(df, model_type = "auc", plots = FALSE, verbose = FALSE)))
+  pc <- auc$pairwise_comparisons
+  expect_true(all(c("P_Value_Adjusted", "P_Value_Raw") %in% names(pc)))
+  # Adjustment can only move p-values up (or leave them alone).
+  ok <- is.finite(pc$P_Value_Raw) & is.finite(pc$P_Value_Adjusted)
+  expect_true(all(pc$P_Value_Adjusted[ok] >= pc$P_Value_Raw[ok] - 1e-12))
+
+  # And it must equal the path's own adjusted column, not the raw one.
+  expect_equal(pc$P_Value_Adjusted[ok], pc$p_adjusted[ok], tolerance = 1e-12)
+})
+
+test_that("R14.4: original columns survive so existing consumers keep working", {
+  # Additive normalisation: declare, do not rename (the B7.1 precedent).
+  df <- tg_three_arm()
+  auc <- suppressWarnings(suppressMessages(
+    tumor_growth_statistics(df, model_type = "auc", plots = FALSE, verbose = FALSE)))
+  expect_true(all(c("comparison", "p_value", "p_adjusted") %in%
+                    names(auc$pairwise_comparisons)))
+
+  lme <- suppressWarnings(suppressMessages(
+    tumor_growth_statistics(df, model_type = "lme4", plots = FALSE, verbose = FALSE)))
+  expect_true(all(c("contrast", "estimate", "SE", "p.value") %in%
+                    names(lme$pairwise_comparisons)))
+})
+
+test_that("R14.4: the adjustment scope now reaches the default path", {
+  # The live consequence of the emmGrid return: comparisons_title() guards with
+  # is.data.frame() before reading Adjust_Scope, so the header stated the
+  # correction but omitted the set it was applied over.
+  df <- tg_three_arm()
+  r <- suppressWarnings(suppressMessages(
+    tumor_growth_statistics(df, model_type = "lme4", plots = FALSE, verbose = FALSE)))
+  expect_true(is.data.frame(r$pairwise_comparisons))
+  expect_true("Adjust_Scope" %in% names(r$pairwise_comparisons))
+  expect_true(nzchar(as.character(r$pairwise_comparisons$Adjust_Scope[1])))
+})

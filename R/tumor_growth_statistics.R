@@ -1028,7 +1028,9 @@ tumor_growth_statistics <- function(df,
       p_adjust_method_used  = comparison_spec$p_adjust_method,
       anova                       = anova_table,
       summary                     = analysis_summary,
-      pairwise_comparisons        = pairwise_comp_df,
+      pairwise_comparisons        = me_pairwise_frame(
+        pairwise_comp_df, comparison_spec,
+        adjusted_col = "p_value"),
       posthoc = list(
         method   = "GAM smooth-difference contrasts at quantile days",
         pairwise = pairwise_comp_df
@@ -1369,7 +1371,13 @@ tumor_growth_statistics <- function(df,
       p_adjust_method_used  = comparison_spec$p_adjust_method,
       anova = anova_table,
       summary = analysis_summary,
-      pairwise_comparisons = pairwise_comp,
+      # R14.4: was the raw emmGrid. Consumers guarding with is.data.frame()
+      # silently skipped it, which is how the adjustment scope went missing
+      # from the table header on the default path.
+      pairwise_comparisons = me_pairwise_frame(
+        pairwise_comp, comparison_spec,
+        adjusted_col = "p.value",
+        adjust_scope = posthoc_method),
       posthoc = list(
         method = posthoc_method,
         pairwise = if (!is.null(pairwise_comp)) as.data.frame(summary(pairwise_comp)) else NULL

@@ -3602,3 +3602,102 @@ the package owner, not a defect to patch silently.
 | R14.3 | Tumor Growth tab claims TGI it does not produce | Major | ✅ Fixed (dashboard) |
 | R14.4 | `pairwise_comparisons` has three return classes | Major | Open — needs its own round |
 | R14.5 | Loewe/Bliss structural disagreement; conservative label hidden | Major | Open — owner's call |
+
+---
+
+# Review Round 15 (v0.18.0 — 2026-07-30)
+
+## R14.4 / R14.6 `pairwise_comparisons` normalised — **Fixed**
+
+Round 14 recorded three return classes and left it open. Closing it surfaced a
+worse problem underneath.
+
+The three paths returned:
+
+| path | class | contrast column | p-value column | meaning |
+|---|---|---|---|---|
+| `lme4` | `emmGrid` | `contrast` | `p.value` | **adjusted** |
+| `gam` | `summary_emm`/`data.frame` | `contrast` | `p_value` | **adjusted** |
+| `auc` | `data.frame` | `comparison` | `p_value` | **raw** |
+
+**R14.6 is the serious half:** the same name `p_value` held the adjusted p-value
+on the GAM path and the *raw* one on AUC. The dashboard's forest plot sniffed
+`intersect(c("p.value", "p_value", ...))` and never listed `p_adjusted`, so
+significance markers came from **unadjusted** p-values on the AUC path and
+adjusted ones on GAM — the same plot, the same legend, two different multiplicity
+regimes depending on a model selection the reader cannot see from the figure.
+
+Fixed additively, following the B7.1 precedent of declaring rather than renaming:
+every path now returns a data frame carrying `contrast`, `P_Value_Adjusted`,
+`P_Value_Raw` (where the path reports one), `Adjust_Scope`, `Comparison_Family`
+and `P_Adjust_Method`, with all original columns preserved. The dashboard prefers
+`P_Value_Adjusted` and keeps the old list only as a fallback for older backends.
+
+Closing R14.4 also fixed its stated consequence: `comparisons_title()` guards with
+`is.data.frame()` before reading `Adjust_Scope`, so the default path now gets its
+adjustment scope in the header instead of silently dropping it.
+
+## R14.5 The consensus synergy verdict is now shown — **Fixed (dashboard)**
+
+`overall_assessment` — which requires Bliss **and** Loewe to agree before claiming
+synergy — was computed, returned, and never displayed. The tab showed only the
+Combination Index verdict, which Round 14 measured as reading "antagonistic" for a
+genuinely Bliss-additive combination across roughly FE 0.25–0.65.
+
+It now appears above the CI verdict, styled by outcome, with an explicit note that
+the CI verdict below reflects Loewe alone. When the two models point in opposite
+directions the panel says so, rather than leaving a reader to reconcile two
+contradictory labels: they encode different null hypotheses, so disagreement is
+information rather than a bug.
+
+## R14.7 Bayesian intervals were mislabelled — **Fixed (dashboard)**
+
+The Info tab stated results are *"posterior medians with 95 % highest posterior
+density (HPD) credible intervals"*. Verified against brms directly:
+
+```
+brms summary Estimate    = 3.89831
+posterior MEAN           = 3.89831   <- matches
+posterior MEDIAN         = 3.89553   <- does not
+summary CI               = [3.54830, 4.27719]
+equal-tailed quantile CI = [3.54830, 4.27719]   <- identical
+```
+
+So the point estimate is the posterior **mean**, and the interval is
+**equal-tailed**, not HPD.
+
+The subtler issue is that *both* interval types ship under the same column names.
+`posterior_summary` comes from `summary(brmsfit)` and is equal-tailed; the
+`treatment_effects` and `pairwise_comparisons` tables come from emmeans, which
+returns genuine `lower.HPD`/`upper.HPD` — and both are relabelled
+`Lower_95_CrI`/`Upper_95_CrI`. One name, two meanings, which is the R14.6 pattern
+in a different module.
+
+They coincide for symmetric posteriors and diverge for skewed ones — variance
+components, and the back-transformed time ratios in the Bayesian survival model,
+where it matters most. The tab now says which table is which.
+
+## Verified correct (recorded so it is not re-audited)
+
+`bayesian_tumor_growth()` recovers a known truth. Simulated at control 0.120/day
+against treated 0.070/day (true interaction −0.050), 20 animals, 2 chains:
+
+```
+TreatmentDrugA:Day   estimate -0.0487   95% CrI [-0.0514, -0.0459]   Rhat 1.001
+Day                  estimate  0.1202   95% CrI [ 0.1183,  0.1222]
+```
+
+Both intervals contain the truth, Rhat ≤ 1.01, bulk ESS > 3600. The prior scaling
+repaired under §R3.34 is not distorting the posterior.
+
+**No ROPE or probability-of-direction implementation exists** anywhere in the
+package. The Help tab claimed both until Round 11 removed the claim; nothing
+claims them now. If they are wanted, they are additions, not repairs.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| R14.4 | `pairwise_comparisons` had three return classes | Major | ✅ Fixed v0.18.0 |
+| R14.6 | `p_value` meant adjusted on GAM, raw on AUC | **Critical** | ✅ Fixed v0.18.0 |
+| R14.5 | Consensus synergy verdict computed but never shown | Major | ✅ Fixed (dashboard) |
+| R14.7 | Bayesian intervals labelled median/HPD; are mean/equal-tailed | Major | ✅ Fixed (dashboard) |
+| — | Bayesian growth recovers known truth | — | Verified |

@@ -381,7 +381,14 @@ tgs_path_auc <- function(auc_analysis,
     anova                = anova_table,
     summary              = analysis_summary,
     posthoc              = posthoc,
-    pairwise_comparisons = posthoc$pairwise,
+    # R14.6: this path reports BOTH a raw `p_value` and an adjusted
+    # `p_adjusted`, while the GAM path calls its adjusted value `p_value`.
+    # A consumer sniffing for "p_value" therefore got adjusted values on one
+    # path and unadjusted on the other. The explicit pair removes the guess.
+    pairwise_comparisons = me_pairwise_frame(
+      posthoc$pairwise, comparison_spec,
+      adjusted_col = "p_adjusted", raw_col = "p_value",
+      adjust_scope = "all requested AUC contrasts"),
     treatment_effects    = treatment_effects,
     growth_rates         = growth_rates,
     cage_analysis        = cage_analysis,

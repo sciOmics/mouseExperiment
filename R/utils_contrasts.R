@@ -222,3 +222,73 @@ bw_pairwise_table <- function(emm_obj, spec, reference_group = NULL,
   df$Comparison_Family <- spec$family
   df
 }
+
+#' Normalise a pairwise-comparison table to a common contract
+#'
+#' CODE_REVIEW.md R14.4 / R14.6. The three frequentist model paths returned
+#' `pairwise_comparisons` in three different shapes:
+#'
+#' \itemize{
+#'   \item `lme4` returned a raw `emmGrid` — not a data frame at all;
+#'   \item `gam` returned `summary_emm`/`data.frame` with `p_value`;
+#'   \item `auc` returned a plain `data.frame` with `comparison` rather than
+#'     `contrast`, and both `p_value` and `p_adjusted`.
+#' }
+#'
+#' Two consequences were live rather than theoretical. `comparisons_title()`
+#' guards with `is.data.frame()` before reading `Adjust_Scope`, so on the default
+#' `lme4` path the adjustment scope was silently dropped from the table header.
+#' And worse (R14.6): the same name `p_value` held the **adjusted** p-value on the
+#' GAM path and the **raw** one on the AUC path, so a consumer sniffing for it got
+#' different quantities depending on which model the user had picked.
+#'
+#' Rather than rename columns and break existing consumers, this adds an explicit
+#' pair — `P_Value_Adjusted` and `P_Value_Raw` — so a consumer never has to infer
+#' which it is holding. Same approach as B7.1: declare, do not rename.
+#'
+#' @param x An `emmGrid` or data frame of contrasts.
+#' @param comparison_spec Result of [resolve_comparison_spec()], for provenance.
+#' @param adjusted_col Name of the column holding multiplicity-adjusted p-values.
+#' @param raw_col Name of the column holding unadjusted p-values, if the path
+#'   reports one separately.
+#' @param adjust_scope Human-readable description of the set the correction was
+#'   applied over.
+#' @return A data frame. Original columns are preserved.
+#' @noRd
+#' @keywords internal
+me_pairwise_frame <- function(x, comparison_spec = NULL,
+                              adjusted_col = NULL, raw_col = NULL,
+                              adjust_scope = NULL) {
+  if (is.null(x)) return(NULL)
+  df <- tryCatch(
+    if (is.data.frame(x)) as.data.frame(x) else as.data.frame(summary(x)),
+    error = function(e) NULL)
+  if (is.null(df) || !nrow(df)) return(df)
+
+  # Canonical contrast label. The AUC path calls it `comparison`.
+  if (!"contrast" %in% names(df)) {
+    src <- intersect(c("comparison", "Comparison", "Contrast"), names(df))[1]
+    if (!is.na(src)) df$contrast <- as.character(df[[src]])
+  }
+
+  # Canonical p-values, each unambiguous about what it is.
+  if (!is.null(adjusted_col) && adjusted_col %in% names(df)) {
+    df$P_Value_Adjusted <- suppressWarnings(as.numeric(df[[adjusted_col]]))
+  }
+  if (!is.null(raw_col) && raw_col %in% names(df)) {
+    df$P_Value_Raw <- suppressWarnings(as.numeric(df[[raw_col]]))
+  }
+
+  if (!is.null(comparison_spec)) {
+    if (!"Comparison_Family" %in% names(df)) {
+      df$Comparison_Family <- comparison_spec$family
+    }
+    if (!"P_Adjust_Method" %in% names(df)) {
+      df$P_Adjust_Method <- comparison_spec$p_adjust_method
+    }
+  }
+  if (!"Adjust_Scope" %in% names(df) && !is.null(adjust_scope)) {
+    df$Adjust_Scope <- adjust_scope
+  }
+  df
+}
