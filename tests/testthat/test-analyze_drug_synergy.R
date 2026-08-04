@@ -15,7 +15,7 @@
 # Verified structure of analyze_drug_synergy() output:
 #   $bliss_independence: list with $expected_effect, $observed_effect,
 #                        $difference (positive = synergy), $synergy (label)
-#   $combination_index:  list with $ci (named numeric), $interpretation (string)
+#   $bliss_independence: list with $difference (R17.2 removed the Loewe CI)
 # =============================================================================
 
 call_synergy <- function(df) {
@@ -42,7 +42,7 @@ test_that("returns a list with expected top-level fields", {
   res <- call_synergy(df)
 
   expect_true(is.list(res))
-  required <- c("summary", "bliss_independence", "combination_index")
+  required <- c("summary", "bliss_independence")
   present  <- required[required %in% names(res)]
   expect_true(length(present) >= 2L,
               info = paste("Missing:", paste(setdiff(required, names(res)), collapse = ", ")))
@@ -67,15 +67,14 @@ test_that("bliss_independence contains difference field", {
               info = paste("bliss_independence fields:", paste(names(bliss), collapse = ", ")))
 })
 
-test_that("combination_index is a list with $ci element", {
-  df  <- make_synergy_synergistic()
-  res <- call_synergy(df)
-
-  skip_if(!("combination_index" %in% names(res)), "combination_index not returned")
-  ci_obj <- res$combination_index
-  expect_true(is.list(ci_obj))
-  expect_true("ci" %in% names(ci_obj),
-              info = paste("combination_index fields:", paste(names(ci_obj), collapse = ", ")))
+test_that("R17.2: the Loewe combination index is gone", {
+  # Removed in v0.21.0: it computed response additivity, not Loewe additivity,
+  # and labelled Bliss-additive combinations antagonistic across most of the
+  # range where active single agents sit.
+  res <- call_synergy(make_synergy_additive())
+  expect_null(res$combination_index)
+  expect_null(res$loewe_additivity)
+  expect_false("Loewe Expected" %in% res$summary$Treatment)
 })
 
 # ---------------------------------------------------------------------------
@@ -97,17 +96,10 @@ test_that("additive combo: |bliss difference| < 0.20 (near-additive)", {
 # ---------------------------------------------------------------------------
 # Synergistic combo
 # ---------------------------------------------------------------------------
-test_that("synergistic combo: combination_index$ci < 1", {
-  df  <- make_synergy_synergistic()
-  res <- call_synergy(df)
-
-  skip_if(!("combination_index" %in% names(res)), "combination_index not returned")
-  ci_val <- suppressWarnings(as.numeric(res$combination_index$ci))
-  skip_if(all(is.na(ci_val)), "Could not extract numeric CI value")
-
-  expect_true(any(ci_val < 1, na.rm = TRUE),
-              info = paste("CI =", paste(round(ci_val, 3), collapse = ", "),
-                           "; expected CI < 1 for synergistic combo"))
+test_that("synergistic combo: Bliss difference is positive", {
+  res <- call_synergy(make_synergy_synergistic())
+  expect_gt(res$bliss_independence$difference, 0)
+  expect_match(res$overall_assessment, "Synergy")
 })
 
 test_that("synergistic combo: bliss difference > 0 (observed TGI > expected)", {
@@ -126,17 +118,10 @@ test_that("synergistic combo: bliss difference > 0 (observed TGI > expected)", {
 # ---------------------------------------------------------------------------
 # Antagonistic combo
 # ---------------------------------------------------------------------------
-test_that("antagonistic combo: combination_index$ci > 1", {
-  df  <- make_synergy_antagonist()
-  res <- call_synergy(df)
-
-  skip_if(!("combination_index" %in% names(res)), "combination_index not returned")
-  ci_val <- suppressWarnings(as.numeric(res$combination_index$ci))
-  skip_if(all(is.na(ci_val)), "Could not extract numeric CI value")
-
-  expect_true(any(ci_val > 1, na.rm = TRUE),
-              info = paste("CI =", paste(round(ci_val, 3), collapse = ", "),
-                           "; expected CI > 1 for antagonistic combo"))
+test_that("antagonistic combo: Bliss difference is negative", {
+  res <- call_synergy(make_synergy_antagonist())
+  expect_lt(res$bliss_independence$difference, 0)
+  expect_match(res$overall_assessment, "Antagonism|Additivity")
 })
 
 test_that("antagonistic combo: bliss difference < 0 (observed TGI < expected)", {

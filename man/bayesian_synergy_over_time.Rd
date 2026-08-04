@@ -123,21 +123,17 @@ A named list:
 \item{\code{synergy_by_day}}{Data frame with one row per study day:
 \code{Day}, \code{Bliss_Median}, \code{Bliss_Lower},
 \code{Bliss_Upper}, \code{P_Bliss_Synergy},
-\code{Loewe_Median}, \code{Loewe_Lower}, \code{Loewe_Upper},
-\code{P_Loewe_Synergy}, \code{Loewe_Floor_Applied}.}
 \item{\code{tgi_by_day}}{Data frame with one row per (Group, Day):
 \code{Day}, \code{Group}, \code{TGI_Median}, \code{TGI_Lower},
 \code{TGI_Upper}.}
 \item{\code{peak_bliss_day}}{List: \code{Day} and \code{Bliss_Median}
 at the study day showing highest posterior-median Bliss excess.}
-\item{\code{peak_loewe_day}}{List: \code{Day} and \code{Loewe_Median}
-(lowest posterior-median Loewe CI, i.e. strongest synergy).}
 \item{\code{posterior_summary}}{Standard \code{brms} posterior summary.}
 \item{\code{mcmc_diagnostics}}{Data frame: per-parameter Rhat,
 Bulk_ESS, Tail_ESS, Converged.}
 \item{\code{summary}}{Named list of analysis metadata.}
 \item{\code{synergy_time_plot}}{\pkg{ggplot2} faceted line plot of
-posterior-median Bliss excess and Loewe CI over time with 95 \% CrI
+posterior-median Bliss excess over time with 95 \% CrI
 ribbons; \code{NULL} when \code{plots = FALSE}.}
 }
 }
@@ -145,7 +141,7 @@ ribbons; \code{NULL} when \code{plots = FALSE}.}
 Fits the same Bayesian linear mixed-effects model as
 \code{\link{bayesian_synergy}} (a single model on all four treatment groups
 with a \code{Treatment × Day} interaction term), then evaluates draw-wise
-Bliss Independence excess and Loewe Combination Index at every observed
+Bliss Independence excess at every observed
 study day via a single \code{brms::posterior_epred()} call on the full
 day-by-group grid. Returns per-day posterior summaries that show how synergy
 evolves across the experiment.

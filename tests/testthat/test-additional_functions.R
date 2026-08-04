@@ -66,8 +66,9 @@ test_that("analyze_drug_synergy_over_time returns expected list structure", {
   res <- call_synergy_ot(df)
 
   expect_true(is.list(res))
+  # peak_ci_synergy went with the Combination Index in R17.2.
   required <- c("timepoint_results", "synergy_summary",
-                "peak_ci_synergy", "peak_bliss_synergy",
+                "peak_bliss_synergy",
                 "drug_a_name", "drug_b_name", "combo_name")
   expect_true(all(required %in% names(res)),
               info = paste("Missing:", paste(setdiff(required, names(res)), collapse = ", ")))
@@ -81,7 +82,7 @@ test_that("analyze_drug_synergy_over_time synergy_summary is a data frame with e
   expect_s3_class(ss, "data.frame")
   # At least some of the key columns should be present
   expected_cols <- c("Time_Point", "TGI_Combo", "Bliss_Expected_TGI",
-                     "Combination_Index", "Synergy_Assessment")
+                     "Synergy_Assessment")
   present <- expected_cols[expected_cols %in% colnames(ss)]
   expect_true(length(present) >= 3,
               info = paste("Missing columns:", paste(setdiff(expected_cols, colnames(ss)), collapse = ", ")))
@@ -100,7 +101,7 @@ test_that("analyze_drug_synergy_over_time peak synergy rows are single-row data 
   df  <- make_synergy_multi_timepoint()
   res <- call_synergy_ot(df)
 
-  expect_equal(nrow(res$peak_ci_synergy), 1)
+  expect_null(res$peak_ci_synergy)          # R17.2
   expect_equal(nrow(res$peak_bliss_synergy), 1)
 })
 

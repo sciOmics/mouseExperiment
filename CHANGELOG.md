@@ -5,6 +5,44 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-07-31
+
+### Removed — the Loewe / Combination Index path (**breaking**)
+
+R14.5 left the decision open; mapping the disagreement settled it. With the
+combination set to *exactly* Bliss-additive across the (FE_A, FE_B) grid, **42 %
+of cells disagree and every disagreement is antagonistic — not one reads
+synergistic.**
+
+What was labelled "Loewe" was not Loewe. True Loewe additivity is
+dose-equivalence and needs a dose-response curve per agent, which single-dose
+designs do not collect. The stand-in, `min(FE_A + FE_B, 1) / FE_combo`, is
+response additivity, which fails the sham-combination test: combine a drug with
+itself and it predicts twice the effect, so an agent at 50 % inhibition should
+reach 100 %, and when it does not the method calls the drug antagonistic with
+itself.
+
+Gone: `loewe_additivity`, `combination_index`, the `Loewe_CI` bootstrap draw,
+`loewe_summary`, the `Loewe Expected` rows, the `Loewe_Difference` /
+`Combination_Index` over-time columns, `peak_ci_synergy`, and the exported
+`plot_combination_index()`. `plot_synergy_combined()` went with them — its only
+job was stacking the CI plot.
+
+The verdict is now Bliss alone, read against its bootstrap interval. On a worked
+example a combination the CI called antagonistic is now correctly **Synergy**.
+
+Surfaced during removal: `plot_combination_index()` was defined **twice** — once
+in its own file and again inside `analyze_drug_synergy_over_time.R`. Whichever R
+sourced last won.
+
+### Added — `analysis_data` in the dose-response result (R17.3)
+
+The per-observation frame the analysis ran on. The dashboard had been calling
+`mouseExperiment::prepare_dose_data()` to re-derive it — an internal helper that
+is not exported, so the call threw on every run and three plots rendered blank.
+Returning what was analysed also removes the chance of a re-derivation drifting
+from it.
+
 ## [0.20.0] - 2026-07-31
 
 ### Fixed — the max-treedepth diagnostic counted healthy sampling as saturation (R16.1)

@@ -728,8 +728,7 @@ test_that("R3.6/R3.7: synergy metrics carry bootstrap intervals", {
 
   ci <- r$synergy_ci
   expect_false(is.null(ci))
-  expect_true(all(c("TGI_A_pct", "TGI_Combo_pct", "Bliss_Excess_FE",
-                    "Loewe_CI") %in% ci$Metric))
+  expect_true(all(c("TGI_A_pct", "TGI_Combo_pct", "Bliss_Excess_FE") %in% ci$Metric))
   expect_true(all(ci$CI_Lower <= ci$Estimate & ci$Estimate <= ci$CI_Upper,
                   na.rm = TRUE))
   # Reproducible given a seed.

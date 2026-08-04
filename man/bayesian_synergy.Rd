@@ -129,12 +129,8 @@ A named list:
 \code{Excess_Lower}, \code{Excess_Upper}, \code{P_Synergy}
 (\eqn{P(\Delta>0)}), \code{Expected_FE_Median},
 \code{Observed_FE_Median}.}
-\item{\code{loewe_summary}}{Named list: \code{CI_Median},
-\code{CI_Lower}, \code{CI_Upper}, \code{P_Synergy}
-(\eqn{P(\text{CI}<1)}), \code{Interpretation} (posterior-median
-classification).}
 \item{\code{synergy_table}}{Combined summary data frame with one row per
-group plus Bliss-expected and Loewe-expected rows.}
+group plus a Bliss-expected row.}
 \item{\code{posterior_summary}}{Standard \code{brms} posterior summary.}
 \item{\code{mcmc_diagnostics}}{Data frame: per-parameter Rhat,
 Bulk_ESS, Tail_ESS, Converged (Rhat ≤ 1.01).}
@@ -143,14 +139,14 @@ Bulk_ESS, Tail_ESS, Converged (Rhat ≤ 1.01).}
 observed and expected fractional effects with 95 \% CrI;
 \code{NULL} when \code{plots = FALSE}.}
 \item{\code{posterior_dist_plot}}{\pkg{ggplot2} density of posterior
-Bliss excess and Loewe CI draws; \code{NULL} when
+Bliss excess draws; \code{NULL} when
 \code{plots = FALSE}.}
 }
 }
 \description{
 Fits a Bayesian linear mixed-effects model to longitudinal tumor volume data
 from a four-group drug combination experiment and propagates full posterior
-uncertainty through the Bliss Independence and Loewe Additivity synergy
+uncertainty through the Bliss Independence synergy
 metrics via draw-wise arithmetic. Provides posterior probability of synergy
 for both metrics.
 }
@@ -169,11 +165,6 @@ inhibition (TGI). When individual drug effects are large (TGI > 0.5
 each), the expected combined effect can approach 1, making it nearly
 impossible to detect synergy by the Bliss criterion regardless of
 actual biological interaction.
-\item \strong{Loewe single-dose approximation:} The Loewe CI formula
-\eqn{\min(FE_A + FE_B, 1) / FE_{\text{combo}}} assumes a linear
-dose-response relationship. Without EC50 estimates for each drug, this
-is a single-dose approximation only. Results should be interpreted
-directionally rather than as a precise pharmacological CI.
 \item \strong{Posterior independence assumption:} Draws from the TG
 model are paired draw-by-draw to propagate uncertainty through the
 synergy metrics. This is exact (the model is fitted on all four groups
@@ -196,14 +187,5 @@ volume scale and used to compute per-draw TGI and synergy metrics.
 Positive values indicate synergy (observed combo effect exceeds
 Bliss-independence expectation). \eqn{P(\Delta_{\text{Bliss}} > 0)} is
 reported as the posterior probability of Bliss synergy.
-
-\strong{Loewe Combination Index (single-dose approximation):}
-\deqn{
-  \text{CI}^{(s)} =
-  \frac{\min(\text{FE}_A^{(s)} + \text{FE}_B^{(s)},\; 1)}
-       {\max(\text{FE}_{\text{combo}}^{(s)},\; \epsilon)}
-}
-CI < 1 indicates synergy; CI > 1 indicates antagonism.
-\eqn{P(\text{CI} < 1)} is reported.
 }
 

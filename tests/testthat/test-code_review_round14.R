@@ -116,10 +116,10 @@ test_that("R14.2: an agent that accelerates growth is not called synergistic", {
   # reviewer would scrutinise hardest.
   r <- syn_fit(syn_df(c(Control = 0.100, DrugA = 0.130, DrugB = 0.100,
                         Combo = 0.098)))
-  expect_true(is.na(r$combination_index$ci))
-  expect_match(r$combination_index$interpretation, "Not evaluable")
-  expect_false(grepl("Synerg", r$combination_index$interpretation))
+  # R17.2 removed the Combination Index; the guard now shows in the label.
+  expect_null(r$combination_index)
   expect_match(r$overall_assessment, "Not evaluable")
+  expect_false(grepl("^Synerg", r$overall_assessment))
 })
 
 test_that("R14.2: the guard warns rather than failing silently", {
@@ -136,7 +136,6 @@ test_that("R14.2: the guard warns rather than failing silently", {
 test_that("R14.2: both agents harming is also not evaluable", {
   r <- syn_fit(syn_df(c(Control = 0.100, DrugA = 0.125, DrugB = 0.120,
                         Combo = 0.099)))
-  expect_true(is.na(r$combination_index$ci))
   expect_match(r$overall_assessment, "Not evaluable")
 })
 
@@ -144,9 +143,8 @@ test_that("R14.2: a genuine inhibitory combination still evaluates", {
   # The guard must not suppress the case the module exists for.
   r <- syn_fit(syn_df(c(Control = 0.130, DrugA = 0.100, DrugB = 0.105,
                         Combo = 0.070)))
-  expect_true(is.finite(r$combination_index$ci))
-  expect_gt(r$combination_index$ci, 0)
   expect_false(grepl("Not evaluable", r$overall_assessment))
+  expect_true(is.finite(r$bliss_independence$difference))
 })
 
 test_that("R14.2: TWM and synergy now agree on how to treat a harmful arm", {
@@ -154,7 +152,7 @@ test_that("R14.2: TWM and synergy now agree on how to treat a harmful arm", {
   # itself a signal that one of the two had not thought the case through.
   r <- syn_fit(syn_df(c(Control = 0.100, DrugA = 0.130, DrugB = 0.100,
                         Combo = 0.098)))
-  expect_true(is.na(r$combination_index$ci))
+  expect_match(r$overall_assessment, "Not evaluable")
 })
 
 # ---- R14.4 / R14.6 pairwise_comparisons contract ----------------------------

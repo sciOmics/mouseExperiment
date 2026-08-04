@@ -3961,3 +3961,94 @@ repaired:
 | Bayesian synergy | Verified |
 | Bayesian dose-response | Verified |
 | Bayesian body weight | Verified |
+
+---
+
+# Review Round 18 (v0.21.0 — 2026-07-31)
+
+## R17.2 The Loewe / Combination Index path is removed — **breaking**
+
+R14.5 recorded that the index disagreed with Bliss and left the decision open.
+Mapping the disagreement made the call obvious. Setting the combination to
+*exactly* Bliss-additive across the (FE_A, FE_B) grid:
+
+```
+      0.1   0.2   0.3   0.4   0.5   0.6   0.7   0.8   0.9
+0.2     .    .    .    X    X    X    X    X    .
+0.3     .    .    X    X    X    X    X    X    .
+0.5     .    X    X    X    X    X    X    .    .
+0.7     .    X    X    X    X    .    .    .    .
+```
+
+**42 % of cells disagree, and every disagreement is antagonistic. Not one cell
+reads synergistic.**
+
+The cause is that what was labelled "Loewe" was not Loewe. True Loewe additivity
+is dose-equivalence, \eqn{CI = d_A/D_A + d_B/D_B}, which requires a dose-response
+curve per agent — data these single-dose designs do not collect, as the package's
+own documentation acknowledged. The stand-in, `min(FE_A + FE_B, 1) / FE_combo`, is
+**response additivity**: a different null, and one that fails the sham-combination
+test. Combine a drug with itself and response additivity predicts twice the
+fractional effect, so an agent at FE = 0.5 should reach 100 % inhibition. It will
+not, so the method calls a drug antagonistic with itself. Any null that fails that
+test will label genuine combinations antagonistic, which is exactly the pattern
+above.
+
+Removed: `loewe_additivity`, `combination_index`, `Loewe_CI` (bootstrap draw),
+`loewe_summary` (Bayesian), the `Loewe Expected` rows, `Loewe_Difference` and
+`Combination_Index` over-time columns, `peak_ci_synergy`, and the exported
+`plot_combination_index()`. `plot_synergy_combined()` went too — its only job was
+stacking the CI plot beneath the trend plot, and a "combined" plot that combines
+nothing is worse than no function.
+
+The verdict is now Bliss alone. On a worked example the change is visible: a
+combination the CI called *antagonistic* is now correctly labelled **Synergy**.
+
+Bliss is retained because it has a defensible probabilistic reading — independent
+action on the surviving fraction — and because its excess already carries a
+bootstrap interval, so the label can be read against uncertainty rather than a
+threshold alone. If a Loewe analysis is genuinely needed, it requires collecting
+per-agent dose-response curves; that is a study-design change, not a code change.
+
+**A second definition surfaced during removal.** `plot_combination_index()` was
+defined twice — once in `R/plot_combination_index.R` and again inside
+`R/analyze_drug_synergy_over_time.R`. Whichever file R sourced last won. Nothing
+detected it, and it is the kind of thing that makes a "fix" appear not to take.
+
+## R17.3 Three dashboard calls pointed at functions that do not exist — **Major**
+
+| call | why it failed |
+|---|---|
+| `mouseExperiment::plot_survival` | removed from the backend in `ace5b94` |
+| `mouseExperiment::prepare_dose_data` | internal helper, never exported |
+| `mouseExperiment::generate_summary_statistics` | internal helper, never exported |
+
+All three sat inside `tryCatch`, so every survival and dose-response run threw,
+logged a caught error, and took a fallback. Users saw output, so nothing looked
+wrong — the classic silent degradation this review keeps finding.
+
+The consequences were not cosmetic:
+
+- **Dose-response:** `result$analysis_data` was never set, so three plot
+  renderers hit a silent `req(ad)` and **the scatter, box and trend plots all
+  rendered blank**.
+- **Survival:** the comment reads *"Use the exported plot_survival() function
+  from the package (matches demo notebook approach)"*. That intended plot has
+  never once been drawn; every user has been looking at the fallback.
+
+Fixed by returning `analysis_data` from `dose_response_statistics()` — the frame
+the analysis actually ran on, rather than a re-derivation that could drift from it
+(the §R14.4 principle) — and by building the KM plot directly in the dashboard.
+
+A permanent guard now scans every `mouseExperiment::` call in the dashboard and
+fails if any does not resolve to an exported function. It strips comments first,
+because comments naming a removed function are wanted; only live calls matter. The
+check is four lines and would have caught all three the day they broke. This is
+the same cross-repo staleness as §R4.D2, where the suite passed against a backend
+six releases old.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| R17.2 | Loewe/CI computed response additivity; biased to antagonism | Major | ✅ Removed v0.21.0 |
+| R17.3 | Three dashboard calls to non-existent backend functions | Major | ✅ Fixed + guarded |
+| — | `plot_combination_index()` defined twice | Minor | ✅ Resolved by removal |

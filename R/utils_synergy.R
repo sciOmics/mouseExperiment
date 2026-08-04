@@ -24,32 +24,6 @@ synergy_bliss_expected <- function(fe_a, fe_b) {
 }
 
 
-#' Loewe combination index (single-dose approximation)
-#'
-#' Computes the single-dose Loewe combination index:
-#' \deqn{ \mathrm{CI}_{\mathrm{Loewe}} =
-#'        \frac{\min(\mathrm{FE}_A + \mathrm{FE}_B,\ 1)}
-#'             {\max(\mathrm{FE}_{\mathrm{combo}},\ \mathrm{floor})} }
-#' \code{CI < 1} indicates synergy; \code{CI > 1} indicates antagonism.
-#' The denominator is floored at \code{fe_floor} (default \code{1e-4}) to
-#' avoid pathological CI values when combo efficacy is near zero.
-#' Returns a list of \code{ci} (the index, same length as the inputs) and
-#' \code{floor_applied} (logical of equal length: TRUE where the floor
-#' was active for that element). Vectorised.
-#'
-#' This is the *single-dose* form of the Loewe additivity criterion, which
-#' assumes a linear dose-response relationship between fraction-of-effect
-#' and dose. Use with caution when actual dose-response curvature is
-#' substantial; consider \code{drc::isobole()} or a full Loewe surface for
-#' more rigorous combination analysis.
-#' @noRd
-synergy_loewe_ci <- function(fe_a, fe_b, fe_combo, fe_floor = 1e-4) {
-  num            <- pmin(fe_a + fe_b, 1)
-  denom_floored  <- pmax(fe_combo, fe_floor)
-  ci             <- num / denom_floored
-  list(ci = ci, floor_applied = fe_combo < fe_floor, loewe_num = num)
-}
-
 #' Mouse-level bootstrap CIs for the synergy metrics
 #'
 #' CODE_REVIEW.md R3.6 / R3.7 / G.6 Option A — `analyze_drug_synergy()` reduced
@@ -74,7 +48,6 @@ synergy_loewe_ci <- function(fe_a, fe_b, fe_combo, fe_floor = 1e-4) {
 #' @param n_boot Number of resamples.
 #' @param seed Optional RNG seed; the caller's RNG state is restored on exit.
 #' @param ci_floor_frac Relative floor applied to the combination fractional
-#'   effect before forming the Loewe ratio, matching `bayesian_synergy()`.
 #' @return A data frame with one row per metric and columns `Metric`,
 #'   `Estimate`, `CI_Lower`, `CI_Upper`, `n_boot`, or `NULL` when any arm has
 #'   fewer than two mice.
@@ -104,25 +77,23 @@ synergy_bootstrap <- function(vols, n_boot = 2000L, seed = NULL,
     m <- vapply(vols, function(v) mean(sample(v, length(v), replace = TRUE)),
                 numeric(1))
     ctrl <- m[["control"]]
-    if (!is.finite(ctrl) || ctrl <= 0) return(rep(NA_real_, 5L))
+    if (!is.finite(ctrl) || ctrl <= 0) return(rep(NA_real_, 4L))
 
     fe_a     <- 1 - m[["drug_a"]] / ctrl
     fe_b     <- 1 - m[["drug_b"]] / ctrl
     fe_combo <- 1 - m[["combo"]]  / ctrl
 
+    # R17.2: the Loewe_CI draw was dropped with the rest of the response-additivity
+    # path. Bliss excess is the quantity the verdict now rests on, so it is the
+    # one that needs an interval.
     bliss_exp <- synergy_bliss_expected(fe_a, fe_b)
-    loewe_exp <- min(fe_a + fe_b, 1)
-    # Same relative floor as bayesian_synergy() (Round 1 B3.1): an absolute
-    # 1e-6 floor sends the ratio to ~1e6 for a near-zero combo effect.
-    floor_val <- max(abs(fe_combo) * ci_floor_frac, ci_floor_frac)
     c(fe_a * 100, fe_b * 100, fe_combo * 100,
-      fe_combo - bliss_exp,
-      loewe_exp / max(fe_combo, floor_val))
+      fe_combo - bliss_exp)
   }
 
-  draws <- vapply(seq_len(n_boot), function(i) one(), numeric(5L))
+  draws <- vapply(seq_len(n_boot), function(i) one(), numeric(4L))
   metrics <- c("TGI_A_pct", "TGI_B_pct", "TGI_Combo_pct",
-               "Bliss_Excess_FE", "Loewe_CI")
+               "Bliss_Excess_FE")
 
   do.call(rbind, lapply(seq_along(metrics), function(i) {
     d <- draws[i, ]

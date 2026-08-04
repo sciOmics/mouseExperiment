@@ -300,7 +300,7 @@ bayes_power <- bayesian_power_analysis(
 | `analyze_drug_synergy_over_time()` | Time-series synergy analysis |
 | `bayesian_synergy()` | Bayesian combination synergy |
 | `bayesian_synergy_over_time()` | Bayesian time-series synergy |
-| `plot_drug_synergy()`, `plot_synergy_trend()`, `plot_combination_index()`, `plot_bliss()`, `plot_synergy_combined()` | Synergy visualisations |
+| `plot_drug_synergy()`, `plot_synergy_trend()`, `plot_bliss()` | Synergy visualisations |
 
 ### Dose-Response
 | Function | Description |

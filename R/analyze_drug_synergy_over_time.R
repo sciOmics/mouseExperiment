@@ -22,7 +22,6 @@
 #' \describe{
 #'   \item{timepoint_results}{A list of results at each time point, each containing the outputs from analyze_drug_synergy}
 #'   \item{synergy_summary}{A data frame summarizing synergy metrics across all time points}
-#'   \item{peak_ci_synergy}{Information about when combination index synergy was strongest}
 #'   \item{peak_bliss_synergy}{Information about when Bliss synergy was strongest}
 #'   \item{drug_a_name, drug_b_name, combo_name}{Names of treatment groups for plotting}
 #' }
@@ -36,8 +35,8 @@
 #' 2. Combination Index (CI) at each time point
 #' 3. Statistical significance of combination advantage over monotherapies
 #'
-#' To visualize the results, use the plot_synergy_trend, plot_combination_index,
-#' or plot_synergy_combined functions with the output from this function.
+#' To visualize the results, use the plot_synergy_trend
+#' function with the output from this function.
 #'
 #' @section Assumptions and Limitations:
 #' \strong{Bliss Independence applied to TGI:} Bliss Independence was formulated for the
@@ -47,11 +46,10 @@
 #' to demonstrate synergy by this criterion regardless of the true biological interaction.
 #' Interpret Bliss results cautiously when individual-agent TGIs exceed 50\% at a given time point.
 #'
-#' \strong{Loewe Additivity single-dose approximation:} The CI formula
-#' \code{min(FE_A + FE_B, 1) / FE_combo} assumes a linear dose-response relationship.
-#' Without full dose-response curves the IC50 values are unknown, so the CI should be
-#' interpreted as a qualitative indicator of synergy direction rather than a precise
-#' mechanistic estimate. This limitation applies at every evaluated time point.
+#' \strong{No Combination Index.} The Loewe / CI path was removed in v0.21.0:
+#' what it computed was response additivity rather than Loewe additivity, and it
+#' labelled Bliss-additive combinations antagonistic across most of the range
+#' where active single agents sit. See \code{\link{analyze_drug_synergy}}.
 #'
 #' @examples
 #' # Analyze synergy over all available time points
@@ -166,8 +164,6 @@ analyze_drug_synergy_over_time <- function(df,
       
       # Extract key metrics for summary
       bliss_result <- synergy_results$bliss_independence
-      loewe_result <- synergy_results$loewe_additivity
-      ci_result <- synergy_results$combination_index
       stat_tests <- synergy_results$statistical_tests
       
       # Get tumor growth inhibition values directly from the results to ensure consistency
@@ -176,9 +172,8 @@ analyze_drug_synergy_over_time <- function(df,
       tgi_drug_b <- summary_df$TGI_Percent[summary_df$Treatment == drug_b_name]
       tgi_combo <- summary_df$TGI_Percent[summary_df$Treatment == combo_name]
       
-      # Get Bliss and Loewe expected values directly from summary_df
+      # Bliss expected value, read straight from summary_df
       bliss_expected <- summary_df$TGI_Percent[summary_df$Treatment == "Bliss Expected"]
-      loewe_expected <- summary_df$TGI_Percent[summary_df$Treatment == "Loewe Expected"]
 
       # Accumulate row for this time point
       synergy_rows[[length(synergy_rows) + 1]] <- data.frame(
@@ -187,10 +182,7 @@ analyze_drug_synergy_over_time <- function(df,
         TGI_Drug_B = tgi_drug_b,
         TGI_Combo = tgi_combo,
         Bliss_Expected_TGI = bliss_expected,
-        Loewe_Expected_TGI = loewe_expected,
         Bliss_Difference = bliss_result$difference * 100,
-        Loewe_Difference = loewe_result$difference * 100,
-        Combination_Index = ci_result$ci,
         P_Value_vs_Drug_A = stat_tests$P_Value[1],
         P_Value_vs_Drug_B = stat_tests$P_Value[2],
         Synergy_Assessment = synergy_results$overall_assessment,
@@ -213,8 +205,7 @@ analyze_drug_synergy_over_time <- function(df,
   # Order the summary by time point
   synergy_summary <- synergy_summary[order(synergy_summary$Time_Point), ]
   
-  # Find when synergy was strongest (lowest CI and highest Bliss difference)
-  peak_ci_synergy <- synergy_summary[which.min(synergy_summary$Combination_Index), ]
+  # Find when Bliss synergy was strongest
   peak_bliss_synergy <- synergy_summary[which.max(synergy_summary$Bliss_Difference), ]
   
   # Print summary of findings (only when verbose)
@@ -224,15 +215,13 @@ analyze_drug_synergy_over_time <- function(df,
         min(synergy_summary$Time_Point), " to ", max(synergy_summary$Time_Point), "\n")
     
     message("Peak Synergy Findings:")
-    message("Strongest CI Synergy at Day ", peak_ci_synergy$Time_Point, 
-               " (CI = ", round(peak_ci_synergy$Combination_Index, 2), ")")
     message("Strongest Bliss Synergy at Day ", peak_bliss_synergy$Time_Point, 
                " (Difference = ", round(peak_bliss_synergy$Bliss_Difference, 1), "%)\n")
     
     message("Synergy Summary by Time Point:")
     message(paste(utils::capture.output(
       print(synergy_summary[, c("Time_Point", "TGI_Combo", "Bliss_Expected_TGI",
-                             "Bliss_Difference", "Combination_Index", "Synergy_Assessment")])
+                             "Bliss_Difference", "Synergy_Assessment")])
     ), collapse = "\n"))
   }
   
@@ -240,7 +229,6 @@ analyze_drug_synergy_over_time <- function(df,
   return(list(
     timepoint_results = timepoint_results,
     synergy_summary = synergy_summary,
-    peak_ci_synergy = peak_ci_synergy,
     peak_bliss_synergy = peak_bliss_synergy,
     # Add these for plotting functions
     drug_a_name = drug_a_name,
@@ -355,135 +343,4 @@ plot_synergy_trend <- function(synergy_results, custom_title = NULL, custom_colo
     ggplot2::theme_minimal()
   
   return(trend_plot)
-}
-
-#' Plot Combination Index Over Time
-#'
-#' Creates a line plot visualizing the Combination Index (CI) over time,
-#' with clear indication of synergy (CI < 1) and antagonism (CI > 1) regions.
-#'
-#' @param synergy_results Results object from analyze_drug_synergy_over_time function
-#' @param custom_title Optional custom title for the plot
-#'
-#' @return A ggplot2 object visualizing CI values over time
-#' @export
-#'
-#' @examples
-#' \dontrun{
-#' # First run the analysis
-#' results <- analyze_drug_synergy_over_time(
-#'   df = tumor_data,
-#'   drug_a_name = "Drug A",
-#'   drug_b_name = "Drug B", 
-#'   combo_name = "Drug A + Drug B"
-#' )
-#' 
-#' # Then create the CI plot
-#' plot_combination_index(results)
-#' }
-plot_combination_index <- function(synergy_results, custom_title = NULL) {
-  # Validate input
-  if (!is.list(synergy_results) || is.null(synergy_results$synergy_summary)) {
-    stop("Input must be a valid result object from analyze_drug_synergy_over_time()")
-  }
-  
-  # Extract necessary data
-  synergy_summary <- synergy_results$synergy_summary
-  
-  # Set title
-  if (is.null(custom_title)) {
-    title <- "Combination Index Over Time"
-  } else {
-    title <- custom_title
-  }
-  
-  # Create the plot
-  ci_plot <- ggplot2::ggplot(synergy_summary, ggplot2::aes(x = Time_Point, y = Combination_Index)) +
-    ggplot2::geom_line(linewidth = 1) +
-    # Fix the TRUE/FALSE mapping issue by explicitly setting aesthetics
-    ggplot2::geom_point(
-      data = subset(synergy_summary, Combination_Index < 1),
-      ggplot2::aes(x = Time_Point, y = Combination_Index),
-      size = 3, color = "green"
-    ) +
-    ggplot2::geom_point(
-      data = subset(synergy_summary, Combination_Index >= 1),
-      ggplot2::aes(x = Time_Point, y = Combination_Index),
-      size = 3, color = "red"
-    ) +
-    ggplot2::geom_hline(yintercept = 1, linetype = "dashed", color = "black") +
-    # Add manual legend
-    ggplot2::annotate("point", x = -Inf, y = -Inf, size = 3, color = "green") +
-    ggplot2::annotate("point", x = -Inf, y = -Inf, size = 3, color = "red") +
-    ggplot2::guides(color = "none") + # Remove automatic color legend
-    # Annotation x-position: additive offset from the time range so the labels
-    # render correctly when Time_Point doesn't start near 0 (same fix as
-    # Round 1 3.9 for plot_synergy_trend).
-    {
-      .tp_lo    <- min(synergy_summary$Time_Point, na.rm = TRUE)
-      .tp_span  <- max(1, diff(range(synergy_summary$Time_Point, na.rm = TRUE)))
-      .ann_x    <- .tp_lo + .tp_span * 0.05
-      list(
-        ggplot2::annotate("text", x = .ann_x,
-            y = max(synergy_summary$Combination_Index, na.rm = TRUE) * 0.85,
-            label = "Synergy (CI < 1)", color = "green", hjust = 0),
-        ggplot2::annotate("text", x = .ann_x,
-            y = max(synergy_summary$Combination_Index, na.rm = TRUE) * 0.95,
-            label = "Antagonism (CI >= 1)", color = "red", hjust = 0)
-      )
-    } +
-    ggplot2::labs(
-      title = title,
-      subtitle = "CI < 1 indicates synergy, CI > 1 indicates antagonism",
-      x = "Time Point",
-      y = "Combination Index (CI)"
-    ) +
-    ggplot2::theme_minimal()
-  
-  return(ci_plot)
-}
-
-#' Plot Combined Drug Synergy Analysis
-#'
-#' Creates a combined plot showing both the tumor growth inhibition trends
-#' and the combination index trends over time.
-#'
-#' @param synergy_results Results object from analyze_drug_synergy_over_time function
-#' @param custom_title Optional list with custom titles for the individual plots
-#' @param custom_colors Optional named vector of custom colors for treatment groups
-#'
-#' @return A combined ggplot2 object with both trend plots
-#' @export
-#'
-#' @examples
-#' \dontrun{
-#' # First run the analysis
-#' results <- analyze_drug_synergy_over_time(
-#'   df = tumor_data,
-#'   drug_a_name = "Drug A",
-#'   drug_b_name = "Drug B", 
-#'   combo_name = "Drug A + Drug B"
-#' )
-#' 
-#' # Then create the combined plot
-#' plot_synergy_combined(results)
-#' }
-plot_synergy_combined <- function(synergy_results, custom_title = NULL, custom_colors = NULL) {
-  # Create individual plots
-  trend_plot <- plot_synergy_trend(synergy_results, 
-                                 ifelse(is.list(custom_title), custom_title$trend, custom_title),
-                                 custom_colors)
-  
-  ci_plot <- plot_combination_index(synergy_results,
-                                  ifelse(is.list(custom_title), custom_title$ci, custom_title))
-  
-  # Combine the plots
-  # ggpubr is a hard Import as of v0.10.0 (it was already in NAMESPACE via
-  # @importFrom while sitting in Suggests, which is an R CMD check violation).
-  # The dead fallback returned the trend plot alone, so a missing ggpubr silently
-  # returned a *different plot* than documented.
-  ggpubr::ggarrange(trend_plot, ci_plot,
-                    ncol = 1, nrow = 2,
-                    common.legend = FALSE,
-                    heights = c(2, 1))
 }

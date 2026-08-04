@@ -164,43 +164,7 @@ test_that("plot_drug_synergy returns a ggplot", {
   expect_s3_class(p, "gg")
 })
 
-# ===========================================================================
-# 7. plot_combination_index
-# ===========================================================================
-test_that("plot_combination_index returns a ggplot", {
-  df  <- make_synergy_multi_timepoint()
-  res <- call_synergy_ot(df)
-  # plot_combination_index takes the synergy_summary data frame, not the full result list
-  p   <- plot_combination_index(res$synergy_summary)
-  expect_s3_class(p, "gg")
-})
 
-# ===========================================================================
-# 8. plot_synergy_combined
-# ===========================================================================
-test_that("plot_synergy_combined returns a ggplot or ggarrange object", {
-
-  df  <- make_synergy_multi_timepoint()
-  res <- call_synergy_ot(df)
-  # plot_synergy_combined internally calls plot_synergy_trend (full result) and
-  # plot_combination_index (data frame). The latter may conflict when two defs
-  # exist. Wrap in tryCatch to handle gracefully.
-  p <- tryCatch(
-    suppressWarnings(plot_synergy_combined(res)),
-    error = function(e) {
-      # If combined plot fails due to conflicting function signatures,
-      # fall back to testing the component plots individually
-      NULL
-    }
-  )
-  if (!is.null(p)) {
-    expect_true(inherits(p, "gg") || inherits(p, "ggarrange") || inherits(p, "gtable"))
-  } else {
-    # At minimum, the trend plot should work
-    p_trend <- plot_synergy_trend(res)
-    expect_s3_class(p_trend, "gg")
-  }
-})
 
 # ===========================================================================
 # 9. plot_synergy_trend

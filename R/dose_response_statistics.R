@@ -95,7 +95,15 @@ dose_response_statistics <- function(df,
     anova_model = stats_results$anova_model,
     plots = plots,
     summary_table = summary_stats,
-    statistics = stats_results$statistics
+    statistics = stats_results$statistics,
+    # R17.3: the per-observation frame the analysis actually ran on, at the
+    # chosen time point. The dashboard needs it to rebuild its scatter, box and
+    # trend plots, and had been calling `mouseExperiment::prepare_dose_data()` to
+    # re-derive it -- a function that is internal and not exported, so the call
+    # threw on every run, the tryCatch swallowed it, and all three plots rendered
+    # blank. Returning what was analysed also removes the chance of a
+    # re-derivation drifting from it (the R14.4 principle).
+    analysis_data = analysis_data
   ))
 }
 
