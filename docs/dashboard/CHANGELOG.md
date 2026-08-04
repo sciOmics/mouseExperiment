@@ -4,6 +4,48 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.07.014] - 2026-07-31
+
+### Removed — the Combination Index from the Synergy tab (R17.2)
+
+Backend v0.21.0 dropped it: with the combination set to exactly Bliss-additive,
+42 % of the effect grid disagreed with Bliss and every disagreement was
+antagonistic, because the implementation was response additivity rather than
+Loewe additivity.
+
+Gone here: the Loewe Info panel, the CI plot and its download, the CI entry in
+the plot selector, the shaded-region checkbox only that plot used, and the
+associated metric descriptions.
+
+The verdict box no longer calls itself a "consensus" requiring two models to
+agree. With one model there is nothing to reconcile, so it names Bliss, states
+the formula, and says plainly that a threshold on three group means should be
+read against the interval below it. The Help entry now explains *why* there is no
+CI, sham-combination argument included — a user expecting one deserves the reason.
+
+### Fixed — three calls to backend functions that do not exist (R17.3)
+
+`plot_survival` (removed from the backend in `ace5b94`), `prepare_dose_data` and
+`generate_summary_statistics` (both internal, never exported). All three sat
+inside `tryCatch`, so every survival and dose-response run threw, logged, and
+fell back — output appeared, so nothing looked wrong.
+
+The dose-response consequence was not cosmetic: `result$analysis_data` was never
+set, three renderers hit a silent `req(ad)`, and **the scatter, box and trend
+plots all rendered blank**. On the survival side, the comment says "use the
+exported plot_survival() function (matches demo notebook approach)" — that plot
+has never once been drawn.
+
+### Added — a guard against cross-repo staleness (R17.4)
+
+`test-backend-calls-resolve.R` scans every `mouseExperiment::` call and fails if
+one does not resolve to an exported function. It strips comments first (comments
+naming a removed function are wanted; only live calls matter), asserts the
+matcher can actually fail, and checks that dose-response results carry
+`analysis_data` so the blank-plot failure cannot return.
+
+Suite: 558 → 569 passing, no skips.
+
 ## [26.07.013] - 2026-07-30
 
 ### Fixed — the forest plot marked significance from unadjusted p-values on AUC (R14.6)

@@ -1562,3 +1562,73 @@ them.
 | R14.6 | Forest plot used unadjusted p-values on the AUC path | **Critical** | ✅ Fixed v26.07.013 |
 | R14.5 | Consensus synergy verdict never shown | Major | ✅ Fixed v26.07.013 |
 | R14.7 | Bayesian intervals mislabelled | Major | ✅ Fixed v26.07.013 |
+
+---
+
+# Review Round 18 (v26.07.014 — 2026-07-31)
+
+## R17.2 The Combination Index is gone from the Synergy tab
+
+Backend v0.21.0 removed it — see that repo's Round 18 entry for the measurement
+(42 % of the effect grid disagreed with Bliss, always in the antagonistic
+direction, because the implementation was response additivity rather than Loewe
+additivity).
+
+Removed here: the Loewe Info panel, the CI plot and its download handler, the CI
+entry in the plot selector, the shaded-region checkbox that only that plot used,
+the `Loewe Difference` / `Combination Index` metric descriptions, the
+`Loewe_Expected_TGI` / `Combination_Index` over-time column notes, and the
+`current_syn_ci_plot` reactive.
+
+The verdict box was reworked. It previously described itself as a *consensus*
+requiring both models to agree, with a warning when they disagreed. With one
+model there is nothing to reconcile, so it now names Bliss explicitly, states the
+formula, and says plainly that a threshold applied to three group means should be
+read against the interval below it rather than on its own.
+
+The Help entry became an explanation of *why* there is no CI rather than a
+description of one, including the sham-combination argument. A user who expects a
+Combination Index and finds none deserves the reason.
+
+## R17.3 Three calls to backend functions that do not exist — **Major**
+
+| call | why it failed |
+|---|---|
+| `mouseExperiment::plot_survival` | removed from the backend in `ace5b94` |
+| `mouseExperiment::prepare_dose_data` | internal, never exported |
+| `mouseExperiment::generate_summary_statistics` | internal, never exported |
+
+All three sat inside `tryCatch`, so every survival and dose-response run threw,
+logged, and fell back. Output appeared, so nothing looked broken.
+
+**Dose-response:** `result$analysis_data` was never set, three renderers hit a
+silent `req(ad)`, and the scatter, box and trend plots all came out blank.
+**Survival:** the comment said *"Use the exported plot_survival() function
+(matches demo notebook approach)"* — that plot has never been drawn; every user
+has seen the fallback.
+
+Fixed by reading `analysis_data` from the backend result (it now returns the
+frame it analysed) and building the KM plot directly here.
+
+## R17.4 A permanent guard against cross-repo staleness
+
+`test-backend-calls-resolve.R` scans every `mouseExperiment::` call in `R/` and
+fails if any does not resolve to an exported function. It strips comments first —
+comments naming a removed function are wanted, since they explain what replaced
+it; only live calls matter. That distinction is not hypothetical: an earlier
+guard written without it produced false positives on its own documentation.
+
+It also asserts the matcher can fail, because a guard that cannot fail is not a
+guard, and that dose-response results carry `analysis_data` so the blank-plot
+failure cannot return.
+
+Same class as §R4.D2, where the suite passed against a six-release-stale backend.
+Four lines, and it would have caught all three of these the day they broke.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| R17.2 | Combination Index removed from the UI | Major | ✅ Done v26.07.014 |
+| R17.3 | Three dead cross-repo calls; blank dose-response plots | Major | ✅ Fixed v26.07.014 |
+| R17.4 | No guard against cross-repo staleness | Process | ✅ Added — 11 assertions |
+
+Suite: 558 → 569 passing, no skips.

@@ -6,7 +6,7 @@ synergyUI <- function(id) {
     h2("Drug Synergy Analysis"),
     
     p("Test whether a drug combination shows synergistic, additive, or antagonistic effects ",
-      "using Bliss independence and Loewe additivity models. ",
+      "using the Bliss independence model. ",
       "Ensure tumor growth data is uploaded and configured in the Data Upload tab."),
     
     tags$div(class = "row collapsible-sidebar-row",
@@ -24,12 +24,12 @@ synergyUI <- function(id) {
 
           selectInput(ns("syn_model_type"), "Statistical Model",
             choices = c(
-              "Frequentist (Bliss/Loewe)" = "frequentist",
+              "Frequentist (Bliss)" = "frequentist",
               "Bayesian LMM (brms)"       = "bayes"
             ),
             selected = "frequentist"
           ),
-          helpText("Frequentist computes Bliss/Loewe synergy scores. Bayesian fits a ",
+          helpText("Frequentist computes the Bliss synergy score. Bayesian fits a ",
                    "linear mixed-effects model with brms and reports posterior credible ",
                    "intervals; computation takes 3–12 minutes."),
 
@@ -107,7 +107,6 @@ synergyUI <- function(id) {
                     p("The Drug Synergy tab assesses whether a drug combination produces greater tumor suppression than predicted from the individual drugs acting independently. Two reference models are evaluated simultaneously:"),
                     tags$ul(
                       tags$li(strong("Bliss Independence"), " — treats the two drugs as probabilistically independent. The expected combined TGI is the sum of individual TGIs, capped at 100 %."),
-                      tags$li(strong("Loewe Additivity"), " — treats the drugs as dose-equivalent. The Combination Index (CI) measures how the observed combination effect compares to the expected additive effect.")
                     ),
                     p("Four treatment groups must be assigned in the sidebar: Control, Drug A only, Drug B only, and the Combination (A + B). Analysis can be run at a single timepoint or tracked over the full study duration."),
                     p(tags$small(class = "text-muted",
@@ -139,33 +138,6 @@ synergyUI <- function(id) {
                   )
                 ),
 
-                # ── Loewe ────────────────────────────────────────────────────
-                div(class = "panel panel-default",
-                  div(class = "panel-heading",
-                    h4(class = "panel-title", tags$span(class = "label label-warning", "Loewe Additivity & Combination Index"))),
-                  div(class = "panel-body",
-                    p("Loewe additivity assumes that drugs acting on the same pathway are dose-equivalent and interchangeable. The Combination Index (CI) is:"),
-                    tags$blockquote(tags$code("CI = min(FE_A + FE_B, 1.0) / FE_combo")),
-                    p("Interpretation thresholds:"),
-                    tags$ul(
-                      tags$li(tags$b("CI < 0.85"), " — synergistic: the combination outperforms the additive expectation."),
-                      tags$li(tags$b("0.85 ≤ CI ≤ 1.15"), " — additive: the combination matches the expected additive effect."),
-                      tags$li(tags$b("CI > 1.15"), " — antagonistic: the combination underperforms the additive expectation.")
-                    ),
-                    tags$dl(class = "dl-horizontal",
-                      tags$dt("Loewe Difference"),
-                      tags$dd("TGI_combo − Loewe Expected TGI. Positive = synergy; negative = antagonism.")
-                    ),
-                    div(class = "alert alert-info", style = "margin-top:10px;",
-                      icon("circle-info"), " ",
-                      strong("Single-dose approximation: "),
-                      "This implementation derives fractional effects from single-dose measurements rather than full dose-response curves for each drug. ",
-                      "The CI is therefore an approximation of the true Loewe CI. ",
-                      "A rigorous Loewe analysis requires IC50 values from complete dose-response curves — collect full dose-response data if a definitive CI is needed."
-                    )
-                  )
-                ),
-
                 # ── Uncertainty & estimand ───────────────────────────────────
                 div(class = "panel panel-default",
                   div(class = "panel-heading",
@@ -176,7 +148,7 @@ synergyUI <- function(id) {
                       "resting on a real effect."),
                     tags$dl(class = "dl-horizontal",
                       tags$dt("Bootstrap resamples"),
-                      tags$dd("Mouse-level resampling produces confidence intervals for the Bliss and Loewe ",
+                      tags$dd("Mouse-level resampling produces confidence intervals for the Bliss ",
                               "metrics. The control arm is resampled too, so uncertainty in the denominator ",
                               "propagates rather than being treated as known — which matters because every metric ",
                               "here is a ratio against control. Set to 0 to skip; the verdict is then a point ",
@@ -191,11 +163,11 @@ synergyUI <- function(id) {
                               "animals still present at the endpoint. Because the fastest-growing controls are the ",
                               "ones removed early, the observed estimand shrinks the control mean and inflates every ",
                               "fractional effect derived from it — which propagates directly into both Bliss and ",
-                              "Loewe. Per-arm attrition is shown so the exposure is visible.")
+                              "the Bliss expectation. Per-arm attrition is shown so the exposure is visible.")
                     ),
                     p(tags$small(class = "text-muted",
                       "A Bayesian synergy mode is also available: it propagates posterior uncertainty from the ",
-                      "growth model through the Bliss and Loewe calculations, giving credible intervals for the ",
+                      "growth model through the Bliss calculation, giving credible intervals for the ",
                       "metrics directly rather than by resampling."
                     ))
                   )
@@ -205,7 +177,7 @@ synergyUI <- function(id) {
                 div(class = "panel panel-default",
                   div(class = "panel-heading", h4(class = "panel-title", "Over-Time Analysis")),
                   div(class = "panel-body",
-                    p("When 'Analyze over time' is enabled in the sidebar, Bliss and Loewe scores are computed at every measured timepoint and plotted as a synergy trend. This reveals whether synergy emerges, fades, or reverses over the course of treatment."),
+                    p("When 'Analyze over time' is enabled in the sidebar, the Bliss score is computed at every measured timepoint and plotted as a synergy trend. This reveals whether synergy emerges, fades, or reverses over the course of treatment."),
                     p("Per-timepoint p-values (Combination vs Drug A and vs Drug B, two-sample t-test) are included in the Synergy Metrics table. These are unadjusted for multiple testing across timepoints — interpret overall patterns rather than individual p-values at isolated days.")
                   )
                 ),
@@ -216,7 +188,7 @@ synergyUI <- function(id) {
           ),
 
           tabPanel("Summary",
-            tab_info(strong("Synergy summary: "), "Overall assessment combining Bliss independence and Combination Index (CI) metrics. Reports whether the drug combination is synergistic, additive, or antagonistic at the evaluated timepoint, and lists the key quantitative scores."),
+            tab_info(strong("Synergy summary: "), "Overall assessment from the Bliss independence model. Reports whether the drug combination is synergistic, additive, or antagonistic at the evaluated timepoint, and lists the key quantitative scores."),
             shinycssloaders::withSpinner(
               verbatimTextOutput(ns("syn_summary"))
             )
@@ -229,17 +201,14 @@ synergyUI <- function(id) {
               strong("Metric"), " / ", strong("Value"), ") summarising scores at the selected timepoint: ",
               tags$ul(
                 tags$li(strong("Bliss Difference"), " \u2014 observed combination effect minus the Bliss-independent expected effect (TGI\u2009combo \u2212 TGI\u2009Bliss). Positive = synergy; negative = antagonism."),
-                tags$li(strong("Loewe Difference"), " \u2014 observed combination effect minus the Loewe additivity expected effect (sum of individual fractional effects, capped at 100%). Positive = synergy; negative = antagonism."),
-                tags$li(strong("Combination Index (CI)"), " \u2014 Loewe-based CI: CI\u202f<\u202f0.85 synergistic; 0.85\u202f\u2264\u202fCI\u202f\u2264\u202f1.15 additive; CI\u202f>\u202f1.15 antagonistic."),
                 tags$li(strong("Interpretation"), " \u2014 plain-language summary based on the CI threshold.")
               ),
               "When \u2018Analyze over time\u2019 is enabled, each row is a measured timepoint with columns:",
               tags$ul(
                 tags$li(strong("Time_Point"), " \u2014 study day."),
                 tags$li(strong("TGI_Drug_A / TGI_Drug_B / TGI_Combo"), " \u2014 % tumor growth inhibition for Drug A, Drug B, and the combination relative to control."),
-                tags$li(strong("Bliss_Expected_TGI / Loewe_Expected_TGI"), " \u2014 predicted TGI under the Bliss independence and Loewe additivity models, respectively."),
-                tags$li(strong("Bliss_Difference / Loewe_Difference"), " \u2014 TGI_Combo minus the expected TGI; positive values indicate synergy."),
-                tags$li(strong("Combination_Index"), " \u2014 Loewe-based CI at this timepoint (see thresholds above)."),
+                tags$li(strong("Bliss_Expected_TGI"), " \u2014 predicted TGI under the Bliss independence model."),
+                tags$li(strong("Bliss_Difference"), " \u2014 TGI_Combo minus the expected TGI; positive values indicate synergy."),
                 tags$li(strong("P_Value_vs_Drug_A / P_Value_vs_Drug_B"), " \u2014 two-sample t-test p-value comparing the combination group to each mono-therapy; values below 0.05 indicate a statistically significant difference."),
                 tags$li(strong("Synergy_Assessment"), " \u2014 plain-language classification at each timepoint.")
               )
@@ -255,12 +224,12 @@ synergyUI <- function(id) {
             # derived from three group means. Without an interval a "Strong
             # Synergy" label whose Bliss-excess CI spans zero is
             # indistinguishable on screen from one that does not.
-            # R14.5 -- the CI-threshold verdict alone is the more biased of the
-            # two available: linear-Loewe calls a Bliss-additive combination
-            # antagonistic across roughly FE 0.25-0.65, the range most active
-            # single agents occupy. The backend also returns overall_assessment,
-            # which requires Bliss AND Loewe to agree before claiming synergy,
-            # and it was computed and never shown.
+            # R14.5 / R17.2 -- the Combination Index was removed from the
+            # backend: it computed response additivity rather than Loewe
+            # additivity and labelled Bliss-additive combinations antagonistic
+            # across most of the range where active single agents sit. The
+            # verdict below is now the Bliss assessment, read against its
+            # bootstrap interval.
             uiOutput(ns("syn_consensus_note")),
             uiOutput(ns("syn_ci_heading")),
             uiOutput(ns("syn_ci_verdict_note")),
@@ -298,12 +267,6 @@ synergyUI <- function(id) {
                       "input.syn_plot_selector == 'trend'",
                       checkboxInput(ns("syn_opt_show_shading"),
                                     "Show Synergy / Antagonism shading",
-                                    value = TRUE)
-                    ),
-                    conditionalPanel(ns = ns,
-                      "input.syn_plot_selector == 'ci'",
-                      checkboxInput(ns("syn_opt_ci_show_regions"),
-                                    "Show region shading & labels",
                                     value = TRUE)
                     ),
                     conditionalPanel(ns = ns,
@@ -345,12 +308,6 @@ synergyUI <- function(id) {
                   h4("Synergy Plot"),
                   shinycssloaders::withSpinner(
                     plotOutput(ns("syn_plot_trend"), width = "auto", height = "auto")
-                  )
-                ),
-                conditionalPanel(ns = ns,"input.syn_plot_selector == 'ci'",
-                  h4("Combination Index"),
-                  shinycssloaders::withSpinner(
-                    plotOutput(ns("syn_plot_ci"), width = "auto", height = "auto")
                   )
                 ),
                 conditionalPanel(ns = ns,"input.syn_plot_selector == 'tgi'",
@@ -462,7 +419,6 @@ synergy_server <- function(id, rv) {
   # ReactiveVals to hold the current rendered plot (for download fidelity — D4, D5)
   current_syn_main_plot  <- reactiveVal(NULL)
   current_syn_trend_plot <- reactiveVal(NULL)
-  current_syn_ci_plot    <- reactiveVal(NULL)
   current_syn_tgi_plot   <- reactiveVal(NULL)
 
   # ── Bayesian synergy tab management ───────────────────────────────────────
@@ -652,7 +608,7 @@ synergy_server <- function(id, rv) {
     })
     
     # Track analysis start with Umami
-    shinyjs::runjs("window.trackAnalysisStart('drug_synergy', 'bliss_loewe', 'combo_vs_monotherapy');")
+    shinyjs::runjs("window.trackAnalysisStart('drug_synergy', 'bliss', 'combo_vs_monotherapy');")
     
     # Use preprocessed data (Volume + Day resolved) if TG analysis has already
     # been run; otherwise preprocess inline from the raw uploaded data.
@@ -793,23 +749,6 @@ synergy_server <- function(id, rv) {
             ggplot2::ylim(0, 100) +
             ggplot2::theme_classic()
 
-          # Combination Index plot — matches demo Fig 5 style with shaded regions
-          mid_x <- mean(syn_df$Time_Point)
-          result$plot_ci <- ggplot2::ggplot(syn_df,
-                                            ggplot2::aes(x = Time_Point, y = Combination_Index)) +
-            ggplot2::geom_ribbon(ggplot2::aes(ymin = 0,    ymax = 0.85), fill = "blue",  alpha = 0.2) +
-            ggplot2::geom_ribbon(ggplot2::aes(ymin = 0.85, ymax = 1.15), fill = "grey",  alpha = 0.4) +
-            ggplot2::geom_ribbon(ggplot2::aes(ymin = 1.15, ymax = 2),    fill = "red",   alpha = 0.2) +
-            ggplot2::geom_line(color = "purple", linewidth = 1.5) +
-            ggplot2::annotate("text", x = mid_x, y = 0.20, label = "Synergistic",
-                              color = "blue", size = 5) +
-            ggplot2::annotate("text", x = mid_x, y = 1.05, label = "Additive",    size = 5) +
-            ggplot2::annotate("text", x = mid_x, y = 1.80, label = "Antagonistic",
-                              color = "red",  size = 5) +
-            ggplot2::labs(x = "Days", y = "Combination Index", title = "") +
-            ggplot2::ylim(0, 2) +
-            ggplot2::theme_classic()
-
         }, error = function(e) {
           log_caught_error("synergy", "trend plot generation", e)
         })
@@ -871,7 +810,7 @@ synergy_server <- function(id, rv) {
   # Dynamic plot selector (Trend / CI only available for all-dates analysis)
   output$syn_plot_selector_ui <- renderUI({
     if (isTRUE(rv$syn_over_time)) {
-      choices <- c("Synergy Plot" = "trend", "Combination Index" = "ci",
+      choices <- c("Synergy Plot" = "trend",
                    "Tumor Growth Inhibition" = "tgi")
     } else {
       choices <- c("Synergy Plot" = "main")
@@ -898,20 +837,10 @@ synergy_server <- function(id, rv) {
           cat("Peak Bliss synergy at timepoint:", pb$Time_Point,
               " (Bliss Difference =", round(pb$Bliss_Difference, 1), "%)\n")
         }
-        if (!is.null(res$peak_ci_synergy)) {
-          pc <- res$peak_ci_synergy
-          cat("Strongest CI synergy at timepoint:", pc$Time_Point,
-              " (CI =", round(pc$Combination_Index, 2), ")\n")
-        }
       } else {
         cat("Analysis type: Single timepoint\n")
         if (!is.null(res$evaluation_time_point)) cat("Evaluated at Day:", res$evaluation_time_point, "\n")
         cat("\nOverall Assessment:", res$overall_assessment, "\n\n")
-        if (!is.null(res$combination_index)) {
-          cat("Combination Index (CI):", round(res$combination_index$ci, 4), "\n")
-          cat("Interpretation:", res$combination_index$interpretation, "\n")
-          cat("  CI < 1 = Synergistic, CI = 1 = Additive, CI > 1 = Antagonistic\n\n")
-        }
         if (!is.null(res$bliss_independence)) {
           bi <- res$bliss_independence
           cat("Bliss Independence:\n")
@@ -974,46 +903,33 @@ synergy_server <- function(id, rv) {
 
   # The single most important reading aid: does the Bliss-excess interval exclude
   # zero? If it does not, the verdict above is not evidence of synergy.
-  # R14.5: the consensus verdict. Shown above the CI verdict because it is the
-  # conservative one -- it requires both models to agree -- and because the two
-  # can point in opposite directions on identical data (a worked example gave
-  # Bliss +0.085 against Loewe -0.067).
+  # R14.5 / R17.2: the headline verdict. It used to sit above a separate
+  # Combination Index verdict and flag disagreement between the two models; the
+  # CI was removed from the backend because it computed response additivity
+  # rather than Loewe additivity and labelled Bliss-additive combinations
+  # antagonistic across most of the range where active single agents sit. One
+  # model now, so there is nothing to reconcile -- but the label is still a point
+  # estimate, which is why the interval note below it matters more than this box.
   output$syn_consensus_note <- renderUI({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error)) return(NULL)
     oa <- rv$syn_results$overall_assessment
     if (is.null(oa) || !nzchar(oa)) return(NULL)
 
-    ci_txt <- rv$syn_results$combination_index$interpretation %||% ""
-    style  <- if (grepl("Not evaluable", oa)) "warning"
-              else if (grepl("Synergy", oa)) "success"
-              else if (grepl("Antagonism", oa)) "danger" else "info"
+    style <- if (grepl("Not evaluable", oa)) "warning"
+             else if (grepl("Synergy", oa)) "success"
+             else if (grepl("Antagonism", oa)) "danger" else "info"
 
-    # When the two models disagree, say so rather than letting the reader
-    # reconcile two verdicts sitting next to each other.
-    disagree <- !grepl("Not evaluable", oa) &&
-      ((grepl("Synerg", oa) && grepl("Antagonistic", ci_txt)) ||
-       (grepl("Antagonism", oa) && grepl("Synergistic", ci_txt)))
-
-    tagList(
-      div(class = paste0("alert alert-", style),
-        tags$strong("Consensus verdict: "), oa,
-        tags$br(),
-        tags$small(
-          "Requires the Bliss and Loewe models to agree. The Combination Index ",
-          "verdict below reflects Loewe alone, which reads antagonistic for a ",
-          "genuinely additive combination whenever both single agents are ",
-          "moderately effective."
-        )
-      ),
-      if (disagree) div(class = "alert alert-warning",
-        icon("triangle-exclamation"), " ",
-        tags$strong("The two models disagree on this dataset."),
-        " Bliss and Loewe encode different null hypotheses \u2014 Bliss multiplies ",
-        "surviving fractions, Loewe adds dose-equivalents \u2014 so disagreement is ",
-        "informative rather than an error. Treat neither label as decisive and ",
-        "read the interval on Bliss excess below."
-      ) else NULL
+    div(class = paste0("alert alert-", style),
+      tags$strong("Synergy verdict: "), oa,
+      tags$br(),
+      tags$small(
+        "From the Bliss independence model: expected effect = ",
+        tags$code("FE_A + FE_B \u2212 FE_A \u00d7 FE_B"),
+        ", so the drugs are assumed to act independently on the surviving ",
+        "fraction. This is a threshold applied to three group means \u2014 read it ",
+        "against the interval below, not on its own."
+      )
     )
   })
 
@@ -1088,7 +1004,6 @@ synergy_server <- function(id, rv) {
     btn_id <- switch(input$syn_plot_selector %||% "main",
       main   = "download_syn_plot_main",
       trend  = "download_syn_plot_trend",
-      ci     = "download_syn_plot_ci",
       tgi    = "download_syn_plot_tgi",
       "download_syn_plot_main"
     )
@@ -1223,49 +1138,6 @@ synergy_server <- function(id, rv) {
   }, width = function() input$syn_plot_width %||% 800,
      height = function() input$syn_plot_height %||% 600)
   
-  output$syn_plot_ci <- renderPlot({
-    req(rv$syn_results)
-    if (isTRUE(rv$syn_results$error) || !isTRUE(rv$syn_over_time)) return(NULL)
-    req(rv$syn_results$synergy_summary)
-
-    syn_df      <- rv$syn_results$synergy_summary
-    text_sz     <- input$syn_opt_text_size  %||% 16
-    leg_pos     <- input$syn_opt_legend_pos %||% "right"
-    show_regions <- isTRUE(input$syn_opt_ci_show_regions)
-
-    mid_x <- mean(syn_df$Time_Point)
-    p <- ggplot2::ggplot(syn_df,
-                         ggplot2::aes(x = Time_Point, y = Combination_Index))
-
-    if (show_regions) {
-      p <- p +
-        ggplot2::geom_ribbon(ggplot2::aes(ymin = 0,    ymax = 0.85), fill = "blue",  alpha = 0.2) +
-        ggplot2::geom_ribbon(ggplot2::aes(ymin = 0.85, ymax = 1.15), fill = "grey",  alpha = 0.4) +
-        ggplot2::geom_ribbon(ggplot2::aes(ymin = 1.15, ymax = 2),    fill = "red",   alpha = 0.2) +
-        ggplot2::annotate("text", x = mid_x, y = 0.20, label = "Synergistic",
-                          color = "blue", size = 5) +
-        ggplot2::annotate("text", x = mid_x, y = 1.05, label = "Additive",    size = 5) +
-        ggplot2::annotate("text", x = mid_x, y = 1.80, label = "Antagonistic",
-                          color = "red",  size = 5)
-    }
-
-    p <- p +
-      ggplot2::geom_line(color = "purple", linewidth = 1.5) +
-      ggplot2::labs(x = "Days", y = "Combination Index", title = "") +
-      ggplot2::ylim(0, 2) +
-      ggplot2::theme_classic() +
-      ggplot2::theme(text = ggplot2::element_text(size = text_sz))
-
-    p <- apply_legend_pos(p, leg_pos)
-    p <- apply_plot_labels(p,
-                           input$syn_plot_title       %||% "",
-                           input$syn_plot_subtitle    %||% "",
-                           input$syn_plot_title_align %||% "center",
-                           text_sz)
-    current_syn_ci_plot(p)
-    print(p)
-  }, width = function() input$syn_plot_width %||% 800,
-     height = function() input$syn_plot_height %||% 600)
   
   # ------------------------------------------------------------------
   # TGI over time plot: per-mouse TGI with group lines + error bars
@@ -1396,7 +1268,7 @@ synergy_server <- function(id, rv) {
   # those reactiveVals are passed in explicitly.
   add_syn_download_handlers(input, output, session, rv,
                             current_syn_main_plot, current_syn_trend_plot,
-                            current_syn_ci_plot,   current_syn_tgi_plot)
+                            current_syn_tgi_plot)
 
   # CODE_REVIEW.md DIAGNOSTICS gap (6) — frequentist synergy diagnostics.
   output$syn_diag_group_qq_plot <- renderPlot({

@@ -834,20 +834,26 @@ survival_server <- function(id, rv) {
         km_fit <- survival::survfit(survival::Surv(Time, Event) ~ Treatment, data = surv_df)
         result$km_fit <- km_fit
 
-        # Use the exported plot_survival() function from the package to generate the KM plot
-        # (matches demo notebook approach; returns a ggsurvplot object)
-        result$km_plot <- mouseExperiment::plot_survival(
-          data              = data,
-          time_column       = time_col_use,
-          censor_column     = censor_col_use,
-          treatment_column  = tx_col_surv,
-          id_column         = rv$settings$col_id,
-          cage_column       = if (!is.null(rv$settings$col_cage) && nzchar(rv$settings$col_cage)) rv$settings$col_cage else NULL,
-          dose_column       = dose_col_surv,
-          colors            = NULL,
-          show_risk_table   = TRUE,
-          title             = "Kaplan-Meier Survival Curves by Treatment"
+        # R17.3: this called mouseExperiment::plot_survival(), which was removed
+        # from the backend in ace5b94 ("Remove plot_survival and plot_forest
+        # functions"). The dashboard was never updated, so the call threw on
+        # every survival run, the tryCatch below logged it, and the fallback
+        # ggsurvplot rendered instead. Users saw a plot, so nothing looked wrong
+        # -- but the intended plot has never once been drawn. Build it here
+        # directly rather than reaching for a function that no longer exists.
+        pal <- build_color_vector(input, "surv_color", levels(factor(surv_df$Treatment)))
+        km_plot_obj <- survminer::ggsurvplot(
+          km_fit,
+          data         = surv_df,
+          pval         = TRUE,
+          conf.int     = TRUE,
+          risk.table   = TRUE,
+          palette      = if (!is.null(pal)) unname(pal) else NULL,
+          ggtheme      = ggplot2::theme_classic(),
+          title        = "Kaplan-Meier Survival Curves by Treatment",
+          legend.title = "Treatment"
         )
+        result$km_plot <- km_plot_obj
 
       }, error = function(e) {
         # Fallback to manual ggsurvplot if plot_survival() fails

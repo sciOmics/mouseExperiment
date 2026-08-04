@@ -12,14 +12,13 @@
 #'
 #' @param input,output,session Standard moduleServer arguments.
 #' @param rv Shared reactiveValues.
-#' @param current_syn_main_plot,current_syn_trend_plot,current_syn_ci_plot,current_syn_tgi_plot
+#' @param current_syn_main_plot,current_syn_trend_plot,current_syn_tgi_plot
 #'   `reactiveVal`s defined in `synergy_server()` that hold the most
 #'   recently rendered plot for each panel.
 #' @keywords internal
 add_syn_download_handlers <- function(input, output, session, rv,
                                       current_syn_main_plot,
                                       current_syn_trend_plot,
-                                      current_syn_ci_plot,
                                       current_syn_tgi_plot) {
 
   output$download_syn_pp_check <- downloadHandler(
@@ -62,21 +61,6 @@ add_syn_download_handlers <- function(input, output, session, rv,
     filename = function() paste0("synergy_trend_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content = function(file) {
       p <- current_syn_trend_plot()
-      if (is.null(p)) {
-        showNotification("Plot is not available.", type = "warning")
-        return(invisible(NULL))
-      }
-      png(file, width = input$syn_plot_width %||% 900,
-                height = input$syn_plot_height %||% 600,
-                units = "px", res = input$syn_plot_dpi %||% 100)
-      print(p); dev.off()
-    }
-  )
-
-  output$download_syn_plot_ci <- downloadHandler(
-    filename = function() paste0("combination_index_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
-    content = function(file) {
-      p <- current_syn_ci_plot()
       if (is.null(p)) {
         showNotification("Plot is not available.", type = "warning")
         return(invisible(NULL))

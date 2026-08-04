@@ -725,27 +725,18 @@ dose_response_server <- function(id, rv) {
       )
     })
 
-    # Attach analysis_data and summary_stats for reactive plot rebuilding
+    # R17.3: this used to call mouseExperiment::prepare_dose_data() and
+    # ::generate_summary_statistics() to re-derive the plotting frame. Neither is
+    # exported -- both are internal helpers -- so the call threw on every run, the
+    # tryCatch swallowed it, and the scatter, box and trend plots all rendered
+    # blank behind a silent req(ad). The backend now returns the frame it
+    # actually analysed, so read that instead of re-deriving it.
     if (!isTRUE(result$error)) {
-      tryCatch({
-        # Re-prepare the analysis_data subset used by plots
-        ad <- mouseExperiment::prepare_dose_data(
-          data,
-          dose_column      = dose_col,
-          treatment_column = tx_col,
-          volume_column    = vol_col,
-          day_column       = time_col,
-          id_column        = id_col,
-          time_point       = time_point_val
-        )
-        ss <- mouseExperiment::generate_summary_statistics(ad,
-          dose_column = dose_col, volume_column = vol_col)
-        result$analysis_data <- ad
-        result$summary_stats <- ss
-      }, error = function(e) {
-        message("[DoseResponse] Data preparation failed: ", conditionMessage(e))
-        result$dr_prep_error <<- conditionMessage(e)
-      })
+      result$summary_stats <- result$summary_table
+      if (is.null(result$analysis_data)) {
+        result$dr_prep_error <-
+          "This backend version does not return analysis_data; plots unavailable."
+      }
     }
 
     rv$dr_results <- result
