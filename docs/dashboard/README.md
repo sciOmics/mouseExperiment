@@ -11,7 +11,7 @@ An interactive Shiny web application for analyzing mouse tumor growth experiment
 - Upload tumor growth data (CSV or RDA) and map columns interactively
 - Analyze tumor growth with LME4 mixed-effects models, AUC, or Bayesian LMM (brms)
 - Run survival analysis with Kaplan-Meier curves, Cox/AFT models, and Bayesian AFT
-- Analyze drug synergy via Bliss Independence and Loewe CI, with a Bayesian combination synergy path
+- Analyze drug synergy via Bliss Independence, with bootstrap intervals and a Bayesian combination synergy path
 - Fit dose-response curves (frequentist Hill/Emax or Bayesian Hill/Emax)
 - Assess toxicity via body weight mixed-effects or Bayesian LMM, with an Efficacy-Toxicity mode including Therapeutic Window Metric (frequentist + Bayesian)
 - Compute a priori power via analytic formulas, LMM simulation, or Bayesian simulation
@@ -74,7 +74,7 @@ devtools::check()      # R CMD check
 | **Tumor Growth** | LME4 mixed model, AUC, GAMM, Bayesian LMM (brms) |
 | **Survival** | Kaplan-Meier, Cox PH, log-rank, `cox.zph()` proportional-hazards check, Bayesian AFT (Weibull / log-normal / exponential / gamma), concordance / C-index |
 | **Toxicity** | Body weight LME4 or Bayesian LMM; Efficacy-Toxicity bivariate; Therapeutic Window Metric (frequentist + Bayesian); weight-corrected TGI |
-| **Drug Synergy** | Bliss Independence, Loewe CI; Bayesian combination synergy; synergy over time |
+| **Drug Synergy** | Bliss Independence with bootstrap intervals; Bayesian combination synergy; synergy over time |
 | **Dose-Response** | Frequentist Hill/Emax + Bayesian Hill/Emax with per-dose centre + error overlays |
 | **Power Analysis** | A priori analytic (t-test / ANOVA), LMM simulation, Bayesian simulation |
 
