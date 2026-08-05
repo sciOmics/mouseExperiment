@@ -121,6 +121,14 @@ Default \code{TRUE}.}
 
 \item{backend}{brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
 See \code{\link{bayesian_tumor_growth}} for details.}
+
+\item{priors}{Optional named list of \code{brms::prior()} objects applied
+verbatim, bypassing \code{prior_strength}. For callers that need full
+control of the prior specification.}
+
+\item{mcmc}{Optional named list of sampler settings
+(\code{chains}, \code{warmup}, \code{iter}, \code{seed}, \code{backend}) overriding the
+individual arguments. Resolved by \code{.resolve_mcmc()}.}
 }
 \value{
 A named list:
@@ -137,7 +145,7 @@ A named list:
 \code{Median_Survival}, \code{Events}, \code{Total}, \code{Event_Rate},
 \code{Note}. Output schema mirrors \code{\link{survival_statistics}}.}
 \item{\code{posterior_summary}}{Data frame of fixed-effect posterior
-medians, 2.5 \\%–97.5 \\% CrI, Rhat, Bulk_ESS, Tail_ESS.}
+medians, 2.5 \%–97.5 \% CrI, Rhat, Bulk_ESS, Tail_ESS.}
 \item{\code{mcmc_diagnostics}}{Per-parameter Rhat, ESS, and convergence
 flags (Rhat > 1.01 flagged as not converged).}
 \item{\code{survival_data}}{Data frame with \code{Time}, \code{Event},
@@ -152,7 +160,7 @@ dashed line marks zero (no effect). \code{NULL} when
 \code{plots = FALSE}.}
 \item{\code{mcmc_trace_plot}}{MCMC trace plot, or \code{NULL} when
 \code{plots = FALSE}.}
-\item{\code{survival_curve_plot}}{Parametric survival curves with 95 \\%
+\item{\code{survival_curve_plot}}{Parametric survival curves with 95 \%
 posterior credible bands overlaid on Kaplan-Meier step functions, or
 \code{NULL} when \code{plots = FALSE}.}
 }
@@ -160,7 +168,7 @@ posterior credible bands overlaid on Kaplan-Meier step functions, or
 \description{
 Fits a Bayesian parametric survival model via \pkg{brms} / Stan.
 Complements the frequentist \code{\link{survival_statistics}} with full
-posterior distributions, 95 \\% HPD credible intervals, optional cage-level
+posterior distributions, 95 \% HPD credible intervals, optional cage-level
 frailty, and survival-curve plots. Four parametric families cover the most
 common preclinical endpoint distributions.
 }

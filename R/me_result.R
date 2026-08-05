@@ -40,6 +40,7 @@ NULL
 #' @param call The matched call (default NULL).
 #' @param ... Additional named elements to include.
 #'
+#' @param object A `me_result` object.
 #' @return An S3 object of class \code{me_result}.
 #' @export
 new_me_result <- function(analysis_type,
@@ -315,9 +316,6 @@ repeated_measures_anova <- function(df,
                                     transform = c("log", "sqrt", "none")) {
   transform <- match.arg(transform)
   
-  if (!requireNamespace("lmerTest", quietly = TRUE)) {
-    stop("Package 'lmerTest' is required for Satterthwaite ANOVA.", call. = FALSE)
-  }
   
   # Validate columns
   required <- c(time_column, volume_column, treatment_column, id_column)

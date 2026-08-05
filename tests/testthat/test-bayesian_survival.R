@@ -8,9 +8,11 @@
 # exercising every code path through the return list.
 # =============================================================================
 
-skip_bayes_surv <- function() {
-  skip_if_not_installed("brms")
-}
+# brms, bayesplot, gamm4 and mgcv are hard Imports as of v0.10.0, so this
+# helper can no longer skip. Retained as a no-op because the call sites are
+# numerous, and because a skip here is exactly what let bayesian_synergy()
+# stay broken for five releases (CODE_REVIEW.md R3-L).
+skip_bayes_surv <- function() invisible(NULL)
 
 local({
   .cached_result <- NULL
@@ -26,11 +28,11 @@ local({
           id_column        = "ID",
           cage_column      = "Cage",
           family           = "weibull",
-          include_frailty  = FALSE,   # only 1 cage per group in fixture
+          include_cage_effect  = FALSE,   # only 1 cage per group in fixture
           reference_group  = "Control",
           prior_strength   = "weakly_informative",
           n_chains         = 2L,
-          n_iter           = 500L,
+          n_iter           = me_test_niter(),
           seed             = 42L,
           return_model     = TRUE,
           plots            = FALSE,
@@ -180,7 +182,7 @@ test_that("bayesian_survival: lognormal family runs and returns HR = NA for non-
   res <- suppressWarnings(suppressMessages(
     bayesian_survival(
       df, family = "lognormal", reference_group = "Control",
-      include_frailty = FALSE, n_chains = 2L, n_iter = 500L,
+      include_cage_effect = FALSE, n_chains = 2L, n_iter = me_test_niter(),
       plots = FALSE, verbose = FALSE, seed = 1L
     )
   ))
@@ -197,7 +199,7 @@ test_that("bayesian_survival: frailty_used is FALSE when no cage_column supplied
   res <- suppressWarnings(suppressMessages(
     bayesian_survival(
       df, cage_column = NULL, reference_group = "Control",
-      n_chains = 2L, n_iter = 500L, plots = FALSE, verbose = FALSE, seed = 2L
+      n_chains = 2L, n_iter = me_test_niter(), plots = FALSE, verbose = FALSE, seed = 2L
     )
   ))
   expect_false(res$frailty_used)

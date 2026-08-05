@@ -4,14 +4,17 @@
 # Uses make_synergy_additive() fixture: Control/DrugA/DrugB/DrugA+DrugB at
 # day 21 only; combo designed for Bliss-neutral additivity.
 # Ground truth: FE_A ≈ 0.50, FE_B ≈ 0.40, Bliss expected ≈ 0.70,
-# combo ≈ 0.70 → Bliss excess ≈ 0, Loewe CI ≈ 1.29 (additive).
+# combo ≈ 0.70 → Bliss excess ≈ 0 (additive).
 #
 # make_synergy_synergistic() is used for the P(synergy) smoke tests.
 # 2 chains × 600 iterations keeps each run < 90 s on CI.
-# All tests are skipped when brms is not installed.
 # =============================================================================
 
-skip_bayes_syn <- function() skip_if_not_installed("brms")
+# brms, bayesplot, gamm4 and mgcv are hard Imports as of v0.10.0, so this
+# helper can no longer skip. Retained as a no-op because the call sites are
+# numerous, and because a skip here is exactly what let bayesian_synergy()
+# stay broken for five releases (CODE_REVIEW.md R3-L).
+skip_bayes_syn <- function() invisible(NULL)
 
 local({
   .cached_additive <- NULL
@@ -32,7 +35,7 @@ local({
           transform        = "log",
           prior_strength   = "skeptical",
           n_chains         = 2L,
-          n_iter           = 600L,
+          n_iter           = me_test_niter(600L),
           seed             = 42L,
           return_model     = TRUE,
           plots            = TRUE,
@@ -49,7 +52,7 @@ local({
     res      <- get_additive()
     required <- c(
       "model_type_used", "model", "transform_used",
-      "tgi_summary", "bliss_summary", "loewe_summary",
+      "tgi_summary", "bliss_summary",
       "synergy_table", "posterior_summary", "mcmc_diagnostics",
       "summary", "synergy_plot", "posterior_dist_plot"
     )
@@ -111,6 +114,12 @@ local({
     expect_true(all(trt$TGI_Median > 0))
   })
 
+  test_that("R17.2: loewe_summary is gone from the Bayesian result", {
+    skip_bayes_syn()
+    expect_null(get_additive()$loewe_summary)
+    expect_false("Loewe Expected" %in% get_additive()$synergy_table$Group)
+  })
+
   # ── bliss_summary ──────────────────────────────────────────────────────────
   test_that("bayesian_synergy: bliss_summary has required fields", {
     skip_bayes_syn()
@@ -136,48 +145,25 @@ local({
     expect_gt(bs$Excess_Upper, bs$Excess_Median)
   })
 
-  # ── loewe_summary ──────────────────────────────────────────────────────────
-  test_that("bayesian_synergy: loewe_summary has required fields", {
-    skip_bayes_syn()
-    ls <- get_additive()$loewe_summary
-    required <- c(
-      "CI_Median", "CI_Lower", "CI_Upper", "P_Synergy", "Interpretation"
-    )
-    expect_true(all(required %in% names(ls)))
-  })
 
-  test_that("bayesian_synergy: Loewe CI_Median is positive and finite", {
-    skip_bayes_syn()
-    ci <- get_additive()$loewe_summary$CI_Median
-    expect_true(is.finite(ci) && ci > 0)
-  })
 
-  test_that("bayesian_synergy: Loewe P_Synergy is in [0, 1]", {
-    skip_bayes_syn()
-    p <- get_additive()$loewe_summary$P_Synergy
-    expect_gte(p, 0)
-    expect_lte(p, 1)
-  })
 
-  test_that("bayesian_synergy: Loewe Interpretation is a non-empty string", {
-    skip_bayes_syn()
-    interp <- get_additive()$loewe_summary$Interpretation
-    expect_type(interp, "character")
-    expect_gt(nchar(interp), 0L)
-  })
 
   # ── synergy_table ──────────────────────────────────────────────────────────
-  test_that("bayesian_synergy: synergy_table has 6 rows", {
+  test_that("bayesian_synergy: synergy_table has 5 rows", {
+    # Four observed groups plus one Bliss-expected row. Was 6 before R17.2
+    # removed the Loewe-expected row.
     skip_bayes_syn()
     st <- get_additive()$synergy_table
     expect_s3_class(st, "data.frame")
-    expect_equal(nrow(st), 6L)
+    expect_equal(nrow(st), 5L)
   })
 
   test_that("bayesian_synergy: synergy_table includes expected rows", {
     skip_bayes_syn()
     st <- get_additive()$synergy_table
-    expect_true(all(c("Bliss Expected", "Loewe Expected") %in% st$Group))
+    expect_true("Bliss Expected" %in% st$Group)
+    expect_false("Loewe Expected" %in% st$Group)   # R17.2
   })
 
   test_that("bayesian_synergy: synergy_table has Type column", {
@@ -263,7 +249,7 @@ test_that("bayesian_synergy: model is NULL when return_model = FALSE", {
       drug_b_name  = "DrugB",
       combo_name   = "DrugA+DrugB",
       transform    = "log",
-      n_chains     = 2L, n_iter = 600L, seed = 1L,
+      n_chains     = 2L, n_iter = me_test_niter(600L), seed = 1L,
       return_model = FALSE, plots = FALSE, verbose = FALSE
     )
   ))
@@ -281,7 +267,7 @@ test_that("bayesian_synergy: plots are NULL when plots = FALSE", {
       drug_b_name  = "DrugB",
       combo_name   = "DrugA+DrugB",
       transform    = "log",
-      n_chains     = 2L, n_iter = 600L, seed = 2L,
+      n_chains     = 2L, n_iter = me_test_niter(600L), seed = 2L,
       return_model = FALSE, plots = FALSE, verbose = FALSE
     )
   ))

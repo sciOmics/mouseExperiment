@@ -91,13 +91,23 @@ total_benefit_area <- function(df,
 
   # Per-group mean baseline: use weight at the earliest study day.
   # aggregate(x[1]) gives no ordering guarantee, so filter to min(Day) first.
-  min_day <- min(wd$Day, na.rm = TRUE)
-  baseline_grp <- stats::aggregate(
-    Net_Weight ~ Treatment,
-    data = wd[wd$Day == min_day, ],
-    FUN = mean, na.rm = TRUE
-  )
-  names(baseline_grp)[2] <- "Baseline_Weight"
+  # R15.2 -- the group baseline was the mean over animals present on the GLOBAL
+  # first day, so a late-enrolling animal contributed to every later timepoint
+  # while being absent from the denominator it is measured against. Take each
+  # animal's own first weight, then average those to the group.
+  id_key <- if (".MouseKey" %in% names(wd)) ".MouseKey" else
+            if ("ID" %in% names(wd)) "ID" else NULL
+  baseline_grp <- if (is.null(id_key)) {
+    b <- stats::aggregate(Net_Weight ~ Treatment,
+                          data = wd[wd$Day == min(wd$Day, na.rm = TRUE), ],
+                          FUN = mean, na.rm = TRUE)
+    names(b)[2] <- "Baseline_Weight"; b
+  } else {
+    per_mouse <- me_per_mouse_baseline(wd, c(id_key, "Treatment"), "Net_Weight")
+    b <- stats::aggregate(Baseline_Weight ~ Treatment, data = per_mouse,
+                          FUN = mean, na.rm = TRUE)
+    b
+  }
 
   wt_agg <- stats::aggregate(Net_Weight ~ Treatment + Day, data = wd, FUN = mean, na.rm = TRUE)
   wt_agg <- merge(wt_agg, baseline_grp, by = "Treatment")

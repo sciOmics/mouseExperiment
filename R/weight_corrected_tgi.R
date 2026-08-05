@@ -11,6 +11,12 @@
 #' @param id_column Name of the mouse/subject ID column.
 #' @param adjust_tumor_weight Logical; subtract estimated tumor weight.
 #' @param tumor_density Density in g/cm³ (default 1.0).
+#' @param endpoint_day Day at which TGI is evaluated. NULL uses the maximum
+#'   observed day.
+#' @param endpoint_method How each arm's endpoint volume is obtained:
+#'   "model" (default, log-scale LMM marginal means using every observation),
+#'   "last_obs", or "survivors" (pre-0.8.0 behaviour; warns, and understates
+#'   efficacy because it conditions on survival). See CODE_REVIEW.md R3.5 / G.3.
 #' @param reference_group Name of the control/reference group.
 #' @param safety_threshold Fractional weight loss threshold (default 0.20 = 20%).
 #' @return A list with: corrected_tgi, uncorrected_tgi, excluded_mice, comparison.
@@ -24,7 +30,11 @@ weight_corrected_tgi <- function(df,
                                  adjust_tumor_weight = TRUE,
                                  tumor_density    = 1.0,
                                  reference_group  = NULL,
+                                endpoint_day     = NULL,
+                                endpoint_method  = c("model", "last_obs", "survivors"),
                                  safety_threshold = 0.20) {
+
+  endpoint_method <- match.arg(endpoint_method)
 
   # --- Validate ---
   required <- c(weight_column, volume_column, time_column, treatment_column, id_column)
@@ -62,11 +72,10 @@ weight_corrected_tgi <- function(df,
 
   # Baseline per mouse+treatment at the earliest study day.
   # Aggregate by both ID and Treatment to handle IDs shared across groups.
-  min_day <- min(wd$Day, na.rm = TRUE)
-  baseline <- stats::aggregate(Net_Weight ~ ID + Treatment,
-                               data = wd[wd$Day == min_day, ],
-                               FUN = mean, na.rm = TRUE)
-  names(baseline)[3] <- "Baseline_Weight"
+  # R15.2 -- per-animal baseline, not the global first day (see
+  # me_per_mouse_baseline). Here the all.x merge gave a late-enrolling animal an
+  # NA baseline, which then propagated into every percentage derived from it.
+  baseline <- me_per_mouse_baseline(wd, c("ID", "Treatment"), "Net_Weight")
   wd <- merge(wd, baseline, by = c("ID", "Treatment"), all.x = TRUE)
   wd$Pct_Loss <- (wd$Baseline_Weight - wd$Net_Weight) / wd$Baseline_Weight
 
@@ -80,32 +89,40 @@ weight_corrected_tgi <- function(df,
   )
 
   # --- Compute TGI (uncorrected, all mice) ---
-  max_day <- max(wd$Day, na.rm = TRUE)
-  final_all <- wd[wd$Day == max_day, ]
-  ctrl_mean_all <- mean(final_all$Volume[final_all$Treatment == reference_group], na.rm = TRUE)
-
-  uncorrected <- stats::aggregate(Volume ~ Treatment, data = final_all, FUN = mean, na.rm = TRUE)
-  names(uncorrected)[2] <- "Mean_Volume"
-  uncorrected$TGI <- (1 - uncorrected$Mean_Volume / ctrl_mean_all) * 100
-  uncorrected$TGI[uncorrected$Treatment == reference_group] <- 0
-  uncorrected$N <- as.integer(table(final_all$Treatment)[uncorrected$Treatment])
+  # CODE_REVIEW.md R3.5 / G.3 — endpoint means come from a log-scale LMM over
+  # every observation rather than the raw mean among animals still observed at
+  # the last day, which conditions on survival and understates efficacy.
+  ep_all <- endpoint_volumes(
+    wd, id_column = "ID", treatment_column = "Treatment", time_column = "Day",
+    volume_column = "Volume", endpoint_day = endpoint_day,
+    endpoint_method = endpoint_method
+  )
+  max_day     <- ep_all$endpoint_day
+  uncorrected <- endpoint_tgi(ep_all$group_means, reference_group)
 
   # --- Compute TGI (corrected, excluding unsafe mice) ---
   safe_data <- wd[
     !make_mouse_key(wd$Treatment, wd$ID) %in% excluded_keys, ]
-  final_safe <- safe_data[safe_data$Day == max_day, ]
-  ctrl_mean_safe <- mean(final_safe$Volume[final_safe$Treatment == reference_group], na.rm = TRUE)
+  ep_safe <- tryCatch(
+    endpoint_volumes(safe_data, id_column = "ID",
+                     treatment_column = "Treatment", time_column = "Day",
+                     volume_column = "Volume", endpoint_day = max_day,
+                     endpoint_method = endpoint_method),
+    error = function(e) NULL
+  )
 
-  if (nrow(final_safe) == 0 || is.na(ctrl_mean_safe) || ctrl_mean_safe == 0) {
+  if (is.null(ep_safe) || nrow(ep_safe$group_means) == 0) {
     corrected <- uncorrected
     corrected$TGI <- NA_real_
     corrected$N <- 0L
   } else {
-    corrected <- stats::aggregate(Volume ~ Treatment, data = final_safe, FUN = mean, na.rm = TRUE)
-    names(corrected)[2] <- "Mean_Volume"
-    corrected$TGI <- (1 - corrected$Mean_Volume / ctrl_mean_safe) * 100
-    corrected$TGI[corrected$Treatment == reference_group] <- 0
-    corrected$N <- as.integer(table(final_safe$Treatment)[corrected$Treatment])
+    corrected <- tryCatch(endpoint_tgi(ep_safe$group_means, reference_group),
+                          error = function(e) NULL)
+    if (is.null(corrected)) {
+      corrected <- uncorrected
+      corrected$TGI <- NA_real_
+      corrected$N <- 0L
+    }
   }
 
   # --- Exclusion summary ---

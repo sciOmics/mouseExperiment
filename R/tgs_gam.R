@@ -18,9 +18,8 @@
 #' @param response_column Column name of the response variable on the
 #'   modelling scale (e.g. transformed Volume or Net_Weight).
 #' @param time_column,treatment_column,id_column,cage_column Column names.
-#' @param handle_cage_effects One of \code{"include_if_not_collinear"},
-#'   \code{"always_include"}, \code{"never_include"}, \code{"as_random_effect"}.
-#' @param cage_collinear Logical from \code{tgs_compute_cage_effects()}.
+#' @param cage_handling Output of \code{resolve_cage_handling()}: a list with
+#'   \code{fixed} / \code{random} logicals and a \code{reason} string.
 #' @param verbose Logical.
 #' @param include_necrotic_covariate Logical; adds \code{necrotic_cov_flag}.
 #' @return List with \code{model} (gamm4 result), \code{model_selection}
@@ -34,23 +33,10 @@ tgs_fit_gamm4_model <- function(analysis_df,
                                 treatment_column,
                                 id_column,
                                 cage_column,
-                                handle_cage_effects,
-                                cage_collinear,
+                                cage_handling,
                                 verbose,
                                 include_necrotic_covariate = FALSE) {
 
-  if (!requireNamespace("gamm4", quietly = TRUE)) {
-    stop(
-      "Package 'gamm4' is required for model_type = 'gam'.\n",
-      "Install it with: install.packages('gamm4')"
-    )
-  }
-  if (!requireNamespace("mgcv", quietly = TRUE)) {
-    stop(
-      "Package 'mgcv' is required for model_type = 'gam'.\n",
-      "Install it with: install.packages('mgcv')"
-    )
-  }
 
   bt <- function(x) paste0("`", x, "`")
 
@@ -59,14 +45,10 @@ tgs_fit_gamm4_model <- function(analysis_df,
   n_days <- length(unique(analysis_df[[time_column]]))
   k_val  <- max(3L, min(10L, n_days - 1L))
 
-  # Cage in fixed vs random vs not modelled
-  include_cage_fixed <- switch(handle_cage_effects,
-    include_if_not_collinear = !cage_collinear,
-    always_include           = TRUE,
-    never_include            = FALSE,
-    as_random_effect         = FALSE
-  )
-  include_cage_random <- handle_cage_effects == "as_random_effect"
+  # CODE_REVIEW.md R3.17 — cage placement comes from the resolved design
+  # structure, not a chi-square p-value.
+  include_cage_fixed  <- isTRUE(cage_handling$fixed)
+  include_cage_random <- isTRUE(cage_handling$random)
 
   # Build fixed-part formula: Treatment main effect + factor-by smoother.
   # The Treatment main effect is needed because s(Day, by=Treatment) is
@@ -154,15 +136,7 @@ tgs_fit_gamm4_model <- function(analysis_df,
   # this patch they silently return NULL and the dashboard's TG GAM result
   # has empty Treatment Effects + Pairwise Comparisons tables. Patch here so
   # both consumers benefit.
-  if (!is.null(fit$gam)) {
-    if (!all(c("glm", "lm") %in% class(fit$gam))) {
-      class(fit$gam) <- unique(c(class(fit$gam), "glm", "lm"))
-    }
-    if (is.null(fit$gam$call)) {
-      fit$gam$call <- call("gam", formula = fit$gam$formula,
-                           data = quote(analysis_df))
-    }
-  }
+  fit <- patch_gamm4_stub(fit)
 
   model_selection <- list(
     aic            = stats::AIC(fit$mer),
@@ -196,8 +170,6 @@ tgs_fit_gamm4_model <- function(analysis_df,
 #' @noRd
 tgs_gam_treatment_effects <- function(gam_obj, treatment_column, time_column,
                                       mean_day, reference_group) {
-  if (!requireNamespace("emmeans", quietly = TRUE)) return(NULL)
-
   emm <- tryCatch(
     emmeans::emmeans(
       gam_obj,
@@ -243,8 +215,6 @@ tgs_gam_treatment_effects <- function(gam_obj, treatment_column, time_column,
 #' @keywords internal
 #' @noRd
 tgs_gam_emm_time <- function(gam_obj, treatment_column, time_column, day_range) {
-  if (!requireNamespace("emmeans", quietly = TRUE)) return(NULL)
-
   quant_days <- unique(round(stats::quantile(
     day_range, probs = c(0, 0.25, 0.5, 0.75, 1), type = 1
   )))
@@ -278,8 +248,16 @@ tgs_gam_emm_time <- function(gam_obj, treatment_column, time_column, day_range) 
 #' @keywords internal
 #' @noRd
 tgs_gam_pairwise <- function(gam_obj, treatment_column, time_column,
-                             day_range, reference_group) {
-  if (!requireNamespace("emmeans", quietly = TRUE)) return(NULL)
+                             day_range, reference_group,
+                             comparison_spec = NULL,
+                             custom_contrasts = NULL) {
+  # CODE_REVIEW.md R3.1 — this used to hardcode trt.vs.ctrl with emmeans'
+  # default by-day dunnettx, so `p_adjust_method` never reached it and the
+  # family was silently "within one day" while five correlated days were
+  # reported together.
+  if (is.null(comparison_spec)) {
+    comparison_spec <- resolve_comparison_spec("vs_reference", "bonferroni")
+  }
 
   quant_days <- unique(round(stats::quantile(
     day_range, probs = c(0, 0.25, 0.5, 0.75, 1), type = 1
@@ -295,22 +273,29 @@ tgs_gam_pairwise <- function(gam_obj, treatment_column, time_column,
   )
   if (is.null(emm_time)) return(NULL)
 
-  # Per-day pairwise comparisons against the reference group.
-  pc <- tryCatch(
-    emmeans::contrast(
-      emm_time,
-      method = "trt.vs.ctrl",
-      ref    = reference_group,
-      by     = time_column
-    ),
-    error = function(e) NULL
+  # For the p-value family methods, ask emmeans for unadjusted values and
+  # adjust across every returned (contrast x day) cell afterwards — the five
+  # quantile days are reported and read together, so that is the real family.
+  # Tukey / Dunnett cannot be re-derived across strata without the full joint
+  # covariance, so those stay within-day and are labelled as such.
+  spec_for_emmeans <- comparison_spec
+  if (!is.na(comparison_spec$padjust_method)) {
+    spec_for_emmeans$emmeans_adjust <- "none"
+  }
+
+  pc <- build_requested_contrasts(
+    emm_time, spec_for_emmeans,
+    reference_group  = reference_group,
+    custom_contrasts = custom_contrasts,
+    by               = time_column
   )
   if (is.null(pc)) return(NULL)
 
   df <- as.data.frame(summary(pc))
   # Keep the column name in line with the LMM emmeans output
   if ("p.value" %in% names(df)) names(df)[names(df) == "p.value"] <- "p_value"
-  df
+
+  me_adjust_across_by(df, comparison_spec)
 }
 
 
@@ -415,4 +400,30 @@ tgs_gam_diagnostics <- function(fit, id_column) {
     diag_resid_fitted_plot   = rd$diag_resid_fitted_plot,
     diag_scale_location_plot = rd$diag_scale_location_plot
   )
+}
+
+
+#' Repair a gamm4 `$gam` stub so emmeans can dispatch on it
+#'
+#' gamm4's `$gam` element is missing two things emmeans needs: `c("glm", "lm")`
+#' in its class vector, and a non-NULL `$call` (emmeans::recover_data.gam reads
+#' `class(object$call)` and rejects with "Can't handle an object of class
+#' 'NULL'"). Extracted from `tgs_fit_gamm4_model()` in CODE_REVIEW.md R3.4 so
+#' `analyze_body_weight()` gets the same treatment — it fits gamm4 inline and
+#' silently returned empty marginal-means tables without this.
+#'
+#' @param fit A `gamm4` result (`list(mer =, gam =)`).
+#' @return The same object with `$gam` patched.
+#' @noRd
+#' @keywords internal
+patch_gamm4_stub <- function(fit) {
+  if (is.null(fit) || is.null(fit$gam)) return(fit)
+  if (!all(c("glm", "lm") %in% class(fit$gam))) {
+    class(fit$gam) <- unique(c(class(fit$gam), "glm", "lm"))
+  }
+  if (is.null(fit$gam$call)) {
+    fit$gam$call <- call("gam", formula = fit$gam$formula,
+                         data = quote(analysis_df))
+  }
+  fit
 }

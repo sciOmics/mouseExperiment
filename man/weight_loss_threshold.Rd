@@ -10,9 +10,11 @@ weight_loss_threshold(
   time_column = "Day",
   treatment_column = "Treatment",
   id_column = "ID",
+  cage_column = NULL,
   volume_column = NULL,
   adjust_tumor_weight = TRUE,
   tumor_density = 1,
+  volume_units = NULL,
   threshold = 0.2,
   baseline_day = NULL,
   reference_group = NULL
@@ -29,11 +31,17 @@ weight_loss_threshold(
 
 \item{id_column}{Name of the mouse/subject ID column.}
 
+\item{cage_column}{Name of the cage column. NULL to omit. Included in the
+composite mouse key so reused IDs across cages are not collapsed.}
+
 \item{volume_column}{Name of the tumor volume column. NULL to skip tumor adjustment.}
 
 \item{adjust_tumor_weight}{Logical; subtract estimated tumor weight.}
 
 \item{tumor_density}{Density in g/cm³ (default 1.0).}
+
+\item{volume_units}{Units of \code{volume_column}: "mm3", "cm3", or NULL
+(default) to auto-detect from the data and report the inference.}
 
 \item{threshold}{Fractional weight loss threshold (default 0.20 = 20\%).}
 
@@ -42,9 +50,25 @@ weight_loss_threshold(
 \item{reference_group}{Name of the control/reference group.}
 }
 \value{
-A list with: event_data, km_fit, km_summary, log_rank, cox_model, cox_summary.
+A list with: event_data (per animal, including \code{Censor_Type} —
+"event" / "administrative" / "early_removal" — and \code{Status_CR}),
+km_fit, km_summary, log_rank, cox_model, cox_summary, cox_method, ph_test,
+\code{cuminc} (Aalen-Johansen cumulative incidence treating removal before
+study end as a competing risk), \code{censoring_summary}, and
+\code{n_competing_risk}.
 }
 \description{
 Performs Kaplan-Meier and optional Cox PH analysis for time to a specified
 percentage body weight loss threshold.
 }
+\section{Competing risks}{
+
+Animals removed for tumour burden before reaching the weight-loss threshold
+are not independently censored — removal and weight loss share a cause. The
+Kaplan-Meier estimator assumes a censored animal remains at risk, so
+\code{1 - km_fit} overstates the cumulative incidence of weight loss
+whenever such removals occur. Prefer \code{cuminc} for incidence statements
+and use \code{censoring_summary} to see how much of the censoring is
+informative.
+}
+

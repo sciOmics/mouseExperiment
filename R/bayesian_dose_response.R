@@ -94,6 +94,9 @@
 #' treated animals only (Dose > 0); the reference group defines TGI = 0 at
 #' Dose = 0 by construction.
 #'
+#' @param mcmc Optional named list of sampler settings
+#'   (`chains`, `warmup`, `iter`, `seed`, `backend`) overriding the
+#'   individual arguments. Resolved by `.resolve_mcmc()`.
 #' @return A named list:
 #' \describe{
 #'   \item{\code{model}}{\code{brmsfit} object or \code{NULL}.}
@@ -161,12 +164,6 @@ bayesian_dose_response <- function(
 ) {
 
   # ── Dependency check ───────────────────────────────────────────────────────
-  if (!requireNamespace("brms", quietly = TRUE)) {
-    stop(
-      "Package 'brms' is required for Bayesian analysis.\n",
-      "Install it with: install.packages('brms')"
-    )
-  }
 
   prior_strength <- match.arg(prior_strength)
   backend        <- resolve_brms_backend(backend)
@@ -207,20 +204,34 @@ bayesian_dose_response <- function(
     )
   }
 
-  # ── Endpoint day filter ────────────────────────────────────────────────────
+  # ── Endpoint observations per mouse ────────────────────────────────────────
+  # When endpoint_day is unspecified ("All dates") we mirror the frequentist
+  # path: take each mouse's LAST observation. This avoids dropping reference
+  # animals euthanised before the global max day (typical in dose-escalation
+  # studies where controls reach the IACUC volume limit first).
   all_days <- sort(unique(as.numeric(df[[day_column]])))
-  ep_day   <- if (!is.null(endpoint_day)) {
-    as.numeric(endpoint_day)
+  ep_label <- if (!is.null(endpoint_day)) {
+    paste0("day ", endpoint_day)
   } else {
-    all_days[length(all_days)]
+    "last observation per mouse"
   }
 
-  ep_df <- df[as.numeric(df[[day_column]]) == ep_day, ]
-  if (nrow(ep_df) == 0L) {
-    stop(
-      "No observations found at endpoint day ", ep_day,
-      ". Available days: ", paste(all_days, collapse = ", ")
-    )
+  if (!is.null(endpoint_day)) {
+    ep_day <- as.numeric(endpoint_day)
+    ep_df  <- df[as.numeric(df[[day_column]]) == ep_day, ]
+    if (nrow(ep_df) == 0L) {
+      stop(
+        "No observations found at endpoint day ", ep_day,
+        ". Available days: ", paste(all_days, collapse = ", ")
+      )
+    }
+  } else {
+    ep_df <- df %>%
+      dplyr::group_by(.data[[id_column]]) %>%
+      dplyr::filter(as.numeric(.data[[day_column]]) ==
+                      max(as.numeric(.data[[day_column]]), na.rm = TRUE)) %>%
+      dplyr::ungroup() %>%
+      as.data.frame()
   }
 
   # ── Control mean volume ────────────────────────────────────────────────────
@@ -230,7 +241,7 @@ bayesian_dose_response <- function(
   if (length(ctrl_vols) == 0L || all(is.na(ctrl_vols))) {
     stop(
       "Reference group '", reference_group,
-      "' has no valid volume observations at day ", ep_day, "."
+      "' has no valid volume observations at ", ep_label, "."
     )
   }
   ctrl_mean <- mean(ctrl_vols, na.rm = TRUE)
@@ -473,7 +484,8 @@ bayesian_dose_response <- function(
     )
 
     if (requireNamespace("bayesplot", quietly = TRUE)) {
-      draws_arr <- tryCatch(brms::as.array(model), error = function(e) NULL)
+      draws_arr <- tryCatch(posterior::as_draws_array(model),
+                            error = function(e) NULL)
       if (!is.null(draws_arr)) {
         all_pars  <- dimnames(draws_arr)$variable
         hill_pars <- grep("^b_log", all_pars, value = TRUE)
@@ -678,6 +690,16 @@ bayesian_dose_response <- function(
   list(
     model                    = if (isTRUE(return_model)) model else NULL,
     model_type_used          = "bayes_dr",
+    # B7.2 -- the response is TGI, already a ratio; no transform applied.
+    transform_used           = "none",
+    meta = me_result_meta(
+      analysis_type   = "Bayesian Hill/Emax dose-response (brms)",
+      model_type_used = "bayes_dr",
+      inference       = "bayesian",
+      interval_type   = "credible",
+      transform_used  = "none",
+      estimate_scale  = "TGI (fraction of control)"
+    ),
     summary                  = analysis_summary,
     posterior_summary        = posterior_summary,
     dr_parameters            = dr_parameters,

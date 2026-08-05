@@ -79,9 +79,9 @@ between X and Y."
 \details{
 The joint posterior TWM for group \eqn{g} at draw \eqn{d} is:
 \deqn{
-  \mathrm{TWM}_g^{(d)} =
-  \frac{\mathrm{TGI}_g^{(d)}}{
-    \max(|WL_g^{(d)}\%|, \text{noise\_floor}) / 100}
+\mathrm{TWM}_g^{(d)} =
+\frac{\mathrm{TGI}_g^{(d)}}{
+\max(|WL_g^{(d)}\%|, \text{noise\_floor}) / 100}
 }
 where
 \eqn{

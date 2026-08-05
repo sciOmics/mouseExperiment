@@ -7,10 +7,11 @@
 # completes in < 60 s on CI and still exercises the full code path.
 # =============================================================================
 
-skip_bayes <- function() {
-  skip_if_not_installed("brms")
-  skip_if_not_installed("bayesplot")
-}
+# brms, bayesplot, gamm4 and mgcv are hard Imports as of v0.10.0, so this
+# helper can no longer skip. Retained as a no-op because the call sites are
+# numerous, and because a skip here is exactly what let bayesian_synergy()
+# stay broken for five releases (CODE_REVIEW.md R3-L).
+skip_bayes <- function() invisible(NULL)
 
 # Fit once and cache in local env to avoid redundant compilation per test_that
 local({
@@ -29,7 +30,7 @@ local({
           random_effects_specification = "intercept_only",
           reference_group  = "Control",
           n_chains         = 2L,
-          n_iter           = 500L,
+          n_iter           = me_test_niter(),
           seed             = 42L,
           return_model     = TRUE,
           plots            = FALSE,
@@ -141,7 +142,7 @@ local({
         treatment_column = "Treatment",
         id_column        = "ID",
         n_chains         = 2L,
-        n_iter           = 500L,
+        n_iter           = me_test_niter(),
         seed             = 42L,
         return_model     = FALSE,
         plots            = FALSE

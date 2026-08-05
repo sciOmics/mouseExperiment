@@ -9,7 +9,12 @@
 #' Hazards Model, Firth's bias-reduced estimation, or Log-Rank Test depending on
 #' the presence of complete or quasi-complete separation in the data.
 #'
-#' @param df Data frame containing survival data
+#' @param df Data frame containing survival data, with **one row per animal**.
+#'   Each row must carry that animal's time-to-event and event indicator. A
+#'   longitudinal frame (one row per measurement occasion) is rejected with an
+#'   error, because fitting a Cox model to it would treat every measurement as
+#'   an independent subject at risk. Reduce to one row per animal first — e.g.
+#'   each animal's last observation, carrying its event indicator.
 #' @param time_column Name of column containing time-to-event data. Default: "Day"
 #' @param censor_column Name of column containing censoring indicator (1=event, 0=censored). Default: "Survival_Censor"
 #' @param treatment_column Name of column containing treatment groups. Default: "Treatment"
@@ -18,6 +23,18 @@
 #' @param dose_column Optional name of column containing dose information. Default: NULL
 #' @param reference_group Treatment group to use as reference. Default: NULL (uses first alphabetically)
 #' @param firth_correction Whether to apply Firth's correction for separation issues. Default: TRUE
+#' @param p_adjust_method Multiplicity adjustment applied across the k-1
+#'   treatment-vs-reference comparisons: "bonferroni" (default), "holm", "fdr"
+#'   (Benjamini-Hochberg), or "none". The unadjusted values are retained in
+#'   `P_Value_Unadjusted` and the method used in `P_Adjust_Method`.
+#' @param permutation_logrank Logical. When the log-rank fallback is used (a
+#'   group has zero events, so the Cox partial likelihood is not estimable), use
+#'   an exact-style permutation log-rank via the \pkg{coin} package rather than
+#'   the asymptotic chi-square approximation. That regime — few events, small n —
+#'   is where the asymptotic test is least trustworthy and where permutation is
+#'   valid without any large-sample appeal. Falls back to \code{survdiff()} with
+#'   a message when \pkg{coin} is unavailable. Default TRUE.
+#'   CODE_REVIEW.md H.4.
 #' @param verbose Whether to print analysis details to the console. Default: TRUE
 #'
 #' @return A list containing:
@@ -42,17 +59,30 @@
 #' @importFrom stats confint model.matrix as.formula pchisq
 #'
 #' @examples
-#' # Load example data
-#' data(combo_treatment_synthetic_data)
-#' data_processed <- calculate_volume(combo_treatment_synthetic_data)
-#' data_processed <- calculate_dates(data_processed, start_date = "03/24/2025")
-#' 
+#' # master_synthetic_data is longitudinal (one row per measurement occasion)
+#' # and carries a Survival_Censor column. Reduce it to one row per animal
+#' # before calling — the function requires that and will error otherwise.
+#' data(master_synthetic_data)
+#'
+#' per_animal <- do.call(rbind, lapply(
+#'   split(master_synthetic_data,
+#'         list(master_synthetic_data$ID, master_synthetic_data$Treatment),
+#'         drop = TRUE),
+#'   function(animal) {
+#'     animal <- animal[order(animal$Day), ]
+#'     last <- animal[nrow(animal), ]
+#'     # an event anywhere in the record is an event for that animal
+#'     last$Survival_Censor <- max(animal$Survival_Censor, na.rm = TRUE)
+#'     last
+#'   }
+#' ))
+#'
 #' # Run survival analysis
 #' results <- survival_statistics(
-#'   df = data_processed,
-#'   reference_group = "Control"
+#'   df = per_animal,
+#'   reference_group = "Vehicle"
 #' )
-#' 
+#'
 #' # Access results
 #' print(results$results)  # Hazard ratios, CIs, p-values, and median survival times
 #' 
@@ -71,10 +101,27 @@ survival_statistics <- function(df,
                               dose_column = NULL,
                               reference_group = NULL,
                               firth_correction = TRUE,
+                              p_adjust_method = c("bonferroni", "holm", "fdr", "none"),
+                              permutation_logrank = TRUE,
                               verbose = TRUE) {
-  
+
+  p_adjust_method <- match.arg(p_adjust_method)
+
   # Validate inputs
   validate_inputs(df, time_column, censor_column, treatment_column)
+  # R15.1: cage_column arrives either as NULL (the dashboard passes NULL when no
+  # cage column is mapped) or as a name that may not be present -- the default is
+  # "Cage", which is absent from plenty of real uploads. Both cases used to fail
+  # opaquely: NULL gave "argument is of length zero" from an unguarded
+  # `if (cage_column %in% colnames(df))`, and a missing name gave "undefined
+  # columns selected" from a bare data-frame subset. There was no way to run this
+  # function on data without a cage column, and the dashboard's Survival tab hit
+  # the NULL branch for every such upload.
+  #
+  # Normalise here so everything below can assume NULL means "no cage information".
+  if (!is.null(cage_column) && !cage_column %in% colnames(df)) cage_column <- NULL
+
+  validate_one_row_per_subject(df, id_column, treatment_column, cage_column)
   
   # Setup parameters
   treatment_groups <- unique(df[[treatment_column]])
@@ -87,6 +134,32 @@ survival_statistics <- function(df,
   
   # Check cage distribution
   check_cage_distribution(df, treatment_column, cage_column)
+
+  # CODE_REVIEW.md R3.13 / G.2 — cage was accepted, printed about, and then
+  # never entered the model: the Cox fit was `Surv(...) ~ Treatment` with no
+  # cluster() or frailty() term. Co-housed animals share an environment, so
+  # ignoring that correlation makes the standard errors and p-values
+  # anti-conservative wherever cage is not perfectly confounded with treatment.
+  # Use the same structural classification as tumor_growth_statistics(): a
+  # robust sandwich variance via cluster() when cage is nested with replication
+  # or crossed, and nothing (with a warning) when it is completely confounded,
+  # since there is no replication to estimate from.
+  cage_structure <- classify_cage_structure(df, cage_column, id_column,
+                                            treatment_column)
+  use_cage_cluster <- cage_structure$structure %in%
+    c("crossed", "nested_replicated")
+  if (cage_structure$structure == "nested_confounded") {
+    warning("Cage and treatment are completely confounded: ",
+            cage_structure$description,
+            " Hazard ratios therefore include any cage effect.",
+            call. = FALSE)
+  }
+  if (isTRUE(verbose)) {
+    message("Cage structure: ", cage_structure$structure, ". ",
+            if (use_cage_cluster) {
+              "Using cluster() for a robust (sandwich) variance."
+            } else "No cage term added.")
+  }
   
   # Check for separation issues
   surv_obj <- survival::Surv(df[[time_column]], df[[censor_column]])
@@ -106,13 +179,32 @@ survival_statistics <- function(df,
     censor_column,
     separation_info,
     firth_correction,
-    verbose = verbose
+    verbose = verbose,
+    p_adjust_method = p_adjust_method,
+    cage_column = if (use_cage_cluster) cage_column else NULL,
+    permutation_logrank = permutation_logrank
   )
   
   # Extract model results
   model <- model_results$model
   results <- model_results$results
   method_used <- model_results$method_used
+
+  # CODE_REVIEW.md R3.1 / G.1 — apply the multiplicity adjustment once, here,
+  # rather than in each of the three model branches. The comparison family is
+  # the k-1 treatment-vs-reference contrasts actually reported, so the
+  # adjustment is over exactly the set of tests in the returned table. Keep the
+  # unadjusted values and the method used so the result is self-describing.
+  if (nrow(results) > 0L && "P_Value" %in% names(results)) {
+    non_ref <- results$Group != reference_group
+    results$P_Value_Unadjusted <- results$P_Value
+    if (any(non_ref)) {
+      results$P_Value[non_ref] <- stats::p.adjust(results$P_Value[non_ref],
+                                                  method = p_adjust_method)
+    }
+    results$P_Adjust_Method <- p_adjust_method
+    results$Comparison_Family <- "vs_reference"
+  }
   
   # Create a separate survival fit for median survival calculation
   message("\nCalculating median survival times...")
@@ -176,10 +268,13 @@ survival_statistics <- function(df,
   # Aggregate to get maximum event per subject (1 if any event occurred, 0 otherwise)
   event_by_subject <- stats::aggregate(
     event_data[[censor_column]], 
-    by = list(
-      ID = event_data[[id_column]], 
-      Treatment = event_data[[treatment_column]],
-      Cage = event_data[[cage_column]]
+    by = c(
+      list(
+        ID = event_data[[id_column]],
+        Treatment = event_data[[treatment_column]]
+      ),
+      # Grouping by cage only when there is one; event_data[[NULL]] errors.
+      if (!is.null(cage_column)) list(Cage = event_data[[cage_column]]) else NULL
     ), 
     FUN = max
   )
@@ -267,12 +362,73 @@ survival_statistics <- function(df,
     result_list$ph_test <- model_results$ph_test
   }
 
+  # CODE_REVIEW.md B7.1 / B7.2 -- survival reports hazard ratios, not marginal
+  # means, so its table legitimately differs from the treatment-effects schema.
+  # `meta` says so explicitly rather than leaving a consumer to discover it.
+  result_list$meta <- me_result_meta(
+    analysis_type     = "Survival analysis (Cox PH / Firth / log-rank)",
+    model_type_used   = method_used,
+    inference         = "frequentist",
+    interval_type     = "confidence",
+    transform_used    = "none",
+    estimate_scale    = "hazard ratio",
+    comparison_family = "vs_reference",
+    p_adjust_method   = p_adjust_method,
+    extra = list(interval_columns_override = c(lower = "CI_Lower",
+                                               upper = "CI_Upper"))
+  )
+
+  # Cage structure and whether a robust cage cluster was used (R3.13).
+  result_list$cage_structure <- cage_structure
+  result_list$cage_cluster_used <- use_cage_cluster && identical(method_used, "cox")
+
   # Add concordance / C-index when available (cox path only)
   if (!is.null(model_results$c_index)) {
     result_list$c_index <- model_results$c_index
   }
 
   return(result_list)
+}
+
+#' Validate the one-row-per-subject precondition
+#'
+#' CODE_REVIEW.md R3.14 — `survival_statistics()` builds its `Surv` object from
+#' `df` directly, so every row is treated as an independent subject at risk.
+#' Passed a longitudinal frame (one row per measurement occasion), a mouse
+#' measured ten times contributes nine censored pseudo-subjects plus one event:
+#' risk sets, hazard ratios, log-rank statistics and the KM curve are all wrong
+#' and n is inflated by the number of timepoints. The contract was previously
+#' neither documented nor checked. Fail loudly instead.
+#'
+#' @noRd
+#' @keywords internal
+validate_one_row_per_subject <- function(df, id_column, treatment_column,
+                                         cage_column) {
+  if (is.null(id_column) || !id_column %in% colnames(df)) return(invisible(NULL))
+
+  key_parts <- list(as.character(df[[id_column]]))
+  if (!is.null(treatment_column) && treatment_column %in% colnames(df)) {
+    key_parts <- c(key_parts, list(as.character(df[[treatment_column]])))
+  }
+  if (!is.null(cage_column) && cage_column %in% colnames(df)) {
+    key_parts <- c(key_parts, list(as.character(df[[cage_column]])))
+  }
+  keys <- do.call(make_mouse_key, key_parts)
+
+  dup_n <- sum(duplicated(keys))
+  if (dup_n > 0L) {
+    stop(
+      "survival_statistics() requires one row per animal, but ", dup_n,
+      " duplicate subject key(s) were found (", length(unique(keys)),
+      " unique animals across ", nrow(df), " rows).\n",
+      "This looks like a longitudinal data frame. Fitting a Cox model to it ",
+      "would treat every measurement occasion as an independent subject.\n",
+      "Reduce to one row per animal first — e.g. each animal's last ",
+      "observation, carrying its event indicator — then call this function.",
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
 }
 
 #' Validate Required Inputs
@@ -288,8 +444,9 @@ validate_inputs <- function(df, time_column, censor_column, treatment_column) {
 #' Check Cage Distribution
 #' @noRd
 check_cage_distribution <- function(df, treatment_column, cage_column) {
-  # Only check if cage column exists
-  if (cage_column %in% colnames(df)) {
+  # Only check if a cage column was supplied AND exists. `NULL %in% colnames(df)`
+  # is logical(0), which makes a bare `if` error rather than skip (R15.1).
+  if (!is.null(cage_column) && cage_column %in% colnames(df)) {
     cage_treatment_table <- table(df[[cage_column]], df[[treatment_column]])
     message("Cage distribution across treatment groups:")
     message(paste(utils::capture.output(print(cage_treatment_table)), collapse = "\n"))
@@ -318,7 +475,12 @@ check_separation <- function(df, treatment_column, censor_column) {
   groups_no_events <- names(event_by_treatment)[sapply(event_by_treatment, function(x) x[1] == 0)]
   groups_all_events <- names(event_by_treatment)[sapply(event_by_treatment, function(x) x[1] == x[2])]
   
-  has_separation <- length(groups_no_events) > 0 || length(groups_all_events) > 0
+  # CODE_REVIEW.md R3.27 — only a group with *zero* events causes separation in
+  # a Cox model. A group in which every animal has an event is perfectly
+  # estimable; routing it to Firth was contradicted by this function's own
+  # message below ("this is not a problem for Cox models") and needlessly
+  # replaced an exact partial likelihood with a penalised approximation.
+  has_separation <- length(groups_no_events) > 0
   
   if (has_separation) {
     message("Warning: Some groups have perfect separation (no events). This may affect hazard ratio estimates.")
@@ -342,16 +504,27 @@ check_separation <- function(df, treatment_column, censor_column) {
 #' @noRd
 fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, treatment_groups,
                               reference_group, time_column, censor_column, separation_info,
-                              firth_correction, verbose = TRUE) {
+                              firth_correction, verbose = TRUE,
+                              p_adjust_method = "bonferroni",
+                              cage_column = NULL,
+                              permutation_logrank = TRUE) {
   
   # Try standard Cox model first
   cox_model <- tryCatch({
     # Create a factor version of the treatment column with the reference level set explicitly
     df$treatment_factor <- factor(df[[treatment_column]], levels = c(reference_group, setdiff(treatment_groups, reference_group)))
-    
-    # Create a new formula using the factor
-    new_formula <- stats::as.formula(paste("surv_obj ~ treatment_factor"))
-    
+
+    # CODE_REVIEW.md R3.13 — add cluster(cage) when the caller resolved the
+    # design as one where cage-level correlation is estimable. cluster() leaves
+    # the point estimates unchanged and replaces the model-based variance with a
+    # robust sandwich estimate that accounts for within-cage dependence.
+    rhs <- "treatment_factor"
+    if (!is.null(cage_column) && cage_column %in% colnames(df)) {
+      df$.cage_cluster <- factor(df[[cage_column]])
+      rhs <- paste(rhs, "+ cluster(.cage_cluster)")
+    }
+    new_formula <- stats::as.formula(paste("surv_obj ~", rhs))
+
     # Fit model with explicit reference level
     survival::coxph(new_formula, data = df)
   }, error = function(e) {
@@ -486,15 +659,90 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     results$CI_Lower[ref_idx] <- 1
     results$CI_Upper[ref_idx] <- 1
 
-    # Pairwise log-rank: compare each treatment group vs. reference individually
+    # Pairwise log-rank: compare each treatment group vs. reference individually.
+    #
+    # CODE_REVIEW.md R3.2 — the formula MUST be built from column names here.
+    # `cox_formula` is `surv_obj ~ Treatment`, where `surv_obj` is a Surv object
+    # of length nrow(df) living in the caller's environment. Passing it with a
+    # subsetted `data =` makes model.frame() resolve `surv_obj` from that
+    # environment (full length) while `Treatment` comes from the subset, so
+    # every call failed with "variable lengths differ" and the old
+    # `error = function(e) omnibus_p` handler silently substituted the omnibus
+    # p-value for every group — reproducing the exact defect Round 1 2.8 was
+    # written to remove. Build a self-contained formula instead, and surface
+    # failures as NA + a warning rather than a plausible-looking wrong number.
+    pair_formula <- stats::as.formula(
+      paste0("survival::Surv(`", time_column, "`, `", censor_column, "`) ~ `",
+             treatment_column, "`")
+    )
+    # CODE_REVIEW.md H.4 — this branch runs precisely when a group has zero
+    # events, i.e. when the Cox partial likelihood is not estimable and the
+    # asymptotic chi-square approximation to the log-rank statistic is at its
+    # worst (few events, small n). A permutation log-rank is exactly valid in
+    # that regime: it makes no large-sample appeal and needs no bias
+    # correction, because it is not estimating a hazard ratio at all. Prefer it
+    # when `coin` is available and fall back to the asymptotic test otherwise.
+    #
+    # Note the division of labour with Firth: Firth corrects the small-sample
+    # bias of the *estimate*; permutation gives a valid *p-value*.
+    # coin is a hard Import as of v0.10.0, so this is purely the caller's
+    # choice now -- there is no "coin is missing" degradation path left.
+    use_perm <- isTRUE(permutation_logrank)
+    logrank_flavour <- if (use_perm) {
+      "permutation log-rank (coin)"
+    } else "asymptotic log-rank (survdiff)"
+
     for (grp in treatment_groups[treatment_groups != reference_group]) {
-      pair_data <- df[df[[treatment_column]] %in% c(reference_group, grp), ]
+      pair_data <- df[df[[treatment_column]] %in% c(reference_group, grp), , drop = FALSE]
+      pair_data[[treatment_column]] <- factor(
+        pair_data[[treatment_column]], levels = c(reference_group, grp)
+      )
       pair_p <- tryCatch({
-        pair_diff <- survival::survdiff(cox_formula, data = pair_data)
-        1 - stats::pchisq(pair_diff$chisq, df = 1L)
-      }, error = function(e) omnibus_p)
+        if (use_perm) {
+          # Prefer the EXACT permutation distribution: it is deterministic, so
+          # re-running gives the same p-value. Fall back to a Monte Carlo
+          # approximation only when the sample is too large to enumerate, and
+          # seed it so that path is reproducible too — an analysis function must
+          # not return a different number each time it is called.
+          n_pair <- nrow(pair_data)
+          lt <- if (n_pair <= 30L) {
+            tryCatch(
+              coin::logrank_test(pair_formula, data = pair_data,
+                                 distribution = "exact"),
+              error = function(e) NULL
+            )
+          } else NULL
+          if (is.null(lt)) {
+            withr_seed <- 20260729L
+            old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) {
+              get(".Random.seed", envir = .GlobalEnv)
+            } else NULL
+            set.seed(withr_seed)
+            lt <- coin::logrank_test(
+              pair_formula, data = pair_data,
+              distribution = coin::approximate(nresample = 20000L)
+            )
+            if (!is.null(old_seed)) {
+              assign(".Random.seed", old_seed, envir = .GlobalEnv)
+            }
+          }
+          as.numeric(coin::pvalue(lt))
+        } else {
+          pair_diff <- survival::survdiff(pair_formula, data = pair_data)
+          1 - stats::pchisq(pair_diff$chisq, df = 1L)
+        }
+      }, error = function(e) {
+        warning("Pairwise log-rank test failed for group '", grp, "': ",
+                conditionMessage(e), ". P-value reported as NA.", call. = FALSE)
+        NA_real_
+      })
       results$P_Value[results$Group == grp] <- pair_p
     }
+    attr(results, "logrank_flavour") <- logrank_flavour
+
+    # Retain the omnibus test as an explicitly-labelled separate quantity so it
+    # is available without ever being mistaken for a per-group comparison.
+    attr(results, "omnibus_logrank_p") <- omnibus_p
 
     model <- surv_diff
     

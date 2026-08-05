@@ -106,18 +106,11 @@ bs_fit_synergy_model <- function(analysis_df,
       brms::prior_string(manual_priors$prior_sigma,     class = "sigma")
     )
   } else {
-    pp       <- bayes_prior_params(prior_str)
-    b_sd     <- pp$b_sd
-    exp_rate <- pp$exp_rate
-    priors   <- c(
-      brms::prior_string(paste0("normal(0, ", b_sd,       ")"),
-                         class = "b"),
-      brms::prior_string(paste0("normal(0, ", b_sd * 2.5, ")"),
-                         class = "Intercept"),
-      brms::prior_string(paste0("exponential(", exp_rate, ")"),
-                         class = "sd"),
-      brms::prior_string(paste0("exponential(", exp_rate, ")"),
-                         class = "sigma")
+    # CODE_REVIEW.md R3.8 / G.5 — data-scaled Intercept plus per-coefficient
+    # b priors, same reasoning as bayesian_tumor_growth().
+    priors <- bayes_scaled_priors(
+      brms_formula, analysis_df, "Response", prior_str,
+      time_column = time_column, include_sd = TRUE
     )
   }
 
@@ -170,7 +163,7 @@ bs_fit_synergy_model <- function(analysis_df,
 #'
 #' Fits a Bayesian linear mixed-effects model to longitudinal tumor volume data
 #' from a four-group drug combination experiment and propagates full posterior
-#' uncertainty through the Bliss Independence and Loewe Additivity synergy
+#' uncertainty through the Bliss Independence synergy
 #' metrics via draw-wise arithmetic. Provides posterior probability of synergy
 #' for both metrics.
 #'
@@ -242,11 +235,6 @@ bs_fit_synergy_model <- function(analysis_df,
 #'     each), the expected combined effect can approach 1, making it nearly
 #'     impossible to detect synergy by the Bliss criterion regardless of
 #'     actual biological interaction.
-#'   \item \strong{Loewe single-dose approximation:} The Loewe CI formula
-#'     \eqn{\min(FE_A + FE_B, 1) / FE_{\text{combo}}} assumes a linear
-#'     dose-response relationship. Without EC50 estimates for each drug, this
-#'     is a single-dose approximation only. Results should be interpreted
-#'     directionally rather than as a precise pharmacological CI.
 #'   \item \strong{Posterior independence assumption:} Draws from the TG
 #'     model are paired draw-by-draw to propagate uncertainty through the
 #'     synergy metrics. This is exact (the model is fitted on all four groups
@@ -270,15 +258,11 @@ bs_fit_synergy_model <- function(analysis_df,
 #' Bliss-independence expectation). \eqn{P(\Delta_{\text{Bliss}} > 0)} is
 #' reported as the posterior probability of Bliss synergy.
 #'
-#' **Loewe Combination Index (single-dose approximation):**
-#' \deqn{
-#'   \text{CI}^{(s)} =
-#'   \frac{\min(\text{FE}_A^{(s)} + \text{FE}_B^{(s)},\; 1)}
-#'        {\max(\text{FE}_{\text{combo}}^{(s)},\; \epsilon)}
-#' }
-#' CI < 1 indicates synergy; CI > 1 indicates antagonism.
-#' \eqn{P(\text{CI} < 1)} is reported.
 #'
+#' @param priors Optional named list of `brms::prior()` objects applied
+#'   verbatim, bypassing `prior_strength`.
+#' @param mcmc Optional named list of sampler settings (`chains`, `warmup`,
+#'   `iter`, `seed`, `backend`) overriding the individual arguments.
 #' @return A named list:
 #' \describe{
 #'   \item{\code{model_type_used}}{Character \code{"bayes_synergy"}.}
@@ -292,12 +276,8 @@ bs_fit_synergy_model <- function(analysis_df,
 #'     \code{Excess_Lower}, \code{Excess_Upper}, \code{P_Synergy}
 #'     (\eqn{P(\Delta>0)}), \code{Expected_FE_Median},
 #'     \code{Observed_FE_Median}.}
-#'   \item{\code{loewe_summary}}{Named list: \code{CI_Median},
-#'     \code{CI_Lower}, \code{CI_Upper}, \code{P_Synergy}
-#'     (\eqn{P(\text{CI}<1)}), \code{Interpretation} (posterior-median
-#'     classification).}
 #'   \item{\code{synergy_table}}{Combined summary data frame with one row per
-#'     group plus Bliss-expected and Loewe-expected rows.}
+#'     group plus a Bliss-expected row.}
 #'   \item{\code{posterior_summary}}{Standard \code{brms} posterior summary.}
 #'   \item{\code{mcmc_diagnostics}}{Data frame: per-parameter Rhat,
 #'     Bulk_ESS, Tail_ESS, Converged (Rhat ≤ 1.01).}
@@ -306,7 +286,7 @@ bs_fit_synergy_model <- function(analysis_df,
 #'     observed and expected fractional effects with 95 % CrI;
 #'     \code{NULL} when \code{plots = FALSE}.}
 #'   \item{\code{posterior_dist_plot}}{\pkg{ggplot2} density of posterior
-#'     Bliss excess and Loewe CI draws; \code{NULL} when
+#'     Bliss excess draws; \code{NULL} when
 #'     \code{plots = FALSE}.}
 #' }
 #'
@@ -350,12 +330,6 @@ bayesian_synergy <- function(
 ) {
 
   # ── Dependency check ───────────────────────────────────────────────────────
-  if (!requireNamespace("brms", quietly = TRUE)) {
-    stop(
-      "'brms' is required for bayesian_synergy(). ",
-      "Install it with: install.packages('brms')"
-    )
-  }
 
   transform  <- match.arg(transform)
   re_spec    <- match.arg(random_effects_specification)
@@ -509,35 +483,11 @@ bayesian_synergy <- function(
     Observed_FE_Median = round(obs_fe_med,             3)
   )
 
-  # ── Draw-wise Loewe CI ────────────────────────────────────────────────────
-  # Floor is relative to the maximum observed FE to avoid huge CIs when
-  # the combo has near-zero effect. A note is added when the floor is applied.
-  fe_max          <- max(fe_combo, na.rm = TRUE)
-  fe_floor        <- max(fe_max * 1e-4, 1e-4)
-  loewe_res       <- synergy_loewe_ci(fe_a, fe_b, fe_combo, fe_floor = fe_floor)
-  loewe_num       <- loewe_res$loewe_num
-  loewe_ci        <- loewe_res$ci
-  floor_applied   <- any(loewe_res$floor_applied)
-
-  loewe_q    <- stats::quantile(loewe_ci, c(0.025, 0.5, 0.975))
-  ci_med     <- loewe_q["50%"]
-
-  loewe_interp <- if (ci_med < 0.85) {
-    "Synergistic (CI < 0.85)"
-  } else if (ci_med <= 1.15) {
-    "Additive (0.85 ≤ CI ≤ 1.15)"
-  } else {
-    "Antagonistic (CI > 1.15)"
-  }
-
-  loewe_summary <- list(
-    CI_Median      = round(ci_med,               3),
-    CI_Lower       = round(loewe_q["2.5%"],      3),
-    CI_Upper       = round(loewe_q["97.5%"],     3),
-    P_Synergy      = round(mean(loewe_ci < 1),   3),
-    Interpretation = loewe_interp,
-    Floor_Applied  = floor_applied
-  )
+  # R17.2: the draw-wise Loewe CI was removed. What it computed was response
+  # additivity, not Loewe additivity, and it labelled Bliss-additive combinations
+  # antagonistic across most of the range where active single agents sit. See
+  # analyze_drug_synergy() for the full rationale. Bliss excess is retained and
+  # already carries a credible interval, which is the quantity to read.
 
   # ── synergy_table ─────────────────────────────────────────────────────────
   vol_ctrl_med  <- stats::median(vol_mat[, control_name])
@@ -557,14 +507,11 @@ bayesian_synergy <- function(
   }))
 
   bliss_fe_med <- bliss_fe_q["50%"]
-  loewe_fe_med <- stats::median(loewe_num)
 
   extra_rows <- data.frame(
-    Group       = c("Bliss Expected", "Loewe Expected"),
-    Mean_Volume = round(vol_ctrl_med * c(
-      1 - bliss_fe_med, 1 - loewe_fe_med
-    ), 1),
-    TGI_Percent = round(c(bliss_fe_med, loewe_fe_med) * 100, 1),
+    Group       = "Bliss Expected",
+    Mean_Volume = round(vol_ctrl_med * (1 - bliss_fe_med), 1),
+    TGI_Percent = round(bliss_fe_med * 100, 1),
     TGI_Lower   = NA_real_,
     TGI_Upper   = NA_real_,
     Type        = "Expected",
@@ -579,7 +526,7 @@ bayesian_synergy <- function(
 
   if (isTRUE(plots)) {
 
-    # Bar chart: observed TGI per group + Bliss/Loewe expected lines
+    # Bar chart: observed TGI per group + the Bliss expected line
     obs_rows  <- synergy_table[synergy_table$Type == "Observed", ]
     exp_rows  <- synergy_table[synergy_table$Type == "Expected", ]
     obs_rows$Group <- factor(obs_rows$Group, levels = groups)
@@ -606,17 +553,11 @@ bayesian_synergy <- function(
         ],
         linetype = "dashed", colour = "steelblue", linewidth = 0.8
       ) +
-      ggplot2::geom_hline(
-        yintercept = exp_rows$TGI_Percent[
-          exp_rows$Group == "Loewe Expected"
-        ],
-        linetype = "dotted", colour = "tomato", linewidth = 0.8
-      ) +
       ggplot2::labs(
         title    = "Bayesian Drug Combination Synergy",
         subtitle = paste0(
           "Bars = posterior median TGI ± 95 % CrI; ",
-          "dashed = Bliss expected; dotted = Loewe expected"
+          "dashed = Bliss expected"
         ),
         x    = NULL,
         y    = "TGI (%)",
@@ -625,23 +566,15 @@ bayesian_synergy <- function(
       ggplot2::theme_classic(base_size = 14) +
       ggplot2::theme(legend.position = "none")
 
-    # Density overlay: Bliss excess and Loewe CI draws
-    n_draws  <- length(bliss_excess)
+    # Density overlay: Bliss excess draws
     dens_df  <- data.frame(
-      Value  = c(bliss_excess, loewe_ci),
-      Metric = rep(
-        c("Bliss Excess (>0 = synergy)",
-          "Loewe CI (<1 = synergy)"),
-        each = n_draws
-      ),
+      Value  = bliss_excess,
+      Metric = "Bliss Excess (>0 = synergy)",
       stringsAsFactors = FALSE
     )
     vlines_df <- data.frame(
-      Metric    = c(
-        "Bliss Excess (>0 = synergy)",
-        "Loewe CI (<1 = synergy)"
-      ),
-      xintercept = c(0, 1),
+      Metric     = "Bliss Excess (>0 = synergy)",
+      xintercept = 0,
       stringsAsFactors = FALSE
     )
 
@@ -659,8 +592,7 @@ bayesian_synergy <- function(
       ggplot2::labs(
         title    = "Posterior Distributions of Synergy Metrics",
         subtitle = paste0(
-          "Bliss: P(synergy) = ", bliss_summary$P_Synergy,
-          "; Loewe: P(CI<1) = ", loewe_summary$P_Synergy
+          "Bliss: P(synergy) = ", bliss_summary$P_Synergy
         ),
         x = "Value",
         y = "Density"
@@ -685,7 +617,7 @@ bayesian_synergy <- function(
       bayesplot::mcmc_trace(
         brms::as_draws_df(model),
         regex_pars = paste0("^b_", gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1",
-                                         treatment_column))
+                                         treatment_column, perl = TRUE))
       )
     } else NULL,
     error = function(e) NULL
@@ -694,7 +626,7 @@ bayesian_synergy <- function(
   # ── Summary metadata ───────────────────────────────────────────────────────
   analysis_summary <- list(
     analysis_type = paste0(
-      "Bayesian Drug Combination Synergy — draw-wise Bliss and Loewe ",
+      "Bayesian Drug Combination Synergy — draw-wise Bliss ",
       "metrics (brms LME)"
     ),
     data_description = list(
@@ -714,22 +646,34 @@ bayesian_synergy <- function(
       n_warmup        = n_warmup,
       n_iter          = n_iter,
       seed            = seed,
-      random_effects  = re_term
+      # CODE_REVIEW.md R3.35 — `re_term` is built inside bs_fit_synergy_model()
+      # and returned as fit$re_term. The v0.4.6 G.6 refactor that extracted the
+      # helper left both consumers referencing the bare variable, so every call
+      # to bayesian_synergy() and bayesian_synergy_over_time() died with
+      # "object 're_term' not found" while assembling its summary. Invisible
+      # because the synergy test files skip without brms installed.
+      random_effects  = fit$re_term
     ),
     synergy_interpretation = list(
-      bliss = bliss_summary,
-      loewe = loewe_summary
+      bliss = bliss_summary
     )
   )
 
   # ── Return ─────────────────────────────────────────────────────────────────
   out <- list(
     model_type_used     = "bayes_synergy",
+    meta = me_result_meta(
+      analysis_type   = "Bayesian synergy (brms)",
+      model_type_used = "bayes_synergy",
+      inference       = "bayesian",
+      interval_type   = "credible",
+      transform_used  = transform,
+      estimate_scale  = "fractional effect"
+    ),
     model               = if (isTRUE(return_model)) model else NULL,
     transform_used      = transform,
     tgi_summary         = tgi_summary,
     bliss_summary       = bliss_summary,
-    loewe_summary       = loewe_summary,
     synergy_table       = synergy_table,
     posterior_summary   = posterior_summary,
     mcmc_diagnostics    = mcmc_diagnostics,
@@ -753,7 +697,7 @@ bayesian_synergy <- function(
 #' Fits the same Bayesian linear mixed-effects model as
 #' \code{\link{bayesian_synergy}} (a single model on all four treatment groups
 #' with a \code{Treatment × Day} interaction term), then evaluates draw-wise
-#' Bliss Independence excess and Loewe Combination Index at every observed
+#' Bliss Independence excess at every observed
 #' study day via a single \code{brms::posterior_epred()} call on the full
 #' day-by-group grid. Returns per-day posterior summaries that show how synergy
 #' evolves across the experiment.
@@ -770,22 +714,18 @@ bayesian_synergy <- function(
 #'   \item{\code{transform_used}}{The transform applied.}
 #'   \item{\code{synergy_by_day}}{Data frame with one row per study day:
 #'     \code{Day}, \code{Bliss_Median}, \code{Bliss_Lower},
-#'     \code{Bliss_Upper}, \code{P_Bliss_Synergy},
-#'     \code{Loewe_Median}, \code{Loewe_Lower}, \code{Loewe_Upper},
-#'     \code{P_Loewe_Synergy}, \code{Loewe_Floor_Applied}.}
+#'     \code{Bliss_Upper}, \code{P_Bliss_Synergy}.}
 #'   \item{\code{tgi_by_day}}{Data frame with one row per (Group, Day):
 #'     \code{Day}, \code{Group}, \code{TGI_Median}, \code{TGI_Lower},
 #'     \code{TGI_Upper}.}
 #'   \item{\code{peak_bliss_day}}{List: \code{Day} and \code{Bliss_Median}
 #'     at the study day showing highest posterior-median Bliss excess.}
-#'   \item{\code{peak_loewe_day}}{List: \code{Day} and \code{Loewe_Median}
-#'     (lowest posterior-median Loewe CI, i.e. strongest synergy).}
 #'   \item{\code{posterior_summary}}{Standard \code{brms} posterior summary.}
 #'   \item{\code{mcmc_diagnostics}}{Data frame: per-parameter Rhat,
 #'     Bulk_ESS, Tail_ESS, Converged.}
 #'   \item{\code{summary}}{Named list of analysis metadata.}
 #'   \item{\code{synergy_time_plot}}{\pkg{ggplot2} faceted line plot of
-#'     posterior-median Bliss excess and Loewe CI over time with 95 % CrI
+#'     posterior-median Bliss excess over time with 95 % CrI
 #'     ribbons; \code{NULL} when \code{plots = FALSE}.}
 #' }
 #'
@@ -828,12 +768,6 @@ bayesian_synergy_over_time <- function(
   backend                      = c("rstan", "cmdstanr")
 ) {
 
-  if (!requireNamespace("brms", quietly = TRUE)) {
-    stop(
-      "'brms' is required for bayesian_synergy_over_time(). ",
-      "Install it with: install.packages('brms')"
-    )
-  }
 
   transform  <- match.arg(transform)
   re_spec    <- match.arg(random_effects_specification)
@@ -955,26 +889,12 @@ bayesian_synergy_over_time <- function(
     bliss_excess   <- fe_combo - bliss_expected
     bq             <- stats::quantile(bliss_excess, c(0.025, 0.5, 0.975))
 
-    # Loewe
-    fe_max        <- max(fe_combo, na.rm = TRUE)
-    fe_floor      <- max(fe_max * 1e-4, 1e-4)
-    loewe_res     <- synergy_loewe_ci(fe_a, fe_b, fe_combo,
-                                       fe_floor = fe_floor)
-    loewe_ci      <- loewe_res$ci
-    floor_applied <- any(loewe_res$floor_applied)
-    lq            <- stats::quantile(loewe_ci, c(0.025, 0.5, 0.975))
-
     synergy_rows[[di]] <- data.frame(
       Day                = day,
       Bliss_Median       = round(bq["50%"],             3),
       Bliss_Lower        = round(bq["2.5%"],            3),
       Bliss_Upper        = round(bq["97.5%"],           3),
       P_Bliss_Synergy    = round(mean(bliss_excess > 0), 3),
-      Loewe_Median       = round(lq["50%"],             3),
-      Loewe_Lower        = round(lq["2.5%"],            3),
-      Loewe_Upper        = round(lq["97.5%"],           3),
-      P_Loewe_Synergy    = round(mean(loewe_ci < 1),    3),
-      Loewe_Floor_Applied = floor_applied,
       stringsAsFactors   = FALSE
     )
 
@@ -998,15 +918,10 @@ bayesian_synergy_over_time <- function(
 
   # ── Peak synergy ──────────────────────────────────────────────────────────
   peak_b_idx <- which.max(synergy_by_day$Bliss_Median)
-  peak_l_idx <- which.min(synergy_by_day$Loewe_Median)
 
   peak_bliss_day <- list(
     Day          = synergy_by_day$Day[peak_b_idx],
     Bliss_Median = synergy_by_day$Bliss_Median[peak_b_idx]
-  )
-  peak_loewe_day <- list(
-    Day          = synergy_by_day$Day[peak_l_idx],
-    Loewe_Median = synergy_by_day$Loewe_Median[peak_l_idx]
   )
 
   # ── Plot ──────────────────────────────────────────────────────────────────
@@ -1016,14 +931,11 @@ bayesian_synergy_over_time <- function(
     n_days <- nrow(synergy_by_day)
 
     plot_df <- data.frame(
-      Day    = rep(synergy_by_day$Day, 2L),
-      Metric = rep(
-        c("Bliss Excess (>0 = synergy)", "Loewe CI (<1 = synergy)"),
-        each = n_days
-      ),
-      Median = c(synergy_by_day$Bliss_Median, synergy_by_day$Loewe_Median),
-      Lower  = c(synergy_by_day$Bliss_Lower,  synergy_by_day$Loewe_Lower),
-      Upper  = c(synergy_by_day$Bliss_Upper,  synergy_by_day$Loewe_Upper),
+      Day    = synergy_by_day$Day,
+      Metric = "Bliss Excess (>0 = synergy)",
+      Median = synergy_by_day$Bliss_Median,
+      Lower  = synergy_by_day$Bliss_Lower,
+      Upper  = synergy_by_day$Bliss_Upper,
       Ref    = c(
         rep(0, n_days),
         rep(1, n_days)
@@ -1069,7 +981,7 @@ bayesian_synergy_over_time <- function(
   analysis_summary <- list(
     analysis_type = paste0(
       "Bayesian Drug Combination Synergy Over Time — draw-wise Bliss and ",
-      "Loewe at each study day (brms LME)"
+      "at each study day (brms LME)"
     ),
     data_description = list(
       control_group = control_name,
@@ -1084,22 +996,28 @@ bayesian_synergy_over_time <- function(
       n_chains       = n_chains,
       n_iter         = n_iter,
       seed           = seed,
-      random_effects = re_term
+      random_effects = fit$re_term   # CODE_REVIEW.md R3.35 — see above
     ),
     peak_synergy = list(
-      bliss = peak_bliss_day,
-      loewe = peak_loewe_day
+      bliss = peak_bliss_day
     )
   )
 
   list(
     model_type_used   = "bayes_synergy_ot",
+    meta = me_result_meta(
+      analysis_type   = "Bayesian synergy over time (brms)",
+      model_type_used = "bayes_synergy_ot",
+      inference       = "bayesian",
+      interval_type   = "credible",
+      transform_used  = transform,
+      estimate_scale  = "fractional effect"
+    ),
     model             = if (isTRUE(return_model)) model else NULL,
     transform_used    = transform,
     synergy_by_day    = synergy_by_day,
     tgi_by_day        = tgi_by_day,
     peak_bliss_day    = peak_bliss_day,
-    peak_loewe_day    = peak_loewe_day,
     posterior_summary = posterior_summary,
     mcmc_diagnostics  = mcmc_diagnostics,
     nuts_diagnostics  = nuts_diagnostics,

@@ -60,6 +60,9 @@ The column is also used for composite mouse-key construction.}
 \code{"log"} (default, recommended for exponential growth),
 \code{"sqrt"}, or \code{"none"}.}
 
+\item{model_type}{Which Bayesian model to fit: \code{"bayes"} (linear) or
+\code{"bayes_gam"} (smooth time x treatment).}
+
 \item{random_effects_specification}{Random effects structure:
 \code{"intercept_only"} (default, \code{(1 | ID)}) or
 \code{"slope"} (\code{(Day | ID)}, adds per-animal random slopes).}
@@ -126,6 +129,11 @@ reactively from the stored model object (e.g. in Shiny).}
 
 \item{verbose}{Logical. Show Stan compilation and sampling messages? Default
 \code{FALSE}.}
+
+\item{necrotic_column}{Optional column holding a 0/1 necrosis flag.}
+
+\item{necrotic_handling}{How flagged observations are treated:
+\code{"exclude"}, \code{"covariate"}, or \code{"none"}.}
 
 \item{backend}{brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
 \code{"cmdstanr"} is 3-10x faster to compile and produces better

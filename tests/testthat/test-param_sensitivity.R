@@ -106,12 +106,18 @@ test_that("survival_statistics: ph_test is returned on the standard-Cox path", {
                  info = "survival_statistics cox path must return ph_test (CODE_REVIEW.md A.1)")
     expect_true(inherits(res$ph_test, "cox.zph"))
   } else {
-    skip("Cox path did not run on this fixture; ph_test correctly NULL")
+    # CODE_REVIEW.md K.2 -- this used to skip(). A skip here is indistinguishable
+    # from success, so a regression that stopped the Cox path from running (e.g.
+    # by mis-detecting separation, as R3.27 found) would have gone unnoticed.
+    # Assert the contract instead: whichever path ran, ph_test must be present
+    # exactly when the Cox path was used.
+    expect_true(res$method_used %in% c("coxphf", "logrank"),
+                info = "non-Cox path must identify itself")
+    expect_null(res$ph_test)
   }
 })
 
 test_that("analyze_body_weight: cage_column actually enters the model formula", {
-  skip_if_not_installed("lme4")
   df <- make_bw_simple()
   res_no_cage <- suppressWarnings(suppressMessages(
     analyze_body_weight(df, weight_column = "Weight",

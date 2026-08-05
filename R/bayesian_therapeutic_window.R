@@ -37,7 +37,7 @@
 #' \deqn{
 #'   \mathrm{TWM}_g^{(d)} =
 #'   \frac{\mathrm{TGI}_g^{(d)}}{
-#'     \max(|WL_g^{(d)}\%|, \text{noise\_floor}) / 100}
+#'     \max(|WL_g^{(d)}%|, \text{noise\_floor}) / 100}
 #' }
 #' where
 #' \eqn{
@@ -380,8 +380,13 @@ bayesian_therapeutic_window <- function(
         # correctly. (Previously a single geom_abline approximated it but
         # crossed the y axis at the wrong slope near the floor.)
         {
-          x_min      <- min(plot_df$WL_Median, na.rm = TRUE)
-          x_max      <- max(plot_df$WL_Median, na.rm = TRUE)
+          # CODE_REVIEW.md R3.37 — this referenced `plot_df`, which is never
+          # created anywhere in the function; the data frame is `scatter_df`.
+          # The undefined variable threw inside the enclosing tryCatch, so
+          # `tgi_wl_plot` was ALWAYS NULL and the dashboard's TWM scatter tab was
+          # always empty. Invisible because the test file skips without brms.
+          x_min      <- min(scatter_df$WL_Median, na.rm = TRUE)
+          x_max      <- max(scatter_df$WL_Median, na.rm = TRUE)
           x_pad      <- 0.05 * max(1, abs(x_max - x_min))
           x_lo       <- min(x_min - x_pad, -noise_floor * 2)
           x_hi       <- max(x_max + x_pad,  noise_floor * 2)
@@ -447,6 +452,17 @@ bayesian_therapeutic_window <- function(
   # ── Return ─────────────────────────────────────────────────────────────────
   list(
     model_type_used = "bayes_twm",
+    meta = me_result_meta(
+      analysis_type   = "Bayesian therapeutic window (TG + BW posteriors)",
+      model_type_used = "bayes_twm",
+      inference       = "bayesian",
+      interval_type   = "credible",
+      # TWM combines a TG posterior (log volume) with a BW posterior (grams),
+      # so there is no single response transform. Report the TG one, which is
+      # what the TGI half is on, and name the composite scale explicitly.
+      transform_used  = tg_result$transform_used %||% "none",
+      estimate_scale  = "TWM (TGI / weight-loss %)"
+    ),
     twm_table       = twm_table,
     tgi_summary     = tgi_summary,
     wl_summary      = wl_summary,

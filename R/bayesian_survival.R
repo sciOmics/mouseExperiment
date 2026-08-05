@@ -5,7 +5,7 @@
 #'
 #' Fits a Bayesian parametric survival model via \pkg{brms} / Stan.
 #' Complements the frequentist \code{\link{survival_statistics}} with full
-#' posterior distributions, 95 \% HPD credible intervals, optional cage-level
+#' posterior distributions, 95 % HPD credible intervals, optional cage-level
 #' frailty, and survival-curve plots. Four parametric families cover the most
 #' common preclinical endpoint distributions.
 #'
@@ -75,6 +75,12 @@
 #' @param backend brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
 #'   See \code{\link{bayesian_tumor_growth}} for details.
 #'
+#' @param priors Optional named list of `brms::prior()` objects applied
+#'   verbatim, bypassing `prior_strength`. For callers that need full
+#'   control of the prior specification.
+#' @param mcmc Optional named list of sampler settings
+#'   (`chains`, `warmup`, `iter`, `seed`, `backend`) overriding the
+#'   individual arguments. Resolved by `.resolve_mcmc()`.
 #' @return A named list:
 #' \describe{
 #'   \item{\code{model}}{\code{brmsfit} object, or \code{NULL} when
@@ -89,7 +95,7 @@
 #'     \code{Median_Survival}, \code{Events}, \code{Total}, \code{Event_Rate},
 #'     \code{Note}. Output schema mirrors \code{\link{survival_statistics}}.}
 #'   \item{\code{posterior_summary}}{Data frame of fixed-effect posterior
-#'     medians, 2.5 \%–97.5 \% CrI, Rhat, Bulk_ESS, Tail_ESS.}
+#'     medians, 2.5 %–97.5 % CrI, Rhat, Bulk_ESS, Tail_ESS.}
 #'   \item{\code{mcmc_diagnostics}}{Per-parameter Rhat, ESS, and convergence
 #'     flags (Rhat > 1.01 flagged as not converged).}
 #'   \item{\code{survival_data}}{Data frame with \code{Time}, \code{Event},
@@ -104,7 +110,7 @@
 #'     \code{plots = FALSE}.}
 #'   \item{\code{mcmc_trace_plot}}{MCMC trace plot, or \code{NULL} when
 #'     \code{plots = FALSE}.}
-#'   \item{\code{survival_curve_plot}}{Parametric survival curves with 95 \%
+#'   \item{\code{survival_curve_plot}}{Parametric survival curves with 95 %
 #'     posterior credible bands overlaid on Kaplan-Meier step functions, or
 #'     \code{NULL} when \code{plots = FALSE}.}
 #' }
@@ -170,9 +176,6 @@ bayesian_survival <- function(
 ) {
 
   # ── Dependency check ───────────────────────────────────────────────────────
-  if (!requireNamespace("brms", quietly = TRUE)) {
-    stop("Package 'brms' is required.\nInstall with: install.packages('brms')")
-  }
 
   family         <- match.arg(family)
   prior_strength <- match.arg(prior_strength)
@@ -247,7 +250,8 @@ bayesian_survival <- function(
     weibull     = brms::weibull(),
     lognormal   = brms::lognormal(),
     exponential = brms::exponential(),
-    gamma       = brms::Gamma(link = "log")
+    # R18.1: `Gamma` lives in stats, not brms -- `brms::Gamma` throws.
+    gamma       = stats::Gamma(link = "log")
   )
 
   # ── Prior specification ────────────────────────────────────────────────────
@@ -256,11 +260,20 @@ bayesian_survival <- function(
       stop("When prior_strength = 'manual', prior_b, prior_intercept, and ",
            "prior_sd must be supplied.")
     }
+    # CODE_REVIEW.md R3.32 — only declare a class = "sd" prior when the model
+    # actually HAS a random effect. brms rejects a prior that matches no model
+    # parameter ("The following priors do not correspond to any model
+    # parameter: sd ~ ..."), so with include_cage_effect = FALSE every fit
+    # errored. Masked until now because these tests skipped whenever brms was
+    # absent from the dev environment.
     selected_priors <- c(
       brms::prior_string(prior_b,         class = "b"),
-      brms::prior_string(prior_intercept, class = "Intercept"),
-      brms::prior_string(prior_sd,        class = "sd")
+      brms::prior_string(prior_intercept, class = "Intercept")
     )
+    if (use_cage_re) {
+      selected_priors <- c(selected_priors,
+                           brms::prior_string(prior_sd, class = "sd"))
+    }
     if (!is.null(prior_aux)) {
       aux_class <- if (family == "lognormal") "sigma" else "shape"
       selected_priors <- c(
@@ -272,14 +285,32 @@ bayesian_survival <- function(
     pp       <- bayes_prior_params(prior_strength)
     b_sd     <- pp$b_sd
     exp_rate <- pp$exp_rate
+    # CODE_REVIEW.md R3.8 / G.5 — the Intercept here is on the log-time scale
+    # (an AFT model), so for a study running to day 35 it centres near
+    # log(35) ~ 3.6. A fixed normal(0, b_sd * 2.5) prior put almost no mass
+    # there. Scale it to the observed event times. The `b` coefficients are
+    # log-time ratios, which are unit-free, so the ladder applies directly and
+    # there is no time covariate to divide by.
+    t_obs <- as.numeric(analysis_df[[time_column]])
+    t_obs <- t_obs[is.finite(t_obs) & t_obs > 0]
+    log_t_med <- if (length(t_obs)) stats::median(log(t_obs)) else 0
+    log_t_mad <- if (length(t_obs)) stats::mad(log(t_obs)) else 1
+    if (!is.finite(log_t_mad) || log_t_mad <= 0) log_t_mad <- 1
+
     selected_priors <- c(
       brms::prior_string(paste0("normal(0, ", b_sd, ")"),
                          class = "b"),
-      brms::prior_string(paste0("normal(0, ", b_sd * 2.5, ")"),
-                         class = "Intercept"),
-      brms::prior_string(paste0("exponential(", exp_rate, ")"),
-                         class = "sd")
+      brms::prior_string(
+        paste0("normal(", round(log_t_med, 4), ", ",
+               round(2.5 * log_t_mad, 4), ")"),
+        class = "Intercept")
     )
+    # See R3.32 above — a "sd" prior with no random effect makes brms error.
+    if (use_cage_re) {
+      selected_priors <- c(selected_priors,
+                           brms::prior_string(paste0("exponential(", exp_rate, ")"),
+                                              class = "sd"))
+    }
     if (family == "lognormal") {
       aux_class <- "sigma"
     } else if (family != "exponential") {
@@ -359,11 +390,12 @@ bayesian_survival <- function(
     )
 
     if (requireNamespace("bayesplot", quietly = TRUE)) {
-      draws_arr <- tryCatch(brms::as.array(model), error = function(e) NULL)
+      draws_arr <- tryCatch(posterior::as_draws_array(model),
+                            error = function(e) NULL)
       if (!is.null(draws_arr)) {
         all_pars <- dimnames(draws_arr)$variable
         safe_tx  <- gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1",
-                         treatment_column)
+                         treatment_column, perl = TRUE)
         tx_pars  <- grep(paste0("^b_", safe_tx), all_pars, value = TRUE)
         if (length(tx_pars) > 0) {
           posterior_dist_plot <- tryCatch(
@@ -429,6 +461,17 @@ bayesian_survival <- function(
   list(
     model               = if (isTRUE(return_model)) model else NULL,
     model_type_used     = "bayes_survival",
+    # B7.2 -- an AFT model applies no volume transform. Report "none"
+    # explicitly so a consumer can distinguish that from a missing field.
+    transform_used      = "none",
+    meta = me_result_meta(
+      analysis_type   = "Bayesian accelerated failure time model (brms)",
+      model_type_used = "bayes_survival",
+      inference       = "bayesian",
+      interval_type   = "credible",
+      transform_used  = "none",
+      estimate_scale  = "log time ratio"
+    ),
     family_used         = family,
     frailty_used        = use_cage_re,
     summary             = analysis_summary,
@@ -482,7 +525,7 @@ bs_build_treatment_table <- function(
     # Fallback: name-based matching via make.names sanitisation
     level_to_coef <- stats::setNames(
       vapply(non_ref_levels, function(lvl) {
-        expected <- paste0(treatment_column, stats::make.names(lvl))
+        expected <- paste0(treatment_column, make.names(lvl))  # R18.1: base, not stats
         if (expected %in% tx_coef_names) expected else NA_character_
       }, character(1)),
       non_ref_levels
@@ -638,7 +681,7 @@ bs_survival_curves_plot <- function(
   } else {
     level_to_coef <- stats::setNames(
       vapply(non_ref_levels, function(lvl) {
-        expected <- paste0(treatment_column, stats::make.names(lvl))
+        expected <- paste0(treatment_column, make.names(lvl))  # R18.1: base, not stats
         if (expected %in% tx_coef_names) expected else NA_character_
       }, character(1)),
       non_ref_levels

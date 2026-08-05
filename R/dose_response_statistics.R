@@ -95,7 +95,15 @@ dose_response_statistics <- function(df,
     anova_model = stats_results$anova_model,
     plots = plots,
     summary_table = summary_stats,
-    statistics = stats_results$statistics
+    statistics = stats_results$statistics,
+    # R17.3: the per-observation frame the analysis actually ran on, at the
+    # chosen time point. The dashboard needs it to rebuild its scatter, box and
+    # trend plots, and had been calling `mouseExperiment::prepare_dose_data()` to
+    # re-derive it -- a function that is internal and not exported, so the call
+    # threw on every run, the tryCatch swallowed it, and all three plots rendered
+    # blank. Returning what was analysed also removes the chance of a
+    # re-derivation drifting from it (the R14.4 principle).
+    analysis_data = analysis_data
   ))
 }
 
@@ -290,9 +298,24 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
     verbose = verbose
   )
   
-  # Jonckheere-Terpstra test not run due to mentioned issues
-  jt_result <- NULL
-  
+  # 7. Jonckheere-Terpstra trend test
+  #
+  # CODE_REVIEW.md R3.31 — this was hardwired to NULL under a comment
+  # referencing "mentioned issues" that appear nowhere in the source, leaving
+  # `clinfun` as a declared dependency the package never loaded, the returned
+  # `trend_test$jonckheere_test` field permanently NULL, and two reporting
+  # branches unreachable — while the test suite verified the test by calling
+  # clinfun directly, so the suite was green on disabled functionality.
+  #
+  # JT is the canonical permutation test for an ordered alternative across dose
+  # groups. It depends only on the *ordering* of the dose levels, never their
+  # spacing, so it is immune to the unequal-dose-spacing problem that affects
+  # the orthogonal-polynomial decomposition in analyze_polynomial_trends()
+  # (Round 2 G.7). It also makes no normality assumption.
+  jt_result <- run_jonckheere_test(analysis_data, dose_column, volume_column,
+                                   verbose = verbose)
+
+
   return(list(
     linear_model = linear_model,
     anova_model = anova_model,
@@ -381,12 +404,40 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
         message(paste(utils::capture.output(print(dr_summary)), collapse = "\n"))
       }
       
-      # Extract parameters
-      params <- dr_model$coefficients
-      statistics$ec50 <- exp(params["e:(Intercept)"])
-      statistics$hill_slope <- params["b:(Intercept)"]
-      statistics$lower_limit <- params["c:(Intercept)"]
-      statistics$upper_limit <- params["d:(Intercept)"]
+      # Extract parameters.
+      #
+      # R14.1: these four lookups used the drc default names b/c/d/e, but the
+      # LL.4()/LL.5() calls above pass `names = c("Slope", "Lower Limit",
+      # "Upper Limit", "EC50")`, so the fitted object carries those instead.
+      # Zero of the four matched, and every dose-response run reported EC50,
+      # Hill slope and both asymptotes as NA — which the dashboard rendered
+      # verbatim. The direction check at the Slope line above was updated when
+      # the names were introduced (§G.2); this block was not.
+      #
+      # The `exp()` was wrong too. In LL.4 the `e` parameter is the EC50 on the
+      # natural dose scale; exponentiating it would have returned ~1e13 once the
+      # name lookup started working. (LL2.4 is the log-parameterised variant
+      # where exp() would be correct.)
+      #
+      # Read by position rather than by name so a future relabelling cannot
+      # silently reintroduce this: LL.4 is always ordered b, c, d, e.
+      params  <- stats::coef(dr_model)
+      pick <- function(pattern, index) {
+        hit <- params[grep(pattern, names(params))]
+        if (length(hit) == 1L) unname(hit[1]) else unname(params[index])
+      }
+      statistics$hill_slope  <- pick("^Slope",       1L)
+      statistics$lower_limit <- pick("^Lower Limit", 2L)
+      statistics$upper_limit <- pick("^Upper Limit", 3L)
+      statistics$ec50        <- pick("^EC50",        4L)
+
+      # EC50 without an interval is a point estimate presented as a fact. drc
+      # supplies a delta-method interval from the same fit at no extra cost.
+      statistics$ec50_ci <- tryCatch({
+        ed <- drc::ED(dr_model, 50, interval = "delta", display = FALSE)
+        c(lower = unname(ed[1, "Lower"]), upper = unname(ed[1, "Upper"]),
+          se = unname(ed[1, "Std. Error"]))
+      }, error = function(e) NULL)
       
       # Store model. dr_model_type now reports the *shape* (symmetric or
       # asymmetric); dr_model_direction reports the inferred direction
@@ -519,13 +570,80 @@ analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_
   return(statistics)
 }
 
+#' Jonckheere-Terpstra trend test across ordered dose groups
+#'
+#' Permutation test for the ordered alternative "response changes monotonically
+#' with dose". Uses only the *ordering* of the dose levels, so unlike the
+#' orthogonal-polynomial decomposition in \code{analyze_polynomial_trends()} it
+#' is unaffected by unequal dose spacing (e.g. 0 / 10 / 30 / 100 mg/kg), and it
+#' assumes no particular response distribution.
+#'
+#' The alternative is chosen from the observed direction of the dose-group
+#' means rather than hard-coded, so the test works for inhibitory and
+#' stimulatory data alike.
+#'
+#' @param analysis_data Prepared data frame.
+#' @param dose_column,volume_column Column names.
+#' @param verbose Print progress messages.
+#' @return An \code{htest}-like list from \code{clinfun::jonckheere.test()} with
+#'   an added \code{alternative_used} field, or \code{NULL} when the test cannot
+#'   be run (clinfun absent, fewer than three dose levels, or an error).
+#' @noRd
+#' @keywords internal
+run_jonckheere_test <- function(analysis_data, dose_column = "Dose",
+                                volume_column = "Volume", verbose = TRUE) {
+
+  doses   <- as.numeric(analysis_data[[dose_column]])
+  volumes <- as.numeric(analysis_data[[volume_column]])
+  ok      <- is.finite(doses) & is.finite(volumes)
+  doses   <- doses[ok]
+  volumes <- volumes[ok]
+
+  # JT tests a trend across ordered groups; it needs at least three of them to
+  # say anything a two-group test would not.
+  if (length(unique(doses)) < 3L) {
+    if (isTRUE(verbose)) {
+      message("Jonckheere-Terpstra trend test skipped: needs >= 3 distinct ",
+              "dose levels (found ", length(unique(doses)), ").")
+    }
+    return(NULL)
+  }
+
+  # Direction from the observed dose-group means: a fitted decrease across dose
+  # is the inhibitory case, an increase the stimulatory one. Deriving it rather
+  # than assuming inhibition keeps the test usable on both.
+  grp_means <- tapply(volumes, doses, mean, na.rm = TRUE)
+  grp_means <- grp_means[order(as.numeric(names(grp_means)))]
+  slope     <- stats::coef(stats::lm(
+    grp_means ~ as.numeric(names(grp_means))
+  ))[2]
+  alternative <- if (is.finite(slope) && slope > 0) "increasing" else "decreasing"
+
+  jt <- tryCatch(
+    clinfun::jonckheere.test(volumes, doses, alternative = alternative),
+    error = function(e) {
+      warning("Jonckheere-Terpstra test failed: ", conditionMessage(e),
+              call. = FALSE)
+      NULL
+    }
+  )
+  if (is.null(jt)) return(NULL)
+
+  jt$alternative_used <- alternative
+  if (isTRUE(verbose)) {
+    message("Jonckheere-Terpstra trend test (", alternative, "): p = ",
+            format.pval(jt$p.value, digits = 3))
+  }
+  jt
+}
+
 #' Analyze polynomial trends in dose-response
-#' 
+#'
 #' @param analysis_data Prepared data frame
 #' @param dose_column Dose column name
 #' @param volume_column Volume column name
 #' @param statistics Statistics list
-#' 
+#'
 #' @return Updated statistics list
 #' @keywords internal
 analyze_polynomial_trends <- function(analysis_data, dose_column = "Dose",

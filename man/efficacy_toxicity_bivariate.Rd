@@ -14,6 +14,8 @@ efficacy_toxicity_bivariate(
   adjust_tumor_weight = TRUE,
   tumor_density = 1,
   reference_group = NULL,
+  endpoint_day = NULL,
+  endpoint_method = c("model", "last_obs", "survivors"),
   efficacy_metric = c("tgi", "tumor_auc")
 )
 }
@@ -35,6 +37,12 @@ efficacy_toxicity_bivariate(
 \item{tumor_density}{Density in g/cm³ (default 1.0).}
 
 \item{reference_group}{Name of the control/reference group.}
+
+\item{endpoint_day}{Day at which efficacy is evaluated. NULL uses the
+maximum observed day.}
+
+\item{endpoint_method}{How the TGI denominator is obtained: "model"
+(default), "last_obs", or "survivors". See CODE_REVIEW.md R3.5 / G.3.}
 
 \item{efficacy_metric}{One of "tgi" or "tumor_auc".}
 }

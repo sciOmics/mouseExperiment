@@ -2,7 +2,7 @@
 #'
 #' This function tests for synergistic effects of drug combinations in tumor growth data.
 #' It compares the observed combination effect against several expected interaction models,
-#' including Bliss independence and Loewe additivity. The function calculates synergy scores
+#' using Bliss independence. The function calculates synergy scores
 #' and performs statistical tests to determine if the combination shows synergistic,
 #' additive, or antagonistic effects.
 #'
@@ -23,8 +23,6 @@
 #' \describe{
 #'   \item{summary}{A data frame summarizing the tumor growth inhibition (TGI) for each treatment and synergy metrics.}
 #'   \item{bliss_independence}{Results of the Bliss independence model, including expected vs. observed effects.}
-#'   \item{loewe_additivity}{Results of the Loewe additivity model (linear dose-response assumption).}
-#'   \item{combination_index}{The Loewe-based combination index (CI), where CI < 1 indicates synergy, CI = 1 indicates additivity, and CI > 1 indicates antagonism.}
 #'   \item{statistical_test}{Results of statistical tests comparing observed vs. expected effects.}
 #'   \item{plot_data}{Data prepared for plotting, to be used with plot_drug_synergy function.}
 #' }
@@ -36,12 +34,18 @@
 #' 1. Bliss Independence Model: Assumes drugs act independently through different mechanisms.
 #'    Expected effect = EA + EB - (EA * EB), where EA and EB are the effects of drug A and B alone.
 #'
-#' 2. Loewe Additivity Model: Under a linear dose-response assumption (appropriate when only
-#'    single-dose TGI data is available), the expected combination effect equals the sum of
-#'    individual fractional effects, capped at 1.0. The Combination Index is calculated as
-#'    CI = min(FE_A + FE_B, 1) / FE_combo (Berenbaum, 1989).
-#'
-#' 3. Combination Index: CI < 1 indicates synergy, CI = 1 indicates additivity, CI > 1 indicates antagonism.
+#' \strong{Why there is no Combination Index.} A Loewe-style CI was removed in
+#' v0.21.0. What it computed was not Loewe additivity: true Loewe is
+#' dose-equivalence, \eqn{CI = d_A/D_A + d_B/D_B}, which needs a dose-response
+#' curve per agent that single-dose designs do not provide. The stand-in,
+#' \code{min(FE_A + FE_B, 1) / FE_combo}, is \emph{response additivity} -- a
+#' different null that fails the sham-combination test: combining a drug with
+#' itself it predicts twice the fractional effect, so an agent at FE = 0.5 should
+#' reach 100 percent inhibition, and when it does not the method calls the drug
+#' antagonistic with itself. Across the (FE_A, FE_B) grid with the combination
+#' set to exactly Bliss-additive, 42 percent of cells were labelled antagonistic
+#' and none synergistic. For a real Loewe analysis collect per-agent
+#' dose-response curves and use \code{drc::isobole()}.
 #'
 #' The function performs statistical tests to determine if the observed combination effect
 #' significantly differs from the expected effect under these models.
@@ -50,15 +54,16 @@
 #' \strong{Bliss Independence applied to TGI:} Bliss Independence was formulated for the
 #' probability of cell death, not for proportional growth inhibition. Applying it to TGI is a
 #' common pragmatic choice but carries a ceiling effect: when individual drug TGIs are large
-#' (each > 50\%), the Bliss expected combined TGI approaches 100\%, making it nearly impossible
+#' (each > 50%), the Bliss expected combined TGI approaches 100%, making it nearly impossible
 #' to demonstrate synergy by this criterion regardless of the true biological interaction.
-#' Interpret Bliss results cautiously when individual-agent TGIs exceed 50\%.
+#' Interpret Bliss results cautiously when individual-agent TGIs exceed 50%.
 #'
-#' \strong{Loewe Additivity single-dose approximation:} The CI formula
-#' \code{min(FE_A + FE_B, 1) / FE_combo} assumes a linear dose-response relationship, which
-#' is appropriate when only single-dose data are available but is an approximation. Without
-#' dose-response curves the true IC50 values are unknown, so the result should be interpreted
-#' as a qualitative synergy indicator rather than a precise mechanistic estimate.
+#' \strong{Point estimates and labels:} \code{synergy_label} is derived from
+#' fixed thresholds. They are descriptive summaries, not test results. Read them
+#' alongside \code{synergy_ci} (mouse-level bootstrap 95% intervals) and
+#' \code{group_n}: a "Strong Synergy" label whose \code{Bliss_Excess_FE}
+#' interval spans zero is not evidence of synergy. For a model-based posterior
+#' treatment of the same question, use \code{\link{bayesian_synergy}}.
 #'
 #' @examples
 #' # Example with synthetic dataset
@@ -83,6 +88,25 @@
 #'
 #' @import dplyr
 #' @import ggplot2
+#' @param id_column Column identifying individual animals. Used to resample
+#'   mice for the bootstrap; also used to report per-group n.
+#' @param endpoint_method How each arm's volume at \code{eval_time_point} is
+#'   obtained: "model" (default, log-scale LMM marginal means using every
+#'   observation), "last_obs", or "survivors" (pre-0.8.0 behaviour; conditions
+#'   on survival and understates TGI). See CODE_REVIEW.md R3.5 / G.3.
+#' @param strong_synergy_delta Numeric. Bliss excess fractional effect above
+#'   which the label is "Strong Synergy". Default 0.1, a convention rather than
+#'   a derived quantity.
+#' @param ci_thresholds Deprecated and ignored; retained so existing calls do
+#'   not error. It configured the removed Combination Index band.
+#' @param n_boot Integer >= 0. Number of bootstrap resamples used to attach
+#'   confidence intervals to the synergy metrics. Mice are resampled with
+#'   replacement *within* treatment group, including the control arm, and the
+#'   whole statistic is recomputed per resample — so the interval propagates
+#'   both the sampling error of each arm and the sampling error of the control
+#'   mean that forms the TGI denominator (CODE_REVIEW.md R3.6 / R3.7 / G.6).
+#'   Default 2000. Set 0 to skip.
+#' @param boot_seed Optional integer seed for reproducible resampling.
 #' @export
 analyze_drug_synergy <- function(df, 
                                treatment_column = "Treatment",
@@ -93,7 +117,15 @@ analyze_drug_synergy <- function(df,
                                combo_name,
                                control_name = "Control",
                                eval_time_point = NULL,
+                               id_column = "ID",
+                               endpoint_method = c("model", "last_obs", "survivors"),
+                               ci_thresholds = c(0.85, 1.15),
+                               strong_synergy_delta = 0.1,
+                               n_boot = 2000L,
+                               boot_seed = NULL,
                                verbose = TRUE) {
+
+  endpoint_method <- match.arg(endpoint_method)
   
   # Input validation
   required_columns <- c(treatment_column, volume_column, time_column)
@@ -126,11 +158,47 @@ analyze_drug_synergy <- function(df,
     }
   }
   
-  # Filter data for the evaluation time point
-  analysis_data <- df[df[[time_column]] == eval_time_point, ]
-  
-  # Calculate mean volumes for each treatment group
-  group_means <- tapply(analysis_data[[volume_column]], analysis_data[[treatment_column]], mean)
+  # CODE_REVIEW.md R3.5 / G.3 — filtering to rows observed exactly at
+  # eval_time_point conditions on survival to that day. Animals leave because
+  # their tumours grew, so this selects the slowest growers, hardest in the
+  # control arm, and biases every TGI downward. Route through the shared
+  # endpoint helper: the default reads each arm's geometric mean at the
+  # evaluation day off a log-scale LMM fitted to every observation, and the
+  # per-mouse table it returns keeps all animals for the bootstrap.
+  ep <- endpoint_volumes(
+    df, id_column = id_column, treatment_column = treatment_column,
+    time_column = time_column, volume_column = volume_column,
+    endpoint_day = eval_time_point, endpoint_method = endpoint_method
+  )
+  # Per-mouse endpoint volumes (all animals) for the group means and bootstrap.
+  analysis_data <- if (!is.null(ep$per_mouse)) {
+    data.frame(Treatment = ep$per_mouse$Treatment,
+               Volume    = ep$per_mouse$Volume,
+               stringsAsFactors = FALSE)
+  } else {
+    pm <- endpoint_volumes(
+      df, id_column = id_column, treatment_column = treatment_column,
+      time_column = time_column, volume_column = volume_column,
+      endpoint_day = eval_time_point, endpoint_method = "last_obs")$per_mouse
+    data.frame(Treatment = pm$Treatment, Volume = pm$Volume,
+               stringsAsFactors = FALSE)
+  }
+  names(analysis_data) <- c(treatment_column, volume_column)
+
+  # CODE_REVIEW.md R3.7 — tapply()'s default na.rm = FALSE meant a single
+  # missing volume at the evaluation day silently NA'd that group's mean and
+  # every quantity derived from it.
+  group_means <- stats::setNames(ep$group_means$Mean_Volume,
+                                ep$group_means$Treatment)
+  group_n <- stats::setNames(ep$group_means$N, ep$group_means$Treatment)
+
+  # Fail loudly rather than propagating NA when a named arm is absent.
+  for (nm in c(control_name, drug_a_name, drug_b_name, combo_name)) {
+    if (!nm %in% names(group_means) || !is.finite(group_means[[nm]])) {
+      stop("Treatment group '", nm, "' has no usable volume observations at ",
+           "day ", eval_time_point, ".", call. = FALSE)
+    }
+  }
   
   # Extract mean volumes for each group
   control_mean <- group_means[control_name]
@@ -148,50 +216,83 @@ analyze_drug_synergy <- function(df,
   fe_b <- tgi_b / 100
   fe_combo <- tgi_combo / 100
   
+  # CODE_REVIEW.md R3.6 / R3.7 / G.6 — attach mouse-level bootstrap intervals to
+  # every synergy metric. Resampling the control arm too propagates the TGI
+  # denominator's uncertainty, which was previously treated as a known constant.
+  per_mouse_vols <- list(
+    control = as.numeric(analysis_data[[volume_column]][
+      analysis_data[[treatment_column]] == control_name]),
+    drug_a  = as.numeric(analysis_data[[volume_column]][
+      analysis_data[[treatment_column]] == drug_a_name]),
+    drug_b  = as.numeric(analysis_data[[volume_column]][
+      analysis_data[[treatment_column]] == drug_b_name]),
+    combo   = as.numeric(analysis_data[[volume_column]][
+      analysis_data[[treatment_column]] == combo_name])
+  )
+  synergy_ci <- if (n_boot > 0L) {
+    synergy_bootstrap(per_mouse_vols, n_boot = as.integer(n_boot),
+                      seed = boot_seed)
+  } else NULL
+
   # Calculate expected effect using Bliss Independence model.
   # Shared scalar/vector formula in R/utils_synergy.R.
   bliss_expected_fe <- synergy_bliss_expected(fe_a, fe_b)
   bliss_expected_tgi <- bliss_expected_fe * 100
 
-  # Calculate expected effect using Loewe Additivity model
-  # Under a linear dose-response assumption (Berenbaum, 1989), the Loewe expected
-  # combination effect equals the sum of individual fractional effects.
-  # Capped at 1.0 since fractional effects cannot exceed 100% inhibition.
-  loewe_expected_fe <- min(fe_a + fe_b, 1.0)
-  loewe_expected_tgi <- loewe_expected_fe * 100
-  
-  # Calculate Combination Index (CI) based on Loewe Additivity
-  # CI = Loewe_Expected_FE / FE_combo = min(FE_A + FE_B, 1) / FE_combo
-  # CI < 1 indicates synergy, CI = 1 indicates additivity, CI > 1 indicates antagonism
-  if (fe_combo > 0) {
-    ci_value <- loewe_expected_fe / fe_combo
-  } else {
-    ci_value <- NA
-    warning("Cannot calculate Combination Index: Combination effect is zero or negative")
+  # R17.2: the Loewe / Combination Index path was removed.
+  #
+  # What was implemented was not Loewe additivity. True Loewe is dose-equivalence
+  # -- CI = d_A/D_A + d_B/D_B, where D_A is the dose of A alone producing the
+  # combination's effect -- which needs a dose-response curve per agent that these
+  # single-dose designs do not collect. The stand-in, min(FE_A + FE_B, 1), is
+  # *response additivity*, a different and largely discredited null.
+  #
+  # Response additivity fails the sham-combination test: combine a drug with
+  # itself and it predicts 2 x FE, so an agent at FE = 0.5 should reach 100 %
+  # inhibition. It will not, so the method calls a drug antagonistic with itself.
+  # Measured consequence: across the (FE_A, FE_B) grid with the combination set to
+  # exactly Bliss-additive, 42 % of cells were labelled antagonistic and not one
+  # was labelled synergistic -- a one-directional bias covering most of the range
+  # where active single agents actually sit.
+  #
+  # Bliss independence is retained. It has a defensible probabilistic
+  # interpretation (independent action on surviving fraction), and its excess
+  # carries a bootstrap interval, so the verdict can be read against uncertainty
+  # rather than a threshold alone.
+
+  # R14.2: an agent that ACCELERATES growth has a negative fractional effect.
+  # Bliss multiplies surviving fractions, so it is defined for inhibitory agents;
+  # at negative effect the expectation and the excess both stop meaning what the
+  # label claims, and the excess goes large and positive precisely *because* an
+  # agent did harm. The honest output is that the analysis does not apply.
+  # (This guard previously sat with the Loewe block removed in R17.2.)
+  agents_inhibitory <- is.finite(fe_a) && is.finite(fe_b) && fe_a > 0 && fe_b > 0
+  if (!agents_inhibitory) {
+    warning("Synergy not evaluated: a single-agent arm did not inhibit growth ",
+            "relative to control (fractional effect <= 0). Bliss independence is ",
+            "defined for inhibitory agents; a synergy verdict here would be ",
+            "meaningless.", call. = FALSE)
   }
-  
-  # Determine synergy interpretation based on CI
-  # CI < 1 indicates synergy, CI = 1 indicates additivity, CI > 1 indicates antagonism
-  if (is.na(ci_value)) {
-    synergy_interpretation <- "Cannot determine (CI calculation error)"
-  } else if (ci_value < 0.85) {
-    synergy_interpretation <- "Synergistic (CI < 0.85)"
-  } else if (ci_value < 1.15) {
-    synergy_interpretation <- "Additive (0.85 <= CI <= 1.15)"
-  } else {
-    synergy_interpretation <- "Antagonistic (CI > 1.15)"
-  }
-  
+
   # Calculate the difference between observed and expected effects
   bliss_difference <- fe_combo - bliss_expected_fe
-  loewe_difference <- fe_combo - loewe_expected_fe
   
-  # Determine synergy label based on both models
-  if (bliss_difference > 0.1 && loewe_difference > 0.1) {
+  # Synergy label, now from Bliss alone (R17.2 removed the Loewe arm).
+  # CODE_REVIEW.md R3.28 — `strong_synergy_delta` replaces the hardcoded 0.1.
+  # NOTE this label is computed from three group means with no uncertainty
+  # attached; see the `synergy_ci` element and the Assumptions section for why a
+  # label alone should not drive a decision. The bootstrap interval on
+  # Bliss_Excess_FE is the quantity to read, not this string.
+  d <- strong_synergy_delta
+  if (!agents_inhibitory) {
+    # The Bliss difference is large and positive here precisely *because* a
+    # single agent did harm, so the label logic would read the harm as synergy.
+    synergy_label <- "Not evaluable (a single agent did not inhibit growth)"
+  } else if (bliss_difference > d) {
     synergy_label <- "Strong Synergy"
-  } else if (bliss_difference > 0 && loewe_difference > 0) {
+  } else if (bliss_difference > 0) {
     synergy_label <- "Synergy"
-  } else if (bliss_difference > -0.1 && loewe_difference > -0.1) {
+  } else if (bliss_difference > -d) {
     synergy_label <- "Additivity"
   } else {
     synergy_label <- "Antagonism"
@@ -211,18 +312,17 @@ analyze_drug_synergy <- function(df,
   
   # Create a data frame for summary results
   summary_df <- data.frame(
-    Treatment = c(drug_a_name, drug_b_name, combo_name, "Bliss Expected", "Loewe Expected"),
-    Mean_Volume = c(drug_a_mean, drug_b_mean, combo_mean, 
-                   control_mean * (1 - bliss_expected_fe), 
-                   control_mean * (1 - loewe_expected_fe)),
-    TGI_Percent = c(tgi_a, tgi_b, tgi_combo, bliss_expected_tgi, loewe_expected_tgi),
-    Fractional_Effect = c(fe_a, fe_b, fe_combo, bliss_expected_fe, loewe_expected_fe)
+    Treatment = c(drug_a_name, drug_b_name, combo_name, "Bliss Expected"),
+    Mean_Volume = c(drug_a_mean, drug_b_mean, combo_mean,
+                   control_mean * (1 - bliss_expected_fe)),
+    TGI_Percent = c(tgi_a, tgi_b, tgi_combo, bliss_expected_tgi),
+    Fractional_Effect = c(fe_a, fe_b, fe_combo, bliss_expected_fe)
   )
   
   # Add synergy metrics to a separate data frame
   synergy_metrics <- data.frame(
-    Metric = c("Bliss Difference", "Loewe Difference", "Combination Index", "Interpretation"),
-    Value = c(bliss_difference, loewe_difference, ci_value, synergy_interpretation)
+    Metric = c("Bliss Difference", "Interpretation"),
+    Value = c(bliss_difference, synergy_label)
   )
   
   # Create statistical test summary
@@ -234,10 +334,10 @@ analyze_drug_synergy <- function(df,
   
   # Prepare data for plotting (will be used by plot_drug_synergy function)
   plot_data <- data.frame(
-    Treatment = factor(c(drug_a_name, drug_b_name, combo_name, "Bliss Expected", "Loewe Expected"),
-                     levels = c(drug_a_name, drug_b_name, "Bliss Expected", "Loewe Expected", combo_name)),
-    TGI = c(tgi_a, tgi_b, bliss_expected_tgi, loewe_expected_tgi, tgi_combo),
-    Type = c("Observed", "Observed", "Expected", "Expected", "Observed")
+    Treatment = factor(c(drug_a_name, drug_b_name, combo_name, "Bliss Expected"),
+                     levels = c(drug_a_name, drug_b_name, "Bliss Expected", combo_name)),
+    TGI = c(tgi_a, tgi_b, tgi_combo, bliss_expected_tgi),
+    Type = c("Observed", "Observed", "Observed", "Expected")
   )
   
   # Print results (only when verbose)
@@ -253,14 +353,11 @@ analyze_drug_synergy <- function(df,
     
     message("Expected Effects:")
     message("Bliss Independence: TGI = ", round(bliss_expected_tgi, 1), "%")
-    message("Loewe Additivity: TGI = ", round(loewe_expected_tgi, 1), "%\n")
     
     message("Synergy Assessment:")
     message("Bliss Difference: ", round(bliss_difference * 100, 1), "% (", 
                ifelse(bliss_difference > 0, "Synergy", "No Synergy"), ")")
-    message("Loewe Difference: ", round(loewe_difference * 100, 1), "% (", 
-               ifelse(loewe_difference > 0, "Synergy", "No Synergy"), ")")
-    message("Combination Index: ", round(ci_value, 2), " (", synergy_interpretation, ")\n")
+    message("Overall: ", synergy_label, "\n")
     
     message("Statistical Tests:")
     message("Combo vs ", drug_a_name, ": p = ", round(t_test_a_combo$p.value, 4), 
@@ -327,21 +424,20 @@ analyze_drug_synergy <- function(df,
   return(list(
     summary = summary_df,
     synergy_metrics = synergy_metrics,
+    # CODE_REVIEW.md R3.6 / R3.7 — bootstrap percentile CIs for every metric,
+    # plus per-group n so a reader can weigh the point estimates.
+    synergy_ci  = synergy_ci,
+    group_n     = group_n,
+    attrition   = ep$attrition,
+    endpoint_method = ep$method,
+    eval_time_point = eval_time_point,
+    thresholds  = list(
+                       strong_synergy_delta = strong_synergy_delta),
     bliss_independence = list(
       expected_effect = bliss_expected_fe,
       observed_effect = fe_combo,
       difference = bliss_difference,
       synergy = bliss_difference > 0
-    ),
-    loewe_additivity = list(
-      expected_effect = loewe_expected_fe,
-      observed_effect = fe_combo,
-      difference = loewe_difference,
-      synergy = loewe_difference > 0
-    ),
-    combination_index = list(
-      ci = ci_value,
-      interpretation = synergy_interpretation
     ),
     statistical_tests = stat_tests,
     overall_assessment = synergy_label,
@@ -417,8 +513,7 @@ plot_drug_synergy <- function(synergy_results, custom_title = NULL, custom_color
     ggplot2::scale_fill_manual(values = fill_colors) +
     ggplot2::labs(
       title = title,
-      subtitle = paste("Synergy Assessment:", synergy_results$overall_assessment, 
-                     "(CI =", round(synergy_results$combination_index$ci, 2), ")"),
+      subtitle = paste("Synergy Assessment:", synergy_results$overall_assessment),
       x = "Treatment",
       y = "Tumor Growth Inhibition (%)",
       fill = "Data Type"

@@ -14,11 +14,18 @@ survival_statistics(
   dose_column = NULL,
   reference_group = NULL,
   firth_correction = TRUE,
+  p_adjust_method = c("bonferroni", "holm", "fdr", "none"),
+  permutation_logrank = TRUE,
   verbose = TRUE
 )
 }
 \arguments{
-\item{df}{Data frame containing survival data}
+\item{df}{Data frame containing survival data, with \strong{one row per animal}.
+Each row must carry that animal's time-to-event and event indicator. A
+longitudinal frame (one row per measurement occasion) is rejected with an
+error, because fitting a Cox model to it would treat every measurement as
+an independent subject at risk. Reduce to one row per animal first — e.g.
+each animal's last observation, carrying its event indicator.}
 
 \item{time_column}{Name of column containing time-to-event data. Default: "Day"}
 
@@ -35,6 +42,20 @@ survival_statistics(
 \item{reference_group}{Treatment group to use as reference. Default: NULL (uses first alphabetically)}
 
 \item{firth_correction}{Whether to apply Firth's correction for separation issues. Default: TRUE}
+
+\item{p_adjust_method}{Multiplicity adjustment applied across the k-1
+treatment-vs-reference comparisons: "bonferroni" (default), "holm", "fdr"
+(Benjamini-Hochberg), or "none". The unadjusted values are retained in
+\code{P_Value_Unadjusted} and the method used in \code{P_Adjust_Method}.}
+
+\item{permutation_logrank}{Logical. When the log-rank fallback is used (a
+group has zero events, so the Cox partial likelihood is not estimable), use
+an exact-style permutation log-rank via the \pkg{coin} package rather than
+the asymptotic chi-square approximation. That regime — few events, small n —
+is where the asymptotic test is least trustworthy and where permutation is
+valid without any large-sample appeal. Falls back to \code{survdiff()} with
+a message when \pkg{coin} is unavailable. Default TRUE.
+CODE_REVIEW.md H.4.}
 
 \item{verbose}{Whether to print analysis details to the console. Default: TRUE}
 }
@@ -66,15 +87,28 @@ The function adapts to data characteristics:
 }
 }
 \examples{
-# Load example data
-data(combo_treatment_synthetic_data)
-data_processed <- calculate_volume(combo_treatment_synthetic_data)
-data_processed <- calculate_dates(data_processed, start_date = "03/24/2025")
+# master_synthetic_data is longitudinal (one row per measurement occasion)
+# and carries a Survival_Censor column. Reduce it to one row per animal
+# before calling — the function requires that and will error otherwise.
+data(master_synthetic_data)
+
+per_animal <- do.call(rbind, lapply(
+  split(master_synthetic_data,
+        list(master_synthetic_data$ID, master_synthetic_data$Treatment),
+        drop = TRUE),
+  function(animal) {
+    animal <- animal[order(animal$Day), ]
+    last <- animal[nrow(animal), ]
+    # an event anywhere in the record is an event for that animal
+    last$Survival_Censor <- max(animal$Survival_Censor, na.rm = TRUE)
+    last
+  }
+))
 
 # Run survival analysis
 results <- survival_statistics(
-  df = data_processed,
-  reference_group = "Control"
+  df = per_animal,
+  reference_group = "Vehicle"
 )
 
 # Access results

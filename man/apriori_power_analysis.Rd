@@ -13,6 +13,9 @@ apriori_power_analysis(
   target_power = c(0.8, 0.9),
   n_per_group = NULL,
   mode = c("find_n", "find_power"),
+  n_comparisons = NULL,
+  p_adjust_method = c("none", "bonferroni"),
+  dropout_rate = 0,
   sd_sensitivity_range = 0.4
 )
 }
@@ -63,6 +66,25 @@ computed at these sample sizes instead of solving for required N.}
 target_power) combination return the N per group required to achieve it.
 \code{"find_power"} — requires \code{n_per_group} to be set; returns
 achieved power at those N values.}
+
+\item{n_comparisons}{Integer. Number of treatment-vs-control comparisons the
+analysis will make. Used with \code{p_adjust_method = "bonferroni"} to
+derive the effective per-comparison alpha. Defaults to \code{n_groups - 1}
+(the vs-control family these designs normally use).}
+
+\item{p_adjust_method}{\code{"none"} (default, backward compatible) or
+\code{"bonferroni"}. When \code{"bonferroni"}, the sample size is computed
+at \code{alpha / n_comparisons} rather than at \code{alpha}, so the
+calculation matches the analysis that will actually be run. Powering at an
+unadjusted alpha and then analysing with an adjustment delivers materially
+less power than the nominal target.}
+
+\item{dropout_rate}{Numeric in [0, 1). Expected proportion of enrolled
+animals that will not be analysable (euthanasia for tumour burden,
+technical failure). \code{Required_N} is the number that must be
+analysable; \code{Enroll_N = ceiling(Required_N / (1 - dropout_rate))} is
+the number to enrol. Default 0 for backward compatibility, but in
+preclinical oncology it is rarely 0.}
 
 \item{sd_sensitivity_range}{Numeric scalar 0–1 (default 0.4). If > 0, a
 sensitivity table is appended showing how required N changes when the

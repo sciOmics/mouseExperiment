@@ -1,7 +1,7 @@
 Package: mouseExperiment
 Title: Analysis of Mouse Tumor Growth Experiments
-Version: 0.4.12
-Date: 2026-06-18
+Version: 0.22.0
+Date: 2026-07-30
 Authors@R: 
     person("David", "Woods", , "david@sciomics.bio", role = c("aut", "cre", "cph"))
 Author: David Woods [aut, cre, cph]
@@ -15,36 +15,40 @@ Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Suggests:
-    bayesplot (>= 1.10),
-    brms (>= 2.19),
-    clinfun,
     covr (>= 3.6.0),
-    gamm4 (>= 0.2-6),
-    mgcv (>= 1.8-40),
-    pwr,
-    ggpubr,
+    survminer,
     knitr,
     rmarkdown,
     testthat (>= 3.0.0),
-    withr
+    withr,
+    cmdstanr (>= 0.5.0)
+Additional_repositories: https://stan-dev.r-universe.dev
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 Imports: 
     anytime,
+    bayesplot (>= 1.10),
+    brms (>= 2.19),
     car,
+    clinfun,
+    coin,
     coxphf,
-    cowplot,
     dplyr,
     drc,
     emmeans,
+    gamm4 (>= 0.2-6),
     ggplot2,
+    ggpubr,
     lme4,
     lmerTest,
-    MASS,
+    mgcv (>= 1.8-40),
+    posterior (>= 1.0),
+    pwr,
     rlang,
+    rstan,
     stats,
     survival,
-    survminer,
+    tools,
     utils
 Depends: 
     R (>= 3.5)

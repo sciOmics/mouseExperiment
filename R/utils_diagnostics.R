@@ -17,6 +17,7 @@
 #' @return Named list with `diag_qq_plot`, `diag_resid_fitted_plot`,
 #'   `diag_scale_location_plot`. Any element is `NULL` if construction
 #'   fails or `ggplot2` is unavailable.
+#' @noRd
 #' @keywords internal
 build_residual_diagnostic_plots <- function(model, title_prefix = "Model") {
   out <- list(diag_qq_plot             = NULL,
@@ -102,6 +103,7 @@ build_residual_diagnostic_plots <- function(model, title_prefix = "Model") {
 #'   in the model.
 #' @param title_prefix Character prefix for the plot title.
 #' @return A ggplot, or `NULL` on failure.
+#' @noRd
 #' @keywords internal
 build_random_effects_qq_plot <- function(model,
                                          id_column = NULL,
@@ -109,8 +111,6 @@ build_random_effects_qq_plot <- function(model,
   if (is.null(model)) return(NULL)
   if (!inherits(model, "lmerMod")) return(NULL)
   if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
-  if (!requireNamespace("lme4", quietly = TRUE))    return(NULL)
-
   tryCatch({
     re_list <- lme4::ranef(model)
     if (length(re_list) == 0L) return(NULL)
@@ -173,15 +173,36 @@ build_random_effects_qq_plot <- function(model,
 #'
 #' @param model A fitted `lmerMod` object.
 #' @return A list with `cooks_distance` and `dfbetas`, or `NULL`.
+#' @noRd
 #' @keywords internal
 build_lmm_influence <- function(model) {
   if (is.null(model)) return(NULL)
   if (!inherits(model, "lmerMod")) return(NULL)
-  if (!requireNamespace("lme4", quietly = TRUE)) return(NULL)
-
   tryCatch({
     # Per-observation influence — most informative case-deletion view.
-    infl <- lme4::influence(model, obs = TRUE)
+    # R18.1: two separate faults kept these NULL on every lme4 run, while the
+    # dashboard Info tab advertised them as available.
+    #
+    # First, the call was `lme4::influence(...)`. `influence` is an S3 generic in
+    # stats and lme4 registers influence.merMod without exporting a function of
+    # that name, so `lme4::influence` throws "not an exported object".
+    #
+    # Second -- and this is why fixing the namespace alone was not enough --
+    # influence.merMod works by case-deletion refitting, which re-evaluates the
+    # original model call. That call records `data = analysis_df`, a local of the
+    # fitting function that no longer exists once a caller holds the result, so
+    # the refit fails with "object 'analysis_df' not found".
+    #
+    # Refit once here from the stored model frame, where the data is in scope,
+    # and take influence from that. The extra fit is negligible against the n
+    # refits influence itself performs.
+    dat <- model@frame
+    fml <- stats::formula(model)
+    environment(fml) <- environment()
+    refit <- lme4::lmer(
+      fml, data = dat, REML = lme4::isREML(model),
+      control = lme4::lmerControl(optimizer = "bobyqa", calc.derivs = FALSE))
+    infl <- stats::influence(refit, obs = TRUE)
     cd   <- stats::cooks.distance(infl)
     df   <- stats::dfbetas(infl)
 

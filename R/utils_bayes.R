@@ -68,12 +68,35 @@ make_mcmc_diagnostics <- function(posterior_summary_df, total_draws = NULL) {
 #'     is struggling to explore the typical set.
 #' }
 #'
-#' \code{clean = TRUE} iff all three pass (no divergences, no max-treedepth
-#' hits, E-BFMI \eqn{\ge} 0.3).
+#' \code{clean = TRUE} iff there are no divergences and E-BFMI \eqn{\ge} 0.3.
+#' Max-treedepth hits are reported but deliberately excluded: hitting the limit
+#' makes sampling slow, not wrong, so a run that is merely inefficient should not
+#' be flagged as untrustworthy. (The documentation previously claimed all three
+#' were required, which the code has never done — R16.1.)
 #'
 #' Returns a one-row data frame so it can be displayed in a dashboard table
 #' alongside the per-parameter diagnostics.
 #' @noRd
+# Configured max_treedepth for a fitted brms model. Stan's default is 10; brms
+# passes it through `control`. Read defensively across backends and fall back to
+# the Stan default rather than guessing from the observed draws (R16.1).
+.me_max_treedepth <- function(model) {
+  if (is.null(model)) return(10)
+  cand <- list(
+    tryCatch(model$stan_args$control$max_treedepth, error = function(e) NULL),
+    tryCatch(model$fit@stan_args[[1]]$control$max_depth, error = function(e) NULL),
+    tryCatch(model$fit@stan_args[[1]]$control$max_treedepth, error = function(e) NULL),
+    tryCatch(attr(model$fit@sim$samples[[1]], "args")$control$max_depth,
+             error = function(e) NULL)
+  )
+  for (v in cand) {
+    if (!is.null(v) && length(v) == 1L && is.finite(as.numeric(v))) {
+      return(as.numeric(v))
+    }
+  }
+  10  # Stan default
+}
+
 make_nuts_diagnostics <- function(model) {
   default <- data.frame(
     n_divergent     = NA_integer_,
@@ -82,7 +105,7 @@ make_nuts_diagnostics <- function(model) {
     clean           = NA,
     stringsAsFactors = FALSE
   )
-  if (!requireNamespace("brms", quietly = TRUE) || is.null(model)) return(default)
+  if (is.null(model)) return(default)
 
   np <- tryCatch(brms::nuts_params(model), error = function(e) NULL)
   if (is.null(np) || !is.data.frame(np) || !"Parameter" %in% colnames(np)) {
@@ -91,16 +114,31 @@ make_nuts_diagnostics <- function(model) {
 
   div <- np$Value[np$Parameter == "divergent__"]
   td  <- np$Value[np$Parameter == "treedepth__"]
-  max_td_val <- if (length(td) > 0) max(td, na.rm = TRUE) else NA_real_
-  n_div   <- if (length(div) > 0) as.integer(sum(div > 0, na.rm = TRUE)) else NA_integer_
-  n_maxtd <- if (length(td) > 0 && is.finite(max_td_val)) {
-    as.integer(sum(td >= max_td_val, na.rm = TRUE))
+  n_div <- if (length(div) > 0) as.integer(sum(div > 0, na.rm = TRUE)) else NA_integer_
+
+  # R16.1: this compared each draw against max(td) -- the maximum treedepth the
+  # sampler HAPPENED to reach -- rather than against the configured max_treedepth
+  # limit. When sampling is healthy and never approaches the limit, that counts
+  # every draw at the modal depth as a "hit". A worked case: a two-parameter
+  # Weibull AFT whose treedepths were 1, 2 and 3 against a limit of 10 reported
+  # 1425 of 1500 draws hitting max treedepth. The true count was zero.
+  #
+  # The direction of this error is unusual for this review -- it cries wolf
+  # rather than staying silent -- but the cost is the same. A number that is
+  # always alarming is one nobody can act on, and it hides the genuine
+  # saturation it exists to detect.
+  max_td_limit <- .me_max_treedepth(model)
+  n_maxtd <- if (length(td) > 0 && is.finite(max_td_limit)) {
+    as.integer(sum(td >= max_td_limit, na.rm = TRUE))
   } else NA_integer_
 
   ebfmi <- tryCatch({
     if (utils::packageVersion("brms") >= "2.20.0" &&
         exists("ebfmi", where = asNamespace("brms"))) {
-      vals <- brms::ebfmi(model)
+      # R18.1: `ebfmi` is not exported by brms even in versions that have it,
+      # so `brms::ebfmi` throws. The exists() guard above has already proved it
+      # is present; fetch it from the namespace directly.
+      vals <- get("ebfmi", envir = asNamespace("brms"))(model)
       if (length(vals) > 0) min(vals, na.rm = TRUE) else NA_real_
     } else {
       # Fall back to rstan if available
@@ -190,7 +228,7 @@ resolve_brms_backend <- function(backend = c("rstan", "cmdstanr")) {
 #'
 #' For a fitted brmsfit, simulates from the posterior predictive
 #' distribution at the training data points and computes the empirical
-#' coverage of nominal 50\%, 80\%, and 95\% intervals against the observed
+#' coverage of nominal 50%, 80%, and 95% intervals against the observed
 #' response. Good coverage means \code{empirical / nominal ~ 1}; large
 #' deviations indicate model mis-specification.
 #'
@@ -206,7 +244,7 @@ resolve_brms_backend <- function(backend = c("rstan", "cmdstanr")) {
 #' (\code{\link{bayes_loo}} for that).
 #' @noRd
 bayes_ppc_coverage <- function(model, response_var = NULL) {
-  if (!requireNamespace("brms", quietly = TRUE) || is.null(model)) return(NULL)
+  if (is.null(model)) return(NULL)
   yrep <- tryCatch(brms::posterior_predict(model),
                    error = function(e) NULL,
                    warning = function(w) NULL)
@@ -246,7 +284,7 @@ bayes_ppc_coverage <- function(model, response_var = NULL) {
 #' Returns a numeric vector of length \code{ncol(contrast_draws)} with the
 #' probability that each contrast's effect is in its dominant direction.
 #' Reports \code{max(P(effect > 0), P(effect < 0))} — the directional
-#' posterior probability that replaces the awkward "does the 95\% CrI exclude
+#' posterior probability that replaces the awkward "does the 95% CrI exclude
 #' zero?" interpretation with a quantitative posterior statement.
 #'
 #' Implementation pulls posterior draws via \code{emmeans::as.mcmc.emmGrid}
@@ -255,8 +293,7 @@ bayes_ppc_coverage <- function(model, response_var = NULL) {
 #' @noRd
 emm_p_direction <- function(emm_or_contrast, n_contrasts = NULL) {
   default <- if (is.null(n_contrasts)) NA_real_ else rep(NA_real_, n_contrasts)
-  if (!requireNamespace("emmeans", quietly = TRUE) ||
-      is.null(emm_or_contrast)) return(default)
+  if (is.null(emm_or_contrast)) return(default)
   draws_mat <- tryCatch({
     mc <- emmeans::as.mcmc.emmGrid(emm_or_contrast)
     as.matrix(mc)
@@ -272,13 +309,13 @@ emm_p_direction <- function(emm_or_contrast, n_contrasts = NULL) {
 
 #' Posterior Bayesian R^2 summary for a brmsfit
 #'
-#' Returns the Estimate, Est.Error, and 95\% CrI of \code{brms::bayes_R2}
+#' Returns the Estimate, Est.Error, and 95% CrI of \code{brms::bayes_R2}
 #' as a one-row data frame. The Bayesian analogue of OLS R^2: a posterior
 #' distribution of variance explained, not a point estimate. Returns
 #' \code{NULL} when the model can't be evaluated.
 #' @noRd
 bayes_r2_summary <- function(model) {
-  if (!requireNamespace("brms", quietly = TRUE) || is.null(model)) return(NULL)
+  if (is.null(model)) return(NULL)
   r2 <- tryCatch(brms::bayes_R2(model, summary = TRUE),
                  error = function(e) NULL,
                  warning = function(w) NULL)
@@ -316,7 +353,7 @@ bayes_r2_summary <- function(model) {
 #'
 #' @noRd
 bayes_loo <- function(model) {
-  if (!requireNamespace("brms", quietly = TRUE) || is.null(model)) return(NULL)
+  if (is.null(model)) return(NULL)
   loo_obj <- tryCatch(brms::loo(model, save_psis = TRUE),
                       error = function(e) NULL,
                       warning = function(w) NULL)
@@ -367,7 +404,8 @@ bayes_prior_posterior_plot <- function(model, treatment_column) {
   post <- tryCatch(brms::as_draws_df(model), error = function(e) NULL)
   if (is.null(post)) return(NULL)
 
-  safe_tx <- gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1", treatment_column)
+  safe_tx <- gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1", treatment_column,
+                  perl = TRUE)
   tx_cols <- grep(paste0("^b_", safe_tx), names(post), value = TRUE)
   if (length(tx_cols) == 0) return(NULL)
 
@@ -444,4 +482,219 @@ build_posterior_summary <- function(model) {
   names(fixed_df)[names(fixed_df) == "l-95% CI"] <- "Lower_95_CrI"
   names(fixed_df)[names(fixed_df) == "u-95% CI"] <- "Upper_95_CrI"
   fixed_df
+}
+
+
+# ── Data-scaled, per-coefficient priors ───────────────────────────────────────
+#
+# CODE_REVIEW.md R3.8 / G.5 — the prior block was
+#
+#   prior_string(paste0("normal(0, ", b_sd, ")"),       class = "b")
+#   prior_string(paste0("normal(0, ", b_sd * 2.5, ")"), class = "Intercept")
+#
+# which has two problems.
+#
+# (a) One prior for coefficients on incommensurable scales. `class = "b"`
+#     applied a single normal(0, b_sd) to every fixed effect in
+#     `Volume ~ Treatment * Day`: the Treatment main effects (differences in log
+#     volume, plausibly +/-0.5), the Day slope (log growth per day, ~0.10-0.25)
+#     and the Treatment:Day interactions (differences in growth rate,
+#     ~0.01-0.08). Under the default prior_strength = "skeptical" (b_sd = 0.25)
+#     the prior was meaningfully informative on the main effect but effectively
+#     flat on the interaction — the parameter the whole analysis exists to
+#     estimate. The prior-strength ladder did not do what its name promised:
+#     "skeptical" was not skeptical about the treatment effect.
+#
+# (b) The Intercept prior ignored the response scale. The maintainer confirms
+#     mm3 is the common input unit; for the package's own master_synthetic_data
+#     that is log-volume 2.26-8.35, centred near 5.5, so the "skeptical"
+#     Intercept prior normal(0, 0.625) sat about nine prior SDs from the data.
+#     brms's own default is data-scaled (student_t(3, median(y), 2.5*mad(y)))
+#     for exactly this reason. With a few hundred observations the likelihood
+#     dominates the point estimate, but the prior predictive is nonsense
+#     (tumours of ~1 mm3) and prior_posterior_plot — the package's own
+#     prior-sensitivity tool — showed extreme conflict on every real dataset.
+#
+# The fix reinterprets `b_sd` as the prior SD on the *total log-fold change over
+# the study duration*, which is unit-free and interpretable, then divides by the
+# observed time span to get the per-day slope and interaction scales. That makes
+# the ladder invariant to whether time is recorded in days, weeks or hours, and
+# gives "skeptical" a concrete meaning: a total treatment-vs-control difference
+# of exp(0.25) ~ 1.3x is already a large effect under it.
+
+#' Build data-scaled, per-coefficient priors for a brms LMM
+#'
+#' @param formula The brms formula.
+#' @param data The modelling data frame (post-transform).
+#' @param response Name of the response column on the modelling scale.
+#' @param prior_strength One of the non-manual presets.
+#' @param time_column Name of the time covariate, used to identify slope and
+#'   interaction coefficients and to scale them by the study span.
+#' @param include_sd Logical; add a `class = "sd"` prior (random effects present).
+#' @return A `brmsprior` object.
+#' @noRd
+#' @keywords internal
+#' Prior scale constants derived from the data
+#'
+#' Split out from \code{bayes_scaled_priors()} so the arithmetic is unit-testable
+#' without brms installed (the Bayesian paths skip when brms is absent, which
+#' would otherwise leave this logic unexercised).
+#'
+#' @param y Numeric response on the modelling scale.
+#' @param tt Numeric time covariate.
+#' @param prior_strength Non-manual preset name.
+#' @return List with `response_median`, `response_mad`, `time_span`,
+#'   `b_sd_total`, `b_sd_per_time`, `intercept_sd`, `aux_rate`.
+#' @noRd
+#' @keywords internal
+bayes_prior_scales <- function(y, tt, prior_strength) {
+  pp   <- bayes_prior_params(prior_strength)
+  b_sd <- pp$b_sd
+
+  y <- as.numeric(y); y <- y[is.finite(y)]
+  if (length(y) == 0L) stop("Response has no finite values.", call. = FALSE)
+
+  y_med <- stats::median(y)
+  # mad() can be 0 with heavily tied data; fall back to sd, then to 1.
+  y_mad <- stats::mad(y)
+  if (!is.finite(y_mad) || y_mad <= 0) y_mad <- stats::sd(y)
+  if (!is.finite(y_mad) || y_mad <= 0) y_mad <- 1
+
+  tt <- as.numeric(tt); tt <- tt[is.finite(tt)]
+  time_span <- if (length(tt) > 1L) diff(range(tt)) else 1
+  if (!is.finite(time_span) || time_span <= 0) time_span <- 1
+
+  # Scale unit for slope / interaction coefficients: the slope that would
+  # traverse the entire observed response range over the study. No real slope can
+  # much exceed it, so a prior at ~1x this is weakly informative — it rules out
+  # the absurd without fighting the plausible.
+  #
+  # This must NOT reuse the `b_sd` ladder. `b_sd` is a width for coefficients on
+  # the response's own scale (log-ratios, group-mean differences), where 0.25
+  # for "skeptical" is sensible. Applying 0.25 to a per-time slope scale makes
+  # the prior 5-20x too tight: on the package's own body-weight fixture the true
+  # interaction is 0.14 g/day, and 0.25 * mad(y) / span put the prior 21 SDs
+  # away from it — the same defect as the original fixed Intercept prior, in the
+  # opposite direction. Verified empirically across both the gram scale and the
+  # log-volume scale: only a multiplier near 1x this unit keeps "skeptical"
+  # within ~1-2 SDs of a real effect on both.
+  y_range   <- diff(range(y))
+  if (!is.finite(y_range) || y_range <= 0) y_range <- y_mad
+  rate_unit <- y_range / time_span
+  rate_mult <- switch(prior_strength,
+    skeptical          = 1.0,
+    informative        = 1.5,
+    weakly_informative = 2.0,
+    diffuse            = 5.0,
+    2.0
+  )
+
+  list(
+    response_median = y_med,
+    response_mad    = y_mad,
+    response_range  = y_range,
+    time_span       = time_span,
+    # Width for coefficients on the response scale (group-mean differences).
+    b_sd_total      = b_sd,
+    # Width for per-time-unit coefficients (the Day slope and the
+    # Treatment:Day interactions). Scales with the response range and inversely
+    # with the study duration, so it is invariant to both the response units and
+    # the time units.
+    b_sd_per_time   = rate_mult * rate_unit,
+    rate_unit       = rate_unit,
+    rate_multiplier = rate_mult,
+    intercept_sd    = 2.5 * y_mad,
+    aux_rate        = pp$exp_rate / max(y_mad, 1e-6)
+  )
+}
+
+bayes_scaled_priors <- function(formula, data, response, prior_strength,
+                                time_column = "Day", include_sd = TRUE) {
+  sc        <- bayes_prior_scales(data[[response]], data[[time_column]],
+                                  prior_strength)
+  b_sd      <- sc$b_sd_total
+  b_sd_rate <- sc$b_sd_per_time
+  y_med     <- sc$response_median
+  y_mad     <- sc$response_mad
+  time_span <- sc$time_span
+
+  # Discover the actual coefficient names rather than guessing at them.
+  gp <- tryCatch(brms::get_prior(formula, data = data),
+                 error = function(e) NULL)
+  b_coefs <- if (!is.null(gp)) {
+    unique(gp$coef[gp$class == "b" & nzchar(gp$coef)])
+  } else character(0)
+
+  priors <- c(
+    # Intercept on the response scale, as brms does by default.
+    brms::prior_string(
+      paste0("normal(", round(y_med, 4), ", ",
+             round(sc$intercept_sd, 4), ")"),
+      class = "Intercept"
+    ),
+    # Blanket fallback for any coefficient not matched below.
+    brms::prior_string(paste0("normal(0, ", b_sd, ")"), class = "b")
+  )
+
+  # Slope and interaction coefficients get the per-day scale.
+  rate_coefs <- b_coefs[b_coefs == time_column |
+                          grepl(paste0("(^|:)", time_column, "($|:)"), b_coefs)]
+  for (cf in rate_coefs) {
+    priors <- c(priors, brms::prior_string(
+      paste0("normal(0, ", signif(b_sd_rate, 6), ")"), class = "b", coef = cf
+    ))
+  }
+
+  # Residual and random-effect SDs scaled to the response's spread.
+  priors <- c(priors, brms::prior_string(
+    paste0("exponential(", signif(sc$aux_rate, 6), ")"), class = "sigma"
+  ))
+  if (isTRUE(include_sd)) {
+    priors <- c(priors, brms::prior_string(
+      paste0("exponential(", signif(sc$aux_rate, 6), ")"), class = "sd"
+    ))
+  }
+
+  sc$rate_coefficients <- rate_coefs
+  attr(priors, "me_prior_scaling") <- sc
+  priors
+}
+
+#' Describe the priors actually used, for the methods metadata
+#'
+#' CODE_REVIEW.md R3.8 — the metadata blocks used to *reconstruct* prior strings
+#' from `b_sd` rather than reading the priors that were passed to brms. Once the
+#' priors became data-scaled and per-coefficient, reconstruction would have
+#' reported something the model never saw — the same reporting-lie class as
+#' R3.16 (AUC claiming a transform it did not apply) and R3.19 (log1p vs log).
+#' Read the real thing.
+#'
+#' @param priors A `brmsprior` object.
+#' @return A list with one character entry per prior class, plus `all` (the full
+#'   table as a data frame) and `scaling` (the derived scale constants when the
+#'   priors came from `bayes_scaled_priors()`).
+#' @noRd
+#' @keywords internal
+describe_priors <- function(priors) {
+  if (is.null(priors)) return(list(all = NULL, scaling = NULL))
+  pdf <- tryCatch(as.data.frame(priors), error = function(e) NULL)
+  if (is.null(pdf) || !all(c("prior", "class") %in% names(pdf))) {
+    return(list(all = NULL, scaling = attr(priors, "me_prior_scaling")))
+  }
+
+  fmt <- function(cls) {
+    rows <- pdf[pdf$class == cls & nzchar(pdf$prior), , drop = FALSE]
+    if (nrow(rows) == 0L) return(NA_character_)
+    paste(ifelse(nzchar(rows$coef), paste0(rows$coef, ": "), ""),
+          rows$prior, sep = "", collapse = "; ")
+  }
+
+  list(
+    prior_b         = fmt("b"),
+    prior_intercept = fmt("Intercept"),
+    prior_sd        = fmt("sd"),
+    prior_sigma     = fmt("sigma"),
+    all             = pdf[nzchar(pdf$prior), c("prior", "class", "coef")],
+    scaling         = attr(priors, "me_prior_scaling")
+  )
 }

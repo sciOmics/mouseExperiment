@@ -44,3 +44,7 @@ po/*~
 ..Rcheck/
 tests/testthat/Rplots.pdf
 Rplots.pdf
+
+# Claude Code / tooling scratch
+.claude/
+.waylog/

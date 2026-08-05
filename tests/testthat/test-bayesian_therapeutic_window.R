@@ -8,10 +8,13 @@
 #
 # Both models fitted with 2 chains × 600 iterations and cached in a local()
 # so heavy MCMC runs happen only once per test session.
-# All tests are skipped when brms is not installed.
 # =============================================================================
 
-skip_bayes_twm <- function() skip_if_not_installed("brms")
+# brms, bayesplot, gamm4 and mgcv are hard Imports as of v0.10.0, so this
+# helper can no longer skip. Retained as a no-op because the call sites are
+# numerous, and because a skip here is exactly what let bayesian_synergy()
+# stay broken for five releases (CODE_REVIEW.md R3-L).
+skip_bayes_twm <- function() invisible(NULL)
 
 # Fixture: TG data where TreatmentA inhibits tumors (TGI > 0)
 make_tg_for_twm <- function() {
@@ -57,7 +60,7 @@ local({
           transform        = "log",
           prior_strength   = "skeptical",
           n_chains         = 2L,
-          n_iter           = 600L,
+          n_iter           = me_test_niter(600L),
           seed             = 42L,
           return_model     = TRUE,
           plots            = FALSE,
@@ -80,7 +83,7 @@ local({
           reference_group  = "Control",
           prior_strength   = "skeptical",
           n_chains         = 2L,
-          n_iter           = 600L,
+          n_iter           = me_test_niter(600L),
           seed             = 42L,
           return_model     = TRUE,
           plots            = FALSE,
@@ -285,7 +288,7 @@ test_that("bayesian_therapeutic_window: plots NULL when plots = FALSE", {
       make_tg_for_twm(),
       reference_group = "Control", transform = "log",
       prior_strength  = "skeptical",
-      n_chains = 2L, n_iter = 600L, seed = 10L,
+      n_chains = 2L, n_iter = me_test_niter(600L), seed = 10L,
       return_model = TRUE, plots = FALSE, verbose = FALSE
     )
   ))
@@ -293,7 +296,7 @@ test_that("bayesian_therapeutic_window: plots NULL when plots = FALSE", {
     bayesian_body_weight(
       make_bw_simple(),
       reference_group = "Control", prior_strength = "skeptical",
-      n_chains = 2L, n_iter = 600L, seed = 10L,
+      n_chains = 2L, n_iter = me_test_niter(600L), seed = 10L,
       return_model = TRUE, plots = FALSE, verbose = FALSE
     )
   ))

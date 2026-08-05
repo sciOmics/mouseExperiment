@@ -144,12 +144,10 @@ make_dose_response <- function() {
 #   DrugA     mean volume = 250  TGI = 0.50
 #   DrugB     mean volume = 300  TGI = 0.40
 #   Bliss expected FE = 0.50 + 0.40 - 0.20 = 0.70  → combo vol = 150
-#   Loewe expected FE = min(0.50 + 0.40, 1.0) = 0.90  → combo vol = 50
-#   Loewe CI = (FE_A + FE_B) / FE_combo = 0.90 / FE_combo
 #
-#   Bliss-neutral combo:  actual mean ≈ 150, FE=0.70, Loewe CI=1.29
-#   Synergistic combo:    actual mean ≈ 25,  FE=0.95, Loewe CI=0.95 (CI < 1)
-#   Antagonistic combo:   actual mean ≈ 325, FE=0.35, Loewe CI=2.57
+#   Bliss-neutral combo:  actual mean ≈ 150, FE=0.70
+#   Synergistic combo:    actual mean ≈ 25,  FE=0.95 (Bliss excess > 0)
+#   Antagonistic combo:   actual mean ≈ 325, FE=0.35 (Bliss excess < 0)
 # Uses 6 mice per group; 8% CV so group means are very close to target.
 # -----------------------------------------------------------------------------
 make_synergy_base <- function(combo_mean) {
@@ -191,9 +189,23 @@ make_bw_simple <- function() {
   set.seed(42)
   days <- c(0, 7, 14, 21, 28)
 
+  # CODE_REVIEW.md R3.36 — every mouse used to start at exactly 22 g, so the
+  # fixture had ZERO between-animal variance. That makes the random intercept in
+  # `random_effects_specification = "intercept_only"` unidentifiable: its true SD
+  # is 0, the sampler explores an Intercept<->sd funnel, and Intercept ESS
+  # collapses (Bulk 281 / Tail 71 at 3000 draws) while every other parameter sits
+  # comfortably above 900. Real mice differ in starting weight, and a body-weight
+  # fixture with no between-animal variation cannot exercise the very random
+  # effect the tests are asserting on. A 0.8 g per-animal SD is realistic for
+  # adult mice and makes the variance component estimable.
+  mouse_offset <- stats::setNames(
+    rnorm(11, mean = 0, sd = 0.8),
+    c(paste0("C0", 1:5), paste0("T0", 1:6))
+  )
+
   make_mouse <- function(id, cage, treatment, slope) {
     noise  <- rnorm(5, mean = 0, sd = 0.3)
-    weight <- 22 + slope * days + noise
+    weight <- 22 + (mouse_offset[[id]] %||% 0) + slope * days + noise
     data.frame(
       ID        = id,
       Cage      = cage,
@@ -219,7 +231,7 @@ make_bw_simple <- function() {
 }
 
 make_synergy_additive    <- function() make_synergy_base(150)   # Bliss-neutral
-make_synergy_synergistic <- function() make_synergy_base(25)    # FE > Loewe expected → CI < 1
+make_synergy_synergistic <- function() make_synergy_base(25)    # FE > Bliss expected
 make_synergy_antagonist  <- function() make_synergy_base(325)   # Worse than additive
 
 # Bliss ground-truth expected combo volume (used in assertions)
@@ -292,3 +304,71 @@ expect_no_unexpected_warnings <- function(x, allow_pattern = NULL) {
 }
 
 `%||%` <- function(a, b) if (!is.null(a)) a else b
+
+
+# ---- Toxicity fixture (moved here from test-toxicity_functions.R, K.8) ------
+# Weight + Volume trajectories for the efficacy/toxicity functions. Distinct
+# from make_bw_simple(): four timepoints and a Volume column, because the
+# toxicity metrics need tumour burden as well as body weight.
+make_weight_data <- function() {
+  set.seed(123)
+  days <- c(0, 7, 14, 21)
+
+  make_mouse <- function(id, treatment, base_weight, weight_slope, vol_slope) {
+    vol <- 200 * exp(vol_slope * days) + rnorm(4, 0, 5)
+    wt  <- base_weight + weight_slope * days + rnorm(4, 0, 0.3)
+    data.frame(
+      ID        = id,
+      Treatment = treatment,
+      Day       = days,
+      Volume    = pmax(round(vol, 2), 1),
+      Weight    = round(wt, 2),
+      Sex       = ifelse(id %in% c("C01", "C02", "T01", "T02"), "M", "F"),
+      Cage      = paste0(substring(treatment, 1, 1), "1"),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  rbind(
+    # Control: moderate tumor growth, stable weight
+    make_mouse("C01", "Control", 22, -0.02, 0.05),
+    make_mouse("C02", "Control", 21, -0.01, 0.05),
+    make_mouse("C03", "Control", 23, -0.03, 0.05),
+    make_mouse("C04", "Control", 20, -0.02, 0.05),
+    # Drug A: effective drug, moderate toxicity
+    make_mouse("T01", "DrugA", 22, -0.15, 0.02),
+    make_mouse("T02", "DrugA", 21, -0.12, 0.02),
+    make_mouse("T03", "DrugA", 20, -0.18, 0.02),
+    make_mouse("T04", "DrugA", 23, -0.10, 0.02),
+    # Drug B: ineffective, high toxicity
+    make_mouse("T05", "DrugB", 22, -0.25, 0.04),
+    make_mouse("T06", "DrugB", 21, -0.30, 0.04),
+    make_mouse("T07", "DrugB", 20, -0.28, 0.04),
+    make_mouse("T08", "DrugB", 23, -0.22, 0.04)
+  )
+}
+
+
+# ---- MCMC depth for the Bayesian tests (CODE_REVIEW.md K.7) ------------------
+#
+# K.7: 2 chains x 500 iterations is a deliberate speed compromise. It is enough
+# for "does it run / does it converge" but exercises no slow-mixing scenario, and
+# ESS >= 400 from 1000 draws requires efficiency >= 0.4, which is tight enough
+# that a genuine mixing regression can hide behind a borderline pass.
+#
+# The review's own recommendation was a slow lane run occasionally at higher
+# depth. Raising the default would make every local run slow; leaving it fixed
+# means the slow lane never exists. So make it configurable:
+#
+#   ME_TEST_NITER=2000 Rscript -e 'devtools::test()'
+#
+# Defaults to the fast value, so nothing changes for routine runs.
+me_test_niter <- function(default = 500L) {
+  v <- suppressWarnings(as.integer(Sys.getenv("ME_TEST_NITER", "")))
+  if (is.na(v) || v < 100L) as.integer(default) else v
+}
+
+# Some fixtures need more than the default regardless -- make_bw_simple() has a
+# near-zero random-intercept variance (R3.36), so the Intercept sits in a funnel
+# and needs more draws to clear ESS 400 whatever the lane.
+me_test_niter_deep <- function(default = 1500L) me_test_niter(default)

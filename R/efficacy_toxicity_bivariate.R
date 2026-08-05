@@ -12,6 +12,10 @@
 #' @param id_column Name of the mouse/subject ID column.
 #' @param adjust_tumor_weight Logical; subtract estimated tumor weight.
 #' @param tumor_density Density in g/cm³ (default 1.0).
+#' @param endpoint_day Day at which efficacy is evaluated. NULL uses the
+#'   maximum observed day.
+#' @param endpoint_method How the TGI denominator is obtained: "model"
+#'   (default), "last_obs", or "survivors". See CODE_REVIEW.md R3.5 / G.3.
 #' @param reference_group Name of the control/reference group.
 #' @param efficacy_metric One of "tgi" or "tumor_auc".
 #' @return A list with: per_mouse, per_group, efficacy_metric, reference_group.
@@ -25,7 +29,11 @@ efficacy_toxicity_bivariate <- function(df,
                                         adjust_tumor_weight = TRUE,
                                         tumor_density    = 1.0,
                                         reference_group  = NULL,
+                                        endpoint_day     = NULL,
+                                        endpoint_method  = c("model", "last_obs", "survivors"),
                                         efficacy_metric  = c("tgi", "tumor_auc")) {
+
+  endpoint_method <- match.arg(endpoint_method)
 
   efficacy_metric <- match.arg(efficacy_metric)
 
@@ -68,13 +76,8 @@ efficacy_toxicity_bivariate <- function(df,
   # The efficacy arm below already uses make_mouse_key — bring toxicity inline.
   # Also filter to the earliest study day so x[1] is unambiguous (Round 1 1.7).
   wt$.MouseKey <- make_mouse_key(wt$Treatment, wt$ID)
-  min_day_w <- min(wt$Day, na.rm = TRUE)
-  baseline_w <- stats::aggregate(
-    Net_Weight ~ .MouseKey,
-    data = wt[wt$Day == min_day_w, ],
-    FUN  = mean, na.rm = TRUE
-  )
-  names(baseline_w)[2] <- "Baseline_Weight"
+  # R15.2 -- per-animal baseline, not the global first day.
+  baseline_w <- me_per_mouse_baseline(wt, ".MouseKey", "Net_Weight")
   wt <- merge(wt, baseline_w, by = ".MouseKey", all.x = TRUE)
   wt$Pct_Weight_Loss <- (wt$Baseline_Weight - wt$Net_Weight) / wt$Baseline_Weight * 100
 
@@ -90,9 +93,25 @@ efficacy_toxicity_bivariate <- function(df,
   max_wl$Max_Pct_Weight_Loss <- pmax(max_wl$Max_Pct_Weight_Loss, 0)
 
   # --- Efficacy: per mouse ---
-  max_day <- max(wd$Day, na.rm = TRUE)
+  # CODE_REVIEW.md R3.5 / G.3 — the TGI denominator was the raw control mean
+  # among animals still observed at the global last day, which conditions on
+  # survival and biases TGI downward. Take it from the shared endpoint helper
+  # instead, which by default reads the arm's geometric mean at the endpoint day
+  # off a log-scale LMM fitted to every observation.
+  ep <- endpoint_volumes(
+    wd, id_column = "ID", treatment_column = "Treatment", time_column = "Day",
+    volume_column = "Volume", endpoint_day = endpoint_day,
+    endpoint_method = endpoint_method
+  )
+  max_day <- ep$endpoint_day
   ctrl_data <- wd[wd$Treatment == reference_group, ]
-  ctrl_mean_final_vol <- mean(ctrl_data$Volume[ctrl_data$Day == max_day], na.rm = TRUE)
+  ctrl_mean_final_vol <- ep$group_means$Mean_Volume[
+    ep$group_means$Treatment == reference_group]
+  if (length(ctrl_mean_final_vol) != 1L || !is.finite(ctrl_mean_final_vol) ||
+      ctrl_mean_final_vol <= 0) {
+    stop("Reference group '", reference_group, "' has no usable endpoint volume.",
+         call. = FALSE)
+  }
 
   # Control AUC: mean of per-mouse AUCs (pooling all observations produces a
   # nonsensical integral when multiple mice share the same timepoints).
@@ -111,8 +130,14 @@ efficacy_toxicity_bivariate <- function(df,
     sub <- wd[wd$.MouseKey == key, ]
     tx <- sub$Treatment[1]
     id <- sub$ID[1]
-    final_vol <- sub$Volume[sub$Day == max_day]
-    if (length(final_vol) == 0) final_vol <- sub$Volume[nrow(sub)]
+    # R3.5 — an animal removed before max_day has no row at max_day, and the
+    # old `sub$Volume[sub$Day == max_day]` yielded numeric(0) for it. Use its
+    # last observation at or before the endpoint day so it still contributes.
+    in_window <- sub[sub$Day <= max_day, , drop = FALSE]
+    in_window <- in_window[order(in_window$Day), ]
+    final_vol <- if (nrow(in_window) > 0) {
+      in_window$Volume[nrow(in_window)]
+    } else sub$Volume[nrow(sub)]
 
     efficacy_val <- switch(efficacy_metric,
       tgi = {

@@ -15,6 +15,7 @@ apriori_power_simulation(
   random_intercept_sd = 0.2,
   residual_sd = 0.1,
   timepoints = 0:14,
+  dropout_limit = Inf,
   alpha = c(0.05),
   n_simulations = 500L,
   seed = NULL,
@@ -33,12 +34,17 @@ in mm³ (default 100).}
 \item{baseline_sd}{Numeric \eqn{\ge} 0. Standard deviation (in mm^3) of the
 raw-scale baseline volume across animals. Converted to a log-scale SD
 via the first-order delta-method approximation
-\code{log_sd \approx baseline_sd / baseline_volume} and added as a
-per-mouse jitter on top of \code{log(baseline_volume)}. Set to 0 to fix
-all animals at exactly \code{baseline_volume} (the original behaviour).}
+\code{log_sd = baseline_sd / baseline_volume} (a first-order
+approximation) and added as a
+per-mouse jitter on top of \code{log(baseline_volume)}.
+
+\strong{This parameter does not change the reported power}, and no value
+you give it will. See the \emph{Baseline variability} section — it is
+retained because it makes the simulated volumes realistic if you inspect
+them, not because it informs the sample-size decision.}
 
 \item{control_growth_rate}{Numeric. Log-scale daily growth rate for the
-control group (default 0.15, ~16\\% daily increase).}
+control group (default 0.15, ~16\% daily increase).}
 
 \item{treatment_effect}{Numeric. Reduction in log-scale daily growth rate
 for treated groups relative to control (default 0.10; i.e. treated rate =
@@ -55,6 +61,13 @@ intercept on the log scale (default 0.20).}
 
 \item{timepoints}{Integer vector. Study days at which measurements are
 taken (default \code{0:14}).}
+
+\item{dropout_limit}{Numeric > 0 or \code{Inf}. Volume (in the same units as
+\code{baseline_volume}) at which an animal is removed from study; all of its
+observations from the first crossing onward are discarded, mimicking
+euthanasia on an IACUC limit. \code{Inf} (the default) keeps the historical
+complete-data behaviour. See the \emph{Dropout} section for what it costs to
+leave this at \code{Inf}.}
 
 \item{alpha}{Numeric vector of significance levels (default \code{c(0.05)}).}
 
@@ -76,6 +89,11 @@ Power, SE_Power, N_Significant, N_Simulations.}
 \item{\code{power_curve_data}}{Same as \code{power_table} — suitable
 for direct ggplot2 use.}
 \item{\code{params}}{Named list of the simulation parameters used.}
+\item{\code{attrition}}{Data frame: for each N, the mean percentage of
+observations and of animals lost to \code{dropout_limit}. All zero when
+\code{dropout_limit = Inf}. Report this alongside the power estimate —
+it is what tells a reviewer the number was planned against a realistic
+study rather than an idealised one.}
 }
 }
 \description{
@@ -104,9 +122,62 @@ power is the proportion of LRTs where the \code{Treatment:Day} p-value < \eqn{\a
 \code{control_growth_rate}, \code{treatment_effect}, \code{random_slope_sd},
 \code{random_intercept_sd}, and \code{residual_sd} are all on the
 \strong{log scale}. A \code{control_growth_rate} of 0.15 means log-volume
-increases by 0.15 per day (~16\\% daily volume growth). A
+increases by 0.15 per day (~16\% daily volume growth). A
 \code{treatment_effect} of 0.10 means the treated group's log-growth rate
 is 0.10 lower than control. \code{baseline_volume} is in raw volume units
 (mm³); it is log-transformed internally.
+}
+
+\section{Baseline variability}{
+
+Neither \code{baseline_sd} nor \code{random_intercept_sd} affects the power
+this function reports, and that is a property of the estimand rather than a
+defect. The test is on \code{Treatment:Day} — a contrast of \emph{slopes} —
+while both parameters inject only per-mouse \emph{intercept} variation, which
+the \code{(Day | ID)} random intercept absorbs exactly. In a balanced design
+the slope contrast is orthogonal to per-mouse intercepts, so the p-value is
+invariant to them: varying \code{baseline_sd} over two orders of magnitude
+(1 to 200 mm³) reproduces the \code{Treatment:Day} p-value to ten significant
+figures.
+
+The two parameters are also aliased with each other. Both are drawn
+independently and summed into the same per-mouse offset, so only their
+root-sum-square,
+\deqn{\sqrt{(\mathrm{baseline\_sd}/\mathrm{baseline\_volume})^2 + \mathrm{random\_intercept\_sd}^2}}
+is identifiable — no simulation can distinguish them.
+
+The practical consequence: \strong{do not spend calibration effort on these
+two}. Power here is driven by \code{treatment_effect},
+\code{random_slope_sd}, \code{residual_sd}, the number and spacing of
+\code{timepoints}, and \code{n_per_group}. If baseline heterogeneity is a
+real concern for your design, it is an argument about the analysis estimand
+(baseline as a covariate, or an endpoint-volume contrast rather than a slope
+contrast), not something a larger \code{baseline_sd} here will reveal.
+}
+
+\section{Dropout}{
+
+By default every animal contributes every timepoint. Real studies do not work
+that way: animals are euthanised on an IACUC volume limit or for poor health,
+which removes late observations preferentially from the fastest-growing
+controls. Set \code{dropout_limit} to plan against your actual limit.
+
+Ignoring it is optimistic, but only mildly, and the reason is worth stating:
+this dropout is MAR given the observed trajectory, so the LMM likelihood stays
+unbiased and power degrades through lost information alone rather than through
+bias. Measured on a two-arm design (control 0.13/day, effect 0.018/day,
+400 replicates per cell):
+
+\tabular{lrr}{
+\strong{Observations lost} \tab \strong{Power (n=8)} \tab \strong{Power (n=12)} \cr
+0\%  \tab 0.770 \tab 0.917 \cr
+21\% \tab 0.738 \tab 0.905 \cr
+30\% \tab 0.708 \tab 0.890 \cr
+39\% \tab 0.645 \tab 0.835
+}
+
+So a design the default reports at 0.77 is really running at about 0.71 if it
+loses 30\% of its observations — enough to justify an extra animal or two per
+arm, not enough to invalidate the planning exercise.
 }
 

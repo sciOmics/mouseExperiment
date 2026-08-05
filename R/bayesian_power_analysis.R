@@ -120,12 +120,6 @@ bayesian_power_analysis <- function(
   backend             = c("rstan", "cmdstanr")
 ) {
 
-  if (!requireNamespace("brms", quietly = TRUE)) {
-    stop(
-      "'brms' is required for bayesian_power_analysis(). ",
-      "Install it with: install.packages('brms')"
-    )
-  }
 
   prior_str     <- match.arg(prior_strength)
   re_spec       <- match.arg(random_effects_specification)
@@ -167,24 +161,15 @@ bayesian_power_analysis <- function(
                    if (n_trt == 1L) "Treatment"
                    else sprintf("Treatment_%d", seq_len(n_trt)))
 
-  pp       <- bayes_prior_params(prior_str)
-  b_sd     <- pp$b_sd
-  exp_rate <- pp$exp_rate
-  priors   <- c(
-    brms::prior_string(paste0("normal(0, ", b_sd, ")"),
-                       class = "b"),
-    brms::prior_string(paste0("normal(0, ", b_sd * 2.5, ")"),
-                       class = "Intercept"),
-    brms::prior_string(paste0("exponential(", exp_rate, ")"),
-                       class = "sd"),
-    brms::prior_string(paste0("exponential(", exp_rate, ")"),
-                       class = "sigma")
-  )
-
   re_formula_term <- if (re_spec == "slope") "(Day | ID)" else "(1 | ID)"
   bf_formula <- stats::as.formula(
     paste("Log_Vol ~ Treatment * Day +", re_formula_term)
   )
+  # Priors are built below, from a pilot simulated dataset — see the note after
+  # sim_data(). They cannot be constructed here because the data-scaled priors
+  # (CODE_REVIEW.md R3.8) need a response to scale against, and no data exist
+  # yet at this point.
+  priors <- NULL
 
   # ── Simulation helper ──────────────────────────────────────────────────────
   sim_data <- function(n, rng_seed, trt_effects) {
@@ -225,6 +210,21 @@ bayesian_power_analysis <- function(
     )
   }
 
+  # ── Priors, from a pilot simulated dataset ─────────────────────────────────
+  #
+  # CODE_REVIEW.md R3.8 / J.6 — the analysis pipeline now uses data-scaled,
+  # per-coefficient priors, so the power simulation must use the same ones or its
+  # estimates do not describe the pipeline the user will actually run. Build them
+  # from one pilot dataset at the largest N: the simulation parameters are fixed
+  # across iterations, so the scale constants are too, which keeps the prior
+  # structure and values constant and lets brms compile the Stan model once.
+  priors <- bayes_scaled_priors(
+    bf_formula,
+    sim_data(max(n_per_group), seed, treatment_effects),
+    response = "Log_Vol", prior_strength = prior_str,
+    time_column = "Day", include_sd = TRUE
+  )
+
   # ── Per-N power estimation ─────────────────────────────────────────────────
   # Returns a list with n_success and (used count of) fitted sims.
   estimate_per_N <- function(n, trt_effects, label) {
@@ -254,7 +254,9 @@ bayesian_power_analysis <- function(
             refresh = 0L
           )
         } else {
-          brms::update(
+          # R18.1: `update` is a stats generic; brms registers update.brmsfit
+          # but exports no `update`, so `brms::update` throws.
+          stats::update(
             base_model,
             newdata  = df_sim,
             recompile = FALSE,

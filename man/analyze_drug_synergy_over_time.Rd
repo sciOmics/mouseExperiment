@@ -47,7 +47,6 @@ A list containing the following components:
 \describe{
 \item{timepoint_results}{A list of results at each time point, each containing the outputs from analyze_drug_synergy}
 \item{synergy_summary}{A data frame summarizing synergy metrics across all time points}
-\item{peak_ci_synergy}{Information about when combination index synergy was strongest}
 \item{peak_bliss_synergy}{Information about when Bliss synergy was strongest}
 \item{drug_a_name, drug_b_name, combo_name}{Names of treatment groups for plotting}
 }
@@ -68,23 +67,22 @@ including:
 \item Statistical significance of combination advantage over monotherapies
 }
 
-To visualize the results, use the plot_synergy_trend, plot_combination_index,
-or plot_synergy_combined functions with the output from this function.
+To visualize the results, use the plot_synergy_trend
+function with the output from this function.
 }
 \section{Assumptions and Limitations}{
 
 \strong{Bliss Independence applied to TGI:} Bliss Independence was formulated for the
 probability of cell death, not for proportional growth inhibition. Applying it to TGI is a
 common pragmatic choice but carries a ceiling effect: when individual drug TGIs are large
-(each > 50\\%), the Bliss expected combined TGI approaches 100\\%, making it nearly impossible
+(each > 50\%), the Bliss expected combined TGI approaches 100\%, making it nearly impossible
 to demonstrate synergy by this criterion regardless of the true biological interaction.
-Interpret Bliss results cautiously when individual-agent TGIs exceed 50\\% at a given time point.
+Interpret Bliss results cautiously when individual-agent TGIs exceed 50\% at a given time point.
 
-\strong{Loewe Additivity single-dose approximation:} The CI formula
-\code{min(FE_A + FE_B, 1) / FE_combo} assumes a linear dose-response relationship.
-Without full dose-response curves the IC50 values are unknown, so the CI should be
-interpreted as a qualitative indicator of synergy direction rather than a precise
-mechanistic estimate. This limitation applies at every evaluated time point.
+\strong{No Combination Index.} The Loewe / CI path was removed in v0.21.0:
+what it computed was response additivity rather than Loewe additivity, and it
+labelled Bliss-additive combinations antagonistic across most of the range
+where active single agents sit. See \code{\link{analyze_drug_synergy}}.
 }
 
 \examples{

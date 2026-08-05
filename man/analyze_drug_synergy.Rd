@@ -14,6 +14,12 @@ analyze_drug_synergy(
   combo_name,
   control_name = "Control",
   eval_time_point = NULL,
+  id_column = "ID",
+  endpoint_method = c("model", "last_obs", "survivors"),
+  ci_thresholds = c(0.85, 1.15),
+  strong_synergy_delta = 0.1,
+  n_boot = 2000L,
+  boot_seed = NULL,
   verbose = TRUE
 )
 }
@@ -37,6 +43,31 @@ analyze_drug_synergy(
 \item{eval_time_point}{Optional. A numeric value specifying a specific time point to evaluate synergy.
 If NULL (default), the function will use the last time point in the data.}
 
+\item{id_column}{Column identifying individual animals. Used to resample
+mice for the bootstrap; also used to report per-group n.}
+
+\item{endpoint_method}{How each arm's volume at \code{eval_time_point} is
+obtained: "model" (default, log-scale LMM marginal means using every
+observation), "last_obs", or "survivors" (pre-0.8.0 behaviour; conditions
+on survival and understates TGI). See CODE_REVIEW.md R3.5 / G.3.}
+
+\item{ci_thresholds}{Deprecated and ignored; retained so existing calls do
+not error. It configured the removed Combination Index band.}
+
+\item{strong_synergy_delta}{Numeric. Bliss excess fractional effect above
+which the label is "Strong Synergy". Default 0.1, a convention rather than
+a derived quantity.}
+
+\item{n_boot}{Integer >= 0. Number of bootstrap resamples used to attach
+confidence intervals to the synergy metrics. Mice are resampled with
+replacement \emph{within} treatment group, including the control arm, and the
+whole statistic is recomputed per resample — so the interval propagates
+both the sampling error of each arm and the sampling error of the control
+mean that forms the TGI denominator (CODE_REVIEW.md R3.6 / R3.7 / G.6).
+Default 2000. Set 0 to skip.}
+
+\item{boot_seed}{Optional integer seed for reproducible resampling.}
+
 \item{verbose}{Logical. If TRUE, prints detailed results to the console.
 Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.}
 }
@@ -45,8 +76,6 @@ A list containing the following components:
 \describe{
 \item{summary}{A data frame summarizing the tumor growth inhibition (TGI) for each treatment and synergy metrics.}
 \item{bliss_independence}{Results of the Bliss independence model, including expected vs. observed effects.}
-\item{loewe_additivity}{Results of the Loewe additivity model (linear dose-response assumption).}
-\item{combination_index}{The Loewe-based combination index (CI), where CI < 1 indicates synergy, CI = 1 indicates additivity, and CI > 1 indicates antagonism.}
 \item{statistical_test}{Results of statistical tests comparing observed vs. expected effects.}
 \item{plot_data}{Data prepared for plotting, to be used with plot_drug_synergy function.}
 }
@@ -54,7 +83,7 @@ A list containing the following components:
 \description{
 This function tests for synergistic effects of drug combinations in tumor growth data.
 It compares the observed combination effect against several expected interaction models,
-including Bliss independence and Loewe additivity. The function calculates synergy scores
+using Bliss independence. The function calculates synergy scores
 and performs statistical tests to determine if the combination shows synergistic,
 additive, or antagonistic effects.
 }
@@ -64,12 +93,20 @@ It then applies several models to test for synergy:
 \enumerate{
 \item Bliss Independence Model: Assumes drugs act independently through different mechanisms.
 Expected effect = EA + EB - (EA * EB), where EA and EB are the effects of drug A and B alone.
-\item Loewe Additivity Model: Under a linear dose-response assumption (appropriate when only
-single-dose TGI data is available), the expected combination effect equals the sum of
-individual fractional effects, capped at 1.0. The Combination Index is calculated as
-CI = min(FE_A + FE_B, 1) / FE_combo (Berenbaum, 1989).
-\item Combination Index: CI < 1 indicates synergy, CI = 1 indicates additivity, CI > 1 indicates antagonism.
 }
+
+\strong{Why there is no Combination Index.} A Loewe-style CI was removed in
+v0.21.0. What it computed was not Loewe additivity: true Loewe is
+dose-equivalence, \eqn{CI = d_A/D_A + d_B/D_B}, which needs a dose-response
+curve per agent that single-dose designs do not provide. The stand-in,
+\code{min(FE_A + FE_B, 1) / FE_combo}, is \emph{response additivity} -- a
+different null that fails the sham-combination test: combining a drug with
+itself it predicts twice the fractional effect, so an agent at FE = 0.5 should
+reach 100 percent inhibition, and when it does not the method calls the drug
+antagonistic with itself. Across the (FE_A, FE_B) grid with the combination
+set to exactly Bliss-additive, 42 percent of cells were labelled antagonistic
+and none synergistic. For a real Loewe analysis collect per-agent
+dose-response curves and use \code{drc::isobole()}.
 
 The function performs statistical tests to determine if the observed combination effect
 significantly differs from the expected effect under these models.
@@ -79,15 +116,16 @@ significantly differs from the expected effect under these models.
 \strong{Bliss Independence applied to TGI:} Bliss Independence was formulated for the
 probability of cell death, not for proportional growth inhibition. Applying it to TGI is a
 common pragmatic choice but carries a ceiling effect: when individual drug TGIs are large
-(each > 50\\%), the Bliss expected combined TGI approaches 100\\%, making it nearly impossible
+(each > 50\%), the Bliss expected combined TGI approaches 100\%, making it nearly impossible
 to demonstrate synergy by this criterion regardless of the true biological interaction.
-Interpret Bliss results cautiously when individual-agent TGIs exceed 50\\%.
+Interpret Bliss results cautiously when individual-agent TGIs exceed 50\%.
 
-\strong{Loewe Additivity single-dose approximation:} The CI formula
-\code{min(FE_A + FE_B, 1) / FE_combo} assumes a linear dose-response relationship, which
-is appropriate when only single-dose data are available but is an approximation. Without
-dose-response curves the true IC50 values are unknown, so the result should be interpreted
-as a qualitative synergy indicator rather than a precise mechanistic estimate.
+\strong{Point estimates and labels:} \code{synergy_label} is derived from
+fixed thresholds. They are descriptive summaries, not test results. Read them
+alongside \code{synergy_ci} (mouse-level bootstrap 95\% intervals) and
+\code{group_n}: a "Strong Synergy" label whose \code{Bliss_Excess_FE}
+interval spans zero is not evidence of synergy. For a model-based posterior
+treatment of the same question, use \code{\link{bayesian_synergy}}.
 }
 
 \examples{

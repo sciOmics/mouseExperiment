@@ -1,121 +1,6 @@
 # Copyright (c) 2026 mouseExperiment Contributors
 # Licensed under the MIT License - see LICENSE file
 
-#' Extrapolate missing data points for subjects
-#'
-#' @param df Data frame with tumor growth data
-#' @param id_column Column name for subject IDs
-#' @param treatment_column Column name for treatment groups
-#' @param cage_column Column name for cage identifiers
-#' @param time_column Column name for time points
-#' @param volume_column Column name for tumor volume
-#' @param verbose Print progress messages
-#' @return Modified data frame with extrapolated points
-#' @noRd
-#' @keywords internal
-tgs_extrapolate <- function(df, id_column, treatment_column, cage_column,
-                            time_column, volume_column, verbose) {
-  if (isTRUE(verbose)) message("Extrapolating points for subjects with missing data at the last timepoint")
-  
-  # Find the true maximum day across all subjects (global maximum day of the study)
-  true_max_day <- max(df[[time_column]], na.rm = TRUE)
-  if (isTRUE(verbose)) message("True maximum day of the study: ", true_max_day)
-  
-  # Make sure all data has the Extrapolated column
-  if (!"Extrapolated" %in% colnames(df)) {
-    df$Extrapolated <- FALSE
-  }
-  
-  # Create a list to store results for each subject
-  subjects_with_extrapolation <- list()
-  
-  # Process each unique subject
-  unique_subjects <- unique(
-    make_mouse_key(df[[id_column]], df[[treatment_column]], df[[cage_column]])
-  )
-
-  for (subject_id in unique_subjects) {
-    # Parse the composite ID
-    id_parts <- split_mouse_key(subject_id)
-    id <- id_parts[1]
-    treatment <- id_parts[2]
-    cage <- id_parts[3]
-    
-    # Get data for this subject
-    subject_data <- df[df[[id_column]] == id & 
-                      df[[treatment_column]] == treatment & 
-                      df[[cage_column]] == cage, ]
-    
-    # Get the max day for this subject
-    max_subj_day <- max(subject_data[[time_column]])
-    
-    # Only extrapolate if the subject doesn't have data on the true max day
-    if (max_subj_day < true_max_day) {
-      # Need at least 2 points for extrapolation
-      if (nrow(subject_data) >= 2) {
-        # Use the last 3 points (or all if less than 3) to fit a linear model
-        n_points <- min(3, nrow(subject_data))
-        subject_data <- subject_data[order(subject_data[[time_column]]), ]
-        last_points <- tail(subject_data, n_points)
-        
-        # Try to fit model
-        tryCatch({
-          lm_fit <- stats::lm(paste(volume_column, "~", time_column), data = last_points)
-          
-          # Predict at true_max_day
-          new_data <- data.frame(time = true_max_day)
-          names(new_data) <- time_column
-          predicted_volume <- max(0, as.numeric(predict(lm_fit, newdata = new_data)))
-          
-          # Create a new row for the extrapolated point
-          new_row <- subject_data[1, ]
-          new_row[[time_column]] <- true_max_day
-          new_row[[volume_column]] <- predicted_volume
-          new_row$Extrapolated <- TRUE
-          
-          # Add the new extrapolated point to the subject data
-          subject_data <- rbind(subject_data, new_row)
-          
-          if (isTRUE(verbose)) {
-            message("Extrapolated subject ", id, " from day ", max_subj_day, " to day ", true_max_day)
-          }
-        }, error = function(e) {
-          if (isTRUE(verbose)) {
-            message("Failed to extrapolate subject ", id, ": ", conditionMessage(e))
-          }
-        })
-      }
-    }
-    
-    # Store the processed subject data
-    subjects_with_extrapolation[[subject_id]] <- subject_data
-  }
-  
-  # Combine all subject data
-  df <- do.call(rbind, subjects_with_extrapolation)
-  
-  # Count extrapolated subjects for verbose output.
-  # Previously: unique(df$Extrapolated[df$Extrapolated]) collapses to c(TRUE),
-  # so the count was always 0 or 1. Use composite mouse keys for the actual
-  # subject count.
-  if (isTRUE(verbose)) {
-    ex_rows <- df[df$Extrapolated, , drop = FALSE]
-    n_extrapolated <- if (nrow(ex_rows) > 0L) {
-      length(unique(make_mouse_key(
-        ex_rows[[id_column]],
-        ex_rows[[treatment_column]],
-        ex_rows[[cage_column]]
-      )))
-    } else 0L
-    if (n_extrapolated > 0) {
-      message("Successfully extrapolated ", n_extrapolated, " subjects to day ", true_max_day)
-    } else {
-      message("No subjects needed or qualified for extrapolation to day ", true_max_day)
-    }
-  }
-  df
-}
-
 #' Compute per-subject growth rates
 #'
 #' @param auc_df Untransformed data frame
@@ -132,17 +17,30 @@ tgs_compute_growth_rates <- function(auc_df, treatment_column, id_column,
   tryCatch({
     # Calculate growth rates for each subject
     # Use auc_df (untransformed volumes) so growth rates are not double-transformed
-    split_auc <- split(auc_df, list(auc_df[[treatment_column]],
-                                    auc_df[[id_column]],
-                                    auc_df[[cage_column]]))
+    # CODE_REVIEW.md R3.24 — split() on a list of factors allocates one element
+    # per *combination of levels*, not per observed combination: 6 treatments x
+    # 60 IDs x 12 cages is 4,320 elements of which ~60 are non-empty. Split on
+    # the composite key instead.
+    split_auc <- split(
+      auc_df,
+      make_mouse_key(auc_df[[treatment_column]],
+                     auc_df[[id_column]],
+                     auc_df[[cage_column]]),
+      drop = TRUE
+    )
     growth_rates_list <- lapply(split_auc, function(subject_data) {
       if (nrow(subject_data) >= 3) {
         # Sort by time
         subject_data <- subject_data[order(subject_data[[time_column]]), ]
         
-        # Calculate log volume from original (untransformed) data
-        raw_vol <- subject_data[[volume_column]]
-        raw_vol[raw_vol <= 0] <- min(raw_vol[raw_vol > 0], na.rm = TRUE) / 2
+        # Calculate log volume from original (untransformed) data.
+        # CODE_REVIEW.md R3.20 — same all-non-positive guard as the main path;
+        # a subject with no positive volumes is skipped rather than producing
+        # log(Inf).
+        raw_vol       <- subject_data[[volume_column]]
+        positive_vals <- raw_vol[is.finite(raw_vol) & raw_vol > 0]
+        if (length(positive_vals) == 0L) return(NULL)
+        raw_vol[raw_vol <= 0] <- min(positive_vals, na.rm = TRUE) / 2
         log_volume <- log(raw_vol)
         
         # Fit linear model
@@ -243,9 +141,8 @@ tgs_compute_cage_effects <- function(analysis_df, cage_column, treatment_column,
 #' @param id_column Column name for subject IDs
 #' @param cage_column Column name for cage identifiers
 #' @param random_effects_specification One of "intercept_only", "slope", "none"
-#' @param handle_cage_effects One of "include_if_not_collinear", "always_include",
-#'   "never_include", "as_random_effect"
-#' @param cage_collinear Logical; whether cage is collinear with treatment
+#' @param cage_handling Output of \code{resolve_cage_handling()}: a list with
+#'   \code{fixed} / \code{random} logicals and a \code{reason} string.
 #' @param verbose Print progress messages
 #' @return List with model, model_selection, and best_model
 #' @noRd
@@ -253,8 +150,7 @@ tgs_compute_cage_effects <- function(analysis_df, cage_column, treatment_column,
 tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
                                 treatment_column, id_column, cage_column,
                                 random_effects_specification,
-                                handle_cage_effects,
-                                cage_collinear,
+                                cage_handling,
                                 verbose,
                                 include_necrotic_covariate = FALSE) {
   bt <- function(x) paste0("`", x, "`")
@@ -263,14 +159,10 @@ tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
   # favour of model_type = "gam" (smoother-based non-linear trajectories).
   time_term <- bt(time_column)
 
-  # Determine cage inclusion in fixed vs random effects
-  include_cage_fixed <- switch(handle_cage_effects,
-    include_if_not_collinear = !cage_collinear,
-    always_include           = TRUE,
-    never_include            = FALSE,
-    as_random_effect         = FALSE
-  )
-  include_cage_random <- handle_cage_effects == "as_random_effect"
+  # CODE_REVIEW.md R3.17 — cage placement is decided by resolve_cage_handling()
+  # from the design structure, not by a chi-square p-value here.
+  include_cage_fixed  <- isTRUE(cage_handling$fixed)
+  include_cage_random <- isTRUE(cage_handling$random)
 
   # Build fixed-effects string
   fixed_part <- paste(
@@ -293,8 +185,10 @@ tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
   if (random_effects_specification == "none") {
     if (include_cage_random) {
       warning(
-        "handle_cage_effects = 'as_random_effect' requires random effects; ",
-        "ignored because random_effects_specification = 'none'."
+        "A cage random intercept was selected (", cage_handling$reason,
+        ") but random_effects_specification = 'none' removes all random ",
+        "effects; the cage term is dropped. Standard errors will not account ",
+        "for cage-level clustering.", call. = FALSE
       )
     }
     model <- tryCatch(
@@ -454,6 +348,65 @@ tgs_compute_summary <- function(analysis_df, treatment_column, time_column,
 #' two observations or n_boot < 2.
 #'
 #' @noRd
+#' Two-sample permutation p-value for a difference in means
+#'
+#' CODE_REVIEW.md H.2 — at the group sizes these studies use (n = 8-10), on a
+#' derived statistic whose distribution is right-skewed, Welch's t is exactly
+#' the approximation a permutation test improves on. The null here genuinely is
+#' label exchangeability ("the group label carries no information about a
+#' mouse's AUC"), which is what licenses permutation; contrast the synergy null,
+#' which is structural rather than about labels and cannot be permuted (H.5).
+#'
+#' Pairs naturally with the bootstrap CI: interval from the bootstrap, p-value
+#' from the permutation. They answer different questions and are not redundant.
+#'
+#' @param x,y Numeric vectors (per-mouse AUCs for the two arms).
+#' @param n_perm Number of label permutations.
+#' @param seed Optional RNG seed; the caller's state is restored on exit.
+#' @return Two-sided permutation p-value, or `NA_real_` when either arm has
+#'   fewer than two mice. Uses the `(1 + #{|d*| >= |d|}) / (1 + n_perm)`
+#'   estimator so the p-value is never exactly zero.
+#' @noRd
+#' @keywords internal
+tgs_perm_diff_p <- function(x, y, n_perm = 2000L, seed = NULL) {
+  x <- x[is.finite(x)]; y <- y[is.finite(y)]
+  if (length(x) < 2L || length(y) < 2L || n_perm < 1L) return(NA_real_)
+
+  if (!is.null(seed)) {
+    old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) {
+      get(".Random.seed", envir = .GlobalEnv)
+    } else NULL
+    on.exit({
+      if (!is.null(old_seed)) assign(".Random.seed", old_seed, envir = .GlobalEnv)
+    }, add = TRUE)
+    set.seed(seed)
+  }
+
+  pooled <- c(x, y)
+  nx     <- length(x)
+  obs    <- abs(mean(x) - mean(y))
+
+  # The permutation distribution has only choose(nx + ny, nx) distinct points,
+  # so the smallest attainable two-sided p-value is 2 / choose(n, nx). With 3
+  # mice per arm that floor is ~0.10 — no permutation test can report anything
+  # smaller, however large the observed difference. Say so rather than letting a
+  # user read the floor as a real p-value.
+  n_splits  <- choose(length(pooled), nx)
+  p_floor   <- 2 / n_splits
+  if (is.finite(p_floor) && p_floor > 0.01) {
+    warning(sprintf(paste0(
+      "Permutation test has only %.0f distinct label splits (n = %d vs %d), so ",
+      "the smallest attainable two-sided p-value is %.3f. Values at or near ",
+      "that floor reflect the test's resolution, not the strength of evidence."),
+      n_splits, nx, length(pooled) - nx, p_floor), call. = FALSE)
+  }
+  perm   <- vapply(seq_len(n_perm), function(i) {
+    idx <- sample.int(length(pooled), nx)
+    abs(mean(pooled[idx]) - mean(pooled[-idx]))
+  }, numeric(1))
+  (1 + sum(perm >= obs - 1e-12)) / (1 + n_perm)
+}
+
 tgs_boot_diff_ci <- function(x, y, n_boot = 999L, seed = NULL) {
   if (length(x) < 2L || length(y) < 2L || n_boot < 2L) {
     return(c(lower = NA_real_, upper = NA_real_))
@@ -485,15 +438,13 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
   
   # Uses exported calculate_auc() utility from utils_auc.R
   
-  # For each unique ID-Treatment-Cage combination, create a unique identifier
-  # This ensures proper distinction of mice even when they share the same ID but are in different cages
-  # First find all unique combinations
-  unique_combinations <- unique(auc_df[, c(id_column, treatment_column, cage_column)])
-  # Create a mapping of these combinations to sequential numbers
-  unique_combinations$unique_id <- 1:nrow(unique_combinations)
-  # Merge back with the original data to assign the correct unique ID to each row
-  auc_df_with_id <- merge(auc_df, unique_combinations, by=c(id_column, treatment_column, cage_column))
-  # Use this unique_id for processing
+  # Distinguish mice that share an ID across cages / treatments via the
+  # composite key.
+  # CODE_REVIEW.md R3.23 — a sequential `unique_id` column was previously built
+  # and merged on, then never used (the loop keys on `composite_id`). The merge
+  # also silently reordered rows and would have duplicated them had the
+  # combination table not been unique. Removed.
+  auc_df_with_id <- auc_df
   composite_id <- make_mouse_key(
     auc_df_with_id[[id_column]],
     auc_df_with_id[[treatment_column]],
@@ -613,24 +564,69 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'        "intercept_only" (default): (1|ID) - random intercepts by subject
 #'        "slope": (Day|ID) - random intercepts and slopes by subject
 #'        "none": No random effects
-#' @param handle_cage_effects Method for handling cage effects: "include_if_not_collinear", "always_include", 
-#'        "never_include", or "as_random_effect". Default is "include_if_not_collinear".
+#' @param handle_cage_effects How cage enters the model. Default \code{"auto"}
+#'   picks the correct treatment for the detected design structure:
+#'   \itemize{
+#'     \item \strong{crossed} (cages hold more than one treatment) — cage as a
+#'       fixed effect;
+#'     \item \strong{nested with replication} (one treatment per cage, >= 2
+#'       cages per arm — the usual preclinical design) — cage as a random
+#'       intercept \code{(1|cage)}. A fixed effect is not estimable here
+#'       because cage is perfectly aliased with treatment, but the random
+#'       intercept is, and omitting it understates every standard error by the
+#'       design effect \eqn{1 + (m - 1)\rho} for \eqn{m} mice per cage and
+#'       cage-level ICC \eqn{\rho};
+#'     \item \strong{completely confounded} (one cage per arm) — cage omitted,
+#'       with a warning that any cage effect is inseparable from the treatment
+#'       effect.
+#'   }
+#'   The explicit options \code{"always_include"} (fixed), \code{"never_include"},
+#'   and \code{"as_random_effect"} are honoured where estimable and rejected
+#'   where not. \code{"include_if_not_collinear"} is retained for backward
+#'   compatibility: it reproduces the pre-0.6.0 behaviour of dropping cage
+#'   whenever it is nested, which discards estimable cage variance.
+#'   The detected structure, the placement chosen, and the reason are returned
+#'   in \code{summary$model_specification}; the cage ICC is in
+#'   \code{cage_analysis$icc}.
 #' @param auc_method Removed in v0.4.5. The AUC path now always uses the
 #'   trapezoidal rule. For last-observation-carried-forward (LOCF) AUC, use
 #'   \code{\link{tumor_auc_analysis}(method = "last_observation")} directly.
-#' @param p_adjust_method Method for p-value adjustment in pairwise comparisons:
-#'   "bonferroni" (default, conservative), "holm" (step-down, less conservative),
-#'   "fdr" (Benjamini-Hochberg false discovery rate), or "none" (no adjustment).
+#' @param comparison_family Which set of comparisons to report and adjust over:
+#'   "vs_reference" (default; each treatment against \code{reference_group}),
+#'   "all_pairs" (every pairwise comparison), or "custom" (supply
+#'   \code{custom_contrasts}). The multiplicity adjustment is applied over
+#'   exactly this family, so the family and the correction always agree.
+#' @param custom_contrasts Named list of contrast coefficient vectors over the
+#'   treatment levels, required when \code{comparison_family = "custom"}. The
+#'   names label the comparisons in the output. Not supported for
+#'   \code{model_type = "auc"}, which runs independent Welch t-tests rather
+#'   than fitting a joint model.
+#' @param p_adjust_method Multiplicity adjustment applied across the comparison
+#'   family: "bonferroni" (default, conservative), "holm" (step-down, less
+#'   conservative), "fdr" (Benjamini-Hochberg), "dunnett" (exact many-to-one
+#'   via the multivariate-t; requires \code{comparison_family = "vs_reference"}),
+#'   "tukey" (HSD; requires \code{comparison_family = "all_pairs"}), or "none".
+#'   "dunnett" and "tukey" need comparisons from a single fitted model and are
+#'   therefore rejected for \code{model_type = "auc"}. The family and method
+#'   actually applied are returned in \code{comparison_family} and
+#'   \code{p_adjust_method_used}.
 #' @param reference_group Optional. A character string specifying which treatment group should be used as the reference
 #'        for statistical comparisons. If NULL, the first treatment group alphabetically will be used.
 #' @param return_model Boolean. Should the full fitted model be returned? Default is TRUE.
 #' @param include_diagnostics Boolean. Should model diagnostic information be included? Default is TRUE.
 #' @param plots Boolean. Should standard plots be generated and returned? Default is TRUE.
 #' @param verbose Boolean. Should detailed information be printed during analysis? Default is FALSE.
-#' @param extrapolation_points Number of points to extrapolate for each subject (default: 0)
+#' @param extrapolation_points \strong{Deprecated} and ignored as of v0.8.0.
+#'   It appended one synthetic final-day observation per animal and handed it to
+#'   the model as measured data, so the fit's uncertainty did not reflect the
+#'   imputation, and the linear fit on the raw scale biased an exponential
+#'   process downward. Use the model-based endpoint means instead
+#'   (\code{endpoint_method = "model"}), which extrapolate inside the model and
+#'   propagate the uncertainty. Extrapolation for \emph{plotting} is unaffected
+#'   — see \code{\link{plot_tumor_growth}}. CODE_REVIEW.md R3.9 / G.4.
 #' @param auc_bootstrap_n Integer >= 0. When > 0 and \code{model_type = "auc"},
 #'   each pairwise Welch's t-test gains a non-parametric percentile-bootstrap
-#'   95\% CI for the mean difference (\code{boot_ci_lower}, \code{boot_ci_upper}
+#'   95% CI for the mean difference (\code{boot_ci_lower}, \code{boot_ci_upper}
 #'   columns in \code{pairwise_comparisons}). Honest at small N when per-mouse
 #'   AUC distributions are skewed (especially under extrapolation), where the
 #'   parametric t-CI is only approximate. A typical value is \code{999};
@@ -638,6 +634,22 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'   \code{0} (skip; \code{boot_ci_*} columns are \code{NA}).
 #' @param auc_bootstrap_seed Optional integer seed for reproducible bootstrap
 #'   resampling. \code{NULL} (default) uses the caller's RNG state.
+#' @param permutation_test Optional \code{\link{perm_spec}} object. When supplied
+#'   (and \code{model_type = "lme4"}), a randomisation test of the treatment x
+#'   time interaction is run and returned as \code{permutation_test}. Unlike the
+#'   model's own p-values it assumes neither the Kenward-Roger / Satterthwaite
+#'   denominator-df approximation nor normal random effects — but it is only valid
+#'   if \code{unit} matches how the study actually randomised, so the unit is an
+#'   explicit choice rather than a default. See \code{\link{perm_spec}}.
+#'   CODE_REVIEW.md H.3.
+#' @param auc_permutations Integer >= 0. When > 0 and
+#'   \code{model_type = "auc"}, each pairwise comparison additionally gains a
+#'   two-sided permutation p-value (\code{perm_p_value}, plus
+#'   \code{perm_p_adjusted} over the comparison family). At n = 8-10 per arm on
+#'   a right-skewed derived statistic, this is more trustworthy than Welch's
+#'   normal-theory approximation, and the null here is genuinely label
+#'   exchangeability. A typical value is \code{2000}. Default \code{0} (skip).
+#'   CODE_REVIEW.md H.2.
 #'
 #' @return A list containing the following components:
 #' \describe{
@@ -726,9 +738,13 @@ tumor_growth_statistics <- function(df,
                                   transform = c("log", "sqrt", "none"),
                                   model_type = c("lme4", "gam", "auc"),
                                   random_effects_specification = c("intercept_only", "slope", "none"),
-                                  handle_cage_effects = c("include_if_not_collinear", "always_include", 
-                                                        "never_include", "as_random_effect"),
-                                  p_adjust_method = c("bonferroni", "holm", "fdr", "none"),
+                                  handle_cage_effects = c("auto", "include_if_not_collinear",
+                                                          "always_include", "never_include",
+                                                          "as_random_effect"),
+                                  comparison_family = c("vs_reference", "all_pairs", "custom"),
+                                  custom_contrasts = NULL,
+                                  p_adjust_method = c("bonferroni", "holm", "fdr",
+                                                      "dunnett", "tukey", "none"),
                                   reference_group = NULL,
                                   return_model = TRUE,
                                   include_diagnostics = TRUE,
@@ -738,19 +754,29 @@ tumor_growth_statistics <- function(df,
                                   necrotic_column  = NULL,
                                   necrotic_handling = c("exclude", "covariate", "none"),
                                   auc_bootstrap_n = 0L,
-                                  auc_bootstrap_seed = NULL) {
+                                  auc_bootstrap_seed = NULL,
+                                  auc_permutations = 0L,
+                                  permutation_test = NULL) {
   # Check for required packages
-  if (!requireNamespace("lme4", quietly = TRUE)) {
-    stop("Please install the lme4 package: install.packages('lme4')")
-  }
   
   # Match arguments
   transform <- match.arg(transform)
   model_type <- match.arg(model_type, c("lme4", "gam", "auc"))
   random_effects_specification <- match.arg(random_effects_specification)
   handle_cage_effects <- match.arg(handle_cage_effects)
+  comparison_family <- match.arg(comparison_family)
   p_adjust_method <- match.arg(p_adjust_method)
   necrotic_handling <- match.arg(necrotic_handling)
+
+  # CODE_REVIEW.md R3.1 / G.1 — resolve the comparison family and adjustment
+  # once, up front, so all three model paths use the same validated spec and
+  # the same set of comparisons that the adjustment is calibrated for.
+  # The AUC path's Welch t-tests are not from a joint model, so Tukey/Dunnett
+  # are rejected there.
+  comparison_spec <- resolve_comparison_spec(
+    comparison_family, p_adjust_method, custom_contrasts,
+    supports_joint = model_type %in% c("lme4", "gam")
+  )
   
   if (isTRUE(verbose)) {
     message("Analyzing tumor growth data...")
@@ -786,10 +812,36 @@ tumor_growth_statistics <- function(df,
     message("Using ", reference_group, " as reference group for statistical comparisons")
   }
   
-  # Extrapolate data points if requested
-  if (extrapolation_points > 0) {
-    df <- tgs_extrapolate(df, id_column, treatment_column, cage_column,
-                          time_column, volume_column, verbose)
+  # CODE_REVIEW.md R3.9 / G.4 — statistical extrapolation is deprecated.
+  #
+  # tgs_extrapolate() was unflagged single imputation over informative dropout:
+  # it appended one synthetic row per animal, produced by an OLS fit to the last
+  # <=3 points on the RAW (exponential) scale, and the LMM then treated it as an
+  # ordinary observation. Consequences: no uncertainty inflation (residual
+  # variance, SEs and p-values were all computed as if the imputed points were
+  # measured, making everything anti-conservative); systematic downward bias
+  # from linear extrapolation of a log-linear process; and covariates copied
+  # from the animal's *first* row.
+  #
+  # It is unnecessary as of v0.8.0: endpoint_method = "model" extrapolates to
+  # the endpoint day inside the model, which propagates the extrapolation's
+  # uncertainty instead of hiding it. Extrapolation for *plotting* is unaffected
+  # — plot_tumor_growth(extrapolation_points = ...) is a separate implementation
+  # and is explicitly retained.
+  if (!missing(extrapolation_points) && isTRUE(extrapolation_points > 0)) {
+    warning(
+      "`extrapolation_points` is deprecated and will be removed in a future ",
+      "release. It performed single imputation of a synthetic final-day ",
+      "observation per animal and fed it to the model as measured data, so ",
+      "standard errors and p-values did not reflect the imputation. Model-based ",
+      "endpoint means (the default `endpoint_method = \"model\"` in ",
+      "therapeutic_window_metric(), analyze_drug_synergy(), ",
+      "weight_corrected_tgi() and efficacy_toxicity_bivariate()) extrapolate ",
+      "inside the model and carry the uncertainty. Extrapolation for plotting ",
+      "is unaffected: see plot_tumor_growth(extrapolation_points = ). ",
+      "Ignoring the request.",
+      call. = FALSE
+    )
   }
   
   # Create a copy of the data for analysis
@@ -815,9 +867,18 @@ tumor_growth_statistics <- function(df,
 
   # Apply transformations if needed
   if (transform == "log") {
-    # Replace zeros/negatives with a small epsilon before log transform
-    vol <- analysis_df[[volume_column]]
-    vol[vol <= 0] <- min(vol[vol > 0], na.rm = TRUE) / 2
+    # Replace zeros/negatives with half the smallest positive value.
+    # CODE_REVIEW.md R3.20 — guard the all-non-positive case. min(numeric(0))
+    # is Inf, so without this the fill silently becomes Inf and log(Inf) = Inf
+    # corrupts the fit. The Bayesian path was hardened against this in B3.3;
+    # the frequentist entry point was not.
+    vol           <- analysis_df[[volume_column]]
+    positive_vals <- vol[is.finite(vol) & vol > 0]
+    if (length(positive_vals) == 0L) {
+      stop("No positive values in '", volume_column,
+           "' after filtering. Cannot apply log transform.", call. = FALSE)
+    }
+    vol[vol <= 0] <- min(positive_vals, na.rm = TRUE) / 2
     analysis_df[[volume_column]] <- log(vol)
     if (isTRUE(verbose)) message("Applied log transformation to volume data")
   } else if (transform == "sqrt") {
@@ -833,7 +894,24 @@ tumor_growth_statistics <- function(df,
   cage_analysis <- tgs_compute_cage_effects(analysis_df, cage_column, treatment_column, volume_column)
   cage_effects <- cage_analysis$effects
 
-  # Model fitting and selection
+  # Model fitting and selection.
+  #
+  # CODE_REVIEW.md R3.17 / G.2 — cage inclusion is now decided by the design's
+  # STRUCTURE (does any cage hold more than one treatment; are there >= 2 cages
+  # per arm), not by a chi-square p-value on observation counts. The old test
+  # dropped cage entirely in the maintainer's standard design (one arm per
+  # cage, >= 2 cages per arm) even though (1|cage) is estimable and needed
+  # there — understating every standard error by the design effect.
+  cage_structure <- classify_cage_structure(
+    analysis_df, cage_column, id_column, treatment_column
+  )
+  cage_analysis$structure <- cage_structure
+  cage_handling <- resolve_cage_handling(cage_structure, handle_cage_effects,
+                                         verbose = verbose)
+  cage_analysis$handling <- cage_handling
+
+  # Retained for the descriptive chi-square in cage_analysis; no longer drives
+  # model structure.
   cage_collinear <- !is.null(cage_analysis$collinearity_test) &&
     isTRUE(cage_analysis$collinearity_test$p.value < 0.05)
 
@@ -851,7 +929,7 @@ tumor_growth_statistics <- function(df,
     gam_result <- tgs_fit_gamm4_model(
       analysis_df, volume_column, time_column,
       treatment_column, id_column, cage_column,
-      handle_cage_effects, cage_collinear, verbose,
+      cage_handling, verbose,
       include_necrotic_covariate = include_necrotic_covariate
     )
     if (is.null(gam_result)) {
@@ -875,7 +953,8 @@ tumor_growth_statistics <- function(df,
       gam_obj, treatment_column, time_column, day_range
     )
     pairwise_comp_df    <- tgs_gam_pairwise(
-      gam_obj, treatment_column, time_column, day_range, reference_group
+      gam_obj, treatment_column, time_column, day_range, reference_group,
+      comparison_spec = comparison_spec, custom_contrasts = custom_contrasts
     )
     anova_table         <- tgs_gam_anova_table(gam_obj)
     gam_diagnostics     <- if (include_diagnostics) {
@@ -898,11 +977,17 @@ tumor_growth_statistics <- function(df,
         fixed_effects  = paste(volume_column, "~", treatment_column,
                                "+ s(", time_column, ", by =",
                                treatment_column, ")"),
-        random_effects = switch(handle_cage_effects,
-          as_random_effect = paste0("(1|", cage_column, ") + (1|", id_column, ")"),
-                             paste0("(1|", id_column, ")")
-        ),
+        random_effects = if (isTRUE(cage_handling$random)) {
+          paste0("(1|", cage_column, ") + (1|", id_column, ")")
+        } else {
+          paste0("(1|", id_column, ")")
+        },
         cage_effects   = handle_cage_effects,
+        cage_structure = cage_structure$structure,
+        cage_placement = if (isTRUE(cage_handling$fixed)) "fixed effect"
+                         else if (isTRUE(cage_handling$random)) "random intercept"
+                         else "omitted",
+        cage_reason    = cage_handling$reason,
         smoother_k     = gam_result$model_selection$k_basis
       ),
       model_selection = gam_result$model_selection,
@@ -927,9 +1012,25 @@ tumor_growth_statistics <- function(df,
     return(list(
       model                       = if (return_model) gam_fit else NULL,
       model_type_used             = "gam",
+      transform_used              = transform,   # CODE_REVIEW.md R3.29
+      meta = me_result_meta(
+        analysis_type     = "Generalized additive mixed model (gamm4)",
+        model_type_used   = "gam",
+        inference         = "frequentist",
+        interval_type     = "confidence",
+        transform_used    = transform,
+        estimate_scale    = switch(transform, log = "log volume",
+                                   sqrt = "sqrt volume", "volume"),
+        comparison_family = comparison_spec$family,
+        p_adjust_method   = comparison_spec$p_adjust_method
+      ),
+      comparison_family     = comparison_spec$family,
+      p_adjust_method_used  = comparison_spec$p_adjust_method,
       anova                       = anova_table,
       summary                     = analysis_summary,
-      pairwise_comparisons        = pairwise_comp_df,
+      pairwise_comparisons        = me_pairwise_frame(
+        pairwise_comp_df, comparison_spec,
+        adjusted_col = "p_value"),
       posthoc = list(
         method   = "GAM smooth-difference contrasts at quantile days",
         pairwise = pairwise_comp_df
@@ -958,8 +1059,7 @@ tumor_growth_statistics <- function(df,
   lme4_result <- tgs_fit_lme4_models(
     analysis_df, volume_column, time_column,
     treatment_column, id_column, cage_column,
-    random_effects_specification, handle_cage_effects,
-    cage_collinear, verbose,
+    random_effects_specification, cage_handling, verbose,
     include_necrotic_covariate = include_necrotic_covariate
   )
   model <- lme4_result$model
@@ -1009,12 +1109,13 @@ tumor_growth_statistics <- function(df,
       growth_rates        = growth_rates,
       auc_df              = auc_df,
       transform           = transform,
-      p_adjust_method     = p_adjust_method,
+      comparison_spec     = comparison_spec,
       reference_group     = reference_group,
       return_model        = return_model,
       include_diagnostics = include_diagnostics,
       auc_bootstrap_n     = auc_bootstrap_n,
       auc_bootstrap_seed  = auc_bootstrap_seed,
+      auc_permutations    = auc_permutations,
       cage_analysis       = cage_analysis,
       data_summary        = data_summary,
       necrosis_summary    = necrosis_summary,
@@ -1025,14 +1126,12 @@ tumor_growth_statistics <- function(df,
     ))
   } else {
     # Create ANOVA table
-    if (requireNamespace("car", quietly = TRUE)) {
-      anova_table <- car::Anova(model, type = "III")
-      anova_type <- "Type III ANOVA (car package)"
-    } else {
-      anova_table <- stats::anova(model)
-      anova_type <- "ANOVA (stats package)"
-      warning("Package 'car' not available. Using stats::anova instead of Type III tests.")
-    }
+    # car is a hard Import (and always was). The dead fallback ran
+    # stats::anova(), which for a merMod is a *different test* from
+    # car::Anova(type = "III") -- so a missing car would silently have changed
+    # which hypothesis was tested, not merely the formatting.
+    anova_table <- car::Anova(model, type = "III")
+    anova_type <- "Type III ANOVA (car package)"
     
     # Create pairwise comparisons
     if (requireNamespace("emmeans", quietly = TRUE)) {
@@ -1094,25 +1193,30 @@ tumor_growth_statistics <- function(df,
       treatment_effects$Lower_CL <- round(treatment_effects$Lower_CL, 3)
       treatment_effects$Upper_CL <- round(treatment_effects$Upper_CL, 3)
 
-      # Create contrasts with reference group
-      # Use the emmeans factor level ordering (alphabetical) to ensure correct
-      # coefficient assignment — unique() ordering from the data may differ.
-      emm_levels <- levels(lsmeans_obj)[[1]]
-      contrasts <- list()
-      other_groups <- setdiff(emm_levels, reference_group)
-      for (group in other_groups) {
-        contrast_coef <- numeric(length(emm_levels))
-        ref_idx <- which(emm_levels == reference_group)
-        group_idx <- which(emm_levels == group)
-        contrast_coef[ref_idx] <- -1
-        contrast_coef[group_idx] <- 1
-        contrasts[[paste(group, "-", reference_group)]] <- contrast_coef
-      }
+      # Calculate the requested comparisons WITH the requested adjustment.
+      #
+      # CODE_REVIEW.md R3.1 — this previously built a custom contrast list and
+      # passed it to emmeans::contrast() with no `adjust`. emmeans defaults to
+      # adjust = "none" for a user-supplied coefficient list (it only defaults
+      # to tukey/dunnettx for the named "pairwise"/"trt.vs.ctrl" methods), so
+      # the default model path reported completely unadjusted p-values while
+      # `p_adjust_method` documented "bonferroni" as the default. The argument
+      # was never referenced anywhere in this path.
+      pairwise_comp <- build_requested_contrasts(
+        lsmeans_obj, comparison_spec,
+        reference_group  = reference_group,
+        custom_contrasts = custom_contrasts
+      )
 
-      # Calculate pairwise comparisons
-      pairwise_comp <- emmeans::contrast(lsmeans_obj, method = contrasts)
-
-      posthoc_method <- "Estimated marginal means with pairwise contrasts"
+      posthoc_method <- paste0(
+        "Estimated marginal means at the mean study day; ",
+        switch(comparison_spec$family,
+          vs_reference = paste0("each group vs ", reference_group),
+          all_pairs    = "all pairwise comparisons",
+          custom       = "user-supplied contrasts"
+        ),
+        " with ", comparison_spec$p_adjust_method, " adjustment"
+      )
 
     } else {
       pairwise_comp <- NULL
@@ -1157,7 +1261,12 @@ tumor_growth_statistics <- function(df,
                                "intercept_only" = paste("(1|", id_column, ")"),
                                "slope" = paste("(", time_column, "|", id_column, ")"),
                                "none" = "None"),
-        cage_effects = handle_cage_effects
+        cage_effects   = handle_cage_effects,
+        cage_structure = cage_structure$structure,
+        cage_placement = if (isTRUE(cage_handling$fixed)) "fixed effect"
+                         else if (isTRUE(cage_handling$random)) "random intercept"
+                         else "omitted",
+        cage_reason    = cage_handling$reason
       ),
       model_selection = list(
         criteria = paste("Random effects:", random_effects_specification),
@@ -1170,7 +1279,8 @@ tumor_growth_statistics <- function(df,
         anova_method = anova_type,
         posthoc_method = posthoc_method,
         growth_rate_calculation = paste0(
-          "Growth rates are calculated by fitting a linear regression model to log1p-transformed volume data over time for each subject. ",
+          "Growth rates are calculated by fitting a linear regression model to log-transformed volume data over time for each subject ",
+          "(non-positive volumes are replaced with half the smallest positive value before the log). ",
           "The slope coefficient from this model represents the exponential growth rate. ",
           "A value of 0.1 indicates approximately 10% tumor volume increase per day. ",
           "Only subjects with 3 or more time points are included in growth rate calculations."
@@ -1178,9 +1288,8 @@ tumor_growth_statistics <- function(df,
       ),
       notes = c(
         if(transform != "none") paste("Volume data was", transform, "transformed prior to analysis") else "No transformation applied to volume data",
-        if(!is.null(cage_analysis$collinearity_test)) {
-          paste("Cage-treatment collinearity test p-value:", format(cage_analysis$collinearity_test$p.value, digits=4))
-        } else "No cage collinearity test performed"
+        paste("Cage design:", cage_structure$description),
+        paste("Cage handling:", cage_handling$reason)
       )
     )
     
@@ -1206,12 +1315,69 @@ tumor_growth_statistics <- function(df,
     # out; can be slow on large designs, so gated on include_diagnostics.
     lmm_infl <- if (include_diagnostics) build_lmm_influence(model) else NULL
 
+    # CODE_REVIEW.md R3.17 / G.2 — report the cage-level intraclass correlation
+    # so the reader can see how much the clustering mattered. The design effect
+    # on the effective sample size is 1 + (mice_per_cage - 1) * ICC.
+    cage_analysis$icc <- if (isTRUE(cage_handling$random)) {
+      cage_icc(model, cage_column)
+    } else NULL
+
+    # CODE_REVIEW.md H.3 — randomisation test of the interaction, run only when
+    # the caller has told us what the unit of randomisation was.
+    perm_result <- NULL
+    if (!is.null(permutation_test)) {
+      perm_result <- tryCatch(
+        trajectory_permutation_test(
+          df               = df,
+          time_column      = time_column,
+          volume_column    = volume_column,
+          treatment_column = treatment_column,
+          id_column        = id_column,
+          cage_column      = if (no_cage_mode) NULL else cage_column,
+          transform        = transform,
+          spec             = permutation_test,
+          verbose          = verbose
+        ),
+        error = function(e) {
+          warning("Permutation test skipped: ", conditionMessage(e),
+                  call. = FALSE)
+          NULL
+        }
+      )
+    }
+
     # Return the results
     results <- list(
       model = if (return_model) model else NULL,
+      # CODE_REVIEW.md R3.29 — report the modelling scale and model type so a
+      # downstream consumer can back-transform correctly without having to know
+      # what was requested.
+      model_type_used = "lme4",
+      transform_used  = transform,
+      # CODE_REVIEW.md B7.1 / B7.2 -- canonical provenance so consumers can
+      # interrogate the object instead of sniffing column names.
+      meta = me_result_meta(
+        analysis_type     = "Linear mixed-effects model",
+        model_type_used   = "lme4",
+        inference         = "frequentist",
+        interval_type     = "confidence",
+        transform_used    = transform,
+        estimate_scale    = switch(transform, log = "log volume",
+                                   sqrt = "sqrt volume", "volume"),
+        comparison_family = comparison_spec$family,
+        p_adjust_method   = comparison_spec$p_adjust_method
+      ),
+      comparison_family     = comparison_spec$family,
+      p_adjust_method_used  = comparison_spec$p_adjust_method,
       anova = anova_table,
       summary = analysis_summary,
-      pairwise_comparisons = pairwise_comp,
+      # R14.4: was the raw emmGrid. Consumers guarding with is.data.frame()
+      # silently skipped it, which is how the adjustment scope went missing
+      # from the table header on the default path.
+      pairwise_comparisons = me_pairwise_frame(
+        pairwise_comp, comparison_spec,
+        adjusted_col = "p.value",
+        adjust_scope = posthoc_method),
       posthoc = list(
         method = posthoc_method,
         pairwise = if (!is.null(pairwise_comp)) as.data.frame(summary(pairwise_comp)) else NULL
@@ -1230,6 +1396,7 @@ tumor_growth_statistics <- function(df,
       diag_dfbetas             = if (!is.null(lmm_infl)) lmm_infl$dfbetas,
       data_summary = data_summary,
       plots = plots_list,
+      permutation_test = perm_result,
       necrosis_summary = necrosis_summary
     )
 

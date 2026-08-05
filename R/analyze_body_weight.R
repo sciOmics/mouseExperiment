@@ -13,15 +13,32 @@
 #' @param sex_column Name of the sex column. NULL to omit.
 #' @param cage_column Name of the cage column. NULL to omit.
 #' @param adjust_tumor_weight Logical; subtract estimated tumor weight from body mass.
+#' @param volume_units Units of the volume column: `"mm3"`, `"cm3"`, or
+#'   `NULL` to infer from the magnitude of the values. Only used when
+#'   `adjust_tumor_weight = TRUE`, where volume is converted to mass and
+#'   subtracted from body weight -- getting the units wrong there scales the
+#'   correction by 1000 (R3.30).
 #' @param tumor_density Density in g/cm³ for tumor weight estimation (default 1.0).
 #' @param covariates Character vector of optional covariates: "volume", "sex", "initial_mass".
 #' @param estimation Character; "REML" (default) or "ML".
 #' @param model_type Character; "lmm" (default — linear mixed model via lme4) or
 #'   "gam" (generalized additive mixed model via gamm4 with a group-specific
 #'   smoother on Day, preferred when weight trajectories are non-monotonic).
+#' @param comparison_family Which comparisons to report and adjust over:
+#'   "vs_reference" (default), "all_pairs", or "custom" (with
+#'   \code{custom_contrasts}). The multiplicity adjustment covers exactly this
+#'   family.
+#' @param custom_contrasts Named list of contrast coefficient vectors over the
+#'   treatment levels; required when \code{comparison_family = "custom"}.
+#' @param p_adjust_method Multiplicity adjustment: "bonferroni" (default),
+#'   "holm", "fdr", "dunnett" (exact many-to-one, requires "vs_reference"),
+#'   "tukey" (requires "all_pairs"), or "none".
 #' @param reference_group Name of the control/reference group. NULL auto-selects.
-#' @return A list with components: model, fixed_effects, random_effects, emmeans_table,
-#'   model_info, weight_data, summary_text.
+#' @return A list with components: model, fixed_effects, random_effects,
+#'   emmeans_table (group marginal means at the mean study day),
+#'   pairwise_comparisons (the requested contrast family with adjusted
+#'   p-values), comparison_family, p_adjust_method_used, model_info,
+#'   weight_data, summary_text.
 #' @export
 analyze_body_weight <- function(df,
                                 weight_column    = "Weight",
@@ -33,13 +50,27 @@ analyze_body_weight <- function(df,
                                 cage_column      = NULL,
                                 adjust_tumor_weight = TRUE,
                                 tumor_density    = 1.0,
+                                volume_units     = NULL,
                                 covariates       = c("volume"),
                                 estimation       = c("REML", "ML"),
                                 model_type       = c("lmm", "gam"),
+                                comparison_family = c("vs_reference", "all_pairs", "custom"),
+                                custom_contrasts = NULL,
+                                p_adjust_method  = c("bonferroni", "holm", "fdr",
+                                                     "dunnett", "tukey", "none"),
                                 reference_group  = NULL) {
 
   estimation <- match.arg(estimation)
   model_type <- match.arg(model_type)
+  comparison_family <- match.arg(comparison_family)
+  p_adjust_method   <- match.arg(p_adjust_method)
+
+  # CODE_REVIEW.md R3.12 / G.1 — same comparison-family contract as
+  # tumor_growth_statistics(); both paths here fit a joint model, so Tukey and
+  # Dunnett are available.
+  comparison_spec <- resolve_comparison_spec(
+    comparison_family, p_adjust_method, custom_contrasts, supports_joint = TRUE
+  )
 
   # --- Validate required columns ---
   required <- c(weight_column, time_column, treatment_column, id_column)
@@ -65,8 +96,12 @@ analyze_body_weight <- function(df,
 
   # Tumor weight adjustment
   if (adjust_tumor_weight && has_volume) {
-    # Volume in mm³ → cm³ (÷1000) → grams (× density)
-    wd$Tumor_Weight <- wd$Volume / 1000 * tumor_density
+    # CODE_REVIEW.md R3.30 — units are resolved explicitly (auto-detected when
+    # NULL) rather than assuming mm³, and the resulting mass is range-checked
+    # against body weight so a 1000x unit error cannot pass silently.
+    volume_units <- resolve_volume_units(wd$Volume, volume_units)
+    wd$Tumor_Weight <- volume_to_mass(wd$Volume, tumor_density, volume_units)
+    check_tumor_mass_plausible(wd$Tumor_Weight, wd$Weight, volume_units)
     wd$Net_Weight   <- wd$Weight - wd$Tumor_Weight
     response_col    <- "Net_Weight"
   } else {
@@ -86,12 +121,30 @@ analyze_body_weight <- function(df,
     wd$Cage <- as.factor(df[[cage_column]])
   }
 
-  # Initial mass per mouse (baseline weight at earliest timepoint)
-  wd <- wd[order(wd$ID, wd$Day), ]
-  baseline <- stats::aggregate(Net_Weight ~ ID, data = wd,
-                               FUN = function(x) x[1])
+  # Initial mass per mouse (baseline weight at earliest timepoint).
+  #
+  # CODE_REVIEW.md R3.11 — aggregating by ID alone collapses mice that share a
+  # numeric ear-tag ID across treatment groups or cages (the normal case), so
+  # they all received one another's baseline. Key on the composite mouse key
+  # like the rest of the package, and filter to each mouse's own earliest day
+  # rather than relying on row order (the Round 1 1.7 defect class).
+  wd$.MouseKey <- if (has_cage) {
+    make_mouse_key(as.character(wd$Treatment), as.character(wd$ID),
+                   as.character(wd$Cage))
+  } else {
+    make_mouse_key(as.character(wd$Treatment), as.character(wd$ID))
+  }
+  wd <- wd[order(wd$.MouseKey, wd$Day), ]
+
+  first_day <- stats::aggregate(Day ~ .MouseKey, data = wd, FUN = min)
+  names(first_day)[2] <- ".FirstDay"
+  bl_rows <- merge(wd[, c(".MouseKey", "Day", "Net_Weight")], first_day,
+                   by = ".MouseKey")
+  bl_rows <- bl_rows[bl_rows$Day == bl_rows$.FirstDay, , drop = FALSE]
+  baseline <- stats::aggregate(Net_Weight ~ .MouseKey, data = bl_rows,
+                               FUN = mean)
   names(baseline)[2] <- "Initial_Mass"
-  wd <- merge(wd, baseline, by = "ID", all.x = TRUE)
+  wd <- merge(wd, baseline, by = ".MouseKey", all.x = TRUE)
 
   # Remove rows with missing response
   wd <- wd[!is.na(wd$Net_Weight) & !is.na(wd$Day), ]
@@ -101,8 +154,28 @@ analyze_body_weight <- function(df,
   if (!is.null(reference_group) && reference_group %in% levels(wd$Treatment)) {
     wd$Treatment <- stats::relevel(wd$Treatment, ref = reference_group)
   }
+  # The level the vs_reference contrasts are taken against.
+  ref_level <- levels(wd$Treatment)[1]
 
   # --- Build formula ---
+  # CODE_REVIEW.md R3.10 — `adjust_tumor_weight` and a "volume" covariate are
+  # two mutually exclusive ways of handling the same confounder, and the
+  # shipped defaults applied both: Net_Weight already has a deterministic
+  # linear function of Volume subtracted from it, so entering Volume as a
+  # predictor of that response makes its coefficient uninterpretable (it
+  # absorbs the residual of a quantity already removed) and adjusts the
+  # treatment effect for tumour burden twice, in two different functional
+  # forms. Subtract the mass *or* condition on it, never both.
+  if (adjust_tumor_weight && has_volume && "volume" %in% covariates) {
+    covariates <- setdiff(covariates, "volume")
+    message(
+      "Tumour burden is already removed from the response via ",
+      "adjust_tumor_weight = TRUE; dropping the redundant 'volume' covariate. ",
+      "To condition on tumour volume instead of subtracting its mass, set ",
+      "adjust_tumor_weight = FALSE."
+    )
+  }
+
   fixed_terms <- "Treatment * Day"
   if ("volume" %in% covariates && has_volume) {
     fixed_terms <- paste(fixed_terms, "+ Volume")
@@ -121,12 +194,6 @@ analyze_body_weight <- function(df,
   # GAM path — fit via gamm4 with a group-specific smoother on Day and
   # return early with a compatible result-list shape.
   if (model_type == "gam") {
-    if (!requireNamespace("gamm4", quietly = TRUE)) {
-      stop(
-        "Package 'gamm4' is required for model_type = 'gam'.\n",
-        "Install it with: install.packages('gamm4')"
-      )
-    }
     n_days <- length(unique(wd$Day))
     k_val  <- max(3L, min(10L, n_days - 1L))
 
@@ -160,13 +227,33 @@ analyze_body_weight <- function(df,
       }
     )
 
-    emm <- tryCatch({
-      em <- emmeans::emmeans(
-        gam_fit$gam, ~ Treatment,
-        at = list(Day = mean(wd$Day))
-      )
-      as.data.frame(em)
-    }, error = function(e) NULL)
+    # CODE_REVIEW.md R3.4 — gamm4's $gam component is a stub whose class vector
+    # lacks c("glm","lm") and whose $call is NULL, so emmeans::recover_data.gam
+    # rejects it with "Can't handle an object of class 'NULL'". v0.4.11 patched
+    # this for the tumour-growth path inside tgs_fit_gamm4_model(), but this
+    # function fits gamm4 inline and never got the patch — so the emmeans call
+    # below always errored, the tryCatch turned it into NULL, and the
+    # body-weight GAM path silently returned an empty marginal-means table,
+    # indistinguishable from "no effect".
+    gam_fit <- patch_gamm4_stub(gam_fit)
+
+    emm_obj <- tryCatch(
+      emmeans::emmeans(gam_fit$gam, ~ Treatment,
+                       at = list(Day = mean(wd$Day))),
+      error = function(e) {
+        warning("emmeans on the fitted GAMM failed: ", conditionMessage(e),
+                call. = FALSE)
+        NULL
+      }
+    )
+    emm <- if (!is.null(emm_obj)) as.data.frame(emm_obj) else NULL
+
+    # CODE_REVIEW.md R3.12 — the function previously returned group marginal
+    # means and nothing inferential, so it could not answer "did this arm lose
+    # more weight than control", the primary toxicity question.
+    pairwise <- if (!is.null(emm_obj)) {
+      bw_pairwise_table(emm_obj, comparison_spec, ref_level, custom_contrasts)
+    } else NULL
 
     return(list(
       model          = gam_fit,
@@ -180,6 +267,9 @@ analyze_body_weight <- function(df,
         error = function(e) NULL
       ),
       emmeans_table  = emm,
+      pairwise_comparisons = pairwise,
+      comparison_family    = comparison_spec$family,
+      p_adjust_method_used = comparison_spec$p_adjust_method,
       model_info     = list(
         estimation       = estimation,
         response         = response_col,
@@ -256,11 +346,20 @@ analyze_body_weight <- function(df,
 
   re <- as.data.frame(lme4::VarCorr(model))
 
-  # Marginal means per treatment
-  emm <- tryCatch({
-    em <- emmeans::emmeans(model, ~ Treatment)
-    as.data.frame(em)
-  }, error = function(e) NULL)
+  # Marginal means per treatment.
+  # CODE_REVIEW.md R3.12 — marginalise explicitly at the mean study day so this
+  # matches how tumor_growth_statistics() defines a group's adjusted mean; the
+  # bare `~ Treatment` relied on emmeans' default reference grid, so the two
+  # functions documented the same quantity two different ways.
+  emm_obj <- tryCatch(
+    emmeans::emmeans(model, ~ Treatment, at = list(Day = mean(wd$Day))),
+    error = function(e) NULL
+  )
+  emm <- if (!is.null(emm_obj)) as.data.frame(emm_obj) else NULL
+
+  pairwise <- if (!is.null(emm_obj)) {
+    bw_pairwise_table(emm_obj, comparison_spec, ref_level, custom_contrasts)
+  } else NULL
 
   # --- Summary text ---
   lines <- c(
@@ -311,6 +410,9 @@ analyze_body_weight <- function(df,
     fixed_effects  = fe,
     random_effects = re,
     emmeans_table  = emm,
+    pairwise_comparisons = pairwise,
+    comparison_family    = comparison_spec$family,
+    p_adjust_method_used = comparison_spec$p_adjust_method,
     model_info     = list(
       estimation       = estimation,
       response         = response_col,

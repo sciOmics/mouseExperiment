@@ -2,14 +2,26 @@
 # Tests for bayesian_body_weight()
 #
 # Uses make_bw_simple() (2 groups × 5 mice × 5 time-points).
-# All tests are skipped when brms is not installed.
+#
+# n_iter = 1500 rather than the 500 used elsewhere (CODE_REVIEW.md K.7 / R3.34):
+# this fixture has no true between-mouse intercept variation, so the random-effect
+# SD sits at the boundary and the Intercept is weakly identified — a funnel the
+# sampler needs more draws to explore. At 1000 total draws the Intercept's
+# Tail_ESS lands around 235, below Stan's 400 guidance, which says the chains are
+# too short rather than that the model is wrong. The v0.9.0 data-scaled Intercept
+# prior is correctly located but wider than the old fixed normal(0, 0.625), and a
+# wider prior gives the sampler more room to explore on a weakly-identified
+# parameter; the old prior mixed better precisely because it was informative and
+# in the wrong place.
 # 2 chains × 500 iterations keeps each run under 90 s on CI while still
 # exercising every code path through the return list.
 # =============================================================================
 
-skip_bayes_bw <- function() {
-  skip_if_not_installed("brms")
-}
+# brms, bayesplot, gamm4 and mgcv are hard Imports as of v0.10.0, so this
+# helper can no longer skip. Retained as a no-op because the call sites are
+# numerous, and because a skip here is exactly what let bayesian_synergy()
+# stay broken for five releases (CODE_REVIEW.md R3-L).
+skip_bayes_bw <- function() invisible(NULL)
 
 local({
   .cached_result <- NULL
@@ -29,7 +41,7 @@ local({
           reference_group              = "Control",
           prior_strength               = "weakly_informative",
           n_chains                     = 2L,
-          n_iter                       = 500L,
+          n_iter                       = me_test_niter_deep(),
           seed                         = 42L,
           return_model                 = TRUE,
           plots                        = FALSE,
@@ -193,7 +205,7 @@ test_that("bayesian_body_weight: model is NULL when return_model = FALSE", {
     bayesian_body_weight(
       make_bw_simple(),
       reference_group = "Control",
-      n_chains = 2L, n_iter = 500L,
+      n_chains = 2L, n_iter = me_test_niter(),
       return_model = FALSE, plots = FALSE, verbose = FALSE, seed = 1L
     )
   ))
@@ -204,12 +216,11 @@ test_that("bayesian_body_weight: model is NULL when return_model = FALSE", {
 
 test_that("bayesian_body_weight: weight_trajectory_plot is a ggplot when plots = TRUE", {
   skip_bayes_bw()
-  skip_if_not_installed("bayesplot")
   res <- suppressWarnings(suppressMessages(
     bayesian_body_weight(
       make_bw_simple(),
       reference_group = "Control",
-      n_chains = 2L, n_iter = 500L,
+      n_chains = 2L, n_iter = me_test_niter(),
       return_model = FALSE, plots = TRUE, verbose = FALSE, seed = 2L
     )
   ))

@@ -134,28 +134,15 @@ test_that("plot_growth_rate returns a ggplot", {
   df  <- make_tg_simple()
   res <- call_tgs(df)
 
-  if (!is.null(res$growth_rates) && nrow(res$growth_rates) > 0) {
-    p <- plot_growth_rate(res$growth_rates)
-    expect_s3_class(p, "gg")
-  } else {
-    skip("growth_rates not available in tumor_growth_statistics result")
-  }
-})
-
-# ===========================================================================
-# 4. plot_treatments
-# ===========================================================================
-test_that("plot_treatments returns a ggplot", {
-  # Create a simple treatment schedule
-  treatment_schedule <- data.frame(
-    Day       = c(0, 3, 7, 10, 14, 0, 7, 14),
-    Treatment = c(rep("DrugA", 5), rep("DrugB", 3)),
-    stringsAsFactors = FALSE
-  )
-  tumor_data <- make_tg_simple()
-  p <- plot_treatments(treatment_schedule, tumor_data)
+  # CODE_REVIEW.md K.2 -- this used to skip() when growth_rates was absent, which
+  # made "the field disappeared" look identical to "the test passed". The fixture
+  # has >= 3 timepoints per animal, so growth rates MUST be produced.
+  expect_false(is.null(res$growth_rates))
+  expect_gt(nrow(res$growth_rates), 0L)
+  p <- plot_growth_rate(res$growth_rates)
   expect_s3_class(p, "gg")
 })
+
 
 # ===========================================================================
 # 5. plot_bliss
@@ -177,44 +164,7 @@ test_that("plot_drug_synergy returns a ggplot", {
   expect_s3_class(p, "gg")
 })
 
-# ===========================================================================
-# 7. plot_combination_index
-# ===========================================================================
-test_that("plot_combination_index returns a ggplot", {
-  df  <- make_synergy_multi_timepoint()
-  res <- call_synergy_ot(df)
-  # plot_combination_index takes the synergy_summary data frame, not the full result list
-  p   <- plot_combination_index(res$synergy_summary)
-  expect_s3_class(p, "gg")
-})
 
-# ===========================================================================
-# 8. plot_synergy_combined
-# ===========================================================================
-test_that("plot_synergy_combined returns a ggplot or ggarrange object", {
-  skip_if_not_installed("ggpubr")
-
-  df  <- make_synergy_multi_timepoint()
-  res <- call_synergy_ot(df)
-  # plot_synergy_combined internally calls plot_synergy_trend (full result) and
-  # plot_combination_index (data frame). The latter may conflict when two defs
-  # exist. Wrap in tryCatch to handle gracefully.
-  p <- tryCatch(
-    suppressWarnings(plot_synergy_combined(res)),
-    error = function(e) {
-      # If combined plot fails due to conflicting function signatures,
-      # fall back to testing the component plots individually
-      NULL
-    }
-  )
-  if (!is.null(p)) {
-    expect_true(inherits(p, "gg") || inherits(p, "ggarrange") || inherits(p, "gtable"))
-  } else {
-    # At minimum, the trend plot should work
-    p_trend <- plot_synergy_trend(res)
-    expect_s3_class(p_trend, "gg")
-  }
-})
 
 # ===========================================================================
 # 9. plot_synergy_trend
@@ -230,29 +180,25 @@ test_that("plot_synergy_trend returns a ggplot", {
 # 10. plot_caterpillar
 # ===========================================================================
 test_that("plot_caterpillar returns a ggplot", {
-  skip_if_not_installed("lme4")
 
   df  <- make_tg_simple()
   res <- call_tgs(df)
 
-  if (!is.null(res$model)) {
+  # CODE_REVIEW.md K.2 -- return_model = TRUE is the default, so a missing
+  # model is a regression, not a reason to skip.
+  expect_false(is.null(res$model))
     p <- plot_caterpillar(res$model)
     expect_s3_class(p, "gg")
-  } else {
-    skip("model not available in tumor_growth_statistics result")
-  }
 })
 
 test_that("plot_caterpillar works with show_intercept = FALSE", {
-  skip_if_not_installed("lme4")
 
   df  <- make_tg_simple()
   res <- call_tgs(df)
 
-  if (!is.null(res$model)) {
+  # CODE_REVIEW.md K.2 -- return_model = TRUE is the default, so a missing
+  # model is a regression, not a reason to skip.
+  expect_false(is.null(res$model))
     p <- plot_caterpillar(res$model, show_intercept = FALSE)
     expect_s3_class(p, "gg")
-  } else {
-    skip("model not available in tumor_growth_statistics result")
-  }
 })

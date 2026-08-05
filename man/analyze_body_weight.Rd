@@ -15,9 +15,13 @@ analyze_body_weight(
   cage_column = NULL,
   adjust_tumor_weight = TRUE,
   tumor_density = 1,
+  volume_units = NULL,
   covariates = c("volume"),
   estimation = c("REML", "ML"),
   model_type = c("lmm", "gam"),
+  comparison_family = c("vs_reference", "all_pairs", "custom"),
+  custom_contrasts = NULL,
+  p_adjust_method = c("bonferroni", "holm", "fdr", "dunnett", "tukey", "none"),
   reference_group = NULL
 )
 }
@@ -42,6 +46,12 @@ analyze_body_weight(
 
 \item{tumor_density}{Density in g/cm³ for tumor weight estimation (default 1.0).}
 
+\item{volume_units}{Units of the volume column: \code{"mm3"}, \code{"cm3"}, or
+\code{NULL} to infer from the magnitude of the values. Only used when
+\code{adjust_tumor_weight = TRUE}, where volume is converted to mass and
+subtracted from body weight -- getting the units wrong there scales the
+correction by 1000 (R3.30).}
+
 \item{covariates}{Character vector of optional covariates: "volume", "sex", "initial_mass".}
 
 \item{estimation}{Character; "REML" (default) or "ML".}
@@ -50,11 +60,26 @@ analyze_body_weight(
 "gam" (generalized additive mixed model via gamm4 with a group-specific
 smoother on Day, preferred when weight trajectories are non-monotonic).}
 
+\item{comparison_family}{Which comparisons to report and adjust over:
+"vs_reference" (default), "all_pairs", or "custom" (with
+\code{custom_contrasts}). The multiplicity adjustment covers exactly this
+family.}
+
+\item{custom_contrasts}{Named list of contrast coefficient vectors over the
+treatment levels; required when \code{comparison_family = "custom"}.}
+
+\item{p_adjust_method}{Multiplicity adjustment: "bonferroni" (default),
+"holm", "fdr", "dunnett" (exact many-to-one, requires "vs_reference"),
+"tukey" (requires "all_pairs"), or "none".}
+
 \item{reference_group}{Name of the control/reference group. NULL auto-selects.}
 }
 \value{
-A list with components: model, fixed_effects, random_effects, emmeans_table,
-model_info, weight_data, summary_text.
+A list with components: model, fixed_effects, random_effects,
+emmeans_table (group marginal means at the mean study day),
+pairwise_comparisons (the requested contrast family with adjusted
+p-values), comparison_family, p_adjust_method_used, model_info,
+weight_data, summary_text.
 }
 \description{
 Fits a linear mixed-effects model to longitudinal body weight data,
