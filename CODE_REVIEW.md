@@ -4052,3 +4052,125 @@ six releases old.
 | R17.2 | Loewe/CI computed response additivity; biased to antagonism | Major | ✅ Removed v0.21.0 |
 | R17.3 | Three dashboard calls to non-existent backend functions | Major | ✅ Fixed + guarded |
 | — | `plot_combination_index()` defined twice | Minor | ✅ Resolved by removal |
+
+---
+
+# Review Round 19 (v0.22.0 — 2026-08-05)
+
+**Scope:** the surfaces listed as "not investigated" — plus `R CMD check`, which
+had never been run during this review and immediately found what `testthat`
+structurally cannot.
+
+## R18.1 Five `pkg::fn` calls could never resolve — **Major**, four of them live
+
+`::` requires the object to be **exported**. These five are visible inside their
+namespaces via imports, but not exported, so every call throws:
+
+| call | where it actually lives | consequence |
+|---|---|---|
+| `lme4::influence` | `influence` is a stats generic; lme4 registers the *method* | Cook's distance and DFBETAS **NULL on every lme4 run** |
+| `stats::make.names` | base | error in the Bayesian survival coefficient fallback |
+| `brms::Gamma` | stats | error whenever `family = "gamma"` |
+| `brms::update` | stats generic | error in the Bayesian power simulation |
+| `brms::ebfmi` | not exported by brms at all | guarded by `exists()`, so never live |
+
+The influence case is the one that matters. `build_lmm_influence()` wraps the call
+in `tryCatch`, so the failure was silent and `diag_cooks_distance` /
+`diag_dfbetas` came back `NULL` on **every** run — while the dashboard Info tab,
+written in Round 11, advertised them: *"Influence measures (Cook's distance,
+DFBETAS) are also available: they identify individual animals whose removal would
+materially change the conclusion."* Documented in Round 11, never once produced.
+
+**Fixing the namespace was not sufficient.** `influence.merMod` works by
+case-deletion refitting, which re-evaluates the original model call. That call
+records `data = analysis_df` — a local of the fitting function that no longer
+exists once a caller holds the result — so the refit failed with
+`object 'analysis_df' not found`. The repair refits once from the stored model
+frame, where the data is in scope, and takes influence from that. The extra fit
+is negligible against the n refits influence performs anyway.
+
+## R18.2 Roxygen markdown mode corrupted six help files — **Major**
+
+`DESCRIPTION` sets `Roxygen: list(markdown = TRUE)`. In markdown mode `\%` is a
+*markdown* escape, so roxygen emits a literal backslash **plus** an escaped
+percent — `\\%` — which Rd cannot parse. The failure is not local: the error
+cascades, and every subsequent `\item` and section header in the file is lost.
+
+`apriori_power_simulation.Rd` was the worst affected — 17 parse warnings, and
+`R CMD check` reported **ten parameters as undocumented** because their `\item`
+entries had been swallowed. Six help files carried the malformed form.
+
+The correction has a boundary worth recording, because I got it wrong first time:
+roxygen does **not** escape `%` inside literal Rd macros (`\code{}`, `\eqn{}`,
+`\deqn{}`), so there it must stay `\%`. A blanket unescape broke three of those,
+turning the percent into an Rd comment that ate the rest of the line. Both
+directions are now pinned by tests.
+
+`R CMD check` went from **8 WARNINGs / 5 NOTEs** to **5 / 5**, with the remaining
+warnings cosmetic (non-ASCII source, import masking, vignette packaging).
+
+## Verified against known answers (recorded so none is re-audited)
+
+| Surface | Check | Result |
+|---|---|---|
+| `calculate_volume()` | all six formulas vs hand calculation, plus the height fallback | exact |
+| `tumor_doubling_time()` | vs `ln(2)/r` at r = 0.05 / 0.10 / 0.20 | exact to 1e-6, R² = 1 |
+| `tumor_auc_analysis()` | trapezoid on a linear curve with a closed-form integral | 4000 / 3000 exactly |
+| `volume_to_mass()` | 1000 mm³ and 1 cm³ at density 1.0 | both 1.0 g |
+| `detect_volume_units()` | mm³-scale and cm³-scale magnitudes | correct both ways |
+| `cage_icc()` | vs a manual `VarCorr` computation | agrees to 1e-8 |
+| GAMM | recovery of a plateauing trajectory | RMSE 0.038; effect absent at day 0–6 (p = 0.62, 0.28), present at day 14 (p = 7e-4) |
+| `efficacy_toxicity_bivariate()` | vs simulated 2 % / 12 % weight loss and hand-computed TGI | 2.14 / 12.00; TGI 65.01 vs 64.9 |
+| `weight_loss_threshold()` | KM events and log-rank on a separable design | 0 vs 8 events, p = 4.9e-05 |
+| `build_html_report()` (dashboard) | builds, self-contained, inlines five tables | smoke-verified |
+
+**A caveat on all of the above.** Every verification used data I constructed. That
+catches wrong formulas and broken plumbing, which is what it found. It does not
+catch a formula that is right for a simulation and wrong for a real assay, so
+these are necessary rather than sufficient — worth one spot-check against a
+dataset whose answer is already known.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| R18.1 | Five unresolvable `pkg::fn` calls; influence diagnostics always NULL | **Major** | ✅ Fixed v0.22.0 |
+| R18.2 | Markdown-mode percent escaping corrupted six Rd files | Major | ✅ Fixed v0.22.0 |
+| R18.3 | Two datasets shipped without `.rda` or documentation | Minor | ✅ Fixed v0.22.0 |
+| — | Nine analysis surfaces verified against known answers | — | Verified |
+
+## R19.1–R19.5 The five exports with no test — closed
+
+Scanning exports against the test corpus found 37 of 42 referenced and five not:
+`bayesian_power_analysis`, `bayesian_synergy_over_time`, `bayesian_twm_from_data`,
+`tg_mcmc`, `tg_priors`.
+
+That list was not academic. `bayesian_power_analysis()` had carried the
+unresolvable `brms::update` call fixed under §R18.1 — a shape test alone would
+have failed loudly on it.
+
+**Writing the tests immediately found a second live bug.** The §R17.2 Loewe
+removal had left a trailing comma in `bayesian_synergy_over_time()`:
+
+```r
+peak_synergy = list(
+  bliss = peak_bliss_day,      # <- dangling
+)
+```
+
+`argument 2 is empty` on every call. It survived the Round 18 suite because the
+function had no test at all, which is precisely the gap this round exists to
+close. Two of the five untested exports were therefore broken, not merely
+unverified — a 40 % defect rate in the untested set, against a suite that was
+otherwise green at 906.
+
+`tg_mcmc()` and `tg_priors()` get behavioural rather than shape tests: their whole
+job is to override the individual arguments, and a silent failure to do so is the
+§K.4 class — the user's sampler settings would be ignored with no symptom. Both
+override correctly, and both reject a bare list rather than half-applying it.
+
+A standing scan now asserts that **every export is referenced by at least one
+test**, so a new export cannot be added without one.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| R19.3 | Trailing comma from the Loewe removal broke `bayesian_synergy_over_time()` | **Major** | ✅ Fixed v0.22.0 |
+| R19.1–5 | Five exports with no test | Process | ✅ Fixed — 40 assertions + a standing scan |

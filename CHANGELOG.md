@@ -5,6 +5,73 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-08-05
+
+`R CMD check` had never been run during this review. It immediately found what
+testthat structurally cannot.
+
+### Fixed — five `pkg::fn` calls that could never resolve (R18.1)
+
+`::` requires an **exported** object. `lme4::influence`, `stats::make.names`,
+`brms::Gamma`, `brms::update` and `brms::ebfmi` are all visible inside their
+namespaces via imports but not exported, so every call throws.
+
+The influence case was silent and therefore the worst: `build_lmm_influence()`
+wraps the call in `tryCatch`, so `diag_cooks_distance` and `diag_dfbetas` came
+back **NULL on every lme4 run** — while the dashboard Info tab advertised them.
+
+Fixing the namespace was not enough. `influence.merMod` refits by case deletion
+and re-evaluates the model call, whose `data = analysis_df` names a local of the
+fitting function that is gone once a caller holds the result. The repair refits
+once from the stored model frame, where the data is in scope.
+
+### Fixed — roxygen markdown mode corrupted six help files (R18.2)
+
+`Roxygen: list(markdown = TRUE)` means `\%` is a *markdown* escape, so roxygen
+emitted a literal backslash plus an escaped percent — `\\%` — which Rd cannot
+parse. The error cascades: every following `\item` and section header is lost.
+`apriori_power_simulation.Rd` lost the documentation of **ten parameters** that
+way.
+
+Boundary worth knowing: roxygen does not escape `%` inside `\code{}`, `\eqn{}`
+or `\deqn{}`, so there it must stay `\%`. Both directions are pinned by tests.
+
+`R CMD check`: 8 WARNINGs / 5 NOTEs → 5 / 5, the remainder cosmetic.
+
+### Fixed — two datasets shipped without `.rda` or documentation (R18.3)
+
+`necrotic_synthetic_data` and `weight_synthetic_data` were CSV-only in `data/`
+while the other four ship as both CSV and `.rda`. Now consistent and documented.
+
+### Fixed — a trailing comma broke `bayesian_synergy_over_time()` (R19.3)
+
+The v0.21.0 Loewe removal left `peak_synergy = list(bliss = peak_bliss_day,)`,
+so every call failed with `argument 2 is empty`. It survived a green 906-test
+suite because the function had no test at all.
+
+### Added — tests for the five exports that had none (R19.1–R19.5)
+
+`bayesian_power_analysis`, `bayesian_synergy_over_time`, `bayesian_twm_from_data`,
+`tg_mcmc`, `tg_priors`. Two of the five were broken rather than merely unverified
+— the other being the `brms::update` call fixed under R18.1.
+
+`tg_mcmc()` and `tg_priors()` get behavioural tests: their job is to override the
+individual arguments, and silent failure there would ignore the user's sampler
+settings with no symptom. A standing scan now asserts every export is referenced
+by at least one test.
+
+### Verified — nine analysis surfaces against known answers
+
+All six volume formulas (exact vs hand calculation), doubling time (`ln(2)/r` to
+1e-6), AUC (exact trapezoid), volume-to-mass and unit detection, cage ICC (agrees
+with `VarCorr` to 1e-8), GAMM recovery of a plateauing trajectory (RMSE 0.038,
+effect correctly absent early and present late), and the bivariate toxicity
+metric (recovers simulated 2 %/12 % loss and hand-computed TGI).
+
+Caveat: every check used constructed data. That catches wrong formulas and broken
+plumbing — which is what it found — but not a formula that is right for a
+simulation and wrong for a real assay.
+
 ## [0.21.0] - 2026-07-31
 
 ### Removed — the Loewe / Combination Index path (**breaking**)
