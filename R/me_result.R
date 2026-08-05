@@ -40,6 +40,7 @@ NULL
 #' @param call The matched call (default NULL).
 #' @param ... Additional named elements to include.
 #'
+#' @param object A `me_result` object.
 #' @return An S3 object of class \code{me_result}.
 #' @export
 new_me_result <- function(analysis_type,

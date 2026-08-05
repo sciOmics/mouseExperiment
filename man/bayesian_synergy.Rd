@@ -114,6 +114,12 @@ model: \code{"intercept_only"} (default, \code{(1|ID)}) or
 \item{backend}{brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
 See \code{\link{bayesian_tumor_growth}} for details. Applies to both
 \code{bayesian_synergy()} and \code{bayesian_synergy_over_time()}.}
+
+\item{priors}{Optional named list of \code{brms::prior()} objects applied
+verbatim, bypassing \code{prior_strength}.}
+
+\item{mcmc}{Optional named list of sampler settings (\code{chains}, \code{warmup},
+\code{iter}, \code{seed}, \code{backend}) overriding the individual arguments.}
 }
 \value{
 A named list:

@@ -180,7 +180,29 @@ build_lmm_influence <- function(model) {
   if (!inherits(model, "lmerMod")) return(NULL)
   tryCatch({
     # Per-observation influence — most informative case-deletion view.
-    infl <- lme4::influence(model, obs = TRUE)
+    # R18.1: two separate faults kept these NULL on every lme4 run, while the
+    # dashboard Info tab advertised them as available.
+    #
+    # First, the call was `lme4::influence(...)`. `influence` is an S3 generic in
+    # stats and lme4 registers influence.merMod without exporting a function of
+    # that name, so `lme4::influence` throws "not an exported object".
+    #
+    # Second -- and this is why fixing the namespace alone was not enough --
+    # influence.merMod works by case-deletion refitting, which re-evaluates the
+    # original model call. That call records `data = analysis_df`, a local of the
+    # fitting function that no longer exists once a caller holds the result, so
+    # the refit fails with "object 'analysis_df' not found".
+    #
+    # Refit once here from the stored model frame, where the data is in scope,
+    # and take influence from that. The extra fit is negligible against the n
+    # refits influence itself performs.
+    dat <- model@frame
+    fml <- stats::formula(model)
+    environment(fml) <- environment()
+    refit <- lme4::lmer(
+      fml, data = dat, REML = lme4::isREML(model),
+      control = lme4::lmerControl(optimizer = "bobyqa", calc.derivs = FALSE))
+    infl <- stats::influence(refit, obs = TRUE)
     cd   <- stats::cooks.distance(infl)
     df   <- stats::dfbetas(infl)
 

@@ -141,7 +141,7 @@ propagate the uncertainty. Extrapolation for \emph{plotting} is unaffected
 
 \item{auc_bootstrap_n}{Integer >= 0. When > 0 and \code{model_type = "auc"},
 each pairwise Welch's t-test gains a non-parametric percentile-bootstrap
-95\\% CI for the mean difference (\code{boot_ci_lower}, \code{boot_ci_upper}
+95\% CI for the mean difference (\code{boot_ci_lower}, \code{boot_ci_upper}
 columns in \code{pairwise_comparisons}). Honest at small N when per-mouse
 AUC distributions are skewed (especially under extrapolation), where the
 parametric t-CI is only approximate. A typical value is \code{999};

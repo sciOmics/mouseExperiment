@@ -22,7 +22,7 @@
 #' \code{control_growth_rate}, \code{treatment_effect}, \code{random_slope_sd},
 #' \code{random_intercept_sd}, and \code{residual_sd} are all on the
 #' \strong{log scale}. A \code{control_growth_rate} of 0.15 means log-volume
-#' increases by 0.15 per day (~16\% daily volume growth). A
+#' increases by 0.15 per day (~16% daily volume growth). A
 #' \code{treatment_effect} of 0.10 means the treated group's log-growth rate
 #' is 0.10 lower than control. \code{baseline_volume} is in raw volume units
 #' (mm³); it is log-transformed internally.
@@ -66,14 +66,14 @@
 #'
 #' \tabular{lrr}{
 #'   \strong{Observations lost} \tab \strong{Power (n=8)} \tab \strong{Power (n=12)} \cr
-#'   0\%  \tab 0.770 \tab 0.917 \cr
-#'   21\% \tab 0.738 \tab 0.905 \cr
-#'   30\% \tab 0.708 \tab 0.890 \cr
-#'   39\% \tab 0.645 \tab 0.835
+#'   0%  \tab 0.770 \tab 0.917 \cr
+#'   21% \tab 0.738 \tab 0.905 \cr
+#'   30% \tab 0.708 \tab 0.890 \cr
+#'   39% \tab 0.645 \tab 0.835
 #' }
 #'
 #' So a design the default reports at 0.77 is really running at about 0.71 if it
-#' loses 30\% of its observations — enough to justify an extra animal or two per
+#' loses 30% of its observations — enough to justify an extra animal or two per
 #' arm, not enough to invalidate the planning exercise.
 #'
 #' @param n_per_group Integer vector. Sample sizes per group to evaluate.
@@ -85,7 +85,8 @@
 #' @param baseline_sd Numeric \eqn{\ge} 0. Standard deviation (in mm^3) of the
 #'   raw-scale baseline volume across animals. Converted to a log-scale SD
 #'   via the first-order delta-method approximation
-#'   \code{log_sd \approx baseline_sd / baseline_volume} and added as a
+#'   \code{log_sd = baseline_sd / baseline_volume} (a first-order
+#'   approximation) and added as a
 #'   per-mouse jitter on top of \code{log(baseline_volume)}.
 #'
 #'   \strong{This parameter does not change the reported power}, and no value
@@ -93,7 +94,7 @@
 #'   retained because it makes the simulated volumes realistic if you inspect
 #'   them, not because it informs the sample-size decision.
 #' @param control_growth_rate Numeric. Log-scale daily growth rate for the
-#'   control group (default 0.15, ~16\% daily increase).
+#'   control group (default 0.15, ~16% daily increase).
 #' @param treatment_effect Numeric. Reduction in log-scale daily growth rate
 #'   for treated groups relative to control (default 0.10; i.e. treated rate =
 #'   control_rate − treatment_effect). Positive values mean tumour suppression.

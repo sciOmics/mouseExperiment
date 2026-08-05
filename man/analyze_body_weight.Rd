@@ -46,6 +46,12 @@ analyze_body_weight(
 
 \item{tumor_density}{Density in g/cm³ for tumor weight estimation (default 1.0).}
 
+\item{volume_units}{Units of the volume column: \code{"mm3"}, \code{"cm3"}, or
+\code{NULL} to infer from the magnitude of the values. Only used when
+\code{adjust_tumor_weight = TRUE}, where volume is converted to mass and
+subtracted from body weight -- getting the units wrong there scales the
+correction by 1000 (R3.30).}
+
 \item{covariates}{Character vector of optional covariates: "volume", "sex", "initial_mass".}
 
 \item{estimation}{Character; "REML" (default) or "ML".}

@@ -91,6 +91,11 @@
 #'   \code{n_warmup}, \code{n_iter}, \code{seed}, and \code{backend}
 #'   arguments.
 #'
+#' @param model_type Which Bayesian model to fit: `"bayes"` (linear) or
+#'   `"bayes_gam"` (smooth time x treatment).
+#' @param necrotic_column Optional column holding a 0/1 necrosis flag.
+#' @param necrotic_handling How flagged observations are treated:
+#'   `"exclude"`, `"covariate"`, or `"none"`.
 #' @return A named list:
 #' \describe{
 #'   \item{\code{model}}{\code{brmsfit} object, or \code{NULL} when

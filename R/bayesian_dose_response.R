@@ -94,6 +94,9 @@
 #' treated animals only (Dose > 0); the reference group defines TGI = 0 at
 #' Dose = 0 by construction.
 #'
+#' @param mcmc Optional named list of sampler settings
+#'   (`chains`, `warmup`, `iter`, `seed`, `backend`) overriding the
+#'   individual arguments. Resolved by `.resolve_mcmc()`.
 #' @return A named list:
 #' \describe{
 #'   \item{\code{model}}{\code{brmsfit} object or \code{NULL}.}

@@ -254,7 +254,9 @@ bayesian_power_analysis <- function(
             refresh = 0L
           )
         } else {
-          brms::update(
+          # R18.1: `update` is a stats generic; brms registers update.brmsfit
+          # but exports no `update`, so `brms::update` throws.
+          stats::update(
             base_model,
             newdata  = df_sim,
             recompile = FALSE,

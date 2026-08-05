@@ -37,7 +37,7 @@
 #' \deqn{
 #'   \mathrm{TWM}_g^{(d)} =
 #'   \frac{\mathrm{TGI}_g^{(d)}}{
-#'     \max(|WL_g^{(d)}\%|, \text{noise\_floor}) / 100}
+#'     \max(|WL_g^{(d)}%|, \text{noise\_floor}) / 100}
 #' }
 #' where
 #' \eqn{

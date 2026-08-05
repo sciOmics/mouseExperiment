@@ -63,6 +63,12 @@
 #' @param backend brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
 #'   See \code{\link{bayesian_tumor_growth}} for details.
 #'
+#' @param priors Optional named list of `brms::prior()` objects applied
+#'   verbatim, bypassing `prior_strength`. For callers that need full
+#'   control of the prior specification.
+#' @param mcmc Optional named list of sampler settings
+#'   (`chains`, `warmup`, `iter`, `seed`, `backend`) overriding the
+#'   individual arguments. Resolved by `.resolve_mcmc()`.
 #' @return A named list:
 #' \describe{
 #'   \item{\code{model}}{\code{brmsfit} object, or \code{NULL} when

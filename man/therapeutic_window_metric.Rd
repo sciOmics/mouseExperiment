@@ -71,7 +71,7 @@ animals observed at the endpoint day, which conditions on survival and
 biases TGI downward — it warns when animals were lost.}
 
 \item{n_boot}{Integer >= 0. Mouse-level bootstrap resamples used to attach
-95\\% percentile intervals to TGI, mean weight loss, and TWM. Mice are
+95\% percentile intervals to TGI, mean weight loss, and TWM. Mice are
 resampled within group including the control arm, so the interval
 propagates the TGI denominator's uncertainty (CODE_REVIEW.md R3.6 / R3.7).
 Default 2000; set 0 to skip.}

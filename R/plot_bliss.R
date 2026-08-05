@@ -12,6 +12,8 @@
 #' @param y_label Label for y-axis. Default is "Percent Tumor Growth Inhibition".
 #' @param y_limits Optional numeric vector of length 2 specifying y-axis limits.
 #'
+#' @param drug_a_label,drug_b_label,combo_label,expected_label Axis labels for
+#'   the four bars. Default to the group names supplied to the analysis.
 #' @return A ggplot2 object representing the Bliss synergy plot.
 #'
 #' @importFrom ggplot2 ggplot aes geom_line scale_color_manual labs theme_minimal theme

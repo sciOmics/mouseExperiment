@@ -109,6 +109,10 @@ Default \code{FALSE}.}
 
 \item{backend}{brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
 See \code{\link{bayesian_tumor_growth}} for details.}
+
+\item{mcmc}{Optional named list of sampler settings
+(\code{chains}, \code{warmup}, \code{iter}, \code{seed}, \code{backend}) overriding the
+individual arguments. Resolved by \code{.resolve_mcmc()}.}
 }
 \value{
 A named list:

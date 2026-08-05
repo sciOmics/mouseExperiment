@@ -112,6 +112,14 @@ Default \code{TRUE}.}
 
 \item{backend}{brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
 See \code{\link{bayesian_tumor_growth}} for details.}
+
+\item{priors}{Optional named list of \code{brms::prior()} objects applied
+verbatim, bypassing \code{prior_strength}. For callers that need full
+control of the prior specification.}
+
+\item{mcmc}{Optional named list of sampler settings
+(\code{chains}, \code{warmup}, \code{iter}, \code{seed}, \code{backend}) overriding the
+individual arguments. Resolved by \code{.resolve_mcmc()}.}
 }
 \value{
 A named list:

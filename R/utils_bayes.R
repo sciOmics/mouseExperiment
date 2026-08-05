@@ -135,7 +135,10 @@ make_nuts_diagnostics <- function(model) {
   ebfmi <- tryCatch({
     if (utils::packageVersion("brms") >= "2.20.0" &&
         exists("ebfmi", where = asNamespace("brms"))) {
-      vals <- brms::ebfmi(model)
+      # R18.1: `ebfmi` is not exported by brms even in versions that have it,
+      # so `brms::ebfmi` throws. The exists() guard above has already proved it
+      # is present; fetch it from the namespace directly.
+      vals <- get("ebfmi", envir = asNamespace("brms"))(model)
       if (length(vals) > 0) min(vals, na.rm = TRUE) else NA_real_
     } else {
       # Fall back to rstan if available
@@ -225,7 +228,7 @@ resolve_brms_backend <- function(backend = c("rstan", "cmdstanr")) {
 #'
 #' For a fitted brmsfit, simulates from the posterior predictive
 #' distribution at the training data points and computes the empirical
-#' coverage of nominal 50\%, 80\%, and 95\% intervals against the observed
+#' coverage of nominal 50%, 80%, and 95% intervals against the observed
 #' response. Good coverage means \code{empirical / nominal ~ 1}; large
 #' deviations indicate model mis-specification.
 #'
@@ -281,7 +284,7 @@ bayes_ppc_coverage <- function(model, response_var = NULL) {
 #' Returns a numeric vector of length \code{ncol(contrast_draws)} with the
 #' probability that each contrast's effect is in its dominant direction.
 #' Reports \code{max(P(effect > 0), P(effect < 0))} — the directional
-#' posterior probability that replaces the awkward "does the 95\% CrI exclude
+#' posterior probability that replaces the awkward "does the 95% CrI exclude
 #' zero?" interpretation with a quantitative posterior statement.
 #'
 #' Implementation pulls posterior draws via \code{emmeans::as.mcmc.emmGrid}
@@ -306,7 +309,7 @@ emm_p_direction <- function(emm_or_contrast, n_contrasts = NULL) {
 
 #' Posterior Bayesian R^2 summary for a brmsfit
 #'
-#' Returns the Estimate, Est.Error, and 95\% CrI of \code{brms::bayes_R2}
+#' Returns the Estimate, Est.Error, and 95% CrI of \code{brms::bayes_R2}
 #' as a one-row data frame. The Bayesian analogue of OLS R^2: a posterior
 #' distribution of variance explained, not a point estimate. Returns
 #' \code{NULL} when the model can't be evaluated.

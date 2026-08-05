@@ -148,3 +148,59 @@
 #'                 Treatment %in% c("Vehicle","Drug_A Low","Drug_A Mid","Drug_A High"))
 "master_synthetic_data"
 
+
+#' Necrotic tumour synthetic data
+#'
+#' Caliper measurements with a necrosis flag, used to exercise the necrotic
+#' handling options in `tumor_growth_statistics()`. Column names deliberately
+#' use the non-standard spellings ("Mouse Tag", "Tumor Length (mm)") that the
+#' dashboard's column auto-detection is built to recognise, so the file doubles
+#' as a detection fixture.
+#'
+#' Shipped as CSV rather than `.rda`: it is loaded through the dashboard's demo
+#' selector, which reads files, and R CMD check flagged it as an undocumented
+#' data set because `data/` contents are treated as package data either way
+#' (R18.3).
+#'
+#' @format A data frame with 40 rows and 6 variables:
+#' \describe{
+#'   \item{Day}{Study day of measurement}
+#'   \item{Mouse Tag}{Animal identifier}
+#'   \item{Treatment}{Treatment group (None, Drug)}
+#'   \item{Tumor Length (mm)}{Caliper long axis}
+#'   \item{Tumor Width (mm)}{Caliper short axis}
+#'   \item{Necrotic}{0/1 flag marking observations with a necrotic core}
+#' }
+#' @source Synthetic data generated using random number generation
+#' @examples
+#' \dontrun{
+#' d <- utils::read.csv(system.file("data", "necrotic_synthetic_data.csv",
+#'                                  package = "mouseExperiment"))
+#' }
+"necrotic_synthetic_data"
+
+#' Body-weight synthetic data
+#'
+#' Pre-calculated tumour volumes paired with body weights, used to exercise the
+#' toxicity path (`analyze_body_weight()`, `therapeutic_window_metric()`). Dates
+#' are supplied instead of a numeric study day, so it also exercises
+#' `calculate_dates()`.
+#'
+#' Shipped as CSV rather than `.rda`, for the same reason as
+#' [necrotic_synthetic_data] (R18.3).
+#'
+#' @format A data frame with 100 rows and 5 variables:
+#' \describe{
+#'   \item{Date}{Measurement date, from which elapsed days are derived}
+#'   \item{Ear Tag}{Animal identifier}
+#'   \item{Treatment}{Treatment group (DMSO, Drug A, Drug B, Drug A+B)}
+#'   \item{Tumor Volume}{Pre-calculated tumour volume}
+#'   \item{Mouse Weight}{Body weight in grams}
+#' }
+#' @source Synthetic data generated using random number generation
+#' @examples
+#' \dontrun{
+#' d <- utils::read.csv(system.file("data", "weight_synthetic_data.csv",
+#'                                  package = "mouseExperiment"))
+#' }
+"weight_synthetic_data"

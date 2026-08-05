@@ -122,7 +122,7 @@ A named list:
 \item{\code{transform_used}}{The transform applied.}
 \item{\code{synergy_by_day}}{Data frame with one row per study day:
 \code{Day}, \code{Bliss_Median}, \code{Bliss_Lower},
-\code{Bliss_Upper}, \code{P_Bliss_Synergy},
+\code{Bliss_Upper}, \code{P_Bliss_Synergy}.}
 \item{\code{tgi_by_day}}{Data frame with one row per (Group, Day):
 \code{Day}, \code{Group}, \code{TGI_Median}, \code{TGI_Lower},
 \code{TGI_Upper}.}

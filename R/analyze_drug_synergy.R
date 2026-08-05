@@ -54,13 +54,13 @@
 #' \strong{Bliss Independence applied to TGI:} Bliss Independence was formulated for the
 #' probability of cell death, not for proportional growth inhibition. Applying it to TGI is a
 #' common pragmatic choice but carries a ceiling effect: when individual drug TGIs are large
-#' (each > 50\%), the Bliss expected combined TGI approaches 100\%, making it nearly impossible
+#' (each > 50%), the Bliss expected combined TGI approaches 100%, making it nearly impossible
 #' to demonstrate synergy by this criterion regardless of the true biological interaction.
-#' Interpret Bliss results cautiously when individual-agent TGIs exceed 50\%.
+#' Interpret Bliss results cautiously when individual-agent TGIs exceed 50%.
 #'
 #' \strong{Point estimates and labels:} \code{synergy_label} is derived from
 #' fixed thresholds. They are descriptive summaries, not test results. Read them
-#' alongside \code{synergy_ci} (mouse-level bootstrap 95\% intervals) and
+#' alongside \code{synergy_ci} (mouse-level bootstrap 95% intervals) and
 #' \code{group_n}: a "Strong Synergy" label whose \code{Bliss_Excess_FE}
 #' interval spans zero is not evidence of synergy. For a model-based posterior
 #' treatment of the same question, use \code{\link{bayesian_synergy}}.

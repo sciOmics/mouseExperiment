@@ -28,6 +28,8 @@ new_me_result(
 \item{call}{The matched call (default NULL).}
 
 \item{...}{Additional named elements to include.}
+
+\item{object}{A \code{me_result} object.}
 }
 \value{
 An S3 object of class \code{me_result}.

@@ -33,6 +33,9 @@ over time for treatment groups and Bliss expected values.}
 \item{y_label}{Label for y-axis. Default is "Percent Tumor Growth Inhibition".}
 
 \item{y_limits}{Optional numeric vector of length 2 specifying y-axis limits.}
+
+\item{drug_a_label, drug_b_label, combo_label, expected_label}{Axis labels for
+the four bars. Default to the group names supplied to the analysis.}
 }
 \value{
 A ggplot2 object representing the Bliss synergy plot.
