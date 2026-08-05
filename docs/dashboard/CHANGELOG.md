@@ -4,6 +4,29 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.07.015] - 2026-08-05
+
+### Fixed — stale NAMESPACE imports broke the build (production 503)
+
+v0.21.0 removed `plot_combination_index()` and `plot_synergy_combined()` from the
+backend; two `importFrom()` lines for them stayed in NAMESPACE. `R CMD INSTALL`
+resolves imports at lazy-load and fails with "object 'plot_combination_index' is
+not exported by 'namespace:mouseExperiment'", so the Docker build died at
+`install_github` and NPM had no healthy upstream.
+
+Two gaps let it through. The cross-repo guard added in 26.07.014 scanned
+`mouseExperiment::` **call syntax** and never looked at NAMESPACE imports — a
+different mechanism. And `devtools::load_all()`, which every test run in this
+review used, does not resolve imports the way installation does: the suite was
+green at 569 against a package that could not be installed.
+
+Verified by the path that matters: `R CMD INSTALL` succeeds, `library()` loads,
+and `runDashboard()` serves HTTP 200 on a real port — a check that had never been
+run here either.
+
+The guard now scans NAMESPACE imports too, with a companion test proving it can
+fail.
+
 ## [26.07.014] - 2026-07-31
 
 ### Removed — the Combination Index from the Synergy tab (R17.2)

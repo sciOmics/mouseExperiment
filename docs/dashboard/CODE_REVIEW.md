@@ -1632,3 +1632,55 @@ Four lines, and it would have caught all three of these the day they broke.
 | R17.4 | No guard against cross-repo staleness | Process | ✅ Added — 11 assertions |
 
 Suite: 558 → 569 passing, no skips.
+
+---
+
+# Review Round 20 (v26.07.015 — 2026-08-05) — production incident
+
+## R19.6 Stale NAMESPACE imports broke the build; site returned 503
+
+**Symptom:** after pushing, mouseexperiment.com returned 503 while the VPS was up.
+
+**Cause:** v0.21.0 removed `plot_combination_index()` and
+`plot_synergy_combined()` from the backend. Two `importFrom()` lines for them
+remained in this package's NAMESPACE. `R CMD INSTALL` resolves imports at
+lazy-load and fails:
+
+```
+Error: object 'plot_combination_index' is not exported by 'namespace:mouseExperiment'
+ERROR: lazy loading failed for package 'mouseExperimentDashboard'
+```
+
+The Dockerfile's `remotes::install_github('sciOmics/mouseExperimentDashboard@staging')`
+step therefore died, no image was produced, and NPM had no healthy upstream.
+
+**Why nothing caught it — two compounding gaps, both mine.**
+
+*First*, the §R17.4 guard I added specifically to prevent cross-repo staleness
+scanned `mouseExperiment::` **call syntax**. `importFrom()` in NAMESPACE is a
+different mechanism entirely, and the guard never looked at it. I wrote a check
+for one half of the problem and treated it as covering the whole.
+
+*Second, and more important:* **`devtools::load_all()` does not resolve NAMESPACE
+imports the way installation does.** Every suite run in this entire review used
+`load_all()`. A suite can be — and was — completely green against a package that
+cannot be installed. 569 passing tests, and the artifact they were testing would
+not build.
+
+**Fix:** removed the two dead `importFrom()` lines. Verified by the path that
+actually matters — `R CMD INSTALL` succeeds, `library()` loads, and
+`runDashboard()` serves **HTTP 200** on a real port. That last check had never
+been run in this review either; the container's entry point was never exercised.
+
+**Guard:** `test-backend-calls-resolve.R` now also scans every
+`importFrom(mouseExperiment, ...)` in NAMESPACE against the backend's exports,
+with a companion test proving the scan can fail.
+
+**The standing lesson.** Green tests are not a deployable artifact. Any release
+that changes exports on either side of this pair needs `R CMD INSTALL` and a boot
+check, not just `testthat`. Both are fast; neither was being run.
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| R19.6 | Stale NAMESPACE imports broke install → 503 | **Critical** | ✅ Fixed v26.07.015 |
+| — | `load_all()` never validates imports; suite green on unbuildable code | Process | ✅ Guarded + install/boot check documented |
