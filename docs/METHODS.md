@@ -198,16 +198,29 @@ synergy ≈ 0    = independent
 
 Reported as `bliss_summary` with the synergy score + 95% CI (or CrI for the Bayesian version).
 
-### Loewe Combination Index
+### Why there is no Combination Index
+
+A Loewe-style CI was removed in v0.21.0. The formula above is the real Loewe
+definition — dose-equivalence — and it needs a dose-response curve per agent so
+the IC50s are known. Single-dose designs do not provide that, so what the package
+actually computed was a stand-in:
 
 ```
-CI = (concentration_A_in_combo / IC50_A) + (concentration_B_in_combo / IC50_B)
-CI < 1 = synergy
-CI ≈ 1 = additive
-CI > 1 = antagonism
+CI = min(FE_A + FE_B, 1) / FE_combo
 ```
 
-Reported as `loewe_summary`. Requires per-mouse concentration estimates — fragile when monotherapy is barely effective at the tested dose.
+That is *response additivity*, a different null, and it fails the
+sham-combination test: combine a drug with itself and it predicts twice the
+fractional effect, so an agent at 50 % inhibition should reach 100 %. It will
+not, so the method calls a drug antagonistic with itself.
+
+Measured across the (FE_A, FE_B) grid with the combination set to **exactly
+Bliss-additive**, 42 % of cells were labelled antagonistic and none synergistic —
+a one-directional bias covering most of the range where active single agents sit.
+
+If a Loewe analysis is required, collect per-agent dose-response curves and use
+`drc::isobole()` or a full Loewe surface. It is a study-design change, not a code
+change.
 
 ### `_over_time` variants
 
@@ -215,14 +228,14 @@ Same metric, computed at each timepoint, returning a `synergy_summary` table wit
 
 ### Bayesian path
 
-`bayesian_synergy()` fits a Bayesian LMM on the four-arm design (A / B / combo / control), then derives Bliss and Loewe scores from the posterior. Output includes `bliss_summary` and `loewe_summary` with median + 95% CrI.
+`bayesian_synergy()` fits a Bayesian LMM on the four-arm design (A / B / combo / control), then derives the Bliss score from the posterior. Output includes `bliss_summary` with median + 95% CrI.
 
 Known caveat (CODE_REVIEW.md backend G.1): an earlier version wrapped `brms::brm()` in `suppressWarnings()`, hiding divergent-transition warnings. The current version exposes diagnostics via the standard `mcmc_diagnostics` + `nuts_diagnostics` fields.
 
 ### Assumptions
 
 - **Bliss:** the two drugs act independently (no shared targets / pathways). When the drugs hit the same pathway, "Bliss synergy" can look high but is mechanistically expected
-- **Loewe:** dose-response curves are well-approximated by Hill / Emax; the IC50 estimates are reliable
+- **Single-dose designs:** Bliss is the only synergy null this package computes, because it is the only one the data support. See "Why there is no Combination Index" above.
 
 ---
 

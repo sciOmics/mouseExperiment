@@ -63,7 +63,6 @@ allowing for the assessment of how synergy develops over time. It calculates key
 including:
 \enumerate{
 \item Bliss Independence effect differences at each time point
-\item Combination Index (CI) at each time point
 \item Statistical significance of combination advantage over monotherapies
 }
 

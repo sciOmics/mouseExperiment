@@ -364,30 +364,22 @@ synergy_stats$synergy_summary |>
 ```
 The percent tumor growth inhibition was calculated by the formula (1 - mean tumor volume of treatment group/mean tumor volume of control group) * 100 at each time point. The expected Bliss value, the percent tumor growth inhibition expected when two drugs act independently, is represented by the grey line. Percent tumor growth inhibition values for the drug combination above this curve indicate synergy; values within this curve represent additive effects, and values below this curve indicate antagonistic effects. 
 
-## Figure 5. Combination Index
-```{r combination-index-plot}
-#| echo: false
-#| fig-dpi: 200
-#| fig-height: 4
-#| fig-width: 6
+## Combination Index — removed
 
-synergy_stats$synergy_summary |> 
-  ggplot(aes(x = Time_Point, y = Combination_Index))  +
-    geom_line(color = "purple", linewidth = 1.5) +
-    geom_ribbon(aes(ymin = 0, ymax = 0.85), fill = "blue", alpha = 0.2) +
-    geom_ribbon(aes(ymin = 1.15, ymax = 2), fill = "red", alpha = 0.2) +
-    geom_ribbon(aes(ymin = 0.85, ymax = 1.15), fill = "grey", alpha = 0.4) +
-    annotate("text", x = mean(synergy_stats$synergy_summary$Time_Point), y = 0.2, label = "Synergistic", color = "blue", size = 5) +
-    annotate("text", x = mean(synergy_stats$synergy_summary$Time_Point), y = 1.05, label = "Additive", size = 5) +
-    annotate("text", x = mean(synergy_stats$synergy_summary$Time_Point), y = 1.8, label = "Antagonistic", color = "red", size = 5) + 
-    labs(x = "Days", y = "Combination Index", title = "") +
-    ylim(0,2) +
-    theme_classic()
+This figure plotted a Loewe-style Combination Index, which was removed from the
+package in v0.21.0. What it computed was *response additivity*, not Loewe
+additivity: true Loewe is dose-equivalence and needs a dose-response curve per
+agent, which this single-dose design does not provide.
 
+The stand-in fails the sham-combination test — combine a drug with itself and it
+predicts twice the fractional effect, so an agent at 50 % inhibition should reach
+100 %, and when it does not the method calls the drug antagonistic with itself.
+Measured across the effect grid with the combination set to exactly
+Bliss-additive, 42 % of cells were labelled antagonistic and none synergistic.
 
-```
-The combination index for the HDACi + anti-PD1 treatment group was calculated by dividing the tumor growth inhibition (TGI) of each drug by the tumor growth inhibition of the combination group and summing the values (TGI of HDACi/TGI of combo + TGI of anti-PD1/TGI of combo) at each time point. The plotted line represents the combination index over time. Values of less than 0.85 are considered synergistic, values between 0.85 to 1.15 are considered additive, and values above 1.15 are considered antagonistic. 
-
+The Bliss analysis in Figure 4 above is the synergy result for this experiment;
+read it against the bootstrap interval on Bliss excess rather than against a
+threshold alone.
 
 # Survival Analysis
 
@@ -530,6 +522,6 @@ The hazard ratios and 95% confidence intervals are plotted for each treatment gr
 # Conclusions
 - Both the HDACi and anti-PD1 treatment groups had statistically significant reduced tumor burden relative to the control group. 
 - The combination of HDACi and anti-PD1 had statistically significant reduced tumor burden relative to both single treatment groups.
-- Bliss Independence and Combination Index modeling showed that the combination of HDACi and anti-PD1 had synergestic effects in tumor growth inhibition.
+- Bliss Independence modeling showed that the combination of HDACi and anti-PD1 had synergistic effects on tumor growth inhibition.
 - HDACi, anti-PD1, and the combination treatment groups had significantly increased overall survival relative to the control group. Comparisons between the treatment groups were not made as too few events (deaths) occurred. If these comparisons are of interest, a longer study design is needed.
 - **Overall, these data support the hypothesis that the Combination of HDACi and PD1 antgaonist will have superior anti-tumor efficacy to single agents.**

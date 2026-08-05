@@ -198,29 +198,36 @@ p_bliss <- plot_bliss(
 print(p_bliss)
 ```
 
-## Combination Index
+## Synergy assessment
 
-The `synergy_stats()` function calculates the Combination Index:
+The `analyze_drug_synergy()` function evaluates a combination against the Bliss
+independence expectation. A Loewe-style Combination Index was removed in v0.21.0:
+what it computed was response additivity rather than Loewe additivity, and it
+labelled genuinely additive combinations antagonistic across most of the range
+where active single agents sit.
 
 ```{r synergy}
-# Calculate Combination Index
-synergy_results <- synergy_stats(
-  data = combo_treatment_synthetic_data,
-  time_column = "Day",
-  volume_column = "Volume",
-  id_column = "Mouse_ID",
+# Bliss independence synergy on the four-arm design
+synergy_results <- analyze_drug_synergy(
+  combo_treatment_synthetic_data,
   treatment_column = "Treatment",
-  cage_column = "Cage"
+  volume_column    = "Volume",
+  time_column      = "Day",
+  id_column        = "Mouse_ID",
+  drug_a_name      = "HDACi",
+  drug_b_name      = "aPD1",
+  combo_name       = "HDACi + PD1",
+  control_name     = "Control",
+  n_boot           = 500
 )
 
-# Visualize Combination Index
-p_ci <- plot_combination_index(
-  synergy_results$synergy_summary,
-  title = "Combination Index Over Time",
-  ylab = "Combination Index"
-)
-print(p_ci)
+# The verdict is a label derived from three group means. Read it against the
+# bootstrap interval: a "Synergy" whose Bliss-excess interval spans zero is not
+# evidence of synergy.
+synergy_results$overall_assessment
+synergy_results$synergy_ci
 ```
+
 
 # Additional Features
 

@@ -32,7 +32,6 @@
 #' including:
 #'
 #' 1. Bliss Independence effect differences at each time point
-#' 2. Combination Index (CI) at each time point
 #' 3. Statistical significance of combination advantage over monotherapies
 #'
 #' To visualize the results, use the plot_synergy_trend

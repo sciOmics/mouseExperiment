@@ -7,7 +7,7 @@ An R package for statistical analysis of mouse tumor growth experiments. Covers 
 - **Tumor growth** — LME4 LMM, AUC, GAMM, Bayesian LMM (brms)
 - **Survival** — Kaplan-Meier, Cox PH, log-rank, `cox.zph()` PH check, Bayesian AFT (Weibull / log-normal / exponential / gamma), C-index
 - **Body weight / toxicity** — LME4 mixed model, Bayesian LMM, weight-loss threshold events, weight-corrected TGI
-- **Drug synergy** — Bliss Independence, Loewe Combination Index, Bayesian synergy, Bayesian synergy over time
+- **Drug synergy** — Bliss Independence (frequentist + Bayesian), with bootstrap/credible intervals and an over-time variant
 - **Dose-response** — Frequentist + Bayesian Hill / Emax curve fitting
 - **Therapeutic window** — TWM from frequentist or Bayesian TG + BW models; single-call `bayesian_twm_from_data()` wrapper
 - **Power analysis** — Analytic (t-test / ANOVA), LMM simulation, Bayesian simulation; multiplicity- and attrition-aware (`n_comparisons`, `dropout_rate`)
@@ -167,7 +167,7 @@ bayes_bw$weight_trajectory_plot
 ### Drug Synergy
 
 ```r
-# Frequentist Bliss + Loewe
+# Frequentist Bliss independence
 syn_results <- analyze_drug_synergy(
   df               = combo_treatment_synthetic_data,
   drug_a_name      = "DrugA",
@@ -186,7 +186,6 @@ bayes_syn <- bayesian_synergy(
   priors           = tg_priors(),
   mcmc             = tg_mcmc())
 print(bayes_syn$bliss_summary)
-print(bayes_syn$loewe_summary)
 ```
 
 ### Dose-Response
@@ -296,7 +295,7 @@ bayes_power <- bayesian_power_analysis(
 ### Drug Synergy
 | Function | Description |
 |----------|-------------|
-| `analyze_drug_synergy()` | Bliss Independence + Loewe CI |
+| `analyze_drug_synergy()` | Bliss Independence, with bootstrap intervals |
 | `analyze_drug_synergy_over_time()` | Time-series synergy analysis |
 | `bayesian_synergy()` | Bayesian combination synergy |
 | `bayesian_synergy_over_time()` | Bayesian time-series synergy |
