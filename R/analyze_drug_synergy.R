@@ -29,9 +29,11 @@
 #' \describe{
 #'   \item{summary}{A data frame summarizing the tumor growth inhibition (TGI) for each treatment and synergy metrics.}
 #'   \item{bliss_independence}{Results of the Bliss independence model, including expected vs. observed effects.
-#'     When \code{evaluable} is FALSE, \code{expected_effect}, \code{difference} and \code{synergy}
+#'     When \code{bliss_applies} is FALSE, \code{expected_effect}, \code{difference} and \code{synergy}
 #'     are NA.}
-#'   \item{evaluable}{FALSE when a single agent did not inhibit growth relative to control.
+#'   \item{bliss_applies}{FALSE when a single agent did not inhibit growth relative to control.
+#'     (Named \code{evaluable} before v0.26.0; renamed so that "evaluable" refers only to
+#'     evaluable days.)
 #'     Bliss independence is defined for inhibitory agents, so every Bliss quantity is then NA:
 #'     the expectation and difference, the \code{synergy} flag, the "Bliss Expected" row of
 #'     \code{summary} and the \code{Bliss_Excess_FE} interval in \code{synergy_ci}
@@ -412,7 +414,7 @@ me_synergy_from_endpoint <- function(ep, control_name, drug_a_name, drug_b_name,
       # NA, not FALSE, when Bliss does not apply (R20.8).
       synergy = if (agents_inhibitory) bliss_difference > 0 else NA
     ),
-    evaluable = agents_inhibitory,
+    bliss_applies = agents_inhibitory,
     statistical_tests = stat_tests,
     overall_assessment = synergy_label,
     evaluation_time_point = eval_time_point,

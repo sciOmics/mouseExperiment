@@ -5552,6 +5552,7 @@ One test, which fails on v0.25.1.
 - **R20.34 — ✅:** the power simulation documents that it powers the default random-slope analysis.
 - **R20.86 (first half) — ✅:** the "Bliss Expected" row no longer carries the control's row name.
 - **`%||%` removed:** base R ≥ 4.4 only, while the package declares R ≥ 3.5. It had been used in `tumor_growth_statistics()`.
+- **Renamed to avoid two meanings of "evaluable":** the synergy flag for "Bliss does not apply" (R20.8) is now `bliss_applies`, and its over-time column `Bliss_Applies`; they were `evaluable` / `Evaluable`. It was added in a follow-up commit, when the dashboard showed "Evaluable = FALSE" on an evaluable day.
 
 **Tests:**
 - **New:** 9 tests (R20-K rule, R20.1 ×4, R20.2, R20.17, R20.4, R20.5), plus the R20.37 assertions in the existing Bayesian test. All fail or error on v0.25.2.

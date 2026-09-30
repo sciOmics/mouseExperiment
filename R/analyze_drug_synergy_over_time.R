@@ -32,7 +32,8 @@
 #'   \item{synergy_summary}{One row per evaluable day: TGIs, the Bliss
 #'     expectation and difference, their 95 % intervals (\code{*_Lower},
 #'     \code{*_Upper}), p-values of the combination against each agent, and
-#'     \code{Evaluable} (FALSE when Bliss does not apply that day).}
+#'     \code{Bliss_Applies} (FALSE when a single agent did not inhibit growth that
+#'     day, so Bliss does not apply; named \code{Evaluable} before v0.26.0).}
 #'   \item{evaluability}{The evaluable-day record: only days on which all four
 #'     arms have at least 50 % of their enrolled animals, and at least 3, on
 #'     study are analysed; the others are listed in \code{excluded} with the
@@ -223,7 +224,7 @@ analyze_drug_synergy_over_time <- function(df,
         Synergy_Assessment = synergy_results$overall_assessment,
         # FALSE when a single agent did not inhibit growth that day, so the
         # Bliss columns are NA (R20.8).
-        Evaluable = isTRUE(synergy_results$evaluable),
+        Bliss_Applies = isTRUE(synergy_results$bliss_applies),
         stringsAsFactors = FALSE
       )
     }, error = function(e) {
@@ -243,7 +244,7 @@ analyze_drug_synergy_over_time <- function(df,
   synergy_summary <- synergy_summary[order(synergy_summary$Time_Point), ]
 
   # One warning for all the days on which Bliss does not apply (R14.2, R20.8).
-  not_bliss <- synergy_summary$Time_Point[!synergy_summary$Evaluable]
+  not_bliss <- synergy_summary$Time_Point[!synergy_summary$Bliss_Applies]
   if (length(not_bliss)) {
     warning("Bliss synergy is not evaluated on ", length(not_bliss), " day(s) (",
             paste(not_bliss, collapse = ", "), "): a single agent did not inhibit ",

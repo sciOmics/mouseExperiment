@@ -67,7 +67,7 @@ test_that("R20.8: an agent that accelerates growth yields no Bliss quantities", 
     df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
     control_name = "Control", verbose = FALSE, n_boot = 200, boot_seed = 1))
 
-  expect_false(res$evaluable)
+  expect_false(res$bliss_applies)
   expect_true(is.na(res$bliss_independence$synergy))      # was TRUE
   expect_true(is.na(res$bliss_independence$difference))
   expect_true(is.na(res$bliss_independence$expected_effect))
@@ -78,7 +78,7 @@ test_that("R20.8: an agent that accelerates growth yields no Bliss quantities", 
   ot <- suppressWarnings(suppressMessages(analyze_drug_synergy_over_time(
     df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
     control_name = "Control", verbose = FALSE)))
-  expect_false(any(ot$synergy_summary$Evaluable))
+  expect_false(any(ot$synergy_summary$Bliss_Applies))
   expect_equal(nrow(ot$peak_bliss_synergy), 0L)            # was day 28, 173.8 %
 
   p <- suppressWarnings(plot_synergy_trend(ot))
@@ -94,7 +94,7 @@ test_that("R20.8: inhibitory agents are unaffected", {
   res <- suppressWarnings(analyze_drug_synergy(
     df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
     control_name = "Control", verbose = FALSE, n_boot = 200, boot_seed = 1))
-  expect_true(res$evaluable)
+  expect_true(res$bliss_applies)
   expect_true(is.logical(res$bliss_independence$synergy) &&
                 !is.na(res$bliss_independence$synergy))
   excess <- res$synergy_ci[res$synergy_ci$Metric == "Bliss_Excess_FE", ]
@@ -104,7 +104,7 @@ test_that("R20.8: inhibitory agents are unaffected", {
     df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
     control_name = "Control", verbose = FALSE)))
   expect_equal(nrow(ot$peak_bliss_synergy), 1L)
-  expect_true(ot$synergy_summary$Evaluable[
+  expect_true(ot$synergy_summary$Bliss_Applies[
     ot$synergy_summary$Time_Point == ot$peak_bliss_synergy$Time_Point])
 })
 

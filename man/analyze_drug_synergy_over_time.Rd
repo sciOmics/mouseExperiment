@@ -65,7 +65,8 @@ A list containing the following components:
 \item{synergy_summary}{One row per evaluable day: TGIs, the Bliss
 expectation and difference, their 95 \% intervals (\code{*_Lower},
 \code{*_Upper}), p-values of the combination against each agent, and
-\code{Evaluable} (FALSE when Bliss does not apply that day).}
+\code{Bliss_Applies} (FALSE when a single agent did not inhibit growth that
+day, so Bliss does not apply; named \code{Evaluable} before v0.26.0).}
 \item{evaluability}{The evaluable-day record: only days on which all four
 arms have at least 50 \% of their enrolled animals, and at least 3, on
 study are analysed; the others are listed in \code{excluded} with the

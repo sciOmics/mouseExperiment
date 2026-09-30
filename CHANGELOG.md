@@ -87,6 +87,10 @@ random slopes by default.
 
 - Over-time synergy fits one endpoint model and evaluates it on every
   evaluable day, adding per-day interval columns to `synergy_summary`.
+- **Breaking:** the synergy flag for "a single agent did not inhibit growth,
+  so Bliss does not apply" is renamed `bliss_applies` (was `evaluable`), and
+  its over-time column `Bliss_Applies` (was `Evaluable`). "Evaluable" now
+  refers only to evaluable days.
 - `splines` joins Imports.
 
 ## [0.25.2] - 2026-09-30
