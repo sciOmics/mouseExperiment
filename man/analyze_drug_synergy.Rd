@@ -18,7 +18,7 @@ analyze_drug_synergy(
   cage_column = NULL,
   endpoint_method = c("model", "last_obs", "survivors"),
   ci_thresholds = c(0.85, 1.15),
-  strong_synergy_delta = 0.1,
+  additivity_margin = 0.1,
   n_boot = 2000L,
   boot_seed = NULL,
   verbose = TRUE
@@ -68,9 +68,11 @@ CODE_REVIEW.md R3.5 / G.3 and R20.1.}
 \item{ci_thresholds}{Deprecated and ignored; retained so existing calls do
 not error. It configured the removed Combination Index band.}
 
-\item{strong_synergy_delta}{Numeric. Bliss excess fractional effect above
-which the label is "Strong Synergy". Default 0.1, a convention rather than
-a derived quantity.}
+\item{additivity_margin}{Numeric. Used only when there is no interval
+(\code{n_boot = 0}): a Bliss excess within this distance of zero is
+labelled additive. Default 0.1, a convention rather than a derived
+quantity. It replaces \code{strong_synergy_delta} (v0.27.0), which set the
+"Strong Synergy" label; that label was removed with the asymmetric bands.}
 
 \item{n_boot}{Integer >= 0. Number of draws behind the 95 \% intervals in
 \code{synergy_ci}. Under \code{endpoint_method = "model"} they are draws
@@ -105,6 +107,8 @@ evaluation day, on the same estimand as the point estimates: under
 otherwise Welch t-tests on the per-animal volumes.}
 \item{synergy_ci, interval_method}{95 \% intervals for the TGIs and the
 Bliss excess, and how they were obtained.}
+\item{overall_assessment, verdict_rule}{The verdict, from the interval
+for the Bliss excess, and its rule in words (see Details).}
 \item{evaluability}{The evaluable-day record: the rule, the day used, and
 the days and arms it excluded (see \code{\link{evaluable_days}}).}
 \item{endpoint_model}{How the endpoint model was fitted: time basis,
@@ -156,11 +160,17 @@ common pragmatic choice but carries a ceiling effect: when individual drug TGIs 
 to demonstrate synergy by this criterion regardless of the true biological interaction.
 Interpret Bliss results cautiously when individual-agent TGIs exceed 50\%.
 
-\strong{Point estimates and labels:} \code{synergy_label} is derived from
-fixed thresholds. They are descriptive summaries, not test results. Read them
-alongside \code{synergy_ci} (95\% intervals for the reported estimates) and
-\code{group_n}: a "Strong Synergy" label whose \code{Bliss_Excess_FE}
-interval spans zero is not evidence of synergy.
+\strong{The verdict} (\code{overall_assessment}) comes from the 95\%
+interval for the Bliss excess in \code{synergy_ci}: "Synergy" when the
+interval lies above zero, "Antagonism" when it lies below, and "Additive
+(no departure from Bliss detected)" when it contains zero. Without an
+interval (\code{n_boot = 0}) the verdict compares the point estimate with
+symmetric bands, plus or minus \code{additivity_margin}, and says that it
+has no interval. \code{verdict_rule} states the rule used. Before v0.27.0
+the bands were asymmetric: any positive excess was "Synergy" but negative
+excesses down to -0.1 were "Additivity", so a Bliss-additive combination
+was labelled synergistic in about half of simulated studies
+(CODE_REVIEW.md R20.19).
 }
 
 \examples{

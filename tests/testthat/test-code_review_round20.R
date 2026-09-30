@@ -73,7 +73,7 @@ test_that("R20.8: an agent that accelerates growth yields no Bliss quantities", 
   expect_true(is.na(res$bliss_independence$expected_effect))
   excess <- res$synergy_ci[res$synergy_ci$Metric == "Bliss_Excess_FE", ]
   expect_true(is.na(excess$CI_Lower) && is.na(excess$CI_Upper))  # was [0.80, 3.79]
-  expect_match(res$overall_assessment, "Not evaluable")
+  expect_match(res$overall_assessment, "Bliss does not apply")
 
   ot <- suppressWarnings(suppressMessages(analyze_drug_synergy_over_time(
     df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
@@ -219,9 +219,12 @@ test_that("R20.3 / R20.15: survival works with reused IDs and a differently name
 
 test_that("R20.3: dose-response groups animals by the key", {
   d <- r20_t1_df()
+  # The fixture's treated arms stand in for one agent's three doses, so they
+  # are named as the series (R20.16).
   dr <- function(id, cage = NULL) quiet(dose_response_statistics(
     d, dose_column = "Dose", treatment_column = "Treatment", volume_column = "Volume",
-    day_column = "Day", id_column = id, cage_column = cage, verbose = FALSE))
+    day_column = "Day", id_column = id, cage_column = cage,
+    treatments = c("DrugA", "DrugB", "Combo"), verbose = FALSE))
   # IDs restart in every cage, so only treatment + ID + cage identifies an animal.
   a <- dr("UID"); b <- dr("RID_cg", "Cage")
   expect_equal(nrow(b$analysis_data), 32L)                  # 16 before: cage-mates merged
@@ -255,10 +258,12 @@ test_that("R20.43: entry points accept column names with spaces", {
     verbose = FALSE))                                       # "unexpected symbol" before
   expect_equal(sv1$results$HR, sv0$results$HR, tolerance = 1e-8)
 
-  dr0 <- quiet(dose_response_statistics(d, id_column = "UID", verbose = FALSE))
+  tx <- c("DrugA", "DrugB", "Combo")               # one series, for the test (R20.16)
+  dr0 <- quiet(dose_response_statistics(d, id_column = "UID", treatments = tx,
+                                        verbose = FALSE))
   dr1 <- quiet(dose_response_statistics(dd, dose_column = "Dose mg",
     treatment_column = "Treatment Group", volume_column = "Tumor Volume",
-    day_column = "Study Day", id_column = "Animal ID", verbose = FALSE))
+    day_column = "Study Day", id_column = "Animal ID", treatments = tx, verbose = FALSE))
   expect_equal(unname(stats::coef(dr1$linear_model)), unname(stats::coef(dr0$linear_model)),
                tolerance = 1e-8)                             # "unexpected symbol" before
 
@@ -636,4 +641,266 @@ test_that("R20.5: tumour growth uses random slopes and F-tests by default", {
     reference_group = "Control", random_effects_specification = "intercept_only",
     plots = FALSE, include_diagnostics = FALSE))
   expect_identical(r0$random_effects$used, "intercept_only")
+})
+
+# ---- Step 5 (v0.27.0): therapeutic window, synergy verdict, dose-response, ----
+# ---- weight-loss threshold ----------------------------------------------------
+
+# Two arms x `n` animals weighed daily for 21 days, callipered twice a week (days
+# 0, 3, 7, 10, 14, 17, 21). "Drug" animals dip to 78 % of baseline the day after
+# each weekly dose (days 1, 8 and 15), which are never calliper days (R20.22).
+r20_daily_weights <- function(n = 6, seed = 2) {
+  set.seed(seed)
+  days <- 0:21
+  do.call(rbind, lapply(c("Control", "Drug"), function(arm) do.call(rbind, lapply(seq_len(n), function(i) {
+    w <- 22 + stats::rnorm(length(days), 0, 0.1)
+    if (arm == "Drug") w[days %in% c(1, 8, 15)] <- 22 * 0.78
+    v <- 100 * exp((if (arm == "Control") 0.12 else 0.06) * days)
+    data.frame(ID = i, Treatment = arm, Day = days, Weight = w,
+               Volume = ifelse(days %% 7 %in% c(0, 3), v, NA_real_))
+  }))))
+}
+
+test_that("R20.22: weighings without a same-day calliper reading are kept", {
+  d <- r20_daily_weights()
+  tw <- quiet(therapeutic_window_metric(d, reference_group = "Control",
+                                        volume_units = "mm3", n_boot = 0))
+  wl <- tw$window_table$Worst_Loss[tw$window_table$Treatment == "Drug"]
+  expect_gt(wl, 20)                                   # was about 1: the dips were dropped
+  thr <- quiet(weight_loss_threshold(d, volume_column = "Volume",
+                                     volume_units = "mm3", reference_group = "Control"))
+  ev <- thr$event_data
+  expect_equal(sum(ev$Event[ev$Treatment == "Drug"]), 6L)    # was 0 of 6
+  bw <- quiet(analyze_body_weight(d, volume_column = "Volume", volume_units = "mm3",
+                                  reference_group = "Control"))
+  expect_equal(bw$model_info$n_obs, nrow(d))           # was 84 of 264
+})
+
+# Weights of two arms, 10 animals each, days 0-21: "Toxic" loses 1.2 % a day, so
+# it reaches the 20 % threshold on day 18; "Vehicle" loses nothing.
+r20_wl_df <- function(short = integer(0), seed = 4) {
+  set.seed(seed)
+  do.call(rbind, lapply(c("Vehicle", "Toxic"), function(arm) do.call(rbind, lapply(1:10, function(i) {
+    days <- seq(0, 21, 3)
+    if (i %in% short) days <- days[days <= 12]
+    loss <- if (arm == "Toxic") 0.012 * days else 0
+    data.frame(ID = i, Treatment = arm, Day = days,
+               Weight = 22 * (1 - loss) + stats::rnorm(length(days), 0, 0.1))
+  }))))
+}
+
+test_that("R20.21: a zero-event arm sends the Cox model down the Firth path", {
+  skip_if_not_installed("coxphf")
+  msgs <- character(0)
+  r <- withCallingHandlers(
+    suppressMessages(weight_loss_threshold(r20_wl_df(), reference_group = "Vehicle")),
+    warning = function(w) {
+      msgs <<- c(msgs, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    })
+  expect_identical(r$cox_method, "coxphf")                   # was "cox"
+  expect_lt(abs(unname(r$cox_model$coefficients[1])), 10)    # was log HR 22 (HR 6e9)
+  expect_false(any(grepl("converged before variable", msgs)))
+})
+
+test_that("R20.23: without a removal-reason column an early end is censoring", {
+  # Half of the animals are followed only to day 12, as with staggered
+  # enrolment or a data cut. None of them was removed for anything.
+  r <- quiet(weight_loss_threshold(r20_wl_df(short = 1:5), reference_group = "Vehicle"))
+  expect_equal(r$n_competing_risk, 0L)                         # was 10
+  expect_setequal(unique(r$event_data$Censor_Type), c("administrative", "event"))
+  expect_match(r$assumption, "No removal-reason column")
+  s <- summary(r$cuminc, times = 21, extend = TRUE)
+  aj <- unname(s$pstate[s$strata == "Treatment=Toxic", "weight_loss"])
+  expect_equal(aj, 1)                                          # was 0.5
+})
+
+test_that("R20.23: a removal-reason column separates weight loss, planned ends and other removals", {
+  d <- r20_wl_df(short = 1:3)
+  d$Reason <- ""
+  last12 <- d$Day == 12 & d$ID %in% 1:3
+  d$Reason[last12 & d$Treatment == "Vehicle" & d$ID == 1] <- "Tumour burden"
+  d$Reason[last12 & d$Treatment == "Vehicle" & d$ID == 2] <- "Body condition"
+  d$Reason[last12 & d$Treatment == "Vehicle" & d$ID == 3] <- "Scheduled sacrifice"
+  r <- quiet(weight_loss_threshold(
+    d, reference_group = "Vehicle", removal_reason_column = "Reason",
+    weight_loss_reasons = "Body condition", planned_end_reasons = "Scheduled sacrifice"))
+  ed <- r$event_data[r$event_data$Treatment == "Vehicle", ]
+  type <- stats::setNames(ed$Censor_Type, ed$ID)
+  expect_identical(unname(type[c("1", "2", "3")]),
+                   c("competing_removal", "event", "administrative"))
+  expect_equal(ed$Time[ed$ID == "2"], 12)       # a weight-loss removal is an event at its last day
+  expect_equal(r$n_competing_risk, 1L)
+  expect_match(r$assumption, "Removal reasons")
+  expect_error(weight_loss_threshold(d, removal_reason_column = "Cause"), "not found")
+})
+
+# Four arms, 6 animals each: weight loss by arm and animal (percent at day 21),
+# and tumour growth rates, chosen so that each tolerability verdict occurs.
+r20_window_df <- function(seed = 8) {
+  set.seed(seed)
+  loss <- list(Control = rep(0, 6), Safe = rep(5, 6), Toxic = rep(30, 6),
+               Mixed = c(8, 14, 21, 26, 32, 21))
+  rate <- c(Control = 0.15, Safe = 0.10, Toxic = 0.06, Mixed = 0.08)
+  days <- seq(0, 21, 3)
+  do.call(rbind, lapply(names(loss), function(arm) do.call(rbind, lapply(1:6, function(i) {
+    data.frame(ID = i, Treatment = arm, Day = days,
+               Weight = 22 * (1 - loss[[arm]][i] / 100 * days / 21) +
+                 stats::rnorm(length(days), 0, 0.05),
+               Volume = 100 * exp(rate[[arm]] * days + stats::rnorm(length(days), 0, 0.05)))
+  }))))
+}
+
+test_that("R20-K: the therapeutic window is two axes with intervals and a tolerability flag", {
+  r <- quiet(therapeutic_window_metric(r20_window_df(), reference_group = "Control",
+                                       adjust_tumor_weight = FALSE, boot_seed = 3))
+  w <- r$window_table
+  expect_null(r$twm_table)
+  expect_false("TWM" %in% names(w))
+  expect_identical(w$Treatment[1], "Control")
+  tol <- stats::setNames(w$Tolerability, w$Treatment)
+  expect_identical(unname(tol[c("Safe", "Toxic", "Mixed")]),
+                   c("Tolerated", "Not tolerated", "Unclear"))
+  expect_equal(w$N_Over_Threshold[w$Treatment == "Mixed"], 4L)
+  expect_equal(w$Worst_Loss[w$Treatment == "Mixed"], mean(c(8, 14, 21, 26, 32, 21)),
+               tolerance = 0.02)
+  treated <- w[w$Treatment != "Control", ]
+  expect_true(all(treated$TGI_Lower <= treated$TGI & treated$TGI <= treated$TGI_Upper))
+  expect_match(r$tolerability_rule, "upper 95% bound")
+  # Each animal's own nadir, with the day it happened.
+  wl <- r$weight_loss_data
+  expect_true(all(c("Nadir_Day", "Over_Threshold") %in% names(wl)))
+  expect_true(all(wl$Nadir_Day[wl$Treatment == "Toxic"] == 21))
+  # The threshold is in percent; a fraction is refused.
+  expect_error(therapeutic_window_metric(r20_window_df(), reference_group = "Control",
+                                         adjust_tumor_weight = FALSE,
+                                         tolerability_threshold = 0.2), "percent")
+})
+
+# Control, A, B and the combination measured on days 0 and 21, 6 animals each;
+# day-21 volumes spread symmetrically around the given means, so the survivor
+# estimand reproduces the means exactly.
+r20_bliss_df <- function(means, spread = 0.1) {
+  f <- 1 + spread * c(-1, -0.5, 0, 0, 0.5, 1)
+  do.call(rbind, lapply(names(means), function(arm) do.call(rbind, lapply(1:6, function(i) {
+    data.frame(ID = i, Treatment = arm, Day = c(0, 21),
+               Volume = c(100, means[[arm]] * f[i]))
+  }))))
+}
+
+test_that("R20.19: the synergy verdict is symmetric and rests on the interval", {
+  syn <- function(means, n_boot, spread = 0.1) quiet(analyze_drug_synergy(
+    r20_bliss_df(means, spread), drug_a_name = "A", drug_b_name = "B",
+    combo_name = "AB", control_name = "C", endpoint_method = "survivors",
+    eval_time_point = 21, n_boot = n_boot, boot_seed = 1, verbose = FALSE))
+  # Bliss expects FE 0.4 + 0.5 - 0.2 = 0.7, a combination mean of 300.
+  above <- syn(c(C = 1000, A = 600, B = 500, AB = 250), n_boot = 0)   # excess +0.05
+  below <- syn(c(C = 1000, A = 600, B = 500, AB = 350), n_boot = 0)   # excess -0.05
+  expect_equal(above$bliss_independence$difference, 0.05, tolerance = 1e-8)
+  expect_match(above$overall_assessment, "^Additive \\(no interval")   # was "Synergy"
+  expect_match(below$overall_assessment, "^Additive \\(no interval")   # was "Additivity"
+  expect_match(above$verdict_rule, "No interval")
+  # With an interval: a clear excess is synergy; a small, noisy one is not.
+  clear <- syn(c(C = 1000, A = 600, B = 500, AB = 100), n_boot = 500)
+  noisy <- syn(c(C = 1000, A = 600, B = 500, AB = 250), n_boot = 500, spread = 0.9)
+  expect_identical(clear$overall_assessment, "Synergy")
+  expect_true(isTRUE(clear$bliss_independence$synergy))
+  ci <- noisy$synergy_ci[noisy$synergy_ci$Metric == "Bliss_Excess_FE", ]
+  expect_true(ci$CI_Lower < 0 && ci$CI_Upper > 0)
+  expect_identical(noisy$overall_assessment,
+                   "Additive (no departure from Bliss detected)")    # was "Synergy"
+  expect_false(noisy$bliss_independence$synergy)
+})
+
+test_that("R20.14: an animal with no usable volume or a missing volume no longer derails dose-response", {
+  data(dose_levels_synthetic_data, package = "mouseExperiment", envir = environment())
+  # Four animals of the package's own demo never have a positive volume.
+  r <- quiet(dose_response_statistics(dose_levels_synthetic_data, cage_column = "Cage",
+                                      verbose = FALSE))           # was an error
+  expect_equal(r$statistics$growth_rate_animals_left_out, 4L)
+  expect_true(is.finite(r$statistics$growth_dose_p_value))
+  # Missing volumes after an animal's death are not imputed as shrinkage.
+  set.seed(6)
+  d <- do.call(rbind, lapply(c(0, 10, 30), function(dose) do.call(rbind, lapply(1:6, function(i) {
+    days <- seq(0, 12, 2)
+    data.frame(ID = i, Treatment = "X", Dose = dose, Day = days,
+               Volume = 100 * exp((0.12 - 0.002 * dose) * days + stats::rnorm(7, 0, 0.05)))
+  }))))
+  died <- d$Dose == 30 & d$ID %in% 1:2 & d$Day > 6
+  d_na <- d; d_na$Volume[died] <- NA
+  gr <- function(x) quiet(dose_response_statistics(x, time_point = 6,
+                                                   verbose = FALSE))$statistics$growth_model
+  expect_equal(stats::coef(gr(d_na)), stats::coef(gr(d[!died, ])), tolerance = 1e-10)
+})
+
+test_that("R20.16: dose-response analyses one agent's series and a validated control", {
+  data(master_synthetic_data, package = "mouseExperiment", envir = environment())
+  m <- master_synthetic_data
+  dr <- function(...) quiet(dose_response_statistics(m, cage_column = "Cage",
+                                                     verbose = FALSE, ...))
+  expect_error(dr(), "treatments =")                   # was pooled onto one dose axis
+  expect_error(dr(treatments = c("Drug_A Mid", "Drug_A Mid + Drug_B")),
+               "Dose 15 holds more than one arm")
+  expect_error(dr(control_group_name = "does-not-exist",
+                  treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High")),
+               "not in column")
+  a <- dr(treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High"))
+  expect_identical(a$series$control, "Vehicle")
+  expect_setequal(unique(a$analysis_data$Treatment),
+                  c("Vehicle", "Drug_A Low", "Drug_A Mid", "Drug_A High"))
+  # A vehicle arm coded with a missing dose is the control, not dropped.
+  m_na <- m; m_na$Dose[m_na$Treatment == "Vehicle"] <- NA
+  b <- quiet(dose_response_statistics(m_na, cage_column = "Cage", verbose = FALSE,
+                                      control_group_name = "Vehicle",
+                                      treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High")))
+  expect_equal(b$statistics$ec50, a$statistics$ec50)
+  expect_equal(b$tgi_table, a$tgi_table)
+})
+
+# One agent at `doses`, 6 animals per dose, measured on days 0 and 14; the day-14
+# volume follows a 4-parameter log-logistic curve.
+r20_dr_curve <- function(doses, ec50 = 20, bottom = 50, top = 1500, slope = 1.5,
+                         sd = 120, seed = 3) {
+  set.seed(seed)
+  do.call(rbind, lapply(doses, function(dz) do.call(rbind, lapply(1:6, function(i) {
+    mu <- bottom + (top - bottom) / (1 + (max(dz, 1e-9) / ec50)^slope)
+    data.frame(ID = i, Treatment = "X", Dose = dz, Day = c(0, 14),
+               Volume = c(100, max(0, stats::rnorm(1, mu, sd))))
+  }))))
+}
+
+test_that("R20.18: the EC50 is ED50 with a positive, log-scale interval, and its limits are flagged", {
+  st <- quiet(dose_response_statistics(r20_dr_curve(c(0, 3, 10, 30, 100, 300), bottom = 0),
+                                       verbose = FALSE))$statistics
+  skip_if(is.null(st$dr_model), "drc unavailable")
+  expect_equal(st$ec50, unname(drc::ED(st$dr_model, 50, display = FALSE)[1, "Estimate"]),
+               tolerance = 1e-8)
+  expect_gte(st$lower_limit, 0)                          # constrained
+  ci <- st$ec50_ci
+  expect_gt(ci[["lower"]], 0)
+  expect_equal(log(ci[["upper"]]) - log(st$ec50), log(st$ec50) - log(ci[["lower"]]),
+               tolerance = 1e-8)                         # symmetric on log dose
+  expect_true(st$ec50_in_range)
+  expect_identical(st$ec50_note, "")
+  # Four dose levels: LL.5 is not considered, and a 4-parameter curve through
+  # four dose means is flagged; so is an EC50 below the lowest dose.
+  st4 <- quiet(dose_response_statistics(r20_dr_curve(c(0, 10, 30, 100), ec50 = 2, sd = 60),
+                                        verbose = FALSE))$statistics
+  expect_identical(st4$dr_model_type, "symmetric")
+  expect_false(st4$ec50_in_range)
+  expect_match(st4$ec50_note, "outside the tested doses")
+  expect_match(st4$ec50_note, "4 parameters for 4 dose levels")
+  expect_null(st4$dr_lack_of_fit)
+})
+
+test_that("R20.20: the Jonckheere-Terpstra test is two-sided", {
+  skip_if_not_installed("clinfun")
+  r <- quiet(dose_response_statistics(r20_dr_curve(c(0, 3, 10, 30, 100, 300)),
+                                      verbose = FALSE))
+  jt <- r$trend_test$jonckheere_test
+  expect_identical(jt$alternative_used, "two.sided")      # was chosen from the data
+  expect_identical(jt$direction, "decreasing")
+  ad <- r$analysis_data
+  ref <- clinfun::jonckheere.test(ad$Volume, ad$Dose, alternative = "two.sided")
+  expect_equal(jt$p.value, ref$p.value)
 })

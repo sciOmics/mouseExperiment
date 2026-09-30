@@ -154,27 +154,51 @@ Linear mixed-effects model with random intercept per animal (and optional cage r
 - Treatment-time interaction (does weight diverge over time?)
 - Per-group adjusted means via `emmeans`
 - Optionally `adjust_tumor_weight = TRUE`: subtracts estimated tumor weight (volume × `tumor_density`) before modelling. **`volume_units` (`"mm3"` or `"cm3"`) must then be declared** (v0.25.0, also for `weight_loss_threshold()` and `therapeutic_window_metric()`). The data are checked against the declared unit using the 90th percentile of volume, and a tumour mass above half the body weight stops the run. Units used to be inferred from the median volume, which read small-tumour mm³ studies as cm³ (`CODE_REVIEW.md` R20.83).
+- **Weighings between calliper days** (v0.27.0, all three functions): animals are usually weighed more often than they are callipered. For the mass correction, each animal's volume is interpolated linearly between its calliper days, and held at the nearest measured value before the first and after the last. No weight row is dropped for lack of a same-day volume. Before, such rows were dropped, and weight-loss nadirs between calliper days were missed: in one scenario the mean worst loss read 12.4 % against a true 22.6 % (`CODE_REVIEW.md` R20.22).
 
 Returns the same `treatment_effects` shape as `tumor_growth_statistics()` plus a `weight_trajectory_plot`.
 
-### `weight_loss_threshold` (event derivation)
+### `weight_loss_threshold()` — time to a weight-loss threshold
 
-For survival-style analysis: time to ≥ X% weight loss. Wired into the dashboard's Survival module when "event source" is set to "weight loss".
+Time to ≥ X % weight loss from each animal's own baseline, with Kaplan-Meier curves, a log-rank test and a Cox model per arm. When an arm has no events, standard Cox does not converge, and Firth's penalised Cox (`coxphf`) is used (`cox_method = "coxphf"`). Before v0.27.0 that fallback never ran, and a non-converged fit was reported as "cox" (HR 6 × 10⁹ against a log-rank p of 10⁻⁵; `CODE_REVIEW.md` R20.21).
 
-### Therapeutic Window Metric
+**Why an animal's record ended** decides how it is counted. It can be read from an optional removal-reason column (`removal_reason_column`):
 
-```
-TWM = TGI(%) / mean_weight_loss(%)
-```
+| Reason | Treated as |
+|---|---|
+| In `weight_loss_reasons` (e.g. "Body condition") | A weight-loss event at the animal's last day |
+| In `planned_end_reasons` (end of study, scheduled sacrifice, data cut) | Censoring |
+| Any other non-empty reason (tumour burden, death) | A competing removal |
+| No reason column | Censoring at the last day |
 
-Higher TWM = better therapeutic window. TGI is the endpoint TGI described under "Endpoint TGI and evaluable days", at the last day on which every arm is evaluable, with intervals from model draws. Weight-loss intervals come from a bootstrap of animals. Under the model estimand the ratio has no interval, because its parts come from different sources. (Planned change, `CODE_REVIEW.md` R20-K: the ratio is to be replaced by a two-axis summary — model-based TGI against worst weight loss, each with an interval — plus a tolerability flag.)
+With competing removals, `cuminc` gives the Aalen-Johansen cumulative incidence of weight loss, which `1 − KM` overstates. Without a reason column nothing marks a removal, so an early end is censoring, and `assumption` says so. Before v0.27.0 every record ending before the last study day was a competing removal, so staggered enrolment or a data cut halved the Aalen-Johansen incidence (`CODE_REVIEW.md` R20.23).
+
+### Therapeutic window (two axes)
+
+`therapeutic_window_metric()` reports two quantities per arm, each with a 95 % interval:
+
+- **Efficacy:** the endpoint TGI described under "Endpoint TGI and evaluable days", at the last day on which every arm is evaluable. Its interval comes from draws of the endpoint model, or from a bootstrap of animals under the per-animal estimands.
+- **Tolerability:** the worst weight loss, in percent of each animal's own first weighing, averaged over the arm's animals (`Worst_Loss`), with an interval from a bootstrap of animals. It is taken over each animal's whole record, not only up to the efficacy day. `N_Over_Threshold` counts the animals that reached the threshold on their own.
+
+The tolerability flag compares the weight-loss interval with a declared threshold (`tolerability_threshold`, in percent, default 20):
+
+| Flag | Rule |
+|---|---|
+| Tolerated | the upper bound is below the threshold |
+| Not tolerated | the lower bound is at or above it |
+| Unclear | the interval contains it |
+
+The flag is `NA` without an interval. It describes the arm's average animal, so a "Tolerated" arm can still have an animal over the threshold.
+
+Before v0.27.0 the function reported a ratio, TWM = TGI / weight loss, and ranked arms by it. It was replaced (`CODE_REVIEW.md` R20-K) because it needed an arbitrary floor for arms that lose no weight, set below the scales' own noise (R20.70), and because its two parts came from different estimators, so it had no matching interval (R20.2).
 
 ### Assumptions
 
 - **BW LME4:** linearity on natural weight scale; per-mouse random effect captures individual differences
 - **Adjusted weight:** the tumor density assumption (default 1.0 g/cm³) — most tumors are within 10% of this; large discrepancies matter
 - **TGI:** the comparison is on the chosen endpoint day; trajectories with different shapes can have the same TGI at one day and differ on another
-- **TWM:** the efficacy and toxicity summaries come from separate models, so their uncertainty is not jointly propagated
+- **Therapeutic window:** the two axes come from separate analyses and are read side by side; no joint interval is implied
+- **Weight-loss threshold:** without a removal-reason column, censoring at an early end is assumed non-informative
 
 ---
 
@@ -195,6 +219,16 @@ synergy ≈ 0    = independent
 ```
 
 The fractional effects are the endpoint TGIs described under "Endpoint TGI and evaluable days", at the last day on which all four arms are evaluable. `synergy_ci` gives 95 % intervals for the reported estimates: from draws of the endpoint model under the default estimand, or from a bootstrap of animals under the per-animal estimands. The combination-versus-agent tests use the same estimand.
+
+**The verdict** (`overall_assessment`, v0.27.0) comes from the 95 % interval for the Bliss excess:
+
+| Verdict | Rule |
+|---|---|
+| Synergy | the interval lies above 0 |
+| Antagonism | the interval lies below 0 |
+| Additive (no departure from Bliss detected) | the interval contains 0 |
+
+Without an interval (`n_boot = 0`) the point estimate is compared with symmetric bands, ± `additivity_margin` (default 0.1), and the verdict says it has no interval. When a single agent did not inhibit growth, Bliss does not apply and no verdict is given. The bands used to be asymmetric: any positive excess was "Synergy" but negative ones down to −0.1 were "Additivity", so a Bliss-additive combination was called synergistic in about half of simulated studies (`CODE_REVIEW.md` R20.19).
 
 ### Why there is no Combination Index
 
@@ -245,7 +279,15 @@ volume(dose) = lower + (upper - lower) / (1 + (dose / EC50)^slope)
 
 Returns: `linear_model`, `anova_model`, `statistics$ec50`, `hill_slope`, `lower_limit`, `upper_limit`, `growth_dose_p_value`, plus the analysis data.
 
-The analysis uses one day: by default the last day on which every dose group is evaluable (`endpoint_day`), with the animals measured that day. A requested day that is not evaluable, for example because the control has thinned out, is an error. Before v0.26.0 the default was each animal's own last observation, which gave removed controls capped, earlier volumes (EC50 7.5 against a true 2.2; R20.17). `tgi_table` reports TGI per dose group at `endpoint_day` from the endpoint model, with intervals; the reference is the dose group of `control_group_name`, or dose 0.
+**One agent's dose series** (v0.27.0). The analysis takes one agent at several doses plus its control. The control is `control_group_name`, which must exist and have dose 0 (a missing dose is read as 0), or by default the rows with dose 0. The agent's arms are `treatments`. Without it, the data may hold only one other arm name, as when one treatment name is used at every dose. A dose held by more than one arm is always an error. Before, every arm went onto one dose axis: on the Master demo, Drug_B and the Drug_A + Drug_B combination were fitted as doses of Drug_A (`CODE_REVIEW.md` R20.16).
+
+The analysis uses one day: by default the last day on which every dose group is evaluable (`endpoint_day`), with the animals measured that day. A requested day that is not evaluable, for example because the control has thinned out, is an error. Before v0.26.0 the default was each animal's own last observation, which gave removed controls capped, earlier volumes (EC50 7.5 against a true 2.2; R20.17). `tgi_table` reports TGI per dose group at `endpoint_day` from the endpoint model, with intervals, against the dose-0 control.
+
+**The EC50** (v0.27.0) is `ED(model, 50)`, the dose giving half the fitted response range. Its 95 % interval is computed on log dose, so it stays positive. The lower asymptote is constrained to be at least 0. The 5-parameter (asymmetric) curve is considered only with at least 6 dose levels, and only if its lower asymptote is not negative. `ec50_in_range` is FALSE when the EC50 lies outside the tested doses, and `ec50_note` also flags a curve with as many parameters as dose levels, which nothing checks. The EC50 used to be the curve's `e` parameter, which is not the ED50 under the 5-parameter curve, and its interval was symmetric on the dose scale: [−394.7, 592.5] on the dashboard demo (`CODE_REVIEW.md` R20.18).
+
+**Trend test.** The Jonckheere–Terpstra test is two-sided, and `direction` reports whether the dose-group means rise or fall. Choosing the one-sided alternative from the data had doubled its false-positive rate, to 0.096 (`CODE_REVIEW.md` R20.20).
+
+**Growth rates.** Each animal's growth rate is the slope of log volume on day, from days with a positive measured volume; an animal needs three such days. Missing and zero volumes used to be set to half the animal's smallest volume, which turned the missing rows after a death into apparent shrinkage, and an animal with no positive volume stopped the whole analysis (`CODE_REVIEW.md` R20.14). `growth_rate_animals_left_out` counts the animals without enough days.
 
 ### Assumptions
 

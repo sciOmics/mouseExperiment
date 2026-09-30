@@ -110,3 +110,37 @@ check_tumor_mass_plausible <- function(tumor_mass, body_weight, volume_units) {
   }
   invisible(NULL)
 }
+
+#' Tumour volume on every weighing day, for the tumour-mass correction
+#'
+#' CODE_REVIEW.md R20.22. Animals are weighed more often than they are
+#' callipered. With the tumour-mass correction on, a weighing without a
+#' same-day volume had no net weight and was dropped, so a nadir between
+#' calliper days was missed: with daily weights and callipers twice a week, a
+#' mean worst loss of 22.6 % was reported as 12.4 %, always toward "safer".
+#' Each animal's volume is now interpolated linearly between its calliper
+#' days, and carried to weighing days before the first and after the last.
+#'
+#' @param key Animal key per row.
+#' @param day Day per row.
+#' @param volume Volume per row, NA where the animal was not callipered.
+#' @return Volume per row, filled wherever the animal has any volume.
+#' @noRd
+#' @keywords internal
+me_fill_volume <- function(key, day, volume) {
+  out <- volume
+  for (k in unique(key)) {
+    i    <- which(key == k)
+    ok   <- i[is.finite(volume[i]) & is.finite(day[i])]
+    miss <- i[!is.finite(volume[i]) & is.finite(day[i])]
+    if (!length(ok) || !length(miss)) next
+    if (length(unique(day[ok])) == 1L) {
+      out[miss] <- mean(volume[ok])
+      next
+    }
+    agg <- tapply(volume[ok], day[ok], mean)
+    out[miss] <- stats::approx(as.numeric(names(agg)), as.numeric(agg),
+                               xout = day[miss], rule = 2)$y
+  }
+  out
+}

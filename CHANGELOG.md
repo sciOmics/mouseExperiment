@@ -5,6 +5,83 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.0] - 2026-09-30
+
+Fifth implementation step of the Round 20 review (`CODE_REVIEW.md` R20-P): the
+two-axis therapeutic window, an interval-based synergy verdict, dose-response
+for one agent's series, and removal reasons in the weight-loss threshold.
+
+### Changed
+
+- **Breaking: the therapeutic window is two axes, not a ratio (R20-K; closes
+  R20.2's TWM half and R20.70).** `therapeutic_window_metric()` returns
+  `window_table`: per arm, TGI at the last evaluable day and the mean of each
+  animal's worst weight loss, each with a 95 % interval, the number of animals
+  over the threshold, and a tolerability flag. The flag is "Tolerated" when
+  the weight-loss interval lies below `tolerability_threshold` (percent,
+  default 20), "Not tolerated" when it lies at or above it, and "Unclear"
+  otherwise. The TWM ratio, its ranking, `noise_floor`, `twm_table` and
+  `twm_ci` are removed. A threshold of 1 or less is refused, because it looks
+  like a fraction.
+- **Breaking: the synergy verdict comes from the interval (R20.19).**
+  "Synergy" when the 95 % interval for the Bliss excess lies above 0,
+  "Antagonism" when it lies below, otherwise "Additive (no departure from
+  Bliss detected)". Without an interval the verdict uses symmetric bands and
+  says it has none. `strong_synergy_delta` and the "Strong Synergy" label are
+  replaced by `additivity_margin`, used only without an interval, and the
+  result carries `verdict_rule`. When a single agent did not inhibit growth
+  the label is "Bliss does not apply (...)", not "Not evaluable (...)".
+- **Breaking: dose-response analyses one agent's dose series (R20.16).** The
+  new `treatments` argument names the agent's arms. Without it, more than one
+  arm besides the control is an error, and so is a dose held by two arms.
+  `control_group_name` now defaults to `NULL` (the dose-0 rows); a named
+  control must exist and have dose 0, and a missing dose is read as 0. The
+  result records the `series` analysed.
+- **The EC50 is `ED(model, 50)`, with an interval on log dose (R20.18).** The
+  lower asymptote is constrained to be at least 0, and the 5-parameter curve
+  is considered only with at least 6 dose levels. `ec50_in_range` and
+  `ec50_note` flag an EC50 outside the tested doses and a curve with as many
+  parameters as dose levels; its lack-of-fit test, which then has no degrees
+  of freedom, is not run.
+- **The Jonckheere–Terpstra test is two-sided (R20.20).** Its alternative was
+  chosen from the data, which doubled the false-positive rate (0.096). The
+  observed `direction` is still reported.
+
+### Added
+
+- **Removal reasons in `weight_loss_threshold()` (R20.23).**
+  `removal_reason_column`, `weight_loss_reasons` and `planned_end_reasons`: a
+  weight-loss removal is an event at the animal's last day, a planned end is
+  censoring, and any other removal is a competing risk for `cuminc`. The
+  result's `assumption` states how early ends were treated.
+
+### Fixed
+
+- **Weighings without a same-day calliper reading were dropped (R20.22).** For
+  the tumour-mass correction, each animal's volume is now interpolated between
+  its calliper days in `therapeutic_window_metric()`,
+  `weight_loss_threshold()` and `analyze_body_weight()`, and no weight row is
+  filtered on volume. With daily weights and twice-weekly callipers, dips
+  between calliper days were missed: 0 of 6 animals crossed the threshold, and
+  the body-weight model used 84 of 264 rows.
+- **An early end was a competing "removal" (R20.23).** Without a reason
+  column, an animal whose record ends before the last study day is now
+  censored. Before, staggered enrolment or a data cut halved the
+  Aalen-Johansen incidence.
+- **The Firth fallback never ran (R20.21).** The baseline weights were a named
+  vector, which gave the event data row names that `coxphf()` could not
+  parse. A zero-event arm now gets Firth's penalised Cox, and standard Cox is
+  not attempted first under separation, so its non-convergence warning is
+  gone.
+- **Dose-response growth rates imputed missing volumes (R20.14).** Missing and
+  zero volumes were set to half the animal's smallest, so the rows after a
+  death read as shrinkage, and an animal with no positive volume stopped the
+  analysis (the package's own dose-levels demo failed). Growth rates now use
+  positive measured volumes, an animal needs three such days, and
+  `growth_rate_animals_left_out` counts the rest. The growth-rate step can no
+  longer stop the whole analysis. Animals are keyed by treatment, dose, ID and
+  cage, and only measured volumes enter the endpoint analysis.
+
 ## [0.26.0] - 2026-09-30
 
 Fourth implementation step of the Round 20 review (`CODE_REVIEW.md` R20-O): the

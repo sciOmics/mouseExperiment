@@ -21,13 +21,23 @@
 #'   every dose group is evaluable (see \code{\link{evaluable_days}}). A day that
 #'   is not evaluable is an error. Before v0.26.0 the default was each animal's
 #'   own last observation (CODE_REVIEW.md R20.17).
-#' @param control_group_name Name of the control group. Its dose group is the
-#'   reference for \code{tgi_table}; when it is absent, dose 0 is.
+#' @param control_group_name Name of the control arm in \code{treatment_column}.
+#'   It must exist, and its dose must be 0 or missing (a missing dose is read
+#'   as 0). \code{NULL} (default): the rows with dose 0 are the control. Before
+#'   v0.27.0 a name that did not exist was ignored (CODE_REVIEW.md R20.16).
+#' @param treatments The arms that form the dose series, besides the control:
+#'   one agent at several doses. \code{NULL} (default) takes every other arm,
+#'   and is an error when there is more than one, because the analysis would
+#'   then put different agents on one dose axis (R20.16). A dose level held by
+#'   more than one of the chosen arms is also an error.
 #' @param verbose Logical; if TRUE, prints model summaries and statistics to the console. Default: TRUE.
 #'
 #' @return A list containing:
 #'   \item{dose_effect_test}{Statistical test results for dose-dependency}
-#'   \item{trend_test}{Results of trend tests}
+#'   \item{trend_test}{Results of trend tests. \code{jonckheere_test} is
+#'     two-sided since v0.27.0; its \code{direction} field describes the
+#'     trend of the dose-group means without having chosen the test
+#'     (CODE_REVIEW.md R20.20).}
 #'   \item{linear_model}{Linear regression model}
 #'   \item{anova_model}{ANOVA model comparing dose groups}
 #'   \item{plots}{List of data visualizations}
@@ -38,7 +48,16 @@
 #'   \item{tgi_table}{TGI per dose group at \code{endpoint_day}, from the
 #'     endpoint model shared with \code{analyze_drug_synergy()} and
 #'     \code{therapeutic_window_metric()}, with 95 % intervals from draws of
-#'     its fixed effects. \code{NULL} when there is no control.}
+#'     its fixed effects. \code{NULL} when the model cannot be fitted.}
+#'   \item{series}{The arms analysed: \code{control} and \code{treatments}.}
+#'   \item{statistics}{Among others, the EC50 of the fitted log-logistic curve:
+#'     \code{ec50} is the dose giving half of the fitted response range
+#'     (\code{drc::ED(model, 50)}), with \code{ec50_ci}, a 95 % interval
+#'     computed on log dose so it stays positive. \code{ec50_in_range} is
+#'     FALSE when the EC50 lies outside the tested doses, and \code{ec50_note}
+#'     gives any reason to read it as descriptive. The lower asymptote is
+#'     constrained to be at least 0, and the 5-parameter curve is considered
+#'     only with at least 6 dose levels (CODE_REVIEW.md R20.18).}
 #'
 #' @import drc ggplot2 dplyr stats
 #' @importFrom stats coef
@@ -64,7 +83,8 @@ dose_response_statistics <- function(df,
                                    id_column = "ID",
                                    cage_column = NULL,
                                    time_point = NULL,
-                                   control_group_name = "Control",
+                                   control_group_name = NULL,
+                                   treatments = NULL,
                                    verbose = TRUE) {
   
   # Validate input
@@ -81,8 +101,20 @@ dose_response_statistics <- function(df,
   # indexed by them.
   has_cage <- !is.null(cage_column) && cage_column %in% colnames(df)
   df <- as.data.frame(df)
+
+  # CODE_REVIEW.md R20.16 -- one agent's dose series and its control. Every
+  # arm used to go onto one dose axis, so on the Master demo Drug_B (dose 10)
+  # and the Drug_A Mid + Drug_B combination (dose 15) were fitted as doses of
+  # Drug_A, and `control_group_name` changed nothing.
+  series <- dr_select_series(df, dose_column, treatment_column,
+                             control_group_name, treatments)
+  df <- series$df
+  # R20.14: the key includes the dose, so an ID reused across the dose groups
+  # of a single-agent layout (one treatment name at every dose) is not one
+  # animal.
   df$.mouse_key <- make_mouse_key(
-    as.character(df[[treatment_column]]), as.character(df[[id_column]]),
+    as.character(df[[treatment_column]]), format(df[[dose_column]]),
+    as.character(df[[id_column]]),
     if (has_cage) as.character(df[[cage_column]]) else "")
   
   # CODE_REVIEW.md R20.17 / R20-K -- the default endpoint was each animal's own
@@ -111,14 +143,9 @@ dose_response_statistics <- function(df,
                                     id_column = id_column, time_point = eval_day)
 
   # TGI per dose group at the same day, from the endpoint model shared with
-  # synergy and the therapeutic window (R20-K). The control is the dose group
-  # of `control_group_name`; without it, dose 0. The argument used to change
-  # nothing (T4b).
-  ctrl_dose <- local({
-    cd <- unique(d_std$Treatment[as.character(df[[treatment_column]][keep]) ==
-                                   control_group_name])
-    if (length(cd) == 1L) cd else if ("0" %in% d_std$Treatment) "0" else NA_character_
-  })
+  # synergy and the therapeutic window (R20-K). The control is dose 0, by
+  # construction of the series (R20.16).
+  ctrl_dose <- "0"
   endpoint_model <- me_endpoint_model(d_std)
   tgi_table <- if (!is.na(ctrl_dose) && !is.null(endpoint_model)) {
     dr_tgi_table(endpoint_model, evaluability, eval_day, ctrl_dose)
@@ -162,6 +189,7 @@ dose_response_statistics <- function(df,
     evaluability = evaluability,
     tgi_table    = tgi_table,
     control_dose = ctrl_dose,
+    series       = list(control = series$control, treatments = series$treatments),
     endpoint_model = me_endpoint_model_info(endpoint_model),
     # R17.3: the per-observation frame the analysis actually ran on, at the
     # chosen time point. The dashboard needs it to rebuild its scatter, box and
@@ -175,6 +203,94 @@ dose_response_statistics <- function(df,
 }
 
 # Removed validate_input function as it's now inlined in the main function
+
+#' One agent's dose series and its control (CODE_REVIEW.md R20.16)
+#'
+#' @return A list: `df` (the rows of the series and the control, with the dose
+#'   column numeric and a missing control dose set to 0), `control` (the
+#'   control arm name(s)) and `treatments`.
+#' @noRd
+#' @keywords internal
+dr_select_series <- function(df, dose_column, treatment_column,
+                             control_group_name = NULL, treatments = NULL) {
+  tx   <- as.character(df[[treatment_column]])
+  dose <- suppressWarnings(as.numeric(df[[dose_column]]))
+  if (!is.null(control_group_name)) {
+    if (!control_group_name %in% tx) {
+      stop("Control group '", control_group_name, "' is not in column '",
+           treatment_column, "'.", call. = FALSE)
+    }
+    is_ctrl <- !is.na(tx) & tx == control_group_name
+    cd <- unique(dose[is_ctrl])
+    if (any(is.finite(cd) & cd != 0)) {
+      stop("Control group '", control_group_name, "' has dose ",
+           paste(cd[is.finite(cd) & cd != 0], collapse = ", "),
+           "; the control must have dose 0.", call. = FALSE)
+    }
+    # A vehicle arm coded with a missing dose used to be dropped silently.
+    dose[is_ctrl] <- 0
+  } else {
+    is_ctrl <- is.finite(dose) & dose == 0
+    if (!any(is_ctrl)) {
+      stop("No rows with dose 0 to serve as the control. Name the control arm ",
+           "with control_group_name.", call. = FALSE)
+    }
+  }
+  control <- sort(unique(tx[is_ctrl]))
+  if (length(control) > 1L) {
+    stop("Dose 0 holds more than one arm (", paste(control, collapse = ", "),
+         "). Name the control with control_group_name.", call. = FALSE)
+  }
+
+  others <- sort(unique(tx[!is_ctrl & !is.na(tx)]))
+  if (is.null(treatments)) {
+    if (length(others) > 1L) {
+      stop("The data hold ", length(others), " arms besides the control (",
+           paste(others, collapse = ", "), "). A dose-response curve needs one ",
+           "agent's dose series; choose its arms with `treatments =`, so that ",
+           "different agents are not put on one dose axis.", call. = FALSE)
+    }
+    treatments <- others
+  } else {
+    treatments <- unique(as.character(treatments))
+    unknown <- setdiff(treatments, tx)
+    if (length(unknown)) {
+      stop("Treatment(s) not in column '", treatment_column, "': ",
+           paste(unknown, collapse = ", "), ".", call. = FALSE)
+    }
+  }
+  # The control is a set of rows, not a name: in a single-agent layout the
+  # dose-0 rows can carry the agent's own name.
+  in_series <- !is_ctrl & !is.na(tx) & tx %in% treatments
+  if (!any(in_series)) {
+    stop("No treated arms besides the control.", call. = FALSE)
+  }
+  no_dose <- in_series & !is.finite(dose)
+  if (any(no_dose)) {
+    warning(sum(no_dose), " row(s) of the dose series have no numeric dose and ",
+            "are left out.", call. = FALSE)
+  }
+  in_series <- in_series & is.finite(dose)
+  arms_at <- tapply(tx[in_series], dose[in_series], function(x) sort(unique(x)),
+                    simplify = FALSE)
+  shared <- arms_at[vapply(arms_at, length, integer(1L)) > 1L]
+  if (length(shared)) {
+    stop(paste(sprintf("Dose %s holds more than one arm (%s)", names(shared),
+                       vapply(shared, paste, character(1L), collapse = ", ")),
+               collapse = "; "),
+         ". A dose-response curve needs one agent's dose series; choose its ",
+         "arms with `treatments =`.", call. = FALSE)
+  }
+  if (any(dose[in_series] == 0)) {
+    stop("An arm of the dose series has dose 0, which is the control's dose.",
+         call. = FALSE)
+  }
+
+  out <- df[is_ctrl | in_series, , drop = FALSE]
+  out[[dose_column]] <- dose[is_ctrl | in_series]
+  list(df = out, control = control,
+       treatments = sort(unique(tx[in_series])))
+}
 
 #' TGI per dose group at the evaluation day, from the endpoint model
 #' @noRd
@@ -232,8 +348,14 @@ prepare_dose_data <- function(df, dose_column = "Dose", treatment_column = "Trea
   
   # Ensure dose is numeric
   analysis_data[[dose_column]] <- as.numeric(analysis_data[[dose_column]])
-  
-  # Filter to specific time point or use last time point
+  # CODE_REVIEW.md R20.14 -- only measured volumes: a row with a missing
+  # volume on an animal's last day used to drop the animal, and one on the
+  # evaluation day entered the group counts.
+  analysis_data <- analysis_data[
+    is.finite(suppressWarnings(as.numeric(analysis_data[[volume_column]]))) &
+      is.finite(analysis_data[[dose_column]]), , drop = FALSE]
+
+  # Filter to specific time point or use each animal's last measured volume
   if (!is.null(time_point)) {
     analysis_data <- analysis_data[analysis_data[[day_column]] == time_point, ]
     if (nrow(analysis_data) == 0) {
@@ -389,10 +511,17 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
     verbose = verbose
   )
 
-  # 5. Growth rate analysis
-  statistics <- analyze_growth_rate(original_df, analysis_data, dose_column,
-                                    volume_column, day_column, id_column,
-                                    statistics, verbose = verbose)
+  # 5. Growth rate analysis. R20.14: a failure here no longer ends the whole
+  # dose-response analysis.
+  statistics <- tryCatch(
+    analyze_growth_rate(original_df, analysis_data, dose_column,
+                        volume_column, day_column, id_column,
+                        statistics, verbose = verbose),
+    error = function(e) {
+      warning("Growth-rate analysis failed: ", conditionMessage(e),
+              call. = FALSE)
+      statistics
+    })
 
   # 6. Polynomial trend analysis
   statistics <- analyze_polynomial_trends(
@@ -461,23 +590,32 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
       # of the Slope parameter. The previous variable names "decr"/"incr"
       # and labels "inhibition"/"stimulation" were therefore misleading
       # (CODE_REVIEW.md G.2).
+      #
+      # CODE_REVIEW.md R20.18 -- a tumour volume cannot be negative, so the
+      # lower asymptote is constrained to be >= 0. The 5-parameter curve is
+      # considered only with at least 6 dose levels: with fewer, AIC chose it
+      # in 15 % of LL.4 truths, and its EC50 interval then went below 0 in
+      # 82 % of them. L-BFGS-B does not converge reliably for LL.5, so an LL.5
+      # fit whose lower asymptote is negative is rejected instead.
+      n_dose_levels <- length(unique(analysis_data[[dose_column]][
+        is.finite(analysis_data[[dose_column]])]))
+      fml <- as.formula(paste(me_bt(volume_column), "~", me_bt(dose_column)))
       dr_model_4p <- drc::drm(
-        as.formula(paste(me_bt(volume_column), "~", me_bt(dose_column))),
-        data = drc_data,
+        fml, data = drc_data,
         fct  = drc::LL.4(names = c("Slope", "Lower Limit", "Upper Limit",
-                                   "EC50"))
+                                   "EC50")),
+        lowerl = c(-Inf, 0, -Inf, -Inf)
       )
-      dr_model_5p <- drc::drm(
-        as.formula(paste(me_bt(volume_column), "~", me_bt(dose_column))),
-        data = drc_data,
-        fct  = drc::LL.5(names = c("Slope", "Lower Limit", "Upper Limit",
-                                   "EC50", "Asymmetry"))
-      )
+      dr_model_5p <- if (n_dose_levels >= 6L) tryCatch({
+        m5 <- drc::drm(
+          fml, data = drc_data,
+          fct  = drc::LL.5(names = c("Slope", "Lower Limit", "Upper Limit",
+                                     "EC50", "Asymmetry")))
+        if (stats::coef(m5)[2] >= 0) m5 else NULL
+      }, error = function(e) NULL)
 
       # Compare models on shape (symmetric vs asymmetric); select lower AIC.
-      model_aic_4p <- AIC(dr_model_4p)
-      model_aic_5p <- AIC(dr_model_5p)
-      if (model_aic_4p < model_aic_5p) {
+      if (is.null(dr_model_5p) || AIC(dr_model_4p) <= AIC(dr_model_5p)) {
         dr_model   <- dr_model_4p
         model_type <- "symmetric"      # LL.4 = symmetric 4-parameter
       } else {
@@ -531,15 +669,44 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
       statistics$hill_slope  <- pick("^Slope",       1L)
       statistics$lower_limit <- pick("^Lower Limit", 2L)
       statistics$upper_limit <- pick("^Upper Limit", 3L)
-      statistics$ec50        <- pick("^EC50",        4L)
 
-      # EC50 without an interval is a point estimate presented as a fact. drc
-      # supplies a delta-method interval from the same fit at no extra cost.
-      statistics$ec50_ci <- tryCatch({
-        ed <- drc::ED(dr_model, 50, interval = "delta", display = FALSE)
-        c(lower = unname(ed[1, "Lower"]), upper = unname(ed[1, "Upper"]),
+      # CODE_REVIEW.md R20.18 -- the EC50 is the dose giving half the fitted
+      # response range, ED(model, 50). It was the `e` parameter, which equals
+      # it under LL.4 but not under LL.5 (5.28 against an ED50 of 52.28 in one
+      # fit), while the interval described ED50. The interval is now computed
+      # on log dose, where the delta method is reasonable and the bounds stay
+      # positive; on the dose scale it reached [-394.7, 592.5] on the
+      # dashboard demo.
+      ed <- tryCatch(drc::ED(dr_model, 50, interval = "delta", display = FALSE),
+                     error = function(e) NULL)
+      statistics$ec50 <- if (!is.null(ed)) unname(ed[1, "Estimate"]) else
+        pick("^EC50", 4L)
+      statistics$ec50_ci <- if (!is.null(ed) && is.finite(ed[1, "Std. Error"]) &&
+                                statistics$ec50 > 0) {
+        se_log <- unname(ed[1, "Std. Error"]) / statistics$ec50
+        q <- stats::qt(0.975, stats::df.residual(dr_model))
+        c(lower = statistics$ec50 * exp(-q * se_log),
+          upper = statistics$ec50 * exp(q * se_log),
           se = unname(ed[1, "Std. Error"]))
-      }, error = function(e) NULL)
+      }
+
+      # Read the EC50 as descriptive when it lies outside the tested doses or
+      # the curve has a parameter for every dose level (nothing then checks
+      # its shape).
+      tested <- range(analysis_data[[dose_column]][analysis_data[[dose_column]] > 0])
+      n_par  <- length(stats::coef(dr_model))
+      statistics$n_dose_levels <- n_dose_levels
+      statistics$n_curve_parameters <- n_par
+      statistics$ec50_in_range <- is.finite(statistics$ec50) &&
+        statistics$ec50 >= tested[1] && statistics$ec50 <= tested[2]
+      notes <- c(
+        if (!statistics$ec50_in_range)
+          sprintf("The EC50 lies outside the tested doses (%s to %s).",
+                  format(tested[1]), format(tested[2])),
+        if (n_par >= n_dose_levels)
+          sprintf(paste("The curve has %d parameters for %d dose levels, so",
+                        "nothing checks its shape."), n_par, n_dose_levels))
+      statistics$ec50_note <- if (length(notes)) paste(notes, collapse = " ") else ""
       
       # Store model. dr_model_type now reports the *shape* (symmetric or
       # asymmetric); dr_model_direction reports the inferred direction
@@ -565,7 +732,9 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
       # goodness-of-fit diagnostics. Add lack-of-fit test, residuals plot, and
       # a residual-summary table so the dashboard's DR Diagnostics tab has
       # something to render.
-      statistics$dr_lack_of_fit <- tryCatch({
+      # With a parameter per dose level the lack-of-fit test has no degrees
+      # of freedom (it returned NaN with a warning); it is then not run.
+      statistics$dr_lack_of_fit <- if (n_par < n_dose_levels) tryCatch({
         # drc::modelFit returns a data frame with one row per nested model:
         # ANOVA F vs smoother (default), one DF per dose level. A small
         # p-value indicates the parametric model fits worse than a one-mean-
@@ -631,52 +800,46 @@ analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_
   if (!".mouse_key" %in% names(df)) {
     df$.mouse_key <- make_mouse_key(as.character(df[[id_column]]))
   }
-  # Only run if we have multiple time points
-  if (length(unique(df[[day_column]])) > 1) {
-    # Calculate growth rate for each mouse
-    # Zero-handling: use log(x) with x[x<=0] replaced by min_positive/2.
-    # Matches tumor_growth_statistics() / bayesian_tumor_growth() canonical
-    # pattern (was log1p — divergence noted in CODE_REVIEW.md G.8).
-    growth_rates <- df %>%
-      dplyr::group_by(.data[[dose_column]], .data[[".mouse_key"]]) %>%
-      dplyr::mutate(
-        log_volume = {
-          v <- .data[[volume_column]]
-          pos <- v[is.finite(v) & v > 0]
-          if (length(pos) > 0L) v[!(is.finite(v) & v > 0)] <- min(pos) / 2
-          log(v)
-        }
-      ) %>%
-      dplyr::arrange(.data[[day_column]]) %>%
-      dplyr::summarize(
-        growth_rate = if(dplyr::n() >= 3) {
-          # Linear regression to estimate growth rate
-          tmp_df <- data.frame(lv = log_volume, dv = .data[[day_column]])
-          model <- stats::lm(lv ~ dv, data = tmp_df)
-          coef(model)[2] # Slope coefficient = growth rate
-        } else {
-          NA
-        },
-        .groups = "drop"
-      ) %>%
-      dplyr::filter(!is.na(growth_rate))
-    
-    if (nrow(growth_rates) > 0) {
-      # Test relationship between dose and growth rate
-      growth_model <- stats::lm(paste("growth_rate ~", me_bt(dose_column)), data = growth_rates)
-      growth_summary <- summary(growth_model)
-      
-      if (isTRUE(verbose)) {
-        message("Growth rate vs dose model:")
-        message(paste(utils::capture.output(print(growth_summary)), collapse = "\n"))
-      }
-      
-      statistics$growth_dose_p_value <- growth_summary$coefficients[2, 4]
-      statistics$growth_dose_r_squared <- growth_summary$r.squared
-      statistics$growth_model <- growth_model
+  # CODE_REVIEW.md R20.14 -- growth rates from measured volumes only. Missing
+  # and non-positive volumes were set to half the animal's smallest volume, so
+  # the NA rows after an animal's death in a full-grid export became
+  # "shrinkage" (true rates +0.083 and +0.038 came out -0.048 and -0.046), and
+  # an animal with no positive volume at all (a non-take, common) made lm()
+  # fail and took the whole analysis with it. Each animal now needs three
+  # measured days with a positive volume, or it is left out.
+  v    <- suppressWarnings(as.numeric(df[[volume_column]]))
+  day  <- suppressWarnings(as.numeric(df[[day_column]]))
+  dose <- suppressWarnings(as.numeric(df[[dose_column]]))
+  ok   <- is.finite(v) & v > 0 & is.finite(day) & is.finite(dose)
+  if (length(unique(day[ok])) < 2L) return(statistics)
+  d <- data.frame(key = df$.mouse_key[ok], dose = dose[ok], day = day[ok],
+                  lv = log(v[ok]), stringsAsFactors = FALSE)
+  rates <- lapply(split(d, paste(d$dose, d$key, sep = "\r")), function(s) {
+    if (length(unique(s$day)) < 3L) return(NULL)
+    data.frame(dose = s$dose[1], growth_rate = unname(stats::coef(
+      stats::lm(lv ~ day, data = s))[2]))
+  })
+  growth_rates <- do.call(rbind, rates)
+  n_left_out <- length(rates) - if (is.null(growth_rates)) 0L else nrow(growth_rates)
+  n_no_positive <- length(setdiff(unique(df$.mouse_key), unique(d$key)))
+  statistics$growth_rate_animals_left_out <- n_left_out + n_no_positive
+
+  if (!is.null(growth_rates) && length(unique(growth_rates$dose)) >= 2L) {
+    names(growth_rates)[1] <- dose_column
+    # Test relationship between dose and growth rate
+    growth_model <- stats::lm(paste("growth_rate ~", me_bt(dose_column)), data = growth_rates)
+    growth_summary <- summary(growth_model)
+
+    if (isTRUE(verbose)) {
+      message("Growth rate vs dose model:")
+      message(paste(utils::capture.output(print(growth_summary)), collapse = "\n"))
     }
+
+    statistics$growth_dose_p_value <- growth_summary$coefficients[2, 4]
+    statistics$growth_dose_r_squared <- growth_summary$r.squared
+    statistics$growth_model <- growth_model
   }
-  
+
   return(statistics)
 }
 
@@ -688,16 +851,18 @@ analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_
 #' is unaffected by unequal dose spacing (e.g. 0 / 10 / 30 / 100 mg/kg), and it
 #' assumes no particular response distribution.
 #'
-#' The alternative is chosen from the observed direction of the dose-group
-#' means rather than hard-coded, so the test works for inhibitory and
-#' stimulatory data alike.
+#' The test is two-sided (CODE_REVIEW.md R20.20). It chose its alternative
+#' from the direction of the dose-group means, which is a look at the data
+#' before the test: on null data P(p < 0.05) was 0.096. The direction is still
+#' reported, in \code{direction}, as a description.
 #'
 #' @param analysis_data Prepared data frame.
 #' @param dose_column,volume_column Column names.
 #' @param verbose Print progress messages.
 #' @return An \code{htest}-like list from \code{clinfun::jonckheere.test()} with
-#'   an added \code{alternative_used} field, or \code{NULL} when the test cannot
-#'   be run (clinfun absent, fewer than three dose levels, or an error).
+#'   added \code{alternative_used} ("two.sided") and \code{direction} fields,
+#'   or \code{NULL} when the test cannot be run (clinfun absent, fewer than
+#'   three dose levels, or an error).
 #' @noRd
 #' @keywords internal
 run_jonckheere_test <- function(analysis_data, dose_column = "Dose",
@@ -719,15 +884,15 @@ run_jonckheere_test <- function(analysis_data, dose_column = "Dose",
     return(NULL)
   }
 
-  # Direction from the observed dose-group means: a fitted decrease across dose
-  # is the inhibitory case, an increase the stimulatory one. Deriving it rather
-  # than assuming inhibition keeps the test usable on both.
+  # The direction of the dose-group means, reported as a description only:
+  # choosing the alternative from it doubled the false-positive rate (R20.20).
   grp_means <- tapply(volumes, doses, mean, na.rm = TRUE)
   grp_means <- grp_means[order(as.numeric(names(grp_means)))]
   slope     <- stats::coef(stats::lm(
     grp_means ~ as.numeric(names(grp_means))
   ))[2]
-  alternative <- if (is.finite(slope) && slope > 0) "increasing" else "decreasing"
+  direction <- if (is.finite(slope) && slope > 0) "increasing" else "decreasing"
+  alternative <- "two.sided"
 
   jt <- tryCatch(
     clinfun::jonckheere.test(volumes, doses, alternative = alternative),
@@ -740,9 +905,10 @@ run_jonckheere_test <- function(analysis_data, dose_column = "Dose",
   if (is.null(jt)) return(NULL)
 
   jt$alternative_used <- alternative
+  jt$direction <- direction
   if (isTRUE(verbose)) {
-    message("Jonckheere-Terpstra trend test (", alternative, "): p = ",
-            format.pval(jt$p.value, digits = 3))
+    message("Jonckheere-Terpstra trend test (two-sided; means ", direction,
+            " with dose): p = ", format.pval(jt$p.value, digits = 3))
   }
   jt
 }

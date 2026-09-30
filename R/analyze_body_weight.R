@@ -86,10 +86,16 @@ analyze_body_weight <- function(df,
     stringsAsFactors = FALSE
   )
 
-  # Tumor volume (for adjustment and/or covariate)
+  # Tumor volume (for adjustment and/or covariate). R20.22: volume is filled
+  # in on weighing days without a calliper measurement, so those weighings are
+  # kept rather than dropped.
   has_volume <- !is.null(volume_column) && volume_column %in% names(df)
   if (has_volume) {
-    wd$Volume <- as.numeric(df[[volume_column]])
+    fill_key <- make_mouse_key(
+      as.character(df[[treatment_column]]), as.character(df[[id_column]]),
+      if (!is.null(cage_column) && cage_column %in% names(df))
+        as.character(df[[cage_column]]) else "")
+    wd$Volume <- me_fill_volume(fill_key, wd$Day, as.numeric(df[[volume_column]]))
   }
 
   # Tumor weight adjustment

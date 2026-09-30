@@ -44,6 +44,8 @@
 #'     otherwise Welch t-tests on the per-animal volumes.}
 #'   \item{synergy_ci, interval_method}{95 % intervals for the TGIs and the
 #'     Bliss excess, and how they were obtained.}
+#'   \item{overall_assessment, verdict_rule}{The verdict, from the interval
+#'     for the Bliss excess, and its rule in words (see Details).}
 #'   \item{evaluability}{The evaluable-day record: the rule, the day used, and
 #'     the days and arms it excluded (see \code{\link{evaluable_days}}).}
 #'   \item{endpoint_model}{How the endpoint model was fitted: time basis,
@@ -86,11 +88,17 @@
 #' to demonstrate synergy by this criterion regardless of the true biological interaction.
 #' Interpret Bliss results cautiously when individual-agent TGIs exceed 50%.
 #'
-#' \strong{Point estimates and labels:} \code{synergy_label} is derived from
-#' fixed thresholds. They are descriptive summaries, not test results. Read them
-#' alongside \code{synergy_ci} (95% intervals for the reported estimates) and
-#' \code{group_n}: a "Strong Synergy" label whose \code{Bliss_Excess_FE}
-#' interval spans zero is not evidence of synergy.
+#' \strong{The verdict} (\code{overall_assessment}) comes from the 95%
+#' interval for the Bliss excess in \code{synergy_ci}: "Synergy" when the
+#' interval lies above zero, "Antagonism" when it lies below, and "Additive
+#' (no departure from Bliss detected)" when it contains zero. Without an
+#' interval (\code{n_boot = 0}) the verdict compares the point estimate with
+#' symmetric bands, plus or minus \code{additivity_margin}, and says that it
+#' has no interval. \code{verdict_rule} states the rule used. Before v0.27.0
+#' the bands were asymmetric: any positive excess was "Synergy" but negative
+#' excesses down to -0.1 were "Additivity", so a Bliss-additive combination
+#' was labelled synergistic in about half of simulated studies
+#' (CODE_REVIEW.md R20.19).
 #'
 #' @examples
 #' # Example with synthetic dataset
@@ -127,9 +135,11 @@
 #'   per arm and per-animal random slopes), "last_obs", or "survivors"
 #'   (pre-0.8.0 behaviour; conditions on survival and understates TGI). See
 #'   CODE_REVIEW.md R3.5 / G.3 and R20.1.
-#' @param strong_synergy_delta Numeric. Bliss excess fractional effect above
-#'   which the label is "Strong Synergy". Default 0.1, a convention rather than
-#'   a derived quantity.
+#' @param additivity_margin Numeric. Used only when there is no interval
+#'   (\code{n_boot = 0}): a Bliss excess within this distance of zero is
+#'   labelled additive. Default 0.1, a convention rather than a derived
+#'   quantity. It replaces \code{strong_synergy_delta} (v0.27.0), which set the
+#'   "Strong Synergy" label; that label was removed with the asymmetric bands.
 #' @param ci_thresholds Deprecated and ignored; retained so existing calls do
 #'   not error. It configured the removed Combination Index band.
 #' @param n_boot Integer >= 0. Number of draws behind the 95 % intervals in
@@ -154,7 +164,7 @@ analyze_drug_synergy <- function(df,
                                cage_column = NULL,
                                endpoint_method = c("model", "last_obs", "survivors"),
                                ci_thresholds = c(0.85, 1.15),
-                               strong_synergy_delta = 0.1,
+                               additivity_margin = 0.1,
                                n_boot = 2000L,
                                boot_seed = NULL,
                                verbose = TRUE) {
@@ -199,7 +209,7 @@ analyze_drug_synergy <- function(df,
   me_synergy_from_endpoint(
     ep, control_name = control_name, drug_a_name = drug_a_name,
     drug_b_name = drug_b_name, combo_name = combo_name,
-    strong_synergy_delta = strong_synergy_delta,
+    additivity_margin = additivity_margin,
     n_boot = n_boot, boot_seed = boot_seed, verbose = verbose)
 }
 
@@ -222,7 +232,7 @@ analyze_drug_synergy <- function(df,
 #' @noRd
 #' @keywords internal
 me_synergy_from_endpoint <- function(ep, control_name, drug_a_name, drug_b_name,
-                                     combo_name, strong_synergy_delta = 0.1,
+                                     combo_name, additivity_margin = 0.1,
                                      n_boot = 2000L, boot_seed = NULL,
                                      verbose = FALSE, warn_not_evaluable = TRUE) {
   eval_time_point <- ep$endpoint_day
@@ -316,20 +326,40 @@ me_synergy_from_endpoint <- function(ep, control_name, drug_a_name, drug_b_name,
     }
   }
 
-  # Synergy label from Bliss alone. CODE_REVIEW.md R3.28: the threshold is an
-  # argument. The label is descriptive; the interval on Bliss_Excess_FE is the
-  # quantity to read.
-  d <- strong_synergy_delta
+  # CODE_REVIEW.md R20.19 -- the verdict. The bands were asymmetric: any
+  # positive excess was "Synergy" while negatives down to -0.1 were
+  # "Additivity", so a Bliss-additive truth read as synergy in about half of
+  # studies. The verdict now comes from the interval for the Bliss excess,
+  # which describes the reported estimate since R20.2. Without an interval it
+  # uses symmetric bands around zero and says so. When Bliss does not apply
+  # the label says that, not "Not evaluable", which since v0.26.0 refers to
+  # evaluable days only.
+  m <- additivity_margin
+  bliss_row <- if (!is.null(synergy_ci)) synergy_ci[synergy_ci$Metric == "Bliss_Excess_FE", ]
+  lo <- if (!is.null(bliss_row) && nrow(bliss_row) == 1L) bliss_row$CI_Lower else NA_real_
+  hi <- if (!is.null(bliss_row) && nrow(bliss_row) == 1L) bliss_row$CI_Upper else NA_real_
+  has_interval <- agents_inhibitory && is.finite(lo) && is.finite(hi)
   synergy_label <- if (!agents_inhibitory) {
-    "Not evaluable (a single agent did not inhibit growth)"
-  } else if (bliss_difference > d) {
-    "Strong Synergy"
-  } else if (bliss_difference > 0) {
-    "Synergy"
-  } else if (bliss_difference > -d) {
-    "Additivity"
+    "Bliss does not apply (a single agent did not inhibit growth)"
+  } else if (has_interval) {
+    if (lo > 0) "Synergy"
+    else if (hi < 0) "Antagonism"
+    else "Additive (no departure from Bliss detected)"
+  } else if (bliss_difference > m) {
+    paste0("Synergy (no interval; excess above +", format(m), ")")
+  } else if (bliss_difference < -m) {
+    paste0("Antagonism (no interval; excess below -", format(m), ")")
   } else {
-    "Antagonism"
+    paste0("Additive (no interval; excess within ", format(m), " of zero)")
+  }
+  verdict_rule <- if (!agents_inhibitory) {
+    "Bliss independence applies only when both single agents inhibit growth."
+  } else if (has_interval) {
+    paste("Synergy when the 95% interval for the Bliss excess lies above zero,",
+          "antagonism when it lies below zero, otherwise additive.")
+  } else {
+    paste0("No interval: synergy when the Bliss excess is above +", format(m),
+           ", antagonism when it is below -", format(m), ", otherwise additive.")
   }
 
   # Combination vs each single agent, on the same estimand (R20.2).
@@ -406,13 +436,15 @@ me_synergy_from_endpoint <- function(ep, control_name, drug_a_name, drug_b_name,
     # it excluded (R20-K).
     evaluability = ep$evaluability,
     endpoint_model = me_endpoint_model_info(ep$model),
-    thresholds  = list(strong_synergy_delta = strong_synergy_delta),
+    thresholds  = list(additivity_margin = additivity_margin),
+    verdict_rule = verdict_rule,
     bliss_independence = list(
       expected_effect = bliss_expected_fe,
       observed_effect = fe_combo,
       difference = bliss_difference,
-      # NA, not FALSE, when Bliss does not apply (R20.8).
-      synergy = if (agents_inhibitory) bliss_difference > 0 else NA
+      # NA, not FALSE, when Bliss does not apply (R20.8). TRUE only when the
+      # verdict is synergy (R20.19).
+      synergy = if (agents_inhibitory) startsWith(synergy_label, "Synergy") else NA
     ),
     bliss_applies = agents_inhibitory,
     statistical_tests = stat_tests,

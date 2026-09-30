@@ -8,8 +8,8 @@ An R package for statistical analysis of mouse tumor growth experiments. Covers 
 - **Survival** — Kaplan-Meier, Cox PH, log-rank, `cox.zph()` PH check, Bayesian AFT (Weibull / log-normal), C-index
 - **Body weight / toxicity** — LME4 mixed model, weight-loss threshold events
 - **Drug synergy** — Bliss Independence with bootstrap intervals, plus an over-time variant
-- **Dose-response** — Hill / Emax curve fitting (drc)
-- **Therapeutic window** — TWM from the tumor-growth and body-weight models
+- **Dose-response** — Hill / Emax curve fitting (drc) for one agent's dose series, EC50 with a log-dose interval, two-sided Jonckheere–Terpstra trend test
+- **Therapeutic window** — TGI against worst weight loss per arm, each with an interval, plus a tolerability flag at a declared threshold
 - **Power analysis** — Analytic (t-test / ANOVA) and LMM simulation; multiplicity- and attrition-aware (`n_comparisons`, `dropout_rate`)
 - **Randomisation tests** — `trajectory_permutation_test()` tests the treatment × time interaction without the denominator-df or normality approximations. You declare the unit of randomisation via `perm_spec(unit = "mouse" | "cage")`, because a permutation test is only valid if it mirrors how the study randomised; small designs are enumerated exhaustively for an exact p-value, and the design's resolution floor is reported so a null result cannot be over-read
 - **Bayesian diagnostics** — Rhat, ESS, NUTS divergences / max_treedepth / E-BFMI, Bayes R², PPC coverage, PSIS-LOO with Pareto-k, posterior P(effect ≠ 0)
@@ -185,10 +185,17 @@ dr_results <- dose_response_statistics(
   id_column          = "ID")
 ```
 
-### Therapeutic Window Metric
+### Therapeutic Window
 
 ```r
-twm <- therapeutic_window_metric(tg_results, bw_results)
+data(master_synthetic_data)
+tw <- therapeutic_window_metric(
+  df               = master_synthetic_data,
+  reference_group  = "Vehicle",
+  cage_column      = "Cage",
+  volume_units     = "mm3",           # needed to subtract tumour mass
+  tolerability_threshold = 20)        # percent of baseline weight
+tw$window_table   # TGI and worst weight loss per arm, with intervals and a flag
 ```
 
 ### Power Analysis

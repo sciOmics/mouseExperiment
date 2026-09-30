@@ -1,10 +1,18 @@
-#' Therapeutic Window Metric (TWM)
+#' Therapeutic window: efficacy and tolerability, side by side
 #'
-#' Computes TWM = max(TGI, 0) / max(MeanWeightLoss%, noise_floor) per treatment
-#' group, so a well-tolerated arm scores its TGI and the metric stays continuous
-#' at the floor.
-#' The denominator uses the group mean of per-mouse maximum weight loss, not the
-#' single worst-case mouse, to give a representative measure of typical toxicity.
+#' Reports two quantities per arm, each with a 95% interval: tumour growth
+#' inhibition (TGI) at the evaluation day, and the worst body-weight loss,
+#' measured in each animal from its own baseline and averaged over the arm's
+#' animals. A tolerability flag compares the weight-loss interval with a
+#' declared threshold.
+#'
+#' Before v0.27.0 the function reported a single ratio, TWM = TGI / weight
+#' loss, and ranked the arms by it. The maintainer replaced it with this
+#' two-axis summary (CODE_REVIEW.md R20-K). The ratio needed an arbitrary
+#' floor for arms that lose no weight, and that floor sat below the scales'
+#' own noise (R20.70). Its parts came from different estimators, so it could
+#' not have a matching interval (R20.2). And one number cannot show both
+#' efficacy and toxicity.
 #'
 #' @param df Data frame with longitudinal data.
 #' @param weight_column Name of the body weight column.
@@ -25,14 +33,9 @@
 #'   warning on disagreement and an error when the implied tumour mass exceeds
 #'   half the body weight.
 #' @param reference_group Name of the control/reference group.
-#' @param noise_floor Minimum group-mean per-mouse maximum weight loss (percent)
-#'   used as a floor on the ratio's denominator, so
-#'   \code{TWM = max(TGI, 0) / max(weight_loss\%, noise_floor)}. This keeps TWM
-#'   continuous for any \code{noise_floor} (CODE_REVIEW.md R3.18) and reduces to
-#'   \code{TWM = max(TGI, 0)} for well-tolerated arms. Default 1.0 — an
-#'   experimentally pragmatic threshold that avoids dividing by near-zero weight
-#'   loss. No formal clinical basis; users with experiment-specific noise
-#'   estimates (e.g. scale precision) should tune accordingly.
+#' @param tolerability_threshold Weight loss, in percent of baseline weight,
+#'   that the tolerability flag tests against. Default 20. A value of 1 or less
+#'   is an error, because it looks like a fraction (0.2 for 20 percent).
 #' @param endpoint_day Day at which efficacy is evaluated. \code{NULL}
 #'   (default): the last day on which every arm is evaluable (see
 #'   \code{\link{evaluable_days}}); a requested day must be evaluable. Before
@@ -49,25 +52,46 @@
 #'   animals observed at the endpoint day, which conditions on survival and
 #'   biases TGI downward — it warns when animals were lost.
 #' @param n_boot Integer >= 0. Draws behind the 95% intervals. Under the model
-#'   estimand, TGI intervals come from draws of the endpoint model's fixed
-#'   effects and weight-loss intervals from a bootstrap of animals; TWM then
-#'   has no interval, because its parts come from different sources. Under the
-#'   per-animal estimands one bootstrap of animals (control included) gives all
-#'   three (CODE_REVIEW.md R3.6 / R3.7, R20.2). Default 2000; set 0 to skip.
+#'   estimand the TGI intervals come from draws of the endpoint model's fixed
+#'   effects; under the per-animal estimands, from a bootstrap of animals
+#'   (control included). Weight-loss intervals always come from a bootstrap of
+#'   animals within arm (CODE_REVIEW.md R3.6 / R3.7, R20.2). Default 2000; 0
+#'   skips the intervals, and with them the tolerability flag.
 #' @param boot_seed Optional integer seed for reproducible resampling.
-#' @return A list with: \code{twm_table} (point estimates plus interval
-#'   bounds), \code{twm_ci}, \code{tgi_data}, \code{weight_loss_data},
-#'   \code{n_at_endpoint} (animals contributing at the endpoint day, per arm),
-#'   \code{endpoint_day}, \code{evaluability} (the rule, the day used and the
-#'   days and arms it excluded), \code{endpoint_model} and
-#'   \code{interval_note}.
+#' @return A list:
+#'   \describe{
+#'     \item{window_table}{One row per arm, the reference arm first:
+#'       \code{Treatment}, \code{N_Animals} (animals with weights),
+#'       \code{TGI}, \code{TGI_Lower}, \code{TGI_Upper},
+#'       \code{Worst_Loss} (the arm's mean of each animal's worst percent
+#'       weight loss), \code{Worst_Loss_Lower}, \code{Worst_Loss_Upper},
+#'       \code{N_Over_Threshold} (animals whose worst loss reached the
+#'       threshold) and \code{Tolerability}.}
+#'     \item{weight_loss_data}{One row per animal: \code{MouseKey},
+#'       \code{Treatment}, \code{ID}, \code{Cage}, \code{Baseline_Weight},
+#'       \code{Nadir_Weight}, \code{Nadir_Day}, \code{Pct_Loss} and
+#'       \code{Over_Threshold}.}
+#'     \item{tgi_data}{The endpoint means behind the TGI.}
+#'     \item{tolerability_threshold, tolerability_rule}{The threshold, and
+#'       the flag's rule in words.}
+#'     \item{endpoint_day, endpoint_method, evaluability, endpoint_model,
+#'       attrition, n_at_endpoint}{The evaluation day, the estimand, the
+#'       evaluable-day record (the rule, the days used and the days and arms
+#'       it excluded), the endpoint model, and the animals on study per arm.}
+#'     \item{interval_note}{Where the intervals come from.}
+#'   }
 #'
-#' @section Interpreting the ranking:
-#' \code{twm_table} is sorted by TWM, which reads as a ranking. Check
-#' \code{TWM_Lower} / \code{TWM_Upper} before acting on the order: with typical
-#' group sizes the intervals overlap heavily and the ordering of adjacent arms is
-#' often not resolvable. \code{n_at_endpoint} shows how many animals in each arm
-#' actually reached the endpoint day.
+#' @section Reading the table:
+#' The two axes are read separately; the table is not a ranking.
+#' \code{Tolerability} is "Tolerated" when the upper bound of the arm's mean
+#' worst loss is below the threshold, "Not tolerated" when the lower bound is
+#' at or above it, and "Unclear" when the interval contains it; it is
+#' \code{NA} when there is no interval (\code{n_boot = 0}, or fewer than two
+#' animals). The flag describes the arm's average animal:
+#' \code{N_Over_Threshold} counts the animals that crossed the threshold on
+#' their own, which can happen in a "Tolerated" arm. Worst loss is taken over
+#' each animal's whole record, not only up to the evaluation day, because
+#' toxicity after that day still counts.
 #' @export
 therapeutic_window_metric <- function(df,
                                       weight_column    = "Weight",
@@ -80,13 +104,22 @@ therapeutic_window_metric <- function(df,
                                       tumor_density    = 1.0,
                                       volume_units     = NULL,
                                       reference_group  = NULL,
-                                      noise_floor      = 1.0,
+                                      tolerability_threshold = 20,
                                       endpoint_day     = NULL,
                                       endpoint_method  = c("model", "last_obs", "survivors"),
                                       n_boot           = 2000L,
                                       boot_seed        = NULL) {
 
   endpoint_method <- match.arg(endpoint_method)
+  if (!is.numeric(tolerability_threshold) || length(tolerability_threshold) != 1L ||
+      !is.finite(tolerability_threshold) || tolerability_threshold >= 100) {
+    stop("tolerability_threshold must be one number, in percent of baseline ",
+         "weight (default 20).", call. = FALSE)
+  }
+  if (tolerability_threshold <= 1) {
+    stop("tolerability_threshold is in percent of baseline weight: use 20 for ",
+         "20 percent, not 0.2.", call. = FALSE)
+  }
 
   # --- Validate ---
   required <- c(weight_column, volume_column, time_column, treatment_column, id_column)
@@ -108,18 +141,22 @@ therapeutic_window_metric <- function(df,
     stringsAsFactors = FALSE
   )
   # Composite mouse key prevents collapsing same-numeric-ID mice across cages
-  wd$MouseKey <- make_mouse_key(wd$ID, wd$Treatment, wd$Cage)
+  wd$MouseKey <- make_mouse_key(wd$Treatment, wd$ID, wd$Cage)
 
   if (adjust_tumor_weight) {
     # CODE_REVIEW.md R3.30 — resolve units explicitly rather than assuming mm³.
+    # R20.22: volume filled in on weighing days without a calliper reading.
+    wd$Volume <- me_fill_volume(wd$MouseKey, wd$Day, wd$Volume)
     volume_units <- resolve_volume_units(wd$Volume, volume_units)
     tumor_mass <- volume_to_mass(wd$Volume, tumor_density, volume_units)
     check_tumor_mass_plausible(tumor_mass, wd$Weight, volume_units)
     wd$Weight <- wd$Weight - tumor_mass
   }
 
-  wd <- wd[!is.na(wd$Weight) & !is.na(wd$Day) & !is.na(wd$Volume), ]
-  wd <- wd[order(wd$ID, wd$Day), ]
+  # R20.22: weight rows are never filtered on volume -- a weighing without a
+  # same-day calliper reading still counts toward the worst weight loss.
+  wd <- wd[!is.na(wd$Weight) & !is.na(wd$Day), ]
+  wd <- wd[order(wd$MouseKey, wd$Day), ]
 
   groups <- unique(wd$Treatment)
   if (is.null(reference_group)) {
@@ -129,15 +166,15 @@ therapeutic_window_metric <- function(df,
     reference_group <- if (length(ref_match) > 0) ref_match[1] else groups[1]
   }
 
-  # --- TGI per treatment group ---
+  # --- Efficacy axis: TGI per arm ---
   # CODE_REVIEW.md R3.5 / G.3 -- each arm's geometric mean at the endpoint day
   # from the endpoint model fitted to every observation of every animal, the
   # same TGI as analyze_drug_synergy() and dose_response_statistics() (R20-K).
   # It uses every volume measurement, with or without a weight on that day.
   # R20.1: the default day is the last one on which every arm is evaluable,
   # and a requested day must be evaluable.
-  vd <- data.frame(MouseKey  = make_mouse_key(as.character(df[[id_column]]),
-                                              as.character(df[[treatment_column]]),
+  vd <- data.frame(MouseKey  = make_mouse_key(as.character(df[[treatment_column]]),
+                                              as.character(df[[id_column]]),
                                               cage_vec),
                    Treatment = as.character(df[[treatment_column]]),
                    Day       = as.numeric(df[[time_column]]),
@@ -154,112 +191,98 @@ therapeutic_window_metric <- function(df,
   tgi_data <- endpoint_tgi(ep$group_means, reference_group)
   model_based <- identical(ep$method, "model")
 
-  # --- Max % weight loss per group ---
-  # Per mouse: baseline weight, nadir weight, max % loss
-  # Filter to the earliest study day before aggregating so x[1] is ordered.
-  # Aggregate by MouseKey (ID|||Treatment|||Cage) so reused IDs across cages
-  # don't collapse — same fix class as Round 1 1.8.
-  # R15.2: was `wd[wd$Day == min(wd$Day), ]` -- the GLOBAL earliest day. Any
-  # animal without an observation on that exact day was dropped by the merge
-  # below, and the bias has a direction: those animals leave the toxicity
-  # denominator, so weight loss is understated and the window looks safer than it
-  # is. A worked case dropped the two most-toxic animals in an arm and reported
-  # 10.0 % mean loss against a true 16.7 %.
+  # --- Tolerability axis: each animal's worst weight loss ---
+  # R15.2: each animal's baseline is its own first weighing, not the global
+  # first day, which dropped late-enrolled animals from the denominator and
+  # understated the loss.
   baseline <- me_per_mouse_baseline(wd, c("MouseKey", "Treatment"), "Weight")
+  nadir <- do.call(rbind, lapply(split(wd, wd$MouseKey), function(s) {
+    i <- which.min(s$Weight)
+    data.frame(MouseKey = s$MouseKey[1], ID = s$ID[1], Cage = s$Cage[1],
+               Nadir_Weight = s$Weight[i], Nadir_Day = s$Day[i],
+               stringsAsFactors = FALSE)
+  }))
+  mouse_wl <- merge(baseline, nadir, by = "MouseKey")
+  mouse_wl$Pct_Loss <- pmax(
+    (mouse_wl$Baseline_Weight - mouse_wl$Nadir_Weight) /
+      mouse_wl$Baseline_Weight * 100, 0)   # weight gain is no loss
+  mouse_wl$Over_Threshold <- mouse_wl$Pct_Loss >= tolerability_threshold
+  mouse_wl <- mouse_wl[, c("MouseKey", "Treatment", "ID", "Cage",
+                           "Baseline_Weight", "Nadir_Weight", "Nadir_Day",
+                           "Pct_Loss", "Over_Threshold")]
 
-  nadir <- stats::aggregate(Weight ~ MouseKey + Treatment, data = wd,
-                            FUN = min, na.rm = TRUE)
-  names(nadir)[3] <- "Nadir_Weight"
+  arms <- sort(unique(c(tgi_data$Treatment, mouse_wl$Treatment)))
+  arms <- c(intersect(reference_group, arms), setdiff(arms, reference_group))
+  wl_by <- split(mouse_wl, factor(mouse_wl$Treatment, levels = arms))
+  win <- data.frame(
+    Treatment        = arms,
+    N_Animals        = vapply(wl_by, nrow, integer(1L)),
+    TGI              = tgi_data$TGI[match(arms, tgi_data$Treatment)],
+    Worst_Loss       = vapply(wl_by, function(g)
+      if (nrow(g)) mean(g$Pct_Loss) else NA_real_, numeric(1L)),
+    N_Over_Threshold = vapply(wl_by, function(g) sum(g$Over_Threshold),
+                              integer(1L)),
+    stringsAsFactors = FALSE)
+  rownames(win) <- NULL
 
-  mouse_wl <- merge(baseline, nadir, by = c("MouseKey", "Treatment"))
-  mouse_wl$Pct_Loss <- (mouse_wl$Baseline_Weight - mouse_wl$Nadir_Weight) /
-                        mouse_wl$Baseline_Weight * 100
-  mouse_wl$Pct_Loss <- pmax(mouse_wl$Pct_Loss, 0)  # clamp negative (weight gain)
-
-  # Group mean of per-mouse max weight loss: more representative of typical
-  # toxicity than the single worst-case mouse (previously used max here).
-  group_wl <- stats::aggregate(Pct_Loss ~ Treatment, data = mouse_wl,
-                               FUN = mean, na.rm = TRUE)
-  names(group_wl)[2] <- "Mean_Pct_Weight_Loss"
-
-  # --- TWM ---
-  twm <- merge(tgi_data, group_wl, by = "Treatment")
-  # Clamp negative TGI to 0 — a treatment that *accelerates* tumour growth
-  # has no efficacy benefit, so TWM should not be positive for it. Using
-  # abs(TGI) here previously would have made a treatment that enhanced
-  # disease AND caused weight loss appear safe (TWM > 0); now it scores 0.
-  tgi_pos <- pmax(twm$TGI, 0)
-  # CODE_REVIEW.md R3.18 — the previous two-branch form returned TGI (percentage
-  # points) below the floor and TGI/WL% (a dimensionless ratio) above it, then
-  # sorted both into one ranking. The two branches agree at the boundary only
-  # when noise_floor == 1.0, because dividing by 1 is the identity — the
-  # continuity was an accident of the default value, and any other setting
-  # introduced a jump discontinuity that reordered treatments at the threshold.
-  # Flooring the denominator is continuous for every noise_floor and reduces to
-  # the old behaviour exactly at 1.0.
-  twm$TWM <- tgi_pos / pmax(twm$Mean_Pct_Weight_Loss, noise_floor)
-  twm$Safety_Note <- ifelse(
-    twm$Mean_Pct_Weight_Loss <= noise_floor,
-    "Negligible weight loss",
-    ""
-  )
-  twm <- twm[order(-twm$TWM), ]
-
-  # CODE_REVIEW.md R3.6 / R3.7 / G.6 -- intervals, so the ranking can be read
-  # against its noise. R20.2: they must describe the reported estimates.
-  # - Model estimand: TGI from draws of the endpoint model; weight loss from
-  #   a bootstrap of animals. The TWM ratio has no interval, because the two
-  #   come from different sources; it is replaced by a two-axis summary in
-  #   v0.27.0 (R20-K).
-  # - Per-animal estimands: one bootstrap of animals for TGI, weight loss and
-  #   TWM together.
-  twm_ci <- if (n_boot > 0L) {
+  # --- Intervals (R20.2: each describes its own point estimate) ---
+  n_boot <- as.integer(n_boot)
+  tgi_ci <- if (n_boot >= 2L) {
     if (model_based) {
-      tgi_ci <- twm_model_tgi_ci(ep$model, tgi_data$Treatment, reference_group,
-                                 max_day, n_draws = as.integer(n_boot),
-                                 seed = boot_seed)
-      wl_ci  <- twm_wl_bootstrap(mouse_wl, n_boot = as.integer(n_boot),
-                                 seed = boot_seed)
-      if (is.null(tgi_ci) || is.null(wl_ci)) NULL else {
-        out <- merge(tgi_ci, wl_ci, by = "Treatment", all = TRUE)
-        out$TWM_Lower <- NA_real_
-        out$TWM_Upper <- NA_real_
-        out$Boot_N <- as.integer(n_boot)
-        out[, c("Treatment", "TGI_Lower", "TGI_Upper", "WL_Lower", "WL_Upper",
-                "TWM_Lower", "TWM_Upper", "Boot_N")]
-      }
+      twm_model_tgi_ci(ep$model, tgi_data$Treatment, reference_group, max_day,
+                       n_draws = n_boot, seed = boot_seed)
     } else {
-      twm_bootstrap(ep$per_mouse, mouse_wl, reference_group, noise_floor,
-                    n_boot = as.integer(n_boot), seed = boot_seed)
+      twm_animal_tgi_ci(ep$per_mouse, reference_group, n_boot = n_boot,
+                        seed = boot_seed)
     }
-  } else NULL
-
-  if (!is.null(twm_ci)) {
-    twm <- merge(twm, twm_ci, by = "Treatment", all.x = TRUE)
-    twm <- twm[order(-twm$TWM), ]
   }
+  wl_ci <- if (n_boot >= 2L) twm_wl_bootstrap(mouse_wl, n_boot = n_boot,
+                                              seed = boot_seed)
+  pick <- function(ci, col) {
+    if (is.null(ci)) return(rep(NA_real_, length(arms)))
+    ci[[col]][match(arms, ci$Treatment)]
+  }
+  win$TGI_Lower        <- pick(tgi_ci, "TGI_Lower")
+  win$TGI_Upper        <- pick(tgi_ci, "TGI_Upper")
+  win$Worst_Loss_Lower <- pick(wl_ci, "WL_Lower")
+  win$Worst_Loss_Upper <- pick(wl_ci, "WL_Upper")
+  lo <- win$Worst_Loss_Lower
+  hi <- win$Worst_Loss_Upper
+  win$Tolerability <- ifelse(!is.finite(lo) | !is.finite(hi), NA_character_,
+                      ifelse(hi < tolerability_threshold, "Tolerated",
+                      ifelse(lo >= tolerability_threshold, "Not tolerated",
+                             "Unclear")))
+  win <- win[, c("Treatment", "N_Animals", "TGI", "TGI_Lower", "TGI_Upper",
+                 "Worst_Loss", "Worst_Loss_Lower", "Worst_Loss_Upper",
+                 "N_Over_Threshold", "Tolerability")]
 
-  # Per-group n at the endpoint day — the number that makes survivor attrition
-  # visible instead of implicit (see R3.5).
-  n_at_endpoint <- ep$attrition
-
+  thr <- format(tolerability_threshold)
   list(
-    twm_table        = twm,
-    twm_ci           = twm_ci,
-    tgi_data         = tgi_data,
+    window_table     = win,
     weight_loss_data = mouse_wl,
-    n_at_endpoint    = n_at_endpoint,
+    tgi_data         = tgi_data,
+    tolerability_threshold = tolerability_threshold,
+    tolerability_rule = paste0(
+      "Tolerated: the upper 95% bound of the arm's mean worst weight loss is ",
+      "below ", thr, "%. Not tolerated: its lower bound is at or above ", thr,
+      "%. Unclear: the interval contains ", thr, "%."),
+    # Per-group n at the endpoint day -- the number that makes survivor
+    # attrition visible instead of implicit (see R3.5).
+    n_at_endpoint    = ep$attrition,
     attrition        = ep$attrition,
     endpoint_day     = max_day,
     endpoint_method  = ep$method,
     # The evaluable-day record (R20-K) and how the TGI was modelled.
     evaluability     = ep$evaluability,
     endpoint_model   = me_endpoint_model_info(ep$model),
-    interval_note    = if (model_based) paste(
-      "TGI intervals: draws from the endpoint model's fixed effects.",
-      "Weight-loss intervals: bootstrap of animals within arm.",
-      "The TWM ratio has no interval: its two parts come from different sources.")
-      else "Intervals: bootstrap of animals within arm, for TGI, weight loss and TWM together."
+    interval_note    = if (n_boot < 2L) {
+      "No intervals (n_boot = 0), so no tolerability flag."
+    } else if (model_based) {
+      paste("TGI intervals: draws from the endpoint model's fixed effects.",
+            "Weight-loss intervals: bootstrap of animals within arm.")
+    } else {
+      "TGI and weight-loss intervals: bootstrap of animals within arm."
+    }
   )
 }
 
@@ -300,67 +323,35 @@ twm_wl_bootstrap <- function(mouse_wl, n_boot = 2000L, seed = NULL) {
   })))
 }
 
-#' Mouse-level bootstrap CIs for TGI, mean weight loss, and TWM
+#' TGI intervals from a bootstrap of animals (per-animal estimands)
 #'
-#' @param final Endpoint-day rows (one per surviving mouse) with `Treatment`,
-#'   `Volume`.
-#' @param mouse_wl Per-mouse weight-loss table with `Treatment`, `Pct_Loss`.
+#' @param per_mouse `endpoint_volumes()$per_mouse`: Treatment, Volume.
 #' @param reference_group Control arm name.
-#' @param noise_floor Denominator floor, as in the point estimate.
 #' @param n_boot,seed Resampling controls.
-#' @return Data frame with per-treatment percentile intervals, or NULL.
+#' @return Data frame with Treatment, TGI_Lower, TGI_Upper, or NULL.
 #' @noRd
 #' @keywords internal
-twm_bootstrap <- function(final, mouse_wl, reference_group, noise_floor,
-                          n_boot = 2000L, seed = NULL) {
-  groups <- unique(final$Treatment)
-  if (!reference_group %in% groups || n_boot < 2L) return(NULL)
-
-  vol_by  <- split(as.numeric(final$Volume),    final$Treatment)
-  loss_by <- split(as.numeric(mouse_wl$Pct_Loss), mouse_wl$Treatment)
-  vol_by  <- lapply(vol_by,  function(v) v[is.finite(v)])
-  loss_by <- lapply(loss_by, function(v) v[is.finite(v)])
-  if (any(vapply(vol_by, length, integer(1)) < 2L)) return(NULL)
-
-  if (!is.null(seed)) {
-    old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) {
-      get(".Random.seed", envir = .GlobalEnv)
-    } else NULL
-    on.exit({
-      if (!is.null(old_seed)) assign(".Random.seed", old_seed, envir = .GlobalEnv)
-    }, add = TRUE)
-    set.seed(seed)
-  }
-
+twm_animal_tgi_ci <- function(per_mouse, reference_group, n_boot = 2000L,
+                              seed = NULL) {
+  if (is.null(per_mouse) || n_boot < 2L) return(NULL)
+  vol_by <- split(as.numeric(per_mouse$Volume), per_mouse$Treatment)
+  vol_by <- lapply(vol_by, function(v) v[is.finite(v)])
+  if (!reference_group %in% names(vol_by) ||
+      length(vol_by[[reference_group]]) < 2L) return(NULL)
   rs <- function(v) mean(sample(v, length(v), replace = TRUE))
-  draws <- lapply(seq_len(n_boot), function(i) {
-    ctrl <- rs(vol_by[[reference_group]])
-    if (!is.finite(ctrl) || ctrl <= 0) return(NULL)
-    vapply(groups, function(g) {
-      tgi <- if (identical(g, reference_group)) 0 else
-        (1 - rs(vol_by[[g]]) / ctrl) * 100
-      wl  <- if (length(loss_by[[g]]) >= 2L) rs(loss_by[[g]]) else NA_real_
-      c(TGI = tgi, WL = wl, TWM = max(tgi, 0) / max(wl, noise_floor))
-    }, numeric(3))
-  })
-  draws <- draws[!vapply(draws, is.null, logical(1))]
-  if (length(draws) < 2L) return(NULL)
-
-  do.call(rbind, lapply(seq_along(groups), function(gi) {
-    q <- function(metric) {
-      v <- vapply(draws, function(d) d[metric, gi], numeric(1))
-      v <- v[is.finite(v)]
-      if (length(v) < 2L) return(c(NA_real_, NA_real_))
-      stats::quantile(v, c(0.025, 0.975), names = FALSE)
+  me_with_seed(seed, do.call(rbind, lapply(names(vol_by), function(g) {
+    if (identical(g, reference_group)) {
+      return(data.frame(Treatment = g, TGI_Lower = 0, TGI_Upper = 0))
     }
-    tgi_q <- q("TGI"); wl_q <- q("WL"); twm_q <- q("TWM")
-    data.frame(
-      Treatment    = groups[gi],
-      TGI_Lower    = tgi_q[1], TGI_Upper    = tgi_q[2],
-      WL_Lower     = wl_q[1],  WL_Upper     = wl_q[2],
-      TWM_Lower    = twm_q[1], TWM_Upper    = twm_q[2],
-      Boot_N       = length(draws),
-      stringsAsFactors = FALSE
-    )
-  }))
+    v <- vol_by[[g]]
+    if (length(v) < 2L) {
+      return(data.frame(Treatment = g, TGI_Lower = NA_real_, TGI_Upper = NA_real_))
+    }
+    d <- vapply(seq_len(n_boot), function(i) {
+      ctrl <- rs(vol_by[[reference_group]])
+      if (!is.finite(ctrl) || ctrl <= 0) NA_real_ else 100 * (1 - rs(v) / ctrl)
+    }, numeric(1L))
+    q <- stats::quantile(d, c(0.025, 0.975), names = FALSE, na.rm = TRUE)
+    data.frame(Treatment = g, TGI_Lower = q[1], TGI_Upper = q[2])
+  })))
 }

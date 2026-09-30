@@ -196,26 +196,17 @@ test_that("R3.30: volume units are resolved rather than assumed to be mm3", {
 
 # ---- R3.18 ------------------------------------------------------------------
 
-test_that("R3.18: TWM is continuous across the noise floor for any noise_floor", {
+test_that("R3.18 / R20-K: the TWM ratio and its noise floor are gone", {
+  # R3.18 made the ratio continuous at its noise floor. v0.27.0 replaced the
+  # ratio with a two-axis summary, so there is no floor to be continuous at:
+  # an arm that loses no weight is simply reported with a worst loss near 0.
   df <- make_tox_df(reuse_ids = FALSE)
-
-  twm_at <- function(wl, tgi, nf) tgi / max(wl, nf)   # the implemented form
-  for (nf in c(1.0, 2.5, 5.0)) {
-    below <- twm_at(nf - 1e-8, 60, nf)
-    above <- twm_at(nf + 1e-8, 60, nf)
-    expect_equal(below, above, tolerance = 1e-6,
-                 info = paste("discontinuity at noise_floor =", nf))
-  }
-
-  # Behaviour at the default noise_floor = 1.0 is unchanged (backward compat):
-  # negligible weight loss still scores TWM == TGI.
+  expect_false("noise_floor" %in% names(formals(therapeutic_window_metric)))
   res <- suppressMessages(therapeutic_window_metric(
-    df, reference_group = "Control", volume_units = "mm3"))
-  neg <- res$twm_table$Mean_Pct_Weight_Loss <= 1.0
-  if (any(neg)) {
-    expect_equal(res$twm_table$TWM[neg], pmax(res$twm_table$TGI[neg], 0),
-                 tolerance = 1e-8)
-  }
+    df, reference_group = "Control", volume_units = "mm3", n_boot = 0))
+  expect_null(res$twm_table)
+  expect_true(all(is.finite(res$window_table$Worst_Loss)))
+  expect_true(all(res$window_table$Worst_Loss >= 0))
 })
 
 # ---- R3.31 ------------------------------------------------------------------
@@ -237,20 +228,26 @@ test_that("R3.31: Jonckheere-Terpstra trend test actually runs", {
 
   res <- suppressWarnings(suppressMessages(dose_response_statistics(
     df, dose_column = "Dose", volume_column = "Volume",
-    day_column = "Day", id_column = "ID", verbose = FALSE
+    day_column = "Day", id_column = "ID", verbose = FALSE,
+    treatments = c("Dose_10", "Dose_30", "Dose_100")      # one agent (R20.16)
   )))
   jt <- res$trend_test$jonckheere_test
 
   expect_false(is.null(jt))
   expect_true(is.numeric(jt$p.value))
-  expect_identical(jt$alternative_used, "decreasing")
+  # Two-sided since v0.27.0 (R20.20).
+  expect_identical(jt$alternative_used, "two.sided")
+  expect_identical(jt$direction, "decreasing")
   expect_equal(jt$p.value,
                clinfun::jonckheere.test(df$Volume, df$Dose,
-                                        alternative = "decreasing")$p.value,
+                                        alternative = "two.sided")$p.value,
                tolerance = 1e-10)
 })
 
-test_that("R3.31: JT direction is derived from the data, not hardcoded", {
+test_that("R3.31 / R20.20: JT detects either direction, and reports it", {
+  # R3.31 chose the alternative from the data so that stimulatory data could be
+  # tested; that choice doubled the false-positive rate (R20.20). A two-sided
+  # test detects both directions, and the direction is reported.
   set.seed(4)
   doses <- c(0, 10, 30, 100)
   # Stimulatory: volume INCREASES with dose.
@@ -258,7 +255,8 @@ test_that("R3.31: JT direction is derived from the data, not hardcoded", {
     Dose = d, Volume = 300 + 6 * d + rnorm(8, 0, 40), stringsAsFactors = FALSE
   )))
   jt <- run_jonckheere_test(df, "Dose", "Volume", verbose = FALSE)
-  expect_identical(jt$alternative_used, "increasing")
+  expect_identical(jt$alternative_used, "two.sided")
+  expect_identical(jt$direction, "increasing")
   expect_lt(jt$p.value, 0.05)
 })
 
@@ -729,16 +727,19 @@ test_that("R3.6/R3.7: synergy metrics carry bootstrap intervals", {
   expect_null(r0$synergy_ci)
 })
 
-test_that("R3.6/R3.7: TWM carries bootstrap intervals for its ranking", {
+test_that("R3.6/R3.7: the therapeutic window carries intervals on both axes", {
   df <- make_attrition_df()[, c("ID", "Treatment", "Day", "Volume", "Weight")]
-  r <- suppressWarnings(suppressMessages(therapeutic_window_metric(
-    df, reference_group = "Control", endpoint_method = "model",
-    n_boot = 500, boot_seed = 2, adjust_tumor_weight = FALSE)))
-
-  expect_false(is.null(r$twm_ci))
-  expect_true(all(c("TWM_Lower", "TWM_Upper") %in% names(r$twm_table)))
-  ok <- is.finite(r$twm_table$TWM_Lower) & is.finite(r$twm_table$TWM_Upper)
-  expect_true(all(r$twm_table$TWM_Lower[ok] <= r$twm_table$TWM_Upper[ok]))
+  for (m in c("model", "last_obs")) {
+    r <- suppressWarnings(suppressMessages(therapeutic_window_metric(
+      df, reference_group = "Control", endpoint_method = m,
+      n_boot = 500, boot_seed = 2, adjust_tumor_weight = FALSE)))
+    w <- r$window_table[r$window_table$Treatment != "Control", ]
+    # Every interval exists and holds its own point estimate (R20.2).
+    expect_true(all(is.finite(c(w$TGI_Lower, w$TGI_Upper))), info = m)
+    expect_true(all(w$TGI_Lower <= w$TGI & w$TGI <= w$TGI_Upper), info = m)
+    expect_true(all(w$Worst_Loss_Lower <= w$Worst_Loss &
+                      w$Worst_Loss <= w$Worst_Loss_Upper), info = m)
+  }
 })
 
 # ---- R3.15 ------------------------------------------------------------------

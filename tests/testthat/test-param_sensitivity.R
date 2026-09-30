@@ -140,7 +140,7 @@ test_that("analyze_body_weight: cage_column actually enters the model formula", 
   }
 })
 
-test_that("therapeutic_window_metric: TGI < 0 is clamped to 0 (J.13)", {
+test_that("therapeutic_window_metric: a harmful arm's negative TGI is reported as it is (J.13, R20-K)", {
   # Synthetic dataset with treatment that *accelerates* growth → negative TGI.
   set.seed(202607)
   ndays <- 5
@@ -162,11 +162,13 @@ test_that("therapeutic_window_metric: TGI < 0 is clamped to 0 (J.13)", {
   res <- suppressWarnings(suppressMessages(
     therapeutic_window_metric(df, reference_group = "Control", volume_units = "mm3")
   ))
-  twm_tab <- res$twm_table
-  bad_row <- twm_tab[twm_tab$Treatment == "BadDrug", , drop = FALSE]
+  # J.13 made the TWM ratio clamp a negative TGI to 0 rather than use abs(TGI).
+  # The ratio is gone (v0.27.0): each axis is reported on its own, so the
+  # harm shows as a negative TGI and nothing turns it into a benefit.
+  win <- res$window_table
+  bad_row <- win[win$Treatment == "BadDrug", , drop = FALSE]
   expect_equal(nrow(bad_row), 1L)
   expect_true(bad_row$TGI < 0,
               info = "BadDrug should have negative TGI on this fixture")
-  expect_equal(bad_row$TWM, 0,
-               info = "TWM must clamp TGI < 0 to 0, not return abs(TGI) (CODE_REVIEW.md J.13)")
+  expect_false("TWM" %in% names(win))
 })

@@ -159,34 +159,35 @@ test_that("therapeutic_window_metric returns expected structure", {
     treatment_column = "Treatment",
     id_column        = "ID",
     reference_group  = "Control",
-    volume_units     = "mm3"
+    volume_units     = "mm3",
+    boot_seed        = 1
   )
 
   expect_type(res, "list")
-  expect_true(is.data.frame(res$twm_table))
-  expect_true(all(c("Treatment", "TGI", "Mean_Pct_Weight_Loss", "TWM") %in%
-                  names(res$twm_table)))
-  # DrugA should have higher TWM than DrugB (effective + less toxic)
-  twm_a <- res$twm_table$TWM[res$twm_table$Treatment == "DrugA"]
-  twm_b <- res$twm_table$TWM[res$twm_table$Treatment == "DrugB"]
-  expect_true(twm_a > twm_b)
+  win <- res$window_table
+  expect_true(is.data.frame(win))
+  expect_true(all(c("Treatment", "N_Animals", "TGI", "TGI_Lower", "TGI_Upper",
+                    "Worst_Loss", "Worst_Loss_Lower", "Worst_Loss_Upper",
+                    "N_Over_Threshold", "Tolerability") %in% names(win)))
+  expect_identical(win$Treatment[1], "Control")          # reference first
+  # DrugA is effective and less toxic; DrugB is neither.
+  a <- win[win$Treatment == "DrugA", ]; b <- win[win$Treatment == "DrugB", ]
+  expect_gt(a$TGI, b$TGI)
+  expect_lt(a$Worst_Loss, b$Worst_Loss)
+  expect_identical(a$Tolerability, "Tolerated")
+  expect_identical(b$Tolerability, "Not tolerated")
+  expect_equal(b$N_Over_Threshold, 4L)
 })
 
-test_that("therapeutic_window_metric noise_floor works", {
+test_that("therapeutic_window_metric tolerability threshold is in percent", {
   df <- make_weight_data()
-  res <- therapeutic_window_metric(
-    df,
-    weight_column    = "Weight",
-    volume_column    = "Volume",
-    time_column      = "Day",
-    treatment_column = "Treatment",
-    id_column        = "ID",
-    reference_group  = "Control",
-    volume_units     = "mm3",
-    noise_floor      = 100  # Very high floor so all groups hit it
-  )
-
-  expect_true(all(res$twm_table$Safety_Note == "Negligible weight loss"))
+  tw <- function(...) therapeutic_window_metric(
+    df, reference_group = "Control", volume_units = "mm3", boot_seed = 1, ...)
+  expect_error(tw(tolerability_threshold = 0.2), "percent")
+  # At 10 %, DrugA's worst loss (about 15 %) is no longer tolerated.
+  win <- tw(tolerability_threshold = 10)$window_table
+  expect_identical(win$Tolerability[win$Treatment == "DrugA"], "Not tolerated")
+  expect_identical(win$Tolerability[win$Treatment == "Control"], "Tolerated")
 })
 
 

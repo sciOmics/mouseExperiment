@@ -24,21 +24,36 @@
 #' @param threshold Fractional weight loss threshold (default 0.20 = 20%).
 #' @param baseline_day Day to use as baseline for initial weight. NULL = first observation per mouse.
 #' @param reference_group Name of the control/reference group.
+#' @param removal_reason_column Optional column recording why each animal left
+#'   the study (read from its last row with a non-empty value). Without it,
+#'   an animal whose record ends before the threshold is censored at its last
+#'   day, whatever the cause (see "Removals"). CODE_REVIEW.md R20.23.
+#' @param weight_loss_reasons Values of \code{removal_reason_column} meaning
+#'   the animal was removed for weight loss or body condition. Such an animal
+#'   counts as a weight-loss event at its last day even if its recorded weight
+#'   stayed above the threshold.
+#' @param planned_end_reasons Values meaning a planned end: the end of the
+#'   study, a scheduled sacrifice or a data cut. These are ordinary
+#'   (administrative) censoring. Every other non-empty reason, such as tumour
+#'   burden or death, is a competing removal.
 #' @return A list with: event_data (per animal, including \code{Censor_Type} —
-#'   "event" / "administrative" / "early_removal" — and \code{Status_CR}),
+#'   "event", "administrative" or "competing_removal" — and \code{Status_CR}),
 #'   km_fit, km_summary, log_rank, cox_model, cox_summary, cox_method, ph_test,
-#'   \code{cuminc} (Aalen-Johansen cumulative incidence treating removal before
-#'   study end as a competing risk), \code{censoring_summary}, and
-#'   \code{n_competing_risk}.
+#'   \code{cuminc} (Aalen-Johansen cumulative incidence with competing
+#'   removals, when a removal-reason column identifies any),
+#'   \code{censoring_summary}, \code{n_competing_risk} and \code{assumption}
+#'   (how early ends were treated, in words).
 #'
-#' @section Competing risks:
-#' Animals removed for tumour burden before reaching the weight-loss threshold
-#' are not independently censored — removal and weight loss share a cause. The
-#' Kaplan-Meier estimator assumes a censored animal remains at risk, so
-#' \code{1 - km_fit} overstates the cumulative incidence of weight loss
-#' whenever such removals occur. Prefer \code{cuminc} for incidence statements
-#' and use \code{censoring_summary} to see how much of the censoring is
-#' informative.
+#' @section Removals:
+#' Without a removal-reason column an animal whose record ends before it
+#' reaches the threshold is censored at its last day. That assumes its later
+#' weight-loss risk was like that of the animals still on study. Before
+#' v0.27.0 every such record was a competing "removal", so staggered enrolment
+#' or a data cut halved the Aalen-Johansen incidence (R20.23). With a
+#' removal-reason column, removals for weight loss are events, planned ends
+#' are censoring, and other removals (tumour burden, death) are competing
+#' risks: \code{cuminc} then gives the cumulative incidence of weight loss
+#' allowing for them, which \code{1 - km_fit} overstates.
 #' @export
 weight_loss_threshold <- function(df,
                                   weight_column    = "Weight",
@@ -52,7 +67,10 @@ weight_loss_threshold <- function(df,
                                   volume_units     = NULL,
                                   threshold        = 0.20,
                                   baseline_day     = NULL,
-                                  reference_group  = NULL) {
+                                  reference_group  = NULL,
+                                  removal_reason_column = NULL,
+                                  weight_loss_reasons   = character(0),
+                                  planned_end_reasons   = character(0)) {
 
   # --- Validate ---
   required <- c(weight_column, time_column, treatment_column, id_column)
@@ -74,11 +92,20 @@ weight_loss_threshold <- function(df,
     Weight    = as.numeric(df[[weight_column]]),
     stringsAsFactors = FALSE
   )
+  has_reason <- !is.null(removal_reason_column) &&
+    removal_reason_column %in% names(df)
+  if (!is.null(removal_reason_column) && !has_reason) {
+    stop("Removal-reason column '", removal_reason_column, "' not found.",
+         call. = FALSE)
+  }
+  wd$Reason <- if (has_reason) trimws(as.character(df[[removal_reason_column]])) else NA_character_
 
   has_volume <- !is.null(volume_column) && volume_column %in% names(df)
   if (adjust_tumor_weight && has_volume) {
     # CODE_REVIEW.md R3.30 — resolve units explicitly rather than assuming mm³.
-    vol <- as.numeric(df[[volume_column]])
+    # R20.22: volume filled in on weighing days without a calliper reading.
+    vol <- me_fill_volume(make_mouse_key(wd$Treatment, wd$ID, wd$Cage), wd$Day,
+                          as.numeric(df[[volume_column]]))
     volume_units <- resolve_volume_units(vol, volume_units)
     tumor_mass <- volume_to_mass(vol, tumor_density, volume_units)
     check_tumor_mass_plausible(tumor_mass, wd$Weight, volume_units)
@@ -113,11 +140,21 @@ weight_loss_threshold <- function(df,
   baseline_weights <- stats::setNames(bl$Weight, bl$.MouseKey)
 
   # --- Determine event time per mouse ---
+  # CODE_REVIEW.md R20.21 -- `bw` is unnamed here: a named baseline turned the
+  # data frame's row names into mouse keys, coxphf() failed on them, and the
+  # failure left a non-converged coxph fit reported as "cox".
   event_list <- lapply(unique(wd$.MouseKey), function(key) {
     sub <- wd[wd$.MouseKey == key, ]
-    bw <- baseline_weights[key]
+    bw <- unname(baseline_weights[key])
     threshold_weight <- bw * (1 - threshold)
     hit <- which(sub$Weight <= threshold_weight)
+    reasons <- sub$Reason[!is.na(sub$Reason) & nzchar(sub$Reason)]
+    reason  <- if (length(reasons)) reasons[length(reasons)] else NA_character_
+    if (!length(hit) && !is.na(reason) && reason %in% weight_loss_reasons) {
+      # R20.23: removed for weight loss or body condition -- an event at the
+      # animal's last day, whatever its last recorded weight.
+      hit <- nrow(sub)
+    }
     if (length(hit) > 0) {
       # Event: first day at or below threshold
       data.frame(
@@ -126,6 +163,7 @@ weight_loss_threshold <- function(df,
         Baseline_Weight = bw,
         Time      = sub$Day[hit[1]],
         Event     = 1L,
+        Reason    = reason,
         stringsAsFactors = FALSE
       )
     } else {
@@ -136,42 +174,46 @@ weight_loss_threshold <- function(df,
         Baseline_Weight = bw,
         Time      = max(sub$Day),
         Event     = 0L,
+        Reason    = reason,
         stringsAsFactors = FALSE
       )
     }
   })
   event_df <- do.call(rbind, event_list)
+  rownames(event_df) <- NULL
 
-  # CODE_REVIEW.md R3.26 — censoring here is informative. An animal whose record
-  # ends early usually ended because it was euthanised for tumour burden, which
-  # is not independent of the weight-loss hazard: it is a COMPETING RISK.
-  # 1 - KM therefore overestimates the cumulative incidence of weight loss,
-  # because KM implicitly assumes a censored animal remains at risk.
-  #
-  # Distinguish the two censoring mechanisms so the reader can see how much of
-  # the censoring is informative, and report an Aalen-Johansen cumulative
-  # incidence alongside the KM curve when a competing event is identifiable.
-  study_end <- max(wd$Day, na.rm = TRUE)
-  event_df$Censor_Type <- ifelse(
-    event_df$Event == 1L, "event",
-    ifelse(event_df$Time >= study_end, "administrative", "early_removal")
-  )
-
-  # Multi-state status: 0 = still at risk at end, 1 = weight-loss event,
-  # 2 = competing removal before the study ended.
-  event_df$Status_CR <- ifelse(event_df$Event == 1L, 1L,
-                        ifelse(event_df$Censor_Type == "early_removal", 2L, 0L))
+  # CODE_REVIEW.md R3.26 / R20.23 -- an animal euthanised for tumour burden is
+  # a competing risk for weight loss, and 1 - KM, which keeps it at risk,
+  # overstates the incidence. But which early ends are such removals is known
+  # only from a removal-reason column. Without one an early end is ordinary
+  # censoring: before v0.27.0 every record ending before the global last day
+  # was a competing "removal", so staggered enrolment or a data cut halved the
+  # Aalen-Johansen incidence. With reasons, planned ends are censoring and
+  # other removals (tumour burden, death) compete with weight loss.
+  competing <- has_reason & event_df$Event == 0L & !is.na(event_df$Reason) &
+    !event_df$Reason %in% c(weight_loss_reasons, planned_end_reasons)
+  event_df$Censor_Type <- ifelse(event_df$Event == 1L, "event",
+                          ifelse(competing, "competing_removal", "administrative"))
+  event_df$Status_CR <- ifelse(event_df$Event == 1L, 1L, ifelse(competing, 2L, 0L))
 
   censoring_summary <- as.data.frame(
     table(Treatment = event_df$Treatment, Censor_Type = event_df$Censor_Type)
   )
 
   n_competing <- sum(event_df$Status_CR == 2L)
+  assumption <- if (!has_reason) paste(
+    "No removal-reason column: an animal whose record ends before it reaches",
+    "the threshold is censored at its last day, which assumes its later risk",
+    "was like that of the animals still on study.")
+  else paste(
+    "Removal reasons: removals for weight loss are events, planned ends are",
+    "censored, and", n_competing, "other removal(s) (e.g. tumour burden, death)",
+    "are competing risks.")
   if (n_competing > 0L) {
-    message(n_competing, " animal(s) left the study before day ", study_end,
-            " without reaching the weight-loss threshold. These are treated as ",
-            "a competing risk in `cuminc`; the Kaplan-Meier curve treats them ",
-            "as ordinary censoring and will overstate weight-loss incidence.")
+    message(n_competing, " animal(s) were removed for other reasons before ",
+            "reaching the weight-loss threshold. They are a competing risk in ",
+            "`cuminc`; the Kaplan-Meier curve treats them as censored and ",
+            "overstates weight-loss incidence.")
   }
 
   # Aalen-Johansen cumulative incidence via survfit() on a multi-state factor.
@@ -216,24 +258,22 @@ weight_loss_threshold <- function(df,
   cox_method  <- NA_character_
   ph_test     <- NULL
   if (length(levels(event_df$Treatment)) >= 2) {
-    cox_model <- tryCatch({
-      survival::coxph(
-        survival::Surv(Time, Event) ~ Treatment,
-        data = event_df
-      )
-    }, error = function(e) NULL)
-
-    # Detect complete separation (a group with 0 or all events). Firth
-    # provides bias-reduced estimates when standard Cox is unstable.
+    # Detect complete separation (a group with no events). Firth provides
+    # bias-reduced estimates when standard Cox is unstable.
     ev_by_grp <- tapply(event_df$Event, event_df$Treatment,
                         function(x) sum(x, na.rm = TRUE))
     # CODE_REVIEW.md R3.27 — only zero-event groups cause separation. A group
     # where every animal has an event is estimable by standard Cox; treating it
     # as separation sent ordinary data down the Firth path.
     has_separation <- any(ev_by_grp == 0L, na.rm = TRUE)
+    fit_cox <- function() tryCatch(
+      survival::coxph(survival::Surv(Time, Event) ~ Treatment, data = event_df),
+      error = function(e) NULL)
 
-    needs_firth <- is.null(cox_model) || has_separation
-    if (needs_firth && requireNamespace("coxphf", quietly = TRUE)) {
+    # Under separation standard Cox does not converge, so it is fitted only
+    # when Firth is unavailable or fails, and then with its warning.
+    if (!has_separation) cox_model <- fit_cox()
+    if (is.null(cox_model) && requireNamespace("coxphf", quietly = TRUE)) {
       firth_fit <- tryCatch(
         coxphf::coxphf(
           survival::Surv(Time, Event) ~ Treatment,
@@ -247,6 +287,7 @@ weight_loss_threshold <- function(df,
         cox_method  <- "coxphf"
       }
     }
+    if (is.null(cox_model) && has_separation) cox_model <- fit_cox()
 
     if (!is.null(cox_model) && is.na(cox_method)) {
       cox_summary <- summary(cox_model)
@@ -262,6 +303,7 @@ weight_loss_threshold <- function(df,
     cuminc            = cuminc,
     censoring_summary = censoring_summary,
     n_competing_risk  = n_competing,
+    assumption        = assumption,
     km_summary   = km_summary,
     log_rank     = log_rank,
     cox_model    = cox_model,

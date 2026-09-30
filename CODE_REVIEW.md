@@ -5262,7 +5262,7 @@ Recorded in place here rather than by editing the earlier text, following the Ro
 | ID | Issue | Severity | Status |
 |---|---|---|---|
 | R20.1 | Synergy default extrapolates the removed control; TGI overstated, synergy erased | **Critical** | ✅ Fixed v0.26.0 (R20-O) |
-| R20.2 | Synergy/TWM intervals describe a different estimator from the point estimate | **Critical** | Synergy half ✅ Fixed v0.26.0 (R20-O); the TWM ratio loses its interval until the two-axis summary (step 5) |
+| R20.2 | Synergy/TWM intervals describe a different estimator from the point estimate | **Critical** | ✅ Fixed: synergy v0.26.0 (R20-O); the TWM ratio replaced by the two-axis summary v0.27.0 (R20-P) |
 | R20.3 | Random effects and reductions key on raw ID (8 sites) | **Critical** | ✅ Fixed v0.25.0 (R20-N) |
 | R20.4 | AUC over each animal's own window; R3.3 never applied | **Critical** | ✅ Fixed v0.26.0 (R20-O) |
 | R20.5 | Default intercept-only LMM: 73 % false positives on Treatment × Day | **Critical** | ✅ Fixed v0.26.0 (R20-O) |
@@ -5274,10 +5274,10 @@ Recorded in place here rather than by editing the earlier text, following the Ro
 | R20.11 | TBA survivor-conditioned toxicity; rank inverted | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
 | R20.12 | Bayesian dose-response fails on default `endpoint_day = NULL` | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
 | R20.13 | Bayesian TWM treats weight gain as toxicity | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
-| R20.14–R20.48 | Dose-response, synergy, survival/weight-loss, tumour growth, power, Bayesian, toxicity, cross-cutting (35 items) | Major | Open. Fixed: R20.15 (R20-N); R20.17, R20.29, R20.34, R20.37 (R20-O) |
+| R20.14–R20.48 | Dose-response, synergy, survival/weight-loss, tumour growth, power, Bayesian, toxicity, cross-cutting (35 items) | Major | Open. Fixed: R20.15 (R20-N); R20.17, R20.29, R20.34, R20.37 (R20-O); R20.14, R20.16, R20.18, R20.19, R20.20, R20.21, R20.22, R20.23 (R20-P) |
 | R20.49–R20.53, R20.55 | Vignette, examples, README, datasets, CI/process, test-suite gaps | Major | Open |
 | R20.54 | Build hygiene | Minor | Open |
-| R20.56–R20.75 | Minor (20 items) | Minor | Open |
+| R20.56–R20.75 | Minor (20 items) | Minor | Open. R20.70 ✅ closed v0.27.0 (R20-P): its TWM parts went with the ratio |
 | R20.76–R20.82 | Efficiency (7 items; R20.76 blocks the dashboard for 20–140 s) | Efficiency | R20.76 ✅ Fixed v0.26.0 (R20-O); the rest open |
 | R3.3, R3.6, R3.8, R3.14, R3.30, R14.2 | Earlier ✅ entries corrected (R20-H) | — | Reopened / partial |
 
@@ -5570,3 +5570,63 @@ One test, which fails on v0.25.1.
 - R CMD check: 1 ERROR (examples, R20.49, pre-existing), 3 WARNINGs and 9 NOTEs, in the same categories as the step-2 baseline plus the environmental "future file timestamps". No new R-code NOTE tokens.
 - The first draft of the `random_effects_specification` docs had a `%` inside `\item{}{}`, which Rd reads as a comment; it was caught by checkRd and reworded.
 
+---
+
+## R20-P Implementation log — v0.27.0, step 5 (package): two-axis therapeutic window, synergy verdict, dose-response, removal reasons (2026-09-30)
+
+**R20-K therapeutic window — ✅ implemented; closes R20.2 (TWM half) and R20.70.** `therapeutic_window_metric()` returns `window_table`, one row per arm, reference first:
+- **Efficacy:** TGI at the last evaluable day, from the endpoint model, with intervals from its draws, or from a bootstrap of animals under the per-animal estimands.
+- **Tolerability:** each animal's worst loss from its own first weighing, over its whole record. The arm reports the mean (`Worst_Loss`) with an animal-bootstrap interval, and `N_Over_Threshold`, the animals that crossed on their own.
+- **Flag:** "Tolerated" when the weight-loss interval lies below `tolerability_threshold` (percent, default 20), "Not tolerated" when at or above it, "Unclear" otherwise, `NA` without an interval. A threshold of 1 or less is refused as a probable fraction.
+- **Removed:** the TWM ratio, `noise_floor`, `twm_table`, `twm_ci` and the ranking. The n = 1 part of R20.70 is moot: an arm needs 3 animals on study to have an evaluable day, and the error names the arm.
+
+**R20.19 — ✅ Fixed.** The synergy verdict comes from the 95 % interval for the Bliss excess: "Synergy" above 0, "Antagonism" below, "Additive (no departure from Bliss detected)" otherwise. Without an interval, symmetric bands of ± `additivity_margin` (0.1), and the label says it has no interval. `verdict_rule` states the rule. `strong_synergy_delta` and "Strong Synergy" are replaced. `bliss_independence$synergy` is TRUE only when the verdict is synergy. When an agent did not inhibit growth the label is "Bliss does not apply (...)"; "Not evaluable" had two meanings after R20-K.
+
+**R20.16 — ✅ Fixed.** `dose_response_statistics()` analyses one agent's series.
+- **`treatments`** names the agent's arms. Without it, more than one arm besides the control is an error, since nothing distinguishes one agent named per dose from several agents. A dose held by two arms is always an error. On the Master demo both errors fire.
+- **`control_group_name`** defaults to `NULL`, meaning the dose-0 rows. A named control must exist and have dose 0; a missing dose is read as 0 (the vehicle-with-NA case was dropped silently).
+- `series` records the arms analysed. Four existing tests passed several agents as one series; they now name the arms.
+
+**R20.18 — ✅ Fixed.**
+- `ec50` is `ED(model, 50)`, with `ec50_ci` computed on log dose from the delta-method SE, so it is positive and symmetric in log.
+- The LL.4 lower asymptote is constrained to ≥ 0. LL.5 is considered only with ≥ 6 dose levels, and rejected when its lower asymptote is negative: L-BFGS-B did not converge for it.
+- `ec50_in_range` and `ec50_note` flag an EC50 outside the tested doses and a curve with as many parameters as dose levels. Its lack-of-fit test, which then has no degrees of freedom and returned NaN with a warning, is not run.
+- **Executed, Master demo (Vehicle + Drug_A, 4 dose levels):** EC50 2.40 [1.16, 4.98], flagged as below the lowest dose (5) and as 4 parameters for 4 levels.
+- **Executed, the package's dose-levels demo:** EC50 12.2 [6.6, 22.7]. It had failed outright (R20.14).
+
+**R20.20 — ✅ Fixed.** The Jonckheere–Terpstra test is two-sided; `direction` reports the trend of the dose-group means. The R3.31 tests asserted the data-chosen alternative and now assert the two-sided one.
+
+**R20.14 — ✅ Fixed.**
+- **Growth rates:** positive measured volumes only, three distinct days per animal, no imputation. `growth_rate_animals_left_out` counts the rest (4 on the dose-levels demo, its non-takes).
+- **Failure isolation:** the growth-rate step is wrapped, so it can no longer end the analysis.
+- **Keys and endpoint rows:** animals are keyed by treatment, dose, ID and cage, and the endpoint analysis takes measured volumes only.
+- **Executed:** with NA rows after two deaths, the growth-rate model equals the one with those rows deleted (it differed before).
+
+**R20.21 — ✅ Fixed.** `Baseline_Weight` is unnamed and the event rows are renumbered, so `coxphf()` runs. Under separation standard Cox is no longer fitted first, so its non-convergence warning is gone.
+- **Executed, a 0-event vehicle against 10/10 events:** `cox_method = "coxphf"`, with a finite coefficient.
+
+**R20.22 — ✅ Fixed.** `me_fill_volume()` interpolates each animal's volume between its calliper days, and holds the nearest value outside them, for the mass correction in all three weight functions. No weight row is filtered on volume.
+- **Executed, the review's scenario** (daily weights, callipers twice a week, dips to 78 % the day after dosing):
+  - worst loss read above 20 %, where it read about 1 % before;
+  - 6 of 6 animals crossed the threshold (0 before);
+  - the body-weight model used all 264 rows (84 before).
+
+**R20.23 — ✅ Fixed.**
+- **Without a reason column:** an early end is administrative censoring. With half the animals followed to day 12, the Aalen-Johansen incidence for the toxic arm is 1.0, where it was 0.5.
+- **With `removal_reason_column`:**
+  - reasons in `weight_loss_reasons` are events at the last day;
+  - reasons in `planned_end_reasons` are censoring;
+  - other non-empty reasons are competing removals.
+- `Censor_Type` is "event", "administrative" or "competing_removal", and `assumption` states the rule applied.
+
+**Tests:**
+- **New:** 11 tests in `test-code_review_round20.R`: R20.22, R20.21, R20.23 ×2, R20-K, R20.19, R20.14, R20.16, R20.18 and R20.20. All fail or error on v0.26.0.
+- **Updated to the new contract:**
+  - R3.18 (the floor is gone), R3.6/R3.7 (intervals on both axes), R15.2 (`Worst_Loss`);
+  - J.13 (a harmful arm's negative TGI is reported as is), the toxicity structure tests;
+  - R14.1 and R14.2 (named series; ED50; "Bliss does not apply");
+  - R3.31 (two-sided), R20.3 / R20.43 (named series).
+
+**Verification (executed):**
+- `devtools::test()`: 305 tests, 888 expectations, 0 failed. The one skip is legitimate.
+- R CMD check: 1 ERROR (examples, R20.49, pre-existing), 3 WARNINGs and 9 NOTEs, as in step 4. Against the step-4 log, the only difference is two fewer "no visible binding" notes (`log_volume`, `growth_rate`), gone with the rewritten growth-rate step.

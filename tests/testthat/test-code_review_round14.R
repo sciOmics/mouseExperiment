@@ -24,10 +24,12 @@ dr_known <- function(seed = 3, ec50 = 25, b = 1.5, top = 1000, bot = 100) {
   do.call(rbind, rows)
 }
 dr_fit <- function(df) {
+  # One agent, one arm per dose: since v0.27.0 the arms of the series are
+  # named (R20.16).
   suppressWarnings(suppressMessages(dose_response_statistics(
     df, dose_column = "Dose", treatment_column = "Treatment",
     volume_column = "Volume", day_column = "Day", id_column = "ID",
-    control_group_name = "D0")))
+    control_group_name = "D0", treatments = setdiff(unique(df$Treatment), "D0"))))
 }
 
 test_that("R14.1: the four curve parameters are reported, not NA", {
@@ -57,11 +59,12 @@ test_that("R14.1: EC50 is not exponentiated", {
   # The old line was `exp(params["e:(Intercept)"])`. In LL.4 the e parameter is
   # the EC50 on the natural dose scale, so once the name lookup started working
   # exp() would have returned ~1e13. LL2.4 is the log-parameterised variant.
+  # Since v0.27.0 the EC50 is ED(model, 50), which is e under LL.4 (R20.18).
   st <- dr_fit(dr_known())$statistics
   skip_if(is.null(st$dr_model), "drc unavailable")
   expect_lt(st$ec50, 1000)
   expect_equal(unname(st$ec50),
-               unname(stats::coef(st$dr_model)[grep("^EC50", names(stats::coef(st$dr_model)))][1]),
+               unname(drc::ED(st$dr_model, 50, display = FALSE)[1, "Estimate"]),
                tolerance = 1e-8)
 })
 
@@ -118,7 +121,7 @@ test_that("R14.2: an agent that accelerates growth is not called synergistic", {
                         Combo = 0.098)))
   # R17.2 removed the Combination Index; the guard now shows in the label.
   expect_null(r$combination_index)
-  expect_match(r$overall_assessment, "Not evaluable")
+  expect_match(r$overall_assessment, "Bliss does not apply")
   expect_false(grepl("^Synerg", r$overall_assessment))
 })
 
@@ -136,23 +139,24 @@ test_that("R14.2: the guard warns rather than failing silently", {
 test_that("R14.2: both agents harming is also not evaluable", {
   r <- syn_fit(syn_df(c(Control = 0.100, DrugA = 0.125, DrugB = 0.120,
                         Combo = 0.099)))
-  expect_match(r$overall_assessment, "Not evaluable")
+  expect_match(r$overall_assessment, "Bliss does not apply")
 })
 
 test_that("R14.2: a genuine inhibitory combination still evaluates", {
   # The guard must not suppress the case the module exists for.
   r <- syn_fit(syn_df(c(Control = 0.130, DrugA = 0.100, DrugB = 0.105,
                         Combo = 0.070)))
-  expect_false(grepl("Not evaluable", r$overall_assessment))
+  expect_false(grepl("does not apply", r$overall_assessment))
   expect_true(is.finite(r$bliss_independence$difference))
 })
 
-test_that("R14.2: TWM and synergy now agree on how to treat a harmful arm", {
-  # TWM already clamped with max(TGI, 0); synergy did not. The inconsistency was
-  # itself a signal that one of the two had not thought the case through.
+test_that("R14.2: synergy does not reward a harmful arm", {
+  # The TWM ratio clamped a negative TGI with max(TGI, 0); synergy did not. The
+  # ratio was replaced by a two-axis summary in v0.27.0 (R20-K); synergy keeps
+  # refusing Bliss when an agent accelerated growth.
   r <- syn_fit(syn_df(c(Control = 0.100, DrugA = 0.130, DrugB = 0.100,
                         Combo = 0.098)))
-  expect_match(r$overall_assessment, "Not evaluable")
+  expect_match(r$overall_assessment, "Bliss does not apply")
 })
 
 # ---- R14.4 / R14.6 pairwise_comparisons contract ----------------------------
