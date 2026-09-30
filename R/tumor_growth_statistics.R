@@ -77,22 +77,20 @@ tgs_compute_growth_rates <- function(auc_df, treatment_column, id_column,
 #' @param cage_column Column name for cage identifiers
 #' @param treatment_column Column name for treatment groups
 #' @param volume_column Column name for tumor volume
-#' @return List with collinearity_test and effects components
+#' @return List with an effects component
 #' @noRd
 #' @keywords internal
 tgs_compute_cage_effects <- function(analysis_df, cage_column, treatment_column,
                                      volume_column) {
   # Cage effect analysis
   cage_analysis <- list()
-  
-  # Test for collinearity between cage and treatment
-  cage_treatment_table <- table(analysis_df[[cage_column]], analysis_df[[treatment_column]])
-  cage_analysis$collinearity_test <- tryCatch({
-    stats::chisq.test(cage_treatment_table)
-  }, error = function(e) {
-    warning("Error in chi-square test: ", e$message)
-    NULL
-  })
+
+  # A chi-square "collinearity test" of cage against treatment stood here.
+  # It counted measurement rows as independent, so its p-value meant nothing,
+  # and nothing had read it since R3.17 made classify_cage_structure() decide
+  # the cage handling. Its "Chi-squared approximation may be incorrect" warning
+  # reached dashboard users on every run once warnings were surfaced
+  # (dashboard R20.D34). The design structure is cage_analysis$structure.
   
   # Calculate cage-level effects
   cage_effects <- tryCatch({
@@ -656,7 +654,8 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'   \item{growth_rates}{Data frame containing growth rates for each subject, calculated as the slope of log-volume over time. Higher values indicate faster tumor growth.}
 #'   \item{cage_analysis}{Analysis of cage effects, including:
 #'     \itemize{
-#'       \item{collinearity_test}{Chi-squared test result for collinearity between cage and treatment}
+#'       \item{structure}{The cage design structure from \code{classify_cage_structure()}, which decides how cage enters the model}
+#'       \item{handling}{The cage handling applied}
 #'       \item{effects}{Data frame of cage-level statistics (mean and SD of volume by cage and treatment)}
 #'     }
 #'   }
@@ -907,11 +906,6 @@ tumor_growth_statistics <- function(df,
   cage_handling <- resolve_cage_handling(cage_structure, handle_cage_effects,
                                          verbose = verbose)
   cage_analysis$handling <- cage_handling
-
-  # Retained for the descriptive chi-square in cage_analysis; no longer drives
-  # model structure.
-  cage_collinear <- !is.null(cage_analysis$collinearity_test) &&
-    isTRUE(cage_analysis$collinearity_test$p.value < 0.05)
 
   lme4_result <- tgs_fit_lme4_models(
     analysis_df, volume_column, time_column,

@@ -202,7 +202,11 @@ build_lmm_influence <- function(model) {
     refit <- lme4::lmer(
       fml, data = dat, REML = lme4::isREML(model),
       control = lme4::lmerControl(optimizer = "bobyqa", calc.derivs = FALSE))
-    infl <- stats::influence(refit, obs = TRUE)
+    # influence.merMod() has no `obs` argument: passing one only produced
+    # "disregarded additional arguments" on every run (R20.76). The case
+    # deletion is per observation either way; the per-animal version and its
+    # speed-up remain R20.76.
+    infl <- stats::influence(refit)
     cd   <- stats::cooks.distance(infl)
     df   <- stats::dfbetas(infl)
 

@@ -318,7 +318,7 @@ test_that("R20.83: mass adjustment needs declared units and refuses implausible 
   expect_true(all(is.finite(ok$fixed_effects$Estimate)))
   # Declaring mm3 for cm3 data is plausible by mass but flagged by the data.
   d_cm3 <- d; d_cm3$Volume <- d_cm3$Volume / 1000
-  # Collect every warning: the influence refit adds an unrelated one (R20.76).
+  # Collect every warning, in case the fit adds unrelated ones.
   msgs <- character(0)
   withCallingHandlers(
     analyze_body_weight(d_cm3, weight_column = "Weight", id_column = "UID",
@@ -395,4 +395,29 @@ test_that("R20.6: cage randomisation is refused when cages hold several treatmen
     treatment_column = "Treatment", cage_column = "Cage", id_column = "ID",
     randomisation_unit = "cage", reference_group = "Control", verbose = FALSE)),
     "hold more than one treatment")
+})
+
+# ---- Warnings the dashboard now shows (dashboard R20.D34) ----------------------
+
+test_that("R20.76 / R20-N: an ordinary tumour-growth fit raises no spurious warnings", {
+  # Two warnings reached dashboard users on every lme4 run once its warnings
+  # were surfaced: "disregarded additional arguments" (influence() was given
+  # an obs argument it does not have) and "Chi-squared approximation may be
+  # incorrect" (an unused cage-treatment chi-square on measurement rows).
+  d <- r20_t1_df()
+  msgs <- character(0)
+  res <- withCallingHandlers(
+    tumor_growth_statistics(d, time_column = "Day", volume_column = "Volume",
+                            id_column = "UID", treatment_column = "Treatment",
+                            cage_column = "Cage", reference_group = "Control",
+                            model_type = "lme4", include_diagnostics = TRUE,
+                            plots = FALSE, verbose = FALSE),
+    warning = function(w) {
+      msgs <<- c(msgs, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    })
+  expect_false(any(grepl("disregarded additional arguments", msgs, fixed = TRUE)))
+  expect_false(any(grepl("Chi-squared approximation", msgs, fixed = TRUE)))
+  expect_null(res$cage_analysis$collinearity_test)
+  expect_false(is.null(res$diag_cooks_distance))    # influence still computed
 })

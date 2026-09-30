@@ -179,7 +179,8 @@ A list containing the following components:
 \item{growth_rates}{Data frame containing growth rates for each subject, calculated as the slope of log-volume over time. Higher values indicate faster tumor growth.}
 \item{cage_analysis}{Analysis of cage effects, including:
 \itemize{
-\item{collinearity_test}{Chi-squared test result for collinearity between cage and treatment}
+\item{structure}{The cage design structure from \code{classify_cage_structure()}, which decides how cage enters the model}
+\item{handling}{The cage handling applied}
 \item{effects}{Data frame of cage-level statistics (mean and SD of volume by cage and treatment)}
 }
 }

@@ -5,6 +5,25 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.2] - 2026-09-30
+
+### Fixed
+
+- **Two spurious warnings on every tumour-growth fit (R20.76 part, R20-N
+  follow-up).** The dashboard now shows backend warnings (its R20.D34), and
+  these two were raised on every run:
+  - "disregarded additional arguments": the influence diagnostics passed
+    `influence.merMod()` an `obs` argument it does not have. Removing it
+    changes no result. The per-animal influence and its speed-up remain R20.76.
+  - "Chi-squared approximation may be incorrect": `tumor_growth_statistics()`
+    ran a chi-square of cage against treatment on measurement rows. Its
+    p-value meant nothing, and nothing had read it since R3.17.
+
+### Removed
+
+- `cage_analysis$collinearity_test` from `tumor_growth_statistics()`. The cage
+  design is described by `cage_analysis$structure`.
+
 ## [0.25.1] - 2026-09-30
 
 ### Fixed

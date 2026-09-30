@@ -5497,3 +5497,9 @@ Two commits: the key and names first, then units and survival.
 - Four existing tests now declare `volume_units = "mm3"`.
 
 **v0.25.1 follow-up (found while wiring the dashboard, 2026-09-30).** The stricter `make_mouse_key()` also refused a frame with no rows, whose parts are all empty. It told the user to "check that the ID, treatment and cage columns exist", which is misleading, and `weight_loss_threshold()` reached it whenever no row had a usable day. An all-empty key is now `character(0)`; an empty part beside non-empty ones, or a NULL part, still errors. One test, which fails on v0.25.0.
+
+**v0.25.2 follow-up: spurious warnings (2026-09-30).** Once the dashboard surfaced backend warnings (its R20.D34), two appeared on every tumour-growth run:
+- **"disregarded additional arguments" (R20.76, warning only):** `influence.merMod()` has no `obs` argument, so dropping it changes no result. R20.76 itself, per-animal influence and its 13–15× speed-up, stays open.
+- **"Chi-squared approximation may be incorrect":** a cage × treatment chi-square on measurement rows. Its p-value counted repeated measures as independent, and its only reader, the dead `cage_collinear` flag, had not been used since R3.17. It is removed, along with `cage_analysis$collinearity_test`.
+
+One test, which fails on v0.25.1.
