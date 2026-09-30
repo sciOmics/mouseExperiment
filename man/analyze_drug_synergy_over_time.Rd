@@ -15,6 +15,11 @@ analyze_drug_synergy_over_time(
   control_name = "Control",
   min_time_point = NULL,
   max_time_point = NULL,
+  id_column = "ID",
+  cage_column = NULL,
+  endpoint_method = c("model", "last_obs", "survivors"),
+  n_boot = 2000L,
+  boot_seed = NULL,
   verbose = TRUE
 )
 }
@@ -38,6 +43,17 @@ analyze_drug_synergy_over_time(
 \item{min_time_point}{Optional. A numeric value specifying the minimum time point to include in analysis. Default is NULL.}
 
 \item{max_time_point}{Optional. A numeric value specifying the maximum time point to include in analysis. Default is NULL.}
+
+\item{id_column}{Column identifying individual animals (required). Before
+v0.25.0 this function had no such argument: each day's analysis looked for a
+column literally named "ID", and without one every animal in an arm shared a
+key, so every day failed (CODE_REVIEW.md R20.15).}
+
+\item{cage_column}{Optional cage column, part of the animal key.}
+
+\item{endpoint_method, n_boot, boot_seed}{Passed to
+\code{\link{analyze_drug_synergy}} for each day. They were not accepted
+before v0.25.0, so the dashboard's settings for them were ignored.}
 
 \item{verbose}{Logical. If TRUE, prints detailed results to the console.
 Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.}

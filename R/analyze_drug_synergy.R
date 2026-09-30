@@ -96,6 +96,10 @@
 #' @import ggplot2
 #' @param id_column Column identifying individual animals. Used to resample
 #'   mice for the bootstrap; also used to report per-group n.
+#' @param cage_column Optional cage column. Part of the animal key
+#'   (treatment + ID + cage), so an ID reused in different cages of one arm
+#'   is counted as different animals (CODE_REVIEW.md T1). NULL or absent means
+#'   no cage information.
 #' @param endpoint_method How each arm's volume at \code{eval_time_point} is
 #'   obtained: "model" (default, log-scale LMM marginal means using every
 #'   observation), "last_obs", or "survivors" (pre-0.8.0 behaviour; conditions
@@ -124,6 +128,7 @@ analyze_drug_synergy <- function(df,
                                control_name = "Control",
                                eval_time_point = NULL,
                                id_column = "ID",
+                               cage_column = NULL,
                                endpoint_method = c("model", "last_obs", "survivors"),
                                ci_thresholds = c(0.85, 1.15),
                                strong_synergy_delta = 0.1,
@@ -133,13 +138,15 @@ analyze_drug_synergy <- function(df,
 
   endpoint_method <- match.arg(endpoint_method)
   
-  # Input validation
-  required_columns <- c(treatment_column, volume_column, time_column)
+  # Input validation. The ID column is required (R20.15): without it every
+  # animal in an arm shared one key and each arm became a single "mouse".
+  required_columns <- c(treatment_column, volume_column, time_column, id_column)
   missing_cols <- required_columns[!required_columns %in% colnames(df)]
   
   if (length(missing_cols) > 0) {
     stop("Missing required columns in the data frame: ", paste(missing_cols, collapse = ", "))
   }
+  if (!is.null(cage_column) && !cage_column %in% colnames(df)) cage_column <- NULL
   
   # Check that the specified groups exist in the data
   all_groups <- c(drug_a_name, drug_b_name, combo_name, control_name)
@@ -174,6 +181,7 @@ analyze_drug_synergy <- function(df,
   ep <- endpoint_volumes(
     df, id_column = id_column, treatment_column = treatment_column,
     time_column = time_column, volume_column = volume_column,
+    cage_column = cage_column,
     endpoint_day = eval_time_point, endpoint_method = endpoint_method
   )
   # Per-mouse endpoint volumes (all animals) for the group means and bootstrap.
@@ -185,6 +193,7 @@ analyze_drug_synergy <- function(df,
     pm <- endpoint_volumes(
       df, id_column = id_column, treatment_column = treatment_column,
       time_column = time_column, volume_column = volume_column,
+      cage_column = cage_column,
       endpoint_day = eval_time_point, endpoint_method = "last_obs")$per_mouse
     data.frame(Treatment = pm$Treatment, Volume = pm$Volume,
                stringsAsFactors = FALSE)

@@ -14,6 +14,9 @@
 #' @param volume_column Column storing tumor volume measurements. Default: "Volume".
 #' @param day_column Column with number of days since experiment start. Default: "Day".
 #' @param id_column Column with individual mouse identifiers. Default: "ID".
+#' @param cage_column Optional cage column, part of the animal key (treatment +
+#'   ID + cage), so an ID reused across cages or arms is not one animal
+#'   (CODE_REVIEW.md T1). NULL or absent means no cage information.
 #' @param time_point Optional specific time point (day) to analyze. Default: NULL (uses last time point).
 #' @param control_group_name Name of the control group. Default: "Control".
 #' @param verbose Logical; if TRUE, prints model summaries and statistics to the console. Default: TRUE.
@@ -48,6 +51,7 @@ dose_response_statistics <- function(df,
                                    volume_column = "Volume", 
                                    day_column = "Day", 
                                    id_column = "ID",
+                                   cage_column = NULL,
                                    time_point = NULL,
                                    control_group_name = "Control",
                                    verbose = TRUE) {
@@ -58,6 +62,17 @@ dose_response_statistics <- function(df,
   if (length(missing_cols) > 0) {
     stop("Missing required columns in data frame: ", paste(missing_cols, collapse = ", "))
   }
+
+  # CODE_REVIEW.md T1 -- the per-animal reductions grouped on (treatment, dose,
+  # ID) and, in the growth-rate step, on (dose, ID) alone, merging animals that
+  # share an ear tag across cages or arms. Group on the animal key instead; the
+  # user's columns keep their names, because the result's analysis_data is
+  # indexed by them.
+  has_cage <- !is.null(cage_column) && cage_column %in% colnames(df)
+  df <- as.data.frame(df)
+  df$.mouse_key <- make_mouse_key(
+    as.character(df[[treatment_column]]), as.character(df[[id_column]]),
+    if (has_cage) as.character(df[[cage_column]]) else "")
   
   # Prepare data for analysis
   analysis_data <- prepare_dose_data(df, dose_column = dose_column, treatment_column = treatment_column, 
@@ -127,6 +142,13 @@ prepare_dose_data <- function(df, dose_column = "Dose", treatment_column = "Trea
                              id_column = "ID", time_point = NULL) {
   # Create working copy
   analysis_data <- df
+  # dose_response_statistics() adds the animal key; build it here when a caller
+  # reaches this helper directly.
+  if (!".mouse_key" %in% names(analysis_data)) {
+    analysis_data$.mouse_key <- make_mouse_key(
+      as.character(analysis_data[[treatment_column]]),
+      as.character(analysis_data[[id_column]]))
+  }
   
   # Ensure dose is numeric
   analysis_data[[dose_column]] <- as.numeric(analysis_data[[dose_column]])
@@ -140,7 +162,7 @@ prepare_dose_data <- function(df, dose_column = "Dose", treatment_column = "Trea
   } else {
     # Get last measurement for each mouse
     analysis_data <- analysis_data %>%
-      dplyr::group_by(.data[[treatment_column]], .data[[dose_column]], .data[[id_column]]) %>%
+      dplyr::group_by(.data[[".mouse_key"]]) %>%
       dplyr::filter(.data[[day_column]] == max(.data[[day_column]])) %>%
       dplyr::ungroup()
   }
@@ -241,7 +263,7 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
   statistics <- list()
   
   # 1. Linear regression model
-  linear_model <- stats::lm(paste(volume_column, "~", dose_column), data = analysis_data)
+  linear_model <- stats::lm(paste(me_bt(volume_column), "~", me_bt(dose_column)), data = analysis_data)
   linear_summary <- summary(linear_model)
   
   if (isTRUE(verbose)) {
@@ -255,7 +277,7 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
   statistics$linear_slope <- linear_summary$coefficients[2, 1]
   
   # 2. ANOVA test
-  anova_model <- stats::aov(as.formula(paste(volume_column, "~", paste0("factor(", dose_column, ")"))), 
+  anova_model <- stats::aov(as.formula(paste(me_bt(volume_column), "~", paste0("factor(", me_bt(dose_column), ")"))), 
                            data = analysis_data)
   anova_summary <- summary(anova_model)
   
@@ -360,13 +382,13 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
       # and labels "inhibition"/"stimulation" were therefore misleading
       # (CODE_REVIEW.md G.2).
       dr_model_4p <- drc::drm(
-        as.formula(paste(volume_column, "~", dose_column)),
+        as.formula(paste(me_bt(volume_column), "~", me_bt(dose_column))),
         data = drc_data,
         fct  = drc::LL.4(names = c("Slope", "Lower Limit", "Upper Limit",
                                    "EC50"))
       )
       dr_model_5p <- drc::drm(
-        as.formula(paste(volume_column, "~", dose_column)),
+        as.formula(paste(me_bt(volume_column), "~", me_bt(dose_column))),
         data = drc_data,
         fct  = drc::LL.5(names = c("Slope", "Lower Limit", "Upper Limit",
                                    "EC50", "Asymmetry"))
@@ -523,6 +545,11 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
 #' @keywords internal
 analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_column = "Volume", 
                                day_column = "Day", id_column = "ID", statistics = list()) {
+  # Called directly (not through dose_response_statistics()), the data carry no
+  # animal key; fall back to the ID alone.
+  if (!".mouse_key" %in% names(df)) {
+    df$.mouse_key <- make_mouse_key(as.character(df[[id_column]]))
+  }
   # Only run if we have multiple time points
   if (length(unique(df[[day_column]])) > 1) {
     # Calculate growth rate for each mouse
@@ -530,7 +557,7 @@ analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_
     # Matches tumor_growth_statistics() / bayesian_tumor_growth() canonical
     # pattern (was log1p — divergence noted in CODE_REVIEW.md G.8).
     growth_rates <- df %>%
-      dplyr::group_by(.data[[dose_column]], .data[[id_column]]) %>%
+      dplyr::group_by(.data[[dose_column]], .data[[".mouse_key"]]) %>%
       dplyr::mutate(
         log_volume = {
           v <- .data[[volume_column]]
@@ -555,7 +582,7 @@ analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_
     
     if (nrow(growth_rates) > 0) {
       # Test relationship between dose and growth rate
-      growth_model <- stats::lm(paste("growth_rate ~", dose_column), data = growth_rates)
+      growth_model <- stats::lm(paste("growth_rate ~", me_bt(dose_column)), data = growth_rates)
       growth_summary <- summary(growth_model)
       
       message("Growth rate vs dose model:")
@@ -674,7 +701,7 @@ analyze_polynomial_trends <- function(analysis_data, dose_column = "Dose",
       )
       
       # Fit model with polynomial contrasts
-      poly_model <- stats::lm(as.formula(paste(volume_column, "~ dose_factor")), data = analysis_data)
+      poly_model <- stats::lm(as.formula(paste(me_bt(volume_column), "~ dose_factor")), data = analysis_data)
       poly_summary <- summary(poly_model)
       poly_anova <- stats::anova(poly_model)
       

@@ -121,6 +121,34 @@ survival_statistics <- function(df,
   # Normalise here so everything below can assume NULL means "no cage information".
   if (!is.null(cage_column) && !cage_column %in% colnames(df)) cage_column <- NULL
 
+  # CODE_REVIEW.md R20.15 -- the ID column is required. The dashboard never
+  # passed id_column, so any upload whose ID column was not literally "ID" failed
+  # with "undefined columns selected".
+  if (is.null(id_column) || !id_column %in% colnames(df)) {
+    stop("ID column '", if (is.null(id_column)) "NULL" else id_column,
+         "' not found. Pass the column ",
+         "that identifies each animal as id_column.", call. = FALSE)
+  }
+
+  # CODE_REVIEW.md R20.43 -- formulas below are built by pasting column names,
+  # and some sites quoted them while others did not, so a column called
+  # "Study Day" failed with "unexpected symbol". Copy the columns into fixed
+  # internal names once, here.
+  work <- data.frame(
+    Time      = as.numeric(df[[time_column]]),
+    Event     = df[[censor_column]],
+    Treatment = df[[treatment_column]],
+    ID        = as.character(df[[id_column]]),
+    stringsAsFactors = FALSE
+  )
+  if (!is.null(cage_column)) work$Cage <- as.character(df[[cage_column]])
+  df               <- work
+  time_column      <- "Time"
+  censor_column    <- "Event"
+  treatment_column <- "Treatment"
+  id_column        <- "ID"
+  if (!is.null(cage_column)) cage_column <- "Cage"
+
   validate_one_row_per_subject(df, id_column, treatment_column, cage_column)
   
   # Setup parameters

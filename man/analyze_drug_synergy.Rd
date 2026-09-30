@@ -15,6 +15,7 @@ analyze_drug_synergy(
   control_name = "Control",
   eval_time_point = NULL,
   id_column = "ID",
+  cage_column = NULL,
   endpoint_method = c("model", "last_obs", "survivors"),
   ci_thresholds = c(0.85, 1.15),
   strong_synergy_delta = 0.1,
@@ -45,6 +46,11 @@ If NULL (default), the function will use the last time point in the data.}
 
 \item{id_column}{Column identifying individual animals. Used to resample
 mice for the bootstrap; also used to report per-group n.}
+
+\item{cage_column}{Optional cage column. Part of the animal key
+(treatment + ID + cage), so an ID reused in different cages of one arm
+is counted as different animals (CODE_REVIEW.md T1). NULL or absent means
+no cage information.}
 
 \item{endpoint_method}{How each arm's volume at \code{eval_time_point} is
 obtained: "model" (default, log-scale LMM marginal means using every

@@ -15,6 +15,14 @@
 #' @param control_name A character string specifying the name of the control/vehicle group. Default is "Control".
 #' @param min_time_point Optional. A numeric value specifying the minimum time point to include in analysis. Default is NULL.
 #' @param max_time_point Optional. A numeric value specifying the maximum time point to include in analysis. Default is NULL.
+#' @param id_column Column identifying individual animals (required). Before
+#'   v0.25.0 this function had no such argument: each day's analysis looked for a
+#'   column literally named "ID", and without one every animal in an arm shared a
+#'   key, so every day failed (CODE_REVIEW.md R20.15).
+#' @param cage_column Optional cage column, part of the animal key.
+#' @param endpoint_method,n_boot,boot_seed Passed to
+#'   \code{\link{analyze_drug_synergy}} for each day. They were not accepted
+#'   before v0.25.0, so the dashboard's settings for them were ignored.
 #' @param verbose Logical. If TRUE, prints detailed results to the console.
 #'        Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.
 #'
@@ -88,10 +96,17 @@ analyze_drug_synergy_over_time <- function(df,
                                       control_name = "Control",
                                       min_time_point = NULL,
                                       max_time_point = NULL,
+                                      id_column = "ID",
+                                      cage_column = NULL,
+                                      endpoint_method = c("model", "last_obs", "survivors"),
+                                      n_boot = 2000L,
+                                      boot_seed = NULL,
                                       verbose = TRUE) {
-  
+
+  endpoint_method <- match.arg(endpoint_method)
+
   # Input validation
-  required_columns <- c(treatment_column, volume_column, time_column)
+  required_columns <- c(treatment_column, volume_column, time_column, id_column)
   missing_cols <- required_columns[!required_columns %in% colnames(df)]
   
   if (length(missing_cols) > 0) {
@@ -157,6 +172,11 @@ analyze_drug_synergy_over_time <- function(df,
         combo_name = combo_name,
         control_name = control_name,
         eval_time_point = tp,
+        id_column = id_column,
+        cage_column = cage_column,
+        endpoint_method = endpoint_method,
+        n_boot = n_boot,
+        boot_seed = boot_seed,
         verbose = FALSE
       )
       

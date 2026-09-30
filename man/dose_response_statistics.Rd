@@ -11,6 +11,7 @@ dose_response_statistics(
   volume_column = "Volume",
   day_column = "Day",
   id_column = "ID",
+  cage_column = NULL,
   time_point = NULL,
   control_group_name = "Control",
   verbose = TRUE
@@ -28,6 +29,10 @@ dose_response_statistics(
 \item{day_column}{Column with number of days since experiment start. Default: "Day".}
 
 \item{id_column}{Column with individual mouse identifiers. Default: "ID".}
+
+\item{cage_column}{Optional cage column, part of the animal key (treatment +
+ID + cage), so an ID reused across cages or arms is not one animal
+(CODE_REVIEW.md T1). NULL or absent means no cage information.}
 
 \item{time_point}{Optional specific time point (day) to analyze. Default: NULL (uses last time point).}
 

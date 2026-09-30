@@ -875,6 +875,19 @@ tumor_growth_statistics <- function(df,
   growth_rates <- tgs_compute_growth_rates(auc_df, treatment_column, id_column,
                                            cage_column, time_column, volume_column)
 
+  # CODE_REVIEW.md T1 / R20.3 -- the model's random effects grouped on the raw
+  # ID, so mouse "1" in Control and mouse "1" in DrugA were one animal. With IDs
+  # restarting in each arm the Treatment x Day SE fell from 0.097 to 0.030 and
+  # the null false-positive rate per contrast rose to 0.52. From here on the
+  # model data carries the composite animal key in the ID column, so the random
+  # effects, the cage-structure classification and the diagnostics all group by
+  # animal. The per-animal display tables (growth rates, AUC) are built from
+  # auc_df and keep the original ID.
+  analysis_df[[id_column]] <- make_mouse_key(
+    as.character(analysis_df[[treatment_column]]),
+    as.character(analysis_df[[id_column]]),
+    as.character(analysis_df[[cage_column]]))
+
   # Cage effect analysis
   cage_analysis <- tgs_compute_cage_effects(analysis_df, cage_column, treatment_column, volume_column)
   cage_effects <- cage_analysis$effects

@@ -107,3 +107,185 @@ test_that("R20.8: inhibitory agents are unaffected", {
   expect_true(ot$synergy_summary$Evaluable[
     ot$synergy_summary$Time_Point == ot$peak_bliss_synergy$Time_Point])
 })
+
+# ---- T1 / R20.3 / R20.15 / R20.43: animal identity and column names ----------
+
+# Four arms x 2 cages x 4 animals, 7 days. Three ID schemes for the same animals:
+#   UID     unique across the study;
+#   RID_arm 1..8 within each arm (reused across arms);
+#   RID_cg  1..4 within each cage (reused across cages and arms).
+r20_t1_df <- function(seed = 11) {
+  set.seed(seed)
+  rates <- c(Control = 0.12, DrugA = 0.09, DrugB = 0.095, Combo = 0.05)
+  doses <- c(Control = 0, DrugA = 10, DrugB = 20, Combo = 30)
+  days  <- c(0, 3, 7, 10, 14, 17, 21)
+  out <- list(); uid <- 0L
+  for (arm in names(rates)) for (cg in 1:2) for (k in 1:4) {
+    uid <- uid + 1L
+    b0  <- stats::rnorm(1, log(100), 0.15)
+    r   <- rates[[arm]] + stats::rnorm(1, 0, 0.02)
+    w0  <- stats::rnorm(1, 22, 1)
+    out[[uid]] <- data.frame(
+      UID = uid, RID_arm = (cg - 1L) * 4L + k, RID_cg = k,
+      Treatment = arm, Cage = paste0(arm, "-C", cg), Day = days,
+      Volume = exp(b0 + r * days + stats::rnorm(length(days), 0, 0.1)),
+      Weight = w0 - 0.05 * days * (arm == "Combo") +
+        stats::rnorm(length(days), 0, 0.2),
+      Dose = doses[[arm]], stringsAsFactors = FALSE)
+  }
+  do.call(rbind, out)
+}
+
+# One row per animal: time to 1,000 mm3, censored at day 21.
+r20_t1_surv <- function(d) {
+  keys <- unique(d[, c("UID", "RID_arm", "RID_cg", "Treatment", "Cage")])
+  do.call(rbind, lapply(seq_len(nrow(keys)), function(i) {
+    a <- d[d$UID == keys$UID[i], ]
+    hit <- a$Day[a$Volume >= 1000]
+    cbind(keys[i, ], Time = if (length(hit)) min(hit) else 21,
+          Event = as.integer(length(hit) > 0))
+  }))
+}
+
+quiet <- function(expr) suppressWarnings(suppressMessages(expr))
+
+test_that("T1: make_mouse_key() refuses a missing component", {
+  expect_error(make_mouse_key(c("A", "B"), NULL), "NULL or empty")
+  expect_error(make_mouse_key(c("A", "B"), character(0)), "NULL or empty")
+  expect_error(make_mouse_key(c("A", "B"), c("1", "2", "3")), "different lengths")
+  expect_equal(make_mouse_key(c("A", "B"), "1"), c("A|||1", "B|||1"))
+})
+
+test_that("R20.3: tumour-growth and body-weight models give the same answer with reused IDs", {
+  d <- r20_t1_df()
+  tg <- function(id) quiet(tumor_growth_statistics(
+    d, id_column = id, cage_column = NULL, plots = FALSE, verbose = FALSE,
+    reference_group = "Control"))
+  a <- tg("UID"); b <- tg("RID_arm")
+  expect_equal(lme4::fixef(b$model), lme4::fixef(a$model), tolerance = 1e-8)
+  # Same partition of the data, so the fits agree up to optimiser noise (the
+  # grouping levels are ordered differently): ~1e-9 on this fixture.
+  expect_equal(as.matrix(stats::vcov(b$model)), as.matrix(stats::vcov(a$model)),
+               tolerance = 1e-6)
+  expect_equal(lme4::ngrps(b$model)[["RID_arm"]], 32L)   # was 8
+
+  bw <- function(id) quiet(analyze_body_weight(
+    d, weight_column = "Weight", id_column = id, volume_column = "Volume",
+    adjust_tumor_weight = FALSE, reference_group = "Control"))
+  x <- bw("UID"); y <- bw("RID_arm")
+  expect_equal(y$fixed_effects, x$fixed_effects, tolerance = 1e-8)
+  expect_equal(y$model_info$n_subjects, 32L)               # was 8
+})
+
+test_that("R20.3: synergy counts animals by treatment + ID + cage", {
+  d <- r20_t1_df()
+  syn <- function(id, cage) quiet(analyze_drug_synergy(
+    d, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
+    control_name = "Control", id_column = id, cage_column = cage,
+    n_boot = 0, verbose = FALSE))
+  a <- syn("UID", NULL); b <- syn("RID_cg", "Cage")
+  expect_equal(unname(b$group_n), rep(8L, 4L))            # was 4 per arm
+  expect_equal(b$bliss_independence, a$bliss_independence, tolerance = 1e-8)
+})
+
+test_that("R20.15: over-time synergy takes an ID column that is not called ID", {
+  d <- r20_t1_df()
+  names(d)[names(d) == "UID"] <- "Animal"
+  ot <- quiet(analyze_drug_synergy_over_time(
+    d, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
+    control_name = "Control", id_column = "Animal", n_boot = 0, verbose = FALSE))
+  expect_equal(nrow(ot$synergy_summary), 7L)               # was an error
+  d$Animal <- NULL
+  expect_error(quiet(analyze_drug_synergy_over_time(
+    d, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
+    control_name = "Control", verbose = FALSE)), "Missing required columns")
+})
+
+test_that("R20.3 / R20.15: survival works with reused IDs and a differently named ID column", {
+  s <- r20_t1_surv(r20_t1_df())
+  sv <- function(id) quiet(survival_statistics(
+    s, time_column = "Time", censor_column = "Event", treatment_column = "Treatment",
+    id_column = id, cage_column = NULL, reference_group = "Control", verbose = FALSE))
+  a <- sv("UID"); b <- sv("RID_arm")
+  expect_equal(b$results$HR, a$results$HR, tolerance = 1e-8)
+  expect_error(sv("NoSuchColumn"), "ID column 'NoSuchColumn' not found")
+})
+
+test_that("R20.3: dose-response groups animals by the key", {
+  d <- r20_t1_df()
+  dr <- function(id, cage = NULL) quiet(dose_response_statistics(
+    d, dose_column = "Dose", treatment_column = "Treatment", volume_column = "Volume",
+    day_column = "Day", id_column = id, cage_column = cage, verbose = FALSE))
+  # IDs restart in every cage, so only treatment + ID + cage identifies an animal.
+  a <- dr("UID"); b <- dr("RID_cg", "Cage")
+  expect_equal(nrow(b$analysis_data), 32L)                  # 16 before: cage-mates merged
+  expect_equal(stats::coef(b$linear_model), stats::coef(a$linear_model), tolerance = 1e-8)
+})
+
+test_that("R20.43: entry points accept column names with spaces", {
+  d <- r20_t1_df()
+  s <- r20_t1_surv(d)
+  ren <- c(Day = "Study Day", Volume = "Tumor Volume", UID = "Animal ID",
+           Treatment = "Treatment Group", Cage = "Cage No", Weight = "Body Weight",
+           Dose = "Dose mg", Time = "Days On Study", Event = "Death Event")
+  rn <- function(x) { names(x)[names(x) %in% names(ren)] <- ren[names(x)[names(x) %in% names(ren)]]; x }
+  dd <- rn(d); ss <- rn(s)
+
+  tg0 <- quiet(tumor_growth_statistics(d, id_column = "UID", cage_column = "Cage",
+    plots = FALSE, verbose = FALSE, reference_group = "Control"))
+  tg1 <- quiet(tumor_growth_statistics(dd, time_column = "Study Day",
+    volume_column = "Tumor Volume", treatment_column = "Treatment Group",
+    id_column = "Animal ID", cage_column = "Cage No", plots = FALSE,
+    verbose = FALSE, reference_group = "Control"))
+  expect_equal(unname(lme4::fixef(tg1$model)), unname(lme4::fixef(tg0$model)),
+               tolerance = 1e-8)
+
+  sv0 <- quiet(survival_statistics(s, time_column = "Time", censor_column = "Event",
+    treatment_column = "Treatment", id_column = "UID", cage_column = NULL,
+    reference_group = "Control", verbose = FALSE))
+  sv1 <- quiet(survival_statistics(ss, time_column = "Days On Study",
+    censor_column = "Death Event", treatment_column = "Treatment Group",
+    id_column = "Animal ID", cage_column = NULL, reference_group = "Control",
+    verbose = FALSE))                                       # "unexpected symbol" before
+  expect_equal(sv1$results$HR, sv0$results$HR, tolerance = 1e-8)
+
+  dr0 <- quiet(dose_response_statistics(d, id_column = "UID", verbose = FALSE))
+  dr1 <- quiet(dose_response_statistics(dd, dose_column = "Dose mg",
+    treatment_column = "Treatment Group", volume_column = "Tumor Volume",
+    day_column = "Study Day", id_column = "Animal ID", verbose = FALSE))
+  expect_equal(unname(stats::coef(dr1$linear_model)), unname(stats::coef(dr0$linear_model)),
+               tolerance = 1e-8)                             # "unexpected symbol" before
+
+  ot1 <- quiet(analyze_drug_synergy_over_time(dd, treatment_column = "Treatment Group",
+    volume_column = "Tumor Volume", time_column = "Study Day", drug_a_name = "DrugA",
+    drug_b_name = "DrugB", combo_name = "Combo", control_name = "Control",
+    id_column = "Animal ID", n_boot = 0, verbose = FALSE))
+  expect_equal(nrow(ot1$synergy_summary), 7L)
+})
+
+test_that("R20.3 / R20.43 / R20.62: Bayesian fits group by animal and accept any column names", {
+  skip_on_cran()
+  d <- r20_t1_df()
+  d <- d[d$Day %in% c(0, 7, 14, 21), ]
+  names(d)[names(d) == "RID_arm"] <- "Ear Tag"
+  names(d)[names(d) == "Day"]     <- "Study Day"
+  bt <- quiet(bayesian_tumor_growth(
+    d, time_column = "Study Day", volume_column = "Volume", id_column = "Ear Tag",
+    reference_group = "Control", random_effects_specification = "slope",
+    plots = FALSE, verbose = FALSE,
+    mcmc = tg_mcmc(chains = 1, warmup = 150, iter = 150, seed = 1)))
+  expect_equal(brms::ngrps(bt$model)$Animal, 32L)          # was 8 ear tags
+  expect_setequal(unique(bt$growth_rates$ID), as.character(1:8))  # original IDs shown
+  expect_equal(nrow(bt$growth_rates), 32L)
+
+  s <- r20_t1_surv(r20_t1_df())
+  s$`.__DerivedEvent` <- factor(as.character(s$Event), levels = c("0", "1"))
+  names(s)[names(s) == "Time"] <- ".__DerivedTime"
+  bs <- quiet(bayesian_survival(
+    s, time_column = ".__DerivedTime", event_column = ".__DerivedEvent",
+    treatment_column = "Treatment", id_column = "RID_arm", reference_group = "Control",
+    family = "weibull", plots = FALSE, verbose = FALSE,
+    mcmc = tg_mcmc(chains = 1, warmup = 150, iter = 150, seed = 1)))
+  expect_equal(bs$summary$data_description$subjects, 32L)  # was 8
+  expect_equal(bs$summary$data_description$total_events, sum(s$Event))
+})

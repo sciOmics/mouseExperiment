@@ -261,11 +261,41 @@ bayesian_tumor_growth <- function(
     stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
   }
 
+  # ── Internal column names (CODE_REVIEW.md R20.43) ───────────────────────────
+  # brms needs syntactic variable names without double underscores, and the
+  # formula below is built by pasting names. Copy the columns the model uses into
+  # fixed names once, here, and work with those from now on.
+  work <- data.frame(
+    Day       = as.numeric(df[[time_column]]),
+    Volume    = as.numeric(df[[volume_column]]),
+    Treatment = as.character(df[[treatment_column]]),
+    ID        = as.character(df[[id_column]]),
+    stringsAsFactors = FALSE
+  )
+  if (!is.null(cage_column) && cage_column %in% names(df)) {
+    work$Cage <- as.character(df[[cage_column]])
+  }
+  if (!is.null(necrotic_column) && necrotic_column %in% names(df)) {
+    work$Necrotic <- df[[necrotic_column]]
+  }
+  df               <- work
+  time_column      <- "Day"
+  volume_column    <- "Volume"
+  treatment_column <- "Treatment"
+  id_column        <- "ID"
+  cage_column      <- if ("Cage" %in% names(df)) "Cage" else NULL
+  necrotic_column  <- if ("Necrotic" %in% names(df)) "Necrotic" else NULL
+
   # Cage placeholder — mirrors lme4 path so make_mouse_key() always works
   cage_setup   <- setup_cage_column(df, cage_column)
   df           <- cage_setup$df
   cage_column  <- cage_setup$cage_column
   no_cage_mode <- cage_setup$no_cage_mode
+
+  # CODE_REVIEW.md T1 / R20.3 -- the random effects grouped on the raw ID, so
+  # mouse "1" in every arm was one animal: credible intervals 0.18 wide against
+  # 0.64 with unique IDs. Group by the composite animal key instead.
+  df$Animal <- make_mouse_key(df$Treatment, df$ID, as.character(df[[cage_column]]))
 
   # ── Reference group resolution ─────────────────────────────────────────────
   treatment_groups <- unique(as.character(df[[treatment_column]]))
@@ -313,19 +343,20 @@ bayesian_tumor_growth <- function(
   # ── Formula ────────────────────────────────────────────────────────────────
   use_cage_re <- isTRUE(include_cage_effect) && !no_cage_mode
 
+  # The animal key already includes the cage, so a plain (1 | Cage) term plus a
+  # per-animal term is the nested structure the former (1 | cage/ID) aimed at,
+  # without merging animals that share an ID across arms.
   re_term <- if (use_cage_re) {
     if (random_effects_specification == "slope") {
-      # Random slopes per animal + random intercept per cage (crossed)
-      paste0("(", time_column, " | ", id_column, ") + (1 | ", cage_column, ")")
+      paste0("(", time_column, " | Animal) + (1 | ", cage_column, ")")
     } else {
-      # Animals nested within cages: (1|cage) + (1|cage:ID)
-      paste0("(1 | ", cage_column, "/", id_column, ")")
+      paste0("(1 | ", cage_column, ") + (1 | Animal)")
     }
   } else {
     if (random_effects_specification == "slope") {
-      paste0("(", time_column, " | ", id_column, ")")
+      paste0("(", time_column, " | Animal)")
     } else {
-      paste0("(1 | ", id_column, ")")
+      "(1 | Animal)"
     }
   }
 
@@ -483,7 +514,7 @@ bayesian_tumor_growth <- function(
   if (random_effects_specification == "slope") {
     brms_growth_rates <- tryCatch(
       tg_brms_per_animal_growth_rates(model, treatment_column,
-                                       id_column, time_column,
+                                       "Animal", time_column,
                                        analysis_df),
       error = function(e) NULL
     )
@@ -750,8 +781,11 @@ tg_brms_per_animal_growth_rates <- function(model, treatment_column,
 
   # Build per-animal lookup of Treatment (and Cage if present)
   cage_col_present <- "Cage" %in% colnames(analysis_df)
-  id_lookup <- unique(analysis_df[, c(treatment_column, id_column,
-                                       intersect("Cage", colnames(analysis_df))),
+  # id_column is the model's grouping column (the animal key); the table shows
+  # the original ID when the data carry one.
+  display_id <- if ("ID" %in% colnames(analysis_df)) "ID" else id_column
+  id_lookup <- unique(analysis_df[, unique(c(treatment_column, id_column, display_id,
+                                       intersect("Cage", colnames(analysis_df)))),
                                    drop = FALSE])
   id_lookup[[id_column]] <- as.character(id_lookup[[id_column]])
 
@@ -783,7 +817,7 @@ tg_brms_per_animal_growth_rates <- function(model, treatment_column,
                           c(0.025, 0.5, 0.975), names = FALSE)
     data.frame(
       Treatment         = treat,
-      ID                = aid,
+      ID                = as.character(meta[[display_id]])[[1L]],
       Cage              = cage,
       growth_rate       = round(qq[[2L]], 4),
       growth_rate_lower = round(qq[[1L]], 4),

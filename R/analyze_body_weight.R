@@ -130,6 +130,10 @@ analyze_body_weight <- function(df,
     make_mouse_key(as.character(wd$Treatment), as.character(wd$ID))
   }
   wd <- wd[order(wd$.MouseKey, wd$Day), ]
+  # CODE_REVIEW.md T1 / R20.3 -- the random effects were (1 + Day | ID), so a
+  # mouse "1" in every arm became one animal (null familywise rejection 0.71,
+  # SE ratio 0.30, n_subjects 8 for 24 mice). Group by the composite key.
+  wd$Animal <- factor(wd$.MouseKey)
 
   first_day <- stats::aggregate(Day ~ .MouseKey, data = wd, FUN = min)
   names(first_day)[2] <- ".FirstDay"
@@ -191,8 +195,8 @@ analyze_body_weight <- function(df,
   # cage column was previously attached to the data frame but never
   # appeared in the formula, the same silent-ignore bug class as
   # Round 1 1.1 (handle_cage_effects in tumor_growth_statistics).
-  re_full   <- if (has_cage) "(1 + Day | ID) + (1 | Cage)" else "(1 + Day | ID)"
-  re_simple <- if (has_cage) "(1 | ID) + (1 | Cage)"        else "(1 | ID)"
+  re_full   <- if (has_cage) "(1 + Day | Animal) + (1 | Cage)" else "(1 + Day | Animal)"
+  re_simple <- if (has_cage) "(1 | Animal) + (1 | Cage)"        else "(1 | Animal)"
 
   # Try random slope + intercept first
   formula_full <- stats::as.formula(
@@ -255,10 +259,10 @@ analyze_body_weight <- function(df,
     "",
     sprintf("Response: %s", if (adjust_tumor_weight && has_volume) "Net Weight (body - tumor)" else "Body Weight"),
     sprintf("Estimation: %s", estimation),
-    sprintf("Random effects: %s", if (model_simplified) "(1 | ID) [simplified]" else "(1 + Day | ID)"),
+    sprintf("Random effects: %s", if (model_simplified) "(1 | Animal) [simplified]" else "(1 + Day | Animal)"),
     sprintf("Fixed effects: %s", fixed_terms),
     sprintf("Observations: %d  |  Subjects: %d  |  Groups: %d",
-            nrow(wd), length(unique(wd$ID)), length(levels(wd$Treatment))),
+            nrow(wd), length(unique(wd$Animal)), length(levels(wd$Treatment))),
     ""
   )
 
@@ -304,7 +308,7 @@ analyze_body_weight <- function(df,
       tumor_density    = tumor_density,
       cage_in_model    = has_cage,
       n_obs            = nrow(wd),
-      n_subjects       = length(unique(wd$ID)),
+      n_subjects       = length(unique(wd$Animal)),
       n_groups         = length(levels(wd$Treatment))
     ),
     diag_qq_plot             = diag_qq_plot,

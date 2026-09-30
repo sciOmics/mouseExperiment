@@ -205,10 +205,35 @@ bayesian_survival <- function(
   if (length(missing_cols) > 0) {
     stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
   }
-  if (!all(df[[event_column]] %in% c(0L, 1L, 0, 1, NA))) {
-    stop("'", event_column,
+
+  # ── Internal column names (CODE_REVIEW.md R20.43, dashboard R20.D8) ────────
+  # brms rejects non-syntactic names and double underscores, which is why every
+  # fit on the dashboard's volume-derived events (".__DerivedTime") failed.
+  # Copy the columns the model uses into fixed names once, here. The event is
+  # read through as.character() so a factor is coded by its labels, not its level
+  # codes: 1L - as.integer(factor(c("0", "1"))) turned events into -1 and
+  # censored animals into events (R20.62).
+  user_event_column <- event_column
+  work <- data.frame(
+    Time      = as.numeric(df[[time_column]]),
+    Event     = suppressWarnings(as.integer(as.character(df[[event_column]]))),
+    Treatment = as.character(df[[treatment_column]]),
+    ID        = as.character(df[[id_column]]),
+    stringsAsFactors = FALSE
+  )
+  if (!is.null(cage_column) && cage_column %in% names(df)) {
+    work$Cage <- as.character(df[[cage_column]])
+  }
+  if (!all(work$Event %in% c(0L, 1L, NA))) {
+    stop("'", user_event_column,
          "' must contain only 0 (censored) and 1 (event).")
   }
+  df               <- work
+  time_column      <- "Time"
+  event_column     <- "Event"
+  treatment_column <- "Treatment"
+  id_column        <- "ID"
+  cage_column      <- if ("Cage" %in% names(df)) "Cage" else NULL
 
   # ── Cage setup ─────────────────────────────────────────────────────────────
   cage_setup   <- setup_cage_column(df, cage_column)
@@ -425,7 +450,11 @@ bayesian_survival <- function(
   analysis_summary <- list(
     analysis_type = paste0("Bayesian Parametric Survival (", family, ", brms)"),
     data_description = list(
-      subjects         = length(unique(df[[id_column]])),
+      # Count animals, not ID labels: an ID reused in several arms is several
+      # animals (T1).
+      subjects         = length(unique(make_mouse_key(
+        as.character(df[[treatment_column]]), df[[id_column]],
+        as.character(df[[cage_column]])))),
       treatment_groups = length(treatment_levels),
       total_events     = sum(df[[event_column]] == 1L, na.rm = TRUE),
       reference_group  = reference_group

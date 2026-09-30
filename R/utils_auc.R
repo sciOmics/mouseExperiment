@@ -5,11 +5,27 @@
 #' dots. Pass arguments in a consistent order (e.g. Treatment, ID, Cage) and
 #' use \code{split_mouse_key()} to reverse the operation.
 #'
-#' @param ... Character vectors to paste together (recycled).
+#' @param ... Character vectors to paste together. Each must have length 1 or
+#'   the common length.
 #' @return Character vector of composite keys.
 #' @noRd
 #' @keywords internal
-make_mouse_key <- function(...) paste(..., sep = "|||")
+make_mouse_key <- function(...) {
+  # CODE_REVIEW.md T1 / R20.15 -- paste() recycles a zero-length part away, so
+  # a missing ID column (df[["ID"]] is NULL) gave every animal in an arm the key
+  # "Arm|||": one "mouse" per arm, and no error.
+  parts <- list(...)
+  n <- lengths(parts)
+  if (!length(parts) || any(n == 0L)) {
+    stop("make_mouse_key(): a key component is NULL or empty -- check that the ",
+         "ID, treatment and cage columns exist.", call. = FALSE)
+  }
+  if (any(n != 1L & n != max(n))) {
+    stop("make_mouse_key(): key components have different lengths (",
+         paste(n, collapse = ", "), ").", call. = FALSE)
+  }
+  do.call(paste, c(parts, sep = "|||"))
+}
 
 #' Split a composite mouse key back into its components
 #'
