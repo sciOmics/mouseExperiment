@@ -79,25 +79,26 @@ test_that("R1-3.6: calculate_auc is the single AUC implementation and is correct
 test_that("R1-1.7: baseline is the earliest day regardless of row order", {
   # aggregate(x[1]) took whatever row happened to be first. Shuffling the rows
   # must not change the answer.
+  # Three animals: the evaluable-day rule (v0.26.0) needs at least 3 per arm.
   mk <- function(order_idx) {
     d <- data.frame(
-      ID = rep(c("m1", "m2"), each = 3), Treatment = "A", Cage = "C1",
-      Day = rep(c(0, 7, 14), 2),
-      Weight = c(20, 19, 18, 22, 21, 20),
-      Volume = rep(c(100, 200, 300), 2),
+      ID = rep(c("m1", "m2", "m3"), each = 3), Treatment = "A", Cage = "C1",
+      Day = rep(c(0, 7, 14), 3),
+      Weight = c(20, 19, 18, 22, 21, 20, 21, 20, 19),
+      Volume = rep(c(100, 200, 300), 3),
       stringsAsFactors = FALSE)
     d[order_idx, , drop = FALSE]
   }
   ordered_res <- suppressWarnings(suppressMessages(therapeutic_window_metric(
-    mk(1:6), reference_group = "A", adjust_tumor_weight = FALSE, n_boot = 0)))
+    mk(1:9), reference_group = "A", adjust_tumor_weight = FALSE, n_boot = 0)))
   shuffled_res <- suppressWarnings(suppressMessages(therapeutic_window_metric(
-    mk(c(3, 6, 1, 4, 2, 5)), reference_group = "A",
+    mk(c(3, 6, 9, 1, 4, 7, 2, 5, 8)), reference_group = "A",
     adjust_tumor_weight = FALSE, n_boot = 0)))
 
   expect_equal(ordered_res$weight_loss_data$Baseline_Weight,
                shuffled_res$weight_loss_data$Baseline_Weight)
   # Baselines must be the day-0 weights, not some later row.
-  expect_setequal(round(ordered_res$weight_loss_data$Baseline_Weight, 6), c(20, 22))
+  expect_setequal(round(ordered_res$weight_loss_data$Baseline_Weight, 6), c(20, 22, 21))
 })
 
 # ---- Round 1 §2.4 / §I.1: one Bliss implementation --------------------------

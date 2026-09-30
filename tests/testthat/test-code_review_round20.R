@@ -275,6 +275,11 @@ test_that("R20.3 / R20.43 / R20.62: Bayesian fits group by animal and accept any
   d <- d[d$Day %in% c(0, 7, 14, 21), ]
   names(d)[names(d) == "RID_arm"] <- "Ear Tag"
   names(d)[names(d) == "Day"]     <- "Study Day"
+  # R20.37: labels as the dashboard builds them with a dose column -- with
+  # spaces and "+", which brms renames.
+  labs <- c(Control = "Control", DrugA = "Drug A 10", DrugB = "Drug B 20",
+            Combo = "Drug A + B")
+  d$Treatment <- unname(labs[d$Treatment])
   bt <- quiet(bayesian_tumor_growth(
     d, time_column = "Study Day", volume_column = "Volume", id_column = "Ear Tag",
     reference_group = "Control", random_effects_specification = "slope",
@@ -283,6 +288,11 @@ test_that("R20.3 / R20.43 / R20.62: Bayesian fits group by animal and accept any
   expect_equal(brms::ngrps(bt$model)$Animal, 32L)          # was 8 ear tags
   expect_setequal(unique(bt$growth_rates$ID), as.character(1:8))  # original IDs shown
   expect_equal(nrow(bt$growth_rates), 32L)
+  # R20.37: each arm's animals get their arm's slope, not the control's. The
+  # fixture's true rates are 0.12 (Control) and 0.05 (Drug A + B).
+  gr <- tapply(bt$growth_rates$growth_rate, bt$growth_rates$Treatment, mean)
+  expect_lt(gr[["Drug A + B"]], gr[["Control"]] - 0.04)    # equal before
+  expect_equal(gr[["Drug A + B"]], 0.05, tolerance = 0.3)
 
   s <- r20_t1_surv(r20_t1_df())
   s$`.__DerivedEvent` <- factor(as.character(s$Event), levels = c("0", "1"))
@@ -420,4 +430,210 @@ test_that("R20.76 / R20-N: an ordinary tumour-growth fit raises no spurious warn
   expect_false(any(grepl("Chi-squared approximation", msgs, fixed = TRUE)))
   expect_null(res$cage_analysis$collinearity_test)
   expect_false(is.null(res$diag_cooks_distance))    # influence still computed
+})
+
+# ---- Step 4 (v0.26.0): evaluable days, the endpoint model, AUC, random slopes --
+
+# Gompertz growth, V(t) = V0 exp((a / b)(1 - exp(-b t))), with removal once a
+# tumour passes `limit`: the shape the old log-linear endpoint model could not
+# follow (R20.1).
+r20_gompertz <- function(seed = 1, n = 10, limit = 2000,
+                         a = c(Control = 0.41, A = 0.30, B = 0.32, Combo = 0.20),
+                         b = 0.1, days = c(0, 3, 7, 10, 14, 17, 21, 24, 28)) {
+  set.seed(seed)
+  out <- list()
+  for (arm in names(a)) for (i in seq_len(n)) {
+    lv <- log(100) + stats::rnorm(1, 0, 0.2) +
+      (a[[arm]] * exp(stats::rnorm(1, 0, 0.08)) / b) * (1 - exp(-b * days)) +
+      stats::rnorm(length(days), 0, 0.1)
+    stop_at <- which(exp(lv) > limit)[1]
+    keep <- if (is.na(stop_at)) seq_along(days) else seq_len(stop_at)
+    out[[length(out) + 1L]] <- data.frame(ID = i, Treatment = arm, Day = days[keep],
+                                          Volume = exp(lv[keep]))
+  }
+  do.call(rbind, out)
+}
+r20_gompertz_truth <- function(arm, t,
+                               a = c(Control = 0.41, A = 0.30, B = 0.32, Combo = 0.20),
+                               b = 0.1) {
+  100 * exp((a[[arm]] / b) * (1 - exp(-b * t)))
+}
+
+test_that("R20-K: evaluable_days() applies the 50 % and 3-animal rule", {
+  # 8 animals; the last measurements fall on days 7 (x2), 14 (x3) and 21 (x3).
+  d <- do.call(rbind, lapply(1:8, function(i) {
+    last <- c(7, 7, 14, 14, 14, 21, 21, 21)[i]
+    data.frame(ID = i, Treatment = "A", Day = seq(0, last, 7))
+  }))
+  ev <- evaluable_days(d)
+  tab <- ev$table
+  expect_equal(tab$N_On_Study, c(8, 8, 6, 3))      # days 0, 7, 14, 21
+  expect_equal(tab$Evaluable, c(TRUE, TRUE, TRUE, FALSE))  # 3/8 < 50 %
+  expect_equal(ev$last_day, 14)
+  expect_equal(ev$excluded$Day, 21)
+  expect_match(ev$excluded$Arms, "A 3/8")
+  expect_match(ev$rule, "at least 50%")
+  # An arm of two animals is never evaluable (fewer than 3).
+  two <- d[d$ID %in% 1:2, ]
+  expect_true(is.na(evaluable_days(two)$last_day))
+})
+
+test_that("R20.1: synergy defaults to the last evaluable day and refuses later days", {
+  d <- r20_gompertz(1)
+  ev <- evaluable_days(d)
+  r <- quiet(analyze_drug_synergy(d, drug_a_name = "A", drug_b_name = "B",
+    combo_name = "Combo", control_name = "Control", n_boot = 0, verbose = FALSE))
+  expect_equal(r$eval_time_point, ev$last_day)
+  expect_lt(r$eval_time_point, 28)                  # the last study day before
+  expect_equal(r$evaluability$last_day, ev$last_day)
+  expect_error(quiet(analyze_drug_synergy(d, drug_a_name = "A", drug_b_name = "B",
+    combo_name = "Combo", control_name = "Control", eval_time_point = 28,
+    n_boot = 0, verbose = FALSE)), "is not evaluable")
+})
+
+test_that("R20.1: with Gompertz growth the endpoint model recovers TGI and the Bliss excess", {
+  # The straight-line model put the control at ~10x its true volume on the
+  # last day and read TGIs of 81 / 75 / 94 against a truth of 28 / 22 / 60.
+  est <- vapply(1:6, function(s) {
+    d <- r20_gompertz(s)
+    r <- quiet(analyze_drug_synergy(d, drug_a_name = "A", drug_b_name = "B",
+      combo_name = "Combo", control_name = "Control", n_boot = 0, verbose = FALSE))
+    t <- r$eval_time_point
+    tru <- vapply(c("Control", "A", "B", "Combo"), r20_gompertz_truth, numeric(1), t = t)
+    fe  <- 1 - tru[2:4] / tru[["Control"]]
+    ctrl_est <- r$summary$Mean_Volume[1] / (1 - r$summary$TGI_Percent[1] / 100)
+    c(ctrl_ratio = ctrl_est / tru[["Control"]],
+      err_a = r$summary$TGI_Percent[1] - 100 * fe[[1]],
+      err_combo = r$summary$TGI_Percent[3] - 100 * fe[[3]],
+      err_bliss = r$bliss_independence$difference -
+        (fe[[3]] - synergy_bliss_expected(fe[[1]], fe[[2]])))
+  }, numeric(4))
+  expect_true(all(abs(est["ctrl_ratio", ] - 1) < 0.25))
+  expect_lt(abs(mean(est["err_a", ])), 6)
+  expect_lt(abs(mean(est["err_combo", ])), 6)
+  expect_lt(abs(mean(est["err_bliss", ])), 0.05)
+})
+
+test_that("R20.2: synergy intervals, tests and point estimates describe one estimand", {
+  d <- r20_gompertz(2)
+  r <- quiet(analyze_drug_synergy(d, drug_a_name = "A", drug_b_name = "B",
+    combo_name = "Combo", control_name = "Control", n_boot = 500, boot_seed = 1,
+    verbose = FALSE))
+  ci <- r$synergy_ci
+  # The point estimate is reported (not the median of the draws), and it lies
+  # inside its own interval.
+  expect_equal(ci$Estimate[ci$Metric == "TGI_A_pct"], r$summary$TGI_Percent[1])
+  expect_equal(ci$Estimate[ci$Metric == "Bliss_Excess_FE"],
+               r$bliss_independence$difference)
+  expect_true(all(ci$CI_Lower <= ci$Estimate & ci$Estimate <= ci$CI_Upper))
+  expect_match(r$interval_method, "endpoint model")
+  expect_match(r$statistical_tests$Method[1], "endpoint model")
+  # The per-animal estimand pairs with a per-animal bootstrap, and also reports
+  # its point estimate.
+  s <- quiet(analyze_drug_synergy(d, drug_a_name = "A", drug_b_name = "B",
+    combo_name = "Combo", control_name = "Control", endpoint_method = "last_obs",
+    n_boot = 300, boot_seed = 1, verbose = FALSE))
+  expect_equal(s$synergy_ci$Estimate[1], s$summary$TGI_Percent[1])
+  expect_match(s$interval_method, "bootstrap of animals")
+})
+
+test_that("R20.1 / R20.29: the endpoint model uses random slopes and leaves out pre-palpable zeros", {
+  d <- r20_gompertz(3)
+  # Two animals not yet palpable at day 0, one regressing to 0 at its last day.
+  d$Volume[d$Treatment == "A" & d$ID %in% 1:2 & d$Day == 0] <- 0
+  last_combo <- max(d$Day[d$Treatment == "Combo" & d$ID == 1])
+  d$Volume[d$Treatment == "Combo" & d$ID == 1 & d$Day == last_combo] <- 0
+  r <- quiet(analyze_drug_synergy(d, drug_a_name = "A", drug_b_name = "B",
+    combo_name = "Combo", control_name = "Control", n_boot = 0, verbose = FALSE))
+  info <- r$endpoint_model
+  expect_true(info$random_effects %in% c("correlated", "uncorrelated"))
+  expect_identical(info$time_basis, "natural spline, 3 df")
+  expect_equal(info$n_prepalpable_excluded, 2L)
+  expect_equal(info$n_zero_after_positive, 1L)
+})
+
+test_that("R20.1: over-time synergy analyses evaluable days only, and lists the others", {
+  d <- r20_gompertz(4)
+  ev <- evaluable_days(d)
+  r <- quiet(analyze_drug_synergy_over_time(d, drug_a_name = "A", drug_b_name = "B",
+    combo_name = "Combo", control_name = "Control", n_boot = 200, boot_seed = 1,
+    verbose = FALSE))
+  expect_equal(r$synergy_summary$Time_Point, ev$days)
+  expect_equal(r$evaluability$excluded$Day, ev$excluded$Day)
+  s <- r$synergy_summary
+  expect_true(all(s$TGI_Combo_Lower <= s$TGI_Combo & s$TGI_Combo <= s$TGI_Combo_Upper))
+})
+
+test_that("R20.17: dose-response analyses the last evaluable day and reports TGI per dose", {
+  set.seed(5)
+  days <- c(0, 4, 8, 12, 16, 20)
+  d <- do.call(rbind, lapply(c(0, 10, 30), function(dose) do.call(rbind, lapply(1:6, function(i) {
+    lv <- log(100) + stats::rnorm(1, 0, 0.15) + (0.22 - 0.005 * dose) * days +
+      stats::rnorm(length(days), 0, 0.08)
+    stop_at <- which(exp(lv) > 2000)[1]
+    keep <- if (is.na(stop_at)) seq_along(days) else seq_len(stop_at)
+    data.frame(ID = i, Treatment = if (dose == 0) "Control" else "Drug", Dose = dose,
+               Day = days[keep], Volume = exp(lv[keep]))
+  }))))
+  ev <- evaluable_days(transform(d, Treatment = as.character(Dose)))
+  r <- quiet(dose_response_statistics(d, verbose = FALSE))
+  expect_equal(r$endpoint_day, ev$last_day)
+  expect_lt(r$endpoint_day, 20)       # controls are removed before day 20
+  expect_true(all(r$analysis_data$Day == r$endpoint_day))
+  tt <- r$tgi_table
+  expect_equal(tt$Dose, c(0, 10, 30))
+  expect_true(tt$Control[tt$Dose == 0])
+  expect_true(all(diff(tt$TGI) > 0))
+  expect_true(all(tt$TGI_Lower <= tt$TGI & tt$TGI <= tt$TGI_Upper))
+  # A day on which the control has thinned out is refused, not silently
+  # analysed without it.
+  expect_error(quiet(dose_response_statistics(d, time_point = 20, verbose = FALSE)),
+               "is not evaluable")
+})
+
+test_that("R20.4: the AUC compares fitted curves over a common window", {
+  # The review's case: control 0.15/day, drug 0.08/day, removal at 2,000.
+  # Per-animal trapezoids integrate each animal over its own follow-up, so the
+  # early-removed controls get small AUCs.
+  set.seed(8)
+  days <- seq(0, 30, 3)
+  d <- do.call(rbind, lapply(names(c(Control = 0.15, Drug = 0.08)), function(arm) {
+    rate <- c(Control = 0.15, Drug = 0.08)[[arm]]
+    do.call(rbind, lapply(1:10, function(i) {
+      lv <- log(150) + stats::rnorm(1, 0, 0.2) + (rate + stats::rnorm(1, 0, 0.01)) * days +
+        stats::rnorm(length(days), 0, 0.08)
+      stop_at <- which(exp(lv) > 2000)[1]
+      keep <- if (is.na(stop_at)) seq_along(days) else seq_len(stop_at)
+      data.frame(ID = i, Treatment = arm, Day = days[keep], Volume = exp(lv[keep]))
+    }))
+  }))
+  r <- quiet(tumor_growth_statistics(d, cage_column = NULL, model_type = "auc",
+    reference_group = "Control", p_adjust_method = "holm", plots = FALSE))
+  # The descriptive trapezoids reverse the effect here...
+  ind <- r$auc_analysis$individual
+  expect_gt(mean(ind$AUC[ind$Treatment == "Drug"]),
+            mean(ind$AUC[ind$Treatment == "Control"]))
+  # ...the model-based AUC does not.
+  pw <- r$posthoc$pairwise
+  expect_lt(pw$ratio, 1)
+  expect_lt(pw$ratio_upper, 1)
+  expect_lt(pw$p_adjusted, 0.05)
+  expect_equal(unname(r$auc_window["end"]), evaluable_days(d)$last_day)
+  te <- r$treatment_effects
+  expect_true(all(te$Lower_CL <= te$AUC & te$AUC <= te$Upper_CL))
+})
+
+test_that("R20.5: tumour growth uses random slopes and F-tests by default", {
+  d <- r20_t1_df()
+  r <- quiet(tumor_growth_statistics(d, id_column = "UID", cage_column = "Cage",
+    reference_group = "Control", plots = FALSE, include_diagnostics = FALSE))
+  expect_identical(r$random_effects$requested, "slope")
+  expect_true(r$random_effects$used %in% c("slope", "slope_uncorrelated"))
+  expect_true(all(c("F value", "DenDF") %in% names(r$anova)))
+  expect_match(r$anova_method, "Satterthwaite")
+  # Intercept-only stays available on request.
+  r0 <- quiet(tumor_growth_statistics(d, id_column = "UID", cage_column = "Cage",
+    reference_group = "Control", random_effects_specification = "intercept_only",
+    plots = FALSE, include_diagnostics = FALSE))
+  expect_identical(r0$random_effects$used, "intercept_only")
 })

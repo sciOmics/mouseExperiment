@@ -17,8 +17,12 @@
 #' @param cage_column Optional cage column, part of the animal key (treatment +
 #'   ID + cage), so an ID reused across cages or arms is not one animal
 #'   (CODE_REVIEW.md T1). NULL or absent means no cage information.
-#' @param time_point Optional specific time point (day) to analyze. Default: NULL (uses last time point).
-#' @param control_group_name Name of the control group. Default: "Control".
+#' @param time_point Day to analyse. Default \code{NULL}: the last day on which
+#'   every dose group is evaluable (see \code{\link{evaluable_days}}). A day that
+#'   is not evaluable is an error. Before v0.26.0 the default was each animal's
+#'   own last observation (CODE_REVIEW.md R20.17).
+#' @param control_group_name Name of the control group. Its dose group is the
+#'   reference for \code{tgi_table}; when it is absent, dose 0 is.
 #' @param verbose Logical; if TRUE, prints model summaries and statistics to the console. Default: TRUE.
 #'
 #' @return A list containing:
@@ -28,6 +32,13 @@
 #'   \item{anova_model}{ANOVA model comparing dose groups}
 #'   \item{plots}{List of data visualizations}
 #'   \item{summary_table}{Data frame summarizing results for each dose level}
+#'   \item{endpoint_day}{The day analysed.}
+#'   \item{evaluability}{The evaluable-day record: rule, days, and the days and
+#'     dose groups it excluded.}
+#'   \item{tgi_table}{TGI per dose group at \code{endpoint_day}, from the
+#'     endpoint model shared with \code{analyze_drug_synergy()} and
+#'     \code{therapeutic_window_metric()}, with 95 % intervals from draws of
+#'     its fixed effects. \code{NULL} when there is no control.}
 #'
 #' @import drc ggplot2 dplyr stats
 #' @importFrom stats coef
@@ -74,10 +85,44 @@ dose_response_statistics <- function(df,
     as.character(df[[treatment_column]]), as.character(df[[id_column]]),
     if (has_cage) as.character(df[[cage_column]]) else "")
   
-  # Prepare data for analysis
-  analysis_data <- prepare_dose_data(df, dose_column = dose_column, treatment_column = treatment_column, 
-                                    volume_column = volume_column, day_column = day_column, 
-                                    id_column = id_column, time_point = time_point)
+  # CODE_REVIEW.md R20.17 / R20-K -- the default endpoint was each animal's own
+  # last observation, so controls removed at the volume limit contributed
+  # capped, earlier volumes (EC50 7.5 against a true 2.2), and a requested day
+  # silently dropped any arm with no animals left. The analysis now uses one
+  # day on which every dose group is evaluable (>= 50 % and >= 3 of its animals
+  # on study): by default the last such day. A requested day that is not
+  # evaluable is an error, which includes a control that has thinned out.
+  dose_num <- suppressWarnings(as.numeric(df[[dose_column]]))
+  vol_num  <- suppressWarnings(as.numeric(df[[volume_column]]))
+  day_num  <- suppressWarnings(as.numeric(df[[day_column]]))
+  keep <- is.finite(dose_num) & is.finite(vol_num) & is.finite(day_num)
+  d_std <- data.frame(MouseKey  = df$.mouse_key[keep],
+                      Treatment = format(dose_num[keep], trim = TRUE,
+                                         drop0trailing = TRUE),
+                      Day       = day_num[keep],
+                      Volume    = vol_num[keep],
+                      stringsAsFactors = FALSE)
+  evaluability <- me_evaluability(d_std)
+  eval_day <- me_resolve_eval_day(evaluability, time_point)
+
+  # Prepare data for analysis: the animals measured on the evaluation day.
+  analysis_data <- prepare_dose_data(df, dose_column = dose_column, treatment_column = treatment_column,
+                                    volume_column = volume_column, day_column = day_column,
+                                    id_column = id_column, time_point = eval_day)
+
+  # TGI per dose group at the same day, from the endpoint model shared with
+  # synergy and the therapeutic window (R20-K). The control is the dose group
+  # of `control_group_name`; without it, dose 0. The argument used to change
+  # nothing (T4b).
+  ctrl_dose <- local({
+    cd <- unique(d_std$Treatment[as.character(df[[treatment_column]][keep]) ==
+                                   control_group_name])
+    if (length(cd) == 1L) cd else if ("0" %in% d_std$Treatment) "0" else NA_character_
+  })
+  endpoint_model <- me_endpoint_model(d_std)
+  tgi_table <- if (!is.na(ctrl_dose) && !is.null(endpoint_model)) {
+    dr_tgi_table(endpoint_model, evaluability, eval_day, ctrl_dose)
+  } else NULL
   
   # Generate summary statistics
   summary_stats <- generate_summary_statistics(analysis_data, dose_column = dose_column,
@@ -111,6 +156,13 @@ dose_response_statistics <- function(df,
     plots = plots,
     summary_table = summary_stats,
     statistics = stats_results$statistics,
+    # The evaluation day, the evaluable-day record (R20-K), and TGI per dose
+    # group from the endpoint model with intervals from its draws.
+    endpoint_day = eval_day,
+    evaluability = evaluability,
+    tgi_table    = tgi_table,
+    control_dose = ctrl_dose,
+    endpoint_model = me_endpoint_model_info(endpoint_model),
     # R17.3: the per-observation frame the analysis actually ran on, at the
     # chosen time point. The dashboard needs it to rebuild its scatter, box and
     # trend plots, and had been calling `mouseExperiment::prepare_dose_data()` to
@@ -123,6 +175,34 @@ dose_response_statistics <- function(df,
 }
 
 # Removed validate_input function as it's now inlined in the main function
+
+#' TGI per dose group at the evaluation day, from the endpoint model
+#' @noRd
+#' @keywords internal
+dr_tgi_table <- function(em, ev, t, ctrl, n_draws = 2000L, seed = 20260930L) {
+  arms <- ev$arms
+  arms <- arms[order(suppressWarnings(as.numeric(arms)))]
+  lm_ <- me_endpoint_logmeans(em, arms, t)
+  dr_ <- me_draw_logmeans(em, me_beta_draws(em, n_draws, seed), arms, t)
+  on_study <- ev$table[ev$table$Day == t, ]
+  do.call(rbind, lapply(seq_along(arms), function(i) {
+    a <- arms[i]
+    tgi_draws <- 100 * (1 - exp(dr_[, a] - dr_[, ctrl]))
+    q <- if (identical(a, ctrl)) c(0, 0) else
+      stats::quantile(tgi_draws, c(0.025, 0.975), names = FALSE)
+    data.frame(
+      Dose        = as.numeric(a),
+      Mean_Volume = exp(lm_$log_mean[i]),
+      TGI         = if (identical(a, ctrl)) 0 else
+        100 * (1 - exp(lm_$log_mean[i] - lm_$log_mean[lm_$Treatment == ctrl])),
+      TGI_Lower   = q[1],
+      TGI_Upper   = q[2],
+      N_Enrolled  = on_study$N_Enrolled[on_study$Treatment == a],
+      N_On_Study  = on_study$N_On_Study[on_study$Treatment == a],
+      Control     = identical(a, ctrl),
+      stringsAsFactors = FALSE)
+  }))
+}
 
 #' Prepare data for dose-response analysis
 #' 
@@ -312,7 +392,7 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
   # 5. Growth rate analysis
   statistics <- analyze_growth_rate(original_df, analysis_data, dose_column,
                                     volume_column, day_column, id_column,
-                                    statistics)
+                                    statistics, verbose = verbose)
 
   # 6. Polynomial trend analysis
   statistics <- analyze_polynomial_trends(
@@ -544,7 +624,8 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
 #' @return Updated statistics list
 #' @keywords internal
 analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_column = "Volume", 
-                               day_column = "Day", id_column = "ID", statistics = list()) {
+                               day_column = "Day", id_column = "ID", statistics = list(),
+                               verbose = FALSE) {
   # Called directly (not through dose_response_statistics()), the data carry no
   # animal key; fall back to the ID alone.
   if (!".mouse_key" %in% names(df)) {
@@ -585,8 +666,10 @@ analyze_growth_rate <- function(df, analysis_data, dose_column = "Dose", volume_
       growth_model <- stats::lm(paste("growth_rate ~", me_bt(dose_column)), data = growth_rates)
       growth_summary <- summary(growth_model)
       
-      message("Growth rate vs dose model:")
-      message(paste(utils::capture.output(print(growth_summary)), collapse = "\n"))
+      if (isTRUE(verbose)) {
+        message("Growth rate vs dose model:")
+        message(paste(utils::capture.output(print(growth_summary)), collapse = "\n"))
+      }
       
       statistics$growth_dose_p_value <- growth_summary$coefficients[2, 4]
       statistics$growth_dose_r_squared <- growth_summary$r.squared

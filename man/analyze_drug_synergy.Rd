@@ -41,8 +41,14 @@ analyze_drug_synergy(
 
 \item{control_name}{A character string specifying the name of the control/vehicle group. Default is "Control".}
 
-\item{eval_time_point}{Optional. A numeric value specifying a specific time point to evaluate synergy.
-If NULL (default), the function will use the last time point in the data.}
+\item{eval_time_point}{Day at which to evaluate synergy. \code{NULL}
+(default): the last day on which all four arms are evaluable, i.e. at
+least 50 \% of each arm's enrolled animals, and at least 3, are still on
+study (see \code{\link{evaluable_days}}). A requested day must be
+evaluable; one that was not measured moves to the closest measured day.
+Before v0.26.0 the default was the last day in the data, where the control
+arm had usually left the study and its mean was an extrapolation
+(CODE_REVIEW.md R20.1).}
 
 \item{id_column}{Column identifying individual animals. Used to resample
 mice for the bootstrap; also used to report per-group n.}
@@ -53,9 +59,11 @@ is counted as different animals (CODE_REVIEW.md T1). NULL or absent means
 no cage information.}
 
 \item{endpoint_method}{How each arm's volume at \code{eval_time_point} is
-obtained: "model" (default, log-scale LMM marginal means using every
-observation), "last_obs", or "survivors" (pre-0.8.0 behaviour; conditions
-on survival and understates TGI). See CODE_REVIEW.md R3.5 / G.3.}
+obtained: "model" (default: each arm's geometric mean from a mixed model
+of log volume fitted to every observation, with a natural spline in time
+per arm and per-animal random slopes), "last_obs", or "survivors"
+(pre-0.8.0 behaviour; conditions on survival and understates TGI). See
+CODE_REVIEW.md R3.5 / G.3 and R20.1.}
 
 \item{ci_thresholds}{Deprecated and ignored; retained so existing calls do
 not error. It configured the removed Combination Index band.}
@@ -64,13 +72,13 @@ not error. It configured the removed Combination Index band.}
 which the label is "Strong Synergy". Default 0.1, a convention rather than
 a derived quantity.}
 
-\item{n_boot}{Integer >= 0. Number of bootstrap resamples used to attach
-confidence intervals to the synergy metrics. Mice are resampled with
-replacement \emph{within} treatment group, including the control arm, and the
-whole statistic is recomputed per resample — so the interval propagates
-both the sampling error of each arm and the sampling error of the control
-mean that forms the TGI denominator (CODE_REVIEW.md R3.6 / R3.7 / G.6).
-Default 2000. Set 0 to skip.}
+\item{n_boot}{Integer >= 0. Number of draws behind the 95 \% intervals in
+\code{synergy_ci}. Under \code{endpoint_method = "model"} they are draws
+of the endpoint model's fixed effects, so the intervals describe the
+reported model-based estimates; under the per-animal estimands they are
+bootstrap resamples of animals within arm, control included
+(CODE_REVIEW.md R3.6 / R3.7 / G.6, R20.2). Either way the point estimate
+is reported, not the median of the draws. Default 2000. Set 0 to skip.}
 
 \item{boot_seed}{Optional integer seed for reproducible resampling.}
 
@@ -89,7 +97,20 @@ Bliss independence is defined for inhibitory agents, so every Bliss quantity is 
 the expectation and difference, the \code{synergy} flag, the "Bliss Expected" row of
 \code{summary} and the \code{Bliss_Excess_FE} interval in \code{synergy_ci}
 (CODE_REVIEW.md R14.2, R20.8).}
-\item{statistical_test}{Results of statistical tests comparing observed vs. expected effects.}
+\item{statistical_tests}{The combination against each single agent at the
+evaluation day, on the same estimand as the point estimates: under
+"model", a Wald test of the log volume ratio from the endpoint model;
+otherwise Welch t-tests on the per-animal volumes.}
+\item{synergy_ci, interval_method}{95 \% intervals for the TGIs and the
+Bliss excess, and how they were obtained.}
+\item{evaluability}{The evaluable-day record: the rule, the day used, and
+the days and arms it excluded (see \code{\link{evaluable_days}}).}
+\item{endpoint_model}{How the endpoint model was fitted: time basis,
+random effects (and any fallback), excluded pre-palpable zeros.}
+\item{diag_group_qq_plot, diag_group_boxplot, diag_fit_plot}{Diagnostics
+for the estimand used: under "model", the model's residual Q-Q by arm
+and each arm's fitted curve over its data; otherwise per-animal Q-Q and
+box plots.}
 \item{plot_data}{Data prepared for plotting, to be used with plot_drug_synergy function.}
 }
 }
@@ -135,7 +156,7 @@ Interpret Bliss results cautiously when individual-agent TGIs exceed 50\%.
 
 \strong{Point estimates and labels:} \code{synergy_label} is derived from
 fixed thresholds. They are descriptive summaries, not test results. Read them
-alongside \code{synergy_ci} (mouse-level bootstrap 95\% intervals) and
+alongside \code{synergy_ci} (95\% intervals for the reported estimates) and
 \code{group_n}: a "Strong Synergy" label whose \code{Bliss_Excess_FE}
 interval spans zero is not evidence of synergy.
 }

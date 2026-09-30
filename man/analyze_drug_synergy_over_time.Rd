@@ -51,9 +51,9 @@ key, so every day failed (CODE_REVIEW.md R20.15).}
 
 \item{cage_column}{Optional cage column, part of the animal key.}
 
-\item{endpoint_method, n_boot, boot_seed}{Passed to
-\code{\link{analyze_drug_synergy}} for each day. They were not accepted
-before v0.25.0, so the dashboard's settings for them were ignored.}
+\item{endpoint_method, n_boot, boot_seed}{As in
+\code{\link{analyze_drug_synergy}}. Under the model estimand one endpoint
+model is fitted and evaluated on every day.}
 
 \item{verbose}{Logical. If TRUE, prints detailed results to the console.
 Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.}
@@ -62,7 +62,14 @@ Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use
 A list containing the following components:
 \describe{
 \item{timepoint_results}{A list of results at each time point, each containing the outputs from analyze_drug_synergy}
-\item{synergy_summary}{A data frame summarizing synergy metrics across all time points}
+\item{synergy_summary}{One row per evaluable day: TGIs, the Bliss
+expectation and difference, their 95 \% intervals (\code{*_Lower},
+\code{*_Upper}), p-values of the combination against each agent, and
+\code{Evaluable} (FALSE when Bliss does not apply that day).}
+\item{evaluability}{The evaluable-day record: only days on which all four
+arms have at least 50 \% of their enrolled animals, and at least 3, on
+study are analysed; the others are listed in \code{excluded} with the
+arms that failed (CODE_REVIEW.md R20.1, R20-K).}
 \item{peak_bliss_synergy}{The row of \code{synergy_summary} with the largest
 Bliss difference among evaluable days; a 0-row data frame when no day is
 evaluable (a single agent never inhibited growth).}

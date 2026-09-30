@@ -601,21 +601,26 @@ test_that("R3.5: the endpoint estimand corrects survivor bias in TGI", {
   full <- make_attrition_df()
   df   <- full[, c("ID", "Treatment", "Day", "Volume", "Weight")]
 
-  # Ground truth: each arm's geometric mean volume at day 28 had nobody been
-  # removed, computed from the simulation's own per-animal growth rates.
-  mice  <- unique(full[, c("ID", "Treatment", "TrueRate")])
-  truth <- vapply(split(mice, mice$Treatment),
-                  function(g) exp(mean(log(150) + g$TrueRate * 28)), numeric(1))
-  true_tgi <- (1 - truth / truth[["Control"]]) * 100
-
   tgi_for <- function(m) {
     r <- suppressWarnings(suppressMessages(therapeutic_window_metric(
       df, reference_group = "Control", endpoint_method = m,
       n_boot = 0, adjust_tumor_weight = FALSE)))
-    stats::setNames(r$tgi_data$TGI, r$tgi_data$Treatment)
+    list(tgi = stats::setNames(r$tgi_data$TGI, r$tgi_data$Treatment),
+         day = r$endpoint_day)
   }
-  surv  <- tgi_for("survivors")
-  model <- tgi_for("model")
+  surv_r  <- tgi_for("survivors")
+  model_r <- tgi_for("model")
+  surv  <- surv_r$tgi
+  model <- model_r$tgi
+
+  # Ground truth: each arm's geometric mean volume at the evaluation day (the
+  # last evaluable day, R20-K) had nobody been removed, computed from the
+  # simulation's own per-animal growth rates.
+  day   <- model_r$day
+  mice  <- unique(full[, c("ID", "Treatment", "TrueRate")])
+  truth <- vapply(split(mice, mice$Treatment),
+                  function(g) exp(mean(log(150) + g$TrueRate * day)), numeric(1))
+  true_tgi <- (1 - truth / truth[["Control"]]) * 100
 
   err <- function(x) mean(abs(x[c("DrugA", "DrugB")] -
                                 true_tgi[c("DrugA", "DrugB")]))
@@ -669,13 +674,19 @@ test_that("R3.5: the endpoint estimand reaches synergy and the other consumers",
   }))
   df <- rbind(df, combo)
 
+  # Day 28 is no longer evaluable (4 of 10 controls on study, R20-K); the
+  # default is the last evaluable day, where controls have already been lost.
   syn <- function(m) suppressWarnings(suppressMessages(analyze_drug_synergy(
     df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
-    control_name = "Control", eval_time_point = 28, endpoint_method = m,
+    control_name = "Control", endpoint_method = m,
     n_boot = 0, verbose = FALSE)))
 
   s_surv  <- syn("survivors")
   s_model <- syn("model")
+  expect_lt(s_model$eval_time_point, 28)
+  a <- s_model$attrition
+  expect_lt(a$N_At_Endpoint[a$Treatment == "Control"],
+            a$N_Enrolled[a$Treatment == "Control"])
   tgi <- function(r) r$summary$TGI_Percent[r$summary$Treatment == "DrugA"]
   expect_gt(tgi(s_model), tgi(s_surv))
   expect_false(is.null(s_model$attrition))
@@ -761,19 +772,16 @@ test_that("R3.15: power analysis accounts for multiplicity and attrition", {
 
 # ---- R3.22 ------------------------------------------------------------------
 
-test_that("R3.22: the AUC omnibus test is Welch's, matching its pairwise tests", {
+test_that("R3.22 (superseded by R20.4): the AUC omnibus and pairwise tests share one model", {
+  # R3.22 matched a Welch omnibus to Welch pairwise tests on per-animal AUCs.
+  # Since v0.26.0 both come from the model-based AUCs and their draws.
   df <- make_tg_df()
   r <- suppressWarnings(suppressMessages(tumor_growth_statistics(
     df, model_type = "auc", plots = FALSE, verbose = FALSE)))
-
-  expect_true(grepl("Welch", r$anova$Method[1]))
-  expect_equal(
-    r$anova$p_value[1],
-    stats::oneway.test(AUC ~ Treatment, data = r$auc_analysis$individual,
-                       var.equal = FALSE)$p.value,
-    tolerance = 1e-10)
-  # Variance homogeneity is reported rather than assumed.
-  expect_false(is.null(r$variance_test))
+  expect_match(r$anova$Method[1], "model-based AUC")
+  expect_true(is.finite(r$anova$p_value[1]))
+  pw <- r$posthoc$pairwise
+  expect_true(all(pw$ratio_lower <= pw$ratio & pw$ratio <= pw$ratio_upper))
 })
 
 # ---- H.4 --------------------------------------------------------------------
@@ -810,7 +818,9 @@ test_that("H.4: the log-rank fallback uses an exact permutation test", {
 
 # ---- H.2 --------------------------------------------------------------------
 
-test_that("H.2: AUC comparisons gain a permutation p-value", {
+test_that("H.2 (superseded by R20.4): auc_permutations is ignored, with a warning", {
+  # The per-animal permutation p-values belonged to the Welch t-tests, which
+  # the model-based AUC replaced in v0.26.0.
   set.seed(3)
   days <- c(0, 4, 8, 12, 16, 20)
   rows <- list()
@@ -826,22 +836,11 @@ test_that("H.2: AUC comparisons gain a permutation p-value", {
     }
   }
   df <- do.call(rbind, rows)
-
-  r <- suppressWarnings(suppressMessages(tumor_growth_statistics(
-    df, model_type = "auc", auc_permutations = 2000, auc_bootstrap_seed = 1,
-    plots = FALSE, verbose = FALSE)))
-  pw <- r$pairwise_comparisons
-
-  expect_true(all(c("perm_p_value", "perm_p_adjusted") %in% names(pw)))
-  expect_true(all(is.finite(pw$perm_p_value)))
-  # The (1 + count) / (1 + n) estimator can never return exactly zero.
-  expect_true(all(pw$perm_p_value > 0))
-  # Distinct comparisons must get distinct p-values (each pair is seeded apart).
-  expect_equal(length(unique(pw$perm_p_value)), nrow(pw))
-  # Off by default so existing callers are unaffected.
-  r0 <- suppressWarnings(suppressMessages(tumor_growth_statistics(
-    df, model_type = "auc", plots = FALSE, verbose = FALSE)))
-  expect_true(all(is.na(r0$pairwise_comparisons$perm_p_value)))
+  expect_warning(
+    suppressMessages(tumor_growth_statistics(
+      df, model_type = "auc", auc_permutations = 2000, auc_bootstrap_seed = 1,
+      plots = FALSE, verbose = FALSE)),
+    "ignored")
 })
 
 test_that("H.2: the permutation test warns when its resolution is too coarse", {

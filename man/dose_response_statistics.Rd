@@ -34,9 +34,13 @@ dose_response_statistics(
 ID + cage), so an ID reused across cages or arms is not one animal
 (CODE_REVIEW.md T1). NULL or absent means no cage information.}
 
-\item{time_point}{Optional specific time point (day) to analyze. Default: NULL (uses last time point).}
+\item{time_point}{Day to analyse. Default \code{NULL}: the last day on which
+every dose group is evaluable (see \code{\link{evaluable_days}}). A day that
+is not evaluable is an error. Before v0.26.0 the default was each animal's
+own last observation (CODE_REVIEW.md R20.17).}
 
-\item{control_group_name}{Name of the control group. Default: "Control".}
+\item{control_group_name}{Name of the control group. Its dose group is the
+reference for \code{tgi_table}; when it is absent, dose 0 is.}
 
 \item{verbose}{Logical; if TRUE, prints model summaries and statistics to the console. Default: TRUE.}
 }
@@ -48,6 +52,13 @@ A list containing:
 \item{anova_model}{ANOVA model comparing dose groups}
 \item{plots}{List of data visualizations}
 \item{summary_table}{Data frame summarizing results for each dose level}
+\item{endpoint_day}{The day analysed.}
+\item{evaluability}{The evaluable-day record: rule, days, and the days and
+dose groups it excluded.}
+\item{tgi_table}{TGI per dose group at \code{endpoint_day}, from the
+endpoint model shared with \code{analyze_drug_synergy()} and
+\code{therapeutic_window_metric()}, with 95 \% intervals from draws of
+its fixed effects. \code{NULL} when there is no control.}
 }
 \description{
 Performs statistical tests to determine if there is a significant dose-response

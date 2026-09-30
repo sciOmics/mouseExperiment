@@ -11,7 +11,8 @@ analyze_growth_rate(
   volume_column = "Volume",
   day_column = "Day",
   id_column = "ID",
-  statistics = list()
+  statistics = list(),
+  verbose = FALSE
 )
 }
 \arguments{

@@ -132,9 +132,12 @@ print(p)
 
 ## AUC Analysis
 
-AUC is one of the `tumor_growth_statistics()` models. Its group comparisons are
-independent Welch t-tests, so choose a p-value correction such as Holm; Dunnett
-and Tukey need a single fitted model and are rejected on this path:
+AUC is one of the `tumor_growth_statistics()` models. Since v0.26.0 it is the
+area under each arm's fitted curve over the window in which every arm is
+evaluable (see `evaluable_days()`), and arms are compared by the ratio of their
+AUCs. Choose a p-value correction such as Holm; Dunnett and Tukey are not
+offered on this path. Each animal's own trapezoidal AUC is kept in
+`auc_analysis$individual` for description, as plotted below:
 
 ```{r auc}
 # Calculate AUC

@@ -34,26 +34,33 @@
 #'   loss. No formal clinical basis; users with experiment-specific noise
 #'   estimates (e.g. scale precision) should tune accordingly.
 #' @param endpoint_day Day at which efficacy is evaluated. \code{NULL}
-#'   (default) uses the maximum observed day.
+#'   (default): the last day on which every arm is evaluable (see
+#'   \code{\link{evaluable_days}}); a requested day must be evaluable. Before
+#'   v0.26.0 the default was the last observed day (CODE_REVIEW.md R20.1).
 #' @param endpoint_method How the endpoint volume per arm is obtained
 #'   (CODE_REVIEW.md R3.5 / G.3):
 #'   \code{"model"} (default) takes each arm's geometric mean at
-#'   \code{endpoint_day} from a log-scale mixed model fitted to every
-#'   observation, so animals euthanised earlier still contribute;
+#'   \code{endpoint_day} from a mixed model of log volume fitted to every
+#'   observation (natural spline in time per arm, per-animal random slopes),
+#'   the same TGI as \code{\link{analyze_drug_synergy}}, so animals euthanised
+#'   earlier still contribute;
 #'   \code{"last_obs"} uses each animal's own last observation at or before the
 #'   endpoint day; \code{"survivors"} reproduces the pre-0.8.0 raw mean among
 #'   animals observed at the endpoint day, which conditions on survival and
 #'   biases TGI downward — it warns when animals were lost.
-#' @param n_boot Integer >= 0. Mouse-level bootstrap resamples used to attach
-#'   95% percentile intervals to TGI, mean weight loss, and TWM. Mice are
-#'   resampled within group including the control arm, so the interval
-#'   propagates the TGI denominator's uncertainty (CODE_REVIEW.md R3.6 / R3.7).
-#'   Default 2000; set 0 to skip.
+#' @param n_boot Integer >= 0. Draws behind the 95% intervals. Under the model
+#'   estimand, TGI intervals come from draws of the endpoint model's fixed
+#'   effects and weight-loss intervals from a bootstrap of animals; TWM then
+#'   has no interval, because its parts come from different sources. Under the
+#'   per-animal estimands one bootstrap of animals (control included) gives all
+#'   three (CODE_REVIEW.md R3.6 / R3.7, R20.2). Default 2000; set 0 to skip.
 #' @param boot_seed Optional integer seed for reproducible resampling.
-#' @return A list with: \code{twm_table} (point estimates plus bootstrap
+#' @return A list with: \code{twm_table} (point estimates plus interval
 #'   bounds), \code{twm_ci}, \code{tgi_data}, \code{weight_loss_data},
 #'   \code{n_at_endpoint} (animals contributing at the endpoint day, per arm),
-#'   and \code{endpoint_day}.
+#'   \code{endpoint_day}, \code{evaluability} (the rule, the day used and the
+#'   days and arms it excluded), \code{endpoint_model} and
+#'   \code{interval_note}.
 #'
 #' @section Interpreting the ranking:
 #' \code{twm_table} is sorted by TWM, which reads as a ranking. Check
@@ -123,30 +130,29 @@ therapeutic_window_metric <- function(df,
   }
 
   # --- TGI per treatment group ---
-  # CODE_REVIEW.md R3.5 / G.3 — this used to take the raw mean among animals
-  # still observed at the global last day, which conditions on survival and
-  # biases TGI downward (hardest against the control arm, which loses animals
-  # first). The default now reads each arm's geometric mean at the endpoint day
-  # off a log-scale LMM fitted to every observation from every animal.
+  # CODE_REVIEW.md R3.5 / G.3 -- each arm's geometric mean at the endpoint day
+  # from the endpoint model fitted to every observation of every animal, the
+  # same TGI as analyze_drug_synergy() and dose_response_statistics() (R20-K).
+  # It uses every volume measurement, with or without a weight on that day.
+  # R20.1: the default day is the last one on which every arm is evaluable,
+  # and a requested day must be evaluable.
+  vd <- data.frame(MouseKey  = make_mouse_key(as.character(df[[id_column]]),
+                                              as.character(df[[treatment_column]]),
+                                              cage_vec),
+                   Treatment = as.character(df[[treatment_column]]),
+                   Day       = as.numeric(df[[time_column]]),
+                   Volume    = as.numeric(df[[volume_column]]),
+                   stringsAsFactors = FALSE)
+  vd <- vd[is.finite(vd$Day) & is.finite(vd$Volume), , drop = FALSE]
   ep <- endpoint_volumes(
-    wd, id_column = "MouseKey", treatment_column = "Treatment",
+    vd, id_column = "MouseKey", treatment_column = "Treatment",
     time_column = "Day", volume_column = "Volume",
-    endpoint_day = endpoint_day, endpoint_method = endpoint_method
+    endpoint_day = endpoint_day, endpoint_method = endpoint_method,
+    arms = sort(unique(vd$Treatment))
   )
   max_day  <- ep$endpoint_day
   tgi_data <- endpoint_tgi(ep$group_means, reference_group)
-
-  # Per-mouse endpoint volumes for the bootstrap. The model path has no
-  # per-mouse draw, so resample the last-observation values, which use every
-  # animal too.
-  final <- if (!is.null(ep$per_mouse)) {
-    ep$per_mouse
-  } else {
-    endpoint_volumes(wd, id_column = "MouseKey", treatment_column = "Treatment",
-                     time_column = "Day", volume_column = "Volume",
-                     endpoint_day = endpoint_day,
-                     endpoint_method = "last_obs")$per_mouse
-  }
+  model_based <- identical(ep$method, "model")
 
   # --- Max % weight loss per group ---
   # Per mouse: baseline weight, nadir weight, max % loss
@@ -199,15 +205,33 @@ therapeutic_window_metric <- function(df,
   )
   twm <- twm[order(-twm$TWM), ]
 
-  # CODE_REVIEW.md R3.6 / R3.7 / G.6 — TWM is a ratio of two group means that
-  # was previously reported as a bare point estimate and then *sorted*, so the
-  # table read as a ranking of treatments with no indication of how much of the
-  # ordering was noise. Resample mice within group (control included, since it
-  # is the TGI denominator) and recompute TGI, mean weight loss, and TWM from
-  # scratch on each resample.
+  # CODE_REVIEW.md R3.6 / R3.7 / G.6 -- intervals, so the ranking can be read
+  # against its noise. R20.2: they must describe the reported estimates.
+  # - Model estimand: TGI from draws of the endpoint model; weight loss from
+  #   a bootstrap of animals. The TWM ratio has no interval, because the two
+  #   come from different sources; it is replaced by a two-axis summary in
+  #   v0.27.0 (R20-K).
+  # - Per-animal estimands: one bootstrap of animals for TGI, weight loss and
+  #   TWM together.
   twm_ci <- if (n_boot > 0L) {
-    twm_bootstrap(final, mouse_wl, reference_group, noise_floor,
-                  n_boot = as.integer(n_boot), seed = boot_seed)
+    if (model_based) {
+      tgi_ci <- twm_model_tgi_ci(ep$model, tgi_data$Treatment, reference_group,
+                                 max_day, n_draws = as.integer(n_boot),
+                                 seed = boot_seed)
+      wl_ci  <- twm_wl_bootstrap(mouse_wl, n_boot = as.integer(n_boot),
+                                 seed = boot_seed)
+      if (is.null(tgi_ci) || is.null(wl_ci)) NULL else {
+        out <- merge(tgi_ci, wl_ci, by = "Treatment", all = TRUE)
+        out$TWM_Lower <- NA_real_
+        out$TWM_Upper <- NA_real_
+        out$Boot_N <- as.integer(n_boot)
+        out[, c("Treatment", "TGI_Lower", "TGI_Upper", "WL_Lower", "WL_Upper",
+                "TWM_Lower", "TWM_Upper", "Boot_N")]
+      }
+    } else {
+      twm_bootstrap(ep$per_mouse, mouse_wl, reference_group, noise_floor,
+                    n_boot = as.integer(n_boot), seed = boot_seed)
+    }
   } else NULL
 
   if (!is.null(twm_ci)) {
@@ -227,8 +251,53 @@ therapeutic_window_metric <- function(df,
     n_at_endpoint    = n_at_endpoint,
     attrition        = ep$attrition,
     endpoint_day     = max_day,
-    endpoint_method  = ep$method
+    endpoint_method  = ep$method,
+    # The evaluable-day record (R20-K) and how the TGI was modelled.
+    evaluability     = ep$evaluability,
+    endpoint_model   = me_endpoint_model_info(ep$model),
+    interval_note    = if (model_based) paste(
+      "TGI intervals: draws from the endpoint model's fixed effects.",
+      "Weight-loss intervals: bootstrap of animals within arm.",
+      "The TWM ratio has no interval: its two parts come from different sources.")
+      else "Intervals: bootstrap of animals within arm, for TGI, weight loss and TWM together."
   )
+}
+
+#' TGI intervals from the endpoint model
+#' @noRd
+#' @keywords internal
+twm_model_tgi_ci <- function(em, arms, reference_group, t, n_draws = 2000L,
+                             seed = NULL) {
+  if (is.null(em) || n_draws < 2L || !reference_group %in% arms) return(NULL)
+  lm_ <- me_draw_logmeans(em, me_beta_draws(em, n_draws, seed), arms, t)
+  ref <- lm_[, reference_group]
+  do.call(rbind, lapply(arms, function(a) {
+    if (identical(a, reference_group)) {
+      return(data.frame(Treatment = a, TGI_Lower = 0, TGI_Upper = 0))
+    }
+    q <- stats::quantile(100 * (1 - exp(lm_[, a] - ref)), c(0.025, 0.975),
+                         names = FALSE)
+    data.frame(Treatment = a, TGI_Lower = q[1], TGI_Upper = q[2])
+  }))
+}
+
+#' Bootstrap intervals for each arm's mean weight loss
+#' @noRd
+#' @keywords internal
+twm_wl_bootstrap <- function(mouse_wl, n_boot = 2000L, seed = NULL) {
+  if (n_boot < 2L) return(NULL)
+  by <- split(as.numeric(mouse_wl$Pct_Loss), mouse_wl$Treatment)
+  by <- lapply(by, function(v) v[is.finite(v)])
+  me_with_seed(seed, do.call(rbind, lapply(names(by), function(g) {
+    v <- by[[g]]
+    if (length(v) < 2L) {
+      return(data.frame(Treatment = g, WL_Lower = NA_real_, WL_Upper = NA_real_))
+    }
+    m <- vapply(seq_len(n_boot), function(i) mean(sample(v, length(v), TRUE)),
+                numeric(1L))
+    q <- stats::quantile(m, c(0.025, 0.975), names = FALSE)
+    data.frame(Treatment = g, WL_Lower = q[1], WL_Upper = q[2])
+  })))
 }
 
 #' Mouse-level bootstrap CIs for TGI, mean weight loss, and TWM

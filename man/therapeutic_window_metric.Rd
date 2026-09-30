@@ -64,31 +64,38 @@ loss. No formal clinical basis; users with experiment-specific noise
 estimates (e.g. scale precision) should tune accordingly.}
 
 \item{endpoint_day}{Day at which efficacy is evaluated. \code{NULL}
-(default) uses the maximum observed day.}
+(default): the last day on which every arm is evaluable (see
+\code{\link{evaluable_days}}); a requested day must be evaluable. Before
+v0.26.0 the default was the last observed day (CODE_REVIEW.md R20.1).}
 
 \item{endpoint_method}{How the endpoint volume per arm is obtained
 (CODE_REVIEW.md R3.5 / G.3):
 \code{"model"} (default) takes each arm's geometric mean at
-\code{endpoint_day} from a log-scale mixed model fitted to every
-observation, so animals euthanised earlier still contribute;
+\code{endpoint_day} from a mixed model of log volume fitted to every
+observation (natural spline in time per arm, per-animal random slopes),
+the same TGI as \code{\link{analyze_drug_synergy}}, so animals euthanised
+earlier still contribute;
 \code{"last_obs"} uses each animal's own last observation at or before the
 endpoint day; \code{"survivors"} reproduces the pre-0.8.0 raw mean among
 animals observed at the endpoint day, which conditions on survival and
 biases TGI downward — it warns when animals were lost.}
 
-\item{n_boot}{Integer >= 0. Mouse-level bootstrap resamples used to attach
-95\% percentile intervals to TGI, mean weight loss, and TWM. Mice are
-resampled within group including the control arm, so the interval
-propagates the TGI denominator's uncertainty (CODE_REVIEW.md R3.6 / R3.7).
-Default 2000; set 0 to skip.}
+\item{n_boot}{Integer >= 0. Draws behind the 95\% intervals. Under the model
+estimand, TGI intervals come from draws of the endpoint model's fixed
+effects and weight-loss intervals from a bootstrap of animals; TWM then
+has no interval, because its parts come from different sources. Under the
+per-animal estimands one bootstrap of animals (control included) gives all
+three (CODE_REVIEW.md R3.6 / R3.7, R20.2). Default 2000; set 0 to skip.}
 
 \item{boot_seed}{Optional integer seed for reproducible resampling.}
 }
 \value{
-A list with: \code{twm_table} (point estimates plus bootstrap
+A list with: \code{twm_table} (point estimates plus interval
 bounds), \code{twm_ci}, \code{tgi_data}, \code{weight_loss_data},
 \code{n_at_endpoint} (animals contributing at the endpoint day, per arm),
-and \code{endpoint_day}.
+\code{endpoint_day}, \code{evaluability} (the rule, the day used and the
+days and arms it excluded), \code{endpoint_model} and
+\code{interval_note}.
 }
 \description{
 Computes TWM = max(TGI, 0) / max(MeanWeightLoss\%, noise_floor) per treatment

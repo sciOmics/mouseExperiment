@@ -8,6 +8,19 @@ For the Bayesian-specific diagnostics surface (Rhat, ESS, NUTS, LOO, Bayes R², 
 
 ---
 
+## Endpoint TGI and evaluable days
+
+Synergy, the therapeutic window, dose-response and the AUC all read each arm's volume at an endpoint from one model, the endpoint model (v0.26.0, `CODE_REVIEW.md` R20.1, R20.29):
+
+- **Scale and curve:** log volume, with a natural spline in time (3 df) for each arm, or a straight line when an arm has fewer than 4 measured days.
+- **Random effects:** per-animal random slopes, falling back to uncorrelated slopes and then to a random intercept when a fit fails.
+- **Data:** fitted to every measurement of every animal, so animals removed at the volume limit still inform their arm. This is valid when removal depends on a measured volume (missing at random).
+- **Zero volumes:** those measured before a tumour was palpable are left out; a zero after a positive volume is set to the smallest positive volume.
+- **Reported mean:** each arm's geometric mean at the endpoint day, exp of its log-scale mean.
+- **Intervals:** any function of the arm means (TGI, the Bliss excess, an AUC) gets its interval from draws of the model's fixed effects.
+
+**Evaluable days** (`evaluable_days()`; maintainer decision R20-K, 2026-09-30). An arm is evaluable on a day when at least 50 % of its enrolled animals, and at least 3, are still on study (measured on that day or later). Every endpoint uses only days on which every arm it compares is evaluable. The default is the last such day, and a requested day that is not evaluable is an error. Past that day an arm's mean would be extrapolated beyond most of its own animals; the straight-line model that preceded this one put the Combo demo's control at 28,544 mm³ against about 3,000 observed. Each result reports `evaluability`: the rule, the day used, and the days and arms it excluded.
+
 ## Tumor Growth
 
 Function family: `tumor_growth_statistics()`, `bayesian_tumor_growth()`, `tumor_doubling_time()`.
@@ -16,8 +29,8 @@ The tumor growth pipeline supports three models:
 
 | Model | Function | Use when |
 |---|---|---|
-| `"lme4"` | `tumor_growth_statistics(..., model_type = "lme4")` | Default. Linear mixed-effects on log-volume; per-animal random intercept (and optionally slope). Comparable to common preclinical-oncology defaults. |
-| `"auc"` | `tumor_growth_statistics(..., model_type = "auc")` | When trajectories are non-monotonic or the time-window matters more than the per-mouse slope. Per-mouse AUC under the growth curve; pairwise treatment comparisons via Welch's t-test. |
+| `"lme4"` | `tumor_growth_statistics(..., model_type = "lme4")` | Default. Linear mixed-effects on log-volume with per-animal random slopes `(Day \| animal)` since v0.26.0, falling back to uncorrelated slopes and then a random intercept (with a warning) when a fit fails. Type III F-tests with Satterthwaite degrees of freedom. |
+| `"auc"` | `tumor_growth_statistics(..., model_type = "auc")` | When total tumour burden over a window is the question. The area under each arm's fitted curve over the window in which every arm is evaluable, compared by AUC ratios with intervals from model draws (v0.26.0). |
 | Bayesian LMM | `bayesian_tumor_growth(...)` | When you want posterior probability statements, credible intervals with direct probability interpretation, or you have small N where the prior matters. Slower (3-12 min); use `cmdstanr` backend for faster compile. |
 
 ### Required columns
@@ -50,7 +63,8 @@ Optional: `cage_column` (random intercept), `dose_column` (when crossed with tre
 | `pairwise_comparisons` | Treatment-pair contrasts. Columns: `contrast`, `estimate`, `SE`, `df`, `p.value`, `lower.CL`, `upper.CL` |
 | `all_pairwise_comparisons` | All pairs, not Dunnett-filtered (used by the dashboard's forest plot) |
 | `reference_comparisons_dunnett` | Only present when `reference_group` is specified; Dunnett-style multiplicity-adjusted contrasts vs reference |
-| `anova` | Type II/III ANOVA from `car::Anova` |
+| `anova`, `anova_method` | Type III F-tests with Satterthwaite degrees of freedom (`lmerTest`); `car`'s Wald χ² only if that fails |
+| `random_effects` | The random-effects structure requested and used, and the reason for any fallback |
 | `growth_rates` | Per-animal exponential growth rate (= slope on log scale); one row per animal |
 | `data_summary` | N per group, mean baseline volume, mean final volume |
 | `tumor_growth_plot` | ggplot of trajectories with group means overlaid (only when `plots = TRUE`) |
@@ -58,12 +72,17 @@ Optional: `cage_column` (random intercept), `dose_column` (when crossed with tre
 
 ### AUC path
 
-`model_type = "auc"` returns the same shape but with `auc_analysis` populated and `growth_rates` may be NULL. `auc_analysis$individual` is one row per animal with the integrated AUC; `auc_analysis$summary` is per-group mean ± SD. Pairwise comparisons use Welch's t on log-AUC.
+Since v0.26.0 (`CODE_REVIEW.md` R20.4) the AUC is **model-based**. It is the area under each arm's fitted geometric-mean curve, from the endpoint model described under "Endpoint TGI and evaluable days" below. The window runs from the first study day to the last day on which every arm is evaluable (`auc_window`).
+- `treatment_effects`: each arm's AUC with a 95 % interval.
+- Pairwise comparisons: the AUC ratio and difference, with intervals and Wald p-values from 4,000 draws of the model's fixed effects, adjusted over the requested family.
+- `anova`: a Wald test that every arm has the same log AUC.
+
+`auc_analysis$individual` keeps each animal's trapezoidal AUC for description only. It covers the animal's own follow-up, so controls removed early at the volume limit get small AUCs; compared directly, that reversed the sign of the effect in 53.5 % of simulated studies.
 
 ### Assumptions you're accepting
 
-- **LME4:** linearity on transformed scale; independent residuals within mouse (the random intercept absorbs mouse-level variation); homoscedasticity across treatments
-- **AUC:** unequal variances allowed (Welch); independence between animals; the AUC is a meaningful summary of growth (often arguable on its own — pair with growth rates)
+- **LME4:** linearity in time on the transformed scale within each animal; animals differ in intercept and slope (random slopes); homoscedastic residuals. With a random intercept only, differing growth rates land in the residual and the Treatment × Day test rejected a true null in 73 % of simulated studies (R20.5).
+- **AUC:** the endpoint model's assumptions (log-normal volumes, missing at random given the observed volumes, which holds when removal is triggered by a measured volume); independence between animals.
 - **Bayesian LMM:** prior choice is honest; see [`BAYESIAN.md`](BAYESIAN.md)
 
 ### When to pick what
@@ -148,7 +167,7 @@ For survival-style analysis: time to ≥ X% weight loss. Wired into the dashboar
 TWM = TGI(%) / mean_weight_loss(%)
 ```
 
-Higher TWM = better therapeutic window. (Planned change, `CODE_REVIEW.md` R20-K: the ratio is to be replaced by a two-axis summary — model-based TGI against worst weight loss, each with an interval — plus a tolerability flag.)
+Higher TWM = better therapeutic window. TGI is the endpoint TGI described under "Endpoint TGI and evaluable days", at the last day on which every arm is evaluable, with intervals from model draws. Weight-loss intervals come from a bootstrap of animals. Under the model estimand the ratio has no interval, because its parts come from different sources. (Planned change, `CODE_REVIEW.md` R20-K: the ratio is to be replaced by a two-axis summary — model-based TGI against worst weight loss, each with an interval — plus a tolerability flag.)
 
 ### Assumptions
 
@@ -175,7 +194,7 @@ synergy < 0    = sub-additive (Bliss antagonism)
 synergy ≈ 0    = independent
 ```
 
-Reported with the synergy score and a mouse-level bootstrap 95% CI (`synergy_ci`).
+The fractional effects are the endpoint TGIs described under "Endpoint TGI and evaluable days", at the last day on which all four arms are evaluable. `synergy_ci` gives 95 % intervals for the reported estimates: from draws of the endpoint model under the default estimand, or from a bootstrap of animals under the per-animal estimands. The combination-versus-agent tests use the same estimand.
 
 ### Why there is no Combination Index
 
@@ -203,7 +222,7 @@ change.
 
 ### `_over_time` variants
 
-Same metric, computed at each timepoint, returning a `synergy_summary` table with one row per `(day, treatment_pair)`. Useful for detecting late-onset synergy or synergy that decays.
+Same metric on every evaluable day, from one fit of the endpoint model, returning a `synergy_summary` table with one row per evaluable day and interval columns. Days on which an arm has thinned out are not analysed; `evaluability$excluded` lists them with the arms that failed the rule.
 
 ### Assumptions
 
@@ -225,6 +244,8 @@ volume(dose) = lower + (upper - lower) / (1 + (dose / EC50)^slope)
 ```
 
 Returns: `linear_model`, `anova_model`, `statistics$ec50`, `hill_slope`, `lower_limit`, `upper_limit`, `growth_dose_p_value`, plus the analysis data.
+
+The analysis uses one day: by default the last day on which every dose group is evaluable (`endpoint_day`), with the animals measured that day. A requested day that is not evaluable, for example because the control has thinned out, is an error. Before v0.26.0 the default was each animal's own last observation, which gave removed controls capped, earlier volumes (EC50 7.5 against a true 2.2; R20.17). `tgi_table` reports TGI per dose group at `endpoint_day` from the endpoint model, with intervals; the reference is the dose group of `control_group_name`, or dose 0.
 
 ### Assumptions
 
@@ -248,7 +269,7 @@ Before v0.24.0 the k ≥ 3 path powered a one-way ANOVA with f = d/√2 (CODE_RE
 
 ### LMM simulation (`apriori_power_simulation()`)
 
-Simulates data under an LME4 model with specified variance structure, fits, and counts the proportion of simulated runs where the treatment effect is significant. Slower (1-10 min depending on `n_sim`). Use when:
+Simulates data under an LME4 model with specified variance structure, fits, and counts the proportion of simulated runs where the treatment effect is significant. The analysis powered is the default tumour-growth model, with random slopes (since v0.26.0; `CODE_REVIEW.md` R20.34). Slower (1-10 min depending on `n_sim`). Use when:
 - Downstream analysis is the LMM path (you almost always want this for repeated-measures designs)
 - You have an estimate of within-mouse variance from prior data
 - You need to size for the right test (not the t-test approximation)

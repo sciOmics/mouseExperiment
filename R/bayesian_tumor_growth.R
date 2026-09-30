@@ -28,8 +28,12 @@
 #'   \code{"log"} (default, recommended for exponential growth),
 #'   \code{"sqrt"}, or \code{"none"}.
 #' @param random_effects_specification Random effects structure:
-#'   \code{"intercept_only"} (default, \code{(1 | ID)}) or
-#'   \code{"slope"} (\code{(Day | ID)}, adds per-animal random slopes).
+#'   \code{"slope"} (default since v0.26.0, \code{(Day | animal)}, as in
+#'   \code{\link{tumor_growth_statistics}}: per-animal random slopes, so the
+#'   Treatment x Day effect is not judged against a residual that holds the
+#'   animals' differing growth rates; CODE_REVIEW.md R20.5) or
+#'   \code{"intercept_only"} (\code{(1 | animal)}), which assumes every
+#'   animal in an arm grows at the same rate.
 #' @param reference_group Treatment group used as the reference (Intercept)
 #'   level. Auto-detected if \code{NULL}: checks for common control-group
 #'   names (\code{Control}, \code{Vehicle}, \code{control}, \code{vehicle},
@@ -207,7 +211,7 @@ bayesian_tumor_growth <- function(
   cage_column                  = NULL,
   dose_column                  = NULL,
   transform                    = c("log", "sqrt", "none"),
-  random_effects_specification = c("intercept_only", "slope"),
+  random_effects_specification = c("slope", "intercept_only"),
   reference_group              = NULL,
   prior_strength               = c("skeptical", "weakly_informative", "informative", "diffuse", "manual"),
   prior_b                      = NULL,
@@ -761,6 +765,20 @@ tg_brms_per_animal_growth_rates <- function(model, treatment_column,
     fe_names, value = TRUE
   )
 
+  # CODE_REVIEW.md R20.37 -- the arm's column was found by pasting its label
+  # into a regular expression, but brms sanitises labels ("DrugA 10" becomes
+  # "DrugA10", "+" becomes "P"), so nothing matched and every arm silently got
+  # the reference slope. Map levels to columns by position instead: the
+  # columns follow the factor's level order, reference first (bs_build_
+  # treatment_table() does the same). Dose-mapped labels always contain a
+  # space, and random slopes are now the default (R20.5), so this was on the
+  # default path.
+  lev <- levels(analysis_df[[treatment_column]])
+  if (is.null(lev) || length(int_cols) != length(lev) - 1L) return(NULL)
+  slope_by_level <- c(list(ref_slope_draws),
+                      lapply(int_cols, function(cn) ref_slope_draws + fe[, cn]))
+  names(slope_by_level) <- lev
+
   # Per-animal random slope draws on Day. brms::ranef(summary = FALSE)
   # returns a list of 3D arrays (draws x animals x effects).
   re_all <- tryCatch(brms::ranef(model, summary = FALSE),
@@ -795,22 +813,9 @@ tg_brms_per_animal_growth_rates <- function(model, treatment_column,
     treat <- as.character(meta[[treatment_column]])[[1L]]
     cage  <- if (cage_col_present) as.character(meta[["Cage"]])[[1L]] else NA_character_
 
-    # Build treatment fixed slope = reference slope + interaction (if any)
-    # for this animal's treatment level. brms encodes interaction columns as
-    # "<treatment_column><level>:<time>" — drop the reference level.
-    int_for_treat <- grep(
-      paste0("^", treatment_column,
-             gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1", treat,
-                  perl = TRUE),
-             ":", time_column, "$"),
-      int_cols, value = TRUE
-    )
-    if (length(int_for_treat) == 1L) {
-      treat_slope_draws <- ref_slope_draws + fe[, int_for_treat]
-    } else {
-      # Treatment is the reference level (or naming differs) — use ref slope.
-      treat_slope_draws <- ref_slope_draws
-    }
+    # The arm's fixed slope: reference slope + its interaction (R20.37).
+    treat_slope_draws <- slope_by_level[[treat]]
+    if (is.null(treat_slope_draws)) return(NULL)
     animal_slope_draws <- treat_slope_draws + re_slope[, aid]
 
     qq <- stats::quantile(animal_slope_draws,

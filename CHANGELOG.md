@@ -5,6 +5,90 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.0] - 2026-09-30
+
+Fourth implementation step of the Round 20 review (`CODE_REVIEW.md` R20-O): the
+evaluable-day rule, one endpoint model behind every TGI, a model-based AUC, and
+random slopes by default.
+
+### Added
+
+- **`evaluable_days()` (R20-K).** An arm is evaluable on a day when at least
+  50 % of its enrolled animals, and at least 3, are still on study. Synergy
+  (single day and over time), the therapeutic window, dose-response and the
+  AUC use only days on which every arm they compare is evaluable. By default
+  they evaluate the last such day, and a requested day that is not evaluable
+  is an error. Each returns an `evaluability` record: the rule, the day used,
+  and the days and arms it excluded.
+
+### Fixed — Critical
+
+- **Endpoint TGI extrapolated the removed control arm (R20.1, R20.29).**
+  - The endpoint model forced log volume to be linear in time, and synergy
+    evaluated the last study day by default. On the Combo demo that put the
+    control at 28,544 mm³ against about 3,000 observed.
+  - The model now gives each arm a natural spline in time (3 df) and each
+    animal a random slope, falling back as above. It leaves out zero volumes
+    measured before a tumour was palpable, instead of flooring them at half
+    the smallest volume.
+  - On simulated Gompertz studies, the default output's TGI errors were 35–53
+    points (R20.1). They are now about 3 points (mean over 30 studies), with a
+    Bliss-excess bias of +0.015.
+- **Intervals described a different estimator (R20.2, synergy half).**
+  - Under the model estimand, the synergy intervals now come from draws of the
+    endpoint model's fixed effects. The combination-versus-agent tests are
+    Wald tests of the log volume ratio, and the diagnostics are that model's
+    residuals and fitted curves.
+  - Coverage in the Gompertz simulation was 92–93 % for a nominal 95 %
+    (43–59 % before), and every estimate lies inside its own interval.
+  - The point estimate is reported, not the median of the draws, under every
+    estimand.
+  - The therapeutic window's TGI intervals come from the same draws. Its TWM
+    ratio has no interval under the model estimand until the two-axis summary
+    replaces it.
+- **The AUC integrated each animal over its own follow-up (R20.4; R3.3 was
+  never applied).**
+  - It is now the area under each arm's fitted curve, from the first study day
+    to the last day on which every arm is evaluable.
+  - Arms are compared by the ratio of their AUCs, with intervals and Wald
+    p-values from model draws. On the review's case, where the per-animal
+    trapezoids reversed the effect, the drug/control ratio is below 1 with
+    p < 0.05.
+  - `auc_bootstrap_n` and `auc_permutations` are ignored, with a warning.
+- **The default random effects gave 73 % false positives for Treatment × Day
+  (R20.5).**
+  - `tumor_growth_statistics()` now defaults to correlated random slopes. A fit
+    that errors or fails to converge falls back to uncorrelated slopes, then to
+    a random intercept, with a warning. The structure used is reported in
+    `random_effects`.
+  - The ANOVA reports Satterthwaite F-tests (lmerTest).
+  - `bayesian_tumor_growth()` also defaults to random slopes.
+
+### Fixed
+
+- **Dose-response used each animal's own last observation (R20.17).**
+  - It now analyses the last day on which every dose group is evaluable, and a
+    requested day on which the control has thinned out is refused.
+  - `tgi_table` reports TGI per dose group from the shared endpoint model.
+  - `control_group_name`, which changed nothing before, now chooses the
+    reference.
+- **Bayesian per-animal slopes used the control slope whenever brms renamed a
+  label (R20.37).** Labels with spaces or "+" are renamed by brms, and every
+  dose-mapped label has a space. Arms are now matched to coefficients by
+  position.
+- **The power simulation now names the analysis it powers (R20.34):** the
+  default random-slope model.
+- The "Bliss Expected" row of the synergy summary no longer carries the
+  control's row name (R20.86, first half).
+- `dose_response_statistics(verbose = FALSE)` no longer prints the growth-rate
+  model.
+
+### Changed
+
+- Over-time synergy fits one endpoint model and evaluates it on every
+  evaluable day, adding per-day interval columns to `synergy_summary`.
+- `splines` joins Imports.
+
 ## [0.25.2] - 2026-09-30
 
 ### Fixed

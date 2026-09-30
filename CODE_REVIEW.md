@@ -5261,11 +5261,11 @@ Recorded in place here rather than by editing the earlier text, following the Ro
 
 | ID | Issue | Severity | Status |
 |---|---|---|---|
-| R20.1 | Synergy default extrapolates the removed control; TGI overstated, synergy erased | **Critical** | Open |
-| R20.2 | Synergy/TWM intervals describe a different estimator from the point estimate | **Critical** | Open |
+| R20.1 | Synergy default extrapolates the removed control; TGI overstated, synergy erased | **Critical** | ✅ Fixed v0.26.0 (R20-O) |
+| R20.2 | Synergy/TWM intervals describe a different estimator from the point estimate | **Critical** | Synergy half ✅ Fixed v0.26.0 (R20-O); the TWM ratio loses its interval until the two-axis summary (step 5) |
 | R20.3 | Random effects and reductions key on raw ID (8 sites) | **Critical** | ✅ Fixed v0.25.0 (R20-N) |
-| R20.4 | AUC over each animal's own window; R3.3 never applied | **Critical** | Open |
-| R20.5 | Default intercept-only LMM: 73 % false positives on Treatment × Day | **Critical** | Open |
+| R20.4 | AUC over each animal's own window; R3.3 never applied | **Critical** | ✅ Fixed v0.26.0 (R20-O) |
+| R20.5 | Default intercept-only LMM: 73 % false positives on Treatment × Day | **Critical** | ✅ Fixed v0.26.0 (R20-O) |
 | R20.6 | Survival `cluster(cage)` with 4–10 clusters: 28 % false positives | **Critical** | ✅ Fixed v0.25.0 (R20-N) |
 | R20.7 | Analytic power k ≥ 3: required N 2.6–4× too small | **Critical** | ✅ Fixed v0.24.0 (R20-M) |
 | R20.8 | R14.2 fixed in the label only | **Critical** | ✅ Fixed v0.24.0 (R20-M) |
@@ -5274,7 +5274,7 @@ Recorded in place here rather than by editing the earlier text, following the Ro
 | R20.11 | TBA survivor-conditioned toxicity; rank inverted | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
 | R20.12 | Bayesian dose-response fails on default `endpoint_day = NULL` | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
 | R20.13 | Bayesian TWM treats weight gain as toxicity | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
-| R20.14–R20.48 | Dose-response, synergy, survival/weight-loss, tumour growth, power, Bayesian, toxicity, cross-cutting (35 items) | Major | Open |
+| R20.14–R20.48 | Dose-response, synergy, survival/weight-loss, tumour growth, power, Bayesian, toxicity, cross-cutting (35 items) | Major | Open. Fixed: R20.15 (R20-N); R20.17, R20.29, R20.34, R20.37 (R20-O) |
 | R20.49–R20.53, R20.55 | Vignette, examples, README, datasets, CI/process, test-suite gaps | Major | Open |
 | R20.54 | Build hygiene | Minor | Open |
 | R20.56–R20.75 | Minor (20 items) | Minor | Open |
@@ -5339,7 +5339,7 @@ The lme4 `pairwise_comparisons` table has no CI columns, so the dashboard builds
 | R20.83 | Unit heuristic classes mm³ data as cm³; 1000× mass correction | **Critical** | ✅ Fixed v0.25.0 (R20-N) |
 | R20.84 | Q-Q plots against a y = x line on unstandardised values | Major | Open |
 | R20.85 | No adjusted intervals on contrasts; unadjusted CIs shown with adjusted p | Major | Open |
-| R20.86 | Bliss row name; data_summary scale | Minor | Open |
+| R20.86 | Bliss row name; data_summary scale | Minor | Row name ✅ fixed v0.26.0 (R20-O); data_summary scale open |
 
 Round 19 correction, added to R20-H: "`detect_volume_units()` — correct both ways" held only for well-separated magnitudes (R20.83).
 
@@ -5503,3 +5503,68 @@ Two commits: the key and names first, then units and survival.
 - **"Chi-squared approximation may be incorrect":** a cage × treatment chi-square on measurement rows. Its p-value counted repeated measures as independent, and its only reader, the dead `cage_collinear` flag, had not been used since R3.17. It is removed, along with `cage_analysis$collinearity_test`.
 
 One test, which fails on v0.25.1.
+
+## R20-O Implementation log — v0.26.0, step 4 (package): evaluable days, one endpoint model, AUC, random slopes (2026-09-30)
+
+**R20-K rule — ✅ implemented.** `evaluable_days()` is exported so the dashboard applies the same rule. An arm is evaluable on a day when at least 50 % of its enrolled animals, and at least 3, are still on study, meaning measured on that day or later. That makes each arm's evaluable days run from the first day, and so do the days on which every arm is evaluable.
+- The endpoint helpers, synergy (single day and over time), the therapeutic window, dose-response and the AUC all use it.
+- **Default day:** the last day on which every arm compared is evaluable.
+- **Requested day:** it must be evaluable. The error names the arms and counts, for example "Day 28 is not evaluable: Control has 4 of 10 animals on study", and gives the last evaluable day.
+- **Record:** each result carries `evaluability`, with the rule, the days, `excluded` (days with the failing arms) and the full per-arm table, for the dashboard to show.
+
+**R20.1 / R20.29 — ✅ Fixed.** `me_endpoint_model()` replaces `model_endpoint_means()`.
+- **Model:** log volume on a natural spline in time (3 df) per arm, or a straight line if any arm has fewer than 4 measured days.
+- **Random effects:** correlated per-animal slopes, falling back to uncorrelated slopes and then to a random intercept on an error or a convergence failure. The Master demo falls back to uncorrelated slopes (max|grad| 0.11); the Combo demo keeps correlated slopes.
+- **Zero volumes:** those measured before an animal's first positive volume (pre-palpable) are left out rather than floored at min/2. A zero after a positive volume (a regression) is set to the smallest positive volume, the detection limit.
+- **Over time:** one fit serves every day of an over-time analysis.
+- **Executed, Combo demo:** the control at the default day (28, 4 of 8 on study) is 2,993 mm³. Before, day 32 gave 28,544. The 4 survivors' geometric mean is 1,778, lower as survivor selection predicts.
+- **Executed, Gompertz truth (K = 6000; 10 per arm; removal at 2,000; 30 studies):** evaluated on the default day (14 or 17):
+
+| Quantity | Estimate (mean) | Truth (mean) |
+|---|---|---|
+| Control volume | 2,340 | 2,480 |
+| TGI A | 54.6 | 57.6 |
+| TGI Combo | 79.1 | 80.6 |
+| Bliss excess | 0.031 | 0.016 |
+
+**R20.2 (synergy half) — ✅ Fixed.**
+- **Model estimand:** intervals are quantiles of the metric over draws of the endpoint model's fixed effects, N(β̂, V̂). The combination-versus-agent tests are Wald tests of the log volume ratio at the evaluation day, and the diagnostics are the model's residual Q-Q by arm plus each arm's fitted curve over its data (`diag_fit_plot`).
+- **Per-animal estimands:** they keep the per-animal bootstrap, t-tests and Q-Q.
+- **Point estimates:** every interval table reports the point estimate, not the median of the draws.
+- **Executed, 60 Gompertz studies:** coverage 93 % (TGI A), 92 % (TGI Combo) and 93 % (Bliss excess), against 43–59 % recorded in R20.2. All estimates lie inside their own intervals.
+- **Therapeutic window:** its TGI intervals come from the same draws and its weight-loss intervals from a bootstrap of animals. The TWM ratio's interval is NA under the model estimand, with `interval_note` saying why. The ratio itself goes with the two-axis summary (R20-K, step 5).
+
+**R20.4 — ✅ Fixed (and R3.3 with it).** `tgs_path_auc()` integrates each arm's fitted geometric-mean curve over [first study day, last day every arm is evaluable].
+- **Comparisons:** arms are compared by the AUC ratio, and the difference is reported too, with intervals and Wald p-values from 4,000 model draws. The omnibus is a Wald test of equal log AUC.
+- **Descriptive table:** per-animal trapezoids stay in `auc_analysis$individual`.
+- **Scale labels:** `transform_used` stays "none", because every reported number is volume × day.
+- **Ignored arguments:** `auc_bootstrap_n` and `auc_permutations` now warn that they are ignored.
+- **Executed on the review's case** (control 0.15/day, drug 0.08/day, removal at 2,000): the per-animal trapezoid means put the drug above control, while the model-based ratio is below 1 with its upper bound below 1 and p < 0.05.
+
+**R20.5 — ✅ Fixed.**
+- **Default:** `tumor_growth_statistics(random_effects_specification =)` now defaults to "slope", and gains "slope_uncorrelated". The fallback chain is slope → uncorrelated → intercept only, with a warning that names the failure, and `random_effects` records requested, used and fallback.
+- **ANOVA:** Satterthwaite F-tests via `lmerTest::as_lmerModLmerTest()`, with car's Wald χ² only if that fails. `anova_method` says which.
+- **Master demo:** correlated slopes converge, and the fit takes 0.9 s.
+
+**Also fixed:**
+- **R20.17 — ✅:** dose-response analyses the last evaluable day across dose groups (day 18 on the Dose Levels demo, where the control has 3 of 4 on study), and a requested day that is not evaluable errors. `tgi_table` gives TGI per dose with model-draw intervals. `control_group_name`, previously inert (T4b), chooses the reference dose group.
+- **R20.37 — ✅:** Bayesian per-animal slopes map arms to coefficients by position. The Bayesian test now uses labels with spaces and "+", and the combination arm's mean rate is its own (the control's before). `bayesian_tumor_growth()` also defaults to random slopes.
+- **R20.34 — ✅:** the power simulation documents that it powers the default random-slope analysis.
+- **R20.86 (first half) — ✅:** the "Bliss Expected" row no longer carries the control's row name.
+- **`%||%` removed:** base R ≥ 4.4 only, while the package declares R ≥ 3.5. It had been used in `tumor_growth_statistics()`.
+
+**Tests:**
+- **New:** 9 tests (R20-K rule, R20.1 ×4, R20.2, R20.17, R20.4, R20.5), plus the R20.37 assertions in the existing Bayesian test. All fail or error on v0.25.2.
+- **Updated to the new contract, not weakened:**
+  - R3.22 → R20.4: the AUC omnibus is a model Wald test.
+  - H.2 → R20.4: `auc_permutations` warns that it is ignored.
+  - `auc_bootstrap_n`: warns that it is ignored.
+  - R3.5 synergy: the default day is the last evaluable one, and the survivor bias is still shown.
+  - R3.5 TWM: the truth is computed at the evaluation day.
+  - R1-1.7: the fixture has 3 animals, the rule's minimum.
+
+**Verification (executed):**
+- `devtools::test()`: 295 tests, 817 expectations, 0 failed. The one skip is legitimate.
+- R CMD check: 1 ERROR (examples, R20.49, pre-existing), 3 WARNINGs and 9 NOTEs, in the same categories as the step-2 baseline plus the environmental "future file timestamps". No new R-code NOTE tokens.
+- The first draft of the `random_effects_specification` docs had a `%` inside `\item{}{}`, which Rd reads as a comment; it was caught by checkRd and reworded.
+

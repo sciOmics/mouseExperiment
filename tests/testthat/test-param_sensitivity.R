@@ -62,30 +62,21 @@ test_that("tumor_growth_statistics: transform argument actually changes pairwise
                info = "log vs none should produce materially different pairwise estimates")
 })
 
-test_that("tumor_growth_statistics: auc_bootstrap_n actually populates boot CI columns", {
+test_that("tumor_growth_statistics: auc_bootstrap_n is ignored, with a warning (R20.4)", {
+  # Since v0.26.0 the AUC is model-based and its intervals come from draws of
+  # the model; the per-animal bootstrap it configured no longer exists. A
+  # documented argument that silently changes nothing is the T4b pattern, so
+  # it must say so.
   df <- make_tg_simple()
-  res_no  <- suppressWarnings(suppressMessages(
-    tumor_growth_statistics(df, model_type = "auc",
-                            reference_group = "Control",
-                            auc_bootstrap_n = 0L,
-                            plots = FALSE)
-  ))
-  res_yes <- suppressWarnings(suppressMessages(
-    tumor_growth_statistics(df, model_type = "auc",
-                            reference_group = "Control",
-                            auc_bootstrap_n = 199L,
-                            auc_bootstrap_seed = 1L,
-                            plots = FALSE)
-  ))
-
-  pw_no  <- as.data.frame(res_no$pairwise_comparisons)
-  pw_yes <- as.data.frame(res_yes$pairwise_comparisons)
-  expect_true("boot_ci_lower" %in% colnames(pw_no))
-  expect_true("boot_ci_lower" %in% colnames(pw_yes))
-  expect_true(all(is.na(pw_no$boot_ci_lower)),
-              info = "auc_bootstrap_n = 0 must leave boot_ci_lower NA")
-  expect_true(any(!is.na(pw_yes$boot_ci_lower)),
-              info = "auc_bootstrap_n > 0 must populate boot_ci_lower")
+  expect_warning(
+    res <- suppressMessages(tumor_growth_statistics(
+      df, model_type = "auc", reference_group = "Control",
+      auc_bootstrap_n = 199L, auc_bootstrap_seed = 1L, plots = FALSE)),
+    "ignored")
+  te <- res$treatment_effects
+  expect_true(all(te$Lower_CL <= te$AUC & te$AUC <= te$Upper_CL))
+  pw <- res$posthoc$pairwise
+  expect_true(all(pw$ratio_lower <= pw$ratio & pw$ratio <= pw$ratio_upper))
 })
 
 test_that("survival_statistics: ph_test is returned on the standard-Cox path", {

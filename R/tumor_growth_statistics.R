@@ -213,62 +213,82 @@ tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
                 best_model = "none"))
   }
 
-  # Build random-effects string
-  # Use withCallingHandlers so boundary (singular) fit warnings don't discard
-  # valid models — the model is still usable when a random-effect variance is
-  # estimated near zero.
-  re_part <- switch(random_effects_specification,
-    intercept_only = paste0("(1|", bt(id_column), ")"),
-    slope          = paste0("(", bt(time_column), "|", bt(id_column), ")")
+  # CODE_REVIEW.md R20.5 / R20-K -- random slopes by default. With a random
+  # intercept only, between-animal differences in growth rate land in the
+  # residual and the Treatment x Day test rejected a true null in 73 % of
+  # studies. The requested structure is tried first; a fit that errors or
+  # fails to converge falls back to uncorrelated slopes and then to a random
+  # intercept, with a warning. Singular fits are kept: a slope variance
+  # estimated near zero is benign.
+  re_terms <- c(
+    slope              = paste0("(", bt(time_column), " | ", bt(id_column), ")"),
+    slope_uncorrelated = paste0("(", bt(time_column), " || ", bt(id_column), ")"),
+    intercept_only     = paste0("(1 | ", bt(id_column), ")")
   )
-  if (include_cage_random) {
-    re_part <- paste(re_part, "+", paste0("(1|", bt(cage_column), ")"))
-  }
+  tries <- names(re_terms)[match(random_effects_specification, names(re_terms)):
+                             length(re_terms)]
+  cage_re <- if (include_cage_random) paste0(" + (1 | ", bt(cage_column), ")") else ""
+  ctrl <- lme4::lmerControl(check.nobs.vs.nlev = "ignore",
+                            check.nobs.vs.nRE  = "ignore")
 
-  formula_str <- paste(fixed_part, "+", re_part)
-
-  model <- tryCatch({
-    withCallingHandlers(
-      lme4::lmer(
-        stats::as.formula(formula_str),
-        data = analysis_df,
-        control = lme4::lmerControl(
-          check.nobs.vs.nlev = "ignore",
-          check.nobs.vs.nRE  = "ignore"
-        )
-      ),
-      warning = function(w) {
-        if (grepl("boundary|singular", w$message))
-          message("Note: model has singular fit (random-effect variance near zero)")
-        invokeRestart("muffleWarning")
-      }
-    )
-  }, error = function(e) {
-    warning("lmer() failed (", e$message, "). Falling back to intercept-only model.")
-    fallback_fixed <- paste(
-      bt(volume_column), "~", bt(time_column), "*", bt(treatment_column)
-    )
-    if (isTRUE(include_necrotic_covariate)) {
-      fallback_fixed <- paste(fallback_fixed, "+ necrotic_cov_flag")
+  model <- NULL; used <- NA_character_; failures <- character(0)
+  for (nm in tries) {
+    msgs <- character(0)
+    fit <- tryCatch(
+      withCallingHandlers(
+        lme4::lmer(stats::as.formula(paste(fixed_part, "+", re_terms[[nm]], cage_re)),
+                   data = analysis_df, control = ctrl),
+        warning = function(w) {
+          msgs <<- c(msgs, conditionMessage(w))
+          invokeRestart("muffleWarning")
+        },
+        message = function(m) {
+          if (grepl("boundary|singular", conditionMessage(m)) && isTRUE(verbose)) {
+            message("Note: model has singular fit (random-effect variance near zero)")
+          }
+          invokeRestart("muffleMessage")
+        }),
+      error = function(e) {
+        msgs <<- c(msgs, conditionMessage(e))
+        NULL
+      })
+    converged <- !is.null(fit) &&
+      !any(grepl("failed to converge|unable to evaluate|unidentifiable|degenerate",
+                 msgs, ignore.case = TRUE))
+    if (converged) {
+      model <- fit; used <- nm
+      break
     }
-    lme4::lmer(
-      stats::as.formula(paste(fallback_fixed, "+ (1|", bt(id_column), ")")),
-      data = analysis_df,
-      control = lme4::lmerControl(
-        check.nobs.vs.nlev = "ignore",
-        check.nobs.vs.nRE  = "ignore"
-      )
-    )
-  })
+    failures <- c(failures, sprintf("%s: %s", nm,
+                                    if (length(msgs)) msgs[1L] else "failed"))
+  }
+  if (is.null(model)) {
+    stop("The mixed model could not be fitted with any random-effects ",
+         "structure (", paste(failures, collapse = "; "), ").", call. = FALSE)
+  }
+  labels <- c(slope = "correlated random slopes",
+              slope_uncorrelated = "uncorrelated random slopes",
+              intercept_only = "a random intercept only")
+  if (used != random_effects_specification) {
+    warning("The ", labels[[random_effects_specification]], " model could not be ",
+            "fitted (", failures[1L], "); the analysis uses ", labels[[used]],
+            " instead.",
+            if (used == "intercept_only") paste(
+              " This assumes all animals in an arm grow at the same rate, which",
+              "makes the Treatment x Day test anti-conservative when they do not.")
+            else "",
+            call. = FALSE)
+  }
 
   model_selection <- list(
     aic = stats::AIC(model),
     bic = stats::BIC(model),
-    selected_model = random_effects_specification
+    selected_model = used
   )
 
   list(model = model, model_selection = model_selection,
-       best_model = random_effects_specification)
+       best_model = used, requested = random_effects_specification,
+       fallback = failures)
 }
 
 #' Compute descriptive summary statistics by treatment and time
@@ -553,13 +573,25 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'        Options are "log", "sqrt", "none". Default is "log", which is recommended for exponential growth.
 #' @param model_type A character string specifying the type of model to fit. Options are:
 #'        "lme4" (linear mixed-effects model using lme4 — linear time × treatment),
-#'        "auc"  (area under the curve analysis).
+#'        "auc"  (area under each arm's fitted curve over the window in which
+#'        every arm is evaluable; see Details).
 #'        Default is "lme4". The GAMM option was removed in v0.23.0
 #'        (CODE_REVIEW.md R20-K).
-#' @param random_effects_specification A character string specifying the random effects structure.
-#'        "intercept_only" (default): (1|ID) - random intercepts by subject
-#'        "slope": (Day|ID) - random intercepts and slopes by subject
-#'        "none": No random effects
+#' @param random_effects_specification The per-animal random effects:
+#'   \describe{
+#'     \item{"slope"}{(default since v0.26.0) correlated random intercepts and
+#'       slopes, \code{(Day | animal)}.}
+#'     \item{"slope_uncorrelated"}{uncorrelated intercepts and slopes,
+#'       \code{(Day || animal)}.}
+#'     \item{"intercept_only"}{\code{(1 | animal)}. Assumes all animals in an
+#'       arm grow at the same rate; when they do not, the Treatment x Day test
+#'       rejects a true null far too often: in 73 of every 100 simulated
+#'       null studies (CODE_REVIEW.md R20.5).}
+#'     \item{"none"}{no random effects (\code{lm}).}
+#'   }
+#'   A model that errors or fails to converge falls back along
+#'   slope -> slope_uncorrelated -> intercept_only, with a warning; the structure
+#'   used is returned in \code{random_effects}.
 #' @param handle_cage_effects How cage enters the model. Default \code{"auto"}
 #'   picks the correct treatment for the detected design structure:
 #'   \itemize{
@@ -647,7 +679,12 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #' @return A list containing the following components:
 #' \describe{
 #'   \item{model}{The fitted statistical model (lme4 or auc object)}
-#'   \item{anova}{ANOVA table for fixed effects with Type III tests}
+#'   \item{anova}{Type III tests of the fixed effects: F-tests with
+#'     Satterthwaite degrees of freedom (lmerTest) on the lme4 path (method in
+#'     \code{anova_method}); on the AUC path, a Wald test that every arm has
+#'     the same model-based AUC.}
+#'   \item{random_effects}{The random-effects structure requested and used,
+#'     and why any fallback happened.}
 #'   \item{summary}{Detailed model summary with parameter estimates}
 #'   \item{pairwise_comparisons}{Results of pairwise comparisons between treatment groups, showing treatment differences, p-values, and confidence intervals}
 #'   \item{treatment_effects}{Estimated treatment effects on tumor growth, showing adjusted means for each treatment group}
@@ -678,10 +715,17 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'
 #' 1. Linear mixed-effects models (model_type="lme4") are suitable for most tumor growth experiments and
 #'    account for the correlation structure of repeated measurements on the same subjects. 
-#'    The default formula is log(Volume) ~ Day * Treatment + (1|ID).
+#'    The default formula is log(Volume) ~ Day * Treatment + (Day | ID): per-animal random
+#'    slopes, falling back to uncorrelated slopes and then to a random intercept only when a
+#'    fit fails (CODE_REVIEW.md R20.5).
 #'
-#' 2. Area under the curve analysis (model_type="auc") reduces each subject's growth curve to a single
-#'    summary metric (AUC), which is then compared between treatment groups.
+#' 2. Area under the curve analysis (model_type="auc") compares arms by the area under each arm's
+#'    fitted curve (a mixed model of log volume with a natural spline in time per arm and random
+#'    slopes) from the first study day to the last day on which every arm is evaluable. Arms are
+#'    compared by the ratio of their AUCs, with 95% intervals and Wald p-values from draws of the
+#'    model. Each animal's own trapezoidal AUC is kept in auc_analysis$individual for description
+#'    only: it covers that animal's follow-up, so it is not comparable across arms with different
+#'    attrition (CODE_REVIEW.md R20.4).
 #'
 #' The function automatically handles:
 #' - Missing data patterns using appropriate methods
@@ -722,7 +766,8 @@ tumor_growth_statistics <- function(df,
                                   dose_column = NULL,
                                   transform = c("log", "sqrt", "none"),
                                   model_type = c("lme4", "auc"),
-                                  random_effects_specification = c("intercept_only", "slope", "none"),
+                                  random_effects_specification = c("slope", "slope_uncorrelated",
+                                                                   "intercept_only", "none"),
                                   handle_cage_effects = c("auto", "include_if_not_collinear",
                                                           "always_include", "never_include",
                                                           "as_random_effect"),
@@ -844,7 +889,8 @@ tumor_growth_statistics <- function(df,
     necrosis_summary <- nec$necrosis_summary
     include_necrotic_covariate <- necrotic_handling == "covariate"
     if (isTRUE(verbose)) {
-      n_excl <- attr(analysis_df, ".n_necrotic_excluded") %||% 0L
+      n_excl <- attr(analysis_df, ".n_necrotic_excluded")
+      if (is.null(n_excl)) n_excl <- 0L
       message("Necrosis handling: '", necrotic_handling, "'. Excluded: ", n_excl, " observations.")
     }
   }
@@ -932,7 +978,7 @@ tumor_growth_statistics <- function(df,
     if (inherits(model, "lmerMod")) {
       diagnostics$random_effects <- list(
         intercepts = lme4::ranef(model)[[id_column]],
-        slopes = if (best_model == "slope") {
+        slopes = if (best_model %in% c("slope", "slope_uncorrelated")) {
           lme4::ranef(model)[[id_column]][, 2]
         } else NULL
       )
@@ -973,7 +1019,8 @@ tumor_growth_statistics <- function(df,
       id_column           = id_column,
       treatment_column    = treatment_column,
       cage_column         = cage_column,
-      time_column         = time_column
+      time_column         = time_column,
+      volume_column       = volume_column
     ))
   } else {
     # Create ANOVA table
@@ -981,8 +1028,25 @@ tumor_growth_statistics <- function(df,
     # stats::anova(), which for a merMod is a *different test* from
     # car::Anova(type = "III") -- so a missing car would silently have changed
     # which hypothesis was tested, not merely the formatting.
-    anova_table <- car::Anova(model, type = "III")
-    anova_type <- "Type III ANOVA (car package)"
+    # CODE_REVIEW.md R20.5 / R20-K -- F-tests with Satterthwaite denominator
+    # degrees of freedom (lmerTest) in place of car's Wald chi-square, which
+    # treats the variance components as known and is anti-conservative at
+    # these sample sizes.
+    anova_table <- NULL
+    if (inherits(model, "lmerMod")) {
+      anova_table <- tryCatch({
+        stats::anova(lmerTest::as_lmerModLmerTest(model), type = "III",
+                     ddf = "Satterthwaite")
+      }, error = function(e) {
+        warning("Satterthwaite F-tests unavailable (", conditionMessage(e),
+                "); reporting Wald chi-square tests.", call. = FALSE)
+        NULL
+      })
+    }
+    anova_type <- if (!is.null(anova_table)) {
+      "Type III F-tests, Satterthwaite degrees of freedom (lmerTest)"
+    } else "Type III Wald chi-square tests (car)"
+    if (is.null(anova_table)) anova_table <- car::Anova(model, type = "III")
     
     # Create pairwise comparisons
     if (requireNamespace("emmeans", quietly = TRUE)) {
@@ -1108,9 +1172,10 @@ tumor_growth_statistics <- function(df,
       ),
       model_specification = list(
         fixed_effects = paste(volume_column, "~", time_column, "*", treatment_column),
-        random_effects = switch(random_effects_specification,
+        random_effects = switch(best_model,
                                "intercept_only" = paste("(1|", id_column, ")"),
                                "slope" = paste("(", time_column, "|", id_column, ")"),
+                               "slope_uncorrelated" = paste("(", time_column, "||", id_column, ")"),
                                "none" = "None"),
         cage_effects   = handle_cage_effects,
         cage_structure = cage_structure$structure,
@@ -1120,7 +1185,8 @@ tumor_growth_statistics <- function(df,
         cage_reason    = cage_handling$reason
       ),
       model_selection = list(
-        criteria = paste("Random effects:", random_effects_specification),
+        criteria = paste("Random effects requested:", random_effects_specification,
+                         "; used:", best_model),
         selected_model = if (!is.null(model_selection$selected_model)) {
           model_selection$selected_model
         } else random_effects_specification
@@ -1220,7 +1286,14 @@ tumor_growth_statistics <- function(df,
       ),
       comparison_family     = comparison_spec$family,
       p_adjust_method_used  = comparison_spec$p_adjust_method,
+      # The random-effects structure requested and used, and why any fallback
+      # happened (R20.5 / R20-K).
+      random_effects = list(requested = random_effects_specification,
+                            used      = best_model,
+                            fallback  = if (is.null(lme4_result$fallback)) character(0)
+                                        else lme4_result$fallback),
       anova = anova_table,
+      anova_method = anova_type,
       summary = analysis_summary,
       # R14.4: was the raw emmGrid. Consumers guarding with is.data.frame()
       # silently skipped it, which is how the adjustment scope went missing

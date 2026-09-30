@@ -13,7 +13,7 @@ bayesian_tumor_growth(
   cage_column = NULL,
   dose_column = NULL,
   transform = c("log", "sqrt", "none"),
-  random_effects_specification = c("intercept_only", "slope"),
+  random_effects_specification = c("slope", "intercept_only"),
   reference_group = NULL,
   prior_strength = c("skeptical", "weakly_informative", "informative", "diffuse",
     "manual"),
@@ -60,8 +60,12 @@ The column is also used for composite mouse-key construction.}
 \code{"sqrt"}, or \code{"none"}.}
 
 \item{random_effects_specification}{Random effects structure:
-\code{"intercept_only"} (default, \code{(1 | ID)}) or
-\code{"slope"} (\code{(Day | ID)}, adds per-animal random slopes).}
+\code{"slope"} (default since v0.26.0, \code{(Day | animal)}, as in
+\code{\link{tumor_growth_statistics}}: per-animal random slopes, so the
+Treatment x Day effect is not judged against a residual that holds the
+animals' differing growth rates; CODE_REVIEW.md R20.5) or
+\code{"intercept_only"} (\code{(1 | animal)}), which assumes every
+animal in an arm grows at the same rate.}
 
 \item{reference_group}{Treatment group used as the reference (Intercept)
 level. Auto-detected if \code{NULL}: checks for common control-group
