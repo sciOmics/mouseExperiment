@@ -4,6 +4,65 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.09.005] - 2026-09-30
+
+Requires mouseExperiment ≥ 0.27.0. Fifth implementation step of the Round 21
+review (`CODE_REVIEW.md` R20-D.M): the two-axis therapeutic window, the
+interval-based synergy verdict, one agent's dose series, and the optional
+removal-reason column.
+
+### Added
+
+- **An optional removal-reason column (R20-D.H).** Map it under Optional
+  Columns on Data Upload (it is auto-detected from names such as
+  Removal_Reason, Reason or Cause_Of_Death). The Study Design panel then lists
+  each of its values with a category: tumour volume limit, death or moribund,
+  weight loss or body condition, planned end or data cut, or other. The
+  categories are guessed from the wording and can be changed, and the preset
+  saves them.
+- **Survival counts deaths from other causes as events (R20.D13).** A
+  checkbox, "Count deaths from other causes as events (recommended)",
+  appears when a reason column is mapped. With it ticked, an animal whose
+  reason is a death is an event at its last measurement, with either event
+  source. The sidebar states the assumption in force, and the summary counts
+  the deaths added.
+- **The Dose Response tab shows the Jonckheere–Terpstra test and the EC50
+  interval (R20.D49),** in the Summary, Model Results and the results CSV. The
+  test is two-sided, with the direction of the trend stated. The EC50 has a
+  95 % interval on log dose, and an EC50 outside the tested doses is flagged.
+
+### Changed
+
+- **The therapeutic window is two axes (R20-K).** The Toxicity tab sets each
+  arm's TGI beside its mean worst weight loss, each with a 95 % interval, and
+  flags the weight loss as Tolerated, Not tolerated or Unclear against a
+  threshold set in the sidebar (default 20 %). The plot shows TGI against
+  worst weight loss, with both intervals and the threshold. A note calls out a
+  tolerated arm that still has animals over the threshold. The TWM ratio, its
+  ranked bar chart and its ranking note are gone.
+- **The synergy verdict comes from the interval (backend R20.19).** It reads
+  Synergy, Antagonism, or Additive (no departure from Bliss detected), and the
+  rule behind it is shown under it. A verdict without an interval says so and
+  is not shown in green. "Not evaluable" becomes "Bliss does not apply", since
+  "evaluable" now refers to evaluable days.
+- **Dose Response analyses one agent's dose series (R20.D47).** A "Dose
+  series" selector lists the arms; the largest set of single-agent arms that
+  share a name and differ in dose is suggested. Other agents, combinations,
+  and arms that share a dose are refused with the backend's reason. When one
+  treatment name is used at every dose, its dose-0 rows are the control. The
+  day selector lists the evaluable days of the chosen series.
+- **The weight-loss threshold uses the removal reasons (backend R20.23).**
+  Weight-loss removals are events, planned ends censoring, and other removals
+  competing risks. The Kaplan-Meier panel states which assumption applied;
+  without a reason column an early end is censoring.
+
+### Fixed
+
+- **The therapeutic-window plot download produced no file (R20.D50, in
+  part).** The plot is now built directly for the download. The trajectory
+  and KM downloads still read an output and remain open.
+- The Dose Response backend no longer prints its report to the server log.
+
 ## [26.09.004] - 2026-09-30
 
 Requires mouseExperiment ≥ 0.26.0. Fourth implementation step of the Round 21

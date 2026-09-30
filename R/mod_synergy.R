@@ -91,9 +91,14 @@ synergyUI <- function(id) {
                   div(class = "panel-heading",
                     h4(class = "panel-title", tags$span(class = "label label-danger", "Uncertainty"), " — how far to trust the verdict")),
                   div(class = "panel-body",
-                    p("The synergy verdict is a categorical label derived from three group means. Without an ",
-                      "interval, a “Strong Synergy” resting on noise is indistinguishable on screen from one ",
-                      "resting on a real effect."),
+                    p("The synergy verdict comes from the 95% interval for the Bliss excess (backend v0.27.0): ",
+                      strong("Synergy"), " when the interval lies above zero, ", strong("Antagonism"),
+                      " when it lies below, and ", strong("Additive (no departure from Bliss detected)"),
+                      " when it contains zero. With Interval draws set to 0 there is no interval; the ",
+                      "verdict then compares the point estimate with symmetric bands of \u00b10.1 and says it ",
+                      "has no interval. Earlier versions labelled any positive excess “Synergy” but negative ",
+                      "ones down to \u22120.1 “Additivity”, so a Bliss-additive combination was called ",
+                      "synergistic in about half of simulated studies."),
                     tags$dl(class = "dl-horizontal",
                       tags$dt("Interval draws"),
                       tags$dd("The 95 % intervals describe the reported estimates. Under the model ",
@@ -103,9 +108,8 @@ synergyUI <- function(id) {
                               "is carried through. Set to 0 to skip; the verdict is then a point estimate with ",
                               "no stated uncertainty."),
                       tags$dt("Interval callout"),
-                      tags$dd("Beneath the verdict, an explicit statement of whether the 95 % interval for Bliss ",
-                              "excess excludes zero. This is the single most useful line in the tab: a verdict ",
-                              "whose interval spans zero is not evidence of synergy, whatever the label says."),
+                      tags$dd("Beneath the verdict, the 95 % interval for the Bliss excess that decided it, ",
+                              "and whether it excludes zero."),
                       tags$dt("Endpoint estimand"),
                       tags$dd(strong("Model"), " (default) estimates endpoint group means from a mixed model of ",
                               "log volume with a smooth time course for each arm and a growth rate for each ",
@@ -162,7 +166,7 @@ synergyUI <- function(id) {
               strong("Metric"), " / ", strong("Value"), ") summarising scores at the selected timepoint: ",
               tags$ul(
                 tags$li(strong("Bliss Difference"), " \u2014 observed combination effect minus the Bliss-independent expected effect (TGI\u2009combo \u2212 TGI\u2009Bliss). Positive = synergy; negative = antagonism."),
-                tags$li(strong("Interpretation"), " \u2014 plain-language label from the Bliss difference (Strong Synergy above +0.1, Synergy above 0, Additivity above \u22120.1, else Antagonism).")
+                tags$li(strong("Interpretation"), " \u2014 the verdict, from the 95% interval for the Bliss excess: Synergy (above zero), Antagonism (below zero) or Additive (contains zero). Without an interval, symmetric bands of \u00b10.1 around zero, and the label says there is no interval.")
               ),
               "With \u2018All evaluable days\u2019, each row is an evaluable day with columns:",
               tags$ul(
@@ -172,7 +176,7 @@ synergyUI <- function(id) {
                 tags$li(strong("Bliss_Difference"), " \u2014 TGI_Combo minus the expected TGI; positive values indicate synergy."),
                 tags$li(strong("*_Lower / *_Upper"), " \u2014 95% interval of each TGI and of the Bliss difference."),
                 tags$li(strong("P_Value_vs_Drug_A / P_Value_vs_Drug_B"), " \u2014 p-value comparing the combination group to each mono-therapy on the same estimand (a Wald test of the volume ratio under the model estimand); values below 0.05 indicate a statistically significant difference."),
-                tags$li(strong("Synergy_Assessment"), " \u2014 plain-language classification at each timepoint."),
+                tags$li(strong("Synergy_Assessment"), " \u2014 the verdict on each day, from that day's interval for the Bliss excess."),
                 tags$li(strong("Bliss_Applies"), " \u2014 FALSE where a single agent did not inhibit growth that day. Bliss independence is defined only for inhibitory agents, so the Bliss columns are blank on those days and they cannot be the peak.")
               )
             ),
@@ -712,7 +716,7 @@ synergy_server <- function(id, rv) {
           # R20.8: when an agent did not inhibit growth the backend reports every
           # Bliss quantity as NA; say so rather than printing "NA" as a verdict.
           if (isFALSE(res$bliss_applies) || is.na(bi$synergy)) {
-            cat("  Not evaluable: a single agent did not inhibit growth, and Bliss\n",
+            cat("  Does not apply: a single agent did not inhibit growth, and Bliss\n",
                 "  independence is defined only for inhibitory agents.\n", sep = "")
             cat("  Observed effect:", round(bi$observed_effect, 4), "\n")
           } else {
@@ -720,6 +724,7 @@ synergy_server <- function(id, rv) {
             cat("  Observed effect:", round(bi$observed_effect, 4), "\n")
             cat("  Synergistic:    ", bi$synergy, "\n")
           }
+          if (!is.null(res$verdict_rule)) cat("  Verdict rule:   ", res$verdict_rule, "\n")
         }
       }
       elapsed_str <- format_elapsed(rv$syn_results$elapsed_seconds)
@@ -804,9 +809,13 @@ synergy_server <- function(id, rv) {
     oa <- rv$syn_results$overall_assessment
     if (is.null(oa) || !nzchar(oa)) return(NULL)
 
-    style <- if (grepl("Not evaluable", oa)) "warning"
-             else if (grepl("Synergy", oa)) "success"
-             else if (grepl("Antagonism", oa)) "danger" else "info"
+    # Backend v0.27.0 (R20.19): the verdict comes from the interval, and a
+    # label without one says so.
+    no_interval <- grepl("no interval", oa, fixed = TRUE)
+    style <- if (grepl("does not apply", oa, fixed = TRUE)) "warning"
+             else if (no_interval) "info"
+             else if (startsWith(oa, "Synergy")) "success"
+             else if (startsWith(oa, "Antagonism")) "danger" else "info"
 
     div(class = paste0("alert alert-", style),
       tags$strong("Synergy verdict: "), oa,
@@ -815,8 +824,7 @@ synergy_server <- function(id, rv) {
         "From the Bliss independence model: expected effect = ",
         tags$code("FE_A + FE_B \u2212 FE_A \u00d7 FE_B"),
         ", so the drugs are assumed to act independently on the surviving ",
-        "fraction. This is a threshold applied to three group means \u2014 read it ",
-        "against the interval below, not on its own."
+        "fraction. ", rv$syn_results$verdict_rule %||% ""
       )
     )
   })
@@ -835,9 +843,9 @@ synergy_server <- function(id, rv) {
       status_alert(paste0(
         "The Bliss-excess 95% interval [",
         signif(row$CI_Lower[1], 3), ", ", signif(row$CI_Upper[1], 3),
-        "] includes zero, so this data does not distinguish the combination from ",
-        "Bliss additivity. Read the synergy label above as descriptive only."),
-        "warning")
+        "] includes zero, so these data do not distinguish the combination from ",
+        "Bliss additivity; hence the verdict above."),
+        "info")
     } else {
       status_alert(paste0(
         "The Bliss-excess 95% interval [",

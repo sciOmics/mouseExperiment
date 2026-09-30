@@ -36,8 +36,15 @@ add_tox_download_handlers <- function(input, output, session, rv) {
         png(file, width = w, height = h, units = "px", res = dpi)
         print(p); dev.off(); return()
       }
-      plot_id <- if (model == "bw") "tox_trajectory_plot" else "tox_et_twm_plot"
-      p <- tryCatch(output[[plot_id]](), error = function(e) NULL)
+      # R20.D50 (therapeutic window only): the plot is built directly; an
+      # output cannot be read back inside a download handler.
+      p <- if (model == "bw") {
+        tryCatch(output[["tox_trajectory_plot"]](), error = function(e) NULL)
+      } else if (!is.null(rv$tox_results$twm) && !isTRUE(rv$tox_results$twm$error)) {
+        tryCatch(tox_window_plot(rv$tox_results$twm, input, rv$tox_et_plot_groups,
+                                 text_size = input$tox_plot_text_size %||% 14),
+                 error = function(e) NULL)
+      }
       if (is.null(p)) {
         showNotification("Plot is not available.", type = "warning")
         return(invisible(NULL))
@@ -68,7 +75,7 @@ add_tox_download_handlers <- function(input, output, session, rv) {
   output$download_et_twm_csv <- downloadHandler("therapeutic_window.csv", function(file) {
     req(rv$tox_results, rv$tox_results$twm)
     if (isTRUE(rv$tox_results$twm$error)) return()
-    utils::write.csv(rv$tox_results$twm$twm_table, file, row.names = FALSE)
+    utils::write.csv(rv$tox_results$twm$window_table, file, row.names = FALSE)
   })
 
   # ── Download All (ZIP) ────────────────────────────────────────────────
@@ -95,7 +102,10 @@ add_tox_download_handlers <- function(input, output, session, rv) {
         wl <- res$weight_loss
         if (!isTRUE(wl$error)) write_if(wl$event_data, "bw_weight_loss_events.csv")
       } else {
-        if (!isTRUE(res$twm$error)) write_if(res$twm$twm_table, "et_twm.csv")
+        if (!isTRUE(res$twm$error)) {
+          write_if(res$twm$window_table,     "therapeutic_window.csv")
+          write_if(res$twm$weight_loss_data, "therapeutic_window_per_animal.csv")
+        }
       }
 
       old_wd <- getwd()

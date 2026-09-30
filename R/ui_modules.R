@@ -316,7 +316,18 @@ column_mapping_ui <- function(col_names, detected_cols, ns = NS(NULL)) {
                            help_tip("Binary column indicating whether a tumor was visually necrotic at each measurement (e.g. Y/N, yes/no, 1/0). When mapped, enables necrosis-aware adjustment in Tumor Growth analysis.")),
                    choices = c("None" = "", col_names),
                    selected = detected_cols$necrotic %||% ""),
-        tags$p(tags$small("Optional. Enables necrotic-observation handling in Tumor Growth analysis."))
+        tags$p(tags$small("Optional. Enables necrotic-observation handling in Tumor Growth analysis.")),
+
+        br(),
+        # R20-D.H: why each animal left the study.
+        selectInput(ns("col_removal_reason"),
+                   tagList("Removal Reason",
+                           help_tip("Optional. Why each animal left the study, e.g. 'Tumour volume limit', 'Found dead', 'Body condition', 'End of study'. Read from each animal's last non-empty value. Each value is given a meaning under Study Design.")),
+                   choices = c("None" = "", col_names),
+                   selected = detected_cols$removal_reason %||% ""),
+        tags$p(tags$small("Optional. Lets Survival count deaths from other causes as events, and ",
+                          "the Toxicity weight-loss threshold separate weight-loss removals from ",
+                          "other removals."))
       )
     )
   )
@@ -370,7 +381,48 @@ study_design_ui <- function(treatments, defaults = list(), ns = NS(NULL)) {
             selected = defaults$randomisation_unit %||% "mouse")
         )
       )
-    )
+    ),
+    # R20-D.H: the meaning of each removal reason, when that column is mapped.
+    uiOutput(ns("removal_reasons_ui"))
+  )
+}
+
+#' Removal-reason mapping UI
+#'
+#' One row per distinct value of the removal-reason column, each with its
+#' category (R20-D.H). The selectors are numbered because reason values are
+#' free text.
+#'
+#' @param values Distinct reason values.
+#' @param defaults Named list, value to category code, from a preset.
+#' @param col The column's name.
+#' @param ns Namespace function.
+#' @keywords internal
+removal_reason_map_ui <- function(values, defaults = list(), col = "", ns = NS(NULL)) {
+  if (!length(values)) {
+    return(tags$p(class = "text-muted", style = "font-size:12px;",
+                  icon("circle-info"), " The removal-reason column ",
+                  tags$code(col), " has no values."))
+  }
+  guess <- guess_removal_category(values)
+  tagList(
+    tags$hr(),
+    h5(strong("Removal reasons"), tags$small(class = "text-muted",
+       " — what each value of ", tags$code(col), " means")),
+    tags$p(class = "text-muted", style = "font-size:12px;",
+      "Survival can count ", strong("deaths"), " as events. The Toxicity weight-loss threshold ",
+      "counts ", strong("weight-loss"), " removals as events, censors ", strong("planned ends"),
+      ", and treats the other removals as competing risks. The categories were guessed ",
+      "from the wording; check them."),
+    lapply(seq_along(values), function(i) {
+      d <- defaults[[values[i]]]
+      sel <- if (length(d) == 1L && d %in% removal_reason_categories) d else guess[i]
+      fluidRow(
+        column(6, tags$div(style = "padding-top:7px;", values[i])),
+        column(6, selectInput(ns(paste0("reason_cat_", i)), NULL,
+                              choices = removal_reason_categories, selected = sel,
+                              width = "100%")))
+    })
   )
 }
 
@@ -1559,6 +1611,7 @@ helpUI <- function() {
         tags$tr(tags$td("Body weight"),       tags$td("Weight, Mass, Body_Weight, Body Mass, BW"), tags$td("No")),
         tags$tr(tags$td("Sex"),               tags$td("Sex, Gender, M/F"),                  tags$td("No")),
         tags$tr(tags$td("Necrotic flag"),     tags$td("Necrotic, Necrosis, Necr, Is_Necrotic, Necrotic_Flag"), tags$td("No")),
+        tags$tr(tags$td("Removal reason"),    tags$td("Removal_Reason, Reason, Cause_Of_Death, Fate"), tags$td("No")),
         tags$tr(tags$td("Survival / Censor"), tags$td("Survival_Censor, Censor, Event, Survival_Event"), tags$td("No")),
         tags$tr(tags$td("Survival time"),     tags$td("Survival_Time, Time_To_Event, Days_To_Event"), tags$td("No"))
       )
@@ -1604,10 +1657,10 @@ helpUI <- function() {
     tags$dl(
       tags$dt("LME4 body weight model"),
       tags$dd("Linear mixed model on body weight over time. Treatment \u00d7 Day interaction identifies groups with significant weight-change trajectories."),
-      tags$dt("Therapeutic Window Metric (TWM)"),
-      tags$dd("Combines tumor growth inhibition and body weight change into a single efficacy-toxicity ratio, with bootstrap intervals. Because it is a ratio of two estimated quantities its uncertainty is wide, so the ranking note states whether the top arm is genuinely separated from the second or whether their intervals overlap."),
+      tags$dt("Therapeutic window"),
+      tags$dd("Sets each arm's tumor growth inhibition beside its mean worst weight loss (each animal's largest drop below its own first weighing), each with a 95% interval, and flags the weight loss as Tolerated, Not tolerated or Unclear against a threshold you set (default 20%). The two axes are read separately; a single efficacy-toxicity ratio was reported before version 26.09.005 and was withdrawn."),
       tags$dt("Weight-loss time-to-event"),
-      tags$dd("Kaplan-Meier for time to crossing a weight-loss threshold. Where animals are also removed for tumour burden, those are competing events rather than ordinary censorings \u2014 an Aalen-Johansen cumulative incidence estimate and a per-arm censoring breakdown are reported alongside."),
+      tags$dd("Kaplan-Meier for time to crossing a weight-loss threshold. With a removal-reason column mapped on Data Upload, removals for weight loss count as events, planned ends as censoring, and other removals (such as tumour burden) as competing events, with an Aalen-Johansen cumulative incidence estimate. Without one, an animal whose record ends early is censored, and the tab says so. A per-arm breakdown of how animals left is reported."),
       tags$dt("Endpoint estimand"),
       tags$dd("Shared by the Toxicity and Synergy tabs. \u2018Model\u2019 estimates endpoint means from the fitted model using every observation; \u2018Observed\u2019 uses only animals still present at the endpoint. They differ whenever animals leave early, and because the fastest-growing controls are the ones that leave, \u2018Observed\u2019 flatters the control arm.")
     ),
@@ -1628,15 +1681,17 @@ helpUI <- function() {
               "combination set to exactly Bliss-additive, 42 % of cells were ",
               "labelled antagonistic and none synergistic."),
       tags$dt("Interval on the verdict"),
-      tags$dd("The synergy verdict is a label derived from three group means. Bootstrap intervals are reported and the panel states explicitly whether the 95 % interval for Bliss excess excludes zero \u2014 a \u201cStrong Synergy\u201d whose interval spans zero is not evidence of synergy.")
+      tags$dd("The synergy verdict comes from the 95 % interval for the Bliss excess: Synergy when it lies above zero, Antagonism when it lies below, and Additive (no departure from Bliss detected) when it contains zero. Without intervals the label says so.")
     ),
 
     h4("Dose-Response"),
     tags$dl(
+      tags$dt("One agent's dose series"),
+      tags$dd("A curve describes one agent at several doses against the study's control. Choose the agent's arms in the sidebar; other agents, combinations, and arms sharing a dose cannot join the same curve."),
       tags$dt("Hill / Emax"),
-      tags$dd("Fits a four-parameter log-logistic (4PL) dose-response curve via nonlinear least squares. Reports IC50, Hill slope, and fitted curve."),
+      tags$dd("Fits a four-parameter log-logistic (4PL) dose-response curve via nonlinear least squares. Reports the EC50 (the dose giving half the fitted response range) with a 95% interval on log dose, the Hill slope, and the fitted curve; an EC50 outside the tested doses is flagged."),
       tags$dt("Trend tests"),
-      tags$dd("Alongside the curve fit, the tab reports linear and quadratic trend p-values and a Jonckheere-Terpstra test. The last is the one that respects dose ordering: it asks whether response is monotone in dose, which is the question a dose-response study is usually posing, rather than merely whether the groups differ.")
+      tags$dd("Alongside the curve fit, the tab reports linear and quadratic trend p-values and a two-sided Jonckheere-Terpstra test. The last is the one that respects dose ordering: it asks whether response is monotone in dose, which is the question a dose-response study is usually posing, rather than merely whether the groups differ.")
     ),
 
     h4("Power Analysis"),

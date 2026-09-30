@@ -96,7 +96,7 @@ test_that("R20.D37: the Synergy TGI plot draws the backend's TGIs, not a re-deri
   }))
 })
 
-test_that("R20-K: the therapeutic window names its day and says the ratio has no interval", {
+test_that("R20-K: the therapeutic window names its day and states the tolerability rule", {
   rv <- master_rv()
   shiny::isolate(g("ensure_preprocessed")(rv))
   suppressWarnings(shiny::testServer(g("toxicity_server"), args = list(rv = rv), {
@@ -107,7 +107,7 @@ test_that("R20-K: the therapeutic window names its day and says the ratio has no
     expect_false(isTRUE(twm$error))
     expect_match(html_of(output$tox_twm_evaluability_note),
                  paste0("Evaluated on day ", twm$endpoint_day))
-    expect_match(html_of(output$tox_twm_ranking_note), "no interval")
+    expect_match(html_of(output$tox_twm_tolerability_note), "Tolerated: the upper 95% bound")
   }))
 })
 
@@ -118,11 +118,14 @@ test_that("R20.17 / R20.D48: Dose Response analyses the last evaluable day and s
     ui <- html_of(output$dr_time_point_ui)
     expect_match(ui, "Last evaluable day")
     expect_false(grepl("All dates", ui, fixed = TRUE))
-    session$setInputs(dr_time_point = "default", run_dr_analysis = 1)
+    # Since v26.09.005 the analysis takes one agent's dose series (R20.D47).
+    arms <- c("Drug_A Low", "Drug_A Mid", "Drug_A High")
+    session$setInputs(dr_treatments = arms, dr_time_point = "default", run_dr_analysis = 1)
     res <- rv$dr_results
     expect_false(isTRUE(res$error))
+    m <- demo_csv("master_synthetic_data.csv")
     ev <- mouseExperiment::evaluable_days(
-      transform(demo_csv("master_synthetic_data.csv"), DoseGroup = as.character(Dose)),
+      transform(m[m$Treatment %in% c("Vehicle", arms), ], DoseGroup = as.character(Dose)),
       treatment_column = "DoseGroup", cage_column = "Cage", volume_column = "Volume")
     expect_equal(res$endpoint_day, ev$last_day)
     expect_false(is.null(res$tgi_table))

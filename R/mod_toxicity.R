@@ -90,8 +90,15 @@ toxicityUI <- function(id) {
                           value = 2000, min = 0, max = 20000, step = 500),
               helpText("Draws behind the 95% intervals: of the fitted model for ",
                        "TGI (model estimand), and of the animals for weight loss ",
-                       "and the observed estimands. The TWM table is sorted, so the ",
-                       "intervals are what tell you whether the ranking is real.")
+                       "and the observed estimands. Without intervals there is no ",
+                       "tolerability flag."),
+              hr(),
+              h5(strong("Tolerability")),
+              numericInput(ns("tox_tol_threshold"), "Tolerability threshold (% weight loss)",
+                          value = 20, min = 5, max = 50, step = 1),
+              helpText("An arm is flagged Tolerated when the 95% interval for its mean ",
+                       "worst weight loss lies below this threshold, Not tolerated when ",
+                       "it lies at or above it, and Unclear when it contains it.")
             ),
 
             br(),
@@ -129,7 +136,7 @@ toxicityUI <- function(id) {
                       strong("Statistical Model"), " dropdown:"),
                     tags$ul(
                       tags$li(strong("Body Weight Analysis"), " — models longitudinal weight trajectories using a linear mixed-effects model, and times each animal to a weight-loss threshold (Kaplan-Meier)."),
-                      tags$li(strong("Therapeutic Window"), " — sets each arm's tumor growth inhibition against its body-weight loss. Requires a tumor volume column.")
+                      tags$li(strong("Therapeutic Window"), " — sets each arm's tumor growth inhibition beside its worst body-weight loss, each with an interval, and flags whether the weight loss is tolerated. Requires a tumor volume column.")
                     ),
                     p(tags$small(class = "text-muted",
                       "Body weight is used as the toxicity surrogate throughout. ",
@@ -167,16 +174,20 @@ toxicityUI <- function(id) {
                     h5(strong("Weight Loss KM Curve")),
                     p("Treats each mouse as an event-time observation where the event is crossing the weight-loss threshold (default 20%). ",
                       "Mice that never reach the threshold are censored at their last observation. ",
-                      "A Kaplan-Meier curve is fitted per group; group differences are tested with the log-rank test."),
+                      "A Kaplan-Meier curve is fitted per group; group differences are tested with the log-rank test. ",
+                      "When an arm has no events, Firth's penalised Cox model is used for the hazard ratios."),
                     div(class = "alert alert-warning", style = "font-size:0.9em;",
                       icon("triangle-exclamation"), " ",
                       strong("Competing risks."), " A mouse euthanised for tumour burden can no longer experience a ",
                       "weight-loss event, so treating it as an ordinary censoring overstates the weight-loss risk — ",
-                      "censoring assumes the animal remained at risk, and it did not. Where tumour-driven removals ",
-                      "are present the panel reports how many there were and provides an Aalen-Johansen cumulative ",
-                      "incidence estimate alongside the Kaplan-Meier curve. The censoring summary breaks down, per ",
-                      "arm, how many observations were true censorings versus competing events; a large competing ",
-                      "count means the KM curve should not be read as a probability of weight loss."),
+                      "censoring assumes the animal remained at risk, and it did not. Which animals were removed, ",
+                      "and why, is known only from a ", strong("removal-reason column"), " (mapped on Data Upload). ",
+                      "With one, a removal for weight loss or body condition counts as a weight-loss event, a planned ",
+                      "end (end of study, scheduled sacrifice, data cut) as censoring, and any other removal as a ",
+                      "competing risk, with an Aalen-Johansen cumulative incidence reported. Without one, an animal ",
+                      "whose record ends early is censored at its last day, which assumes its later risk was like that ",
+                      "of the animals still on study; the panel states which assumption applied. The censoring summary ",
+                      "breaks down, per arm, how each animal left the study."),
                     p(tags$b("Weight Loss Threshold:"),
                       " The % body weight loss that constitutes a toxicity event. The default (20%) is a common IACUC endpoint; adjust to match study-specific welfare criteria.")
                   )
@@ -201,18 +212,31 @@ toxicityUI <- function(id) {
                       "list the days and arms the rule excluded."),
 
                     hr(),
-                    h5(strong("Therapeutic Window Metric (TWM)")),
-                    p("A summary ratio combining efficacy and toxicity per group:"),
-                    tags$blockquote(tags$code("TWM = TGI(%) / Mean Body Weight Loss(%)")),
-                    p("Higher TWM indicates a more favourable balance. The denominator is the group mean of per-mouse maximum weight loss (not the single worst-case mouse). A noise floor prevents division by near-zero weight changes. Displayed as a ranked bar chart."),
+                    h5(strong("Tolerability")),
+                    p("Each animal's worst weight loss is its largest drop below its own first weighing, in percent, ",
+                      "over its whole record (weight gain counts as no loss). The arm's ", strong("worst weight loss"),
+                      " is the mean over its animals, with a 95% interval from resampling animals. ",
+                      strong("Over threshold"), " counts the animals whose own worst loss reached the threshold."),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Tolerated"), tags$dd("the interval lies below the tolerability threshold"),
+                      tags$dt("Not tolerated"), tags$dd("the interval lies at or above it"),
+                      tags$dt("Unclear"), tags$dd("the interval contains it")
+                    ),
+                    p("The flag describes the arm's average animal, so a Tolerated arm can still have an animal over ",
+                      "the threshold; read the two columns together. Weighings between calliper days count: for the ",
+                      "tumour-mass correction, each animal's volume is interpolated between its calliper readings."),
+
+                    hr(),
+                    h5(strong("Reading the two axes")),
+                    p("The Therapeutic Window table and plot set each arm's TGI (efficacy) beside its worst weight ",
+                      "loss (tolerability). They are read separately: the table is not a ranking. A ratio of the two ",
+                      "was reported before version 26.09.005; it was withdrawn because an arm that loses no weight ",
+                      "needed an arbitrary floor, and one number cannot show both effects."),
                     tags$dl(class = "dl-horizontal",
                       tags$dt("Intervals"),
-                      tags$dd("Under the model estimand, TGI intervals come from draws of the fitted model and ",
-                              "weight-loss intervals from resampling animals. The TWM ratio then has no interval, ",
-                              "because its two parts come from different sources; read the TGI and weight-loss ",
-                              "intervals instead. (A two-axis summary replaces the ratio in a later version.) Under ",
-                              "the observed estimands one resampling of animals gives all three. A bar chart ordered ",
-                              "by point estimate looks like a ranking whether or not the data support one."),
+                      tags$dd("Under the model estimand, TGI intervals come from draws of the fitted model; under ",
+                              "the observed estimands, from resampling animals. Weight-loss intervals always come ",
+                              "from resampling animals."),
                       tags$dt("Interval draws"),
                       tags$dd("Number of draws or resamples behind those intervals. Set to 0 to skip, which returns ",
                               "point estimates with no interval."),
@@ -255,7 +279,7 @@ toxicityUI <- function(id) {
             tab_info(
               strong("Analysis summary. "),
               "Body Weight Analysis: mixed-effects model output, fixed effects, and marginal means. ",
-              "Therapeutic Window: TGI, weight loss and TWM per arm."
+              "Therapeutic Window: TGI and worst weight loss per arm, with the tolerability flag."
             ),
             shinycssloaders::withSpinner(verbatimTextOutput(ns("tox_summary")))
           ),
@@ -299,7 +323,7 @@ toxicityUI <- function(id) {
                   conditionalPanel(ns = ns, "output.tox_model_type_val == 'et'",
                     selectInput(ns("tox_et_plot_selector"), "Plot Type",
                       choices = c(
-                        "Therapeutic Window"      = "twm"
+                        "Therapeutic Window (TGI vs worst weight loss)" = "twm"
                       ),
                       selected = "twm"
                     )
@@ -371,7 +395,7 @@ toxicityUI <- function(id) {
                 ),
                 conditionalPanel(ns = ns,
                   "output.tox_model_type_val == 'et' && input.tox_et_plot_selector == 'twm'",
-                  h4("Therapeutic Window Metric"),
+                  h4("Therapeutic Window"),
                   shinycssloaders::withSpinner(
                     plotOutput(ns("tox_et_twm_plot"), width = "auto", height = "auto")
                   )
@@ -567,20 +591,19 @@ toxicity_server <- function(id, rv) {
       insertTab(inputId = tabs_id, target = "Summary", position = "after",
         tabPanel("Therapeutic Window",
           tab_info(
-            strong("Therapeutic Window Metric (TWM). "),
-            "TWM = TGI(%) / Mean Body Weight Loss(%). Higher values indicate a more ",
-            "favourable efficacy-to-toxicity ratio."
+            strong("Therapeutic window. "),
+            "Each arm's TGI at the endpoint day beside its worst weight loss, each with a ",
+            "95% interval, and whether the weight loss is tolerated. Read the two axes ",
+            "separately; the table is not a ranking."
           ),
-          # CODE_REVIEW.md R3.D9 -- the table is sorted by TWM, so it reads as a
-          # ranking. Backend v0.7.0 attaches bootstrap bounds; without them the
-          # order looks more resolved than the data supports.
-          # R20-K: the endpoint day and the days the rule excluded.
+          # R20-K: the endpoint day and the days the rule excluded; then the
+          # tolerability rule and where the intervals come from.
           uiOutput(ns("tox_twm_evaluability_note")),
-          uiOutput(ns("tox_twm_ranking_note")),
+          uiOutput(ns("tox_twm_tolerability_note")),
           shinycssloaders::withSpinner(DTOutput(ns("tox_et_twm_table"))),
           uiOutput(ns("tox_twm_attrition_ui")),
           DTOutput(ns("tox_twm_attrition_table")),
-          downloadButton(ns("download_et_twm_csv"), "Download TWM CSV")
+          downloadButton(ns("download_et_twm_csv"), "Download CSV")
         )
       )
       et_tabs_inserted(TRUE)
@@ -759,6 +782,11 @@ toxicity_server <- function(id, rv) {
         )
       })
 
+      # R20-D.H / package R20.23: with a removal-reason column, weight-loss
+      # removals are events, planned ends censoring, and other removals
+      # competing risks. Without one, an early end is censoring.
+      rr <- removal_reason_spec(rv)
+      if (!is.null(rr) && !has_col(data, rr$column)) rr <- NULL
       results$weight_loss <- safe_analysis(module = "tox_threshold", {
         mouseExperiment::weight_loss_threshold(
           df = data, weight_column = wt_col, time_column = time_col,
@@ -769,7 +797,10 @@ toxicity_server <- function(id, rv) {
           volume_column = if (has_vol) vol_col else NULL,
           adjust_tumor_weight = adjust, tumor_density = density,
           volume_units = units,
-          threshold = threshold, baseline_day = baseline_day, reference_group = ref_group
+          threshold = threshold, baseline_day = baseline_day, reference_group = ref_group,
+          removal_reason_column = if (!is.null(rr)) rr$column,
+          weight_loss_reasons   = reasons_in(rr, "weight"),
+          planned_end_reasons   = reasons_in(rr, "planned")
         )
       })
 
@@ -812,6 +843,13 @@ toxicity_server <- function(id, rv) {
       # exists only to reproduce pre-0.8.0 figures. CODE_REVIEW.md R3.D9.
       ep_method <- input$tox_endpoint_method %||% "model"
       n_boot_tw <- as.integer(input$tox_n_boot %||% 2000L)
+      tol_thr   <- as.numeric(input$tox_tol_threshold %||% 20)
+      if (length(tol_thr) != 1L || !is.finite(tol_thr) || tol_thr <= 1 || tol_thr >= 100) {
+        output$tox_status_msg <- renderUI(status_alert(
+          "The tolerability threshold is a weight loss in percent, above 1 and below 100.",
+          "danger"))
+        return()
+      }
 
       results$twm <- safe_analysis(module = "et_twm", {
         mouseExperiment::therapeutic_window_metric(
@@ -820,10 +858,12 @@ toxicity_server <- function(id, rv) {
           cage_column = cage_col,  # R20.D31: cage is part of the animal key
           adjust_tumor_weight = adjust, tumor_density = density,
           volume_units = units, reference_group = ref_group,
+          tolerability_threshold = tol_thr,
           endpoint_method = ep_method, n_boot = n_boot_tw, boot_seed = 20260730L
         )
       })
 
+      results$twm_reference <- ref_group
       n_err   <- as.integer(isTRUE(results$twm$error))
       n_total <- 1L
     }
@@ -839,11 +879,11 @@ toxicity_server <- function(id, rv) {
     else NULL
 
     # Data order (so colours match the other tabs), limited to the arms the
-    # TWM table reports.
+    # therapeutic-window table reports.
     rv$tox_et_plot_groups <- if (model_type == "et" && !is.null(tx_col) &&
                                  has_col(data, tx_col)) {
       grps    <- unique(as.character(data[[tx_col]]))
-      twm_tbl <- results$twm$twm_table
+      twm_tbl <- results$twm$window_table
       if (!isTRUE(results$twm$error) && !is.null(twm_tbl))
         grps <- grps[grps %in% twm_tbl$Treatment]
       grps
@@ -882,13 +922,23 @@ toxicity_server <- function(id, rv) {
     }
     lines <- c("=== THERAPEUTIC WINDOW SUMMARY ===", "")
     if (!is.null(res$twm) && !isTRUE(res$twm$error)) {
-      tbl   <- res$twm$twm_table
-      lines <- c(lines, "Therapeutic Window Metric (TWM = TGI / Mean Weight Loss%):", "")
-      for (i in seq_len(nrow(tbl)))
-        lines <- c(lines, sprintf("  %s:  TWM = %.2f  |  TGI = %.1f%%  |  Mean Weight Loss = %.1f%%",
-                                  tbl$Treatment[i], tbl$TWM[i],
-                                  tbl$TGI[i], tbl$Mean_Pct_Weight_Loss[i]))
-      lines <- c(lines, "")
+      tw    <- res$twm
+      tbl   <- tw$window_table
+      lines <- c(lines,
+        sprintf("Endpoint day: %s (%s estimand)", tw$endpoint_day, tw$endpoint_method),
+        sprintf("Tolerability threshold: %s%% weight loss", format(tw$tolerability_threshold)),
+        "", "TGI (efficacy) and mean worst weight loss (tolerability), with 95% intervals:", "")
+      for (i in seq_len(nrow(tbl))) {
+        r <- tbl[i, ]
+        tgi <- if (identical(r$Treatment, res$twm_reference)) "(reference)"
+               else sprintf("%.1f%% %s", r$TGI, fmt_interval(r$TGI_Lower, r$TGI_Upper))
+        lines <- c(lines, sprintf(
+          "  %s:  TGI %s  |  worst weight loss %.1f%% %s  |  %s  (%d of %d over the threshold)",
+          r$Treatment, tgi, r$Worst_Loss, fmt_interval(r$Worst_Loss_Lower, r$Worst_Loss_Upper),
+          if (is.na(r$Tolerability)) "no interval, no flag" else r$Tolerability,
+          r$N_Over_Threshold, r$N_Animals))
+      }
+      lines <- c(lines, "", tw$interval_note)
     }
     elapsed_str <- format_elapsed(res$elapsed_seconds)
     if (!is.null(elapsed_str)) {
@@ -935,50 +985,42 @@ toxicity_server <- function(id, rv) {
   })
 
   # ---- ET: Result tables ----
+  # R20-K (package v0.27.0): two axes, each with its interval, and a
+  # tolerability flag; the TWM ratio and its ranking are gone.
   output$tox_et_twm_table <- renderDT({
     req(rv$tox_results, rv$tox_results$twm)
     twm <- rv$tox_results$twm
     if (isTRUE(twm$error)) return(datatable(data.frame(Message = twm$message)))
-    datatable(format_df_for_display(twm$twm_table),
-              options = list(scrollX = TRUE), rownames = FALSE)
+    tw_tbl <- window_display_table(twm$window_table, rv$tox_results$twm_reference)
+    DT::formatStyle(
+      datatable(tw_tbl, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+                rownames = FALSE),
+      "Tolerability", fontWeight = "bold",
+      color = DT::styleEqual(c("Tolerated", "Not tolerated", "Unclear"),
+                             c("#2e7d32", "#c62828", "#b26a00")))
   })
 
-  # Does the TWM ranking survive its own uncertainty? With typical group sizes the
-  # intervals overlap heavily and the order of adjacent arms is usually not
-  # resolvable -- worth saying before anyone acts on the top row.
-  output$tox_twm_ranking_note <- renderUI({
+  output$tox_twm_tolerability_note <- renderUI({
     req(rv$tox_results, rv$tox_results$twm)
     twm <- rv$tox_results$twm
     if (isTRUE(twm$error)) return(NULL)
-    tbl <- twm$twm_table
-    if (is.null(tbl) || !all(c("TWM_Lower", "TWM_Upper") %in% names(tbl)) ||
-        nrow(tbl) < 2L) return(NULL)
-
-    ord <- tbl[order(-tbl$TWM), , drop = FALSE]
-    top <- ord[1, ]; second <- ord[2, ]
-    # Under the model estimand the ratio has no interval (backend v0.26.0):
-    # say so, and point to the intervals that exist.
-    if (!is.finite(top$TWM_Lower) && !is.finite(top$TWM_Upper)) {
-      return(status_alert(paste(
-        twm$interval_note %||% "The TWM ratio has no interval.",
-        "Compare the arms by TGI_Lower / TGI_Upper and WL_Lower / WL_Upper;",
-        "the order of the TWM column is indicative only."), "info"))
-    }
-    separable <- is.finite(top$TWM_Lower) && is.finite(second$TWM_Upper) &&
-      top$TWM_Lower > second$TWM_Upper
-
-    status_alert(
-      if (separable) {
-        sprintf(paste0("%s ranks highest and its 95%% interval does not overlap ",
-                       "the next arm's, so the top of this ranking is resolved."),
-                top$Treatment)
-      } else {
-        sprintf(paste0("The 95%% intervals for %s and %s overlap, so this ranking ",
-                       "does not distinguish them. Read the order as indicative ",
-                       "and check TWM_Lower / TWM_Upper before acting on it."),
-                top$Treatment, second$Treatment)
-      },
-      if (separable) "success" else "warning")
+    w <- twm$window_table
+    crossed <- w[!is.na(w$Tolerability) & w$Tolerability == "Tolerated" &
+                   w$N_Over_Threshold > 0, , drop = FALSE]
+    tagList(
+      tags$p(class = "text-muted", style = "font-size:12px;",
+             icon("scale-balanced"), " ", strong("Tolerability. "),
+             twm$tolerability_rule, " ", twm$interval_note),
+      if (nrow(crossed))
+        status_alert(paste0(
+          paste(sprintf("%s (%d of %d)", crossed$Treatment, crossed$N_Over_Threshold,
+                        crossed$N_Animals), collapse = "; "),
+          ": tolerated on average, but some animals reached the threshold on their own."),
+          "warning"),
+      if (all(is.na(w$Tolerability)))
+        status_alert("No intervals were drawn (Interval draws = 0), so no arm is flagged.",
+                     "info")
+    )
   })
 
   output$tox_twm_evaluability_note <- renderUI({
@@ -1025,24 +1067,24 @@ toxicity_server <- function(id, rv) {
     wl <- rv$tox_results$weight_loss
     if (isTRUE(wl$error)) return(NULL)
     n_cr <- wl$n_competing_risk %||% 0L
+    # R20.23: the backend states how early ends were treated; without a
+    # removal-reason column they are censoring, which is an assumption.
+    assumption <- p(class = "text-muted", icon("circle-info"), " ",
+                    wl$assumption %||% "")
     if (!is.finite(n_cr) || n_cr == 0L) {
-      return(tagList(
-        tags$hr(),
-        p(class = "text-muted",
-          "All censoring here is administrative (animals still on study at the ",
-          "end), so the Kaplan-Meier curve is unbiased for this endpoint.")
-      ))
+      return(tagList(tags$hr(), assumption,
+        p(class = "text-muted", "Breakdown of how each animal left the study:")))
     }
     tagList(
       tags$hr(),
       h4("Competing risks"),
+      assumption,
       status_alert(sprintf(paste0(
-        "%d animal(s) left the study before the end without reaching the ",
-        "weight-loss threshold. That censoring is NOT independent \u2014 animals are ",
-        "usually removed for tumour burden, which shares a cause with weight loss. ",
-        "Kaplan-Meier assumes a censored animal stays at risk, so the curve above ",
-        "OVERSTATES weight-loss incidence. Use the Aalen-Johansen cumulative ",
-        "incidence in the result object (`cuminc`) for incidence statements."),
+        "%d animal(s) were removed for other reasons (such as tumour burden) ",
+        "before reaching the weight-loss threshold. They can no longer lose ",
+        "weight, but Kaplan-Meier treats them as still at risk, so the curve ",
+        "above OVERSTATES weight-loss incidence. Use the Aalen-Johansen ",
+        "cumulative incidence (`cuminc` in the result) for incidence statements."),
         n_cr), "warning"),
       p(class = "text-muted",
         "Breakdown of how each animal left the study:")

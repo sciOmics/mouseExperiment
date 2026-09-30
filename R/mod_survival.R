@@ -72,8 +72,10 @@ survivalUI <- function(id) {
 
           hr(),
           # R20.D13: a "Treat natural death as event" checkbox sat here and
-          # nothing read it. It returns, working, with the removal-reason
-          # column (R20-D.H); until then the tab states what it assumes.
+          # nothing read it. It works now, and appears only when a
+          # removal-reason column says which animals died (R20-D.H);
+          # otherwise the tab states what it assumes.
+          uiOutput(ns("surv_death_option_ui")),
           uiOutput(ns("surv_event_assumption")),
 
           br(),
@@ -118,9 +120,11 @@ survivalUI <- function(id) {
                     "large per-group sample sizes rarely achievable in mouse experiments. ",
                     "The recommended pragmatic approach is to treat any death as an event (‘endpoint reached’), ",
                     "because the animal did not survive the study regardless of cause. ",
-                    "With an Event/Censor column, events are exactly the rows coded 1, so code such deaths 1 to ",
-                    "follow this approach. When events are derived from a volume threshold, only a tumour ",
-                    "reaching the limit is an event and other removals are censored; the sidebar says so."
+                    "Map a removal-reason column on Data Upload and the sidebar offers exactly that. ",
+                    "Without one, with an Event/Censor column events are exactly the rows coded 1, so code such ",
+                    "deaths 1 to follow this approach; when events are derived from a volume threshold, only a ",
+                    "tumour reaching the limit is an event and other removals are censored. The sidebar says ",
+                    "which applies."
                   )
                 ),
 
@@ -194,7 +198,7 @@ survivalUI <- function(id) {
                       tags$dt("Volume threshold"),
                       tags$dd("Optionally generate an event indicator by flagging animals whose tumor volume exceeds a specified threshold at any timepoint."),
                       tags$dt("Natural death"),
-                      tags$dd("Event/Censor column: an animal that died of other causes is an event only if its row is coded 1. Volume threshold: it is censored at its last measurement, which assumes its later risk was like that of the animals still on study; if such deaths are treatment-related, this favours the treatment."),
+                      tags$dd("With a removal-reason column mapped on Data Upload, the sidebar offers to count deaths from other causes as events (recommended): an animal whose reason is marked 'Death or moribund' under Study Design is an event at its last measurement, with either event source. Without one, or with the box unticked: Event/Censor column, an animal that died of other causes is an event only if its row is coded 1; volume threshold, it is censored at its last measurement, which assumes its later risk was like that of the animals still on study; if such deaths are treatment-related, this favours the treatment."),
                       tags$dt("Event time"),
                       tags$dd("The first day an animal's row is flagged 1 (or its tumour reaches the limit). An animal whose every row is flagged has an animal-level status, and its last day is used. Animals are identified by treatment, ID and cage, so an ear tag reused in another arm is a different animal.")
                     )
@@ -489,20 +493,46 @@ survival_server <- function(id, rv) {
     }
   })
 
+  output$surv_death_option_ui <- renderUI({
+    spec <- removal_reason_spec(rv)
+    if (is.null(spec)) return(NULL)
+    deaths <- reasons_in(spec, "death")
+    tagList(
+      checkboxInput(session$ns("surv_death_as_event"),
+                    "Count deaths from other causes as events (recommended)",
+                    value = isolate(input$surv_death_as_event) %||% TRUE),
+      tags$p(tags$small(class = "text-muted",
+        "Deaths are the removal reasons marked 'Death or moribund' under Study ",
+        "Design on Data Upload: ",
+        if (length(deaths)) paste(sQuote(deaths, FALSE), collapse = ", ")
+        else "none at present", "."))
+    )
+  })
+
   output$surv_event_assumption <- renderUI({
     src <- input$surv_event_source %||% "column"
+    spec <- removal_reason_spec(rv)
+    deaths_counted <- !is.null(spec) && isTRUE(input$surv_death_as_event)
     div(class = "alert alert-info", style = "font-size:0.85em; padding:8px;",
       icon("circle-info"), " ",
-      if (identical(src, "volume")) {
+      if (deaths_counted) {
+        tagList(strong("Deaths from other causes are events. "),
+          if (identical(src, "volume"))
+            "A tumour reaching the volume limit is an event, and so is an animal whose removal reason is a death, at its last measurement. Other removals are censored."
+          else
+            "Events are the rows coded 1, and any animal whose removal reason is a death, whatever the Event/Censor column says.")
+      } else if (identical(src, "volume")) {
         tagList(strong("Deaths from other causes are censored. "),
           "Only a tumour reaching the volume limit is an event; an animal that ",
           "leaves the study for another reason is censored at its last ",
           "measurement. If such removals are treatment-related, this favours ",
-          "the treatment.")
+          "the treatment.",
+          if (is.null(spec)) " Map a removal-reason column on Data Upload to count deaths as events.")
       } else {
         tagList(strong("Events are the rows coded 1. "),
           "An animal that died of other causes counts as an event only if the ",
-          "Event/Censor column codes it 1.")
+          "Event/Censor column codes it 1.",
+          if (is.null(spec)) " Map a removal-reason column on Data Upload to count deaths as events.")
       })
   })
 
@@ -686,6 +716,22 @@ survival_server <- function(id, rv) {
       time_col_use   <- time_col
     }
 
+    # R20.D13 / R20-D.H: with a removal-reason column, deaths from other
+    # causes can count as events, at the animal's last measurement.
+    death_spec <- removal_reason_spec(rv)
+    n_death_events <- NA_integer_
+    if (!is.null(death_spec) && isTRUE(input$surv_death_as_event) &&
+        has_col(full_data, death_spec$column) && has_col(data, censor_col_use)) {
+      reasons <- animal_removal_reasons(full_data, tx_col_surv, id_col_surv,
+                                        cage_col_surv, death_spec$column, time_col)
+      died <- names(reasons)[!is.na(reasons) &
+                               reasons %in% reasons_in(death_spec, "death")]
+      ev_now <- suppressWarnings(as.numeric(data[[censor_col_use]]))
+      hit <- data$.animal_key %in% died & (is.na(ev_now) | ev_now == 0)
+      data[[censor_col_use]] <- ifelse(hit, 1, ev_now)
+      n_death_events <- sum(hit)
+    }
+
     # Validate all required columns exist before analysis
     required <- c(Treatment = tx_col_surv,
                   Time      = time_col_use,
@@ -718,6 +764,7 @@ survival_server <- function(id, rv) {
         n_iter         = as.integer(input$surv_bayes_iter    %||% 500L),
         backend        = input$surv_bayes_backend %||% "rstan",
         event_src      = event_src,
+        death_events_added = n_death_events,
         vol_threshold  = if (event_src == "volume") as.numeric(input$surv_vol_threshold %||% 2000) else NA_real_,
         time_method    = rv$settings$time_method,
         time_col_orig  = time_col,
@@ -757,6 +804,8 @@ survival_server <- function(id, rv) {
     # Store event source for downstream use (KM plot titles, summary text)
     result$event_src_used     <- event_src
     result$vol_threshold_used <- if (event_src == "volume") as.numeric(input$surv_vol_threshold %||% 2000) else NA_real_
+    # Deaths counted as events through the removal-reason column (NA: not used).
+    result$death_events_added <- n_death_events
 
     # Store time calculation info for later display
     result$time_method <- rv$settings$time_method
@@ -981,6 +1030,11 @@ survival_server <- function(id, rv) {
             rv$surv_results$vol_threshold_used, volume_unit_label(rv), ")\n")
       } else {
         cat("Event Column:", rv$settings$col_survival_event, "\n")
+      }
+      nd <- rv$surv_results$death_events_added
+      if (length(nd) == 1L && !is.na(nd)) {
+        cat("Deaths from other causes counted as events:", nd,
+            "animal(s), from the removal-reason column\n")
       }
       cat("Treatment Column:", rv$settings$col_treatment, "\n")
       cat("Statistical Method:", rv$surv_results$method_used, "\n")

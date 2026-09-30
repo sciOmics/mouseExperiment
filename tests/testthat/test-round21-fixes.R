@@ -205,7 +205,7 @@ test_that("R20.D17: the analytic Power tab plans k - 1 corrected comparisons and
 
 # ---- R20.8 (dashboard side) -------------------------------------------------
 
-test_that("R20.8: the synergy summary says 'not evaluable' rather than printing NA", {
+test_that("R20.8: the synergy summary says Bliss does not apply rather than printing NA", {
   harm <- synergy_df(c(Control = 0.10, DrugA = 0.13, DrugB = 0.10, Combo = 0.10))
   res <- suppressWarnings(mouseExperiment::analyze_drug_synergy(
     harm, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
@@ -215,7 +215,8 @@ test_that("R20.8: the synergy summary says 'not evaluable' rather than printing 
   # The bar plot drops the NA "Bliss Expected" bar, with a ggplot warning.
   suppressWarnings(shiny::testServer(g("synergy_server"), args = list(rv = rv), {
     txt <- render_text(output$syn_summary)
-    expect_match(txt, "Not evaluable")
+    # "Not evaluable" until v26.09.005: "evaluable" now refers to evaluable days.
+    expect_match(txt, "Does not apply")
     expect_false(grepl("Synergistic:", txt, fixed = TRUE))  # printed "TRUE" before
     expect_equal(render_text(output$syn_ci_verdict_note), "") # green note before
   }))

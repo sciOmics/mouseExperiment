@@ -202,27 +202,53 @@ add_tox_plots <- function(input, output, session, rv,
     req(rv$tox_results, rv$tox_results$twm)
     twm <- rv$tox_results$twm
     if (isTRUE(twm$error)) return(NULL)
-    text_sz      <- input$tox_plot_text_size %||% 14
-    ordered_grps <- ordered_et_grps()
-    colors       <- build_color_vector(input, "tox_et_color", ordered_grps)
-    tbl <- twm$twm_table
-    if (!is.null(ordered_grps))
-      tbl$Treatment <- factor(tbl$Treatment, levels = ordered_grps)
-    else
-      tbl$Treatment <- factor(tbl$Treatment, levels = tbl$Treatment[order(tbl$TWM)])
-    p <- ggplot2::ggplot(tbl,
-           ggplot2::aes(.data[["Treatment"]], .data[["TWM"]], fill = .data[["Treatment"]])) +
-      ggplot2::geom_col(alpha = 0.8, width = 0.6) +
-      ggplot2::geom_text(ggplot2::aes(label = round(.data[["TWM"]], 2)), vjust = -0.5, size = 4) +
-      ggplot2::geom_hline(yintercept = 1, linetype = "dashed", color = "grey40") +
-      ggplot2::labs(title = "Therapeutic Window Metric by Treatment",
-                   subtitle = "TWM = TGI(%) / Mean Weight Loss(%). Dashed line = TWM of 1.",
-                   x = "Treatment", y = "TWM") +
-      ggplot2::theme_classic(base_size = text_sz) +
-      ggplot2::theme(legend.position = "none",
-                     axis.text.x = ggplot2::element_text(angle = 30, hjust = 1))
-    if (!is.null(colors)) p <- p + ggplot2::scale_fill_manual(values = colors)
-    p
+    tox_window_plot(twm, input, ordered_et_grps(),
+                    text_size = input$tox_plot_text_size %||% 14)
   }, width  = function() input$tox_plot_width  %||% 800,
      height = function() input$tox_plot_height %||% 500)
+}
+
+
+#' The therapeutic window plot: TGI against mean worst weight loss
+#'
+#' R20-K (package v0.27.0). Each arm is a point with its two 95% intervals;
+#' the dashed line is the tolerability threshold, and the shaded side of it is
+#' "not tolerated". It replaces the TWM bar chart, which ranked arms by a ratio.
+#' @param twm The backend's therapeutic-window result.
+#' @param input Module input, for the colour pickers.
+#' @param ordered_grps Arms in display order, or NULL.
+#' @keywords internal
+tox_window_plot <- function(twm, input, ordered_grps = NULL, text_size = 14) {
+  w   <- twm$window_table
+  thr <- twm$tolerability_threshold %||% 20
+  lv  <- if (!is.null(ordered_grps)) intersect(ordered_grps, w$Treatment) else w$Treatment
+  lv  <- c(lv, setdiff(w$Treatment, lv))
+  w$Treatment <- factor(w$Treatment, levels = lv)
+  colors <- build_color_vector(input, "tox_et_color", lv)
+  p <- ggplot2::ggplot(w, ggplot2::aes(x = .data[["Worst_Loss"]], y = .data[["TGI"]],
+                                       colour = .data[["Treatment"]])) +
+    ggplot2::annotate("rect", xmin = thr, xmax = Inf, ymin = -Inf, ymax = Inf,
+                      fill = "#c62828", alpha = 0.06) +
+    ggplot2::geom_vline(xintercept = thr, linetype = "dashed", colour = "grey40") +
+    ggplot2::geom_hline(yintercept = 0, colour = "grey75") +
+    ggplot2::geom_segment(ggplot2::aes(x = .data[["Worst_Loss_Lower"]],
+                                       xend = .data[["Worst_Loss_Upper"]],
+                                       yend = .data[["TGI"]]), na.rm = TRUE) +
+    ggplot2::geom_segment(ggplot2::aes(y = .data[["TGI_Lower"]], yend = .data[["TGI_Upper"]],
+                                       xend = .data[["Worst_Loss"]]), na.rm = TRUE) +
+    ggplot2::geom_point(size = 3) +
+    ggplot2::geom_text(ggplot2::aes(label = .data[["Treatment"]]), vjust = -1.1,
+                       size = text_size / 4, show.legend = FALSE) +
+    ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.12))) +
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.12))) +
+    ggplot2::labs(
+      title = "Therapeutic window",
+      subtitle = sprintf(paste0("TGI on day %s against each arm's mean worst weight loss. ",
+                                "Bars: 95%% intervals. Dashed line: tolerability ",
+                                "threshold (%s%%)."), twm$endpoint_day, format(thr)),
+      x = "Mean worst weight loss (% of each animal's baseline)",
+      y = "Tumour growth inhibition (%)", colour = "Treatment") +
+    ggplot2::theme_classic(base_size = text_size)
+  if (!is.null(colors)) p <- p + ggplot2::scale_colour_manual(values = colors)
+  p
 }

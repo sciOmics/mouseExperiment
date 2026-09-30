@@ -119,6 +119,7 @@ setup_settings_preset <- function(input, output, session, rv,
       updateSelectInput(session, "col_weight",        selected = st$col_weight        %||% "")
       updateSelectInput(session, "col_sex",           selected = st$col_sex           %||% "")
       updateSelectInput(session, "col_necrotic",      selected = st$col_necrotic      %||% "")
+      updateSelectInput(session, "col_removal_reason", selected = st$col_removal_reason %||% "")
       if (!is.null(st$time_method))    updateRadioButtons(session, "time_method",    selected = st$time_method)
       if (!is.null(st$volume_method))  updateRadioButtons(session, "volume_method",  selected = st$volume_method)
       if (!is.null(st$volume_formula)) updateSelectInput(session,  "volume_formula", selected = st$volume_formula)
@@ -138,6 +139,21 @@ setup_settings_preset <- function(input, output, session, rv,
                        if (length(cg) == 1L && nzchar(cg)) cg else NULL
                      })
       design <- design[!vapply(design, is.null, logical(1L))]
+      # Removal-reason categories: kept for when the mapping panel is drawn,
+      # and applied to the selectors already on screen.
+      rmap <- st$removal_reason_map
+      if (is.list(rmap) && length(rmap)) {
+        rmap <- rmap[vapply(rmap, function(x) length(x) == 1L &&
+                              as.character(x) %in% removal_reason_categories,
+                            logical(1L))]
+        rmap <- lapply(rmap, as.character)
+        design$removal_reason_map <- rmap
+        rcol <- as.character(unlist(st$col_removal_reason))
+        vals <- if (length(rcol) == 1L) removal_reason_values(rv$uploaded_data, rcol)
+                else character(0)
+        for (i in seq_along(vals)) if (!is.null(rmap[[vals[i]]]))
+          updateSelectInput(session, paste0("reason_cat_", i), selected = rmap[[vals[i]]])
+      }
       if (is.function(study_defaults)) {
         study_defaults(utils::modifyList(isolate(study_defaults()), design))
       }

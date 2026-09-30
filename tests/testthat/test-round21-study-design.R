@@ -379,7 +379,9 @@ test_that("Study Design: dose-response uses the study's control and the cage key
   shiny::isolate(g("ensure_preprocessed")(rv))
   shiny::isolate(rv$dose_col <- "Dose")
   shiny::testServer(g("dose_response_server"), args = list(rv = rv), {
+    # Since v26.09.005 the arms of one agent's series are chosen (R20.D47).
     session$setInputs(dr_control_group = "Drug_B", dr_time_point = "all",
+                      dr_treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High"),
                       run_dr_analysis = 1)
   })
   expect_equal(seen$control_group_name, "Vehicle")

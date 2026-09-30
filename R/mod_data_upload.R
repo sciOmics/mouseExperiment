@@ -232,6 +232,33 @@ data_upload_server <- function(id, rv) {
     updateSelectInput(session, "control_group", choices = vals, selected = sel)
   })
 
+  # R20-D.H: what each value of the removal-reason column means. A preset's
+  # categories are the defaults; otherwise they are guessed from the wording.
+  output$removal_reasons_ui <- renderUI({
+    col <- input$col_removal_reason %||% ""
+    if (!isTRUE(rv$data_valid) || !nzchar(col)) return(NULL)
+    removal_reason_map_ui(removal_reason_values(rv$uploaded_data, col),
+                          isolate(study_defaults()$removal_reason_map) %||% list(),
+                          col = col, ns = session$ns)
+  })
+
+  removal_reason_map <- reactive({
+    col <- input$col_removal_reason %||% ""
+    if (!isTRUE(rv$data_valid) || !nzchar(col)) return(list())
+    vals <- removal_reason_values(rv$uploaded_data, col)
+    if (!length(vals)) return(list())
+    pend  <- isolate(study_defaults()$removal_reason_map) %||% list()
+    guess <- guess_removal_category(vals)
+    cats <- vapply(seq_along(vals), function(i) {
+      x <- input[[paste0("reason_cat_", i)]]
+      p <- pend[[vals[i]]]
+      if (length(x) == 1L && x %in% removal_reason_categories) x
+      else if (length(p) == 1L && p %in% removal_reason_categories) p
+      else guess[i]
+    }, character(1L))
+    as.list(stats::setNames(cats, vals))
+  })
+
   output$volume_units_status <- renderUI({
     if (!is.null(input$volume_units)) return(NULL)
     tags$small(class = "text-danger", icon("exclamation-circle"),
@@ -670,6 +697,9 @@ data_upload_server <- function(id, rv) {
       # whenever no cage column is mapped.
       volume_units      = input$volume_units %||% "",
       control_group     = input$control_group %||% "",
+      # Why each animal left, and what each reason means (R20-D.H).
+      col_removal_reason = input$col_removal_reason %||% "",
+      removal_reason_map = removal_reason_map(),
       randomisation_unit = if (nzchar(input$col_cage %||% ""))
                              input$randomisation_unit %||% "mouse" else "mouse"
     )

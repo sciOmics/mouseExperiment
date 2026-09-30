@@ -196,6 +196,127 @@ volume_threshold_events <- function(data, time_col, tx_col, id_col,
              stringsAsFactors = FALSE, check.names = FALSE, row.names = NULL)
 }
 
+# ---- Dose series (R20.D47) -----------------------------------------------------
+
+#' A suggested dose series: one agent's arms
+#'
+#' Package R20.16 analyses one agent at several doses. The suggestion is the
+#' largest set of single-agent arms (no "+" in the name) that share the first
+#' word of their name, have one dose each, and differ in dose. A single arm is
+#' its own series (one treatment name at every dose). Otherwise nothing is
+#' suggested, and the user chooses.
+#'
+#' @param data Data with the treatment and dose columns.
+#' @param tx_col,dose_col Column names.
+#' @param arms The arms to choose from (the control excluded).
+#' @return Character vector of arms.
+#' @keywords internal
+guess_dose_series <- function(data, tx_col, dose_col, arms) {
+  if (length(arms) <= 1L) return(arms)
+  single <- arms[!grepl("+", arms, fixed = TRUE)]
+  if (!length(single)) return(character(0))
+  stem <- sub("\\s.*$", "", single)
+  n    <- table(stem)
+  best <- names(n)[n == max(n)][1L]
+  pick <- single[stem == best]
+  dose <- suppressWarnings(as.numeric(data[[dose_col]]))
+  one_dose <- vapply(pick, function(a) {
+    v <- unique(dose[!is.na(data[[tx_col]]) & data[[tx_col]] == a & is.finite(dose)])
+    if (length(v) == 1L) v else NA_real_
+  }, numeric(1L))
+  if (length(pick) >= 2L && all(is.finite(one_dose)) && !anyDuplicated(one_dose)) pick
+  else character(0)
+}
+
+# ---- Removal reasons (R20-D.H) ------------------------------------------------
+
+#' Categories for an optional removal-reason column
+#'
+#' R20-D.H: when the column is mapped, each of its values is assigned one of
+#' these on Data Upload. Survival can then count deaths from other causes as
+#' events (R20.D13), and the weight-loss threshold separates weight-loss
+#' removals, planned ends and competing removals (package R20.23).
+#' @keywords internal
+removal_reason_categories <- c(
+  "Tumour volume limit"           = "limit",
+  "Death or moribund"             = "death",
+  "Weight loss or body condition" = "weight",
+  "Planned end or data cut"       = "planned",
+  "Other"                         = "other")
+
+#' A first guess at a removal reason's category, from keywords
+#'
+#' Only a starting point: every value's category is shown and can be changed
+#' on Data Upload.
+#' @param x Character vector of reason values.
+#' @return Character vector of category codes.
+#' @keywords internal
+guess_removal_category <- function(x) {
+  v <- tolower(as.character(x))
+  out <- rep("other", length(v))
+  rules <- list(
+    weight  = "weight|body condition|\\bbcs\\b|emaciat|cachex",
+    death   = "dead|death|died|moribund|natural",
+    planned = "end of study|study end|terminal|scheduled|planned|data cut|cut-?off|\\beos\\b",
+    limit   = "tumou?r|volume|size|burden")
+  for (cat in rev(names(rules))) out[grepl(rules[[cat]], v)] <- cat
+  out
+}
+
+#' The distinct non-empty values of a removal-reason column
+#' @keywords internal
+removal_reason_values <- function(data, col) {
+  if (!has_col(data, col)) return(character(0))
+  v <- trimws(as.character(data[[col]]))
+  sort(unique(v[!is.na(v) & nzchar(v)]))
+}
+
+#' The mapped removal reasons, or NULL when no reason column is mapped
+#'
+#' @param rv The shared reactiveValues.
+#' @return `list(column, map)`, where `map` is a named character vector from
+#'   each reason value to its category code.
+#' @keywords internal
+removal_reason_spec <- function(rv) {
+  col <- rv$settings$col_removal_reason %||% ""
+  map <- unlist(rv$settings$removal_reason_map)
+  if (!nzchar(col) || !length(map)) return(NULL)
+  list(column = col, map = map)
+}
+
+#' The reason values mapped to some categories
+#' @param spec Output of [removal_reason_spec()].
+#' @param categories Category codes.
+#' @keywords internal
+reasons_in <- function(spec, categories) {
+  if (is.null(spec)) return(character(0))
+  names(spec$map)[spec$map %in% categories]
+}
+
+#' Each animal's removal reason: its last non-empty value
+#'
+#' Keyed like [survival_animal_rows()].
+#' @inheritParams survival_animal_rows
+#' @param reason_col The removal-reason column.
+#' @return Named character vector, animal key to reason (NA when none).
+#' @keywords internal
+animal_removal_reasons <- function(data, tx_col, id_col, cage_col = NULL,
+                                   reason_col, time_col = NULL) {
+  key <- animal_key(data[[tx_col]], data[[id_col]],
+                    if (has_col(data, cage_col)) data[[cage_col]])
+  r   <- trimws(as.character(data[[reason_col]]))
+  ord <- if (has_col(data, time_col))
+    order(key, suppressWarnings(as.numeric(data[[time_col]])), na.last = TRUE)
+  else seq_along(key)
+  key <- key[ord]; r <- r[ord]
+  ok  <- !is.na(r) & nzchar(r)
+  last <- tapply(r[ok], factor(key[ok], levels = unique(key)),
+                 function(x) x[length(x)])
+  out <- stats::setNames(rep(NA_character_, length(unique(key))), unique(key))
+  out[names(last)[!is.na(last)]] <- as.character(last[!is.na(last)])
+  out
+}
+
 # ---- Date Preprocessing (consolidated — Issue 2.3) ---------------------------
 
 # Regular expressions for the supported layouts, tried in this order. Month
@@ -665,7 +786,11 @@ detect_columns <- function(col_names) {
                            c("sex", "gender", "m/f")),
     necrotic = detect_column(col_names, col_names_lower,
                              c("necrotic", "necrosis", "necr",
-                               "is_necrotic", "necrotic_flag"))
+                               "is_necrotic", "necrotic_flag")),
+    # R20-D.H: why each animal left the study.
+    removal_reason = detect_column(col_names, col_names_lower,
+                                   c("removal_reason", "removal reason", "reason",
+                                     "cause_of_death", "cause of death", "fate"))
   )
 
   detected

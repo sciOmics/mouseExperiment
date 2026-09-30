@@ -65,17 +65,23 @@ test_that("contract: synergy result carries the fields the Synergy tab renders",
   expect_true(all(c("Metric", "Value") %in% names(res$synergy_metrics)))
 })
 
-test_that("contract: TWM result carries the ranking bounds and attrition", {
+test_that("contract: the therapeutic window carries both axes, the flag and attrition", {
   res <- suppressWarnings(suppressMessages(
     mouseExperiment::therapeutic_window_metric(
       contract_df(), volume_column = "Volume", weight_column = "Weight",
       time_column = "Day", treatment_column = "Treatment", id_column = "ID",
       reference_group = "Control", adjust_tumor_weight = FALSE,
+      tolerability_threshold = 20,
       endpoint_method = "model", n_boot = 200, boot_seed = 1)))
 
-  # tox_twm_ranking_note reads these off twm_table directly.
-  expect_true(all(c("Treatment", "TGI", "TWM", "TWM_Lower", "TWM_Upper") %in%
-                    names(res$twm_table)))
+  # tox_et_twm_table / window_display_table / tox_window_plot read these.
+  expect_true(all(c("Treatment", "N_Animals", "TGI", "TGI_Lower", "TGI_Upper",
+                    "Worst_Loss", "Worst_Loss_Lower", "Worst_Loss_Upper",
+                    "N_Over_Threshold", "Tolerability") %in% names(res$window_table)))
+  # tox_twm_tolerability_note
+  expect_true(is.character(res$tolerability_rule) && nzchar(res$tolerability_rule))
+  expect_true(is.character(res$interval_note))
+  expect_equal(res$tolerability_threshold, 20)
   # tox_twm_attrition_ui / _table
   expect_false(is.null(res$attrition))
   expect_true(all(c("N_Enrolled", "N_At_Endpoint", "Pct_Lost") %in%
@@ -93,6 +99,7 @@ test_that("contract: weight-loss result carries the competing-risks fields", {
 
   # tox_km_competing_note / tox_km_censoring_table
   expect_false(is.null(res$n_competing_risk))
+  expect_true(is.character(res$assumption) && nzchar(res$assumption))
   expect_true(is.numeric(res$n_competing_risk))
   expect_false(is.null(res$censoring_summary))
   expect_true(all(c("Treatment", "Censor_Type", "Freq") %in%

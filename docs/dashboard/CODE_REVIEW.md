@@ -2165,7 +2165,7 @@ Executed.
 | R20.D10 | Session restore deserialises and copies unvalidated keys | Major (hardening) | ✅ Closed by removal v26.09.001 (R20-D.I) |
 | R20.D11 | `test-shiny_app.R` has never executed | Major (process) | ✅ Fixed v26.09.002 — the tests run and pass; CI is package R20.53 (R20-D.J) |
 | R20.D12 | Study strings sent to analytics | Major (confidentiality) | Open — the Tumour Growth and Survival reference names no longer sent (R20-D.K) |
-| R20.D13 | "Natural death as event" checkbox never read | Major | ✅ Fixed v26.09.003: removed; the assumption is stated (R20-D.K). The working option comes with the removal-reason column (step 5) |
+| R20.D13 | "Natural death as event" checkbox never read | Major | ✅ Fixed: removed v26.09.003 (R20-D.K); a working option with the removal-reason column v26.09.005 (R20-D.M) |
 | R20.D14 | Survival/over-time synergy need an ID column named `ID` | Major | ✅ Fixed v26.09.003 (R20-D.K) |
 | R20.D15 | HTML report headers merged into one cell | Major | ✅ Fixed v26.09.002 (9d5f674) |
 | R20.D16 | Combined E-T table and download always fail | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
@@ -2173,7 +2173,7 @@ Executed.
 | R20.D18 | Bayesian results keep their fit alive via `plot_env` | Major (memory) | Open |
 | R20.D19 | Survival forest-plot download calls an out-of-scope function (HTTP 500) | Major | ✅ Fixed v26.09.002 (R20-D.J) |
 | R20.D34 | Toxicity mass correction 1000× on the bundled demo; warning swallowed | **Critical** | ✅ Fixed v26.09.003 (R20-D.K) |
-| R20.D35 | Synergy/TWM intervals shown as uncertainty for estimates they don't describe | **Critical** | ✅ Fixed v26.09.004 (R20-D.L; package R20.2). The TWM ratio shows no interval until the two-axis summary (step 5) |
+| R20.D35 | Synergy/TWM intervals shown as uncertainty for estimates they don't describe | **Critical** | ✅ Fixed v26.09.004 (R20-D.L; package R20.2); the TWM ratio replaced by the two-axis window v26.09.005 (R20-D.M) |
 | R20.D36 | Synergy fails after TG when a dose column is mapped | Major | ✅ Fixed v26.09.003 (R20-D.K) |
 | R20.D37 | Synergy TGI plot re-derived from survivors; contradicts the table | Major | ✅ Fixed v26.09.004 (R20-D.L) |
 | R20.D38 | Synergy Info tab documents response additivity, not Bliss | Major | ✅ Fixed v26.09.004 (R20-D.L) |
@@ -2185,10 +2185,10 @@ Executed.
 | R20.D44 | Comparisons tab: mislabelled correction, discarded title, live family | Major | Open |
 | R20.D45 | Data Summary log-scale means labelled mm³ | Major | Open |
 | R20.D46 | HTML report records widget state, not run settings | Major | Open |
-| R20.D47 | Dose-Response pools drugs by dose value | Major | Open |
+| R20.D47 | Dose-Response pools drugs by dose value | Major | ✅ Fixed v26.09.005 (R20-D.M; package R20.16) |
 | R20.D48 | DR "All dates" = own last observation; TGI plot contradicts Toxicity | Major | ✅ Fixed v26.09.004 (R20-D.L; package R20.17) |
-| R20.D49 | JT test and EC50 CI returned but never shown | Major | Open |
-| R20.D50 | Toxicity plot downloads never produce a file | Major | Open |
+| R20.D49 | JT test and EC50 CI returned but never shown | Major | ✅ Fixed v26.09.005 (R20-D.M; package R20.18, R20.20) |
+| R20.D50 | Toxicity plot downloads never produce a file | Major | Open. The therapeutic-window download ✅ fixed v26.09.005 (R20-D.M); trajectory and KM remain |
 | R20.D51 | Power "seed SD" pools all days (N inflated 5–40×) | Major | Open |
 | R20.D52 | Download-All ZIP can include another session's files | Major (confidentiality) | ✅ Fixed v26.09.002 (9d5f674) |
 | R20.D20 | Synergy bar plot all grey | Minor | Open |
@@ -2420,3 +2420,54 @@ This step needs backend 0.26.0: package R20-O, with its follow-ups `bliss_applie
   - Master demo: the rule on Study Design; random slopes by default with F-tests; the model-based AUC window; synergy on the last evaluable day, with its note and exclusions; all evaluable days with the TGI plot; the therapeutic-window note and interval explanation; Dose Response on the last evaluable day.
   - Combo demo: the synergy day choices stop at day 28.
 
+---
+
+## R20-D.M Implementation log — v26.09.005, step 5: two-axis therapeutic window, synergy verdict, dose series, removal reasons (2026-09-30)
+
+This step needs backend 0.27.0 (package R20-P).
+
+**Maintainer decisions implemented (R20-D.H):**
+- **Therapeutic window, two axes.** The Toxicity tab's Therapeutic Window table sets, per arm:
+  - TGI at the endpoint day with its 95 % interval;
+  - the mean worst weight loss with its interval;
+  - the animals over the threshold ("2 of 8");
+  - the tolerability flag, coloured: Tolerated, Not tolerated or Unclear, or "No interval".
+  The sidebar sets the threshold (default 20 %). A note states the rule and where the intervals come from, and calls out a tolerated arm that has animals over the threshold. The plot shows TGI against worst weight loss, with both intervals, the threshold and the not-tolerated side shaded. The TWM ratio, bar chart and ranking note are removed. The CSV and ZIP export the backend's `window_table` and the per-animal nadirs.
+- **Removal-reason column.** It is mapped under Optional Columns and auto-detected from Removal_Reason, Reason, Cause_Of_Death or Fate. When it is mapped, Study Design lists each distinct value with a category: tumour volume limit, death or moribund, weight loss or body condition, planned end or data cut, or other. Categories are guessed from keywords and can be changed. The column and categories live in `rv$settings` and the preset.
+  - **Survival (R20.D13):** "Count deaths from other causes as events (recommended)" appears only when the column is mapped, ticked by default. An animal whose reason is a death becomes an event at its last measurement, under either event source. The sidebar states the assumption in force, and the summary gives the number of deaths added.
+  - **Toxicity:** the weight-loss threshold receives the reasons (package R20.23). The KM panel states the backend's assumption, "No removal-reason column: ..." or "Removal reasons: ...", before any competing-risk warning.
+
+**Fixed:**
+
+| ID | Fix | Verified by |
+|---|---|---|
+| R20.D47 (with package R20.16) | A "Dose series" selector lists the arms; the largest set of single-agent arms that share their first word and differ in dose is suggested (the three Drug_A arms on the Master demo). The run needs a choice. Other agents, combinations and arms that share a dose are refused with the backend's reason. The day selector lists the evaluable days of the chosen series. When the study's control group spans several doses (one treatment name at every dose), the dose-0 rows are the control, and the reference note says so. | testServer: the suggestion; no run without a choice; the series recorded; "Dose 15 holds more than one arm". Browser: the same. |
+| R20.D49 (with package R20.18, R20.20) | The Summary, Model Results and results CSV show the two-sided Jonckheere–Terpstra test with its direction, and the EC50 with its interval on log dose, the curve type and the backend's flags. | testServer: "Jonckheere-Terpstra, two-sided", "on log dose", "outside the tested doses" on the Master demo (EC50 2.4 below the lowest dose, 5). |
+| Package R20.19, dashboard half | The verdict box shows the interval-based verdict and the backend's `verdict_rule`. A verdict without an interval is shown as information, not green. "Not evaluable" becomes "Does not apply". The Info, Synergy Metrics and Help texts describe the rule instead of the asymmetric bands. | testServer: the rule under the verdict; "no interval" in blue with 0 draws. |
+| R20.D50, therapeutic window only | The plot download builds the plot with `tox_window_plot()` instead of reading an output. | Browser: a 64 KB PNG. |
+
+**Tests:**
+- **New:** `test-round21-step5.R` holds 9 tests and 69 expectations. Run against the v26.09.004 source with backend 0.27.0, all 9 fail or error.
+- **Updated to the new contract:**
+  - `test-backend-contract.R`: the window table and flag, and the weight-loss `assumption`.
+  - `test-render-logic.R`: the TWM ranking-note test becomes a tolerability-note test.
+  - `test-round21-step4.R`: the tolerability rule; Dose Response with a named series.
+  - `test-round21-study-design.R` and `test-backend-calls-resolve.R`: a named series.
+  - `test-round21-fixes.R`: "Does not apply".
+  - `test-docs-current.R`: the removal-reason role in Help, and new checks that the Toxicity, Help, Synergy, Dose Response and Survival texts describe the new behaviour and not the TWM ratio or the asymmetric bands.
+
+**Found and fixed during this step:**
+- **The backend's refusal named its argument.** A dose that two chosen arms share was reported as "choose its arms with `treatments =`", which means nothing on the dashboard. The tab now says "under 'Dose series' in the sidebar".
+
+**Verification (executed):**
+- **Full suite:** 24 files, 250 tests, 836 expectations. No failures or skips; the one warning is pre-existing.
+- **R CMD check:** 6 WARNINGs and 5 NOTEs, identical to step 4's log apart from the version.
+- **Headless Chrome:** 9 checks, all passing, with 0 console errors in either session.
+  - **Master demo:**
+    - The therapeutic-window table has the two axes and the flag; at a 12 % threshold, four arms are Unclear and two Not tolerated. The note states the rule, and the plot renders and downloads as a 64 KB PNG.
+    - The synergy verdict shows its rule, with the interval that decided it: Synergy, Bliss excess [0.015, 0.078].
+    - Dose Response suggests the three Drug_A arms, on evaluable days 0–16, and shows the two-sided JT test and the EC50 interval. Choosing Drug_A Mid with the combination is refused, with the sidebar named.
+  - **An uploaded CSV with a Removal_Reason column:**
+    - The column is detected, and its four values are guessed correctly.
+    - Survival shows the ticked checkbox and counts 2 deaths as events.
+    - The weight-loss panel reports 10 competing removals under "Removal reasons".

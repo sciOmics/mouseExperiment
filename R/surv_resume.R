@@ -70,6 +70,7 @@ register_surv_resume <- function(input, output, session, rv) {
   result$model_type_used    <- "bayes"
   if (!is.null(bayes_params)) {
     result$event_src_used     <- bayes_params$event_src
+    result$death_events_added <- bayes_params$death_events_added %||% NA_integer_
     result$vol_threshold_used <- bayes_params$vol_threshold
     result$time_method        <- bayes_params$time_method
     result$time_column_used   <- bayes_params$time_col_orig

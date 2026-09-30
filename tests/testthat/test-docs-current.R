@@ -151,7 +151,7 @@ test_that("D.13: every auto-detected column role appears in the Help table", {
   # users unaware the app can use a column they already have — which is how the
   # necrosis, sex and height columns went unmentioned.
   ui <- read_src("ui_modules.R")
-  roles <- c("Necrotic", "Sex", "Date", "Survival_Time", "Height")
+  roles <- c("Necrotic", "Sex", "Date", "Survival_Time", "Height", "Removal_Reason")
   for (r in roles) {
     expect_match(ui, r, fixed = TRUE, info = paste("Help omits role:", r))
   }
@@ -206,6 +206,39 @@ test_that("D.13: competing risks are documented in the toxicity KM section", {
   src <- read_src("mod_toxicity.R")
   expect_match(src, "Competing risks", fixed = TRUE)
   expect_match(src, "Aalen-Johansen", fixed = TRUE)
+  # R20.23: which removals compete depends on the removal-reason column.
+  expect_match(src, "removal-reason column", fixed = TRUE)
+})
+
+test_that("R20-K: the therapeutic window is documented as two axes, not the TWM ratio", {
+  # The Info and Help tabs described TWM = TGI / weight loss and its ranking
+  # for as long as the ratio existed; v26.09.005 withdrew it.
+  tox <- read_src("mod_toxicity.R")
+  ui  <- read_src("ui_modules.R")
+  for (src in list(tox, ui)) {
+    expect_false(grepl("TWM = TGI", src, fixed = TRUE))
+    expect_false(grepl("Therapeutic Window Metric (TWM)", src, fixed = TRUE))
+  }
+  for (flag in c("Tolerated", "Not tolerated", "Unclear")) {
+    expect_match(tox, flag, fixed = TRUE, info = flag)
+  }
+  expect_match(tox, "worst weight loss", fixed = TRUE)
+})
+
+test_that("R20.19: the Synergy docs describe the interval-based verdict, not the bands", {
+  syn <- read_src("mod_synergy.R")
+  expect_false(grepl("Strong Synergy above +0.1", syn, fixed = TRUE))
+  expect_match(syn, "Additive (no departure from Bliss detected)", fixed = TRUE)
+})
+
+test_that("R20.D47 / R20.D49 / R20.D13: Dose Response and Survival document what changed", {
+  dr <- read_src("mod_dose_response.R")
+  expect_match(dr, "One agent at a time", fixed = TRUE)
+  expect_match(dr, "It is two-sided", fixed = TRUE)
+  expect_match(dr, "computed on log dose", fixed = TRUE)
+  surv <- read_src("mod_survival.R")
+  expect_match(surv, "removal-reason column", fixed = TRUE)
+  expect_match(surv, "Count deaths from other causes as events", fixed = TRUE)
 })
 
 test_that("R14.3: the Tumor Growth tab does not claim to report TGI", {

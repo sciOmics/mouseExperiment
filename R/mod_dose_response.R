@@ -23,6 +23,9 @@ doseResponseUI <- function(id) {
             # The reference is the study's control group (R20-D.H).
             uiOutput(ns("dr_reference_note")),
 
+            # R20.D47: one agent's dose series.
+            uiOutput(ns("dr_series_ui")),
+
             selectInput(ns("dr_comparison_type"),
                        "Pairwise Comparison Type",
                        choices = c(
@@ -69,9 +72,15 @@ doseResponseUI <- function(id) {
                       tags$li(strong("One-way ANOVA"), " — tests whether any dose group differs from the others, followed by Tukey HSD post-hoc comparisons if significant."),
                       tags$li(strong("Non-linear dose-response model (4PL)"), " — fits a four-parameter log-logistic (Hill) model to quantify ED50 and curve steepness.")
                     ),
+                    p(strong("One agent at a time. "),
+                      "A dose-response curve describes one agent at several doses, against the study's control. ",
+                      "Choose the agent's arms under ", strong("Dose series"), " in the sidebar; the dashboard ",
+                      "suggests the largest set of single-agent arms that share a name and differ in dose. Arms ",
+                      "that share a dose, or other agents and combinations, cannot join the same curve, and the ",
+                      "analysis stops rather than pool them. When one treatment name is used at every dose, the ",
+                      "rows with dose 0 are the control."),
                     p(tags$small(class = "text-muted",
-                      "Tumor Growth Analysis must be run before using this tab — dose-response uses volume data preprocessed there. ",
-                      "A Dose column must also be mapped in Data Upload."
+                      "A Dose column must be mapped in Data Upload."
                     ))
                   )
                 ),
@@ -143,6 +152,11 @@ doseResponseUI <- function(id) {
                       tags$dt("d"), tags$dd("Upper asymptote (response in the absence of drug)."),
                       tags$dt("ED50"), tags$dd("Dose producing 50 % of the maximal effect. The primary pharmacodynamic summary statistic.")
                     ),
+                    p("The EC50 reported is the dose giving half of the fitted response range, with a 95 % interval ",
+                      "computed on log dose, so it stays positive. The lower asymptote cannot go below zero, and the ",
+                      "five-parameter (asymmetric) curve is considered only with at least six dose levels. The summary ",
+                      "flags an EC50 outside the tested doses, and a curve with as many parameters as dose levels, which ",
+                      "fits the dose means exactly and so says nothing about its own shape; read either as descriptive."),
                     div(class = "alert alert-info", style = "margin-top:10px;",
                       icon("circle-info"), " ",
                       strong("AIC / BIC note: "),
@@ -165,7 +179,9 @@ doseResponseUI <- function(id) {
                       tags$dt("Jonckheere\u2013Terpstra"),
                       tags$dd("The test that actually respects dose ordering. It is sensitive to a consistent ",
                               "monotone trend and, unlike ANOVA, gains power from the ordering rather than ",
-                              "discarding it. This is the primary trend result."),
+                              "discarding it. This is the primary trend result. It is two-sided; the summary ",
+                              "also says whether volumes fall or rise with dose. (It was one-sided in the ",
+                              "direction the data suggested, which doubled its false-positive rate.)"),
                       tags$dt("Linear trend"),
                       tags$dd("p-value for a linear term in dose. Significant means a straight-line component ",
                               "is present; it says nothing about whether the relationship is ", em("only"), " linear."),
@@ -462,23 +478,76 @@ dose_response_server <- function(id, rv) {
   })
 
   output$dr_reference_note <- renderUI({
+    si <- tryCatch(dr_series_info(), error = function(e) NULL)
+    if (!is.null(si) && is.null(si$control)) {
+      # One treatment name at every dose: its dose-0 rows are the control.
+      return(tags$p(style = "font-size:12px;", "Control: ", strong("the rows with dose 0"),
+        ", because the study's control group spans several doses."))
+    }
     reference_note(rv, tryCatch(dr_ref(), error = function(e) NULL))
   })
 
+  # R20.D47 / package R20.16: the arms that can form one agent's dose series,
+  # a suggested series, and the control. The study's control arm is the
+  # control when it is a dose-0 arm; when one treatment name spans every dose,
+  # the rows with dose 0 are.
+  dr_series_info <- reactive({
+    req(rv$processed_data, rv$dose_col)
+    pp <- ensure_preprocessed(rv)
+    d  <- pp$data
+    tx <- pp$tx_col
+    dose <- suppressWarnings(as.numeric(d[[rv$dose_col]]))
+    ctrl <- study_reference(rv, d[[tx]])
+    ctrl_rows <- !is.null(ctrl) & !is.na(d[[tx]]) & d[[tx]] %in% ctrl
+    ctrl_is_arm <- any(ctrl_rows) && all(is.na(dose[ctrl_rows]) | dose[ctrl_rows] == 0)
+    arms <- treatment_values(d, tx)
+    choices <- if (ctrl_is_arm) setdiff(arms, ctrl) else arms
+    list(data = d, tx_col = tx, time_col = pp$time_col, vol_col = pp$vol_col,
+         control = if (ctrl_is_arm) ctrl, choices = choices,
+         suggested = guess_dose_series(d, tx, rv$dose_col, choices))
+  })
+
+  output$dr_series_ui <- renderUI({
+    si <- tryCatch(dr_series_info(), error = function(e) NULL)
+    if (is.null(si)) return(NULL)
+    cur <- isolate(input$dr_treatments)
+    sel <- if (length(cur) && all(cur %in% si$choices)) cur else si$suggested
+    tagList(
+      selectizeInput(session$ns("dr_treatments"),
+        tagList("Dose series", help_tip("The arms of one agent at its different doses. Other agents, combinations and arms that share a dose cannot join one curve.")),
+        choices = si$choices, selected = sel, multiple = TRUE,
+        options = list(plugins = list("remove_button"),
+                       placeholder = "Choose one agent's arms")),
+      if (!length(sel)) tags$p(tags$small(class = "text-warning",
+        "Choose the arms of one agent; they could not be guessed from the names."))
+    )
+  })
+
+  # The rows the analysis will use: the chosen series and its control.
+  dr_series_rows <- function(si, series) {
+    d <- si$data
+    dose <- suppressWarnings(as.numeric(d[[rv$dose_col]]))
+    ctrl_rows <- if (!is.null(si$control)) !is.na(d[[si$tx_col]]) & d[[si$tx_col]] == si$control
+                 else is.finite(dose) & dose == 0
+    keep <- ctrl_rows | (!is.na(d[[si$tx_col]]) & d[[si$tx_col]] %in% series & is.finite(dose))
+    d <- d[keep, , drop = FALSE]
+    d[[".dose_group"]] <- ifelse(ctrl_rows[keep], 0, dose[keep])
+    d
+  }
+
   # Day selector (R20-K, R20.D48): the last evaluable day (default) or another
-  # evaluable day. "All dates" meant each animal's own last observation.
+  # evaluable day of the chosen series. "All dates" meant each animal's own
+  # last observation.
   output$dr_time_point_ui <- renderUI({
     req(rv$processed_data, rv$time_col, rv$dose_col)
     days <- tryCatch({
-      pp <- ensure_preprocessed(rv)
-      d <- pp$data
-      d[[".dose_group"]] <- suppressWarnings(as.numeric(d[[rv$dose_col]]))
-      d <- d[is.finite(d[[".dose_group"]]), , drop = FALSE]
+      si <- dr_series_info()
+      d  <- dr_series_rows(si, input$dr_treatments %||% si$suggested)
       mouseExperiment::evaluable_days(
         d, treatment_column = ".dose_group", id_column = rv$settings$col_id,
-        time_column = pp$time_col,
+        time_column = si$time_col,
         cage_column = if (has_col(d, rv$settings$col_cage)) rv$settings$col_cage,
-        volume_column = pp$vol_col)$days
+        volume_column = si$vol_col)$days
     }, error = function(e) NULL)
     day_choices <- c("Last evaluable day" = "default")
     if (length(days)) {
@@ -526,6 +595,17 @@ dose_response_server <- function(id, rv) {
       return()
     }
 
+    # R20.D47: one agent's arms, and its control: the study's control arm when
+    # it is a dose-0 arm, otherwise the rows with dose 0.
+    si <- tryCatch(dr_series_info(), error = function(e) NULL)
+    series <- input$dr_treatments %||% character(0)
+    if (is.null(si) || !length(series)) {
+      output$dr_status_msg <- renderUI(status_alert(paste(
+        "Choose the arms of one agent's dose series under 'Dose series' in the",
+        "sidebar."), "warning"))
+      return()
+    }
+
     time_point_val <- if (!is.null(input$dr_time_point) &&
                            !input$dr_time_point %in% c("all", "default") &&
                            nzchar(input$dr_time_point)) {
@@ -548,11 +628,18 @@ dose_response_server <- function(id, rv) {
         id_column          = id_col,
         cage_column        = rv$cage_col,  # part of the animal key
         time_point         = time_point_val,
-        control_group_name = ctrl
+        control_group_name = si$control,
+        treatments         = series,
+        verbose            = FALSE  # the report went to the server log
       )
     })
     # The plots and tables use the control of the displayed run (R20.D48).
-    if (is.list(result)) result$control_group_used <- ctrl
+    if (is.list(result)) result$control_group_used <- si$control %||% "dose 0"
+    # The backend names its argument; here the choice is the sidebar selector.
+    if (isTRUE(result$error) && is.character(result$message)) {
+      result$message <- gsub("with `treatments =`", "under 'Dose series' in the sidebar",
+                             result$message, fixed = TRUE)
+    }
 
     # R17.3: this used to call mouseExperiment::prepare_dose_data() and
     # ::generate_summary_statistics() to re-derive the plotting frame. Neither is
@@ -598,8 +685,21 @@ dose_response_server <- function(id, rv) {
     res   <- rv$dr_results
     stats <- res$statistics
 
+    ser <- res$series
+    jt  <- res$trend_test$jonckheere_test
     lines <- c(
       "=== DOSE-RESPONSE ANALYSIS SUMMARY ===",
+      "",
+      if (!is.null(ser)) c(
+        sprintf("Dose series: %s", paste(ser$treatments, collapse = ", ")),
+        sprintf("Control:     %s (dose 0)", paste(ser$control, collapse = ", ")),
+        sprintf("Day:         %s", format(res$endpoint_day)),
+        ""),
+      "-- Trend (Jonckheere-Terpstra, two-sided) --",
+      if (!is.null(jt)) c(
+        sprintf("  p-value: %.4g  (volumes %s with dose)", jt$p.value,
+                jt$direction %||% "change"))
+      else "  Not run (needs at least three dose levels).",
       "",
       "-- Linear Regression --",
       sprintf("  Slope:   %.4f", stats$linear_slope %||% NA),
@@ -612,9 +712,13 @@ dose_response_server <- function(id, rv) {
     )
 
     if (!is.null(stats$ec50)) {
+      ci <- stats$ec50_ci
       lines <- c(lines,
         "-- Non-linear Dose-Response Model --",
-        sprintf("  EC50:         %.4g", stats$ec50),
+        sprintf("  EC50:         %.4g  (95%% interval %s, on log dose)", stats$ec50,
+                if (!is.null(ci)) sprintf("%.4g to %.4g", ci[["lower"]], ci[["upper"]])
+                else "not available"),
+        if (nzchar(stats$ec50_note %||% "")) paste("  Note:        ", stats$ec50_note),
         sprintf("  Hill Slope:   %.4f", stats$hill_slope),
         sprintf("  Lower Limit:  %.4f", stats$lower_limit),
         sprintf("  Upper Limit:  %.4f", stats$upper_limit),
@@ -803,10 +907,30 @@ dose_response_server <- function(id, rv) {
       if (!is.null(rv$dr_results$linear_model)) print(summary(rv$dr_results$linear_model))
       cat("\n=== ANOVA TABLE ===\n")
       if (!is.null(rv$dr_results$anova_model)) print(summary(rv$dr_results$anova_model))
+      jt <- rv$dr_results$trend_test$jonckheere_test
+      if (!is.null(jt)) {
+        cat("\n=== JONCKHEERE-TERPSTRA TREND TEST (two-sided) ===\n")
+        cat(sprintf("  JT = %s,  p-value: %.4g;  volumes %s with dose\n",
+                    format(unname(jt$statistic)), jt$p.value, jt$direction %||% "change"))
+      }
+      if (!is.null(stats$ec50)) {
+        cat("\n=== EC50 (ED50 of the fitted curve) ===\n")
+        ci <- stats$ec50_ci
+        cat(sprintf("  EC50: %.4g;  95%% interval on log dose: %s\n", stats$ec50,
+                    if (!is.null(ci)) sprintf("%.4g to %.4g", ci[["lower"]], ci[["upper"]])
+                    else "not available"))
+        cat(sprintf("  Curve: %s, %s parameters for %s dose levels\n",
+                    stats$dr_model_type %||% "?", stats$n_curve_parameters %||% "?",
+                    stats$n_dose_levels %||% "?"))
+        if (nzchar(stats$ec50_note %||% "")) cat("  Note:", stats$ec50_note, "\n")
+      }
       if (!is.null(stats$growth_dose_p_value)) {
         cat("\n=== GROWTH RATE vs DOSE ===\n")
         cat(sprintf("  p-value: %.4g,  R\u00b2: %.4f\n",
                     stats$growth_dose_p_value, stats$growth_dose_r_squared))
+        n_out <- stats$growth_rate_animals_left_out %||% 0
+        if (n_out > 0) cat(sprintf(paste0("  %d animal(s) left out: fewer than three days ",
+                                          "with a positive measured volume.\n"), n_out))
       }
     })
     paste(lines, collapse = "\n")
@@ -826,8 +950,8 @@ dose_response_server <- function(id, rv) {
       if (!is.null(ad)) {
         dose_col <- rv$dose_col %||% "Dose"
         tx_col   <- rv$tx_col   %||% "Treatment"
-        ctrl     <- rv$dr_results$control_group_used %||% ""
-        ref_doses <- unique(ad[ad[[tx_col]] == ctrl, dose_col])
+        # The control is dose 0 by construction (package R20.16).
+        ref_doses <- rv$dr_results$control_dose %||% "0"
         if (length(ref_doses) > 0) {
           ref_str <- as.character(ref_doses[[1]])
           keep <- grepl(paste0("^", ref_str, "-"), rownames(tbl)) |
@@ -908,7 +1032,10 @@ dose_response_server <- function(id, rv) {
       out <- data.frame(
         Metric = c("Linear Slope", "Linear R2", "Linear P-value",
                    "ANOVA P-value",
-                   "EC50", "Hill Slope", "Lower Limit", "Upper Limit",
+                   "Jonckheere-Terpstra P-value (two-sided)",
+                   "EC50", "EC50 95% Lower (log dose)", "EC50 95% Upper (log dose)",
+                   "EC50 Within Tested Doses",
+                   "Hill Slope", "Lower Limit", "Upper Limit",
                    "Linear AIC", "Nonlinear AIC",
                    "Growth Rate P-value", "Growth Rate R2"),
         Value  = c(
@@ -916,7 +1043,11 @@ dose_response_server <- function(id, rv) {
           stats$linear_r_squared %||% NA,
           stats$linear_p_value %||% NA,
           stats$anova_p_value %||% NA,
+          rv$dr_results$trend_test$jonckheere_test$p.value %||% NA,
           stats$ec50 %||% NA,
+          if (!is.null(stats$ec50_ci)) stats$ec50_ci[["lower"]] else NA,
+          if (!is.null(stats$ec50_ci)) stats$ec50_ci[["upper"]] else NA,
+          as.numeric(stats$ec50_in_range %||% NA),
           stats$hill_slope %||% NA,
           stats$lower_limit %||% NA,
           stats$upper_limit %||% NA,
