@@ -17,61 +17,47 @@ tumor_growth_server <- function(id, rv) {
     get_ordered_groups(input, "tg", rv$tg_plot_groups)
   )
 
-  # Update reference group choices when data is available or column mapping changes.
-  # When a dose column is also mapped, group choices are shown as "Treatment Dose"
-  # combinations so each dose level is independently selectable as the reference.
-  observe({
-    if (!is.null(rv$uploaded_data) && rv$data_valid) {
-      # Prefer the user-selected treatment column; fall back to auto-detected one
-      treatment_col <- if (!is.null(rv$settings$col_treatment) && nzchar(rv$settings$col_treatment))
-                         rv$settings$col_treatment
-                       else
-                         rv$detected_cols$treatment
-      dose_col <- if (!is.null(rv$settings$col_dose) && nzchar(rv$settings$col_dose))
-                    rv$settings$col_dose
-                  else NULL
-
-      if (!is.null(treatment_col) && nzchar(treatment_col)) {
-        df <- rv$uploaded_data
-
-        if (!is.null(dose_col) && dose_col %in% colnames(df)) {
-          # Build unique treatment+dose combination labels
-          treatment_values <- sort(unique(na.omit(
-            paste(as.character(df[[treatment_col]]),
-                  as.character(df[[dose_col]]), sep = " ")
-          )))
-        } else {
-          treatment_values <- sort(unique(na.omit(as.character(df[[treatment_col]]))))
-        }
-
-        if (length(treatment_values) > 0) {
-          new_choices <- c("-- Select a reference group --" = "",
-                          setNames(treatment_values, treatment_values))
-          default_ref <- pick_reference_group(treatment_values)
-          updateSelectInput(session, "tg_reference", choices = new_choices,
-                            selected = default_ref)
-        }
-      }
-    }
+  # The reference group is the study's control group (Study Design panel on
+  # Data Upload, R20-D.H), in this tab's labels: "Treatment Dose" when a dose
+  # column is mapped, so the control maps to its own dose label.
+  tg_ref <- reactive({
+    req(rv$uploaded_data, rv$data_valid)
+    study_reference(rv, analysis_group_labels(rv))
   })
-  
+
+  output$tg_reference_note <- renderUI({
+    ref <- tryCatch(tg_ref(), error = function(e) NULL)
+    reference_note(rv, ref)
+  })
+
+  output$tg_perm_unit_note <- renderUI({
+    unit <- rv$settings$randomisation_unit %||% "mouse"
+    tags$p(style = "font-size:12px;", "Unit permuted: ",
+           strong(if (identical(unit, "cage")) "whole cages" else "individual animals"),
+           " (the unit of randomisation under Study Design on Data Upload).")
+  })
+
   # Run analysis button handler
   observeEvent(input$run_tg_analysis, {
     req(rv$uploaded_data, rv$data_valid)
     
-    # Validate reference group selection
-    if (input$tg_reference == "" || is.null(input$tg_reference)) {
+    # The reference is the study's control group (R20-D.H).
+    ref <- tg_ref()
+    if (is.null(ref) || !nzchar(ref)) {
       output$tg_status_msg <- renderUI({
-        status_alert("Error: Please select a reference group before running analysis", "danger")
+        status_alert(paste("Error: no reference group. Map the treatment column",
+                           "and choose the control group under Study Design on",
+                           "Data Upload."), "danger")
       })
       shinyjs::runjs("window.trackError('validation', 'Reference group not selected', 'tumor_growth');")
       return()
     }
-    
-    # Track analysis start and reference group selection with Umami
+    rv$tg_reference_used <- ref
+
+    # Track analysis start (no study strings: R20.D12)
     shinyjs::runjs(sprintf(
-      "window.trackAnalysisStart('tumor_growth', '%s', '%s'); window.trackReferenceGroupSelected('tumor_growth', '%s');",
-      input$tg_model_type, input$tg_reference, input$tg_reference
+      "window.trackAnalysisStart('tumor_growth', %s, 'study_control');",
+      js_string(input$tg_model_type)
     ))
     
     rv$tg_running <- TRUE
@@ -90,14 +76,15 @@ tumor_growth_server <- function(id, rv) {
       # R20.D4: a date error used to escape this observer and leave
       # "Running analysis..." on screen. Report it and stop instead.
       data <- tryCatch({
-        date_info <- detect_date_format(data, rv$settings$col_date_for_day,
-                                        rv$settings$reference_date)
-        mouseExperiment::calculate_dates(
-          date_info$data,
-          start_date  = date_info$start_date,
-          date_column = rv$settings$col_date_for_day,
-          date_format = date_info$date_format
-        )
+        # R20.D1: the whole column decides the day/month order.
+        sd <- study_days(data, rv$settings$col_date_for_day,
+                         rv$settings$reference_date,
+                         rv$settings$date_order %||% "auto")
+        if (length(sd$notes)) {
+          showNotification(paste(sd$notes, collapse = " "), type = "warning",
+                           duration = 10)
+        }
+        sd$data
       }, error = function(e) {
         log_caught_error("tumor_growth", "date preprocessing", e)
         output$tg_status_msg <- renderUI(status_alert(conditionMessage(e), "danger"))
@@ -244,7 +231,7 @@ tumor_growth_server <- function(id, rv) {
       bayes_params <- list(
         data              = data,
         col_names         = col_names,
-        reference_group   = input$tg_reference,
+        reference_group   = ref,
         random_effects    = re_spec,
         prior_strength    = prior_str,
         manual_priors     = bayes_manual_priors,
@@ -284,7 +271,7 @@ tumor_growth_server <- function(id, rv) {
         transform = input$tg_transform,
         random_effects_specification = input$tg_random_effects,
         handle_cage_effects = input$tg_cage_effect,
-        reference_group = input$tg_reference,  # Already validated to not be empty
+        reference_group = ref,  # the study's control group, validated above
         # CODE_REVIEW.md R3.D1 / R3.D3 — pass the user's comparison family and
         # correction to the backend, which now honours both, instead of
         # recomputing contrasts here with a hardcoded adjustment.
@@ -314,7 +301,7 @@ tumor_growth_server <- function(id, rv) {
         # declared the unit.
         permutation_test = if (isTRUE(input$tg_run_perm)) {
           mouseExperiment::perm_spec(
-            unit   = input$tg_perm_unit %||% "mouse",
+            unit   = rv$settings$randomisation_unit %||% "mouse",
             n_perm = as.integer(input$tg_perm_n %||% 999L),
             seed   = 20260730L)
         } else NULL,
@@ -634,8 +621,8 @@ tumor_growth_server <- function(id, rv) {
           )
           result$all_pairwise_comparisons <- pw_df
 
-          ref_group <- if (!is.null(input$tg_reference) && nzchar(input$tg_reference))
-            input$tg_reference else {
+          ref_group <- if (!is.null(ref) && nzchar(ref))
+            ref else {
               lvls <- sort(unique(as.character(
                 if (!is.null(result$treatment_effects$Treatment))
                   result$treatment_effects$Treatment
@@ -738,8 +725,7 @@ tumor_growth_server <- function(id, rv) {
               p_label <- if (!is.na(p_col)) vapply(pc_df[[p_col]], format_pval, character(1)) else NULL
               using_dunnett <- !is.null(result$reference_comparisons_dunnett) &&
                                identical(pc, result$reference_comparisons_dunnett)
-              ref_grp_ef <- if (!is.null(input$tg_reference) && nzchar(input$tg_reference))
-                              input$tg_reference else NULL
+              ref_grp_ef <- if (!is.null(ref) && nzchar(ref)) ref else NULL
               contrast_labels <- pc_df[[label_col]]
               if (isTRUE(using_dunnett) && !is.null(ref_grp_ef)) {
                 suffix_pat <- paste0("\\s*[-\u2013]\\s*", gsub("([+()])", "\\\\\\1", ref_grp_ef), "$")
@@ -858,9 +844,8 @@ tumor_growth_server <- function(id, rv) {
         status_alert(paste("Error:", result$message), "danger")
       })
     } else {
-      output$tg_status_msg <- renderUI({
-        status_alert("Analysis completed successfully!", "success")
-      })
+      # R20.D34: the backend's warnings are shown, not dropped.
+      output$tg_status_msg <- renderUI(completion_status(list(result)))
     }
   })
   
@@ -1605,12 +1590,16 @@ tumor_growth_server <- function(id, rv) {
     time_col <- rv$tg_col_names$time_column      %||% "Day"
     vol_col  <- rv$tg_col_names$volume_column    %||% "Volume"
 
+    cage_col <- rv$tg_col_names$cage_column
+
     target_id <- as.character(rates_df$ID[sel])
     target_tx <- as.character(rates_df$Treatment[sel])
     raw_data  <- rv$tg_plot_data
 
-    mouse_rows <- raw_data[as.character(raw_data[[id_col]]) == target_id &
-                            as.character(raw_data[[tx_col]]) == target_tx, , drop = FALSE]
+    target_cage <- if ("Cage" %in% names(rates_df) && has_col(raw_data, cage_col))
+                     as.character(rates_df$Cage[sel])
+    mouse_rows <- drilldown_rows(raw_data, rates_df[sel, , drop = FALSE],
+                                 id_col, tx_col, cage_col)
     group_rows <- raw_data[as.character(raw_data[[tx_col]]) == target_tx, , drop = FALSE]
 
     if (nrow(mouse_rows) == 0L) {
@@ -1636,7 +1625,7 @@ tumor_growth_server <- function(id, rv) {
         ggplot2::aes(x = .data[[time_col]], y = .data[[vol_col]]),
         colour = "steelblue", linewidth = 1) +
       ggplot2::labs(
-        title = sprintf("Drill-down: %s (%s)", target_id, target_tx),
+        title = sprintf("Drill-down: %s", animal_label(target_tx, target_id, target_cage)),
         subtitle = sprintf(
           "Per-animal growth rate = %.4f log-vol/day (= %.2fx daily fold change). Grey dashed = group mean.",
           gr_rate, exp(gr_rate)),
@@ -1658,7 +1647,7 @@ tumor_growth_server <- function(id, rv) {
         model_type      = input$tg_model_type     %||% "",
         transform       = input$tg_transform      %||% "",
         random_effects  = input$tg_random_effects %||% "",
-        reference_group = input$tg_reference      %||% "",
+        reference_group = rv$tg_reference_used    %||% "",
         cage_effect     = input$tg_cage_effect    %||% "",
         n_rows          = if (!is.null(rv$tg_plot_data)) nrow(rv$tg_plot_data) else NA
       )

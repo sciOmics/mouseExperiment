@@ -360,25 +360,30 @@ synergy_server <- function(id, rv) {
                "Select Treatment column in Data Upload first."))
     }
     
-    groups <- sort(unique(as.character(na.omit(rv$uploaded_data[[treatment_col]]))))
+    # R20.D36: the choices are the arms the analysis uses ("Treatment Dose"
+    # when a dose column is mapped), whether or not Tumour Growth has run.
+    # They used to come from the raw column while the analysis switched to
+    # "Treatment Dose" labels after a Tumour Growth run, so every run failed.
+    groups  <- analysis_group_labels(rv)
     choices <- setNames(groups, groups)
-    
+    ctrl    <- study_reference(rv, groups)
+    others  <- setdiff(groups, ctrl)
+    combo   <- others[grepl("\\+|combo", others, ignore.case = TRUE)][1]
+    if (is.na(combo)) combo <- others[3]
+    singles <- setdiff(others, combo)
+
     tagList(
       selectInput(session$ns("syn_drug_a"), "Drug A (single agent)",
-                 choices = choices,
-                 selected = if (length(groups) >= 2) groups[2] else groups[1]),
-      
+                 choices = choices, selected = singles[1]),
+
       selectInput(session$ns("syn_drug_b"), "Drug B (single agent)",
-                 choices = choices,
-                 selected = if (length(groups) >= 3) groups[3] else groups[1]),
-      
+                 choices = choices, selected = singles[2]),
+
       selectInput(session$ns("syn_combo"), "Combination Treatment",
-                 choices = choices,
-                 selected = if (length(groups) >= 4) groups[4] else groups[1]),
-      
-      selectInput(session$ns("syn_control"), "Reference Group",
-                 choices = choices,
-                 selected = pick_reference_group(groups)),
+                 choices = choices, selected = combo),
+
+      # The reference is the study's control group (R20-D.H).
+      reference_note(rv, ctrl),
 
       # CODE_REVIEW.md backend R3.5 / G.3 -- the estimand, exposed. The default
       # is the statistically correct one; "survivors" exists to reproduce
@@ -432,17 +437,22 @@ synergy_server <- function(id, rv) {
   observeEvent(input$run_syn_analysis, {
     req(rv$uploaded_data, rv$data_valid)
     
-    needed <- c(input$syn_drug_a, input$syn_drug_b, input$syn_combo, input$syn_control)
-    if (any(is.null(needed)) || any(needed == "")) {
+    syn_ctrl <- study_reference(rv, analysis_group_labels(rv))
+    needed <- list(input$syn_drug_a, input$syn_drug_b, input$syn_combo, syn_ctrl)
+    if (any(vapply(needed, function(x) is.null(x) || is.na(x) || !nzchar(x), logical(1L)))) {
       output$syn_status_msg <- renderUI({
-        status_alert("Please select all four treatment groups.", "danger")
+        status_alert(paste("Please select Drug A, Drug B and the combination, and the",
+                           "control group under Study Design on Data Upload."), "danger")
       })
       return()
     }
-    
+    needed <- unlist(needed)
+
     if (length(unique(needed)) < 4) {
       output$syn_status_msg <- renderUI({
-        status_alert("Each role (Drug A, Drug B, Combination, Control) must be a different group.", "danger")
+        status_alert(paste("Each role (Drug A, Drug B, Combination, Control) must be a different",
+                           "group; the control is the study's control group,", sQuote(syn_ctrl), "."),
+                     "danger")
       })
       return()
     }
@@ -471,7 +481,11 @@ synergy_server <- function(id, rv) {
     analysis_data <- pp$data
     vol_col  <- pp$vol_col
     time_col <- pp$time_col
-    tx_col   <- pp$tx_col
+    # R20.D36: analyse the same arm labels the selectors offer.
+    analysis_data[[".arm"]] <- arm_labels(analysis_data, rv$settings$col_treatment,
+                                          rv$settings$col_dose)
+    tx_col   <- ".arm"
+    cage_col_syn <- if (has_col(analysis_data, rv$settings$col_cage)) rv$settings$col_cage else NULL
     # Animal identifier: needed by the backend's mouse-level bootstrap and by its
     # endpoint helper. Fall back to the mapped ID column, then to "ID".
     id_col_syn <- if (!is.null(rv$settings$col_id) && nzchar(rv$settings$col_id)) {
@@ -514,7 +528,14 @@ synergy_server <- function(id, rv) {
           drug_a_name      = input$syn_drug_a,
           drug_b_name      = input$syn_drug_b,
           combo_name       = input$syn_combo,
-          control_name     = input$syn_control,
+          control_name     = syn_ctrl,
+          # R20.D14: the ID column (it had to be named "ID"), cage, and the
+          # estimand and bootstrap settings, which "All dates" used to ignore.
+          id_column        = id_col_syn,
+          cage_column      = cage_col_syn,
+          endpoint_method  = input$syn_endpoint_method %||% "model",
+          n_boot           = as.integer(input$syn_n_boot %||% 2000L),
+          boot_seed        = 20260730L,
           verbose          = FALSE
         )
       })
@@ -526,10 +547,11 @@ synergy_server <- function(id, rv) {
           volume_column    = vol_col,
           time_column      = time_col,
           id_column        = id_col_syn,
+          cage_column      = cage_col_syn,  # part of the animal key
           drug_a_name      = input$syn_drug_a,
           drug_b_name      = input$syn_drug_b,
           combo_name       = input$syn_combo,
-          control_name     = input$syn_control,
+          control_name     = syn_ctrl,
           eval_time_point  = eval_tp,
           # Backend v0.8.0+: "model" reads each arm's geometric mean at the
           # evaluation day off a log-scale LMM fitted to every observation, so
@@ -592,7 +614,7 @@ synergy_server <- function(id, rv) {
       drug_a  = input$syn_drug_a,
       drug_b  = input$syn_drug_b,
       combo   = input$syn_combo,
-      control = input$syn_control
+      control = syn_ctrl
     )
     
     if (isTRUE(result$error)) {
@@ -600,9 +622,9 @@ synergy_server <- function(id, rv) {
         status_alert(paste("Error:", result$message), "danger")
       })
     } else {
-      output$syn_status_msg <- renderUI({
-        status_alert("Synergy analysis completed successfully!", "success")
-      })
+      # R20.D34: the backend's warnings are shown, not dropped.
+      output$syn_status_msg <- renderUI(completion_status(
+        list(result), "Synergy analysis completed successfully!"))
     }
   })
   
@@ -640,10 +662,12 @@ synergy_server <- function(id, rv) {
     res <- rv$syn_results
     paste(capture.output({
       cat("=== DRUG SYNERGY ANALYSIS SUMMARY ===\n\n")
-      cat("Drug A (single agent): ", input$syn_drug_a, "\n")
-      cat("Drug B (single agent): ", input$syn_drug_b, "\n")
-      cat("Combination:           ", input$syn_combo, "\n")
-      cat("Control:               ", input$syn_control, "\n\n")
+      # The roles of the displayed run, not the current selectors.
+      roles <- rv$syn_plot_inputs %||% list()
+      cat("Drug A (single agent): ", roles$drug_a %||% "", "\n")
+      cat("Drug B (single agent): ", roles$drug_b %||% "", "\n")
+      cat("Combination:           ", roles$combo %||% "", "\n")
+      cat("Control:               ", roles$control %||% "", "\n\n")
       
       if (isTRUE(rv$syn_over_time)) {
         cat("Analysis type: Over all timepoints\n\n")
@@ -992,7 +1016,10 @@ synergy_server <- function(id, rv) {
     analysis_data <- pp$data
     vol_col  <- pp$vol_col
     time_col <- pp$time_col
-    tx_col   <- pp$tx_col
+    # The run's roles are arm labels (R20.D36).
+    analysis_data[[".arm"]] <- arm_labels(analysis_data, rv$settings$col_treatment,
+                                          rv$settings$col_dose)
+    tx_col   <- ".arm"
 
     # Filter to the 4 synergy groups
     syn_groups <- c(grps$control, grps$drug_a, grps$drug_b, grps$combo)

@@ -544,7 +544,7 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     }
 
     p_label <- if (!is.na(p_col)) vapply(pc_df[[p_col]], format_pval, character(1)) else NULL
-    ref_grp <- if (!is.null(input$tg_reference) && nzchar(input$tg_reference)) input$tg_reference else NULL
+    ref_grp <- rv$tg_reference_used  # the reference of the displayed run
 
     contrast_labels <- as.character(pc_df[[label_col]])
     if (isTRUE(using_dunnett) && !is.null(ref_grp)) {

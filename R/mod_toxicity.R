@@ -33,7 +33,8 @@ toxicityUI <- function(id) {
               "arm's tumor growth inhibition against its weight loss."
             ),
 
-            uiOutput(ns("tox_reference_group_ui")),
+            # The reference is the study's control group (R20-D.H).
+            uiOutput(ns("tox_reference_note")),
 
             hr(),
             h5(strong("Tumor Weight Adjustment")),
@@ -41,7 +42,7 @@ toxicityUI <- function(id) {
             conditionalPanel(ns = ns, "input.tox_adjust_tumor == true",
               numericInput(ns("tox_tumor_density"), "Tumor density (g/cm\u00b3)",
                            value = 1.0, min = 0.1, max = 3.0, step = 0.1),
-              tags$p(tags$small("Tumor weight = Volume (mm\u00b3) \u00d7 density / 1000"))
+              uiOutput(ns("tox_mass_formula"))
             ),
 
             hr(),
@@ -132,7 +133,8 @@ toxicityUI <- function(id) {
                     p(tags$small(class = "text-muted",
                       "Body weight is used as the toxicity surrogate throughout. ",
                       "When 'Subtract estimated tumor weight' is enabled, the gross weight is corrected by ",
-                      "subtracting Volume(mm\u00b3) \u00d7 density(g/cm\u00b3) / 1000, giving a net host weight."))
+                      "subtracting the tumour mass, volume \u00d7 density (g/cm\u00b3), with the volume in the units ",
+                      "declared under Study Design on Data Upload (mm\u00b3 is divided by 1000), giving a net host weight."))
                   )
                 ),
 
@@ -226,9 +228,9 @@ toxicityUI <- function(id) {
                   div(class = "panel-body",
                     tags$dl(class = "dl-horizontal",
                       tags$dt("Reference Group"),
-                      tags$dd("The vehicle/control group used as the denominator for TGI. Auto-detected from common names (DMSO, Vehicle, Control, PBS, Saline) or defaults to the first group alphabetically."),
+                      tags$dd("The study's control group, chosen under Study Design on Data Upload; it is the denominator for TGI and the reference for every comparison."),
                       tags$dt("Subtract Tumor Weight"),
-                      tags$dd("Removes the estimated tumor mass (Volume \u00d7 density / 1000) from gross body weight before all calculations, so that body weight reflects host tissue rather than tumor burden."),
+                      tags$dd("Removes the estimated tumor mass (volume \u00d7 density, in the declared volume units) from gross body weight before all calculations, so that body weight reflects host tissue rather than tumor burden. It needs the volume units declared under Study Design on Data Upload."),
                       tags$dt("Tumor Density"),
                       tags$dd("Used only when tumor weight adjustment is enabled. Default 1.0 g/cm\u00b3 (water density). Typical soft-tissue tumor density is 0.9\u20131.1 g/cm\u00b3."),
                       tags$dt("Baseline Day"),
@@ -629,11 +631,25 @@ toxicity_server <- function(id, rv) {
     invisible(NULL)
   })
 
-  output$tox_reference_group_ui <- renderUI({
+  # The study's control group, in the labels of the data this tab analyses
+  # ("Treatment Dose" after a Tumour Growth run with a dose column).
+  tox_ref <- reactive({
     req(rv$processed_data, rv$tx_col)
-    groups <- sort(unique(as.character(na.omit(rv$processed_data[[rv$tx_col]]))))
-    selectInput(session$ns("tox_reference_group"), "Control / Reference Group",
-                choices = groups, selected = pick_reference_group(groups))
+    study_reference(rv, rv$processed_data[[rv$tx_col]])
+  })
+
+  output$tox_reference_note <- renderUI({
+    reference_note(rv, tryCatch(tox_ref(), error = function(e) NULL))
+  })
+
+  # R20.D34: the conversion follows the declared units.
+  output$tox_mass_formula <- renderUI({
+    switch(rv$settings$volume_units %||% "",
+      mm3 = tags$p(tags$small("Tumor mass (g) = Volume (mm\u00b3) \u00d7 density / 1000")),
+      cm3 = tags$p(tags$small("Tumor mass (g) = Volume (cm\u00b3) \u00d7 density")),
+      tags$p(class = "text-danger", tags$small(icon("exclamation-circle"),
+        " Declare the tumour volume units under Study Design on Data Upload ",
+        "to use this correction.")))
   })
 
   output$tox_baseline_day_ui <- renderUI({
@@ -671,20 +687,42 @@ toxicity_server <- function(id, rv) {
       return()
     }
 
-    output$tox_status_msg <- renderUI({ status_alert("Running analysis...", "info") })
+    # The current subset filter applies (ensure_preprocessed() re-applies it
+    # to the cached frame); rv$processed_data alone carried the filter as it
+    # was when the cache was built.
+    pp <- tryCatch(ensure_preprocessed(rv), error = function(e) {
+      output$tox_status_msg <- renderUI(status_alert(
+        paste0("Preprocessing failed: ", conditionMessage(e)), "danger"))
+      NULL
+    })
+    if (is.null(pp)) return()
 
-    data      <- rv$processed_data
+    data      <- pp$data
     wt_col    <- rv$weight_col
-    vol_col   <- rv$vol_col
-    time_col  <- rv$time_col
-    tx_col    <- rv$tx_col
+    vol_col   <- pp$vol_col
+    time_col  <- pp$time_col
+    tx_col    <- pp$tx_col
     id_col    <- rv$id_col
     sex_col   <- rv$sex_col
     cage_col  <- rv$cage_col
-    ref_group <- input$tox_reference_group %||% NULL
+    ref_group <- study_reference(rv, data[[tx_col]])
     has_vol   <- !is.null(vol_col) && vol_col %in% names(data)
     adjust    <- isTRUE(input$tox_adjust_tumor) && has_vol
     density   <- input$tox_tumor_density %||% 1.0
+
+    # R20.D34: the tumour-mass correction converts volume to mass, so it needs
+    # the declared units. It used to guess them, 1000x wrong on the Weight demo.
+    units <- rv$settings$volume_units %||% ""
+    if (adjust && !units %in% c("mm3", "cm3")) {
+      output$tox_status_msg <- renderUI(status_alert(paste(
+        "Declare the tumour volume units (mm\u00b3 or cm\u00b3) under Study Design",
+        "on Data Upload: the tumour-mass correction depends on them. Or untick",
+        "'Subtract estimated tumor weight'."), "danger"))
+      return()
+    }
+    units <- if (adjust) units else NULL
+
+    output$tox_status_msg <- renderUI({ status_alert("Running analysis...", "info") })
 
     show_analysis_modal("Running toxicity analysis…", "Results will appear automatically when complete.")
     on.exit(shiny::removeModal(), add = TRUE)
@@ -706,6 +744,7 @@ toxicity_server <- function(id, rv) {
           volume_column = if (has_vol) vol_col else NULL,
           sex_column = sex_col, cage_column = cage_col,
           adjust_tumor_weight = adjust, tumor_density = density,
+          volume_units = units,
           covariates = covs, estimation = est_method, reference_group = ref_group
         )
       })
@@ -719,21 +758,38 @@ toxicity_server <- function(id, rv) {
           cage_column = cage_col,
           volume_column = if (has_vol) vol_col else NULL,
           adjust_tumor_weight = adjust, tumor_density = density,
+          volume_units = units,
           threshold = threshold, baseline_day = baseline_day, reference_group = ref_group
         )
       })
 
-      results$trajectory_data <- tryCatch({
-        wd <- data.frame(
-          ID        = as.character(data[[id_col]]),
+      # R20.D34 / R20.D31: plot the body-weight model's own net weight rather
+      # than re-deriving it here with a hard-coded mm3 conversion. Lines are
+      # drawn per animal (the backend's treatment + ID + cage key).
+      mm <- results$mixed_model
+      results$trajectory_data <- if (!isTRUE(mm$error) && !is.null(mm$weight_data)) {
+        wd <- mm$weight_data
+        td <- data.frame(ID = as.character(wd$.MouseKey),
+                         Treatment = as.character(wd$Treatment),
+                         Day = as.numeric(wd$Day), Weight = as.numeric(wd$Net_Weight),
+                         stringsAsFactors = FALSE)
+        td <- td[!is.na(td$Weight) & !is.na(td$Day), ]
+        attr(td, "weight_label") <- if (isTRUE(mm$model_info$adjust_tumor))
+          "Net body weight (g, tumour mass removed)" else "Body weight (g)"
+        td
+      } else tryCatch({
+        # The model failed: show gross weight, labelled as such.
+        td <- data.frame(
+          ID        = animal_key(data[[tx_col]], data[[id_col]],
+                                 if (has_col(data, cage_col)) data[[cage_col]]),
           Treatment = as.character(data[[tx_col]]),
           Day       = as.numeric(data[[time_col]]),
           Weight    = as.numeric(data[[wt_col]]),
           stringsAsFactors = FALSE
         )
-        if (has_vol && adjust)
-          wd$Weight <- wd$Weight - (as.numeric(data[[vol_col]]) / 1000 * density)
-        wd[!is.na(wd$Weight) & !is.na(wd$Day), ]
+        td <- td[!is.na(td$Weight) & !is.na(td$Day), ]
+        attr(td, "weight_label") <- "Gross body weight (g)"
+        td
       }, error = function(e) NULL)
 
       n_err   <- sum(vapply(results[c("mixed_model", "weight_loss")],
@@ -751,7 +807,9 @@ toxicity_server <- function(id, rv) {
         mouseExperiment::therapeutic_window_metric(
           df = data, volume_column = vol_col, weight_column = wt_col,
           time_column = time_col, treatment_column = tx_col, id_column = id_col,
-          adjust_tumor_weight = adjust, tumor_density = density, reference_group = ref_group,
+          cage_column = cage_col,  # R20.D31: cage is part of the animal key
+          adjust_tumor_weight = adjust, tumor_density = density,
+          volume_units = units, reference_group = ref_group,
           endpoint_method = ep_method, n_boot = n_boot_tw, boot_seed = 20260730L
         )
       })
@@ -781,18 +839,24 @@ toxicity_server <- function(id, rv) {
       grps
     } else NULL
 
+    # R20.D34: the backend's warnings are shown, not dropped; a failed
+    # analysis is reported as a failure with its message.
+    analyses <- if (model_type == "bw") results[c("mixed_model", "weight_loss")] else list(results$twm)
+    failed   <- Filter(function(x) isTRUE(x$error), analyses)
     if (n_err == n_total) {
+      msgs <- unique(vapply(failed, function(x) x$message %||% "", character(1L)))
       output$tox_status_msg <- renderUI({
-        status_alert("All analyses failed. Check your data and settings.", "danger")
+        status_alert(paste("Analysis failed:", paste(msgs, collapse = "; ")), "danger")
       })
     } else if (n_err > 0) {
-      output$tox_status_msg <- renderUI({
-        status_alert(sprintf("Completed with %d warning(s). Some results may be unavailable.", n_err), "warning")
-      })
+      msgs <- unique(vapply(failed, function(x) x$message %||% "", character(1L)))
+      output$tox_status_msg <- renderUI(tagList(
+        status_alert(sprintf("%d of %d analyses failed: %s", n_err, n_total,
+                             paste(msgs, collapse = "; ")), "warning"),
+        completion_status(Filter(function(x) !isTRUE(x$error), analyses),
+                          "The other analysis completed successfully!")))
     } else {
-      output$tox_status_msg <- renderUI({
-        status_alert("Analysis completed successfully!", "success")
-      })
+      output$tox_status_msg <- renderUI(completion_status(analyses))
     }
   })
 

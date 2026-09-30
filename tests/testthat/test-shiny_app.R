@@ -145,6 +145,34 @@ test_that("column mapping UI renders after loading demo data", {
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
 # ===========================================================================
+# Test: the Study Design panel and the date note in a real browser (R20-D.H,
+# R20.D1)
+# ===========================================================================
+test_that("Study Design panel renders, and the date layout is stated", {
+  app <- start_driver()
+  on.exit(app$stop(), add = TRUE)
+
+  app$set_inputs(`data-demo_dataset` = "combo", wait_ = FALSE)
+  app$click("data-load_demo_data")
+  # Every demo is in mm3; the control defaults to the arm named Control.
+  app$wait_for_js("$('input[name=\"data-volume_units\"]:checked').val() === 'mm3'",
+                  timeout = 20000)
+  app$wait_for_js("$('#data-control_group').val() === 'Control'", timeout = 20000)
+  # The combo demo has dates such as 03/24/2025, which can only be month-first.
+  app$wait_for_js(
+    "$('#data-reference_date_status').text().indexOf('MM/DD/YYYY') >= 0",
+    timeout = 20000)
+  expect_match(app$get_text("#data-reference_date_status"), "03/24/2025")
+
+  # A declared order the data contradict is reported where it was set.
+  app$set_inputs(`data-date_order` = "dmy")
+  app$wait_for_js(
+    "$('#data-reference_date_status').text().indexOf('month 24') >= 0",
+    timeout = 20000)
+  expect_true(isTRUE(app$get_js("Shiny.shinyapp.isConnected()")))
+})
+
+# ===========================================================================
 # Test: the full dashboard starts a working session (R20.D3)
 # ===========================================================================
 # The first version of the R20.D3 fix read a reactive value in the top-level

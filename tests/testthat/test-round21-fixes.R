@@ -3,7 +3,7 @@
 # none of them only reads the source.
 
 skip_if_not_installed("shiny", minimum_version = "1.5.0")
-skip_if_not_installed("mouseExperiment", minimum_version = "0.24.0")
+skip_if_not_installed("mouseExperiment", minimum_version = "0.25.2")
 
 .pkg <- tryCatch(getNamespace("mouseExperimentDashboard"), error = function(e) NULL)
 skip_if(is.null(.pkg), "mouseExperimentDashboard namespace not loadable")
@@ -25,7 +25,10 @@ master_rv <- function(...) {
                     col_volume = "Volume", volume_method = "precalculated",
                     col_treatment = "Treatment", col_cage = "Cage",
                     col_weight = "Weight", col_dose = "Dose",
-                    col_survival_event = "Survival_Censor"),
+                    col_survival_event = "Survival_Censor",
+                    # Study Design panel (R20-D.H)
+                    control_group = "Vehicle", volume_units = "mm3",
+                    randomisation_unit = "mouse"),
     ...)
 }
 
@@ -77,11 +80,15 @@ test_that("R20.D3: a Bayesian launch without a cookie runs through the registry"
 test_that("R20.D4: an unusable reference date is reported, not a missing symbol", {
   f  <- g("detect_date_format")
   df <- data.frame(Date = c("03/24/2025", "03/28/2025"))
-  expect_error(f(df, "Date", "24/03/2025"), "not a recognised date")
+  # R20.D1: "24/03/2025" is now read (it can only be day-first); a date that
+  # does not exist is still reported.
+  expect_error(f(df, "Date", "2025-13-45"), "not a recognised date")
+  expect_error(f(df, "Date", "24th March"), "not a recognised date")
   expect_error(f(df, "Date", ""), "No reference date is set")
   ok <- f(df, "Date", "2025-03-24")
-  expect_equal(ok$date_format, "%m/%d/%Y")
-  expect_equal(ok$start_date, "03/24/2025")
+  expect_equal(ok$layout, "MM/DD/YYYY")
+  expect_equal(ok$reference, as.Date("2025-03-24"))
+  expect_equal(ok$dates, as.Date(c("2025-03-24", "2025-03-28")))
 })
 
 test_that("R20.D4: Tumor Growth reports a bad reference date and stops running", {
@@ -94,11 +101,10 @@ test_that("R20.D4: Tumor Growth reports a bad reference date and stops running",
     uploaded_data = df, data_valid = TRUE,
     settings = list(col_id = "ID", col_treatment = "Treatment", col_cage = "Cage",
                     time_method = "from_date", col_date_for_day = "Date",
-                    reference_date = "24/03/2025", volume_method = "direct",
-                    col_volume = "Volume"))
+                    reference_date = "2025-13-45", volume_method = "direct",
+                    col_volume = "Volume", control_group = "Control"))
   shiny::testServer(g("tumor_growth_server"), args = list(rv = rv), {
-    session$setInputs(tg_model_type = "lme4", tg_reference = "Control",
-                      run_tg_analysis = 1)
+    session$setInputs(tg_model_type = "lme4", run_tg_analysis = 1)
     expect_false(isTRUE(rv$tg_running))
     expect_match(render_text(output$tg_status_msg), "not a recognised date")
     expect_null(rv$tg_results)
@@ -137,8 +143,8 @@ test_that("R20.D39: AUC is not offered Dunnett or Tukey, and a stale Dunnett sti
   # The AUC path's equal-variance test warns on small cells.
   suppressWarnings(shiny::testServer(g("tumor_growth_server"), args = list(rv = master_rv()), {
     # With a dose column mapped, arms are labelled "Treatment Dose".
-    session$setInputs(tg_model_type = "auc", tg_reference = "Vehicle 0",
-                      tg_p_adjust = "dunnett", run_tg_analysis = 1)
+    session$setInputs(tg_model_type = "auc", tg_p_adjust = "dunnett",
+                      run_tg_analysis = 1)
     expect_false(isTRUE(rv$tg_results$error))          # errored before
     expect_equal(rv$tg_results$p_adjust_method_used, "holm")
   }))
@@ -170,8 +176,7 @@ test_that("R20.D52: the Download All ZIP holds only this session's files", {
   on.exit(unlink(shared, recursive = TRUE), add = TRUE)
 
   suppressWarnings(shiny::testServer(g("tumor_growth_server"), args = list(rv = master_rv()), {
-    session$setInputs(tg_model_type = "lme4", tg_reference = "Vehicle 0",
-                      run_tg_analysis = 1)
+    session$setInputs(tg_model_type = "lme4", run_tg_analysis = 1)
     zip_path <- output$download_tg_all
     listed <- utils::unzip(zip_path, list = TRUE)$Name
     expect_true(length(listed) > 0L)

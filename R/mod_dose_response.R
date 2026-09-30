@@ -20,10 +20,8 @@ doseResponseUI <- function(id) {
           conditionalPanel(ns = ns,
             condition = "output.dr_dose_available == true",
 
-            selectInput(ns("dr_control_group"),
-                       "Reference Group",
-                       choices = "",
-                       selected = ""),
+            # The reference is the study's control group (R20-D.H).
+            uiOutput(ns("dr_reference_note")),
 
             selectInput(ns("dr_comparison_type"),
                        "Pairwise Comparison Type",
@@ -435,14 +433,14 @@ dose_response_server <- function(id, rv) {
     status_alert(paste("Dose column:", rv$dose_col), "success")
   })
 
-  # Populate control group choices from treatment column
-  observe({
+  # The study's control group, in this tab's treatment labels.
+  dr_ref <- reactive({
     req(rv$processed_data, rv$tx_col)
-    groups <- sort(unique(as.character(na.omit(rv$processed_data[[rv$tx_col]]))))
-    default_ctrl <- pick_reference_group(groups)
-    updateSelectInput(session, "dr_control_group",
-                      choices = groups,
-                      selected = default_ctrl)
+    study_reference(rv, rv$processed_data[[rv$tx_col]])
+  })
+
+  output$dr_reference_note <- renderUI({
+    reference_note(rv, tryCatch(dr_ref(), error = function(e) NULL))
   })
 
   # Dynamic time-point selector: "All dates" (default) + individual Day values
@@ -467,12 +465,21 @@ dose_response_server <- function(id, rv) {
     # Track analysis start with Umami
     shinyjs::runjs("window.trackAnalysisStart('dose_response', 'linear_regression+anova', 'control');")
 
-    data     <- rv$processed_data
+    # R20.D29: ensure_preprocessed() applies the current subset filter;
+    # rv$processed_data carried the filter as it was when it was cached.
+    pp <- tryCatch(ensure_preprocessed(rv), error = function(e) {
+      output$dr_status_msg <- renderUI(status_alert(
+        paste0("Preprocessing failed: ", conditionMessage(e)), "danger"))
+      NULL
+    })
+    if (is.null(pp)) return()
+    data     <- pp$data
     dose_col <- rv$dose_col
-    vol_col  <- rv$vol_col
-    time_col <- rv$time_col
-    tx_col   <- rv$tx_col
+    vol_col  <- pp$vol_col
+    time_col <- pp$time_col
+    tx_col   <- pp$tx_col
     id_col   <- rv$id_col
+    ctrl     <- study_reference(rv, data[[tx_col]])
 
     # Coerce dose column to numeric
     data[[dose_col]] <- suppressWarnings(as.numeric(data[[dose_col]]))
@@ -504,10 +511,13 @@ dose_response_server <- function(id, rv) {
         volume_column      = vol_col,
         day_column         = time_col,
         id_column          = id_col,
+        cage_column        = rv$cage_col,  # part of the animal key
         time_point         = time_point_val,
-        control_group_name = input$dr_control_group
+        control_group_name = ctrl
       )
     })
+    # The plots and tables use the control of the displayed run (R20.D48).
+    if (is.list(result)) result$control_group_used <- ctrl
 
     # R17.3: this used to call mouseExperiment::prepare_dose_data() and
     # ::generate_summary_statistics() to re-derive the plotting frame. Neither is
@@ -539,9 +549,9 @@ dose_response_server <- function(id, rv) {
         status_alert(paste0("Error: ", result$message), "danger")
       })
     } else {
-      output$dr_status_msg <- renderUI({
-        status_alert("Dose-response analysis completed successfully!", "success")
-      })
+      # R20.D34: the backend's warnings are shown, not dropped.
+      output$dr_status_msg <- renderUI(completion_status(
+        list(result), "Dose-response analysis completed successfully!"))
     }
   })
 
@@ -702,7 +712,7 @@ dose_response_server <- function(id, rv) {
     dose_col <- rv$dose_col %||% "Dose"
     vol_col  <- rv$vol_col  %||% "Volume"
     tx_col   <- rv$tx_col   %||% "Treatment"
-    ctrl     <- input$dr_control_group %||% ""
+    ctrl     <- rv$dr_results$control_group_used %||% ""
 
     # Compute mean control volume
     ctrl_mean <- mean(ad[[vol_col]][ad[[tx_col]] == ctrl], na.rm = TRUE)
@@ -794,7 +804,7 @@ dose_response_server <- function(id, rv) {
       if (!is.null(ad)) {
         dose_col <- rv$dose_col %||% "Dose"
         tx_col   <- rv$tx_col   %||% "Treatment"
-        ctrl     <- input$dr_control_group %||% ""
+        ctrl     <- rv$dr_results$control_group_used %||% ""
         ref_doses <- unique(ad[ad[[tx_col]] == ctrl, dose_col])
         if (length(ref_doses) > 0) {
           ref_str <- as.character(ref_doses[[1]])

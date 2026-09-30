@@ -137,6 +137,9 @@ dataUploadUI <- function(id) {
     
     # Column mapping section (shown after file upload)
     uiOutput(ns("column_mapping_ui")),
+
+    # Study design (R20-D.H): set once here, used by every tab.
+    uiOutput(ns("study_design_ui")),
     
     # Dataset summary (shown after successful upload + column config)
     uiOutput(ns("data_summary_ui")),
@@ -185,6 +188,15 @@ column_mapping_ui <- function(col_names, detected_cols, ns = NS(NULL)) {
           selectInput(ns("col_date_for_day"), "Date Column",
                      choices = c("Select..." = "", col_names),
                      selected = detected_cols$date),
+          # R20.D1: dates such as 01/03/2025 are read in the order the
+          # column itself requires; this choice applies only when no value
+          # decides it.
+          selectInput(ns("date_order"),
+                      tagList("Date order", help_tip("For dates such as 01/03/2025. With 'Detect from the data', a value such as 15/03/2025 (no month 15) decides the order for the whole column; if no value decides it, you are asked to choose.")),
+                      choices = c("Detect from the data" = "auto",
+                                  "Day first (DD/MM/YYYY)" = "dmy",
+                                  "Month first (MM/DD/YYYY)" = "mdy"),
+                      selected = "auto"),
           textInput(ns("reference_date"), "Reference Date (YYYY-MM-DD)",
                    value = "2025-03-24",
                    placeholder = "First measurement date"),
@@ -310,6 +322,50 @@ column_mapping_ui <- function(col_names, detected_cols, ns = NS(NULL)) {
   )
 }
 
+#' Study design UI
+#'
+#' CODE_REVIEW.md R20-D.H. The study's volume units, control group and unit of
+#' randomisation are declared once, on Data Upload, and every tab uses them.
+#' They replace the per-tab reference and cage selectors, which could
+#' disagree with each other.
+#'
+#' @param treatments Values of the mapped treatment column.
+#' @param defaults Named list of initial selections (`volume_units`,
+#'   `control_group`, `randomisation_unit`); a missing `volume_units` leaves
+#'   the units undeclared.
+#' @param ns Namespace function.
+#' @keywords internal
+study_design_ui <- function(treatments, defaults = list(), ns = NS(NULL)) {
+  control <- defaults$control_group %||% ""
+  if (!control %in% treatments) control <- pick_reference_group(treatments)
+  wellPanel(
+    h4(strong("Study Design")),
+    tags$p("Set once here; every analysis tab uses these settings."),
+    fluidRow(
+      column(4,
+        radioButtons(ns("volume_units"),
+          tagList("Tumour volume units", help_tip("The units of the volume column, or of the volume calculated from length and width (millimetres give mm\u00b3). They set the tumour-mass correction on the Toxicity tab and the axis labels.")),
+          choices = c("mm\u00b3" = "mm3", "cm\u00b3" = "cm3"),
+          selected = defaults$volume_units %||% character(0), inline = TRUE),
+        uiOutput(ns("volume_units_status"))
+      ),
+      column(4,
+        selectInput(ns("control_group"),
+          tagList("Control group", help_tip("The reference arm for every comparison: tumour growth, survival, body weight, synergy and dose-response.")),
+          choices = treatments, selected = control)
+      ),
+      column(4,
+        conditionalPanel(ns = ns, condition = "input.col_cage != ''",
+          radioButtons(ns("randomisation_unit"),
+            tagList("Treatment was assigned to", help_tip("Whole cages: survival compares arms by moving whole cages between them (a cage-level permutation log-rank), and the tumour-growth permutation test permutes cages. With 2 cages per arm the smallest attainable p-value is 1/3, and with 3 it is 0.1, so a cage-randomised comparison with so few cages cannot reach p < 0.05.")),
+            choices = c("Individual animals" = "mouse", "Whole cages" = "cage"),
+            selected = defaults$randomisation_unit %||% "mouse")
+        )
+      )
+    )
+  )
+}
+
 #' Data Preview UI
 #' @keywords internal
 data_preview_ui <- function(ns = NS(NULL)) {
@@ -357,13 +413,8 @@ tumorGrowthUI <- function(id) {
                    "model as LME4 but reports full posterior distributions and 95 % ",
                    "credible intervals; computation takes 3–12 minutes."),
 
-          # 2. Reference Group
-          selectInput(ns("tg_reference"),
-                     "Reference Group (Required)",
-                     choices = c("-- Select a reference group --" = "")),
-          helpText("The group all comparisons are made against (typically a vehicle or ",
-                   "IgG control). Automatically set to the most likely control group ",
-                   "when data is uploaded."),
+          # 2. Reference Group: the study's control group (R20-D.H)
+          uiOutput(ns("tg_reference_note")),
 
           # 3. Post-hoc Comparisons
           selectInput(ns("tg_comparison_type"),
@@ -381,10 +432,7 @@ tumorGrowthUI <- function(id) {
           checkboxInput(ns("tg_run_perm"),
                        "Run randomisation test of treatment \u00d7 time", value = FALSE),
           conditionalPanel(ns = ns, condition = "input.tg_run_perm == true",
-            selectInput(ns("tg_perm_unit"), "Unit that was randomised",
-                       choices = c("Individual animals" = "mouse",
-                                   "Whole cages"        = "cage"),
-                       selected = "mouse"),
+            uiOutput(ns("tg_perm_unit_note")),
             numericInput(ns("tg_perm_n"), "Permutations",
                         value = 999, min = 99, max = 9999, step = 100),
             helpText(
@@ -892,7 +940,7 @@ tumorGrowthUI <- function(id) {
                   div(class = "panel-body",
                     tags$dl(class = "dl-horizontal",
                       tags$dt("Reference Group"),
-                      tags$dd("The vehicle/control group used as comparator. Auto-detected from common names (Vehicle, Control, DMSO, PBS, Saline) or defaults to the first group alphabetically."),
+                      tags$dd("The study's control group, chosen under Study Design on Data Upload. With a dose column mapped, arms are labelled 'Treatment Dose' and the control maps to its own dose label."),
                       tags$dt("Post-hoc Comparisons"),
                       tags$dd("Which family of comparisons to make — vs Reference Group (default) or All Comparisons. Paired with the separate Correction setting."),
                       tags$dt("Correction"),
@@ -1444,7 +1492,8 @@ helpUI <- function() {
     # \u2500\u2500 Workflow overview \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     h3(icon("arrows-turn-right"), " Basic Workflow"),
     tags$ol(
-      tags$li(strong("Data tab"), " \u2014 upload a CSV or RDA file and map your columns (ID, time, volume, treatment). Optional columns: cage, dose, body weight, survival/censor indicator."),
+      tags$li(strong("Data tab"), " \u2014 upload a CSV file and map your columns (ID, time, volume, treatment). Optional columns: cage, dose, body weight, survival/censor indicator."),
+      tags$li(strong("Study Design"), " (on the Data tab) \u2014 declare the tumour volume units (mm\u00b3 or cm\u00b3), the control group, and, when a cage column is mapped, whether individual animals or whole cages were randomised. Every analysis tab uses these; none has its own reference selector."),
       tags$li(strong("Analysis tabs"), " \u2014 each tab activates once the required columns are mapped:"),
       tags$ul(
         tags$li(strong("Tumor Growth"), " \u2014 always available after upload"),
@@ -1526,7 +1575,7 @@ helpUI <- function() {
       tags$dt("Bayesian LMM (brms)"),
       tags$dd("The LME4 model fitted via MCMC (Stan). Return posterior distributions for treatment effects with credible intervals, plus convergence diagnostics (Rhat, ESS, trace and rank plots) and PSIS-LOO influence measures. Requires the brms package."),
       tags$dt("Randomisation test (optional, any frequentist mode)"),
-      tags$dd("Permutes treatment labels and refits, giving an exact p-value for the Treatment \u00d7 Day interaction that assumes neither a denominator-df approximation nor normal random effects. You must state whether animals or whole cages were randomised \u2014 the test is only valid if that matches how the experiment was actually run.")
+      tags$dd("Permutes treatment labels and refits, giving an exact p-value for the Treatment \u00d7 Day interaction that assumes neither a denominator-df approximation nor normal random effects. The unit permuted, individual animals or whole cages, is the unit of randomisation declared under Study Design on the Data tab \u2014 the test is only valid if that matches how the experiment was actually run.")
     ),
 
     h4("Survival Analysis"),
@@ -1534,7 +1583,7 @@ helpUI <- function() {
       tags$dt("Kaplan-Meier"),
       tags$dd("Non-parametric survival estimates with 95% confidence bands. Log-rank test for group differences."),
       tags$dt("Cox proportional hazards"),
-      tags$dd("Semi-parametric Cox PH model. Hazard ratios with 95% CI for each treatment vs. reference. Firth's bias-reduced estimation is applied automatically when any arm has zero events, where the standard partial likelihood would return infinite coefficients. The proportional-hazards assumption is tested and reported \u2014 if it fails, the hazard ratio is an average over a period in which the true ratio changed, and should not be quoted as a single number."),
+      tags$dd("Semi-parametric Cox PH model. Hazard ratios with 95% CI for each treatment vs. reference. When whole cages were randomised (Study Design), each arm is instead compared with the reference by a cage-level permutation log-rank, and the hazard ratios have no interval. Firth's bias-reduced estimation is applied automatically when any arm has zero events, where the standard partial likelihood would return infinite coefficients. The proportional-hazards assumption is tested and reported \u2014 if it fails, the hazard ratio is an average over a period in which the true ratio changed, and should not be quoted as a single number."),
       tags$dt("Bayesian AFT (brms)"),
       tags$dd("Accelerated failure time model with a Weibull or log-normal distribution. Returns time ratios and derived hazard ratios with credible intervals.")
     ),

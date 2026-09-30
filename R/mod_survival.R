@@ -24,7 +24,9 @@ survivalUI <- function(id) {
                    "models the full survival time distribution and reports posterior ",
                    "credible intervals; computation takes 3–12 minutes."),
 
-          uiOutput(ns("surv_reference_group_ui")),
+          # The reference is the study's control group (R20-D.H).
+          uiOutput(ns("surv_reference_note")),
+          uiOutput(ns("surv_design_note")),
 
           conditionalPanel(ns = ns, "input.surv_model_type == 'bayes'",
             hr(),
@@ -69,24 +71,10 @@ survivalUI <- function(id) {
           uiOutput(ns("surv_endpoint_source_ui")),
 
           hr(),
-          hr(),
-          h5(strong("Natural Death")),
-          checkboxInput(ns("surv_natural_death_as_event"),
-            tagList("Treat natural death as event (recommended)",
-                    help_tip(paste(
-                      "Mice that die before reaching the tumour volume threshold are",
-                      "conventionally counted as events (endpoint = 1). This is the",
-                      "standard pragmatic approach in preclinical research.",
-                      "Competing-risks models (Fine\u2013Gray) are theoretically superior",
-                      "but require sample sizes rarely available in mouse experiments.",
-                      "Uncheck to note this caveat in the summary output."
-                    ))),
-            value = TRUE
-          ),
-          tags$p(tags$small(class = "text-muted",
-            "Competing-risks modelling (Fine\u2013Gray) is the rigorous alternative ",
-            "but is unreliable at typical mouse experiment sample sizes (n < 20/group)."
-          )),
+          # R20.D13: a "Treat natural death as event" checkbox sat here and
+          # nothing read it. It returns, working, with the removal-reason
+          # column (R20-D.H); until then the tab states what it assumes.
+          uiOutput(ns("surv_event_assumption")),
 
           br(),
           actionButton(ns("run_surv_analysis"),
@@ -130,7 +118,9 @@ survivalUI <- function(id) {
                     "large per-group sample sizes rarely achievable in mouse experiments. ",
                     "The recommended pragmatic approach is to treat any death as an event (‘endpoint reached’), ",
                     "because the animal did not survive the study regardless of cause. ",
-                    "The sidebar ‘Natural death’ option controls this behaviour."
+                    "With an Event/Censor column, events are exactly the rows coded 1, so code such deaths 1 to ",
+                    "follow this approach. When events are derived from a volume threshold, only a tumour ",
+                    "reaching the limit is an event and other removals are censored; the sidebar says so."
                   )
                 ),
 
@@ -204,7 +194,9 @@ survivalUI <- function(id) {
                       tags$dt("Volume threshold"),
                       tags$dd("Optionally generate an event indicator by flagging animals whose tumor volume exceeds a specified threshold at any timepoint."),
                       tags$dt("Natural death"),
-                      tags$dd("If checked (recommended), animals that die before reaching the volume threshold are counted as events. If unchecked, only volume threshold crossings are events and natural deaths are censored.")
+                      tags$dd("Event/Censor column: an animal that died of other causes is an event only if its row is coded 1. Volume threshold: it is censored at its last measurement, which assumes its later risk was like that of the animals still on study; if such deaths are treatment-related, this favours the treatment."),
+                      tags$dt("Event time"),
+                      tags$dd("The first day an animal's row is flagged 1 (or its tumour reaches the limit). An animal whose every row is flagged has an animal-level status, and its last day is used. Animals are identified by treatment, ID and cage, so an ear tag reused in another arm is a different animal.")
                     )
                   )
                 ),
@@ -229,7 +221,8 @@ survivalUI <- function(id) {
                 tags$li(strong("Group"), " \u2014 treatment group name."),
                 tags$li(strong("HR"), " \u2014 Hazard Ratio: the instantaneous risk of the event in this group relative to the reference. HR\u202f<\u202f1 means lower hazard (better survival); HR\u202f>\u202f1 means higher hazard."),
                 tags$li(strong("CI_Lower / CI_Upper"), " \u2014 95\u202f% confidence interval for the HR. If this interval does not include 1.0, the difference is statistically significant at the 5\u202f% level."),
-                tags$li(strong("P_Value"), " \u2014 p-value for the individual group coefficient from the Cox model."),
+                tags$li(strong("P_Value"), " \u2014 p-value for the comparison with the reference, adjusted for the number of comparisons (P_Adjust_Method; unadjusted in P_Value_Unadjusted)."),
+                tags$li(strong("P_Method"), " \u2014 shown when whole cages were randomised (Study Design on Data Upload): the p-value comes from a cage-level permutation log-rank, and the hazard ratio has no interval."),
                 tags$li(strong("Events"), " \u2014 number of animals that reached the endpoint (tumour volume exceeded the IACUC threshold, or died before reaching it if natural death is treated as an event)."),
                 tags$li(strong("Total"), " \u2014 total number of animals in the group."),
                 tags$li(strong("Event_Rate"), " \u2014 Events \u00f7 Total. Values close to 1.0 mean most animals reached the endpoint."),
@@ -472,52 +465,45 @@ survival_server <- function(id, rv) {
     )
   })
 
-  # Dynamically generate reference group dropdown based on treatment groups
-  output$surv_reference_group_ui <- renderUI({
+  # The reference is the study's control group in this tab's labels
+  # ("Treatment Dose" when a dose column is mapped).
+  surv_ref <- reactive({
     req(rv$uploaded_data, rv$data_valid)
+    study_reference(rv, analysis_group_labels(rv))
+  })
 
-    # Determine which column / labels to use.
-    # When a dose column is mapped rv$tx_col == "TreatmentGroup" and the
-    # actual groups are "Treatment Dose" combinations.  Build that vector
-    # on-the-fly from the raw upload so the dropdown is always correct even
-    # before a full analysis has been run.
-    get_groups <- function() {
-      d <- rv$uploaded_data
-      # Resolve dose column directly from the UI input, not rv$dose_col which
-      # requires TG analysis to have run first.
-      dose_col_input <- if (!is.null(rv$settings$col_dose) && nzchar(rv$settings$col_dose) &&
-                            rv$settings$col_dose != "None") rv$settings$col_dose else NULL
-      has_dose <- has_col(d, dose_col_input)
-      if (has_dose &&
-          !is.null(rv$settings$col_treatment) && nzchar(rv$settings$col_treatment) &&
-          has_col(d, rv$settings$col_treatment)) {
-        combined <- paste(d[[rv$settings$col_treatment]], d[[dose_col_input]], sep = " ")
-        return(sort(unique(as.character(na.omit(combined)))))
-      }
-      if (!is.null(rv$settings$col_treatment) && nzchar(rv$settings$col_treatment) &&
-          has_col(d, rv$settings$col_treatment)) {
-        return(sort(unique(as.character(na.omit(d[[rv$settings$col_treatment]])))))
-      }
-      character(0)
+  output$surv_reference_note <- renderUI({
+    reference_note(rv, tryCatch(surv_ref(), error = function(e) NULL))
+  })
+
+  output$surv_design_note <- renderUI({
+    unit <- rv$settings$randomisation_unit %||% "mouse"
+    if (identical(unit, "cage")) {
+      tags$p(style = "font-size:12px;", "Unit of randomisation: ", strong("whole cages"),
+             ". Each arm is compared with the reference by moving whole cages ",
+             "between them (a cage-level permutation log-rank). With 2 cages per ",
+             "arm no p-value can fall below 1/3, and with 3 below 0.1.")
+    } else {
+      tags$p(style = "font-size:12px;", "Unit of randomisation: ",
+             strong("individual animals"), " (Study Design on Data Upload).")
     }
+  })
 
-    treatment_groups <- get_groups()
-
-    if (length(treatment_groups) > 0) {
-      default_ref <- pick_reference_group(treatment_groups)
-      return(
-        selectInput(session$ns("surv_reference_group"),
-                   "Reference Group",
-                   choices = treatment_groups,
-                   selected = default_ref)
-      )
-    }
-
-    # Fallback if no data
-    selectInput(session$ns("surv_reference_group"),
-               "Reference Group",
-               choices = "",
-               selected = "")
+  output$surv_event_assumption <- renderUI({
+    src <- input$surv_event_source %||% "column"
+    div(class = "alert alert-info", style = "font-size:0.85em; padding:8px;",
+      icon("circle-info"), " ",
+      if (identical(src, "volume")) {
+        tagList(strong("Deaths from other causes are censored. "),
+          "Only a tumour reaching the volume limit is an event; an animal that ",
+          "leaves the study for another reason is censored at its last ",
+          "measurement. If such removals are treatment-related, this favours ",
+          "the treatment.")
+      } else {
+        tagList(strong("Events are the rows coded 1. "),
+          "An animal that died of other causes counts as an event only if the ",
+          "Event/Censor column codes it 1.")
+      })
   })
 
   # Endpoint source UI: always shows both options; warns inline if volume column not configured
@@ -548,8 +534,10 @@ survival_server <- function(id, rv) {
             strong("Data Upload"), " and map the Volume column, then return here."
           ),
         numericInput(session$ns("surv_vol_threshold"),
-                     "IACUC volume limit (mm\u00b3)",
-                     value = 2000, min = 1, step = 50),
+                     paste0("IACUC volume limit (", volume_unit_label(rv), ")"),
+                     value = isolate(input$surv_vol_threshold) %||%
+                       if (identical(rv$settings$volume_units, "cm3")) 2 else 2000,
+                     min = 0, step = if (identical(rv$settings$volume_units, "cm3")) 0.05 else 50),
         tags$p(tags$small(
           "First day each mouse\u2019s tumour reaches or exceeds this volume = Event\u202f=\u202f1 ",
           "(Time = that day). Mice that never exceed the limit are censored at their ",
@@ -595,13 +583,22 @@ survival_server <- function(id, rv) {
       }
     }
     
-    # Track analysis start with Umami
-    ref_group <- if (!is.null(input$surv_reference_group) && nzchar(input$surv_reference_group))
-      input$surv_reference_group else "default"
-    shinyjs::runjs(sprintf(
-      "window.trackAnalysisStart('survival', 'cox', '%s'); window.trackReferenceGroupSelected('survival', '%s');",
-      ref_group, ref_group
-    ))
+    ref_group <- surv_ref()
+    if (is.null(ref_group) || !nzchar(ref_group)) {
+      output$surv_status_msg <- renderUI(status_alert(paste(
+        "Error: no reference group. Choose the control group under Study",
+        "Design on Data Upload."), "danger"))
+      return()
+    }
+    if (!nzchar(rv$settings$col_id %||% "")) {
+      output$surv_status_msg <- renderUI(status_alert(paste(
+        "Error: map the Mouse/Subject ID column on Data Upload; survival",
+        "needs one record per animal."), "danger"))
+      return()
+    }
+
+    # Track analysis start (no study strings: R20.D12)
+    shinyjs::runjs("window.trackAnalysisStart('survival', 'cox', 'study_control');")
     
     rv$surv_running <- TRUE
     output$surv_status_msg <- renderUI({
@@ -643,82 +640,25 @@ survival_server <- function(id, rv) {
     time_col  <- pp$time_col
     full_data <- data  # preserve full longitudinal data for volume-threshold event derivation
 
-    # For survival analysis, reduce data to one row per animal
-    # Use the user-selected ID and Cage columns (not hardcoded names)
-    id_col_surv   <- if (!is.null(rv$settings$col_id)   && nzchar(rv$settings$col_id))   rv$settings$col_id   else "ID"
+    # One row per animal (R20.D2): keyed by arm + ID (+ cage), at the first
+    # flagged event day. See survival_animal_rows().
+    id_col_surv   <- rv$settings$col_id
     cage_col_surv <- if (!is.null(rv$settings$col_cage) && nzchar(rv$settings$col_cage) &&
                          rv$settings$col_cage != "None") rv$settings$col_cage else NULL
-
-    has_id   <- has_col(data, id_col_surv)
-    has_cage <- has_col(data, cage_col_surv)
-
-    if (has_id) {
-      # Build key columns for deduplication
-      key_cols <- if (has_cage) c(id_col_surv, cage_col_surv) else id_col_surv
-      unique_animals <- unique(data[, key_cols, drop = FALSE])
-      survival_rows <- vector("list", nrow(unique_animals))
-
-      for (i in seq_len(nrow(unique_animals))) {
-        if (has_cage) {
-          mask <- data[[id_col_surv]]   == unique_animals[i, id_col_surv] &
-                  data[[cage_col_surv]] == unique_animals[i, cage_col_surv]
-        } else {
-          mask <- data[[id_col_surv]] == unique_animals[i, id_col_surv]
-        }
-        animal_rows <- data[mask, , drop = FALSE]
-        if (nrow(animal_rows) > 0) {
-          # CODE_REVIEW.md R3.D5 — take the animal's LAST DAY, not its last row.
-          # This reduction is what makes the backend Cox fit valid, but it
-          # assumed the upload was sorted by day within animal. A file exported
-          # grouped by measurement session, sorted descending, or with a
-          # re-measure appended out of order silently yielded the survival time
-          # and event indicator of an arbitrary observation. Same defect class as
-          # backend Round 1 1.7 (aggregate(x[1]) without an ordering guarantee).
-          ord <- order(suppressWarnings(as.numeric(animal_rows[[time_col]])))
-          animal_rows <- animal_rows[ord, , drop = FALSE]
-          last_row <- animal_rows[nrow(animal_rows), , drop = FALSE]
-          # An event recorded at any point in the record is an event for the
-          # animal; taking only the last row would drop an event flagged at an
-          # intermediate visit.
-          ev_col <- rv$settings$col_survival_event
-          if (!is.null(ev_col) && nzchar(ev_col) && ev_col %in% names(animal_rows)) {
-            ev <- suppressWarnings(as.numeric(animal_rows[[ev_col]]))
-            if (any(is.finite(ev))) {
-              last_row[[ev_col]] <- max(ev, na.rm = TRUE)
-            }
-          }
-          survival_rows[[i]] <- last_row
-        }
-      }
-      survival_data <- do.call(rbind, Filter(Negate(is.null), survival_rows))
-
-      # Validate aggregation
-      if (is.null(survival_data) || nrow(survival_data) == 0) {
-        result <- list(error = TRUE, message = "Data aggregation resulted in empty dataset. Check ID and Cage columns.")
-        rv$surv_results <- result
-        rv$surv_running <- FALSE
-        output$surv_status_msg <- renderUI({
-          status_alert(paste("Error:", result$message), "danger")
-        })
-        return()
-      }
-
-      data <- survival_data
-    } else {
-      # No ID column mapped — operate on data as-is (assume one row per animal)
-      if (nrow(data) == 0) {
-        result <- list(error = TRUE, message = "No data available for analysis.")
-        rv$surv_results <- result
-        rv$surv_running <- FALSE
-        output$surv_status_msg <- renderUI({
-          status_alert("Error: No data available for analysis", "danger")
-        })
-        return()
-      }
-    }
-    
-    # Run analysis with processed data and calculated/selected time column
+    if (!has_col(data, cage_col_surv)) cage_col_surv <- NULL
     tx_col_surv <- if (has_dose_surv) "TreatmentGroup" else rv$settings$col_treatment
+
+    if (!has_col(data, id_col_surv) || nrow(data) == 0L) {
+      output$surv_status_msg <- renderUI(status_alert(
+        if (nrow(data) == 0L) "Error: No data available for analysis"
+        else paste0("Error: ID column '", id_col_surv, "' is not in the data."),
+        "danger"))
+      rv$surv_running <- FALSE
+      return()
+    }
+    data <- survival_animal_rows(
+      full_data, time_col, tx_col_surv, id_col_surv, cage_col_surv,
+      event_col = if (event_src == "column") rv$settings$col_survival_event)
 
     # Resolve event/time columns: either from user-supplied censor column or derived
     # by finding the first day each animal's tumour exceeded the volume threshold
@@ -732,27 +672,12 @@ survival_server <- function(id, rv) {
         return(NULL)
       }
       vol_threshold <- as.numeric(input$surv_vol_threshold %||% 2000)
-      vol_col_surv  <- pp$vol_col  # uses calculated 'Volume' col when volume_method == 'calculate'
-
-      evt_rows <- lapply(seq_len(nrow(data)), function(i) {
-        if (has_id && has_cage) {
-          mask <- full_data[[id_col_surv]]   == data[[id_col_surv]][i] &
-                  full_data[[cage_col_surv]] == data[[cage_col_surv]][i]
-        } else if (has_id) {
-          mask <- full_data[[id_col_surv]] == data[[id_col_surv]][i]
-        } else {
-          mask <- seq_len(nrow(full_data)) == i
-        }
-        adf  <- full_data[mask, , drop = FALSE]
-        adf  <- adf[order(as.numeric(adf[[time_col]])), ]
-        vols <- as.numeric(adf[[vol_col_surv]])
-        days <- as.numeric(adf[[time_col]])
-        hit  <- which(!is.na(vols) & vols >= vol_threshold)
-        if (length(hit) > 0) list(Time = days[hit[1]], Event = 1L)
-        else                  list(Time = max(days, na.rm = TRUE), Event = 0L)
-      })
-      data[[".__DerivedTime"]]  <- as.numeric(sapply(evt_rows, `[[`, "Time"))
-      data[[".__DerivedEvent"]] <- as.integer(sapply(evt_rows, `[[`, "Event"))
+      ev <- volume_threshold_events(full_data, time_col, tx_col_surv, id_col_surv,
+                                    cage_col_surv, vol_col = pp$vol_col,
+                                    threshold = vol_threshold)
+      m <- match(data$.animal_key, ev$.animal_key)
+      data[[".__DerivedTime"]]  <- ev$Time[m]
+      data[[".__DerivedEvent"]] <- ev$Event[m]
 
       censor_col_use <- ".__DerivedEvent"
       time_col_use   <- ".__DerivedTime"
@@ -785,7 +710,7 @@ survival_server <- function(id, rv) {
         tx_col         = tx_col_surv,
         id_col         = id_col_surv,
         cage_col       = cage_col_surv,
-        ref_group      = input$surv_reference_group,
+        ref_group      = ref_group,
         family         = input$surv_bayes_family    %||% "weibull",
         prior_str      = input$surv_prior_strength  %||% "skeptical",
         n_chains       = as.integer(input$surv_bayes_chains  %||% 4L),
@@ -811,15 +736,21 @@ survival_server <- function(id, rv) {
     on.exit(shiny::removeModal(), add = TRUE)
 
     result <- safe_analysis(module = "survival", {
+      # R20.D14: the ID column is passed (it used to have to be named "ID").
+      # R20.6: the declared unit of randomisation decides the test.
       mouseExperiment::survival_statistics(
         df = data,
         time_column = time_col_use,
         censor_column = censor_col_use,
         treatment_column = tx_col_surv,
-        cage_column = if (!is.null(rv$settings$col_cage) && nzchar(rv$settings$col_cage)) rv$settings$col_cage else NULL,
+        cage_column = cage_col_surv,
+        id_column = id_col_surv,
+        randomisation_unit = if (!is.null(cage_col_surv))
+                               rv$settings$randomisation_unit %||% "mouse" else "mouse",
         dose_column = dose_col_surv,
-        reference_group = input$surv_reference_group,
-        firth_correction = TRUE
+        reference_group = ref_group,
+        firth_correction = TRUE,
+        verbose = FALSE
       )
     })
 
@@ -910,9 +841,9 @@ survival_server <- function(id, rv) {
         status_alert(paste("Error:", result$message), "danger")
       })
     } else {
-      output$surv_status_msg <- renderUI({
-        status_alert("Survival analysis completed successfully!", "success")
-      })
+      # R20.D34: the backend's warnings are shown, not dropped.
+      output$surv_status_msg <- renderUI(
+        completion_status(list(result), "Survival analysis completed successfully!"))
     }
   })
   
@@ -1047,12 +978,16 @@ survival_server <- function(id, rv) {
       
       if (isTRUE(rv$surv_results$event_src_used == "volume")) {
         cat("Event Source: Derived from tumour volume threshold (>=",
-            rv$surv_results$vol_threshold_used, "mm\u00b3)\n")
+            rv$surv_results$vol_threshold_used, volume_unit_label(rv), ")\n")
       } else {
         cat("Event Column:", rv$settings$col_survival_event, "\n")
       }
       cat("Treatment Column:", rv$settings$col_treatment, "\n")
       cat("Statistical Method:", rv$surv_results$method_used, "\n")
+      unit <- rv$surv_results$randomisation_unit %||% "mouse"
+      cat("Unit of Randomisation:",
+          if (identical(unit, "cage")) "whole cages (p-values from a cage-level permutation log-rank)"
+          else "individual animals", "\n")
       
       if (!is.null(rv$surv_results$results)) {
         res <- rv$surv_results$results
@@ -1242,6 +1177,35 @@ survival_server <- function(id, rv) {
             sprintf("global cox.zph p = %.4f (≥ 0.05).", gp))
         }
       }
+    }
+
+    # Unit of randomisation (package R20.6)
+    cp <- rv$surv_results$cage_permutation
+    if (identical(rv$surv_results$randomisation_unit, "cage") && !is.null(cp) && nrow(cp)) {
+      parts$cage <- shiny::div(class = "alert alert-info",
+        shiny::icon("layer-group"), shiny::strong(" Whole cages were randomised. "),
+        "Each p-value comes from a cage-level permutation log-rank, which moves whole ",
+        "cages between the arm and the reference; the hazard ratios have no interval, ",
+        "because no valid cage-level interval is available. With few cages the ",
+        "smallest attainable p-value can exceed 0.05, whatever the effect.",
+        shiny::tags$table(class = "table table-condensed",
+          style = "width:auto; margin:8px 0 0 0; background:#fff;",
+          shiny::tags$thead(shiny::tags$tr(
+            shiny::tags$th("Arm"), shiny::tags$th("Cages (arm / reference)"),
+            shiny::tags$th("Cage assignments"), shiny::tags$th("p (unadjusted)"),
+            shiny::tags$th("Smallest attainable p"))),
+          shiny::tags$tbody(lapply(seq_len(nrow(cp)), function(i) shiny::tags$tr(
+            shiny::tags$td(cp$Group[i]),
+            shiny::tags$td(sprintf("%d / %d", cp$Cages_Treated[i], cp$Cages_Reference[i])),
+            shiny::tags$td(paste0(format(cp$Assignments[i], big.mark = ","),
+                                  if (isTRUE(cp$Exact[i])) " (all enumerated)" else " (sampled)")),
+            shiny::tags$td(format_pval(cp$P_Value[i])),
+            shiny::tags$td(signif(cp$Min_Attainable_P[i], 3))))))
+      )
+    }
+    if (!is.null(rv$surv_results$cage_caveat)) {
+      parts$cage_caveat <- shiny::div(class = "alert alert-warning",
+        shiny::icon("triangle-exclamation"), " ", rv$surv_results$cage_caveat)
     }
 
     if (length(parts) == 0L) return(NULL)

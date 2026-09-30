@@ -115,6 +115,7 @@ add_tox_plots <- function(input, output, session, rv,
     line_w       <- input$tox_traj_line_width %||% 1
     ordered_grps <- ordered_tox_grps()
     colors       <- build_color_vector(input, "tox_color", ordered_grps)
+    y_lab        <- attr(td, "weight_label") %||% "Weight (g)"
 
     if (traj_type %in% c("spaghetti", "mean_spaghetti")) {
       td$.__LineGroup <- paste(td[["Treatment"]], td[["ID"]], sep = "·")
@@ -126,7 +127,7 @@ add_tox_plots <- function(input, output, session, rv,
                            linewidth = line_w) +
         ggplot2::geom_point(size = 1.5, alpha = if (traj_type == "mean_spaghetti") 0.3 else 0.6) +
         ggplot2::labs(title = "Body Weight Trajectories",
-                     x = "Day", y = "Weight (g)", color = "Treatment") +
+                     x = "Day", y = y_lab, color = "Treatment") +
         ggplot2::theme_classic(base_size = text_sz)
       if (traj_type == "mean_spaghetti") {
         grp_mean <- stats::aggregate(Weight ~ Treatment + Day, data = td, FUN = mean, na.rm = TRUE)
@@ -158,7 +159,7 @@ add_tox_plots <- function(input, output, session, rv,
         ggplot2::geom_line(linewidth = line_w) +
         ggplot2::geom_point(size = 2) +
         ggplot2::labs(title = paste0("Body Weight Over Time (Mean ± ", err_lbl, ")"),
-                     x = "Day", y = "Weight (g)", color = "Treatment", fill = "Treatment") +
+                     x = "Day", y = y_lab, color = "Treatment", fill = "Treatment") +
         ggplot2::theme_classic(base_size = text_sz)
       if (!is.null(colors)) p <- p + ggplot2::scale_color_manual(values = colors) +
                                      ggplot2::scale_fill_manual(values = colors)

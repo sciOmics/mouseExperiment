@@ -17,6 +17,31 @@
 
 # ---- Subset filter (CODE_REVIEW.md Round 2 F.5) -----------------------------
 
+#' One key per animal: treatment + ID (+ cage)
+#'
+#' Ear tags are commonly reused in each arm or cage, so an ID alone does not
+#' identify an animal (CODE_REVIEW.md R20.D2, R20.D57). This is the dashboard's
+#' copy of the package's internal `make_mouse_key()` convention (package T1):
+#' the parts joined by "|||", treatment first.
+#'
+#' @param treatment,id Vectors of equal length.
+#' @param cage Optional cage vector; NULL when no cage column is mapped.
+#' @return Character vector of keys.
+#' @keywords internal
+animal_key <- function(treatment, id, cage = NULL) {
+  parts <- list(as.character(treatment), as.character(id))
+  if (!is.null(cage)) parts <- c(parts, list(as.character(cage)))
+  do.call(paste, c(parts, sep = "|||"))
+}
+
+#' Human-readable animal label, e.g. "3 (Vehicle, cage C1)"
+#' @inheritParams animal_key
+#' @keywords internal
+animal_label <- function(treatment, id, cage = NULL) {
+  paste0(as.character(id), " (", as.character(treatment),
+         if (!is.null(cage)) paste0(", cage ", as.character(cage)), ")")
+}
+
 #' Apply a global subset filter to uploaded data
 #'
 #' Reads exclusion lists from \code{rv$exclude_ids},
@@ -24,6 +49,9 @@
 #' Data Upload tab's Subset Filter panel) and returns the data frame with
 #' those rows dropped. Quietly returns the input unchanged when no
 #' exclusions are active or the relevant columns aren't mapped.
+#'
+#' Excluded animals are \code{animal_key()} values (treatment + ID + cage):
+#' excluding ear tag "3" used to drop animal 3 from every arm.
 #'
 #' Every analysis module calls this on its uploaded data as the first
 #' step, so users can re-run any analysis with a different subset by
@@ -45,81 +73,394 @@ apply_subset_filter <- function(df, rv) {
   tx_col <- shiny::isolate(rv$settings$col_treatment)
   cg_col <- shiny::isolate(rv$settings$col_cage)
 
-  if (length(ex_ids) > 0L && !is.null(id_col) && nzchar(id_col) &&
-      id_col %in% colnames(df)) {
-    df <- df[!(as.character(df[[id_col]]) %in% ex_ids), , drop = FALSE]
+  if (length(ex_ids) > 0L && has_col(df, id_col) && has_col(df, tx_col)) {
+    key <- animal_key(arm_labels(df, tx_col, shiny::isolate(rv$settings$col_dose)),
+                      df[[id_col]], if (has_col(df, cg_col)) df[[cg_col]])
+    df <- df[!(key %in% ex_ids), , drop = FALSE]
   }
-  if (length(ex_tx) > 0L && !is.null(tx_col) && nzchar(tx_col) &&
-      tx_col %in% colnames(df)) {
+  if (length(ex_tx) > 0L && has_col(df, tx_col)) {
     df <- df[!(as.character(df[[tx_col]]) %in% ex_tx), , drop = FALSE]
   }
-  if (length(ex_cg) > 0L && !is.null(cg_col) && nzchar(cg_col) &&
-      cg_col %in% colnames(df)) {
+  if (length(ex_cg) > 0L && has_col(df, cg_col)) {
     df <- df[!(as.character(df[[cg_col]]) %in% ex_cg), , drop = FALSE]
   }
   df
 }
 
+#' Sorted distinct values of the treatment column
+#' @keywords internal
+treatment_values <- function(data, tx_col) {
+  if (!has_col(data, tx_col)) return(character(0))
+  sort(unique(as.character(stats::na.omit(data[[tx_col]]))))
+}
+
+#' Each row's arm: the treatment, or "Treatment Dose" when a dose column is mapped
+#'
+#' Tumour Growth and Survival analyse each treatment-dose combination as its
+#' own arm, labelled this way.
+#' @keywords internal
+arm_labels <- function(data, tx_col, dose_col = NULL) {
+  if (has_col(data, dose_col)) {
+    paste(as.character(data[[tx_col]]), as.character(data[[dose_col]]), sep = " ")
+  } else as.character(data[[tx_col]])
+}
+
+#' The arms an analysis will see, after the subset filter
+#' @param rv Shared reactiveValues.
+#' @return Sorted character vector (empty when the treatment column is unmapped).
+#' @keywords internal
+analysis_group_labels <- function(rv) {
+  rv$filter_applied_at  # re-evaluate after Apply / Clear
+  df <- apply_subset_filter(rv$uploaded_data, rv)
+  tx <- rv$settings$col_treatment
+  if (is.null(df) || !has_col(df, tx)) return(character(0))
+  df <- df[!is.na(df[[tx]]), , drop = FALSE]
+  sort(unique(arm_labels(df, tx, rv$settings$col_dose)))
+}
+
+#' Reduce longitudinal data to one row per animal for survival analysis
+#'
+#' CODE_REVIEW.md R20.D2. Animals were keyed by ID (plus cage), so ear tags
+#' reused across arms merged animals from different arms into one record with
+#' the latest day, the largest event flag and an arbitrary treatment. They are
+#' now keyed by arm + ID (+ cage). The event time was each animal's last day,
+#' even when measurements continued after a flagged event; it is now the first
+#' flagged day. When every row of an animal is flagged, the flag is an
+#' animal-level status rather than an event row, and the last day is used.
+#'
+#' @param data Longitudinal data.
+#' @param time_col,tx_col,id_col Column names (tx_col is the arm column).
+#' @param cage_col Optional cage column.
+#' @param event_col Optional 0/1 event column. Without it, each animal's last
+#'   observation is returned.
+#' @return One row per animal, with the event column set to the animal's event
+#'   status and an `.animal_key` column.
+#' @keywords internal
+survival_animal_rows <- function(data, time_col, tx_col, id_col,
+                                 cage_col = NULL, event_col = NULL) {
+  key <- animal_key(data[[tx_col]], data[[id_col]],
+                    if (has_col(data, cage_col)) data[[cage_col]])
+  tt  <- suppressWarnings(as.numeric(data[[time_col]]))
+  ord <- order(key, tt, na.last = TRUE)
+  d <- data[ord, , drop = FALSE]; key <- key[ord]; tt <- tt[ord]
+  ev <- if (has_col(d, event_col)) suppressWarnings(as.numeric(d[[event_col]])) else NULL
+  rows <- split(seq_len(nrow(d)), factor(key, levels = unique(key)))
+  pick <- vapply(rows, function(i) {
+    if (!is.null(ev)) {
+      e <- ev[i]
+      flagged <- which(!is.na(e) & e == 1)
+      if (length(flagged) && length(flagged) < sum(!is.na(e))) return(i[flagged[1L]])
+    }
+    ok <- which(!is.na(tt[i]))
+    if (length(ok)) i[ok[length(ok)]] else i[length(i)]
+  }, integer(1L))
+  out <- d[pick, , drop = FALSE]
+  if (!is.null(ev)) {
+    out[[event_col]] <- vapply(rows, function(i) {
+      e <- ev[i]
+      if (any(!is.na(e))) max(e, na.rm = TRUE) else NA_real_
+    }, numeric(1L))
+  }
+  out$.animal_key <- names(rows)
+  rownames(out) <- NULL
+  out
+}
+
+#' Event times from a tumour-volume threshold
+#'
+#' The first day each animal's volume reaches `threshold` is its event time
+#' (Event = 1); an animal that never reaches it is censored at its last
+#' observation (Event = 0). Keyed like [survival_animal_rows()] (R20.D2).
+#'
+#' @inheritParams survival_animal_rows
+#' @param vol_col Volume column.
+#' @param threshold Volume limit, in the data's units.
+#' @return Data frame with `.animal_key`, `Time` and `Event`.
+#' @keywords internal
+volume_threshold_events <- function(data, time_col, tx_col, id_col,
+                                    cage_col = NULL, vol_col, threshold) {
+  key  <- animal_key(data[[tx_col]], data[[id_col]],
+                     if (has_col(data, cage_col)) data[[cage_col]])
+  tt   <- suppressWarnings(as.numeric(data[[time_col]]))
+  vol  <- suppressWarnings(as.numeric(data[[vol_col]]))
+  rows <- split(seq_len(nrow(data)), factor(key, levels = unique(key)))
+  res  <- lapply(rows, function(i) {
+    i   <- i[order(tt[i])]
+    hit <- which(!is.na(vol[i]) & vol[i] >= threshold)
+    if (length(hit)) c(tt[i][hit[1L]], 1)
+    else c(suppressWarnings(max(tt[i], na.rm = TRUE)), 0)
+  })
+  data.frame(.animal_key = names(rows),
+             Time  = vapply(res, `[`, numeric(1L), 1L),
+             Event = as.integer(vapply(res, `[`, numeric(1L), 2L)),
+             stringsAsFactors = FALSE, check.names = FALSE, row.names = NULL)
+}
+
 # ---- Date Preprocessing (consolidated — Issue 2.3) ---------------------------
 
-#' Detect the date format of a column and normalise data for calculate_dates()
-#'
-#' Supports four patterns:
-#'   MM/DD/YYYY, YYYY-MM-DD, DD-Mon, and "Month Day" (e.g. "January 5").
-#' For the "Month Day" pattern the year is inferred from \code{reference_date}
-#' and both the data column and \code{reference_date} are reformatted so that
-#' \code{mouseExperiment::calculate_dates()} can parse them.
-#'
-#' @param data          Data frame containing the date column.
-#' @param date_column   Name of the date column.
-#' @param reference_date Character string of the reference / start date.
-#' @return A list with components \code{data} (possibly modified data frame),
-#'   \code{date_format} (format string or \code{NULL}), and
-#'   \code{start_date} (possibly modified reference date string).
-#' @keywords internal
-detect_date_format <- function(data, date_column, reference_date) {
-  first_val <- as.character(data[1, date_column])
-  start_date <- reference_date
+# Regular expressions for the supported layouts, tried in this order. Month
+# names are matched with .month_number() rather than strptime's %b/%B, which
+# follow the server's locale.
+.date_patterns <- c(
+  ymd     = "^(\\d{4})[-/.](\\d{1,2})[-/.](\\d{1,2})(?:[ T].*)?$",
+  numeric = "^(\\d{1,2})([-/.])(\\d{1,2})\\2(\\d{4})$",
+  d_mon_y = "^(\\d{1,2})[- ]([A-Za-z]{3,9})\\.?[- ,]+(\\d{4})$",
+  mon_d_y = "^([A-Za-z]{3,9})\\.?\\s+(\\d{1,2}),?\\s+(\\d{4})$",
+  d_mon   = "^(\\d{1,2})[- ]([A-Za-z]{3,9})\\.?$",
+  mon_d   = "^([A-Za-z]{3,9})\\.?\\s+(\\d{1,2})$"
+)
 
-  # Parse reference_date from its canonical YYYY-MM-DD or common dashboard formats
-  # R20.D4: the handler returned `NA_Date_`, which does not exist, so any
-  # reference date outside these formats raised "object 'NA_Date_' not found".
-  # The intended fallback -- today's date -- would count every Day from today,
-  # which is silently wrong, so an unusable reference date is reported instead.
-  if (is.null(start_date) || !nzchar(trimws(start_date))) {
+.date_layout_labels <- c(
+  ymd = "YYYY-MM-DD", dmy = "DD/MM/YYYY", mdy = "MM/DD/YYYY",
+  d_mon_y = "DD-Mon-YYYY", mon_d_y = "Month DD, YYYY",
+  d_mon = "DD-Mon (no year)", mon_d = "Month DD (no year)"
+)
+
+.month_number <- function(x) {
+  match(tolower(substr(x, 1L, 3L)), tolower(month.abb))
+}
+
+.ymd_date <- function(y, m, d) {
+  out <- rep(as.Date(NA), length(y))
+  ok <- !is.na(y) & !is.na(m) & !is.na(d)
+  out[ok] <- as.Date(sprintf("%04d-%02d-%02d", as.integer(y[ok]),
+                             as.integer(m[ok]), as.integer(d[ok])),
+                     format = "%Y-%m-%d")
+  out
+}
+
+# Split x by layout. Returns the layout name for each value (NA when none
+# matches) and the regmatches() pieces.
+.match_date_layouts <- function(x) {
+  layout <- rep(NA_character_, length(x))
+  parts  <- vector("list", length(x))
+  for (nm in names(.date_patterns)) {
+    todo <- which(is.na(layout) & !is.na(x))
+    if (!length(todo)) break
+    m <- regmatches(x[todo], regexec(.date_patterns[[nm]], x[todo], perl = TRUE))
+    hit <- lengths(m) > 0L
+    layout[todo[hit]] <- nm
+    parts[todo[hit]]  <- m[hit]
+  }
+  list(layout = layout, parts = parts)
+}
+
+# Resolve the order of d/d/yyyy values. `a` and `b` are the first and second
+# numbers. Returns list(order, reason), or stops when the column cannot be
+# read in one order or the data contradict the declared order.
+.resolve_numeric_order <- function(a, b, examples, date_order, what) {
+  first_big  <- which(a > 12L)
+  second_big <- which(b > 12L)
+  if (length(first_big) && length(second_big)) {
+    stop("The ", what, " contains '", examples[first_big[1L]], "', which can only be ",
+         "DD/MM/YYYY, and '", examples[second_big[1L]], "', which can only be ",
+         "MM/DD/YYYY. Correct the values so the column uses one order.",
+         call. = FALSE)
+  }
+  forced <- if (length(first_big)) "dmy" else if (length(second_big)) "mdy" else NA_character_
+  if (!is.na(forced)) {
+    ex <- examples[c(first_big, second_big)[1L]]
+    if (date_order != "auto" && date_order != forced) {
+      stop("The date order is set to ", .date_layout_labels[[date_order]],
+           ", but ", what, " contains '", ex, "', which would need month ",
+           if (forced == "dmy") a[first_big[1L]] else b[second_big[1L]],
+           " in that order. Set the date order to ",
+           .date_layout_labels[[forced]], " or 'Detect from the data'.",
+           call. = FALSE)
+    }
+    return(list(order = forced, reason = sprintf(
+      "'%s' can only be %s", ex, .date_layout_labels[[forced]])))
+  }
+  if (date_order == "auto") {
+    stop("The dates in ", what, " could be DD/MM/YYYY or MM/DD/YYYY: no value ",
+         "has a day above 12 (for example '", examples[1L], "'). Choose the ",
+         "date order under the date column on Data Upload.", call. = FALSE)
+  }
+  list(order = date_order, reason = "the date order set on Data Upload")
+}
+
+#' Resolve a date column's layout and read every value
+#'
+#' CODE_REVIEW.md R20.D1. The layout used to be chosen from the first row
+#' alone, and any `d/d/yyyy` value was assumed to be month-first, so a
+#' DD/MM/YYYY export was read as MM/DD/YYYY without a warning: days 1-12 became
+#' wrong dates and days 13-31 became NA. The whole column is now read. A first
+#' number above 12 means day-first and a second number above 12 means
+#' month-first; a column with neither is ambiguous, so the declared order is
+#' used, or the user is asked to declare one. Year-less dates ("24-Mar",
+#' "March 24") take the year that puts them nearest the reference date, so a
+#' study that crosses New Year no longer gets negative days.
+#'
+#' Supported layouts: YYYY-MM-DD (also with / or . and a trailing time);
+#' DD/MM/YYYY and MM/DD/YYYY (with /, . or -); 24-Mar-2025; March 24, 2025;
+#' and the year-less 24-Mar and March 24. Month names are English.
+#'
+#' @param data Data frame containing the date column.
+#' @param date_column Name of the date column.
+#' @param reference_date The study's Day 0, preferably as YYYY-MM-DD. A
+#'   d/d/yyyy reference date is read in the column's order.
+#' @param date_order "auto", "dmy" or "mdy": how to read d/d/yyyy values
+#'   when the data do not decide it.
+#' @return A list: `dates` (Date, NA where a value could not be read),
+#'   `reference` (Date), `layout` (for example "DD/MM/YYYY"), `reason` (how a
+#'   d/d/yyyy order was decided, or NULL) and `notes` (warnings for the user).
+#' @keywords internal
+detect_date_format <- function(data, date_column, reference_date,
+                               date_order = c("auto", "dmy", "mdy")) {
+  date_order <- match.arg(date_order)
+  # R20.D4: an unusable reference date is reported, never replaced.
+  if (is.null(reference_date) || !nzchar(trimws(reference_date))) {
     stop("No reference date is set. Enter the study's reference date (Day 0) ",
          "as YYYY-MM-DD, for example 2025-03-24.", call. = FALSE)
   }
-  ref_parsed_base <- tryCatch(
-    as.Date(start_date,
-            tryFormats = c("%Y-%m-%d", "%m/%d/%Y", "%d-%b-%Y",
-                           "%B %d %Y", "%B %d, %Y")),
-    error = function(e) as.Date(NA)
-  )
-  if (is.na(ref_parsed_base)) {
-    stop("Reference date '", start_date, "' is not a recognised date. Enter ",
-         "it as YYYY-MM-DD, for example 2025-03-24.", call. = FALSE)
+  if (is.null(date_column) || !date_column %in% names(data)) {
+    stop("Date column '", date_column %||% "", "' is not in the data.",
+         call. = FALSE)
+  }
+  what <- sprintf("column '%s'", date_column)
+  raw  <- trimws(as.character(data[[date_column]]))
+  raw[!is.na(raw) & !nzchar(raw)] <- NA_character_
+  m <- .match_date_layouts(raw)
+  if (all(is.na(m$layout))) {
+    ex <- utils::head(raw[!is.na(raw)], 1L)
+    stop("None of the values in ", what, " is a recognised date",
+         if (length(ex)) paste0(" (for example '", ex, "')"), ". Use ",
+         "YYYY-MM-DD, DD/MM/YYYY or MM/DD/YYYY, or map a Day column instead.",
+         call. = FALSE)
+  }
+  piece <- function(idx, k) vapply(m$parts[idx], `[`, character(1L), k)
+
+  # d/d/yyyy: decide the order from the whole column.
+  num_idx <- which(m$layout == "numeric")
+  order <- NULL; reason <- NULL
+  if (length(num_idx)) {
+    res <- .resolve_numeric_order(as.integer(piece(num_idx, 2L)),
+                                  as.integer(piece(num_idx, 4L)),
+                                  raw[num_idx], date_order, what)
+    order <- res$order; reason <- res$reason
   }
 
-  if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_val)) {
-    fmt <- "%m/%d/%Y"
-    start_date <- format(ref_parsed_base, "%m/%d/%Y")
-  } else if (grepl("^\\d{4}-\\d{1,2}-\\d{1,2}$", first_val)) {
-    fmt <- "%Y-%m-%d"
-    start_date <- format(ref_parsed_base, "%Y-%m-%d")
-  } else if (grepl("^\\d{1,2}-[A-Za-z]{3}$", first_val)) {
-    fmt <- "%d-%b"
-    start_date <- format(ref_parsed_base, "%d-%b")
-  } else if (grepl("^[A-Za-z]+\\s+\\d{1,2}$", first_val)) {
-    ref_year <- as.integer(format(ref_parsed_base, "%Y"))
-    data[[date_column]] <- paste(data[[date_column]], ref_year)
-    start_date <- format(ref_parsed_base, "%B %d %Y")
-    fmt <- "%B %d %Y"
-  } else {
-    fmt <- NULL
+  # The reference date: YYYY-MM-DD, a named month with its year, or d/d/yyyy
+  # in the column's order (or the declared one).
+  ref_raw <- trimws(reference_date)
+  rm <- .match_date_layouts(ref_raw)
+  bad_ref <- function() stop(
+    "Reference date '", ref_raw, "' is not a recognised date. Enter it as ",
+    "YYYY-MM-DD, for example 2025-03-24.", call. = FALSE)
+  ref_layout <- if (is.na(rm$layout)) "none" else rm$layout
+  ref <- switch(ref_layout,
+    ymd = .ymd_date(rm$parts[[1L]][2L], rm$parts[[1L]][3L], rm$parts[[1L]][4L]),
+    d_mon_y = .ymd_date(rm$parts[[1L]][4L], .month_number(rm$parts[[1L]][3L]),
+                        rm$parts[[1L]][2L]),
+    mon_d_y = .ymd_date(rm$parts[[1L]][4L], .month_number(rm$parts[[1L]][2L]),
+                        rm$parts[[1L]][3L]),
+    numeric = {
+      a <- as.integer(rm$parts[[1L]][2L]); b <- as.integer(rm$parts[[1L]][4L])
+      ro <- if (a > 12L) "dmy"
+            else if (b > 12L) "mdy"
+            else if (!is.null(order)) order
+            else if (date_order != "auto") date_order
+            else NULL
+      if (is.null(ro)) {
+        stop("Reference date '", ref_raw, "' could be DD/MM/YYYY or ",
+             "MM/DD/YYYY. Enter it as YYYY-MM-DD, for example 2025-03-24.",
+             call. = FALSE)
+      }
+      if (ro == "dmy") .ymd_date(rm$parts[[1L]][5L], b, a)
+      else .ymd_date(rm$parts[[1L]][5L], a, b)
+    },
+    as.Date(NA))
+  if (is.na(ref)) bad_ref()
+  ref_year <- as.integer(format(ref, "%Y"))
+
+  dates <- rep(as.Date(NA), length(raw))
+  idx <- which(m$layout == "ymd")
+  if (length(idx)) dates[idx] <- .ymd_date(piece(idx, 2L), piece(idx, 3L), piece(idx, 4L))
+  if (length(num_idx)) {
+    a <- piece(num_idx, 2L); b <- piece(num_idx, 4L); y <- piece(num_idx, 5L)
+    dates[num_idx] <- if (order == "dmy") .ymd_date(y, b, a) else .ymd_date(y, a, b)
+  }
+  idx <- which(m$layout == "d_mon_y")
+  if (length(idx)) dates[idx] <- .ymd_date(piece(idx, 4L), .month_number(piece(idx, 3L)), piece(idx, 2L))
+  idx <- which(m$layout == "mon_d_y")
+  if (length(idx)) dates[idx] <- .ymd_date(piece(idx, 4L), .month_number(piece(idx, 2L)), piece(idx, 3L))
+
+  # Year-less values take the year that puts them nearest the reference date.
+  notes <- character(0)
+  yl <- which(m$layout %in% c("d_mon", "mon_d"))
+  if (length(yl)) {
+    is_dm <- m$layout[yl] == "d_mon"
+    mon <- ifelse(is_dm, .month_number(piece(yl, 3L)), .month_number(piece(yl, 2L)))
+    day <- ifelse(is_dm, piece(yl, 2L), piece(yl, 3L))
+    cand <- lapply(ref_year + (-1L):1L, function(yy) .ymd_date(rep(yy, length(yl)), mon, day))
+    gap  <- vapply(cand, function(d) abs(as.numeric(d - ref)), numeric(length(yl)))
+    gap  <- matrix(gap, nrow = length(yl))
+    best <- apply(gap, 1L, function(g) if (all(is.na(g))) NA_integer_ else which.min(g))
+    for (k in seq_along(yl)) {
+      if (!is.na(best[k])) dates[yl[k]] <- cand[[best[k]]][k]
+    }
+    other_year <- sum(!is.na(best) & best != 2L)
+    if (other_year) {
+      notes <- c(notes, sprintf(paste0(
+        "Dates without a year were given the year that puts them nearest the ",
+        "reference date (%s); %d fall in a different year from it, so the ",
+        "study crosses New Year."), format(ref), other_year))
+    }
   }
 
-  list(data = data, date_format = fmt, start_date = start_date)
+  kinds <- unique(stats::na.omit(ifelse(m$layout == "numeric", order, m$layout)))
+  layout <- paste(unname(.date_layout_labels[kinds]), collapse = " + ")
+  if (length(kinds) > 1L) {
+    notes <- c(notes, sprintf(
+      "The %s mixes date layouts (%s); each value was read in its own layout.",
+      what, layout))
+  }
+  unread <- which(!is.na(raw) & is.na(dates))
+  blank  <- sum(is.na(raw))
+  if (length(unread) || blank) {
+    notes <- c(notes, paste0(
+      length(unread) + blank, " row(s) have no usable date",
+      if (length(unread)) sprintf(" (for example '%s')", raw[unread[1L]]),
+      "; they have no Day and are left out of analyses."))
+  }
+  list(dates = dates, reference = ref, layout = layout, reason = reason,
+       notes = notes)
+}
+
+#' Add a study Day column computed from a date column
+#'
+#' Reads the dates with [detect_date_format()] and passes them to
+#' `mouseExperiment::calculate_dates()` as unambiguous YYYY-MM-DD values, so
+#' the backend defines Day and the dashboard only decides what the dates are.
+#' Days before the reference date are reported (R20.D1).
+#'
+#' @inheritParams detect_date_format
+#' @return A list: `data` (with a `Day` column), `layout`, `reason` and
+#'   `notes`.
+#' @keywords internal
+study_days <- function(data, date_column, reference_date, date_order = "auto") {
+  info <- detect_date_format(data, date_column, reference_date, date_order)
+  tmp <- data
+  tmp[[".me_date_iso"]] <- format(info$dates, "%Y-%m-%d")
+  out <- withCallingHandlers(
+    mouseExperiment::calculate_dates(
+      tmp, start_date = format(info$reference, "%Y-%m-%d"),
+      date_column = ".me_date_iso", date_format = "%Y-%m-%d"),
+    # Unreadable values are already described in info$notes.
+    warning = function(w) {
+      if (grepl("could not be parsed", conditionMessage(w), fixed = TRUE))
+        invokeRestart("muffleWarning")
+    })
+  out[[".me_date_iso"]] <- NULL
+  notes <- info$notes
+  neg <- which(!is.na(out$Day) & out$Day < 0)
+  if (length(neg)) {
+    notes <- c(notes, sprintf(paste0(
+      "%d measurement(s) fall before the reference date %s (earliest Day %s). ",
+      "Check that the reference date is the study's Day 0."),
+      length(neg), format(info$reference), format(min(out$Day[neg]))))
+  }
+  list(data = out, layout = info$layout, reason = info$reason, notes = notes)
 }
 
 # ---- End Date Preprocessing -------------------------------------------------
@@ -153,24 +494,14 @@ ensure_preprocessed <- function(rv) {
   data <- apply_subset_filter(rv$uploaded_data, rv)
   settings <- rv$settings
 
-  # Date → Day
+  # Date → Day. R20.D1: study_days() reads the whole column and stops on an
+  # ambiguous or contradictory layout instead of guessing.
   date_fmt_warning <- NULL
   if (!is.null(settings$time_method) && settings$time_method == "from_date") {
-    date_info <- detect_date_format(data, settings$col_date_for_day,
-                                    settings$reference_date)
-    if (is.null(date_info$date_format)) {
-      date_fmt_warning <- paste0(
-        "Could not auto-detect date format in column '",
-        settings$col_date_for_day,
-        "'. Please verify your date column or pre-compute the Day column."
-      )
-    }
-    data <- mouseExperiment::calculate_dates(
-      date_info$data,
-      start_date  = date_info$start_date,
-      date_column = settings$col_date_for_day,
-      date_format = date_info$date_format
-    )
+    sd <- study_days(data, settings$col_date_for_day, settings$reference_date,
+                     settings$date_order %||% "auto")
+    if (length(sd$notes)) date_fmt_warning <- paste(sd$notes, collapse = " ")
+    data <- sd$data
     time_col <- "Day"
   } else {
     time_col <- settings$col_day
@@ -430,4 +761,25 @@ synthesize_censor_column <- function(data, id_col, time_col,
     }
   }
   list(data = data, col = new_col, n_flagged = n_flagged)
+}
+
+#' The rows of one animal in the Tumour Growth drill-down
+#'
+#' CODE_REVIEW.md R20.D57: one animal is treatment + ID + cage. Matching on ID
+#' and treatment alone plotted cage-mates that share an ear tag as one mouse
+#' (29 rows from two cages on the Combo demo).
+#'
+#' @param data The analysed data.
+#' @param rate_row One row of the backend's growth-rate table (columns
+#'   `Treatment`, `ID` and, when a cage column is mapped, `Cage`).
+#' @param id_col,tx_col,cage_col Column names in `data`.
+#' @return The animal's rows of `data`.
+#' @keywords internal
+drilldown_rows <- function(data, rate_row, id_col, tx_col, cage_col = NULL) {
+  keep <- as.character(data[[id_col]]) == as.character(rate_row$ID[1L]) &
+          as.character(data[[tx_col]]) == as.character(rate_row$Treatment[1L])
+  if ("Cage" %in% names(rate_row) && has_col(data, cage_col)) {
+    keep <- keep & as.character(data[[cage_col]]) == as.character(rate_row$Cage[1L])
+  }
+  data[which(keep), , drop = FALSE]
 }

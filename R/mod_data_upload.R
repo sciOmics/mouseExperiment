@@ -39,6 +39,12 @@ data_upload_server <- function(id, rv) {
   rv$uploaded_data <- NULL
   rv$data_valid <- FALSE
   rv$detected_cols <- NULL
+
+  # Initial selections for the Study Design panel. A demo declares mm3, and
+  # so does an upload whose volume will be calculated from caliper
+  # measurements; otherwise the units start undeclared. A preset fills the
+  # rest (see setup_settings_preset()).
+  study_defaults <- reactiveVal(list())
   
   # Demo data loader
   observeEvent(input$load_demo_data, {
@@ -117,6 +123,7 @@ data_upload_server <- function(id, rv) {
     }
 
     reset_analyses(rv)
+    study_defaults(list(volume_units = "mm3"))  # every demo is in mm3
     rv$uploaded_data  <- result$data
     rv$data_valid     <- TRUE
     rv$detected_cols  <- detect_columns(colnames(result$data))
@@ -160,6 +167,7 @@ data_upload_server <- function(id, rv) {
       rv$uploaded_data <- result$data
       rv$data_valid <- TRUE
       rv$detected_cols <- detect_columns(colnames(result$data))
+      study_defaults(if (is.null(rv$detected_cols$volume)) list(volume_units = "mm3") else list())
 
       log_upload(session, file_info$name, nrow(result$data), ncol(result$data))
 
@@ -200,18 +208,60 @@ data_upload_server <- function(id, rv) {
     if (!rv$data_valid) return(NULL)
     column_mapping_ui(colnames(rv$uploaded_data), rv$detected_cols, ns = session$ns)
   })
+
+  # Study Design panel (R20-D.H). Rendered once per dataset so that changing
+  # a column mapping does not reset the declared units; the control-group
+  # choices follow the treatment column through the observer below.
+  output$study_design_ui <- renderUI({
+    if (!rv$data_valid) return(NULL)
+    data <- rv$uploaded_data
+    study_design_ui(treatment_values(data, rv$detected_cols$treatment),
+                    isolate(study_defaults()), ns = session$ns)
+  })
+
+  observe({
+    req(rv$data_valid)
+    tx <- input$col_treatment
+    req(!is.null(tx))
+    vals <- treatment_values(rv$uploaded_data, tx)
+    cur  <- isolate(input$control_group) %||% ""
+    pend <- isolate(study_defaults()$control_group) %||% ""
+    sel  <- if (pend %in% vals) pend
+            else if (cur %in% vals) cur
+            else pick_reference_group(vals)
+    updateSelectInput(session, "control_group", choices = vals, selected = sel)
+  })
+
+  output$volume_units_status <- renderUI({
+    if (!is.null(input$volume_units)) return(NULL)
+    tags$small(class = "text-danger", icon("exclamation-circle"),
+               " Not declared yet. The Toxicity tab's tumour-mass correction ",
+               "needs it.")
+  })
   
   # ---------------------------------------------------------------------------
   # Reactive: compute preview data with calculated columns applied
   # Mirrors the same transformations used in tumor_growth_server so the preview
   # shows Volume and Day exactly as analysis will see them.
   # ---------------------------------------------------------------------------
-  # R20.D4: the preview used to swallow a date error silently.
+  # R20.D4: the preview used to swallow a date error silently. R20.D1: it
+  # also says how the dates were read, and what the user should check.
   date_calc_error <- reactiveVal(NULL)
+  date_calc_info  <- reactiveVal(NULL)
   output$reference_date_status <- renderUI({
     err <- date_calc_error()
-    if (is.null(err)) return(NULL)
-    status_alert(err, "warning")
+    if (!is.null(err)) return(status_alert(err, "warning"))
+    info <- date_calc_info()
+    if (is.null(info)) return(NULL)
+    tagList(
+      tags$p(class = "text-muted", style = "font-size:12px; margin:0 0 6px 0;",
+             icon("calendar-check"), " Dates read as ",
+             strong(info$layout, .noWS = "after"),
+             paste0(if (!is.null(info$reason)) paste0(" (", info$reason, ")"), ".")),
+      if (length(info$notes))
+        div(class = "alert alert-warning", style = "padding:6px 10px; font-size:12px;",
+            lapply(info$notes, tags$div))
+    )
   })
 
   preview_data <- reactive({
@@ -227,21 +277,20 @@ data_upload_server <- function(id, rv) {
     if (!is.null(input$time_method) && input$time_method == "from_date" &&
         !is.null(input$col_date_for_day) && input$col_date_for_day != "") {
       tryCatch({
-        date_info <- detect_date_format(data, input$col_date_for_day,
-                                        input$reference_date %||% "")
-        data <- mouseExperiment::calculate_dates(
-          date_info$data,
-          start_date  = date_info$start_date,
-          date_column = input$col_date_for_day,
-          date_format = date_info$date_format
-        )
+        sd <- study_days(data, input$col_date_for_day,
+                         input$reference_date %||% "",
+                         input$date_order %||% "auto")
+        data <- sd$data
         date_calc_error(NULL)
+        date_calc_info(sd[c("layout", "reason", "notes")])
       }, error = function(e) {
         message("[TG Preview] Date calculation failed: ", conditionMessage(e))
         date_calc_error(conditionMessage(e))
+        date_calc_info(NULL)
       })
     } else {
       date_calc_error(NULL)
+      date_calc_info(NULL)
     }
     
     # Apply volume calculation if selected
@@ -539,50 +588,6 @@ data_upload_server <- function(id, rv) {
     content  = function(file) write.csv(preview_data(), file, row.names = FALSE)
   )
   
-  # Reset button
-  observeEvent(input$reset_data, {
-    # Clear reactive values
-    reset_analyses(rv)
-    rv$uploaded_data <- NULL
-    rv$data_valid <- FALSE
-    rv$detected_cols <- NULL
-    
-    # Clear all outputs by rendering empty content
-    output$file_validation_msg <- renderUI({
-      div(class = "alert alert-info",
-          icon("info-circle"), "Ready to upload a new file")
-    })
-    
-    output$file_info <- renderText({
-      "No file loaded yet"
-    })
-    
-    output$column_mapping_ui <- renderUI({
-      NULL
-    })
-    
-    output$data_preview_ui <- renderUI({
-      NULL
-    })
-    
-    output$data_summary_ui <- renderUI({
-      NULL
-    })
-    
-    output$preview_summary <- renderText({
-      ""
-    })
-    
-    output$data_table <- renderDT({
-      datatable(data.frame(Message = "No data loaded"), 
-                options = list(scrollX = TRUE))
-    })
-    
-    # Reset the file input widget
-    shinyjs::reset(session$ns("data_file"))
-  })
-  
-
   # Proceed button is always clickable - validation enforced at analysis time
   # No need to disable/enable the button
 
@@ -659,7 +664,14 @@ data_upload_server <- function(id, rv) {
       time_method       = input$time_method %||% "direct_day",
       volume_method     = input$volume_method %||% "direct",
       volume_formula    = input$volume_formula %||% "ellipsoid",
-      reference_date    = input$reference_date %||% ""
+      reference_date    = input$reference_date %||% "",
+      date_order        = input$date_order %||% "auto",
+      # Study Design panel (R20-D.H). The randomisation unit is "mouse"
+      # whenever no cage column is mapped.
+      volume_units      = input$volume_units %||% "",
+      control_group     = input$control_group %||% "",
+      randomisation_unit = if (nzchar(input$col_cage %||% ""))
+                             input$randomisation_unit %||% "mouse" else "mouse"
     )
     
     # Track column mapping when all required columns are set
@@ -691,9 +703,14 @@ data_upload_server <- function(id, rv) {
   # Invalidate preprocessing cache whenever column mappings change so that
   # stale results from a previous mapping are not silently reused.
   observeEvent(
+    # The reference date, date order, formula and height column change the
+    # derived Day and Volume too; they used to leave the cache stale, so tabs
+    # that read it disagreed with Tumour Growth, which recomputes each run.
     list(input$col_treatment, input$col_id, input$col_day,
          input$col_date_for_day, input$col_volume, input$col_length,
-         input$col_width, input$volume_method, input$time_method),
+         input$col_width, input$volume_method, input$time_method,
+         input$reference_date, input$date_order, input$volume_formula,
+         input$col_height, input$col_cage, input$col_dose),
     {
       rv$processed_data <- NULL
     },
@@ -701,7 +718,7 @@ data_upload_server <- function(id, rv) {
   )
 
   # Settings preset handlers
-  setup_settings_preset(input, output, session, rv)
+  setup_settings_preset(input, output, session, rv, study_defaults)
 
   # Subset Filter (CODE_REVIEW.md Round 2 F.5)
   setup_subset_filter(input, output, session, rv)

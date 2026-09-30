@@ -4,6 +4,115 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.09.003] - 2026-09-30
+
+Requires mouseExperiment ≥ 0.25.2. Third implementation step of the Round 21
+review (`CODE_REVIEW.md` R20-D.K): the Study Design panel, one animal key,
+declared volume units, and dates read day-first or month-first from the data.
+
+### Added
+
+- **Study Design panel on Data Upload (R20-D.H).** It sits below the column
+  mapping, is set once, and every tab uses it:
+  - **Tumour volume units (mm³ / cm³).** The demos, and uploads whose volume is
+    calculated from caliper measurements, start at mm³. An upload with a volume
+    column starts undeclared.
+  - **Control group.** It replaces the reference selectors on Tumour Growth,
+    Survival, Toxicity, Dose-Response and Synergy. Each tab now shows a
+    read-only note naming the reference it uses, and says so when the control
+    is excluded by the subset filter.
+  - **Unit of randomisation (individual animals / whole cages).** Shown when a
+    cage column is mapped. It replaces the Tumour Growth permutation-unit
+    selector and drives the new survival analysis by cage.
+- **Date order selector** under the date column (Detect from the data / day
+  first / month first).
+- **Settings preset format 2.** The preset now also saves the study design and
+  the subset filter. Loading one before a dataset is uploaded says so; before,
+  its settings were silently lost.
+
+### Fixed — Critical
+
+- **DD/MM/YYYY dates were read as MM/DD/YYYY (R20.D1).** The layout was taken
+  from the first row, and any d/d/yyyy was assumed month-first. For a study
+  starting 1 March, days 0–17 came out as −57, 33, 155, 247, NA, NA. The whole
+  column is now read:
+  - a value such as 15/03/2025 decides the order;
+  - a column no value decides uses the declared order, or asks for one;
+  - data that contradict the declared order are an error;
+  - year-less dates take the year nearest the reference date, so a study
+    that crosses New Year no longer goes negative.
+  - Data Upload says how the dates were read, and warns about unreadable
+    values and days before the reference date.
+- **Survival merged ear tags reused across arms (R20.D2).** Animals were keyed
+  by ID (plus cage). With tags restarting in each arm and no cage column, 20
+  animals became 10 records. They are now keyed by arm + ID + cage. The event
+  time is the first day flagged, not the last day measured; an animal whose
+  every row is flagged has an animal-level status, and its last day is used.
+- **Toxicity's tumour-mass correction assumed its units (R20.D34).**
+  - The declared units are passed to all three backend calls. With units
+    undeclared, the correction does not run, and the tab says why.
+  - The trajectory plot shows the body-weight model's own net weight instead of
+    re-deriving it with a hard-coded `/1000`.
+  - On the Weight demo, 0 of 20 animals now cross 20 % weight loss (20 of 20
+    before). Declaring cm³ for these mm³ data is refused with the backend's
+    explanation.
+- **Backend warnings were dropped (R20.D34).** `safe_analysis()` had only an
+  error handler, so a 1000× unit error ran to "Analysis completed
+  successfully!". Warnings are now collected and logged, and the status box
+  reports "completed with N warning(s)" and lists up to five of them.
+
+### Fixed
+
+- **Survival and "All dates" synergy needed an ID column named `ID` (R20.D14).**
+  - Both now pass the mapped ID and cage columns.
+  - "All dates" synergy passes the estimand and bootstrap settings, which it
+    used to ignore.
+  - Survival no longer prints its report to the server console.
+- **Survival by unit of randomisation (package R20.6).** With whole cages
+  randomised, each arm is compared with the reference by a cage-level
+  permutation log-rank. Model Results then shows, per arm:
+  - the cages in the arm and in the reference, and the number of cage
+    assignments;
+  - the permutation p-value;
+  - the smallest attainable p-value, with the backend's warning when it
+    exceeds 0.05.
+  - With individual animals and one arm per cage, the backend's caveat about
+    cage-mates is shown.
+- **The "Treat natural death as event" checkbox was never read (R20.D13).** It
+  is removed. The sidebar states the assumption the chosen event source makes.
+  A working option returns with the removal-reason column (step 5).
+- **Synergy failed after a Tumour Growth run with a dose column (R20.D36).** The
+  selectors listed raw treatment names while the analysis used "Treatment Dose"
+  labels. Both now use the arm labels, whether or not Tumour Growth has run.
+- **Therapeutic window without the cage key (R20.D31).** `cage_column` is passed,
+  so cage-mates sharing an ear tag are no longer one animal.
+- **The Tumour Growth drill-down plotted cage-mates that share an ear tag as one
+  mouse (R20.D57, key part).**
+- **The subset filter excluded an ear tag from every arm.** Animals are now
+  listed and excluded by arm, ID and cage, e.g. "3 (Vehicle, cage C1)".
+- **Stale preprocessing after a mapping change.** Changing the reference date,
+  date order, volume formula, height, cage or dose column left the cached Day
+  and Volume in place. Tabs that read the cache (Survival, Toxicity,
+  Dose-Response, Synergy) then disagreed with Tumour Growth, which recomputes
+  on every run.
+- **Toxicity and Dose-Response read the cache directly (R20.D29, part).** So a
+  subset-filter change made after the first preprocessing did not apply. They
+  now use `ensure_preprocessed()`.
+- **Post-run displays read live widgets.**
+  - The Tumour Growth report and forest-plot labels, the Dose-Response TGI plot
+    and comparison note, and the Synergy summary now use the reference and
+    roles of the displayed run (R20.D46 and R20.D48, part).
+  - The Tumour Growth and Survival analytics events no longer send the
+    reference group's name (R20.D12, part).
+
+### Removed
+
+- The per-tab reference selectors (`tg_reference`, `surv_reference_group`,
+  `tox_reference_group`, `dr_control_group`, `syn_control`), the Tumour Growth
+  permutation-unit selector, and the unread natural-death checkbox.
+- The Data tab's Reset handler. It had no button, and it replaced the
+  column-mapping, summary and preview renderers with permanent NULLs.
+
 ## [26.09.002] - 2026-09-30
 
 Requires mouseExperiment ≥ 0.24.0. Second implementation step of the Round 21

@@ -125,11 +125,22 @@ toggle_downloads <- function(session, ids, enabled) {
 
 safe_analysis <- function(expr, module = "unknown") {
   t0 <- proc.time()[["elapsed"]]
+  # CODE_REVIEW.md R20.D34 -- there was no warning handler, so every backend
+  # warning was dropped: a 1000x unit error ran to "Analysis completed
+  # successfully!" while the package warned about it. Collect them, log them,
+  # and attach them to the result for completion_status() to show.
+  warns <- character(0)
   tryCatch(
     {
-      result <- expr
+      result <- withCallingHandlers(expr, warning = function(w) {
+        warns <<- c(warns, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      })
       elapsed <- proc.time()[["elapsed"]] - t0
       log_info(sprintf("analysis_complete | module=%s | elapsed_s=%.2f", module, round(elapsed, 2)))
+      warns <- unique(warns)
+      for (w in warns) log_warn(sprintf("analysis_warning | module=%s | %s", module, w))
+      if (length(warns) && is.list(result)) result$analysis_warnings <- warns
       result
     },
     error = function(e) {
@@ -144,4 +155,89 @@ safe_analysis <- function(expr, module = "unknown") {
 
 js_string <- function(x) {
   jsonlite::toJSON(as.character(x %||% ""), auto_unbox = TRUE)
+}
+
+#' Completion message that carries the backend's warnings
+#'
+#' CODE_REVIEW.md R20.D34. A run that produced warnings is reported as
+#' "completed with warnings", listing them (the first five), rather than as a
+#' plain success.
+#'
+#' @param results A list of result lists (one element for most tabs; Toxicity
+#'   runs several analyses).
+#' @param success_msg Message for a clean run.
+#' @return A status alert.
+#' @keywords internal
+completion_status <- function(results, success_msg = "Analysis completed successfully!") {
+  warns <- unique(unlist(lapply(results, function(r) {
+    if (is.list(r)) r$analysis_warnings else NULL
+  })))
+  if (!length(warns)) return(status_alert(success_msg, "success"))
+  shown <- utils::head(warns, 5L)
+  shiny::div(class = "alert alert-warning",
+    shiny::icon("exclamation-triangle"),
+    " ", shiny::strong(sprintf("%s with %d warning(s):",
+                               sub("\\s*successfully!?$", "", success_msg),
+                               length(warns))),
+    shiny::tags$ul(lapply(shown, shiny::tags$li)),
+    if (length(warns) > 5L) shiny::tags$small(length(warns) - 5L, " more in the server log."))
+}
+
+#' The study's control group, in one analysis's labels
+#'
+#' The study-design panel on Data Upload records one control group, a value of
+#' the treatment column, and every tab uses it (it replaced the per-tab
+#' reference selectors). Tumour Growth and Survival label arms "Treatment Dose"
+#' when a dose column is mapped, so the control maps to its matching label.
+#'
+#' @param rv Shared reactiveValues.
+#' @param labels Group labels the analysis uses.
+#' @return One label, or NULL when there are no labels.
+#' @keywords internal
+study_reference <- function(rv, labels) {
+  labels <- unique(as.character(stats::na.omit(labels)))
+  if (!length(labels)) return(NULL)
+  ctrl <- rv$settings$control_group %||% ""
+  if (nzchar(ctrl)) {
+    if (ctrl %in% labels) return(ctrl)
+    with_dose <- labels[startsWith(labels, paste0(ctrl, " "))]
+    if (length(with_dose)) return(sort(with_dose)[1L])
+  }
+  pick_reference_group(labels)
+}
+
+#' Read-only note naming a tab's reference group
+#'
+#' The reference is no longer chosen per tab (R20-D.H). The note says which
+#' group is used and, when the study's control group is not in the analysis
+#' data (for example, excluded by the subset filter), that another group
+#' stands in for it.
+#'
+#' @param rv Shared reactiveValues.
+#' @param ref The reference label in use, from [study_reference()].
+#' @keywords internal
+reference_note <- function(rv, ref) {
+  where <- "the control group under Study Design on Data Upload"
+  if (is.null(ref) || !nzchar(ref)) {
+    return(shiny::tags$p(class = "text-muted", style = "font-size:12px;",
+                         "Reference group: set ", where, "."))
+  }
+  ctrl <- rv$settings$control_group %||% ""
+  is_ctrl <- nzchar(ctrl) && (identical(ref, ctrl) || startsWith(ref, paste0(ctrl, " ")))
+  shiny::tags$p(style = "font-size:12px;", "Reference group: ", shiny::strong(ref),
+    if (is_ctrl) paste0(" (", where, ").")
+    else if (nzchar(ctrl)) shiny::tags$span(class = "text-warning", paste0(
+      ". The control group '", ctrl, "' is not in this analysis's data ",
+      "(is it excluded by the subset filter?), so this group stands in for it."))
+    else paste0(". Set ", where, "."))
+}
+
+#' The declared volume unit for labels
+#'
+#' @param rv Shared reactiveValues.
+#' @return "mm³", "cm³", or "units not declared".
+#' @keywords internal
+volume_unit_label <- function(rv) {
+  switch(rv$settings$volume_units %||% "",
+         mm3 = "mm³", cm3 = "cm³", "units not declared")
 }
