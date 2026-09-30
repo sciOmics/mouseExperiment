@@ -292,7 +292,7 @@ analyze_body_weight <- function(df,
   diag_re_qq_plot          <- build_random_effects_qq_plot(
     model, title_prefix = "Body-weight LMM")
   # CODE_REVIEW.md DIAGNOSTICS gap (13) — LMM influence diagnostics.
-  lmm_infl <- build_lmm_influence(model)
+  lmm_infl <- build_lmm_influence(model, groups = "Animal")
 
   list(
     model          = model,

@@ -5278,7 +5278,7 @@ Recorded in place here rather than by editing the earlier text, following the Ro
 | R20.49–R20.53, R20.55 | Vignette, examples, README, datasets, CI/process, test-suite gaps | Major | Open |
 | R20.54 | Build hygiene | Minor | Open |
 | R20.56–R20.75 | Minor (20 items) | Minor | Open |
-| R20.76–R20.82 | Efficiency (7 items; R20.76 blocks the dashboard for 20–140 s) | Efficiency | Open |
+| R20.76–R20.82 | Efficiency (7 items; R20.76 blocks the dashboard for 20–140 s) | Efficiency | R20.76 ✅ Fixed v0.26.0 (R20-O); the rest open |
 | R3.3, R3.6, R3.8, R3.14, R3.30, R14.2 | Earlier ✅ entries corrected (R20-H) | — | Reopened / partial |
 
 **Suggested order of work:**
@@ -5552,6 +5552,7 @@ One test, which fails on v0.25.1.
 - **R20.34 — ✅:** the power simulation documents that it powers the default random-slope analysis.
 - **R20.86 (first half) — ✅:** the "Bliss Expected" row no longer carries the control's row name.
 - **`%||%` removed:** base R ≥ 4.4 only, while the package declares R ≥ 3.5. It had been used in `tumor_growth_statistics()`.
+- **R20.76 — ✅ Fixed (follow-up commit):** random slopes made the per-observation influence refits slower still. On the Master demo a slope fit with diagnostics took 12.8 s, of which 12.3 s was influence. `build_lmm_influence(model, groups =)` now leaves out one animal at a time: the animal key for tumour growth, `Animal` for body weight. Rows are labelled by arm, ID and cage, and the threshold is 4 / n_animals. The same run now takes 2.0 s, and the intercept-only run 1.0 s (was 7.4 s). The R18 influence test now asserts one row per animal.
 - **Renamed to avoid two meanings of "evaluable":** the synergy flag for "Bliss does not apply" (R20.8) is now `bliss_applies`, and its over-time column `Bliss_Applies`; they were `evaluable` / `Evaluable`. It was added in a follow-up commit, when the dashboard showed "Evaluable = FALSE" on an evaluable day.
 
 **Tests:**

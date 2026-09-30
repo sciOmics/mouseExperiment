@@ -82,6 +82,12 @@ random slopes by default.
   control's row name (R20.86, first half).
 - `dose_response_statistics(verbose = FALSE)` no longer prints the growth-rate
   model.
+- **Influence diagnostics refitted the model once per observation (R20.76).**
+  That was 97–99 % of a tumour-growth run, and the random-slope default made
+  it slower (12.8 s on the Master demo). Cook's distance and DFBETAS now leave
+  out one animal at a time: one row per animal, labelled by arm, ID and cage,
+  with the threshold 4 / n_animals. On the Master demo a random-slope run with
+  diagnostics takes 2.0 s. The same applies to `analyze_body_weight()`.
 
 ### Changed
 

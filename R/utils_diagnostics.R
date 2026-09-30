@@ -166,16 +166,18 @@ build_random_effects_qq_plot <- function(model,
 #' (Fox 1991); a per-observation `cooks > 4/n` triggers the
 #' `is_influential` flag.
 #'
-#' Caveat: `influence.merMod` refits the model leaving each group out
-#' in turn. Cost is O(n_subjects); for large designs this can be slow.
-#' We compute on the `obs = TRUE` (per-observation) basis for the most
-#' useful Cook's distance display.
+#' `influence.merMod` refits the model leaving each unit out in turn. With
+#' `groups` naming the animal grouping factor, the unit is the animal:
+#' one refit per animal, and the question users ask (R20.76). Without it,
+#' each observation is left out, one refit per row.
 #'
 #' @param model A fitted `lmerMod` object.
+#' @param groups Name of the animal grouping factor in the model frame, or
+#'   `NULL` for per-observation influence.
 #' @return A list with `cooks_distance` and `dfbetas`, or `NULL`.
 #' @noRd
 #' @keywords internal
-build_lmm_influence <- function(model) {
+build_lmm_influence <- function(model, groups = NULL) {
   if (is.null(model)) return(NULL)
   if (!inherits(model, "lmerMod")) return(NULL)
   tryCatch({
@@ -202,37 +204,55 @@ build_lmm_influence <- function(model) {
     refit <- lme4::lmer(
       fml, data = dat, REML = lme4::isREML(model),
       control = lme4::lmerControl(optimizer = "bobyqa", calc.derivs = FALSE))
-    # influence.merMod() has no `obs` argument: passing one only produced
-    # "disregarded additional arguments" on every run (R20.76). The case
-    # deletion is per observation either way; the per-animal version and its
-    # speed-up remain R20.76.
-    infl <- stats::influence(refit)
+    # CODE_REVIEW.md R20.76 -- leave out one ANIMAL at a time when the
+    # caller names the animal grouping factor. Deleting single observations
+    # refitted the model once per row, 97-99 % of the run time (20-140 s on
+    # realistic studies, worse with the random slopes that became the default
+    # in v0.26.0), and answered a question users do not ask: which animal
+    # drives the result. The threshold is 4 / n_animals, and rows are labelled
+    # by arm, ID and cage.
+    by_group <- !is.null(groups) && groups %in% names(dat)
+    infl <- if (by_group) {
+      suppressMessages(stats::influence(refit, groups = groups))
+    } else {
+      suppressMessages(stats::influence(refit))
+    }
     cd   <- stats::cooks.distance(infl)
     df   <- stats::dfbetas(infl)
 
     n <- length(cd)
     threshold <- 4 / max(n, 1L)
 
-    cd_df <- data.frame(
-      Obs           = seq_along(cd),
-      Cooks_D       = round(as.numeric(cd), 4L),
-      Threshold     = round(threshold, 4L),
+    ids <- if (by_group) {
+      keys <- if (is.matrix(df) && !is.null(rownames(df))) rownames(df)
+              else levels(factor(dat[[groups]]))
+      parts <- strsplit(keys, "|||", fixed = TRUE)
+      if (all(lengths(parts) == 3L)) {
+        data.frame(Treatment = vapply(parts, `[`, "", 1L),
+                   ID        = vapply(parts, `[`, "", 2L),
+                   Cage      = vapply(parts, `[`, "", 3L),
+                   stringsAsFactors = FALSE)
+      } else data.frame(Animal = keys, stringsAsFactors = FALSE)
+    } else data.frame(Obs = seq_along(cd))
+
+    cd_df <- cbind(ids, data.frame(
+      Cooks_D        = round(as.numeric(cd), 4L),
+      Threshold      = round(threshold, 4L),
       Is_Influential = as.numeric(cd) > threshold,
-      stringsAsFactors = FALSE
-    )
+      stringsAsFactors = FALSE))
 
     # DFBETAS is one column per fixed effect.
     if (is.matrix(df)) {
-      df_df <- as.data.frame(df)
-      df_df$Obs <- seq_len(nrow(df_df))
-      df_df <- df_df[, c("Obs", setdiff(names(df_df), "Obs")), drop = FALSE]
-      # Round for display
+      df_df <- as.data.frame(df, row.names = NULL)
+      rownames(df_df) <- NULL
       num_cols <- vapply(df_df, is.numeric, logical(1L))
       df_df[, num_cols] <- lapply(df_df[, num_cols, drop = FALSE], round, 4L)
+      df_df <- cbind(ids, df_df)
     } else {
       df_df <- NULL
     }
 
-    list(cooks_distance = cd_df, dfbetas = df_df)
+    list(cooks_distance = cd_df, dfbetas = df_df,
+         unit = if (by_group) "animal" else "observation")
   }, error = function(e) NULL)
 }

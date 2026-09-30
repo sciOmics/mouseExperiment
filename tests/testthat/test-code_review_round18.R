@@ -48,9 +48,12 @@ test_that("R18.1: influence diagnostics are produced, not silently NULL", {
   expect_false(is.null(r$diag_cooks_distance))
   expect_false(is.null(r$diag_dfbetas))
   expect_s3_class(r$diag_cooks_distance, "data.frame")
-  expect_gt(nrow(r$diag_cooks_distance), 0L)
-  expect_true(all(c("Obs", "Cooks_D", "Threshold", "Is_Influential") %in%
-                    names(r$diag_cooks_distance)))
+  # R20.76 (v0.26.0): one row per animal (16 here), labelled by arm and ID,
+  # with the 4 / n_animals threshold; it was one row per observation.
+  expect_equal(nrow(r$diag_cooks_distance), 16L)
+  expect_true(all(c("Treatment", "ID", "Cage", "Cooks_D", "Threshold",
+                    "Is_Influential") %in% names(r$diag_cooks_distance)))
+  expect_equal(unique(r$diag_cooks_distance$Threshold), round(4 / 16, 4))
   expect_true(all(is.finite(r$diag_cooks_distance$Cooks_D)))
 })
 

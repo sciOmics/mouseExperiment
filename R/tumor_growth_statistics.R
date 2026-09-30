@@ -1230,7 +1230,7 @@ tumor_growth_statistics <- function(df,
     # CODE_REVIEW.md DIAGNOSTICS gap (13) — LMM influence diagnostics
     # (Cook's distance + DFBETAS). Refits the model leaving each observation
     # out; can be slow on large designs, so gated on include_diagnostics.
-    lmm_infl <- if (include_diagnostics) build_lmm_influence(model) else NULL
+    lmm_infl <- if (include_diagnostics) build_lmm_influence(model, groups = id_column) else NULL
 
     # CODE_REVIEW.md R3.17 / G.2 — report the cage-level intraclass correlation
     # so the reader can see how much the clustering mattered. The design effect
