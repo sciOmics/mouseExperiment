@@ -144,6 +144,41 @@ test_that("R20.D39: AUC is not offered Dunnett or Tukey, and a stale Dunnett sti
   }))
 })
 
+# ---- R20.D15 ----------------------------------------------------------------
+
+test_that("R20.D15: HTML report tables have one header cell per column", {
+  res <- list(treatment_effects = data.frame(Treatment = c("A", "B"),
+                                             Estimate = c(1.5, 2.5),
+                                             SE = c(0.1, 0.2)))
+  f <- tempfile(fileext = ".html")
+  on.exit(unlink(f), add = TRUE)
+  g("build_html_report")(res, title = "t", settings = list(), file = f)
+  html <- paste(readLines(f, warn = FALSE), collapse = "")
+  first_table <- regmatches(html, regexpr("<table>.*?</table>", html, perl = TRUE))
+  n_th <- lengths(regmatches(first_table, gregexpr("<th>", first_table, fixed = TRUE)))
+  expect_equal(n_th, 3L)                              # was 1: "Treatment, Estimate, SE"
+})
+
+# ---- R20.D52 ----------------------------------------------------------------
+
+test_that("R20.D52: the Download All ZIP holds only this session's files", {
+  # A file another session's failed export left in the old shared directory.
+  shared <- file.path(tempdir(), "mouseExperiment_results")
+  dir.create(shared, showWarnings = FALSE, recursive = TRUE)
+  decoy <- file.path(shared, "OTHER_SESSION_growth_rates.csv")
+  writeLines("x", decoy)
+  on.exit(unlink(shared, recursive = TRUE), add = TRUE)
+
+  suppressWarnings(shiny::testServer(g("tumor_growth_server"), args = list(rv = master_rv()), {
+    session$setInputs(tg_model_type = "lme4", tg_reference = "Vehicle 0",
+                      run_tg_analysis = 1)
+    zip_path <- output$download_tg_all
+    listed <- utils::unzip(zip_path, list = TRUE)$Name
+    expect_true(length(listed) > 0L)
+    expect_false(any(grepl("OTHER_SESSION", listed)))
+  }))
+})
+
 # ---- R20.D17 ----------------------------------------------------------------
 
 test_that("R20.D17: the analytic Power tab plans k - 1 corrected comparisons and attrition", {

@@ -41,7 +41,9 @@ build_html_report <- function(result, title, settings, file) {
     df <- format_df_for_display(df)
     header <- paste0(
       "<tr>",
-      paste0("<th>", esc(colnames(df)), "</th>", collapse = ""),
+      # R20.D15: esc() collapses a vector into one string, so every header
+      # landed in a single <th>. Escape each name on its own.
+      paste0("<th>", vapply(colnames(df), esc, character(1L)), "</th>", collapse = ""),
       "</tr>"
     )
     rows <- vapply(seq_len(nrow(df)), function(i) {
