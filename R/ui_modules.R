@@ -341,6 +341,14 @@ study_design_ui <- function(treatments, defaults = list(), ns = NS(NULL)) {
   wellPanel(
     h4(strong("Study Design")),
     tags$p("Set once here; every analysis tab uses these settings."),
+    # R20-K: the evaluable-day rule is fixed; it is stated here because it
+    # applies to every endpoint result (synergy, therapeutic window,
+    # dose-response, AUC).
+    tags$p(class = "text-muted", style = "font-size:12px;",
+           icon("calendar-check"), " ", strong("Evaluable days: "),
+           evaluable_rule_text(),
+           " Synergy, the therapeutic window, dose-response and the AUC use only ",
+           "days on which every arm they compare is evaluable."),
     fluidRow(
       column(4,
         radioButtons(ns("volume_units"),
@@ -408,8 +416,9 @@ tumorGrowthUI <- function(id) {
                      selected = "lme4"),
           helpText("LME4 models tumor volume trajectories over time using a linear ",
                    "mixed-effects model, which handles repeated measures and unequal ",
-                   "timepoints. AUC summarizes total tumor burden as the area under ",
-                   "each animal's growth curve. Bayesian LMM fits the same mixed-effects ",
+                   "timepoints. AUC compares total tumor burden as the area under ",
+                   "each arm's fitted growth curve over a window common to every arm. ",
+                   "Bayesian LMM fits the same mixed-effects ",
                    "model as LME4 but reports full posterior distributions and 95 % ",
                    "credible intervals; computation takes 3–12 minutes."),
 
@@ -456,8 +465,8 @@ tumorGrowthUI <- function(id) {
                    "with either. Dunnett exploits the correlation between ",
                    "vs-control contrasts, so it is less conservative than ",
                    "Bonferroni for the same family. The AUC model compares ",
-                   "arms with separate t-tests that share no error term, so ",
-                   "Dunnett and Tukey are not offered for it; Holm is its default."),
+                   "arms by the ratio of their AUCs with Wald tests; Dunnett and ",
+                   "Tukey are not offered for it, and Holm is its default."),
 
           # 4. Data Transformation (LME4 only)
           conditionalPanel(ns = ns,
@@ -519,17 +528,24 @@ tumorGrowthUI <- function(id) {
           # 7. Random Effects (LME4 and Bayesian)
           conditionalPanel(ns = ns,
             condition = "input.tg_model_type == 'lme4' || input.tg_model_type == 'bayes'",
+            # CODE_REVIEW.md R20.5 / R20-D.H: random slopes by default. With a
+            # random intercept only, animals' differing growth rates land in
+            # the residual and the Treatment x Day test rejected a true null in
+            # 73 % of simulated studies.
             selectInput(ns("tg_random_effects"),
                        "Random Effects",
-                       choices = c("Intercept only" = "intercept_only",
-                                  "Intercept + Slope" = "slope",
-                                  "None" = "none"),
-                       selected = "intercept_only"),
-            helpText("Specifies the random effects structure for individual animals. ",
-                     "'Intercept only' allows each animal to have its own baseline ",
-                     "volume. 'Intercept + Slope' also allows individual growth rates, ",
-                     "which is more flexible but may fail to converge with small samples. ",
-                     "('None' is not available in Bayesian mode.)")
+                       choices = c("Random slopes (recommended)" = "slope",
+                                   "Uncorrelated random slopes" = "slope_uncorrelated",
+                                   "Intercept only (all animals in an arm grow at the same rate)" = "intercept_only",
+                                   "None" = "none"),
+                       selected = "slope"),
+            helpText("Each animal gets its own baseline volume and its own growth rate. ",
+                     "If the model cannot be fitted, the analysis falls back to ",
+                     "uncorrelated slopes and then to an intercept only, and says so. ",
+                     "'Intercept only' assumes every animal in an arm grows at the same ",
+                     "rate; when they do not, the Treatment \u00d7 Day test finds ",
+                     "differences that are not there. ('None' and 'Uncorrelated' are ",
+                     "not available in Bayesian mode.)")
           ),
 
           # 8. Bayesian-specific controls
@@ -655,7 +671,7 @@ tumorGrowthUI <- function(id) {
                       strong("Statistical Model"), " dropdown:"),
                     tags$ul(
                       tags$li(strong("Linear Mixed-Effects Model (LME4)"), " — fits a mixed-effects model to repeated tumor volume measurements. Accounts for inter-animal variability and unequal observation times. Recommended for most longitudinal datasets."),
-                      tags$li(strong("Area Under Curve (AUC)"), " — summarises each animal’s total tumor burden as the trapezoidal AUC of its growth curve. Robust to missing timepoints, but discards trajectory shape information."),
+                      tags$li(strong("Area Under Curve (AUC)"), " — compares each arm’s total tumor burden as the area under its fitted growth curve, over the window in which every arm still has enough animals on study."),
                       tags$li(strong("Bayesian LMM (brms)"), " — the LME4 model fitted by MCMC, returning full posterior distributions instead of point estimates and p-values.")
                     ),
                     p(tags$small(class = "text-muted",
@@ -788,33 +804,29 @@ tumorGrowthUI <- function(id) {
                   div(class = "panel-heading",
                     h4(class = "panel-title", tags$span(class = "label label-warning", "AUC Mode"), " — Analyses & Outputs")),
                   div(class = "panel-body",
-                    p("Trapezoidal AUC of tumor volume over time is computed per animal. AUC (mm³·day) captures total tumor burden integrated over the study, not just the final timepoint."),
+                    p("Each arm's AUC is the area under its fitted growth curve, the geometric-mean curve of a ",
+                      "mixed model of log volume with a smooth (natural spline) time course per arm and ",
+                      "per-animal random slopes. It is integrated over one window common to every arm: from the ",
+                      "first study day to the last day on which every arm is evaluable (at least 50 % of its ",
+                      "enrolled animals, and at least 3, still on study). AUC is in volume \u00d7 days."),
                     tags$dl(class = "dl-horizontal",
-                      tags$dt("Individual AUC"), tags$dd("Per-animal AUC values with group summaries (mean, SD, SEM)."),
-                      tags$dt("AUC Summary"),
-                      tags$dd("An omnibus ", strong("Welch one-way ANOVA"), " across groups, followed by the pairwise ",
-                              "comparisons and correction selected in the sidebar. Welch is used rather than the ",
-                              "classical ANOVA because AUC variance almost always scales with the mean — a control ",
-                              "arm that grows unchecked is far more variable than a responding one — so the ",
-                              "equal-variance assumption is violated in exactly the comparison of interest."),
-                      tags$dt("Variance check"),
-                      tags$dd("A formal test of equal variances is reported beside the omnibus result, so the ",
-                              "assumption is visible rather than assumed. Welch already tolerates unequal variances; ",
-                              "the test tells you how far from equal they were.")
+                      tags$dt("AUC by arm"), tags$dd("Each arm's AUC with a 95 % interval, from draws of the model."),
+                      tags$dt("Comparisons"),
+                      tags$dd("The ratio of two arms' AUCs and their difference, with 95 % intervals and a Wald ",
+                              "p-value from the same draws, corrected over the family selected in the sidebar. ",
+                              "A ratio below 1 means less tumor burden than the comparator."),
+                      tags$dt("ANOVA"),
+                      tags$dd("A Wald test that every arm has the same AUC (on the log scale)."),
+                      tags$dt("Per-animal AUC"),
+                      tags$dd("Each animal's own trapezoidal AUC, for description only.")
                     ),
                     div(class = "alert alert-warning", style = "font-size:0.9em; margin-bottom:0;",
                       icon("triangle-exclamation"), " ",
-                      strong("AUC and early removal."), " An animal euthanised on day 14 has a smaller AUC than one ",
-                      "followed to day 28 because it was measured for less time, not because its tumour was smaller. ",
-                      "AUC is computed over each animal's observed window, so arms losing animals early — typically ",
-                      "the controls — accumulate less area. Read this alongside the attrition figures, and prefer ",
-                      "the LME4 path when dropout is substantial: it uses every observation without ",
-                      "needing a common window."),
-                    p(tags$small(class = "text-muted",
-                      "Extrapolation no longer feeds this calculation. Appending an imputed observation and treating ",
-                      "it as measured data made standard errors and p-values ignore the imputation, understating ",
-                      "uncertainty. The Extrapolation Points control now affects the growth-trajectory plots only."
-                    ))
+                      strong("Why not each animal's own AUC? "), "An animal euthanised on day 14 has a smaller ",
+                      "trapezoidal AUC than one followed to day 28 because it was measured for less time, not because ",
+                      "its tumour was smaller. Controls leave first, so comparing per-animal AUCs made an effective ",
+                      "drug look worse than control in about half of simulated studies. The per-animal values are ",
+                      "shown under \u2018AUC Individual Data\u2019 for description, not compared.")
                   )
                 ),
 
@@ -979,9 +991,9 @@ tumorGrowthUI <- function(id) {
             ),
             downloadButton(ns("download_tg_anova"), "Download ANOVA"),
 
-            # Backend R3.22 -- the AUC path's omnibus test is Welch's ANOVA, and
-            # the variance-homogeneity check it is based on is worth showing
-            # rather than leaving in the result object.
+            # Backend R3.22 -- the variance check that accompanied the Welch
+            # omnibus. The model-based AUC (backend v0.26.0, R20.4) has no
+            # variance_test, so these render nothing for it.
             uiOutput(ns("tg_variance_test_ui")),
             DTOutput(ns("tg_variance_test_table")),
 
@@ -1333,14 +1345,14 @@ tumorGrowthUI <- function(id) {
               h4("Influence diagnostics (case-deletion)"),
               tab_info(
                 strong("Cook's distance"), " measures the overall effect of ",
-                "deleting each observation. Values above the dashed ",
-                "threshold (4/n) flag observations that move the fit ",
-                "significantly. Inspect any flagged points individually — ",
-                "they're not automatically wrong, but they're driving the ",
+                "leaving out each animal, one row per animal (arm, ID, cage). ",
+                "Values above the threshold (4 / number of animals) flag ",
+                "animals that move the fit. Inspect them individually \u2014 ",
+                "they are not automatically wrong, but they are driving the ",
                 "result. ",
                 strong("DFBETAS"), " breaks the influence down per fixed ",
                 "effect: each column is one coefficient, each row one ",
-                "observation. Values | > 1 | are conventionally flagged."
+                "animal. Values | > 1 | are conventionally flagged."
               ),
               fluidRow(
                 column(6,
@@ -1569,9 +1581,9 @@ helpUI <- function() {
     h4("Tumor Growth"),
     tags$dl(
       tags$dt("LME4 (linear mixed-effects)"),
-      tags$dd("Log-transforms tumor volume and fits a linear mixed model with a Treatment \u00d7 Day interaction. Mouse ID is a random intercept. Cage handling is chosen to match the housing design rather than applied uniformly \u2014 see the tab's Info panel. Pairwise contrasts via emmeans; the comparison family and its correction are two separate settings, defaulting to vs-reference with an exact Dunnett correction."),
+      tags$dd("Log-transforms tumor volume and fits a linear mixed model with a Treatment \u00d7 Day interaction. Each animal has its own intercept and growth rate (random slopes), falling back to simpler structures only if the fit fails; the ANOVA reports F-tests with Satterthwaite degrees of freedom. Cage handling is chosen to match the housing design rather than applied uniformly \u2014 see the tab's Info panel. Pairwise contrasts via emmeans; the comparison family and its correction are two separate settings, defaulting to vs-reference with an exact Dunnett correction."),
       tags$dt("AUC (area under the curve)"),
-      tags$dd("Computes per-mouse AUC by trapezoidal integration, then compares groups with an omnibus Welch one-way ANOVA plus the selected pairwise correction, and reports a formal equal-variance test alongside. Note that an animal removed early accumulates less area purely from being measured for less time, so read AUC against the attrition figures."),
+      tags$dd("The area under each arm's fitted growth curve over the window in which every arm is evaluable (at least 50 % of its enrolled animals, and at least 3, on study). Arms are compared by the ratio of their AUCs, with intervals and Wald p-values from the model and the selected correction. Each animal's own trapezoidal AUC is shown for description only: an animal removed early accumulates less area from being measured for less time."),
       tags$dt("Bayesian LMM (brms)"),
       tags$dd("The LME4 model fitted via MCMC (Stan). Return posterior distributions for treatment effects with credible intervals, plus convergence diagnostics (Rhat, ESS, trace and rank plots) and PSIS-LOO influence measures. Requires the brms package."),
       tags$dt("Randomisation test (optional, any frequentist mode)"),

@@ -119,7 +119,7 @@ Per-row NA handling depends on the analysis:
 | Analysis | NA handling |
 |---|---|
 | TG LME4 | NA rows dropped per-mouse; mice with < 3 observations are excluded with a warning |
-| TG AUC | NA rows interpolated within the trapezoidal integration if `extrapolation_points > 0` |
+| TG AUC | NA volumes are dropped. The AUC is integrated from each arm's fitted curve, so a missing measurement does not remove the animal |
 | Survival | NA in `Time` or `Event` drops the mouse from the survival fit |
 | Toxicity | NA in weight at baseline drops the mouse (no baseline ⇒ no % change) |
 | Dose-Response | NA dose drops the row (no missing-dose imputation) |
@@ -145,6 +145,8 @@ The Study Design panel below the column mapping holds the settings every tab use
 | **Tumour volume units** (mm³ / cm³) | The units of the volume column, or of the volume calculated from length and width (millimetres give mm³). The Toxicity tab's tumour-mass correction needs them and will not run while they are undeclared. The demos, and uploads whose volume is calculated, start at mm³. An upload with a volume column starts undeclared. |
 | **Control group** | The reference arm for every comparison. With a dose column mapped, Tumour Growth, Survival and Synergy label arms "Treatment Dose", and the control maps to its own dose label (e.g. "Vehicle 0"). Each tab states the reference it used. If the control is excluded by the subset filter, the tab says which group stands in for it. |
 | **Treatment was assigned to** (individual animals / whole cages) | Shown when a cage column is mapped. "Whole cages" makes Survival compare arms by a cage-level permutation log-rank and makes the tumour-growth randomisation test permute cages. With 2 cages per arm no p-value can fall below 1/3, and with 3 below 0.1. |
+
+**Evaluable days.** An arm is evaluable on a day when at least 50 % of its enrolled animals, and at least 3, are still on study (measured on that day or later; maintainer decision R20-K). Synergy, the therapeutic window, dose-response and the tumour-growth AUC use only days on which every arm they compare is evaluable. By default they use the last such day, and their day selectors list only evaluable days. Each result names the day it used and lists the days and arms the rule excluded. The rule is fixed, not a setting; the panel states it.
 
 **One animal, one key.** Everywhere the dashboard identifies an animal (survival records, the subset filter, the tumour-growth drill-down), it uses treatment + ID + cage. An ear tag reused in another arm or cage is therefore a different animal.
 

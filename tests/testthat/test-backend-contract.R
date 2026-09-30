@@ -101,17 +101,24 @@ test_that("contract: weight-loss result carries the competing-risks fields", {
   expect_true(all(c("Time", "Event", "Treatment") %in% names(res$event_data)))
 })
 
-test_that("contract: AUC result carries variance_test for the ANOVA tab", {
+test_that("contract: the model-based AUC result carries what the TG tab reads (R20.4)", {
   res <- suppressWarnings(suppressMessages(
     mouseExperiment::tumor_growth_statistics(
-      contract_df(), model_type = "auc", plots = FALSE, verbose = FALSE)))
-
-  # tg_variance_test_ui reads p_value; the table renders the whole frame.
-  expect_false(is.null(res$variance_test))
-  expect_true("p_value" %in% names(res$variance_test))
-  # The Welch omnibus replaced aov(); the ANOVA tab renders this frame.
-  expect_true("Method" %in% names(res$anova))
-  expect_match(res$anova$Method[1], "Welch")
+      contract_df(), model_type = "auc", p_adjust_method = "holm",
+      plots = FALSE, verbose = FALSE)))
+  # AUC by arm (Treatment Effects tab, AUC plot).
+  expect_true(all(c("Treatment", "AUC", "Lower_CL", "Upper_CL", "N", "Reference") %in%
+                    names(res$treatment_effects)))
+  # Comparisons (mod_tumor_growth.R reformats these by name).
+  expect_true(all(c("comparison", "estimate", "ci_lower", "ci_upper", "ratio",
+                    "ratio_lower", "ratio_upper", "z_value", "p_adjusted") %in%
+                    names(res$posthoc$pairwise)))
+  # ANOVA tab and summary.
+  expect_match(res$anova$Method[1], "model-based AUC")
+  expect_true(all(c("start", "end") %in% names(res$auc_window)))
+  expect_false(is.null(res$evaluability$rule))
+  # The Welch-era variance check is gone; the tab renders nothing for it.
+  expect_null(res$variance_test)
 })
 
 test_that("contract: permutation result carries every field the panel reads", {

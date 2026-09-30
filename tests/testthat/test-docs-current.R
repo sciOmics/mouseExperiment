@@ -112,12 +112,30 @@ test_that("D.13: Help does not describe a Power mode the app does not offer", {
                label = "Help must not claim a Bayesian power mode")
 })
 
-test_that("D.13: Help states the AUC comparison method the backend actually uses", {
-  # It said Kruskal-Wallis / pairwise Wilcoxon. The backend reports
-  # "Welch's one-way ANOVA (unequal variances)".
+test_that("D.13 / R20.4: Help states the AUC comparison method the backend actually uses", {
+  # It said Kruskal-Wallis / pairwise Wilcoxon, then Welch's ANOVA on per-animal
+  # AUCs. Since backend v0.26.0 the AUC is the area under each arm's fitted
+  # curve, compared by AUC ratios.
   ui <- read_src("ui_modules.R")
   expect_false(grepl("Kruskal-Wallis", ui, fixed = TRUE))
-  expect_match(ui, "Welch one-way ANOVA", fixed = TRUE)
+  expect_false(grepl("Welch one-way ANOVA", ui, fixed = TRUE))
+  expect_match(ui, "ratio of their AUCs", fixed = TRUE)
+  expect_match(ui, "fitted growth curve", fixed = TRUE)
+})
+
+test_that("R20.D38: the Synergy Info tab states Bliss, not response additivity", {
+  # It documented "Expected TGI = min(FE_A + FE_B, 1.0) x 100", the null R17.2
+  # removed, while the backend computes FE_A + FE_B - FE_A * FE_B.
+  syn <- read_src("mod_synergy.R")
+  expect_false(grepl("min(FE_A + FE_B", syn, fixed = TRUE))
+  expect_match(syn, "FE_A + FE_B \\u2212 FE_A \\u00d7 FE_B", fixed = TRUE)
+  expect_false(grepl("CI threshold", syn, fixed = TRUE))
+})
+
+test_that("R20-K: the Synergy, Toxicity and Dose Response Info tabs state the evaluable-day rule", {
+  for (f in c("mod_synergy.R", "mod_toxicity.R", "mod_dose_response.R")) {
+    expect_match(read_src(f), "evaluable_rule_text()", fixed = TRUE, info = f)
+  }
 })
 
 test_that("D.13: Help no longer claims Tukey is the default correction", {
@@ -174,11 +192,13 @@ test_that("D.13: the endpoint estimand is documented wherever it is offered", {
   }
 })
 
-test_that("D.13: bootstrap intervals are documented wherever they are offered", {
+test_that("D.13: interval draws are documented wherever they are offered", {
+  # Since backend v0.26.0 the draws are of the fitted model under the model
+  # estimand and of the animals otherwise, so the control is "Interval draws".
   for (f in c("mod_toxicity.R", "mod_synergy.R")) {
     src <- read_src(f)
     if (!grepl('ns\\("[a-z]+_n_boot"\\)', src)) next
-    expect_match(src, "Bootstrap resamples", fixed = TRUE, info = f)
+    expect_match(src, "Interval draws", fixed = TRUE, info = f)
   }
 })
 

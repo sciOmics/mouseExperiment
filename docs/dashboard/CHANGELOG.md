@@ -4,6 +4,67 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.09.004] - 2026-09-30
+
+Requires mouseExperiment ≥ 0.26.0. Fourth implementation step of the Round 21
+review (`CODE_REVIEW.md` R20-D.L): the evaluable-day rule, stated to users; one
+source for TGI; the model-based AUC; random slopes by default.
+
+### Added
+
+- **The evaluable-day rule is stated to users (R20-K).** An arm is evaluable
+  on a day when at least 50 % of its enrolled animals, and at least 3, are
+  still on study.
+  - The Study Design panel and the Synergy, Toxicity (therapeutic window) and
+    Dose Response Info tabs state it.
+  - Every result that uses an endpoint day names the day, and lists the days
+    and arms the rule excluded, e.g. "Not evaluated: day 30 (Control 3/8)".
+  - Day selectors list only evaluable days. Synergy's "All dates" becomes
+    "All evaluable days"; Dose Response's becomes "Last evaluable day".
+
+### Changed
+
+- **Tumour Growth:**
+  - The default random effects are random slopes. An uncorrelated-slopes
+    option is added, and intercept-only is labelled with its assumption. The
+    summary states the structure used and any fallback.
+  - The ANOVA help describes Satterthwaite F-tests; it called car's Wald
+    chi-square a likelihood-ratio test (R20.D30, part).
+- **The AUC is the backend's model-based AUC:** the area under each arm's
+  fitted curve over the common evaluable window.
+  - The comparisons table shows AUC ratios and differences with intervals.
+  - The AUC plot shows each arm's AUC with its interval.
+  - The summary gives the window.
+  - The per-animal trapezoid tables are relabelled as descriptive only.
+- **Intervals match their estimates (R20.D35).** Synergy's intervals, and the
+  therapeutic window's TGI intervals, now describe the reported estimates,
+  with the method stated. The TWM ratio has no interval under the model
+  estimand, and the ranking note says so and points to the TGI and weight-loss
+  intervals. The sidebar control is renamed "Interval draws".
+- **Influence tables have one row per animal (backend R20.76),** labelled by
+  arm, ID and cage. A Tumour Growth run on the Master demo takes about 2 s,
+  down from 13 s with random slopes.
+
+### Fixed
+
+- **The Synergy TGI plot recomputed TGI from the animals present each day
+  (R20.D37),** the survivor estimand the tab warns against, and contradicted
+  the table. It now plots the backend's TGIs and their 95 % intervals.
+- **The Dose Response TGI plot re-derived TGI per animal against the live
+  Reference dropdown (R20.D48).**
+  - It now plots `tgi_table`, TGI by dose from the model at the analysis day
+    (the same TGI as Synergy and Toxicity), and the table appears under
+    Dose-Response Table.
+  - The day is the last evaluable day, not each animal's own last observation.
+- **The Synergy Info tab documented response additivity, "min(FE_A + FE_B, 1)"
+  (R20.D38).** It now gives the Bliss formula and a correct ceiling example
+  (50 % and 50 % give 75 %). A test guards the formula.
+- **The over-time synergy plot's `ylim(0, 100)` dropped negative TGIs
+  (R20.D29, part).**
+- **The Synergy diagnostics show the checks for the estimate reported:** the
+  endpoint model's residuals by arm and each arm's fitted curve over its data,
+  or the per-animal plots for the observed estimands.
+
 ## [26.09.003] - 2026-09-30
 
 Requires mouseExperiment ≥ 0.25.2. Third implementation step of the Round 21

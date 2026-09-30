@@ -241,3 +241,49 @@ volume_unit_label <- function(rv) {
   switch(rv$settings$volume_units %||% "",
          mm3 = "mm³", cm3 = "cm³", "units not declared")
 }
+
+#' The evaluable-day rule, as the backend states it
+#'
+#' Maintainer decision R20-K (confirmed 2026-09-30): synergy, the therapeutic
+#' window and dose-response report only days on which every arm compared is
+#' evaluable. The wording matches `mouseExperiment::evaluable_days()$rule`; a
+#' test keeps them in step.
+#' @keywords internal
+evaluable_rule_text <- function() {
+  paste0("An arm is evaluable on a day when at least 50% of its enrolled ",
+         "animals, and at least 3 animals, are still on study (measured on ",
+         "that day or later).")
+}
+
+#' Which day an endpoint result used, and which days the rule excluded
+#'
+#' Every result that uses an evaluable day names the day and lists the days
+#' and arms the rule excluded (R20-K: the rule must be relayed to users).
+#'
+#' @param ev The `evaluability` element of a backend result.
+#' @param day The day used; `NULL` for an over-time result (every evaluable
+#'   day was analysed).
+#' @param arms_label The arms compared, as a plural subject for "are
+#'   evaluable", e.g. "all four arms".
+#' @return A note, or `NULL` when `ev` is missing.
+#' @keywords internal
+evaluability_note <- function(ev, day = NULL, arms_label = "all arms") {
+  if (is.null(ev) || is.null(ev$table)) return(NULL)
+  used <- if (!is.null(day)) {
+    last <- isTRUE(all.equal(as.numeric(day), as.numeric(ev$last_day)))
+    paste0("Evaluated on day ", format(day),
+           if (last) paste0(", the last day on which ", arms_label, " are evaluable.")
+           else paste0(", an evaluable day (the last is day ", format(ev$last_day), ")."))
+  } else if (length(ev$days)) {
+    paste0("Analysed on every evaluable day: days ", format(min(ev$days)), "–",
+           format(max(ev$days)), ".")
+  } else "No day is evaluable."
+  excl <- ev$excluded
+  shiny::div(class = "alert alert-info", style = "font-size:0.9em; padding:8px 12px;",
+    shiny::icon("calendar-check"), " ", used, " ",
+    shiny::tags$small(ev$rule %||% evaluable_rule_text()),
+    if (!is.null(excl) && nrow(excl)) shiny::tags$div(style = "margin-top:4px;",
+      shiny::strong("Not evaluated: "),
+      paste(sprintf("day %s (%s)", format(excl$Day), excl$Arms), collapse = "; "),
+      "."))
+}

@@ -76,6 +76,22 @@ doseResponseUI <- function(id) {
                   )
                 ),
 
+                # ── Evaluable days (R20-K) ───────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading", h4(class = "panel-title", "Evaluable days")),
+                  div(class = "panel-body",
+                    p(evaluable_rule_text()),
+                    p("The analysis uses one day on which every dose group is evaluable: by default the ",
+                      "last such day, with the animals measured on it. The day selector lists only ",
+                      "evaluable days. Before, the default was each animal's own last measurement, so ",
+                      "controls removed at the volume limit contributed capped, earlier volumes and the ",
+                      "EC50 was biased. The results name the day and list the days and dose groups ",
+                      "the rule excluded."),
+                    p(strong("TGI by dose"), " is read at the same day from the model that the Drug ",
+                      "Synergy and Toxicity tabs use, so the three tabs agree.")
+                  )
+                ),
+
                 # ── Linear Regression ────────────────────────────────────────
                 div(class = "panel panel-default",
                   div(class = "panel-heading",
@@ -173,6 +189,7 @@ doseResponseUI <- function(id) {
               "A significant linear slope indicates a systematic increase or decrease in tumor volume with dose. ",
               "A significant ANOVA F-test indicates that at least one dose group differs from the others."
             ),
+            uiOutput(ns("dr_evaluability_note")),
             shinycssloaders::withSpinner(
               verbatimTextOutput(ns("dr_summary"))
             )
@@ -195,7 +212,12 @@ doseResponseUI <- function(id) {
             ),
             shinycssloaders::withSpinner(
               DTOutput(ns("dr_summary_table"))
-            )
+            ),
+            h4("TGI by dose"),
+            p(class = "text-muted",
+              "At the analysis day, from the endpoint model (the TGI the Drug Synergy and Toxicity tabs ",
+              "report), with 95% intervals from draws of the model."),
+            DTOutput(ns("dr_tgi_table"))
           ),
 
           tabPanel("Plots",
@@ -443,16 +465,29 @@ dose_response_server <- function(id, rv) {
     reference_note(rv, tryCatch(dr_ref(), error = function(e) NULL))
   })
 
-  # Dynamic time-point selector: "All dates" (default) + individual Day values
+  # Day selector (R20-K, R20.D48): the last evaluable day (default) or another
+  # evaluable day. "All dates" meant each animal's own last observation.
   output$dr_time_point_ui <- renderUI({
-    req(rv$processed_data, rv$time_col)
-    days <- sort(unique(na.omit(rv$processed_data[[rv$time_col]])))
-    day_choices <- c("All dates" = "all",
-                     setNames(as.character(days), paste("Day", days)))
+    req(rv$processed_data, rv$time_col, rv$dose_col)
+    days <- tryCatch({
+      pp <- ensure_preprocessed(rv)
+      d <- pp$data
+      d[[".dose_group"]] <- suppressWarnings(as.numeric(d[[rv$dose_col]]))
+      d <- d[is.finite(d[[".dose_group"]]), , drop = FALSE]
+      mouseExperiment::evaluable_days(
+        d, treatment_column = ".dose_group", id_column = rv$settings$col_id,
+        time_column = pp$time_col,
+        cage_column = if (has_col(d, rv$settings$col_cage)) rv$settings$col_cage,
+        volume_column = pp$vol_col)$days
+    }, error = function(e) NULL)
+    day_choices <- c("Last evaluable day" = "default")
+    if (length(days)) {
+      day_choices <- c(day_choices, setNames(as.character(days), paste("Day", days)))
+    }
     selectInput(session$ns("dr_time_point"),
                 "Time Point for Analysis",
                 choices  = day_choices,
-                selected = "all")
+                selected = "default")
   })
 
   observeEvent(input$run_dr_analysis, {
@@ -492,7 +527,7 @@ dose_response_server <- function(id, rv) {
     }
 
     time_point_val <- if (!is.null(input$dr_time_point) &&
-                           input$dr_time_point != "all" &&
+                           !input$dr_time_point %in% c("all", "default") &&
                            nzchar(input$dr_time_point)) {
       as.numeric(input$dr_time_point)
     } else {
@@ -707,58 +742,30 @@ dose_response_server <- function(id, rv) {
   output$dr_plot_tgi <- renderPlot({
     req(rv$dr_results)
     if (isTRUE(rv$dr_results$error)) return(NULL)
-    ad <- rv$dr_results$analysis_data
-    req(ad)
-    dose_col <- rv$dose_col %||% "Dose"
-    vol_col  <- rv$vol_col  %||% "Volume"
-    tx_col   <- rv$tx_col   %||% "Treatment"
-    ctrl     <- rv$dr_results$control_group_used %||% ""
-
-    # Compute mean control volume
-    ctrl_mean <- mean(ad[[vol_col]][ad[[tx_col]] == ctrl], na.rm = TRUE)
-    if (is.na(ctrl_mean) || ctrl_mean == 0) return(NULL)
-
-    # Compute per-observation %TGI
-    tgi_data <- ad
-    tgi_data$pct_tgi <- (1 - tgi_data[[vol_col]] / ctrl_mean) * 100
-
-    pt_col   <- input$dr_scatter_pt_color   %||% "#555555"
-    ln_col   <- input$dr_scatter_line_color %||% "#2166AC"
-    pt_sz    <- input$dr_scatter_pt_size     %||% 2
-    jit_w    <- input$dr_opt_jitter_width    %||% 0
-    show_ci  <- isTRUE(input$dr_scatter_show_ci)
-    trend    <- input$dr_trend_method %||% "linear"
-    text_sz  <- input$dr_opt_text_size %||% 16
-    center   <- input$dr_opt_center_bar %||% "none"
-    err_bar  <- input$dr_opt_error_bar  %||% "none"
-    smooth_args <- if (trend == "loess") {
-      list(method = "loess", formula = y ~ x, color = ln_col, se = show_ci)
-    } else {
-      list(method = "lm", formula = y ~ x, color = ln_col, se = show_ci)
+    # R20.D48: plot the TGI the backend reported -- from the endpoint model at
+    # the analysis day, the same TGI as the Synergy and Toxicity tabs. It was
+    # recomputed here per animal against the live Reference dropdown and
+    # contradicted the Toxicity tab.
+    tt <- rv$dr_results$tgi_table
+    if (is.null(tt) || !nrow(tt)) {
+      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = "TGI needs a control (dose 0, or the study's control group)")
+      return(invisible(NULL))
     }
-    p <- ggplot2::ggplot(tgi_data, ggplot2::aes(x = .data[[dose_col]], y = .data[["pct_tgi"]])) +
-      ggplot2::geom_jitter(alpha = 0.7, color = pt_col, size = pt_sz,
-                           width = jit_w, height = 0) +
-      do.call(ggplot2::geom_smooth, smooth_args) +
+    ln_col  <- input$dr_scatter_line_color %||% "#2166AC"
+    pt_sz   <- input$dr_scatter_pt_size     %||% 2
+    text_sz <- input$dr_opt_text_size %||% 16
+    p <- ggplot2::ggplot(tt, ggplot2::aes(x = .data[["Dose"]], y = .data[["TGI"]])) +
       ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+      ggplot2::geom_line(colour = ln_col) +
+      ggplot2::geom_errorbar(ggplot2::aes(ymin = .data[["TGI_Lower"]], ymax = .data[["TGI_Upper"]]),
+                             width = 0.03 * diff(range(tt$Dose)), colour = "black") +
+      ggplot2::geom_point(size = pt_sz + 1, colour = ln_col) +
       ggplot2::labs(title = "Tumor Growth Inhibition vs Dose",
-                   x = "Dose", y = "% Tumor Growth Inhibition") +
+                    subtitle = sprintf("Day %s, from the endpoint model; bars are 95%% intervals",
+                                       format(rv$dr_results$endpoint_day)),
+                    x = "Dose", y = "% Tumor Growth Inhibition") +
       ggplot2::theme_classic()
-    summ <- dr_dose_summary(tgi_data, dose_col, "pct_tgi", center, err_bar)
-    if (!is.null(summ)) {
-      if (err_bar != "none")
-        p <- p + ggplot2::geom_errorbar(data = summ,
-                ggplot2::aes(x = x, ymin = lo, ymax = hi),
-                inherit.aes = FALSE, colour = "black",
-                width = 0.05 * diff(range(tgi_data[[dose_col]], na.rm = TRUE)),
-                linewidth = 0.9)
-      if (center != "none")
-        p <- p + ggplot2::geom_crossbar(data = summ,
-                ggplot2::aes(x = x, y = ctr, ymin = ctr, ymax = ctr),
-                inherit.aes = FALSE, colour = "black",
-                width = 0.07 * diff(range(tgi_data[[dose_col]], na.rm = TRUE)),
-                linewidth = 0.9)
-    }
     p <- apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
                       input$dr_plot_title_align %||% "center", text_sz,
                       input$dr_plot_xaxis_label %||% "",
@@ -769,6 +776,21 @@ dose_response_server <- function(id, rv) {
     p
   }, width = function() input$dr_plot_width %||% 800,
      height = function() input$dr_plot_height %||% 600)
+
+  output$dr_tgi_table <- renderDT({
+    req(rv$dr_results)
+    tt <- rv$dr_results$tgi_table
+    if (isTRUE(rv$dr_results$error) || is.null(tt)) return(NULL)
+    datatable(format_df_for_display(tt), rownames = FALSE,
+              options = list(paging = FALSE, searching = FALSE, scrollX = TRUE))
+  })
+
+  output$dr_evaluability_note <- renderUI({
+    req(rv$dr_results)
+    if (isTRUE(rv$dr_results$error)) return(NULL)
+    evaluability_note(rv$dr_results$evaluability, day = rv$dr_results$endpoint_day,
+                      arms_label = "all dose groups")
+  })
 
   # ---- Statistical Tests ----
   output$dr_stat_tests <- renderText({

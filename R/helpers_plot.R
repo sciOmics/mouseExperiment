@@ -599,3 +599,26 @@ build_surv_forest_plot <- function(res, ref_grp, pt_color, show_hr, show_ci, sho
       legend.position = "none"
     )
 }
+
+#' The over-time synergy TGIs and their intervals, one row per arm and day
+#'
+#' CODE_REVIEW.md R20.D37: the Synergy TGI plot draws the backend's TGIs (the
+#' endpoint model on each evaluable day) instead of recomputing TGI from the
+#' animals present each day.
+#'
+#' @param ss `synergy_summary` of `analyze_drug_synergy_over_time()`.
+#' @param grps List with `drug_a`, `drug_b` and `combo` labels.
+#' @return Data frame: Day, Treatment (factor), mean_tgi, lo, hi.
+#' @keywords internal
+syn_tgi_long <- function(ss, grps) {
+  long <- function(label, est, lo, hi) data.frame(
+    Day = ss$Time_Point, Treatment = label, mean_tgi = ss[[est]],
+    lo = if (lo %in% names(ss)) ss[[lo]] else NA_real_,
+    hi = if (hi %in% names(ss)) ss[[hi]] else NA_real_,
+    stringsAsFactors = FALSE)
+  out <- rbind(long(grps$drug_a, "TGI_Drug_A", "TGI_Drug_A_Lower", "TGI_Drug_A_Upper"),
+               long(grps$drug_b, "TGI_Drug_B", "TGI_Drug_B_Lower", "TGI_Drug_B_Upper"),
+               long(grps$combo,  "TGI_Combo",  "TGI_Combo_Lower",  "TGI_Combo_Upper"))
+  out$Treatment <- factor(out$Treatment, levels = c(grps$drug_a, grps$drug_b, grps$combo))
+  out
+}

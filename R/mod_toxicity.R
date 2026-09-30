@@ -86,10 +86,11 @@ toxicityUI <- function(id) {
                 "at the endpoint day from a log-scale mixed model fitted to every ",
                 "observation, so nothing is discarded. Use ", strong("Survivors"),
                 " only to reproduce a pre-0.8.0 figure."),
-              numericInput(ns("tox_n_boot"), "Bootstrap resamples (0 = skip)",
+              numericInput(ns("tox_n_boot"), "Interval draws (0 = skip)",
                           value = 2000, min = 0, max = 20000, step = 500),
-              helpText("Mouse-level bootstrap giving 95% intervals for TGI, mean ",
-                       "weight loss and TWM. The TWM table is sorted, so the ",
+              helpText("Draws behind the 95% intervals: of the fitted model for ",
+                       "TGI (model estimand), and of the animals for weight loss ",
+                       "and the observed estimands. The TWM table is sorted, so the ",
                        "intervals are what tell you whether the ranking is real.")
             ),
 
@@ -190,8 +191,14 @@ toxicityUI <- function(id) {
                     h5(strong("Efficacy")),
                     p("Efficacy is tumor growth inhibition at the endpoint day, relative to the reference group: ",
                       tags$code("TGI = (1 \u2212 V_treated / V_control) \u00d7 100"),
-                      ". Values > 0 indicate tumor suppression; > 100 indicates regression. ",
-                      "Each arm's endpoint volume comes from the endpoint estimand described below."),
+                      ". Values > 0 indicate tumor suppression. ",
+                      "Each arm's endpoint volume comes from the endpoint estimand described below; ",
+                      "it is the same TGI as on the Drug Synergy and Dose Response tabs."),
+                    h5(strong("Evaluable days")),
+                    p(evaluable_rule_text(), " The endpoint day is the last day on which every arm is ",
+                      "evaluable; later days are not used, because an arm's mean there would rest on a ",
+                      "minority of its animals or be extrapolated past them. The results name the day and ",
+                      "list the days and arms the rule excluded."),
 
                     hr(),
                     h5(strong("Therapeutic Window Metric (TWM)")),
@@ -199,16 +206,16 @@ toxicityUI <- function(id) {
                     tags$blockquote(tags$code("TWM = TGI(%) / Mean Body Weight Loss(%)")),
                     p("Higher TWM indicates a more favourable balance. The denominator is the group mean of per-mouse maximum weight loss (not the single worst-case mouse). A noise floor prevents division by near-zero weight changes. Displayed as a ranked bar chart."),
                     tags$dl(class = "dl-horizontal",
-                      tags$dt("Ranking bounds"),
-                      tags$dd("TWM is a ratio of two estimated quantities, so its uncertainty is wider than either ",
-                              "component's and does not follow a normal distribution. Bootstrap intervals are ",
-                              "reported and the ranking note states whether the top arm is genuinely separated from ",
-                              "the second or whether their intervals overlap. A bar chart ordered by point estimate ",
-                              "looks like a ranking whether or not the data support one."),
-                      tags$dt("Bootstrap resamples"),
-                      tags$dd("Number of mouse-level resamples used for those intervals. The control arm is resampled ",
-                              "too, so uncertainty in the TGI denominator propagates rather than being treated as ",
-                              "known. Set to 0 to skip, which returns point estimates with no interval."),
+                      tags$dt("Intervals"),
+                      tags$dd("Under the model estimand, TGI intervals come from draws of the fitted model and ",
+                              "weight-loss intervals from resampling animals. The TWM ratio then has no interval, ",
+                              "because its two parts come from different sources; read the TGI and weight-loss ",
+                              "intervals instead. (A two-axis summary replaces the ratio in a later version.) Under ",
+                              "the observed estimands one resampling of animals gives all three. A bar chart ordered ",
+                              "by point estimate looks like a ranking whether or not the data support one."),
+                      tags$dt("Interval draws"),
+                      tags$dd("Number of draws or resamples behind those intervals. Set to 0 to skip, which returns ",
+                              "point estimates with no interval."),
                       tags$dt("Endpoint estimand"),
                       tags$dd(strong("Model"), " (default) estimates group means at the endpoint from the fitted ",
                               "model, using every observation each animal contributed. ", strong("Observed"),
@@ -463,8 +470,9 @@ toxicityUI <- function(id) {
                 h4("Influence diagnostics (case-deletion)"),
                 tab_info(
                   strong("Cook's distance"), " measures the overall ",
-                  "effect of deleting each observation. Above the dashed ",
-                  "threshold (4/n) = an observation that moves the fit. ",
+                  "effect of leaving out each animal (one row per animal). ",
+                  "Above the threshold (4 / number of animals) = an animal ",
+                  "that moves the fit. ",
                   strong("DFBETAS"), " shows per-coefficient influence; ",
                   "values | > 1 | are flagged."
                 ),
@@ -566,6 +574,8 @@ toxicity_server <- function(id, rv) {
           # CODE_REVIEW.md R3.D9 -- the table is sorted by TWM, so it reads as a
           # ranking. Backend v0.7.0 attaches bootstrap bounds; without them the
           # order looks more resolved than the data supports.
+          # R20-K: the endpoint day and the days the rule excluded.
+          uiOutput(ns("tox_twm_evaluability_note")),
           uiOutput(ns("tox_twm_ranking_note")),
           shinycssloaders::withSpinner(DTOutput(ns("tox_et_twm_table"))),
           uiOutput(ns("tox_twm_attrition_ui")),
@@ -946,6 +956,14 @@ toxicity_server <- function(id, rv) {
 
     ord <- tbl[order(-tbl$TWM), , drop = FALSE]
     top <- ord[1, ]; second <- ord[2, ]
+    # Under the model estimand the ratio has no interval (backend v0.26.0):
+    # say so, and point to the intervals that exist.
+    if (!is.finite(top$TWM_Lower) && !is.finite(top$TWM_Upper)) {
+      return(status_alert(paste(
+        twm$interval_note %||% "The TWM ratio has no interval.",
+        "Compare the arms by TGI_Lower / TGI_Upper and WL_Lower / WL_Upper;",
+        "the order of the TWM column is indicative only."), "info"))
+    }
     separable <- is.finite(top$TWM_Lower) && is.finite(second$TWM_Upper) &&
       top$TWM_Lower > second$TWM_Upper
 
@@ -961,6 +979,13 @@ toxicity_server <- function(id, rv) {
                 top$Treatment, second$Treatment)
       },
       if (separable) "success" else "warning")
+  })
+
+  output$tox_twm_evaluability_note <- renderUI({
+    req(rv$tox_results, rv$tox_results$twm)
+    twm <- rv$tox_results$twm
+    if (isTRUE(twm$error)) return(NULL)
+    evaluability_note(twm$evaluability, day = twm$endpoint_day)
   })
 
   output$tox_twm_attrition_ui <- renderUI({

@@ -194,9 +194,13 @@ tumor_growth_server <- function(id, rv) {
         return(NULL)
       }
 
-      # Random effects: Bayesian does not support "none" — fall back to intercept_only
-      re_spec <- if (isTRUE(input$tg_random_effects == "none")) "intercept_only" else
-                   input$tg_random_effects %||% "intercept_only"
+      # Random effects: the Bayesian model offers correlated slopes or an
+      # intercept only. "Uncorrelated" maps to correlated slopes (the prior
+      # regularises the correlation); "none" to an intercept only.
+      re_spec <- switch(input$tg_random_effects %||% "slope",
+                        none = "intercept_only",
+                        intercept_only = "intercept_only",
+                        "slope")
 
       # Capture all reactive values before entering the future
       # Build manual prior strings from structured UI inputs if needed
@@ -383,7 +387,13 @@ tumor_growth_server <- function(id, rv) {
         # When model_type="auc" the result contains auc_analysis$individual with
         # per-subject AUC values — use the package's plot_auc() to match the demo.
         # For lme4 models fall back to a bar chart of adjusted means.
-        if (!is.null(result$auc_analysis) && !is.null(result$auc_analysis$individual)) {
+        # R20.4: on the AUC path the plotted quantity is the model-based AUC
+        # per arm (treatment_effects, below); the per-animal trapezoids are
+        # descriptive and stay in the AUC tab's table.
+        model_auc <- isTRUE(result$model_type_used == "auc") &&
+          "AUC" %in% names(result$treatment_effects %||% list())
+        if (!model_auc && !is.null(result$auc_analysis) &&
+            !is.null(result$auc_analysis$individual)) {
           tryCatch({
             extra_pts2 <- if (!is.null(input$tg_extrapolation_points) &&
                               !is.na(input$tg_extrapolation_points))
@@ -427,7 +437,7 @@ tumor_growth_server <- function(id, rv) {
             label_col <- intersect(c("Group", "Treatment"), colnames(effects_df))[1]
             # Choose a meaningful numeric column: prefer adjusted mean / mean AUC over
             # count/DF/Reference columns
-            preferred <- c("Adjusted_Mean", "Mean_AUC", "emmean", "estimate", "mean")
+            preferred <- c("Adjusted_Mean", "AUC", "Mean_AUC", "emmean", "estimate", "mean")
             effect_col <- intersect(preferred, colnames(effects_df))[1]
             if (is.na(effect_col)) {
               # fallback: first numeric that isn't N / DF / Reference
@@ -474,7 +484,7 @@ tumor_growth_server <- function(id, rv) {
               grp_col_gr <- if (!is.null(gr_df)) intersect(c("Group","Treatment","TreatmentGroup"), colnames(gr_df))[1] else NA
               val_col_gr <- if (!is.null(gr_df)) intersect(c("growth_rate","GrowthRate"), colnames(gr_df))[1] else NA
 
-              if (!is.null(gr_df) && !is.na(grp_col_gr) && !is.na(val_col_gr)) {
+              if (!model_auc && !is.null(gr_df) && !is.na(grp_col_gr) && !is.na(val_col_gr)) {
                 gr_df$plot_group <- as.character(gr_df[[grp_col_gr]])
                 gr_df$plot_val   <- as.numeric(gr_df[[val_col_gr]])
                 grp_levels <- as.character(plot_df$Treatment)
@@ -515,8 +525,14 @@ tumor_growth_server <- function(id, rv) {
                                               ggplot2::aes(x = reorder(Treatment, Effect),
                                                            y = Effect, colour = Treatment)) +
                   ggplot2::geom_point(size = 4) +
-                  ggplot2::labs(title = "Treatment Effects (Adjusted Means)",
-                               x = "Treatment", y = effect_col) +
+                  ggplot2::labs(
+                    title = if (model_auc) "Area under each arm's fitted curve" else
+                      "Treatment Effects (Adjusted Means)",
+                    subtitle = if (model_auc && !is.null(result$auc_window)) sprintf(
+                      "Days %s to %s, the last day on which every arm is evaluable; 95%% intervals from model draws",
+                      format(result$auc_window[["start"]]), format(result$auc_window[["end"]])),
+                    x = "Treatment",
+                    y = if (model_auc) "AUC (volume \u00d7 day)" else effect_col) +
                   ggplot2::theme_classic() +
                   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5),
                                 legend.position = "none")
@@ -605,18 +621,22 @@ tumor_growth_server <- function(id, rv) {
 
         if (!is.null(result$posthoc) && !is.null(result$posthoc$pairwise) &&
             "comparison" %in% colnames(result$posthoc$pairwise)) {
-          # --- AUC mode: use pre-computed Welch t-tests (avoids pooled-error bias) ---
+          # --- AUC mode: the backend's model-based AUC comparisons (R20.4) ---
+          # Each arm's AUC is the area under its fitted curve over the common
+          # evaluable window; comparisons are ratios, with the difference in
+          # volume x day alongside, intervals and Wald p-values from model draws.
           pw <- result$posthoc$pairwise
           # Reformat to emmeans-compatible column names for downstream display/plot code
           pw_df <- data.frame(
-            contrast = pw$comparison,
-            estimate = pw$estimate,
-            SE       = abs(pw$estimate / pw$t_value),
-            df       = pw$df,
-            lower.CL = pw$ci_lower,
-            upper.CL = pw$ci_upper,
-            t.ratio  = pw$t_value,
-            p.value  = pw$p_adjusted,   # Bonferroni-adjusted, all-pairs
+            contrast    = pw$comparison,
+            estimate    = pw$estimate,
+            lower.CL    = pw$ci_lower,
+            upper.CL    = pw$ci_upper,
+            ratio       = pw$ratio,
+            ratio.lower = pw$ratio_lower,
+            ratio.upper = pw$ratio_upper,
+            z.ratio     = pw$z_value,
+            p.value     = pw$p_adjusted,
             stringsAsFactors = FALSE
           )
           result$all_pairwise_comparisons <- pw_df
@@ -652,9 +672,13 @@ tumor_growth_server <- function(id, rv) {
                   temp_lower <- ref_comp_df$lower.CL[i]
                   ref_comp_df$lower.CL[i] <- -ref_comp_df$upper.CL[i]
                   ref_comp_df$upper.CL[i] <- -temp_lower
-                  if (!is.na(ref_comp_df$t.ratio[i])) {
-                    ref_comp_df$t.ratio[i] <- -ref_comp_df$t.ratio[i]
+                  if (!is.na(ref_comp_df$z.ratio[i])) {
+                    ref_comp_df$z.ratio[i] <- -ref_comp_df$z.ratio[i]
                   }
+                  r_lo <- ref_comp_df$ratio.lower[i]
+                  ref_comp_df$ratio[i]       <- 1 / ref_comp_df$ratio[i]
+                  ref_comp_df$ratio.lower[i] <- 1 / ref_comp_df$ratio.upper[i]
+                  ref_comp_df$ratio.upper[i] <- 1 / r_lo
                 }
               }
             }
@@ -913,8 +937,27 @@ tumor_growth_server <- function(id, rv) {
         "MODEL DETAILS:",
         paste("  Fixed Effects:", summary_list$model_specification$fixed_effects),
         paste("  Random Effects:", summary_list$model_specification$random_effects),
-        paste("  Smoother basis k:", summary_list$model_specification$smoother_k %||% "(linear time — LME4)")
+        paste("  Tests:", rv$tg_results$anova_method %||% "Type III")
       )
+      # R20.5 / R20-K: say when the requested random effects could not be fitted.
+      re <- rv$tg_results$random_effects
+      if (!is.null(re) && !identical(re$used, re$requested)) {
+        summary_lines <- c(summary_lines, paste0(
+          "  NOTE: ", re$requested, " could not be fitted (",
+          paste(re$fallback, collapse = "; "), "); the model uses ", re$used, "."))
+      }
+    }
+
+    # AUC (R20.4): the model and the window behind it.
+    if (identical(rv$tg_results$model_type_used, "auc") && !is.null(rv$tg_results$auc_window)) {
+      w <- rv$tg_results$auc_window
+      summary_lines <- c(summary_lines,
+        "",
+        "AUC:",
+        paste0("  Window: day ", format(w[["start"]]), " to day ", format(w[["end"]]),
+               ", the last day on which every arm is evaluable"),
+        paste("  Model:", rv$tg_results$endpoint_model$formula %||% ""),
+        paste("  Rule:", rv$tg_results$evaluability$rule %||% ""))
     }
 
     # CODE_REVIEW.md R3.17 / G.2 — surface the detected cage design, where cage
@@ -1028,7 +1071,7 @@ tumor_growth_server <- function(id, rv) {
       insertTab(inputId = tabs_id, target = "Growth Rates", position = "after",
         tabPanel("AUC Individual Data",
           tab_info(
-            strong("Per-animal area under the growth curve (AUC) "), "computed for each subject across their observed measurement timepoints. Only displayed in AUC analysis mode.",
+            strong("Per-animal area under the growth curve (AUC), for description only. "), "Each animal's trapezoidal AUC over its own measurements. An animal removed early has less area because it was measured for less time, so these values are not compared between arms; the comparisons use the model-based AUC over a common window.",
             tags$ul(
               tags$li(strong("ID"), " \u2014 individual animal identifier."),
               tags$li(strong("Treatment"), " \u2014 treatment group."),
@@ -1050,7 +1093,7 @@ tumor_growth_server <- function(id, rv) {
       insertTab(inputId = tabs_id, target = "AUC Individual Data", position = "after",
         tabPanel("AUC Summary",
           tab_info(
-            strong("Group-level AUC summary statistics"), " showing mean area under the growth curve, standard deviation, sample size, and standard error for each treatment group. Only displayed in AUC analysis mode.",
+            strong("Group summaries of the per-animal AUCs, for description only"), " (mean, standard deviation, sample size and standard error). They inherit the per-animal AUC's dependence on follow-up time; the model-based AUC by arm is in the Treatment Effects tab.",
             tags$ul(
               tags$li(strong("Treatment"), " \u2014 treatment group name."),
               tags$li(strong("Mean_AUC"), " \u2014 group mean area under curve (mm\u00b3 \u00d7 days)."),
@@ -1058,7 +1101,7 @@ tumor_growth_server <- function(id, rv) {
               tags$li(strong("N"), " \u2014 number of animals in the group with valid AUC data."),
               tags$li(strong("SEM_AUC"), " \u2014 standard error of the mean AUC (SD / \u221aN).")
             ),
-            em("Use these summaries for descriptive group comparisons and to verify sample sizes and variability before statistical testing.")
+            em("Use these to check data and sample sizes, not to compare arms.")
           ),
           shinycssloaders::withSpinner(
             DTOutput(session$ns("tg_auc_summary_table"))
@@ -1166,7 +1209,7 @@ tumor_growth_server <- function(id, rv) {
     model_type <- input$tg_model_type %||% "lme4"
     if (model_type == "auc") {
       tab_info(
-        strong("AUC analysis summary: "), "Reports the analysis type (AUC), number of subjects and treatment groups, reference group, and the per-animal AUC computation method (trapezoidal integration of the volume\u2013time curve)."
+        strong("AUC analysis summary: "), "Reports the analysis type (AUC), number of subjects and treatment groups, reference group, the model behind the AUC, and its window: from the first study day to the last day on which every arm is evaluable."
       )
     } else {
       tab_info(
@@ -1179,16 +1222,15 @@ tumor_growth_server <- function(id, rv) {
     model_type <- input$tg_model_type %||% "lme4"
     if (model_type == "auc") {
       tab_info(
-        strong("Pairwise Welch\u2019s t-tests "), "on per-animal AUC values between all treatment group pairs, with Bonferroni correction for multiple comparisons.",
+        strong("Comparisons of the model-based AUCs "), "(the area under each arm's fitted curve over the common evaluable window), with the correction selected in the sidebar.",
         tags$ul(
           tags$li(strong("contrast"), " \u2014 the two groups being compared (\u2018Group A \u2212 Group B\u2019)."),
-          tags$li(strong("estimate"), " \u2014 mean difference in AUC between the two groups (mm\u00b3 \u00d7 days). Negative values indicate the first group has lower total tumour burden."),
-          tags$li(strong("SE"), " \u2014 standard error of the estimated AUC difference."),
-          tags$li(strong("df"), " \u2014 Welch\u2013Satterthwaite approximate degrees of freedom."),
-          tags$li(strong("lower.CL / upper.CL"), " \u2014 95% confidence interval bounds for the mean AUC difference."),
-          tags$li(strong("t.ratio"), " \u2014 Welch t-statistic. Large absolute values indicate a larger difference relative to within-group variability."),
-          tags$li(strong("p.value"), " \u2014 Bonferroni-corrected p-value across all pairwise comparisons. Values below 0.05 indicate a significant difference after correction for multiple testing.")
-        )
+          tags$li(strong("ratio"), " \u2014 AUC of the first group divided by the second's. Below 1 means less total tumour burden; ratio.lower / ratio.upper are its 95% interval."),
+          tags$li(strong("estimate"), " \u2014 the difference in AUC (volume \u00d7 days); lower.CL / upper.CL are its 95% interval."),
+          tags$li(strong("z.ratio"), " \u2014 Wald statistic for the log ratio."),
+          tags$li(strong("p.value"), " \u2014 p-value for the ratio, corrected for the number of comparisons.")
+        ),
+        em("Intervals and p-values come from draws of the fitted model's coefficients.")
       )
     } else {
       tab_info(
@@ -1219,15 +1261,15 @@ tumor_growth_server <- function(id, rv) {
     model_type <- input$tg_model_type %||% "lme4"
     if (model_type == "auc") {
       tab_info(
-        strong("Group-level AUC means "), "showing the raw mean area under the growth curve for each treatment group, its variability, and sample size.",
+        strong("Model-based AUC by arm: "), "the area under each arm's fitted growth curve from the first study day to the last day on which every arm is evaluable (at least 50 % of its enrolled animals, and at least 3, on study).",
         tags$ul(
           tags$li(strong("Treatment"), " \u2014 treatment group name."),
-          tags$li(strong("Mean_AUC"), " \u2014 group mean area under the volume\u2013time curve (mm\u00b3 \u00d7 days). Higher values indicate greater total tumour burden over the study."),
-          tags$li(strong("SD"), " \u2014 standard deviation of per-animal AUC within the group."),
-          tags$li(strong("N"), " \u2014 number of animals with valid AUC data."),
-          tags$li(strong("Reference"), " \u2014 TRUE for the reference group, FALSE for all others.")
+          tags$li(strong("AUC"), " \u2014 area under the arm's fitted geometric-mean curve (volume \u00d7 days). Higher values mean more total tumour burden over the window."),
+          tags$li(strong("Lower_CL / Upper_CL"), " \u2014 95% interval, from draws of the model."),
+          tags$li(strong("N"), " \u2014 animals enrolled in the arm."),
+          tags$li(strong("Reference"), " \u2014 TRUE for the reference group.")
         ),
-        em("These are descriptive group summaries. For statistical comparisons between groups see the Comparisons tab; for individual animal values see the AUC Individual Data tab.")
+        em("For comparisons between arms see the Comparisons tab; per-animal trapezoidal AUCs, for description, are in the AUC Individual Data tab.")
       )
     } else {
       tab_info(
@@ -1249,24 +1291,23 @@ tumor_growth_server <- function(id, rv) {
     model_type <- input$tg_model_type %||% "lme4"
     if (model_type == "auc") {
       tab_info(
-        strong("One-way ANOVA "), "on per-animal AUC (area under the growth curve) values. Tests whether mean AUC differs significantly across treatment groups.",
+        strong("Wald test "), "that every arm has the same model-based AUC, on the log scale.",
         tags$ul(
-          tags$li(strong("Df"), " — degrees of freedom (Treatment row = number of groups minus 1; Residuals row = total animals minus number of groups)."),
-          tags$li(strong("Sum Sq"), " — sum of squares: variance attributable to that source."),
-          tags$li(strong("Mean Sq"), " — Sum Sq ÷ Df."),
-          tags$li(strong("F value"), " — ratio of the Treatment Mean Sq to the Residuals Mean Sq. Larger values indicate more separation between group means relative to within-group variability."),
-          tags$li(strong("Pr(>F)"), " — p-value. Values below 0.05 indicate a statistically significant difference in mean AUC across treatment groups.")
+          tags$li(strong("Chisq"), " \u2014 the Wald chi-square statistic."),
+          tags$li(strong("Df"), " \u2014 number of arms minus 1."),
+          tags$li(strong("p_value"), " \u2014 p-value; below 0.05 indicates that the arms' AUCs differ.")
         ),
-        "This test assumes independent observations and equal variances across groups. For pairwise differences see the Comparisons tab."
+        "For pairwise differences see the Comparisons tab."
       )
     } else {
       tab_info(
-        strong("Type III ANOVA "), "from the linear mixed-effects model. Tests whether each fixed effect (treatment group, time, and their interaction) significantly explains variance in tumor volume after accounting for all other terms.",
+        strong("Type III ANOVA "), "from the linear mixed-effects model: F-tests with Satterthwaite degrees of freedom. Tests whether each fixed effect (treatment group, time, and their interaction) explains variance in tumor volume after accounting for all other terms.",
         tags$ul(
-          tags$li(strong("Chisq"), " — likelihood-ratio chi-square statistic for the effect. Larger values indicate stronger evidence against the null hypothesis."),
-          tags$li(strong("Df"), " — degrees of freedom for the test (number of parameters being tested)."),
-          tags$li(strong("Pr(>Chisq)"), " — p-value. Values below 0.05 indicate a statistically significant effect at the 5% level.")
+          tags$li(strong("F value"), " \u2014 F statistic for the effect. Larger values indicate stronger evidence against the null hypothesis."),
+          tags$li(strong("NumDF / DenDF"), " \u2014 numerator degrees of freedom (parameters tested) and Satterthwaite denominator degrees of freedom."),
+          tags$li(strong("Pr(>F)"), " \u2014 p-value. Values below 0.05 indicate a statistically significant effect at the 5% level.")
         ),
+        "With per-animal random slopes (the default), the Treatment:Time test is judged against how much animals' growth rates vary; with a random intercept only it is not, and it finds differences that are not there.",
         "The ", em("Treatment:Time"), " interaction row is the most biologically informative: a significant interaction means treatment groups diverge in their growth trajectories over time, not just in overall volume."
       )
     }

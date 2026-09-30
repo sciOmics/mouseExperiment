@@ -229,7 +229,7 @@ test_that("R20.8: the synergy summary says 'not evaluable' rather than printing 
     rv$syn_over_time <- TRUE    # the module initialises it to FALSE
     session$flushReact()
     txt <- render_text(output$syn_summary)
-    expect_match(txt, "Evaluable timepoints: 0 of 9")
+    expect_match(txt, "Days where Bliss applies: 0 of 9")
     expect_match(txt, "No Bliss peak")
   }))
 })

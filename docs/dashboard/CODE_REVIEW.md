@@ -2173,10 +2173,10 @@ Executed.
 | R20.D18 | Bayesian results keep their fit alive via `plot_env` | Major (memory) | Open |
 | R20.D19 | Survival forest-plot download calls an out-of-scope function (HTTP 500) | Major | ✅ Fixed v26.09.002 (R20-D.J) |
 | R20.D34 | Toxicity mass correction 1000× on the bundled demo; warning swallowed | **Critical** | ✅ Fixed v26.09.003 (R20-D.K) |
-| R20.D35 | Synergy/TWM intervals shown as uncertainty for estimates they don't describe | **Critical** | Open (package R20.2) |
+| R20.D35 | Synergy/TWM intervals shown as uncertainty for estimates they don't describe | **Critical** | ✅ Fixed v26.09.004 (R20-D.L; package R20.2). The TWM ratio shows no interval until the two-axis summary (step 5) |
 | R20.D36 | Synergy fails after TG when a dose column is mapped | Major | ✅ Fixed v26.09.003 (R20-D.K) |
-| R20.D37 | Synergy TGI plot re-derived from survivors; contradicts the table | Major | Open |
-| R20.D38 | Synergy Info tab documents response additivity, not Bliss | Major | Open |
+| R20.D37 | Synergy TGI plot re-derived from survivors; contradicts the table | Major | ✅ Fixed v26.09.004 (R20-D.L) |
+| R20.D38 | Synergy Info tab documents response additivity, not Bliss | Major | ✅ Fixed v26.09.004 (R20-D.L) |
 | R20.D39 | AUC fails on first click with the default correction | Major | ✅ Fixed v26.09.002 (R20-D.J) |
 | R20.D40 | GAMM forest plot crashes; download fails; ZIP omits it | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
 | R20.D41 | Dashboard overwrites the backend's GAMM residual plot with a broken one | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
@@ -2186,13 +2186,13 @@ Executed.
 | R20.D45 | Data Summary log-scale means labelled mm³ | Major | Open |
 | R20.D46 | HTML report records widget state, not run settings | Major | Open |
 | R20.D47 | Dose-Response pools drugs by dose value | Major | Open |
-| R20.D48 | DR "All dates" = own last observation; TGI plot contradicts Toxicity | Major | Open |
+| R20.D48 | DR "All dates" = own last observation; TGI plot contradicts Toxicity | Major | ✅ Fixed v26.09.004 (R20-D.L; package R20.17) |
 | R20.D49 | JT test and EC50 CI returned but never shown | Major | Open |
 | R20.D50 | Toxicity plot downloads never produce a file | Major | Open |
 | R20.D51 | Power "seed SD" pools all days (N inflated 5–40×) | Major | Open |
 | R20.D52 | Download-All ZIP can include another session's files | Major (confidentiality) | ✅ Fixed v26.09.002 (9d5f674) |
 | R20.D20 | Synergy bar plot all grey | Minor | Open |
-| R20.D21–R20.D33, R20.D54–R20.D61 | Minor | Minor | Open. Fixed: R20.D21, R20.D33 (R20-D.J); R20.D31 (R20-D.K). In part: R20.D29, R20.D54, R20.D57 (R20-D.K) |
+| R20.D21–R20.D33, R20.D54–R20.D61 | Minor | Minor | Open. Fixed: R20.D21, R20.D33 (R20-D.J); R20.D31 (R20-D.K). In part: R20.D29, R20.D54, R20.D57 (R20-D.K); R20.D29, R20.D30 (R20-D.L) |
 | R20.D53 | Plot-label keystrokes rebuild the growth plot | Efficiency | Open |
 
 **Suggested order of work:**
@@ -2376,4 +2376,47 @@ This step needs backend 0.25.2. That is package R20-N plus two follow-ups found 
   - Master: every tab runs from the study design; survival by animal and by cage; synergy after Tumour Growth; the preset JSON.
   - Weight demo: mm³ correct, cm³ refused.
   - Combo: date reading, the contradiction message, and Tumour Growth against Control.
+
+## R20-D.L Implementation log — v26.09.004, step 4: evaluable days relayed, one TGI, model-based AUC, random slopes (2026-09-30)
+
+This step needs backend 0.26.0: package R20-O, with its follow-ups `bliss_applies` and per-animal influence (R20.76).
+
+**The evaluable-day rule is relayed to users (maintainer decision R20-K, "it must be relayed to users on the dashboard").**
+- **Where the rule is stated:** the Study Design panel (read-only), and the Synergy, Toxicity (therapeutic window) and Dose Response Info tabs. The wording comes from `evaluable_rule_text()`, and a test keeps it identical to the backend's `evaluable_days()$rule`.
+- **Each result names its day** (`evaluability_note()`): "Evaluated on day 28, the last day on which all four arms are evaluable", with "Not evaluated: day 30 (Control 3/8); day 32 (Control 1/8)". Over-time synergy says "Analysed on every evaluable day: days 0–28".
+- **Day selectors list only evaluable days,** computed with the backend's `evaluable_days()`. On Synergy they depend on the four chosen arms. "All dates" became "All evaluable days" (Synergy) and "Last evaluable day" (Dose Response).
+
+**Fixed:**
+
+| ID | Fix | Verified by |
+|---|---|---|
+| R20.D35 (with package R20.2) | Synergy's intervals come from draws of the endpoint model under the model estimand, and the tab says so; the "excludes zero" note now reads an interval that describes the verdict's estimate. The therapeutic window's TGI intervals come from the same draws. The TWM ratio has no interval under the model estimand, and the ranking note says so and points to the TGI and weight-loss intervals. | testServer: the ranking note says "no interval". Package: interval coverage 92–93 % in simulation. |
+| R20.D37 | The Synergy TGI plot draws `synergy_summary`'s TGIs and 95 % intervals (`syn_tgi_long()`) instead of recomputing TGI from the animals present each day. The error-bar control is now "95% interval / None". | testServer: plot data equal the backend's TGIs and lower bounds; days stop at the last evaluable day. Browser: the plot renders. |
+| R20.D38 | The Synergy Info tab gives Bliss, `FE_A + FE_B − FE_A × FE_B`, a correct ceiling example (50 % + 50 % gives 75 %), and no "CI threshold". | `test-docs-current.R` checks the formula (the review's suggested guard). |
+| R20.D48 (with package R20.17) | Dose Response analyses the last evaluable day, and its TGI plot and new "TGI by dose" table show the backend's `tgi_table` (endpoint model; the same TGI as Synergy and Toxicity), with the control stored at run time since step 3. | testServer: the day equals `evaluable_days()$last_day`; the note names it; the plot renders. Browser: the same. |
+| Package R20.5, dashboard half | Tumour Growth defaults to "Random slopes (recommended)". An uncorrelated option is added, and intercept-only is labelled "all animals in an arm grow at the same rate". The summary states the structure used, any fallback, and the Satterthwaite F-tests. The Bayesian path maps the choice to slopes or intercept. | testServer: `random_effects$requested == "slope"`, F-test columns, "Satterthwaite" in the summary. Browser: default selected; LME4 runs in 2.1 s. |
+| Package R20.4, dashboard half | The AUC comparisons use the backend's model-based ratios and differences with intervals. The AUC plot shows each arm's AUC with its interval over the window. The summary gives the window, model and rule. The Help, Info, Comparisons, Treatment Effects, ANOVA and per-animal tab texts are rewritten; the per-animal tables are marked descriptive. | testServer: ratio columns with intervals; "Window: day 0 to day 16". Browser: the same. |
+
+**In part:**
+- **R20.D29:** the over-time synergy plot no longer drops negative TGIs (`coord_cartesian`).
+- **R20.D30:** the ANOVA help no longer calls the Wald χ² a likelihood-ratio statistic.
+
+**Found and fixed during this step:**
+- **"Evaluable" had two meanings.** The synergy table's `Evaluable` column (R20.8: does Bliss apply) sat beside the new evaluable-day rule, so a user saw "Evaluable = FALSE" on an evaluable day. The backend renamed it `bliss_applies` / `Bliss_Applies`, and the summary now says "Days where Bliss applies".
+- **Random slopes made Tumour Growth slow.** Per-observation influence refits (R20.76) took 12.8 s of a 13 s run on the Master demo, and would take minutes on larger studies. The backend now computes influence per animal (2.0 s), and the influence help says "one row per animal".
+- **A grammar slip in the first version of the note** ("every arm are evaluable") was caught in the browser run.
+
+**Tests:**
+- **New:** `test-round21-step4.R` holds 8 tests and 31 expectations. Run against the v26.09.003 source with backend 0.26.0, all 8 fail or error.
+- **Updated to the new contract:**
+  - `test-backend-contract.R`: the AUC contract now covers the model-based fields.
+  - `test-docs-current.R`: the AUC method, the R20.D38 Bliss formula, the rule in three Info tabs, and "Interval draws".
+  - `test-round21-fixes.R`: "Days where Bliss applies".
+
+**Verification (executed):**
+- **Full suite:** 23 files, 238 tests, 745 expectations. No failures or skips; the one warning is pre-existing. It now runs in about 1.2 min instead of 2.1, because of per-animal influence.
+- **R CMD check:** 6 WARNINGs and 5 NOTEs, in the same categories as step 3, with no new R-code NOTE tokens.
+- **Headless Chrome:** 8 checks, all passing, with 0 console errors in either session.
+  - Master demo: the rule on Study Design; random slopes by default with F-tests; the model-based AUC window; synergy on the last evaluable day, with its note and exclusions; all evaluable days with the TGI plot; the therapeutic-window note and interval explanation; Dose Response on the last evaluable day.
+  - Combo demo: the synergy day choices stop at day 28.
 

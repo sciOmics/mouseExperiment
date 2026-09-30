@@ -24,10 +24,10 @@ The Bayesian fits (tumor growth and survival) run asynchronously via `future` / 
 
 | Item | State |
 |---|---|
-| Version | 26.09.003 |
-| Backend (`mouseExperiment`) requirement | ≥ 0.25.2 (animal key, declared volume units, survival by unit of randomisation) |
+| Version | 26.09.004 |
+| Backend (`mouseExperiment`) requirement | ≥ 0.26.0 (evaluable days, one endpoint model for TGI, model-based AUC, random slopes by default) |
 | `CODE_REVIEW.md` (Round 1 + Round 2) | 24/25 dashboard items closed — only **I.6** (VPS-side CI smoke test) remains |
-| Test suite | 228 testthat tests in 22 files (704 expectations), 9 of them in a headless browser (shinytest2) |
+| Test suite | 238 testthat tests in 23 files (745 expectations), 9 of them in a headless browser (shinytest2) |
 | Deployment | Docker + Nginx Proxy Manager (NPM) on a self-hosted VPS (see `mouseExperimentVPS` repo) |
 
 ## Local installation & development
@@ -35,7 +35,7 @@ The Bayesian fits (tumor growth and survival) run asynchronously via `future` / 
 ### Prerequisites
 
 - **R** ≥ 4.1
-- **mouseExperiment** ≥ 0.25.2 (see [mouseExperiment](https://github.com/sciOmics/mouseExperiment))
+- **mouseExperiment** ≥ 0.26.0 (see [mouseExperiment](https://github.com/sciOmics/mouseExperiment))
 - For Bayesian analysis: `brms` ≥ 2.19, `future` ≥ 1.33, `promises` ≥ 1.2, `bayesplot` ≥ 1.10
 
 ### Setup
@@ -199,7 +199,7 @@ The dashboard is structured as a Shiny `navbarPage` with one tab per analysis mo
 | `inst/www/css/` | Custom styles (light + dark modes) |
 | `inst/www/js/` | `session-id.js` (F.7 cookie), `navbar.js`, `darkmode.js`, `overlay.js`, `umami-events.js` |
 | `inst/sample_data/` | Example datasets |
-| `tests/testthat/` | 22 test files; 228 tests, 9 of them shinytest2 browser tests |
+| `tests/testthat/` | 23 test files; 238 tests, 9 of them shinytest2 browser tests |
 
 ## Dependencies
 
@@ -207,7 +207,7 @@ The dashboard is structured as a Shiny `navbarPage` with one tab per analysis mo
 |---------|-------------|---------|
 | R | 4.0 | Language runtime |
 | shiny | 1.7.0 | Web framework |
-| mouseExperiment | 0.25.2 | Statistical backend |
+| mouseExperiment | 0.26.0 | Statistical backend |
 | ggplot2 | 3.4.0 | Visualization |
 | dplyr, tidyr | 1.1, 1.3 | Data manipulation |
 | emmeans | 1.8.0 | Estimated marginal means |
