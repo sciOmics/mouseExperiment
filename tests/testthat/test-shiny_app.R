@@ -150,7 +150,7 @@ test_that("column mapping UI renders after loading demo data", {
 # user workflow: load combo demo, switch to the TG tab, accept defaults,
 # run the LME4 fit, wait for completion, assert tg_results is non-NULL.
 #
-# LME4 on the combo fixture completes in < 10s. Bayesian / GAMM paths
+# LME4 on the combo fixture completes in < 10s. Bayesian paths
 # are NOT exercised here because they require brms + Stan and would
 # blow CI budgets. They're covered by mouseExperiment's unit tests.
 

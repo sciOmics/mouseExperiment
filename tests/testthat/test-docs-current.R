@@ -54,8 +54,7 @@ test_that("D.13: every model type in the selector is named in the Info tab", {
   src <- read_src("ui_modules.R")
   # A mode users can pick but that the documentation never mentions is the gap
   # this whole round was about.
-  labels <- c(lme4 = "LME4", gam = "GAMM", auc = "Area Under Curve",
-              bayes = "Bayesian LMM", bayes_gam = "Bayesian GAMM")
+  labels <- c(lme4 = "LME4", auc = "Area Under Curve", bayes = "Bayesian LMM")
   for (key in choice_values(src, "tg_model_type")) {
     lbl <- labels[[key]]
     if (is.null(lbl)) next  # a new mode: add it to this map and to the Info tab

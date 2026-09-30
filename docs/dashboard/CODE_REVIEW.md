@@ -2161,14 +2161,14 @@ Executed.
 | R20.D6 | Synchronous analyses freeze all users (power sim 121 s, no upload needed) | Major | Open |
 | R20.D7 | Cancel doesn't stop the worker; one worker for everyone | Major | Open |
 | R20.D8 | Bayesian survival from volume-derived events always fails | Major | Open |
-| R20.D9 | `.rda` upload dead, and loads into the shared global env | Major | Open |
-| R20.D10 | Session restore deserialises and copies unvalidated keys | Major (hardening) | Open |
+| R20.D9 | `.rda` upload dead, and loads into the shared global env | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
+| R20.D10 | Session restore deserialises and copies unvalidated keys | Major (hardening) | ✅ Closed by removal v26.09.001 (R20-D.I) |
 | R20.D11 | `test-shiny_app.R` has never executed | Major (process) | Open |
 | R20.D12 | Study strings sent to analytics | Major (confidentiality) | Open |
 | R20.D13 | "Natural death as event" checkbox never read | Major | Open |
 | R20.D14 | Survival/over-time synergy need an ID column named `ID` | Major | Open |
 | R20.D15 | HTML report headers merged into one cell | Major | Open |
-| R20.D16 | Combined E-T table and download always fail | Major | Open |
+| R20.D16 | Combined E-T table and download always fail | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
 | R20.D17 | Power tab ignores multiplicity and attrition | Major | Open |
 | R20.D18 | Bayesian results keep their fit alive via `plot_env` | Major (memory) | Open |
 | R20.D19 | Survival forest-plot download calls an out-of-scope function (HTTP 500) | Major | Open |
@@ -2178,8 +2178,8 @@ Executed.
 | R20.D37 | Synergy TGI plot re-derived from survivors; contradicts the table | Major | Open |
 | R20.D38 | Synergy Info tab documents response additivity, not Bliss | Major | Open |
 | R20.D39 | AUC fails on first click with the default correction | Major | Open |
-| R20.D40 | GAMM forest plot crashes; download fails; ZIP omits it | Major | Open |
-| R20.D41 | Dashboard overwrites the backend's GAMM residual plot with a broken one | Major | Open |
+| R20.D40 | GAMM forest plot crashes; download fails; ZIP omits it | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
+| R20.D41 | Dashboard overwrites the backend's GAMM residual plot with a broken one | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
 | R20.D42 | Q-Q plots against y = x on unstandardised values | Major | Open |
 | R20.D43 | Forest plots: unadjusted CI with adjusted p | Major | Open |
 | R20.D44 | Comparisons tab: mislabelled correction, discarded title, live family | Major | Open |
@@ -2228,3 +2228,48 @@ Executed.
 - **Removal reasons:** an optional removal-reason column on Data Upload. The "natural death as event" checkbox appears only when it is mapped; otherwise the tab states its assumption.
 - **Bayesian survival families:** Weibull and log-normal only; exponential and gamma are removed from the selector.
 - **Session Save/Restore: removed** (decided 2026-09-29). The UI claims it saves "settings, results, plots" and that "filter state survives session save/restore". The snapshot (`mod_log_session.R:81-96`) actually holds only the uploaded data, column mappings and plot-group settings: no results, no plots, no subset filters. Re-uploading the CSV and loading the JSON settings preset gives the same result without deserialising an uploaded R object. Keep the preset and extend it with the study-design settings and subset filters. This also closes R20.D10.
+
+
+---
+
+## R20-D.I Implementation log — v26.09.001, step 1: removals (2026-09-29)
+
+This step applies the scope decisions in R20-D.H and needs backend 0.23.0 (package R20-L).
+
+**Removed:**
+- **Bayesian:** every fit except tumour growth and survival. Bayesian synergy, dose-response, body weight and therapeutic window go, with their settings, tabs, diagnostics, downloads and resume handlers.
+- **Tumour growth:** GAMM and Bayesian GAMM.
+- **Survival:** the exponential and gamma families.
+- **Toxicity:** body-weight AUC (with its nadir and comparison tables, the forest plot and the comparison-type selector), the safety-efficacy scatter, total benefit score, weight-corrected TGI and the Combined Report. The efficacy-toxicity mode is relabelled **Therapeutic Window**, since the TWM is all it now holds.
+- **Upload and session:** `.rda`/`.RData` upload, session save/restore, and the dead `mod_efficacy_toxicity.R` stubs.
+
+**Closed by removal:** R20.D9, R20.D10, R20.D16, R20.D40 and R20.D41 (Major), and R20.D56 (Minor: both halves concerned GAMM and Bayesian synergy).
+
+**Partly closed; the rest stays open:**
+
+| ID | Gone with the removals | Still open |
+|---|---|---|
+| R20.D3 | four of the six legacy inline fallbacks | tumour growth and survival (`tg_resume.R`, `surv_resume.R`) |
+| R20.D30 | the Type III text shown for the GAM smooth table | the other three explainer errors |
+| R20.D50 | five of the eight plot types | the trajectory, KM and TWM downloads still read an output and fail |
+| R20.D58 | the BW AUC adjustment mismatch | the silently dropped "Tumor Volume" covariate |
+| R20.D61 | the GAMM "EMMs at five quantile days" promise | the other items |
+
+**Verification (executed):**
+- `devtools::test()` against backend 0.23.0 installed in a scratch library: 184 tests, 564 expectations, 0 failures. The drop from 574 is the four removed resume kinds (8 expectations) and the two GAMM labels in `test-docs-current.R` (2). `test-shiny_app.R` still errors at file level whenever shinytest2 is installed (R20.D11); the fix is in step 2.
+- `testServer()` smoke on the master demo, with results, plots and downloads read back: 37 of 37 checks pass. The runs were body weight (7 outputs, 3 plots, 4 diagnostics, 4 downloads including the ZIP), Therapeutic Window (summary, table, ranking note, attrition, plot, plot groups, 2 downloads), tumour growth LME4 and AUC, survival, synergy (single day and over time, with CSV download) and dose-response.
+- Install plus `runDashboard()` gives HTTP 200. The served page has 604 element IDs and no duplicates. None of the removed input IDs or labels appears; the only `exponential` values left are the tumour-growth prior-distribution choices.
+- Headless Chrome ran the same script against this build and 26.07.015:
+  - Toxicity now offers `bw,et`.
+  - Body weight inserts Model Results and Weight Loss KM. Therapeutic Window inserts only its own tab.
+  - The TWM table and plot render.
+  - The TG choices are `lme4,auc,bayes`, the survival families `weibull,lognormal`, and no Bayesian selectors remain on Synergy or Dose-Response.
+  - Both builds log the same 20 console errors, all shinyFeedback on demo load (R20.D33), so none are new.
+- `R CMD check --no-tests --no-manual --as-cran`: 6 WARNINGs, 5 NOTEs, as at baseline. The detailed output differs only by lines that disappeared with the removed files.
+
+**Harness notes (no new findings):**
+- With a dose column mapped, tumour growth relabels arms "Treatment Dose" and offers those labels as the reference choices (`mod_tumor_growth.R:20-56`). A `testServer()` run must therefore pass "Vehicle 0", not "Vehicle". The same relabelling, written back into `rv$tx_col`, is what breaks synergy in R20.D36.
+- AUC with the default Dunnett correction fails exactly as R20.D39 describes.
+- The Toxicity diagnostics stay empty after switching back from Therapeutic Window to Body Weight until the analysis is re-run. That is the same in 26.07.015: results belong to the mode that produced them.
+
+**Next:** step 2, the one-line and near-one-line bugs.

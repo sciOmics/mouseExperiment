@@ -234,16 +234,15 @@ pick_reference_group <- function(groups) {
 #' @keywords internal
 validate_uploaded_file <- function(file_path, file_ext) {
   tryCatch({
+    # CSV only. R data files (.rda/.RData) were removed in v26.09.001
+    # (CODE_REVIEW.md R20.D9): the path never worked, and it loaded uploaded
+    # objects into the process-wide global environment.
     if (tolower(file_ext) == "csv") {
       data <- read.csv(file_path, stringsAsFactors = FALSE)
-    } else if (tolower(file_ext) %in% c("rda", "rdata")) {
-      load(file_path, envir = .GlobalEnv)
-      # Get the loaded object (assumes single object)
-      data <- get(ls()[1])
     } else {
       return(list(
         valid = FALSE,
-        message = "Unsupported file format. Please use CSV or RDA files.",
+        message = "Unsupported file format. Please upload a CSV file.",
         data = NULL
       ))
     }

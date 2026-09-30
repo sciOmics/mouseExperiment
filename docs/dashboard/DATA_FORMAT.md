@@ -14,7 +14,7 @@ If you're adding a new analysis module: read sections 4-5.
 | Extension | Notes |
 |---|---|
 | `.csv` | UTF-8 encoded. Comma separator. First row is the header. Quoted strings handled per `utils::read.csv` defaults |
-| `.rda` | A serialized R data frame. The file must contain exactly one object; if multiple, the first data frame is used |
+| `.rda`, `.RData` | Not supported (removed in v26.09.001). Export the data frame with `write.csv()` first |
 | `.xlsx`, `.xls` | Not supported. Convert to CSV first |
 | `.tsv` | Not supported. Convert to CSV first |
 
@@ -169,14 +169,14 @@ The auto-detection result is always overridable in the Data Upload tab's column-
 
 ## 5. Validation rules
 
-`validate_uploaded_file()` and `check_required_cols()` in `R/helpers.R` enforce these at upload time. Validation failures appear in the Data Upload status panel; the analysis tabs stay disabled until validation passes.
+`validate_uploaded_file()` and `check_required_cols()` in `R/helpers_data.R` enforce these at upload time. Validation failures appear in the Data Upload status panel; the analysis tabs stay disabled until validation passes.
 
 ### File-level
 
 | Check | Behavior |
 |---|---|
-| File extension | Must be `.csv` or `.rda`. Other extensions rejected with the supported-list message |
-| File parses | `read.csv` / `load()` must succeed. Parse errors surface verbatim in the error alert |
+| File extension | Must be `.csv`. Other extensions are rejected with a message asking for a CSV file |
+| File parses | `read.csv` must succeed. Parse errors surface verbatim in the error alert |
 | Non-empty | Must have ≥ 1 row of data after the header |
 | Headers present | First row must contain non-NA strings |
 
@@ -216,9 +216,9 @@ The auto-detection result is always overridable in the Data Upload tab's column-
 
 ## 6. Subset filter (post-upload)
 
-After upload, the **Subset Filter** panel on the Data Upload tab lets you exclude IDs, treatments, or cages without re-uploading. The exclusion lists are applied at the start of every analysis via `apply_subset_filter(df, rv)` (in `R/helpers.R`).
+After upload, the **Subset Filter** panel on the Data Upload tab lets you exclude IDs, treatments, or cages without re-uploading. The exclusion lists are applied at the start of every analysis via `apply_subset_filter(df, rv)` (in `R/helpers_data.R`).
 
-State is preserved by the Save Session / Restore Session mechanism (`R/mod_log_session.R`) but is **not** part of the F.7 cookie-keyed registry — exclusion lists are session-local.
+Exclusion lists are session-local: they are not part of the F.7 cookie-keyed registry, and they are not saved anywhere (session save/restore was removed in v26.09.001; the settings preset holds column mappings and methods only).
 
 This was added in v26.06.002 as CODE_REVIEW.md F.5.
 

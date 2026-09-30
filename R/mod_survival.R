@@ -32,9 +32,7 @@ survivalUI <- function(id) {
             selectInput(ns("surv_bayes_family"), "Survival family",
               choices = c(
                 "Weibull"     = "weibull",
-                "Log-normal"  = "lognormal",
-                "Exponential" = "exponential",
-                "Gamma"       = "gamma"
+                "Log-normal"  = "lognormal"
               ),
               selected = "weibull"
             ),

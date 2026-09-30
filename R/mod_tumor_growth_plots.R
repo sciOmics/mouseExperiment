@@ -778,34 +778,6 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
          xlab = "", ylab = "")
   })
 
-  # GAM-specific diagnostics — only populated when model_type = "gam".
-  # The UI uses output$tg_show_gam_diag to gate the conditionalPanel.
-  output$tg_show_gam_diag <- shiny::reactive({
-    !is.null(rv$tg_results) &&
-      isTRUE(rv$tg_results$model_type_used == "gam") &&
-      (!is.null(rv$tg_results$gam_k_check) ||
-       !is.null(rv$tg_results$gam_concurvity))
-  })
-  shiny::outputOptions(output, "tg_show_gam_diag", suspendWhenHidden = FALSE)
-
-  output$tg_gam_k_check <- renderDT({
-    req(rv$tg_results)
-    kc <- rv$tg_results$gam_k_check
-    if (is.null(kc) || nrow(kc) == 0L)
-      return(datatable(data.frame(Message = "k.check not available")))
-    datatable(format_df_for_display(as.data.frame(kc)),
-              options = list(dom = "t", paging = FALSE, searching = FALSE))
-  })
-
-  output$tg_gam_concurvity <- renderDT({
-    req(rv$tg_results)
-    cc <- rv$tg_results$gam_concurvity
-    if (is.null(cc) || nrow(cc) == 0L)
-      return(datatable(data.frame(Message = "concurvity not available")))
-    datatable(format_df_for_display(as.data.frame(cc)),
-              options = list(dom = "t", paging = FALSE, searching = FALSE))
-  })
-
   # CODE_REVIEW.md DIAGNOSTICS gap (13) — LMM influence diagnostics.
   output$tg_show_influence <- shiny::reactive({
     !is.null(rv$tg_results) &&

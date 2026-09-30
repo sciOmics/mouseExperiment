@@ -127,7 +127,7 @@ dataUploadUI <- function(id) {
                 tags$strong("long format"), " — one row per observation/measurement."
               )),
               fileInput(ns("data_file"), NULL,
-                       accept = c(".csv", ".rda", ".RData")),
+                       accept = ".csv"),
               uiOutput(ns("file_validation_msg"))
             )
           )
@@ -150,8 +150,8 @@ dataUploadUI <- function(id) {
     # Data preview (shown after successful upload)
     uiOutput(ns("data_preview_ui")),
 
-    # Session save / restore
-    session_save_restore_ui(ns)
+    # Settings preset (column mapping + methods)
+    settings_preset_ui(ns)
   )
 }
 
@@ -344,16 +344,12 @@ tumorGrowthUI <- function(id) {
           selectInput(ns("tg_model_type"),
                      "Statistical Model",
                      choices = c("Linear Mixed-Effects (LME4)"           = "lme4",
-                                "GAMM (smooth time × treatment)"         = "gam",
                                 "Area Under Curve (AUC)"                 = "auc",
-                                "Bayesian LMM (brms)"                    = "bayes",
-                                "Bayesian GAMM (brms + smoothers)"       = "bayes_gam"),
+                                "Bayesian LMM (brms)"                    = "bayes"),
                      selected = "lme4"),
           helpText("LME4 models tumor volume trajectories over time using a linear ",
                    "mixed-effects model, which handles repeated measures and unequal ",
-                   "timepoints. GAMM fits a group-specific smoother on Day (gamm4); use ",
-                   "this instead of a high-order polynomial when growth is non-linear. ",
-                   "AUC summarizes total tumor burden as the area under ",
+                   "timepoints. AUC summarizes total tumor burden as the area under ",
                    "each animal's growth curve. Bayesian LMM fits the same mixed-effects ",
                    "model as LME4 but reports full posterior distributions and 95 % ",
                    "credible intervals; computation takes 3–12 minutes."),
@@ -607,14 +603,12 @@ tumorGrowthUI <- function(id) {
                 div(class = "panel panel-default",
                   div(class = "panel-heading", h4(class = "panel-title", "Overview")),
                   div(class = "panel-body",
-                    p("The Tumor Growth tab provides five statistical modeling approaches selectable from the ",
+                    p("The Tumor Growth tab provides three statistical modeling approaches selectable from the ",
                       strong("Statistical Model"), " dropdown:"),
                     tags$ul(
                       tags$li(strong("Linear Mixed-Effects Model (LME4)"), " — fits a mixed-effects model to repeated tumor volume measurements. Accounts for inter-animal variability and unequal observation times. Recommended for most longitudinal datasets."),
-                      tags$li(strong("GAMM (smooth time × treatment)"), " — fits a group-specific smoother on Day via gamm4. Use this instead of a high-order polynomial when growth is visibly non-linear: it estimates the shape from the data rather than assuming log-linearity. Diagnostics include a basis-dimension (k) check and a concurvity report."),
                       tags$li(strong("Area Under Curve (AUC)"), " — summarises each animal’s total tumor burden as the trapezoidal AUC of its growth curve. Robust to missing timepoints, but discards trajectory shape information."),
-                      tags$li(strong("Bayesian LMM (brms)"), " — the LME4 model fitted by MCMC, returning full posterior distributions instead of point estimates and p-values."),
-                      tags$li(strong("Bayesian GAMM (brms + smoothers)"), " — the GAMM equivalent, with the smoother fitted in Stan.")
+                      tags$li(strong("Bayesian LMM (brms)"), " — the LME4 model fitted by MCMC, returning full posterior distributions instead of point estimates and p-values.")
                     ),
                     p(tags$small(class = "text-muted",
                       "R14.3: this tab does ", strong("not"), " report Tumor Growth Inhibition. ",
@@ -727,7 +721,7 @@ tumorGrowthUI <- function(id) {
                       tags$dt("Q–Q plot"),
                       tags$dd("Are residuals normally distributed? Systematic curvature at the tails suggests the transformation choice should be revisited."),
                       tags$dt("Residuals vs fitted"),
-                      tags$dd("Is the mean structure right? Curvature means the log-linear growth assumption is wrong — try GAMM."),
+                      tags$dd("Is the mean structure right? Curvature means log-linear growth does not hold over the whole study — read growth-rate comparisons with care."),
                       tags$dt("Scale–location"),
                       tags$dd("Is the variance constant on the modelling scale? A rising trend means heteroscedasticity survived the transformation."),
                       tags$dt("Random-effects Q–Q"),
@@ -737,31 +731,6 @@ tumorGrowthUI <- function(id) {
                       "Influence measures (Cook's distance, DFBETAS) are also available: they identify individual ",
                       "animals whose removal would materially change the conclusion. A result resting on one mouse ",
                       "is worth knowing about before publication rather than after."
-                    ))
-                  )
-                ),
-
-                # ── GAMM Mode ────────────────────────────────────────────────
-                div(class = "panel panel-default",
-                  div(class = "panel-heading",
-                    h4(class = "panel-title", tags$span(class = "label label-primary", "GAMM Mode"), " — Method & Outputs")),
-                  div(class = "panel-body",
-                    p("Fits a generalised additive mixed model via gamm4, replacing the linear Day term with a ",
-                      "group-specific smoother:"),
-                    tags$blockquote(tags$code("log(Volume) ~ Treatment + s(Day, by = Treatment) + (1 | ID)")),
-                    p("Use this when growth is visibly non-linear — plateauing, regression-then-regrowth, or a ",
-                      "delayed onset of effect — where forcing a single slope per arm would average across ",
-                      "distinct phases and understate the treatment effect. The smoother estimates the shape from ",
-                      "the data instead of assuming it, which is the advantage over adding polynomial terms."),
-                    tags$dl(class = "dl-horizontal",
-                      tags$dt("Basis dimension (k) check"),
-                      tags$dd("Tests whether the smoother had enough flexibility to capture the trend. A significant result means k was too small and the fitted curve is over-smoothed — the shape you are interpreting is partly an artefact of the basis."),
-                      tags$dt("Concurvity"),
-                      tags$dd("The smooth analogue of collinearity: whether one smoother can be approximated by another. High concurvity makes individual smooth terms unidentifiable, so their separate interpretation is unsafe even when the overall fit is good.")
-                    ),
-                    p(tags$small(class = "text-muted",
-                      "Comparisons on this path are per-day contrasts rather than a single slope difference, ",
-                      "because a smoother has no single slope. The Comparisons header states this explicitly."
                     ))
                   )
                 ),
@@ -791,7 +760,7 @@ tumorGrowthUI <- function(id) {
                       "followed to day 28 because it was measured for less time, not because its tumour was smaller. ",
                       "AUC is computed over each animal's observed window, so arms losing animals early — typically ",
                       "the controls — accumulate less area. Read this alongside the attrition figures, and prefer ",
-                      "the LME4 or GAMM paths when dropout is substantial: they use every observation without ",
+                      "the LME4 path when dropout is substantial: it uses every observation without ",
                       "needing a common window."),
                     p(tags$small(class = "text-muted",
                       "Extrapolation no longer feeds this calculation. Appending an imputed observation and treating ",
@@ -804,11 +773,11 @@ tumorGrowthUI <- function(id) {
                 # ── Bayesian LMM Mode ─────────────────────────────────────────
                 div(class = "panel panel-default",
                   div(class = "panel-heading",
-                    h4(class = "panel-title", tags$span(class = "label label-success", "Bayesian Modes"), " — Method & Outputs")),
+                    h4(class = "panel-title", tags$span(class = "label label-success", "Bayesian Mode"), " — Method & Outputs")),
                   div(class = "panel-body",
 
                     h5(strong("Method")),
-                    p("Two Bayesian modes are available: ", strong("Bayesian LMM"), " fits the same formula as LME4, and ", strong("Bayesian GAMM"), " fits the GAMM formula with the smoother estimated in Stan. Both use full Bayesian inference via ",
+                    p("The Bayesian LMM fits the same formula as LME4 using full Bayesian inference via ",
                       tags$a("brms", href = "https://paul-buerkner.github.io/brms/", target = "_blank"),
                       " / Stan. Instead of point estimates and p-values, every parameter has a ",
                       strong("posterior distribution"), ": a probability distribution over plausible values ",
@@ -1027,7 +996,7 @@ tumorGrowthUI <- function(id) {
           tabPanel("Compare",
             tab_info(
               strong("Side-by-side comparison "),
-              "of the previous and current Tumor Growth analyses. The previous run is automatically preserved whenever you re-run with a different model type (e.g. LME4 → Bayesian, AUC → GAMM)."
+              "of the previous and current Tumor Growth analyses. The previous run is automatically preserved whenever you re-run with a different model type (e.g. LME4 → Bayesian)."
             ),
             uiOutput(ns("tg_compare_panel"))
           ),
@@ -1220,10 +1189,10 @@ tumorGrowthUI <- function(id) {
               "convergence + posterior diagnostics. The view switches based ",
               "on the selected model type."
             ),
-            # ── Freq diagnostics (LME4 / GAM / AUC) ──────────────────────
+            # ── Freq diagnostics (LME4 / AUC) ──────────────────────
             conditionalPanel(
               ns = ns,
-              condition = "input.tg_model_type != 'bayes' && input.tg_model_type != 'bayes_gam'",
+              condition = "input.tg_model_type != 'bayes'",
             fluidRow(
               column(6,
                 h4("Q-Q Plot of Residuals"),
@@ -1257,7 +1226,7 @@ tumorGrowthUI <- function(id) {
                   tags$small(
                     "Points should scatter randomly around the red zero line. ",
                     strong("Curved blue trend: "), "the model misses non-linearity ",
-                    "— try GAMM (smooth time × treatment) or a different volume ",
+                    "— growth is not log-linear over the whole study; try a different volume ",
                     "transform. ",
                     strong("Fan shape (wider on the right): "), "heteroscedasticity ",
                     "— variance grows with the mean. Switch to log transform or a ",
@@ -1339,40 +1308,12 @@ tumorGrowthUI <- function(id) {
                   )
                 )
               )
-            ),
-            # GAM-specific diagnostics (only shown for model_type = "gam").
-            conditionalPanel(
-              ns = ns,
-              condition = "output.tg_show_gam_diag === true",
-              hr(),
-              h4("GAM-specific diagnostics"),
-              tab_info(
-                strong("k.check"), " tests whether each smoother had enough ",
-                "basis functions. Look at the ", strong("k-index"), " column: ",
-                "values < 1 (and a small p-value) suggest the smoother is ",
-                "wiggly enough to need more basis dimensions — re-fit with ",
-                "a larger ", code("k"), ". ",
-                strong("Concurvity"), " is the GAM analog of multicollinearity ",
-                "for smooths. Values close to 1 indicate one smooth can be ",
-                "predicted from another; coefficient estimates become ",
-                "unreliable."
-              ),
-              fluidRow(
-                column(6,
-                  h5("Basis-dimension check (k.check)"),
-                  DTOutput(ns("tg_gam_k_check"))
-                ),
-                column(6,
-                  h5("Concurvity"),
-                  DTOutput(ns("tg_gam_concurvity"))
-                )
-              )
             )
             ),  # /freq conditionalPanel
             # ── Bayes MCMC diagnostics ────────────────────────────────────
             conditionalPanel(
               ns = ns,
-              condition = "input.tg_model_type == 'bayes' || input.tg_model_type == 'bayes_gam'",
+              condition = "input.tg_model_type == 'bayes'",
               tab_info(
                 strong("MCMC convergence diagnostics"),
                 " for all fixed-effect parameters. All chains should have ",
@@ -1450,7 +1391,7 @@ tumorGrowthUI <- function(id) {
                     tags$summary(tags$small("How to read this plot")),
                     tags$small(
                       "Posterior-mean residuals plotted against study day, faceted by treatment, with a loess smoother. Flat horizontal line at zero per group = the linear-time assumption is satisfied. ",
-                      strong("Systematic curvature: "), "the log-linear time assumption is violated; consider a GAMM or a more flexible mean function.")
+                      strong("Systematic curvature: "), "the log-linear time assumption is violated; read growth-rate comparisons with care.")
                   ),
                   shinycssloaders::withSpinner(plotOutput(ns("tg_bayes_residuals_plot"), height = "400px"))
                 )
@@ -1522,7 +1463,7 @@ helpUI <- function() {
 
     # \u2500\u2500 Data format \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     h3(icon("table"), " Data Format"),
-    p("Upload data in ", strong("long format"), ": one row per measurement per animal. Accepted formats: CSV (.csv) or R data file (.rda / .rds)."),
+    p("Upload data in ", strong("long format"), ": one row per measurement per animal. Accepted format: CSV (.csv)."),
 
     h4("Demo data"),
     p("No data of your own? The Data tab ships six demo datasets:"),
@@ -1580,12 +1521,10 @@ helpUI <- function() {
     tags$dl(
       tags$dt("LME4 (linear mixed-effects)"),
       tags$dd("Log-transforms tumor volume and fits a linear mixed model with a Treatment \u00d7 Day interaction. Mouse ID is a random intercept. Cage handling is chosen to match the housing design rather than applied uniformly \u2014 see the tab's Info panel. Pairwise contrasts via emmeans; the comparison family and its correction are two separate settings, defaulting to vs-reference with an exact Dunnett correction."),
-      tags$dt("GAMM (smooth time \u00d7 treatment)"),
-      tags$dd("Replaces the linear Day term with a per-group smoother (gamm4). Use when growth is visibly non-linear \u2014 plateauing, regrowth, or delayed onset \u2014 where a single slope per arm would average across distinct phases. Includes a basis-dimension (k) check and a concurvity report."),
       tags$dt("AUC (area under the curve)"),
       tags$dd("Computes per-mouse AUC by trapezoidal integration, then compares groups with an omnibus Welch one-way ANOVA plus the selected pairwise correction, and reports a formal equal-variance test alongside. Note that an animal removed early accumulates less area purely from being measured for less time, so read AUC against the attrition figures."),
-      tags$dt("Bayesian LMM / Bayesian GAMM (brms)"),
-      tags$dd("The LME4 and GAMM models fitted via MCMC (Stan). Return posterior distributions for treatment effects with credible intervals, plus convergence diagnostics (Rhat, ESS, trace and rank plots) and PSIS-LOO influence measures. Requires the brms package."),
+      tags$dt("Bayesian LMM (brms)"),
+      tags$dd("The LME4 model fitted via MCMC (Stan). Return posterior distributions for treatment effects with credible intervals, plus convergence diagnostics (Rhat, ESS, trace and rank plots) and PSIS-LOO influence measures. Requires the brms package."),
       tags$dt("Randomisation test (optional, any frequentist mode)"),
       tags$dd("Permutes treatment labels and refits, giving an exact p-value for the Treatment \u00d7 Day interaction that assumes neither a denominator-df approximation nor normal random effects. You must state whether animals or whole cages were randomised \u2014 the test is only valid if that matches how the experiment was actually run.")
     ),
@@ -1597,17 +1536,15 @@ helpUI <- function() {
       tags$dt("Cox proportional hazards"),
       tags$dd("Semi-parametric Cox PH model. Hazard ratios with 95% CI for each treatment vs. reference. Firth's bias-reduced estimation is applied automatically when any arm has zero events, where the standard partial likelihood would return infinite coefficients. The proportional-hazards assumption is tested and reported \u2014 if it fails, the hazard ratio is an average over a period in which the true ratio changed, and should not be quoted as a single number."),
       tags$dt("Bayesian AFT (brms)"),
-      tags$dd("Accelerated failure time model with choice of Weibull, log-normal, exponential, or gamma distribution. Returns time ratios and derived hazard ratios with credible intervals.")
+      tags$dd("Accelerated failure time model with a Weibull or log-normal distribution. Returns time ratios and derived hazard ratios with credible intervals.")
     ),
 
     h4("Toxicity (Body Weight)"),
     tags$dl(
       tags$dt("LME4 body weight model"),
       tags$dd("Linear mixed model on body weight over time. Treatment \u00d7 Day interaction identifies groups with significant weight-change trajectories."),
-      tags$dt("Bayesian body weight model"),
-      tags$dd("Bayesian LMM for body weight via brms; same structure as the frequentist model."),
       tags$dt("Therapeutic Window Metric (TWM)"),
-      tags$dd("Combines tumor growth inhibition and body weight change into a single efficacy-toxicity ratio, with bootstrap intervals. Because it is a ratio of two estimated quantities its uncertainty is wide, so the ranking note states whether the top arm is genuinely separated from the second or whether their intervals overlap. Available in frequentist and Bayesian variants."),
+      tags$dd("Combines tumor growth inhibition and body weight change into a single efficacy-toxicity ratio, with bootstrap intervals. Because it is a ratio of two estimated quantities its uncertainty is wide, so the ranking note states whether the top arm is genuinely separated from the second or whether their intervals overlap."),
       tags$dt("Weight-loss time-to-event"),
       tags$dd("Kaplan-Meier for time to crossing a weight-loss threshold. Where animals are also removed for tumour burden, those are competing events rather than ordinary censorings \u2014 an Aalen-Johansen cumulative incidence estimate and a per-arm censoring breakdown are reported alongside."),
       tags$dt("Endpoint estimand"),
@@ -1629,18 +1566,14 @@ helpUI <- function() {
               "antagonistic with itself. Measured across the effect grid with the ",
               "combination set to exactly Bliss-additive, 42 % of cells were ",
               "labelled antagonistic and none synergistic."),
-      tags$dt("Bayesian synergy"),
-      tags$dd("Propagates uncertainty from the growth model through the Bliss calculation, yielding posterior distributions for synergy metrics."),
       tags$dt("Interval on the verdict"),
       tags$dd("The synergy verdict is a label derived from three group means. Bootstrap intervals are reported and the panel states explicitly whether the 95 % interval for Bliss excess excludes zero \u2014 a \u201cStrong Synergy\u201d whose interval spans zero is not evidence of synergy.")
     ),
 
     h4("Dose-Response"),
     tags$dl(
-      tags$dt("Frequentist Hill / Emax"),
+      tags$dt("Hill / Emax"),
       tags$dd("Fits a four-parameter log-logistic (4PL) dose-response curve via nonlinear least squares. Reports IC50, Hill slope, and fitted curve."),
-      tags$dt("Bayesian Hill / Emax"),
-      tags$dd("Same model fitted by MCMC with weakly informative priors. Returns posterior distributions for all curve parameters."),
       tags$dt("Trend tests"),
       tags$dd("Alongside the curve fit, the tab reports linear and quadratic trend p-values and a Jonckheere-Terpstra test. The last is the one that respects dose ordering: it asks whether response is monotone in dose, which is the question a dose-response study is usually posing, rather than merely whether the groups differ.")
     ),
@@ -1659,7 +1592,7 @@ helpUI <- function() {
     h3(icon("wrench"), " Troubleshooting"),
     tags$dl(
       tags$dt("File won't upload"),
-      tags$dd("Ensure the file is CSV (.csv) or an R data file (.rda / .rds)."),
+      tags$dd("Ensure the file is a CSV (.csv) file."),
       tags$dt("Columns not auto-detected"),
       tags$dd("Use the column mapping dropdowns in the Data tab to assign columns manually."),
       tags$dt("Analysis tab is greyed out"),

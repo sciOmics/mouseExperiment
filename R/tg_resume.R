@@ -18,14 +18,8 @@ launch_tg_bayes_job <- function(sid, bayes_params,
     return(invisible(NULL))
   }
   show_analysis_modal(
-    if (bayes_params$model_type == "gam")
-      "Bayesian GAMM tumor growth fit running…"
-    else
-      "Bayesian tumor growth fit running…",
-    if (bayes_params$model_type == "gam")
-      "Fitting Bayesian GAMM with brms smoothers. This may take 3–12 minutes."
-    else
-      "Fitting Bayesian LMM with brms. This may take 3–12 minutes.")
+    "Bayesian tumor growth fit running…",
+    "Fitting Bayesian LMM with brms. This may take 3–12 minutes.")
 
   promise <- .tg_bayes_promise(bayes_params)
   job_id <- launch_job(sid, "bayes_tg", promise,
@@ -66,7 +60,6 @@ register_tg_resume <- function(input, output, session, rv) {
       treatment_column             = bayes_params$col_names$treatment_column,
       cage_column                  = bayes_params$col_names$cage_column,
       dose_column                  = bayes_params$dose_col,
-      model_type                   = bayes_params$model_type,
       random_effects_specification = bayes_params$random_effects,
       reference_group              = bayes_params$reference_group,
       prior_strength               = bayes_params$prior_strength,

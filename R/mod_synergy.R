@@ -22,58 +22,7 @@ synergyUI <- function(id) {
           
           h4("Analysis Options"),
 
-          selectInput(ns("syn_model_type"), "Statistical Model",
-            choices = c(
-              "Frequentist (Bliss)" = "frequentist",
-              "Bayesian LMM (brms)"       = "bayes"
-            ),
-            selected = "frequentist"
-          ),
-          helpText("Frequentist computes the Bliss synergy score. Bayesian fits a ",
-                   "linear mixed-effects model with brms and reports posterior credible ",
-                   "intervals; computation takes 3–12 minutes."),
-
-          conditionalPanel(ns = ns, "input.syn_model_type == 'frequentist'",
-            uiOutput(ns("syn_time_point_ui"))
-          ),
-
-          conditionalPanel(ns = ns, "input.syn_model_type == 'bayes'",
-            hr(),
-            h5(strong("Bayesian Settings")),
-            selectInput(ns("syn_prior_strength"), "Prior Strength",
-              choices = c(
-                "Skeptical (recommended)" = "skeptical",
-                "Weakly informative"      = "weakly_informative",
-                "Informative"             = "informative",
-                "Diffuse"                 = "diffuse"
-              ),
-              selected = "skeptical"
-            ),
-            selectInput(ns("syn_random_effects"), "Random Effects",
-              choices = c(
-                "Intercept only"    = "intercept_only",
-                "Intercept + Slope" = "slope"
-              ),
-              selected = "intercept_only"
-            ),
-            numericInput(ns("syn_bayes_chains"), "MCMC chains",
-                         value = 4, min = 1, max = 8, step = 1),
-            numericInput(ns("syn_bayes_warmup"), "Warmup per chain",
-                         value = 1000, min = 200, max = 5000, step = 100),
-            numericInput(ns("syn_bayes_iter"), "Post-warmup draws per chain",
-                         value = 500, min = 200, max = 5000, step = 100),
-            selectInput(ns("syn_bayes_backend"), "Stan backend",
-                        choices = c("rstan", "cmdstanr"),
-                        selected = "rstan"),
-            div(class = "alert alert-warning",
-                style = "font-size:0.85em; padding:8px; margin-top:6px;",
-              icon("clock"), " Bayesian fitting takes ~3–12 minutes. ",
-              "A progress modal will block other tabs while the model runs, ",
-              "but you can safely close the browser and return later — the ",
-              "fit continues on the server and the results will be waiting ",
-              "when you reconnect."
-            )
-          ),
+          uiOutput(ns("syn_time_point_ui")),
 
           br(),
 
@@ -164,12 +113,7 @@ synergyUI <- function(id) {
                               "ones removed early, the observed estimand shrinks the control mean and inflates every ",
                               "fractional effect derived from it — which propagates directly into both Bliss and ",
                               "the Bliss expectation. Per-arm attrition is shown so the exposure is visible.")
-                    ),
-                    p(tags$small(class = "text-muted",
-                      "A Bayesian synergy mode is also available: it propagates posterior uncertainty from the ",
-                      "growth model through the Bliss calculation, giving credible intervals for the ",
-                      "metrics directly rather than by resampling."
-                    ))
+                    )
                   )
                 ),
 
@@ -325,14 +269,8 @@ synergyUI <- function(id) {
           tabPanel("Diagnostics",
             tab_info(
               strong("Model-fit diagnostics. "),
-              "Frequentist (t-test path): per-group normality + outlier ",
-              "checks. Bayesian: MCMC convergence + posterior diagnostics. ",
-              "The view switches based on the selected model type."
+              "Per-group normality and outlier checks for the t-test path."
             ),
-            # ── Freq diagnostics ───────────────────────────────────────────
-            conditionalPanel(
-              ns = ns,
-              condition = "input.syn_model_type != 'bayes'",
               fluidRow(
                 column(6,
                   h4("Per-group Q-Q of tumor volumes"),
@@ -367,26 +305,6 @@ synergyUI <- function(id) {
                   )
                 )
               )
-            ),
-            # ── Bayes MCMC diagnostics ─────────────────────────────────────
-            conditionalPanel(
-              ns = ns,
-              condition = "input.syn_model_type == 'bayes'",
-              tab_info(
-                strong("MCMC convergence diagnostics. "),
-                "All Rhat values should be ≤ 1.01 before interpreting results."
-              ),
-              uiOutput(ns("syn_bayes_diagnostics")),
-              shinycssloaders::withSpinner(DTOutput(ns("syn_mcmc_diag_table"))),
-              br(),
-              h5(strong("Influential observations (Pareto-k > 0.7)")),
-              em(class = "text-muted",
-                 "Observations the LOO approximation can't reliably estimate."),
-              shinycssloaders::withSpinner(DTOutput(ns("syn_bayes_influential"))),
-              br(),
-              shinycssloaders::withSpinner(
-                plotOutput(ns("syn_mcmc_trace_plot"), height = "500px"))
-            )
           )
         )
       )
@@ -420,81 +338,6 @@ synergy_server <- function(id, rv) {
   current_syn_main_plot  <- reactiveVal(NULL)
   current_syn_trend_plot <- reactiveVal(NULL)
   current_syn_tgi_plot   <- reactiveVal(NULL)
-
-  # ── Bayesian synergy tab management ───────────────────────────────────────
-  bayes_syn_tabs_inserted <- reactiveVal(FALSE)
-
-  observeEvent(input$syn_model_type, {
-    tabs_id <- "syn_results_tabs"
-    if (isTRUE(input$syn_model_type == "bayes") && !isTRUE(bayes_syn_tabs_inserted())) {
-      appendTab(inputId = tabs_id,
-        tabPanel("Posterior Check",
-          tab_info(
-            strong("Posterior predictive check (PPC)"), " — model-simulated distributions overlaid on observed data.",
-            em("Good fit: simulated densities envelope the observed density.")
-          ),
-          div(class = "text-right", style = "margin-bottom: 6px;",
-            downloadButton(session$ns("download_syn_pp_check"), "Download Plot")
-          ),
-          shinycssloaders::withSpinner(
-            plotOutput(session$ns("syn_pp_check_plot"), height = "450px")
-          )
-        ),
-        select = FALSE
-      )
-      bayes_syn_tabs_inserted(TRUE)
-    } else if (!isTRUE(input$syn_model_type == "bayes") && isTRUE(bayes_syn_tabs_inserted())) {
-      removeTab(inputId = tabs_id, target = "Posterior Check")
-      bayes_syn_tabs_inserted(FALSE)
-    }
-  }, ignoreNULL = FALSE)
-
-  output$syn_pp_check_plot <- renderPlot({
-    req(rv$syn_results)
-    req(isTRUE(rv$syn_results$model_type_used == "bayes_synergy"))
-    req(!isTRUE(rv$syn_results$error), !is.null(rv$bayes_models$syn))
-    brms::pp_check(rv$bayes_models$syn, type = "dens_overlay", ndraws = 50)
-  })
-
-  output$syn_mcmc_diag_table <- renderDT({
-    req(rv$syn_results)
-    req(isTRUE(rv$syn_results$model_type_used == "bayes_synergy"))
-    req(!isTRUE(rv$syn_results$error))
-    diag <- rv$syn_results$mcmc_diagnostics
-    req(!is.null(diag))
-    datatable(format_df_for_display(as.data.frame(diag)),
-              options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
-  })
-
-  output$syn_bayes_diagnostics <- renderUI({
-    req(rv$syn_results)
-    req(isTRUE(rv$syn_results$model_type_used == "bayes_synergy"))
-    req(!isTRUE(rv$syn_results$error))
-    bayes_diagnostics_panel(rv$syn_results)
-  })
-
-  output$syn_bayes_influential <- renderDT({
-    req(rv$syn_results)
-    req(isTRUE(rv$syn_results$model_type_used == "bayes_synergy"))
-    req(!isTRUE(rv$syn_results$error))
-    inf_df <- bayes_influential_obs(rv$syn_results)
-    if (nrow(inf_df) == 0L) {
-      return(datatable(
-        data.frame(Note = "No observations exceed the Pareto-k = 0.7 threshold."),
-        options = list(dom = "t", paging = FALSE, searching = FALSE), rownames = FALSE
-      ))
-    }
-    datatable(inf_df,
-              options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
-              rownames = FALSE)
-  })
-
-  output$syn_mcmc_trace_plot <- renderPlot({
-    req(rv$syn_results)
-    req(isTRUE(rv$syn_results$model_type_used == "bayes_synergy"))
-    req(!isTRUE(rv$syn_results$error), !is.null(rv$bayes_models$syn))
-    bayesplot::mcmc_trace(posterior::as_draws_array(rv$bayes_models$syn))
-  })
 
   syn_colors <- reactive({
     list(
@@ -655,35 +498,6 @@ synergy_server <- function(id, rv) {
     }
 
     rv$syn_over_time <- is.null(eval_tp)
-
-    # ── Bayesian async path ────────────────────────────────────────────────────
-    if (isTRUE(input$syn_model_type == "bayes")) {
-
-      syn_bayes_params <- list(
-        data       = analysis_data,
-        vol_col    = vol_col,
-        time_col   = time_col,
-        tx_col     = tx_col,
-        drug_a     = input$syn_drug_a,
-        drug_b     = input$syn_drug_b,
-        combo      = input$syn_combo,
-        control    = input$syn_control,
-        endpoint_day = eval_tp,
-        id_col     = rv$id_col,
-        cage_col   = rv$cage_col,
-        prior_str  = input$syn_prior_strength  %||% "skeptical",
-        re_spec    = input$syn_random_effects   %||% "intercept_only",
-        n_chains   = as.integer(input$syn_bayes_chains  %||% 4L),
-        n_warmup   = as.integer(input$syn_bayes_warmup  %||% 1000L),
-        n_iter     = as.integer(input$syn_bayes_iter    %||% 500L),
-        backend    = input$syn_bayes_backend %||% "rstan"
-      )
-
-      # F.7 — route through the job registry.
-      launch_syn_bayes_job(rv$session_id, syn_bayes_params,
-                           input, output, session, rv)
-      return()
-    }
 
     # ── Frequentist path ───────────────────────────────────────────────────────
     show_analysis_modal("Fitting synergy model…", "Results will appear automatically when complete.")
@@ -1276,7 +1090,7 @@ synergy_server <- function(id, rv) {
     p <- rv$syn_results$diag_group_qq_plot
     if (is.null(p)) {
       plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
-           main = "Per-group Q-Q not available (Bayesian or over-time path)")
+           main = "Per-group Q-Q not available (over-time path)")
       return(invisible(NULL))
     }
     p
@@ -1287,13 +1101,11 @@ synergy_server <- function(id, rv) {
     p <- rv$syn_results$diag_group_boxplot
     if (is.null(p)) {
       plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
-           main = "Per-group boxplot not available (Bayesian or over-time path)")
+           main = "Per-group boxplot not available (over-time path)")
       return(invisible(NULL))
     }
     p
   })
 
-  # F.7 — register the resume handler for bayes_syn jobs.
-  register_syn_resume(input, output, session, rv)
   })
 }

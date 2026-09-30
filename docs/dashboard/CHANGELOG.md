@@ -4,6 +4,72 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.09.001] - 2026-09-29
+
+Requires mouseExperiment ≥ 0.23.0. First implementation step of the Round 21
+review (`CODE_REVIEW.md` R20-D.H): the dashboard is narrowed to the analyses the
+maintainer decided to keep.
+
+### Removed
+
+- **Bayesian fits other than tumor growth and survival.** Bayesian synergy,
+  Bayesian dose-response, the Bayesian body-weight model and the Bayesian
+  therapeutic window go, with their settings, tabs, MCMC diagnostics, downloads
+  and resume handlers (`bw_resume.R`, `syn_resume.R`, `dr_resume.R`,
+  `twm_resume.R`). The resume banner now knows two job kinds, `bayes_tg` and
+  `bayes_surv`.
+- **GAMM** from Tumor Growth: the model option, the Bayesian GAMM variant, the
+  GAMM Info panel and glossary entries, and the k-check / concurvity diagnostics
+  (closes R20.D40, R20.D41). The Bayesian option always fits the LMM.
+- **Survival:** the exponential and gamma Bayesian AFT families. Weibull and
+  log-normal remain.
+- **Toxicity:**
+  - Body Weight Analysis loses body-weight AUC, together with its nadir table,
+    comparison table, forest plot and the post-hoc comparison selector that only
+    it used.
+  - The efficacy-toxicity mode loses the safety-efficacy scatter, total benefit
+    score, weight-corrected TGI and the Combined Report (which always failed,
+    R20.D16), along with their sidebar inputs (efficacy metric, λ, safety
+    threshold).
+  - What remains of that mode is the Therapeutic Window Metric, so the mode is
+    now labelled **Therapeutic Window**.
+- **`.rda` / `.RData` upload** (R20.D9). Upload is CSV only.
+- **Session save / restore** (R20.D10). The JSON settings preset stays.
+- `R/mod_efficacy_toxicity.R`, whose stubs nothing called.
+
+### Changed
+
+- Help and Info text no longer describe the removed analyses, and the Toxicity
+  Diagnostics tab no longer switches between frequentist and Bayesian views. The
+  residual-plot advice no longer suggests a GAM.
+- Therapeutic-window plot groups follow the data's arm order, limited to the arms
+  in the TWM table. They previously came from the bivariate result, which no
+  longer exists.
+- README, `docs/ARCHITECTURE.md`, `DATA_FORMAT.md`, `SECURITY.md` and
+  `DEPLOYMENT.md` updated to match.
+
+### Verification
+
+- Suite: 184 tests, 564 expectations, 0 failures. The difference from 574 is
+  the four removed resume kinds and the two GAMM labels in the docs test.
+  `test-shiny_app.R` still errors at file level wherever shinytest2 is installed
+  (R20.D11, unchanged).
+- Every module server was driven with `testServer()` on the master demo: body
+  weight, therapeutic window, tumor growth (LME4 and AUC), survival, synergy
+  (single day and over time) and dose-response. Results, plots and downloads
+  were checked: 37 of 37 checks passed.
+- Installed with backend 0.23.0; `runDashboard()` serves HTTP 200, and the page
+  has no duplicate element IDs.
+- In headless Chrome, the new build and 26.07.015 were run through the same
+  script:
+  - Toxicity switches between modes and inserts the right tabs.
+  - The TWM table and plot render.
+  - The selectors offer only the kept options.
+  - Both builds log the same 20 console errors, all shinyFeedback on demo load
+    (R20.D33), so none are new.
+- R CMD check: 6 WARNINGs, 5 NOTEs, the same as 26.07.015. The detailed output
+  differs only by lines that disappeared with the removed files.
+
 ## [26.07.015] - 2026-08-05
 
 ### Fixed — stale NAMESPACE imports broke the build (production 503)

@@ -1,51 +1,32 @@
-#' Session Management Module
+#' Settings Preset and Subset Filter Module
 #'
-#' Server-side logic for the Session Save / Restore controls in the Data
-#' Upload tab. (The Analysis Log viewer was removed in v26.05.020; the
-#' \code{logger} package continues to write structured log lines to
-#' stdout — visible via \code{journalctl} / \code{docker logs} — so the
-#' operational signal is preserved without a user-facing tab.)
+#' Server-side logic for the settings preset and subset filter in the Data
+#' Upload tab. The Session Save / Restore controls were removed in
+#' v26.09.001 (CODE_REVIEW.md R20.D10, R20-D.H): the saved file carried only
+#' the uploaded data, column mappings and plot-group settings -- no results,
+#' plots or filters -- and restoring meant deserialising an uploaded R object.
+#' Re-uploading the CSV and loading a settings preset gives the same result.
 #'
 #' @name mod_log_session
 #' @keywords internal
 
 # ---------------------------------------------------------------------------
-# Session Save / Restore
+# Settings preset (CODE_REVIEW.md Round 2 F.2)
 # ---------------------------------------------------------------------------
 
-#' Session Save/Restore UI
+#' Settings preset UI
 #'
-#' Download / upload buttons for saving and restoring session state.
+#' Save / load buttons for the column-mapping and method settings preset.
 #' Intended to be placed inside the Data Upload tab.
 #'
 #' @param ns Namespace function from the enclosing module.
 #' @return A \code{tagList}.
 #' @keywords internal
-session_save_restore_ui <- function(ns) {
+settings_preset_ui <- function(ns) {
   wellPanel(
-    h5(strong(icon("floppy-disk"), " Session Save / Restore")),
-    p(style = "font-size:12px; color:#6c757d;",
-      "Save your current analysis state (settings, results, plots) ",
-      "and reload it later to continue where you left off."),
-    fluidRow(
-      column(6,
-        downloadButton(ns("save_session"), "Save Session",
-                       class = "btn-sm btn-success", style = "width:100%;")
-      ),
-      column(6,
-        fileInput(ns("restore_session"), NULL,
-                  accept = ".rds",
-                  buttonLabel = "Restore Session",
-                  placeholder = "No file")
-      )
-    ),
-    # CODE_REVIEW.md Round 2 F.2 — settings-only preset save/load.
-    # Smaller JSON file portable across datasets; doesn't carry uploaded
-    # data or results.
-    hr(style = "margin: 12px 0;"),
     h6(strong(icon("sliders-h"), " Settings preset (column mapping + methods)")),
     p(style = "font-size:11px; color:#6c757d; margin: 4px 0 8px 0;",
-      "Save just your column mappings and time / volume / formula settings ",
+      "Save your column mappings and time / volume / formula settings ",
       "to a small JSON file. Apply on a future dataset with the same column ",
       "names to skip the mapping step."),
     fluidRow(
@@ -63,71 +44,14 @@ session_save_restore_ui <- function(ns) {
   )
 }
 
-#' Session save handler — call from inside the data upload module server
+#' Settings preset handlers -- call from inside the data upload module server
 #'
 #' @param input   Module input.
 #' @param output  Module output.
 #' @param session Module session.
 #' @param rv      Shared reactiveValues.
 #' @keywords internal
-setup_session_save_restore <- function(input, output, session, rv) {
-
-  output$save_session <- downloadHandler(
-    filename = function() {
-      paste0("mouseExperiment_session_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".rds")
-    },
-    content = function(file) {
-      # Snapshot serialisable state only (skip reactive internals, ggplot envs)
-      snapshot <- list(
-        uploaded_data  = isolate(rv$uploaded_data),
-        data_valid     = isolate(rv$data_valid),
-        detected_cols  = isolate(rv$detected_cols),
-        settings       = isolate(rv$settings),
-        processed_data = isolate(rv$processed_data),
-        time_col       = isolate(rv$time_col),
-        vol_col        = isolate(rv$vol_col),
-        tx_col         = isolate(rv$tx_col),
-        id_col         = isolate(rv$id_col),
-        cage_col       = isolate(rv$cage_col),
-        dose_col       = isolate(rv$dose_col),
-        tg_col_names   = isolate(rv$tg_col_names),
-        tg_plot_groups = isolate(rv$tg_plot_groups),
-        surv_plot_groups = isolate(rv$surv_plot_groups),
-        saved_at       = Sys.time()
-      )
-      saveRDS(snapshot, file)
-      log_info("session_save | file=mouseExperiment_session.rds")
-      shinyjs::runjs("window.trackEvent('session_saved', {format: 'rds'});")
-    }
-  )
-
-  observeEvent(input$restore_session, {
-    file_info <- input$restore_session
-    req(file_info)
-    tryCatch({
-      snapshot <- readRDS(file_info$datapath)
-      if (!is.list(snapshot) || is.null(snapshot$uploaded_data)) {
-        showNotification("Invalid session file.", type = "error")
-        shinyjs::runjs("window.trackError('session', 'Invalid session file', 'session_restore');")
-        return()
-      }
-      # Restore keys
-      for (key in names(snapshot)) {
-        if (key != "saved_at") rv[[key]] <- snapshot[[key]]
-      }
-      shinyjs::runjs("window.trackEvent('session_restored', {format: 'rds'});")
-      showNotification(
-        paste("Session restored from", format(snapshot$saved_at, "%Y-%m-%d %H:%M")),
-        type = "message", duration = 5
-      )
-      log_info(sprintf("session_restore | saved_at=%s", snapshot$saved_at))
-    }, error = function(e) {
-      showNotification(paste("Failed to restore session:", e$message), type = "error")
-      shinyjs::runjs(sprintf("window.trackError('session', %s, 'session_restore');",
-                             js_string(e$message)))
-      log_caught_error("session", "restore", e)
-    })
-  })
+setup_settings_preset <- function(input, output, session, rv) {
 
   # ── Settings preset save / load (CODE_REVIEW.md Round 2 F.2) ─────────────
   # The preset contains only the column mappings + time/volume methods —
@@ -247,7 +171,7 @@ subset_filter_ui <- function(ns) {
     p(style = "font-size:11px; color:#6c757d; margin:8px 0 0 0;",
       "Edit the lists above, then click ", strong("Apply Filtering"),
       ". The Dataset Summary and Data Preview below update to reflect ",
-      "what's currently applied. Filter state survives session save / restore.")
+      "what's currently applied. Filters apply to every analysis until you clear them.")
   )
 }
 
@@ -324,7 +248,7 @@ setup_subset_filter <- function(input, output, session, rv) {
 
   # Status line — shows what's currently applied. Recomputes whenever
   # the user clicks Apply or Clear (via the filter_applied_at tick) or
-  # when rv$uploaded_data changes (e.g., new file or session restore).
+  # when rv$uploaded_data changes (e.g., a new file).
   output$subset_filter_status <- renderUI({
     rv$filter_applied_at  # tick dependency
     n_ids <- length(rv$exclude_ids        %||% character(0))

@@ -236,7 +236,7 @@ For each session there's a `session_start` and `session_end` JSON event with the
 
 ## Backup and disaster recovery
 
-The dashboard itself has **no persistent state** — every artifact (uploaded CSV, analysis result, saved session `.rds`) is either ephemeral (in-memory) or lives client-side. Container loss doesn't lose user data; it loses any in-flight F.7 jobs.
+The dashboard itself has **no persistent state** — every artifact (uploaded CSV, analysis result, settings preset JSON) is either ephemeral (in-memory) or lives client-side. Container loss doesn't lose user data; it loses any in-flight F.7 jobs.
 
 What is backed up:
 - The VPS image itself (via Backblaze; see `mouseExperimentVPS/scripts/08-backup-server-image.sh`)

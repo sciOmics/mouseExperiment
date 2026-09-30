@@ -87,8 +87,8 @@ format_df_for_display <- function(df, digits = 4) {
 
 #' Back-transform values from analysis scale to original scale
 #'
-#' Inverse of the transform applied in `tumor_growth_statistics()` and the
-#' Bayesian / GAM tumor-growth fits, which all use `log(Volume)` (not
+#' Inverse of the transform applied in `tumor_growth_statistics()` and
+#' `bayesian_tumor_growth()`, which both use `log(Volume)` (not
 #' `log1p`). For `"sqrt"`, returns `x^2`. For `"none"`, returns `x` unchanged.
 #'
 #' @param x Numeric vector on the transformed scale

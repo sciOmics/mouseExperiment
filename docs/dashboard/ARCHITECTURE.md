@@ -35,7 +35,7 @@ The dashboard is a Shiny `navbarPage` with one tab per analysis module. Every mo
          <X>_results, <X>_running, <X>_job_id, session_id, bayes_models
 ```
 
-`rv` is created once in `server()` (in `R/app.R`) and passed to every `<module>_server(id, rv)` call. Modules write their results back to `rv$<X>_results` so other modules can read them (e.g. the Toxicity TWM tab needs `rv$tg_results` and `rv$tox_results$mixed_model`).
+`rv` is created once in `server()` (in `R/app.R`) and passed to every `<module>_server(id, rv)` call. Modules write their results back to `rv$<X>_results`.
 
 ---
 
@@ -52,8 +52,7 @@ R/
 ├── zzz.R                          # package onLoad hooks
 │
 ├── mod_data_upload.R              # Data tab
-├── mod_log_session.R              # Save / Restore session panel
-├── mod_efficacy_toxicity.R        # ET cross-module helper
+├── mod_log_session.R              # Log, filters and settings-preset panel
 ├── mod_power.R                    # Power Analysis tab
 ├── mod_tumor_growth.R             # TG lifecycle (observers, fit dispatch)
 ├── mod_tumor_growth_plots.R       #   TG plot reactives + renderPlots
@@ -71,12 +70,8 @@ R/
 ├── session_identity.R             # F.7 server-side cookie reader
 ├── resume_banner.R                # F.7 banner UI/server + dispatch
 ├── bayes_job_runner.R             # F.7 shared poller + resume registration
-├── tg_resume.R                    # F.7 per-kind handlers
-├── bw_resume.R                    #     for each of the six Bayesian fits
-├── surv_resume.R                  #
-├── syn_resume.R                   #
-├── dr_resume.R                    #
-├── twm_resume.R                   #
+├── tg_resume.R                    # F.7 per-kind handlers for the two
+├── surv_resume.R                  #     Bayesian fits (TG, survival)
 └── ttl_sweeper.R                  # F.7 periodic registry housekeeping
 
 inst/www/
@@ -145,7 +140,7 @@ observeEvent(input$tg_run_analysis, { ... }) in mod_tumor_growth.R
 
 `safe_analysis()` (in `helpers.R`) wraps any expression in `tryCatch` + structured logging so errors don't blow up the session. Total runtime: 5-30 seconds for typical preclinical datasets.
 
-### Bayesian (any of the six fits)
+### Bayesian (tumor growth or survival)
 
 ```
 User clicks Run
@@ -238,8 +233,8 @@ On reconnect:
 │           │ with cookie Y │    of which session started them│    │
 │           ▼               └─────────────────────────────────┘    │
 │  ┌────────────────────┐                                          │
-│  │ Session B' (new)   │ banner: "You have 1 BW fit running"      │
-│  │   reads cookie Y   │ → click Resume → register_bw_resume      │
+│  │ Session B' (new)   │ banner: "You have 1 TG fit running"      │
+│  │   reads cookie Y   │ → click Resume → register_tg_resume      │
 │  │   → finds job(s)   │   handler reattaches the poller          │
 │  └────────────────────┘                                          │
 └──────────────────────────────────────────────────────────────────┘

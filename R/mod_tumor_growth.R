@@ -181,9 +181,8 @@ tumor_growth_server <- function(id, rv) {
       return()
     }
     
-    # ── Bayesian async branch (covers both bayes-LMM and bayes-GAM) ─────────
-    if (isTRUE(input$tg_model_type == "bayes") ||
-        isTRUE(input$tg_model_type == "bayes_gam")) {
+    # ── Bayesian async branch ──────────────────────────────────────────────
+    if (isTRUE(input$tg_model_type == "bayes")) {
       pkg_ok <- requireNamespace("future",   quietly = TRUE) &&
                 requireNamespace("promises", quietly = TRUE) &&
                 requireNamespace("brms",     quietly = TRUE)
@@ -232,13 +231,10 @@ tumor_growth_server <- function(id, rv) {
         )
       } else NULL
 
-      bayes_model_type <- if (isTRUE(input$tg_model_type == "bayes_gam")) "gam" else "lmm"
-
       bayes_params <- list(
         data              = data,
         col_names         = col_names,
         reference_group   = input$tg_reference,
-        model_type        = bayes_model_type,
         random_effects    = re_spec,
         prior_strength    = prior_str,
         manual_priors     = bayes_manual_priors,
@@ -1157,7 +1153,7 @@ tumor_growth_server <- function(id, rv) {
       )
     } else {
       tab_info(
-        strong("Model summary: "), "Reports the fitted model — model type (LME4 / GAMM / AUC / Bayesian), data transformation applied, random effects structure (subject and cage), number of subjects and treatment groups, reference group, smoother basis dimension when GAMM is selected, and any convergence warnings or singular-fit notes."
+        strong("Model summary: "), "Reports the fitted model — model type (LME4 / AUC / Bayesian), data transformation applied, random effects structure (subject and cage), number of subjects and treatment groups, reference group, and any convergence warnings or singular-fit notes."
       )
     }
   })
@@ -1657,7 +1653,7 @@ tumor_growth_server <- function(id, rv) {
                  icon("info-circle"),
                  " Only one analysis result is stored so far. Run again with a ",
                  "different ", strong("Statistical Model"),
-                 " (e.g. switch from LME4 to Bayesian, or AUC to GAMM) to ",
+                 " (e.g. switch from LME4 to Bayesian) to ",
                  "populate this comparison view."))
     }
 

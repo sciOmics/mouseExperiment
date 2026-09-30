@@ -25,57 +25,13 @@ doseResponseUI <- function(id) {
                        choices = "",
                        selected = ""),
 
-            selectInput(ns("dr_model_type"), "Statistical Model",
-              choices = c(
-                "Frequentist (ANOVA/regression)" = "frequentist",
-                "Bayesian Hill/Emax (brms)"      = "bayes"
-              ),
-              selected = "frequentist"
-            ),
-            helpText("Frequentist fits ANOVA with Tukey HSD and linear/non-linear ",
-                     "regression. Bayesian fits a Hill/Emax concentration-response model ",
-                     "with brms; computation takes 3–12 minutes."),
-
-            conditionalPanel(ns = ns, "input.dr_model_type == 'frequentist'",
-              selectInput(ns("dr_comparison_type"),
-                         "Pairwise Comparison Type",
-                         choices = c(
-                           "vs. Reference Group" = "reference",
-                           "All Pairwise (Tukey HSD)" = "all"
-                         ),
-                         selected = "reference")
-            ),
-
-            conditionalPanel(ns = ns, "input.dr_model_type == 'bayes'",
-              hr(),
-              h5(strong("Bayesian Settings")),
-              selectInput(ns("dr_prior_strength"), "Prior Strength",
-                choices = c(
-                  "Skeptical (recommended)" = "skeptical",
-                  "Weakly informative"      = "weakly_informative",
-                  "Informative"             = "informative",
-                  "Diffuse"                 = "diffuse"
-                ),
-                selected = "skeptical"
-              ),
-              numericInput(ns("dr_bayes_chains"), "MCMC chains",
-                           value = 4, min = 1, max = 8, step = 1),
-              numericInput(ns("dr_bayes_warmup"), "Warmup per chain",
-                           value = 1000, min = 200, max = 5000, step = 100),
-              numericInput(ns("dr_bayes_iter"), "Post-warmup draws per chain",
-                           value = 500, min = 200, max = 5000, step = 100),
-              selectInput(ns("dr_bayes_backend"), "Stan backend",
-                          choices = c("rstan", "cmdstanr"),
-                          selected = "rstan"),
-              div(class = "alert alert-warning",
-                  style = "font-size:0.85em; padding:8px; margin-top:6px;",
-                icon("clock"), " Bayesian fitting takes ~3–12 minutes. ",
-                "A progress modal will block other tabs while the model runs, ",
-                "but you can safely close the browser and return later — the ",
-                "fit continues on the server and the results will be waiting ",
-                "when you reconnect."
-              )
-            ),
+            selectInput(ns("dr_comparison_type"),
+                       "Pairwise Comparison Type",
+                       choices = c(
+                         "vs. Reference Group" = "reference",
+                         "All Pairwise (Tukey HSD)" = "all"
+                       ),
+                       selected = "reference"),
 
             uiOutput(ns("dr_time_point_ui")),
 
@@ -203,11 +159,7 @@ doseResponseUI <- function(id) {
                       tags$dd("Detects curvature \u2014 a plateau or a reversal at high dose. A significant quadratic ",
                               "term alongside a significant linear one usually means the response saturates, which ",
                               "matters when extrapolating to untested doses.")
-                    ),
-                    p(tags$small(class = "text-muted",
-                      "A Bayesian dose-response mode is also available, fitting the same curve by MCMC and ",
-                      "returning posterior distributions for ED50 and the slope rather than point estimates."
-                    ))
+                    )
                   )
                 ),
 
@@ -377,76 +329,50 @@ doseResponseUI <- function(id) {
           tabPanel("Diagnostics",
             tab_info(
               strong("Model-fit diagnostics. "),
-              "Frequentist (Hill / Emax): lack-of-fit + residuals. ",
-              "Bayesian: MCMC convergence + posterior diagnostics. ",
-              "The view switches based on the selected model type."
+              "Hill / Emax lack-of-fit and residuals."
             ),
-            # \u2500\u2500 Freq diagnostics \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-            conditionalPanel(
-              ns = ns,
-              condition = "input.dr_model_type != 'bayes'",
-              em("Only available when the drc Hill / Emax fit converged; ",
-                 "in pure-linear mode this section will be empty."),
-              fluidRow(
-                column(6,
-                  h4("Lack-of-fit test"),
-                  tags$details(
-                    tags$summary(tags$small("How to read this table")),
-                    tags$small(
-                      "drc::modelFit compares the Hill fit against a one-mean-",
-                      "per-dose smoother via an F-test. ",
-                      strong("Large p (\u2265 0.05): "),
-                      "the Hill model is as good as the smoother \u2014 ",
-                      "functional form is adequate. ",
-                      strong("Small p (< 0.05): "),
-                      "the smoother fits significantly better \u2014 the Hill ",
-                      "equation may be the wrong shape; inspect the residuals ",
-                      "plot for clues."
-                    )
-                  ),
-                  shinycssloaders::withSpinner(
-                    DTOutput(ns("dr_lack_of_fit_table"))
+            em("Only available when the drc Hill / Emax fit converged; ",
+               "in pure-linear mode this section will be empty."),
+            fluidRow(
+              column(6,
+                h4("Lack-of-fit test"),
+                tags$details(
+                  tags$summary(tags$small("How to read this table")),
+                  tags$small(
+                    "drc::modelFit compares the Hill fit against a one-mean-",
+                    "per-dose smoother via an F-test. ",
+                    strong("Large p (\u2265 0.05): "),
+                    "the Hill model is as good as the smoother \u2014 ",
+                    "functional form is adequate. ",
+                    strong("Small p (< 0.05): "),
+                    "the smoother fits significantly better \u2014 the Hill ",
+                    "equation may be the wrong shape; inspect the residuals ",
+                    "plot for clues."
                   )
                 ),
-                column(6,
-                  h4("Residuals vs Dose"),
-                  tags$details(
-                    tags$summary(tags$small("How to read this plot")),
-                    tags$small(
-                      "Points should scatter around the red zero line with no ",
-                      "trend. ",
-                      strong("Curved blue smoother: "),
-                      "the Hill function misses curvature at some dose range ",
-                      "\u2014 try a different model. ",
-                      strong("Fan shape (variance grows with dose): "),
-                      "heteroscedasticity; consider log-transforming the ",
-                      "volume axis or weighting."
-                    )
-                  ),
-                  shinycssloaders::withSpinner(
-                    plotOutput(ns("dr_residuals_plot"), height = "400px")
+                shinycssloaders::withSpinner(
+                  DTOutput(ns("dr_lack_of_fit_table"))
+                )
+              ),
+              column(6,
+                h4("Residuals vs Dose"),
+                tags$details(
+                  tags$summary(tags$small("How to read this plot")),
+                  tags$small(
+                    "Points should scatter around the red zero line with no ",
+                    "trend. ",
+                    strong("Curved blue smoother: "),
+                    "the Hill function misses curvature at some dose range ",
+                    "\u2014 try a different model. ",
+                    strong("Fan shape (variance grows with dose): "),
+                    "heteroscedasticity; consider log-transforming the ",
+                    "volume axis or weighting."
                   )
+                ),
+                shinycssloaders::withSpinner(
+                  plotOutput(ns("dr_residuals_plot"), height = "400px")
                 )
               )
-            ),
-            # \u2500\u2500 Bayes MCMC diagnostics \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-            conditionalPanel(
-              ns = ns,
-              condition = "input.dr_model_type == 'bayes'",
-              tab_info(
-                strong("MCMC convergence diagnostics. "),
-                "All Rhat values should be \u2264 1.01 before interpreting results."
-              ),
-              uiOutput(ns("dr_bayes_diagnostics")),
-              shinycssloaders::withSpinner(DTOutput(ns("dr_mcmc_diag_table"))),
-              br(),
-              h5(strong("Influential observations (Pareto-k > 0.7)")),
-              em(class = "text-muted",
-                 "Observations the LOO approximation can't reliably estimate."),
-              shinycssloaders::withSpinner(DTOutput(ns("dr_bayes_influential"))),
-              br(),
-              shinycssloaders::withSpinner(
-                plotOutput(ns("dr_mcmc_trace_plot"), height = "500px"))
             )
           )
         )
@@ -470,123 +396,6 @@ dose_response_server <- function(id, rv) {
   # That is why I.2 stayed open across four rounds: every attempt to assert render
   # behaviour got the "run an analysis first" placeholder back. Removed; the slot
   # reads NULL until an analysis writes it either way.
-
-  # ── Bayesian DR tab management ─────────────────────────────────────────────
-  bayes_dr_tabs_inserted <- reactiveVal(FALSE)
-
-  observeEvent(input$dr_model_type, {
-    tabs_id <- "dr_results_tabs"
-    if (isTRUE(input$dr_model_type == "bayes") && !isTRUE(bayes_dr_tabs_inserted())) {
-      appendTab(inputId = tabs_id,
-        tabPanel("Posterior Check",
-          tab_info(
-            strong("Posterior predictive check (PPC)"), " — model-simulated dose-response overlaid on observed data.",
-            em("Good fit: simulated densities envelope the observed density.")
-          ),
-          div(class = "text-right", style = "margin-bottom: 6px;",
-            downloadButton(session$ns("download_dr_pp_check"), "Download Plot")
-          ),
-          shinycssloaders::withSpinner(
-            plotOutput(session$ns("dr_pp_check_plot"), height = "450px")
-          )
-        ),
-        select = FALSE
-      )
-      appendTab(inputId = tabs_id,
-        tabPanel("Prior vs Posterior",
-          tab_info(
-            strong("Prior vs Posterior density overlay"), " — shows how much the data have updated the model's prior distributions."
-          ),
-          div(class = "text-right", style = "margin-bottom: 6px;",
-            downloadButton(session$ns("download_dr_prior_posterior"), "Download Plot")
-          ),
-          shinycssloaders::withSpinner(
-            plotOutput(session$ns("dr_prior_posterior_plot"), height = "400px")
-          )
-        ),
-        select = FALSE
-      )
-      bayes_dr_tabs_inserted(TRUE)
-    } else if (!isTRUE(input$dr_model_type == "bayes") && isTRUE(bayes_dr_tabs_inserted())) {
-      removeTab(inputId = tabs_id, target = "Posterior Check")
-      removeTab(inputId = tabs_id, target = "Prior vs Posterior")
-      bayes_dr_tabs_inserted(FALSE)
-    }
-  }, ignoreNULL = FALSE)
-
-  output$dr_pp_check_plot <- renderPlot({
-    req(rv$dr_results)
-    req(isTRUE(rv$dr_results$model_type_used == "bayes_dr"))
-    req(!isTRUE(rv$dr_results$error), !is.null(rv$bayes_models$dr))
-    brms::pp_check(rv$bayes_models$dr, type = "dens_overlay", ndraws = 50)
-  })
-
-  output$dr_mcmc_diag_table <- renderDT({
-    req(rv$dr_results)
-    req(isTRUE(rv$dr_results$model_type_used == "bayes_dr"))
-    req(!isTRUE(rv$dr_results$error))
-    diag <- rv$dr_results$mcmc_diagnostics
-    req(!is.null(diag))
-    datatable(format_df_for_display(as.data.frame(diag)),
-              options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
-  })
-
-  output$dr_bayes_diagnostics <- renderUI({
-    req(rv$dr_results)
-    req(isTRUE(rv$dr_results$model_type_used == "bayes_dr"))
-    req(!isTRUE(rv$dr_results$error))
-    bayes_diagnostics_panel(rv$dr_results)
-  })
-
-  output$dr_bayes_influential <- renderDT({
-    req(rv$dr_results)
-    req(isTRUE(rv$dr_results$model_type_used == "bayes_dr"))
-    req(!isTRUE(rv$dr_results$error))
-    inf_df <- bayes_influential_obs(rv$dr_results)
-    if (nrow(inf_df) == 0L) {
-      return(datatable(
-        data.frame(Note = "No observations exceed the Pareto-k = 0.7 threshold."),
-        options = list(dom = "t", paging = FALSE, searching = FALSE), rownames = FALSE
-      ))
-    }
-    datatable(inf_df,
-              options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
-              rownames = FALSE)
-  })
-
-  output$dr_mcmc_trace_plot <- renderPlot({
-    req(rv$dr_results)
-    req(isTRUE(rv$dr_results$model_type_used == "bayes_dr"))
-    req(!isTRUE(rv$dr_results$error), !is.null(rv$bayes_models$dr))
-    bayesplot::mcmc_trace(posterior::as_draws_array(rv$bayes_models$dr))
-  })
-
-  output$dr_prior_posterior_plot <- renderPlot({
-    req(rv$dr_results)
-    req(isTRUE(rv$dr_results$model_type_used == "bayes_dr"))
-    req(!isTRUE(rv$dr_results$error))
-    p <- rv$dr_results$prior_posterior_plot
-    req(!is.null(p))
-    print(p)
-  })
-
-  output$download_dr_pp_check <- downloadHandler(
-    filename = function() paste0("dr_posterior_check_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
-    content = function(file) {
-      req(!is.null(rv$bayes_models$dr))
-      p <- brms::pp_check(rv$bayes_models$dr, type = "dens_overlay", ndraws = 50)
-      ggplot2::ggsave(file, plot = p, width = 8, height = 5, dpi = 150)
-    }
-  )
-
-  output$download_dr_prior_posterior <- downloadHandler(
-    filename = function() paste0("dr_prior_posterior_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
-    content = function(file) {
-      req(!is.null(rv$dr_results$prior_posterior_plot))
-      ggplot2::ggsave(file, plot = rv$dr_results$prior_posterior_plot,
-                      width = 8, height = 5, dpi = 150)
-    }
-  )
 
   observe({
     toggle_downloads(
@@ -681,31 +490,6 @@ dose_response_server <- function(id, rv) {
       as.numeric(input$dr_time_point)
     } else {
       NULL
-    }
-
-    # ── Bayesian async path ────────────────────────────────────────────────────
-    if (isTRUE(input$dr_model_type == "bayes")) {
-
-      dr_bayes_params <- list(
-        data          = data,
-        dose_col      = dose_col,
-        vol_col       = vol_col,
-        tx_col        = tx_col,
-        time_col      = time_col,
-        id_col        = id_col,
-        time_point    = time_point_val,
-        ref_group     = input$dr_control_group,
-        prior_str     = input$dr_prior_strength %||% "skeptical",
-        n_chains      = as.integer(input$dr_bayes_chains  %||% 4L),
-        n_warmup      = as.integer(input$dr_bayes_warmup  %||% 1000L),
-        n_iter        = as.integer(input$dr_bayes_iter    %||% 500L),
-        backend       = input$dr_bayes_backend %||% "rstan"
-      )
-
-      # F.7 — route through the job registry.
-      launch_dr_bayes_job(rv$session_id, dr_bayes_params,
-                          input, output, session, rv)
-      return()
     }
 
     # ── Frequentist path ───────────────────────────────────────────────────────
@@ -1114,7 +898,5 @@ dose_response_server <- function(id, rv) {
     }
   )
 
-  # F.7 — register the resume handler for bayes_dr jobs.
-  register_dr_resume(input, output, session, rv)
   })
 }

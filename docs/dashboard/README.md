@@ -8,24 +8,24 @@ An interactive Shiny web application for analyzing mouse tumor growth experiment
 
 `mouseExperimentDashboard` wraps the statistical and visualization capabilities of `mouseExperiment` in a Shiny web application. Users can:
 
-- Upload tumor growth data (CSV or RDA) and map columns interactively
+- Upload tumor growth data (CSV) and map columns interactively
 - Analyze tumor growth with LME4 mixed-effects models, AUC, or Bayesian LMM (brms)
 - Run survival analysis with Kaplan-Meier curves, Cox/AFT models, and Bayesian AFT
-- Analyze drug synergy via Bliss Independence, with bootstrap intervals and a Bayesian combination synergy path
-- Fit dose-response curves (frequentist Hill/Emax or Bayesian Hill/Emax)
-- Assess toxicity via body weight mixed-effects or Bayesian LMM, with an Efficacy-Toxicity mode including Therapeutic Window Metric (frequentist + Bayesian)
-- Compute a priori power via analytic formulas, LMM simulation, or Bayesian simulation
+- Analyze drug synergy via Bliss Independence, with bootstrap intervals
+- Fit dose-response curves (Hill/Emax)
+- Assess toxicity via a body-weight mixed-effects model and time to a weight-loss threshold, with a Therapeutic Window mode
+- Compute a priori power via analytic formulas or LMM simulation
 - Customize and download all plots and tables (PNG / CSV / HTML report / ZIP)
 - **Resume Bayesian fits after tab disconnect** — the registry survives an NPM proxy timeout or browser sleep; the banner on reconnect offers Resume / Cancel
 
-All long-running Bayesian fits run asynchronously via `future` / `promises`, so the app remains responsive during Stan compilation and MCMC sampling.
+The Bayesian fits (tumor growth and survival) run asynchronously via `future` / `promises`, so the app remains responsive during Stan compilation and MCMC sampling.
 
 ## Current status
 
 | Item | State |
 |---|---|
-| Version | 26.06.006 |
-| Backend (`mouseExperiment`) requirement | ≥ 0.4.7 (`tg_priors()` / `tg_mcmc()` config helpers; `bayes_R2`; `cox.zph`; LOO; covr) |
+| Version | 26.09.001 |
+| Backend (`mouseExperiment`) requirement | ≥ 0.23.0 (the release that removed the analyses this dashboard no longer offers) |
 | `CODE_REVIEW.md` (Round 1 + Round 2) | 24/25 dashboard items closed — only **I.6** (VPS-side CI smoke test) remains |
 | Test suite | 210/210 testthat, 1 shinytest2 (Data tab); 75 F.7-specific isolation/dispatch assertions |
 | Deployment | Docker + Nginx Proxy Manager (NPM) on a self-hosted VPS (see `mouseExperimentVPS` repo) |
@@ -35,7 +35,7 @@ All long-running Bayesian fits run asynchronously via `future` / `promises`, so 
 ### Prerequisites
 
 - **R** ≥ 4.1
-- **mouseExperiment** ≥ 0.4.7 (see [mouseExperiment](https://github.com/sciOmics/mouseExperiment))
+- **mouseExperiment** ≥ 0.23.0 (see [mouseExperiment](https://github.com/sciOmics/mouseExperiment))
 - For Bayesian analysis: `brms` ≥ 2.19, `future` ≥ 1.33, `promises` ≥ 1.2, `bayesplot` ≥ 1.10
 
 ### Setup
@@ -60,7 +60,7 @@ devtools::check()      # R CMD check
 
 ### Basic workflow
 
-1. **Data Upload** — Select a CSV or RDA file in long format
+1. **Data Upload** — Select a CSV file in long format
 2. **Column Mapping** — Map ID, time, volume, treatment, and optional columns; preview validates
 3. **Analysis Setup** — Pick a module, choose method (frequentist / Bayesian), set sidebar parameters
 4. **Run Analysis** — Click Run; Bayesian fits run in the background and surface in the resume banner if you disconnect
@@ -71,12 +71,12 @@ devtools::check()      # R CMD check
 
 | Module | Methods |
 |--------|---------|
-| **Tumor Growth** | LME4 mixed model, AUC, GAMM, Bayesian LMM (brms) |
-| **Survival** | Kaplan-Meier, Cox PH, log-rank, `cox.zph()` proportional-hazards check, Bayesian AFT (Weibull / log-normal / exponential / gamma), concordance / C-index |
-| **Toxicity** | Body weight LME4 or Bayesian LMM; Efficacy-Toxicity bivariate; Therapeutic Window Metric (frequentist + Bayesian); weight-corrected TGI |
-| **Drug Synergy** | Bliss Independence with bootstrap intervals; Bayesian combination synergy; synergy over time |
-| **Dose-Response** | Frequentist Hill/Emax + Bayesian Hill/Emax with per-dose centre + error overlays |
-| **Power Analysis** | A priori analytic (t-test / ANOVA), LMM simulation, Bayesian simulation |
+| **Tumor Growth** | LME4 mixed model, AUC, Bayesian LMM (brms) |
+| **Survival** | Kaplan-Meier, Cox PH, log-rank, `cox.zph()` proportional-hazards check, Bayesian AFT (Weibull / log-normal), concordance / C-index |
+| **Toxicity** | Body-weight LME4 mixed model; time to a weight-loss threshold (Kaplan-Meier, competing risks flagged); Therapeutic Window Metric |
+| **Drug Synergy** | Bliss Independence with bootstrap intervals; synergy over time |
+| **Dose-Response** | Hill/Emax with per-dose centre + error overlays |
+| **Power Analysis** | A priori analytic (t-test / ANOVA), LMM simulation |
 
 ### Resumable Bayesian fits (F.7)
 
@@ -176,20 +176,20 @@ The dashboard is structured as a Shiny `navbarPage` with one tab per analysis mo
 |------|---------|
 | `R/app.R` | App entry point; UI layout, server dispatch, async plan setup, banner mount, sweeper start |
 | `R/mod_data_upload.R` | Data upload, column mapping, preprocessing cache |
-| `R/mod_tumor_growth.R` | TG analysis UI + server (LME4, AUC, GAMM, Bayesian) |
+| `R/mod_tumor_growth.R` | TG analysis UI + server (LME4, AUC, Bayesian) |
 | `R/mod_tumor_growth_plots.R` | 5 TG plot reactives + their `renderPlot` bindings + diagnostics + group-order UI |
 | `R/mod_tumor_growth_downloads.R` | 16 TG download handlers + necrosis renderDT |
 | `R/mod_survival.R`, `mod_survival_downloads.R` | Survival analysis (KM, Cox, Bayesian AFT) |
-| `R/mod_toxicity.R`, `mod_toxicity_plots.R`, `mod_toxicity_downloads.R` | Body weight, ET bivariate, TWM, Bayesian variants |
+| `R/mod_toxicity.R`, `mod_toxicity_plots.R`, `mod_toxicity_downloads.R` | Body weight (LMM, weight-loss threshold) and therapeutic window |
 | `R/mod_synergy.R`, `mod_synergy_downloads.R` | Drug synergy |
-| `R/mod_dose_response.R` | Dose-response (frequentist + Bayesian) |
+| `R/mod_dose_response.R` | Dose-response (Hill/Emax) |
 | `R/mod_power.R` | Power analysis |
-| `R/mod_data_upload.R`, `R/mod_log_session.R`, `R/mod_efficacy_toxicity.R` | Cross-cutting modules |
+| `R/mod_data_upload.R`, `R/mod_log_session.R` | Cross-cutting modules (upload; log, filters and settings presets) |
 | `R/job_registry.R` | F.7 process-level job registry |
 | `R/session_identity.R` | F.7 server-side cookie reader |
 | `R/resume_banner.R` | F.7 banner UI/server + resume dispatch |
 | `R/bayes_job_runner.R` | F.7 shared poller + resume registration helpers |
-| `R/tg_resume.R`, `bw_resume.R`, `surv_resume.R`, `syn_resume.R`, `dr_resume.R`, `twm_resume.R` | F.7 per-module resume helpers (each ~110-150 LOC) |
+| `R/tg_resume.R`, `surv_resume.R` | F.7 resume helpers for the two Bayesian fits (tumor growth, survival) |
 | `R/ttl_sweeper.R` | F.7 periodic registry housekeeping |
 | `R/helpers.R` | Core utilities: validation, error translation, formatting, plot helpers |
 | `R/helpers_bayes.R` | Bayesian diagnostics panel + LOO influential observations |
@@ -207,7 +207,7 @@ The dashboard is structured as a Shiny `navbarPage` with one tab per analysis mo
 |---------|-------------|---------|
 | R | 4.0 | Language runtime |
 | shiny | 1.7.0 | Web framework |
-| mouseExperiment | 0.4.7 | Statistical backend |
+| mouseExperiment | 0.23.0 | Statistical backend |
 | ggplot2 | 3.4.0 | Visualization |
 | dplyr, tidyr | 1.1, 1.3 | Data manipulation |
 | emmeans | 1.8.0 | Estimated marginal means |

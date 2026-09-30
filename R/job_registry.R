@@ -75,8 +75,8 @@
 #' result instead of overwriting the cancellation.
 #'
 #' @param sid Session-identity cookie value. Must be non-NULL non-empty.
-#' @param kind String tag for the job's analysis kind ("bayes_tg",
-#'   "bayes_bw", etc.). Used by the banner to label and route resumes.
+#' @param kind String tag for the job's analysis kind ("bayes_tg" or
+#'   "bayes_surv"). Used by the banner to label and route resumes.
 #' @param promise A `promises::promise` object — already constructed by
 #'   the caller.
 #' @param context Optional named list of metadata the resume handler

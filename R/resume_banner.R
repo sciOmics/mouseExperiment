@@ -196,11 +196,7 @@ resume_banner_server <- function(id = "resume_banner",
 .kind_to_label <- function(kind) {
   switch(kind,
     bayes_tg    = "Bayesian Tumor Growth",
-    bayes_bw    = "Bayesian Body Weight",
     bayes_surv  = "Bayesian Survival",
-    bayes_syn   = "Bayesian Synergy",
-    bayes_twm   = "Bayesian Therapeutic Window",
-    bayes_dr    = "Bayesian Dose-Response",
     kind)
 }
 

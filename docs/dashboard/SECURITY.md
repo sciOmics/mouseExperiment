@@ -30,7 +30,7 @@ These are intentional limitations of the current design:
 | Insider threat (someone with shell access on the host) | Same as above |
 | Network observer between the user and Cloudflare | Mitigated by HTTPS (Let's Encrypt). Cloudflare-to-origin link is also HTTPS |
 | Side-channel timing attacks | Not realistic against the kinds of operations performed (Bayesian fits dominated by Stan; sid lookups in O(1) dictionary access) |
-| Malicious file uploads (R-code-as-data) | The dashboard reads CSV / RDA via `utils::read.csv` and `base::load`. RDA files containing executable code could be a risk; mitigated by trust assumption (single-tenant by current cookie scope; multi-tenant relies on the trusted-team assumption) |
+| Malicious file uploads (R-code-as-data) | Uploads are read with `utils::read.csv` only. The R data-file (`.rda` / `.RData`) upload and the `.rds` session restore were removed in v26.09.001, so no upload is deserialized into R objects; the settings preset is parsed as JSON |
 
 ---
 
@@ -109,7 +109,7 @@ The remaining forgery path: a malicious user crafts a raw HTTP request with `Coo
 
 **Never in URLs:** no GET params, no path segments. The sid stays in the `Cookie` header only — never in places that get captured by referrer headers, browser history, server access logs, NPM logs, or Cloudflare logs.
 
-**Never in `.rds` save files:** the Save/Restore mechanism (`R/mod_log_session.R`) filters out `rv$session_id` before serializing. Restoring an `.rds` file on another machine creates a new sid; it doesn't carry the old one over.
+**Never in saved files:** session save/restore was removed in v26.09.001, so no serialized session state exists to carry a sid. The only file the app writes for later reloading is the settings preset (`R/mod_log_session.R`), a JSON list of column mappings and methods with no session fields.
 
 **Not in DOM:** the banner doesn't render `data-sid="…"` anywhere. A user inspecting their own DOM with devtools sees only their own job IDs (which are useless without the sid).
 
@@ -231,7 +231,7 @@ When reviewing any PR that touches session handling, cookies, or job registry co
 - [ ] No `log_*` / `message` / `stop` / `warning` / `showNotification` call includes `session_id` in its arguments
 - [ ] No render output includes `rv$session_id` in HTML / text
 - [ ] No URL parameter (GET, path segment) carries an sid
-- [ ] No CSV / JSON / RDA export written via the dashboard includes an sid
+- [ ] No CSV / JSON export written via the dashboard includes an sid
 - [ ] Any new resume kind is registered via `register_resume_handler()` so the dispatcher routes it
 - [ ] Any new background-future call goes through `launch_job()` (not raw `future_promise` outside the registry)
 - [ ] The four-layer audit tests in `test-session_isolation.R` all pass
