@@ -733,13 +733,17 @@ test_that("R3.6/R3.7: TWM carries bootstrap intervals for its ranking", {
 # ---- R3.15 ------------------------------------------------------------------
 
 test_that("R3.15: power analysis accounts for multiplicity and attrition", {
+  # The default became "bonferroni" in v0.24.0 (R20.7), so the unadjusted
+  # baseline is requested explicitly.
   base <- apriori_power_analysis(effect_size = 0.8, n_groups = 4,
-                                 alpha = 0.05, target_power = 0.8)
+                                 alpha = 0.05, target_power = 0.8,
+                                 p_adjust_method = "none")
   adj  <- apriori_power_analysis(effect_size = 0.8, n_groups = 4,
                                  alpha = 0.05, target_power = 0.8,
                                  p_adjust_method = "bonferroni")
   drop <- apriori_power_analysis(effect_size = 0.8, n_groups = 4,
                                  alpha = 0.05, target_power = 0.8,
+                                 p_adjust_method = "none",
                                  dropout_rate = 0.2)
 
   # Adjusting for 3 vs-control comparisons needs more animals.

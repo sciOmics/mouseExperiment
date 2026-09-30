@@ -22,7 +22,9 @@
 #' \describe{
 #'   \item{timepoint_results}{A list of results at each time point, each containing the outputs from analyze_drug_synergy}
 #'   \item{synergy_summary}{A data frame summarizing synergy metrics across all time points}
-#'   \item{peak_bliss_synergy}{Information about when Bliss synergy was strongest}
+#'   \item{peak_bliss_synergy}{The row of \code{synergy_summary} with the largest
+#'     Bliss difference among evaluable days; a 0-row data frame when no day is
+#'     evaluable (a single agent never inhibited growth).}
 #'   \item{drug_a_name, drug_b_name, combo_name}{Names of treatment groups for plotting}
 #' }
 #'
@@ -185,6 +187,9 @@ analyze_drug_synergy_over_time <- function(df,
         P_Value_vs_Drug_A = stat_tests$P_Value[1],
         P_Value_vs_Drug_B = stat_tests$P_Value[2],
         Synergy_Assessment = synergy_results$overall_assessment,
+        # FALSE when a single agent did not inhibit growth that day, so the
+        # Bliss columns are NA (R20.8).
+        Evaluable = isTRUE(synergy_results$evaluable),
         stringsAsFactors = FALSE
       )
       
@@ -204,8 +209,13 @@ analyze_drug_synergy_over_time <- function(df,
   # Order the summary by time point
   synergy_summary <- synergy_summary[order(synergy_summary$Time_Point), ]
   
-  # Find when Bliss synergy was strongest
-  peak_bliss_synergy <- synergy_summary[which.max(synergy_summary$Bliss_Difference), ]
+  # Find when Bliss synergy was strongest -- over evaluable days only (R20.8).
+  # A day on which an agent accelerated growth has no Bliss difference, so it
+  # cannot be the peak. With no evaluable day there is no peak: a 0-row frame.
+  evaluable_days <- synergy_summary[is.finite(synergy_summary$Bliss_Difference), ,
+                                    drop = FALSE]
+  peak_bliss_synergy <- evaluable_days[which.max(evaluable_days$Bliss_Difference), ,
+                                       drop = FALSE]
   
   # Print summary of findings (only when verbose)
   if (isTRUE(verbose)) {
@@ -214,8 +224,12 @@ analyze_drug_synergy_over_time <- function(df,
         min(synergy_summary$Time_Point), " to ", max(synergy_summary$Time_Point), "\n")
     
     message("Peak Synergy Findings:")
-    message("Strongest Bliss Synergy at Day ", peak_bliss_synergy$Time_Point, 
-               " (Difference = ", round(peak_bliss_synergy$Bliss_Difference, 1), "%)\n")
+    if (nrow(peak_bliss_synergy) > 0L) {
+      message("Strongest Bliss Synergy at Day ", peak_bliss_synergy$Time_Point,
+              " (Difference = ", round(peak_bliss_synergy$Bliss_Difference, 1), "%)\n")
+    } else {
+      message("No evaluable day: a single agent did not inhibit growth on any day.\n")
+    }
     
     message("Synergy Summary by Time Point:")
     message(paste(utils::capture.output(
@@ -304,11 +318,15 @@ plot_synergy_trend <- function(synergy_results, custom_title = NULL, custom_colo
     ggplot2::geom_line(ggplot2::aes(y = TGI_Combo, color = combo_name), linewidth = 1.2) +
     ggplot2::geom_line(ggplot2::aes(y = Bliss_Expected_TGI, color = "Bliss Expected"), linetype = "dashed") +
     # Synergy area (when combo effect > bliss expected)
-    ggplot2::geom_ribbon(data = subset(synergy_summary, TGI_Combo > Bliss_Expected_TGI),
+    # Ribbons only where Bliss applies: non-evaluable days have NA expectations
+    # and are dropped explicitly (R20.8).
+    ggplot2::geom_ribbon(data = subset(synergy_summary, is.finite(Bliss_Expected_TGI) &
+                                         TGI_Combo > Bliss_Expected_TGI),
                       ggplot2::aes(ymin = Bliss_Expected_TGI, ymax = TGI_Combo),
                       fill = "lightgreen", alpha = 0.4) +
     # Antagonism area (when combo effect < bliss expected)
-    ggplot2::geom_ribbon(data = subset(synergy_summary, TGI_Combo < Bliss_Expected_TGI),
+    ggplot2::geom_ribbon(data = subset(synergy_summary, is.finite(Bliss_Expected_TGI) &
+                                         TGI_Combo < Bliss_Expected_TGI),
                       ggplot2::aes(ymin = TGI_Combo, ymax = Bliss_Expected_TGI),
                       fill = "pink", alpha = 0.4) +
     # Formatting

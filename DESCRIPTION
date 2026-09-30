@@ -1,7 +1,7 @@
 Package: mouseExperiment
 Title: Analysis of Mouse Tumor Growth Experiments
-Version: 0.23.0
-Date: 2026-09-29
+Version: 0.24.0
+Date: 2026-09-30
 Authors@R: 
     person("David", "Woods", , "david@sciomics.bio", role = c("aut", "cre", "cph"))
 Author: David Woods [aut, cre, cph]
@@ -41,7 +41,6 @@ Imports:
     lme4,
     lmerTest,
     posterior (>= 1.0),
-    pwr,
     rlang,
     rstan,
     stats,

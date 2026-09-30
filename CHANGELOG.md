@@ -5,6 +5,56 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] - 2026-09-30
+
+Second implementation step of the Round 20 review (`CODE_REVIEW.md` R20-M): the
+two near-one-line Criticals.
+
+### Fixed
+
+- **Analytic power for three or more groups (R20.7).** `apriori_power_analysis()`
+  now powers each treated-vs-control comparison: a two-sample t-test at the
+  per-comparison alpha. That is how these studies are analysed.
+  - The old path powered a one-way ANOVA with f = d/√2 (the conversion for its
+    own configuration is d/√(2k)) and applied the Bonferroni per-comparison
+    alpha to that omnibus test.
+  - Required N was 2.6–4× too small. For k = 3, d = 1 it recommended 8 per
+    group, where each comparison then has power 0.338 (confirmed by
+    simulation). The correct figure is 21.
+  - The SD sensitivity table now uses the same per-comparison alpha.
+- **A harmful agent was still reported as synergy (R20.8).** When a single agent
+  does not inhibit growth, `analyze_drug_synergy()` already labelled the result
+  "Not evaluable", but the synergy flag, Bliss expectation, difference and
+  excess interval still carried the harm-driven values.
+  - All four are now NA, and a new `evaluable` element records why.
+  - `analyze_drug_synergy_over_time()` gains an `Evaluable` column and takes its
+    peak over evaluable days only. When no day is evaluable there is no peak (a
+    0-row data frame).
+  - `plot_synergy_trend()` draws no synergy or antagonism ribbon on
+    non-evaluable days.
+
+### Changed — defaults
+
+- `apriori_power_analysis(p_adjust_method =)` defaults to `"bonferroni"` (was
+  `"none"`), with `n_comparisons` defaulting to k − 1. This matches the package's
+  own analysis default. With two groups there is one comparison, so nothing
+  changes.
+
+### Removed
+
+- `pwr` from Imports; it was used only by the omnibus path.
+
+### Decided
+
+- The evaluable-day rule for synergy and endpoint TGI is confirmed: an arm is
+  evaluable on a day when at least 50 % of its enrolled animals, and at least 3
+  animals, are still on study. It is implemented in a later step, together with
+  the record of excluded days that the dashboard will display.
+
+Suite: 267 tests / 703 expectations → 272 / 728, all passing. The five new
+tests are in `test-code_review_round20.R`, and on 0.23.0 the substantive ones
+fail.
+
 ## [0.23.0] - 2026-09-29
 
 First implementation step of the Round 20 review (`CODE_REVIEW.md` R20-K): the

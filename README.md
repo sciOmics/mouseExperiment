@@ -29,7 +29,7 @@ An R package for statistical analysis of mouse tumor growth experiments. Covers 
 
 ### A note on dependencies
 
-As of v0.10.0 the statistical packages (`brms`, `bayesplot`, `pwr`, `coin`,
+As of v0.10.0 the statistical packages (`brms`, `bayesplot`, `coin`,
 `clinfun`, `ggpubr`, `posterior`) are **required**, not suggested.
 Installing therefore needs a working C++ toolchain, because `brms` pulls the Stan
 stack.

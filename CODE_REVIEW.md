@@ -5267,8 +5267,8 @@ Recorded in place here rather than by editing the earlier text, following the Ro
 | R20.4 | AUC over each animal's own window; R3.3 never applied | **Critical** | Open |
 | R20.5 | Default intercept-only LMM: 73 % false positives on Treatment × Day | **Critical** | Open |
 | R20.6 | Survival `cluster(cage)` with 4–10 clusters: 28 % false positives | **Critical** | Open |
-| R20.7 | Analytic power k ≥ 3: required N 2.6–4× too small | **Critical** | Open |
-| R20.8 | R14.2 fixed in the label only | **Critical** | Open |
+| R20.7 | Analytic power k ≥ 3: required N 2.6–4× too small | **Critical** | ✅ Fixed v0.24.0 (R20-M) |
+| R20.8 | R14.2 fixed in the label only | **Critical** | ✅ Fixed v0.24.0 (R20-M) |
 | R20.9 | ETB scores early-removed animals as efficacious | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
 | R20.10 | `body_weight_auc` truncation: lethal arm scores safer | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
 | R20.11 | TBA survivor-conditioned toxicity; rank inverted | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
@@ -5347,7 +5347,7 @@ Round 19 correction, added to R20-H: "`detect_volume_units()` — correct both w
 
 | Question | Decision | Consequence for the fixes |
 |---|---|---|
-| Open question 1: synergy/TGI once the control arm has left | **Report only days with enough controls on study** | No extrapolation beyond observed support. The default evaluation day becomes the last day on which every arm is evaluable; the over-time output shows only evaluable days (R20.1). The threshold for "enough" is proposed in the note below and awaits confirmation. |
+| Open question 1: synergy/TGI once the control arm has left | **Report only days with enough controls on study** | No extrapolation beyond observed support. The default evaluation day becomes the last day on which every arm is evaluable; the over-time output shows only evaluable days (R20.1). The threshold for "enough" is in the note below, confirmed 2026-09-30. |
 | Open question 3: unit of randomisation for survival with 2–3 cages per arm | **Either is possible; the user declares it** | `survival_statistics()` gains a declared unit, as `perm_spec(unit =)` does for tumour growth. "mouse": Cox/Firth with model-based SEs, with a cage frailty only as a sensitivity analysis, and no `cluster()`. "cage": cage-level permutation log-rank with exact enumeration and a reported resolution floor (R20.6). |
 | Volume units (R20.83, dashboard R20.D34) | **Users declare units; no inference** | `volume_units` becomes required wherever tumour mass is used. The heuristic is kept only as a mismatch warning. The dashboard adds a mm³/cm³ selector on Data Upload. |
 | Open question 2: default random-effects structure | **Correlated random slopes `(Day \| animal)` with automatic fallback** to uncorrelated, then intercept-only, with a visible warning; Satterthwaite (or KR) F-tests; the structure used is recorded in `meta` | Intercept-only stays available, labelled "assumes all animals in an arm grow at the same rate". Resolves R20.5 and R20.34. R20.37 (Bayesian per-animal slopes) must be fixed first, because it becomes the default path. |
@@ -5358,7 +5358,7 @@ Round 19 correction, added to R20-H: "`detect_volume_units()` — correct both w
 
 **The resolution floor matters for the cage option.** With c cages per arm and two arms there are C(2c, c) distinct cage assignments, so the smallest attainable two-sided p is 2/C(2c, c): **0.33 for 2 cages per arm, 0.10 for 3, 0.029 for 4.** A cage-randomised comparison with 2–3 cages per arm cannot reach p < 0.05 by a design-faithful test, and the output must say so rather than fall back to a mouse-level p-value.
 
-**Proposed rule for "enough controls" (to confirm).** An arm is evaluable on day *t* when at least 50 % of its enrolled animals, and at least 3 animals, are still on study. Apply the same rule to every endpoint TGI (TWM, weight-corrected TGI, the bivariate metric, and the dose-response endpoint) so the tabs agree.
+**Rule for "enough animals" (confirmed 2026-09-30).** An arm is evaluable on day *t* when at least 50 % of its enrolled animals, and at least 3 animals, are still on study. The same rule applies to every endpoint TGI (synergy, the therapeutic window and the dose-response endpoint) so the tabs agree. Weight-corrected TGI and the bivariate metric were removed in v0.23.0. The maintainer also asked that the rule be **stated to dashboard users**. Every result that uses an evaluable day must say which rule applied and which days and arms it excluded, so the package returns that record for the dashboard to render.
 
 **Simulation behind open question 2** (200 studies per cell; 4 arms, 8 time points over 21 days, removal at 2,000 mm³; Treatment × Day test):
 
@@ -5411,3 +5411,35 @@ The vignette's AUC section called `tumor_auc_analysis()`. It now uses `tumor_gro
 - Dashboard 26.09.001 was built and exercised against this version; see its R20-D.I.
 
 **Next:** step 2, the one-line and near-one-line bugs, then the study-design panel with the animal key and declared units (T1, R20.3, R20.43, R20.83).
+
+
+---
+
+## R20-M Implementation log — v0.24.0, step 2: near-one-line Criticals (2026-09-30)
+
+The two remaining items from R20-J's "one-line and near-one-line Criticals" (R20.12 and R20.13 closed by removal in step 1).
+
+**R20.7 — ✅ Fixed.** `apriori_power_analysis()` powers each treated-vs-control comparison: `stats::power.t.test` at the per-comparison alpha. k enters only through that alpha.
+- `p_adjust_method` now defaults to `"bonferroni"` with `n_comparisons = k − 1`, matching `tumor_growth_statistics()`'s own default. With two groups this is the identity.
+- The omnibus ANOVA path (f = d/√2) is gone, and with it the `pwr` import.
+- The SD sensitivity table uses the same per-comparison alpha, which closes that part of R20.71.
+- Executed:
+  - Required N matches the review's Bonferroni reference exactly: 78, 21, 35 and 23 for (k, d) = (3, 0.5), (3, 1), (4, 0.8), (4, 1). The old path gave 27, 8, 10 and 7.
+  - A 20,000-study simulation of three arms at d = 1 with Bonferroni t-tests against control gives per-arm power 0.816 at the new N = 21, and 0.338 at the old recommendation of 8. The analytic value at n = 8 is also 0.338.
+- The dashboard half is R20.D17 (dashboard R20-D.J).
+
+**R20.8 — ✅ Fixed.** When a single agent does not inhibit growth, `analyze_drug_synergy()` returns every Bliss quantity as NA: the expectation, the difference, the `synergy` flag, the "Bliss Expected" summary row and the `Bliss_Excess_FE` interval. A new `evaluable` element says why.
+- `analyze_drug_synergy_over_time()` gains an `Evaluable` column and takes the peak over evaluable days only; with no evaluable day the peak is a 0-row frame.
+- `plot_synergy_trend()` draws ribbons only where Bliss applies.
+- Executed on the R20.8 scenario (DrugA 0.13/day vs control 0.10, DrugB inert, combination equal to control), with the old value in brackets:
+  - The flag is NA [TRUE].
+  - The excess interval is NA [0.80, 3.79].
+  - 0 of 9 days are evaluable, and there is no peak [day 28, 173.8 %].
+  - 0 ribbon rows are drawn [9 days].
+- An inhibitory case is unchanged: synergy, excess interval [0.008, 0.112], 8 of 9 days evaluable (day 0 is not), peak on day 17.5.
+
+**Also recorded:** the evaluable-day rule is confirmed (R20-K note), along with the requirement that the dashboard state it. It lands with step 4.
+
+**Tests:** `test-code_review_round20.R` holds 5 tests and 25 expectations. Run against the v0.23.0 source, four of the five fail, 17 expectations in all: the R20.7 sample-size and sensitivity tests, and both R20.8 tests. The two-group guard passes there by design, because the old default was already "none". The R3.15 test now asks for `p_adjust_method = "none"` explicitly for its unadjusted baseline.
+
+**Verification (executed):** `devtools::test()`: 272 tests, 728 expectations, 0 failed. The one skip is legitimate, and per-file warning counts are unchanged from v0.23.0.

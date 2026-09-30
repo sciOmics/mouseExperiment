@@ -22,7 +22,14 @@
 #' @return A list containing the following components:
 #' \describe{
 #'   \item{summary}{A data frame summarizing the tumor growth inhibition (TGI) for each treatment and synergy metrics.}
-#'   \item{bliss_independence}{Results of the Bliss independence model, including expected vs. observed effects.}
+#'   \item{bliss_independence}{Results of the Bliss independence model, including expected vs. observed effects.
+#'     When \code{evaluable} is FALSE, \code{expected_effect}, \code{difference} and \code{synergy}
+#'     are NA.}
+#'   \item{evaluable}{FALSE when a single agent did not inhibit growth relative to control.
+#'     Bliss independence is defined for inhibitory agents, so every Bliss quantity is then NA:
+#'     the expectation and difference, the \code{synergy} flag, the "Bliss Expected" row of
+#'     \code{summary} and the \code{Bliss_Excess_FE} interval in \code{synergy_ci}
+#'     (CODE_REVIEW.md R14.2, R20.8).}
 #'   \item{statistical_test}{Results of statistical tests comparing observed vs. expected effects.}
 #'   \item{plot_data}{Data prepared for plotting, to be used with plot_drug_synergy function.}
 #' }
@@ -275,6 +282,21 @@ analyze_drug_synergy <- function(df,
 
   # Calculate the difference between observed and expected effects
   bliss_difference <- fe_combo - bliss_expected_fe
+
+  # CODE_REVIEW.md R20.8 -- R14.2 changed only the label. The flag, the
+  # expectation, the difference and the excess interval still carried the
+  # harm-driven values, and the dashboard printed "Synergistic: TRUE" and a
+  # green "interval excludes zero" note for an agent that accelerated growth.
+  # When Bliss does not apply, none of its quantities are reported.
+  if (!agents_inhibitory) {
+    bliss_expected_fe  <- NA_real_
+    bliss_expected_tgi <- NA_real_
+    bliss_difference   <- NA_real_
+    if (!is.null(synergy_ci)) {
+      bliss_rows <- grepl("^Bliss", synergy_ci$Metric)
+      synergy_ci[bliss_rows, c("Estimate", "CI_Lower", "CI_Upper")] <- NA_real_
+    }
+  }
   
   # Synergy label, now from Bliss alone (R17.2 removed the Loewe arm).
   # CODE_REVIEW.md R3.28 — `strong_synergy_delta` replaces the hardcoded 0.1.
@@ -351,11 +373,16 @@ analyze_drug_synergy <- function(df,
     message(combo_name, ": ", round(combo_mean, 2), " (TGI: ", round(tgi_combo, 1), "%)\n")
     
     message("Expected Effects:")
-    message("Bliss Independence: TGI = ", round(bliss_expected_tgi, 1), "%")
+    message("Bliss Independence: TGI = ",
+            if (agents_inhibitory) paste0(round(bliss_expected_tgi, 1), "%") else "not evaluable")
     
     message("Synergy Assessment:")
-    message("Bliss Difference: ", round(bliss_difference * 100, 1), "% (", 
-               ifelse(bliss_difference > 0, "Synergy", "No Synergy"), ")")
+    if (agents_inhibitory) {
+      message("Bliss Difference: ", round(bliss_difference * 100, 1), "% (",
+              ifelse(bliss_difference > 0, "Synergy", "No Synergy"), ")")
+    } else {
+      message("Bliss Difference: not evaluable")
+    }
     message("Overall: ", synergy_label, "\n")
     
     message("Statistical Tests:")
@@ -436,8 +463,12 @@ analyze_drug_synergy <- function(df,
       expected_effect = bliss_expected_fe,
       observed_effect = fe_combo,
       difference = bliss_difference,
-      synergy = bliss_difference > 0
+      # NA, not FALSE, when Bliss does not apply (R20.8).
+      synergy = if (agents_inhibitory) bliss_difference > 0 else NA
     ),
+    # FALSE when a single agent did not inhibit growth, in which case every
+    # Bliss quantity above is NA (R14.2, R20.8).
+    evaluable = agents_inhibitory,
     statistical_tests = stat_tests,
     overall_assessment = synergy_label,
     evaluation_time_point = eval_time_point,

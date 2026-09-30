@@ -47,7 +47,9 @@ A list containing the following components:
 \describe{
 \item{timepoint_results}{A list of results at each time point, each containing the outputs from analyze_drug_synergy}
 \item{synergy_summary}{A data frame summarizing synergy metrics across all time points}
-\item{peak_bliss_synergy}{Information about when Bliss synergy was strongest}
+\item{peak_bliss_synergy}{The row of \code{synergy_summary} with the largest
+Bliss difference among evaluable days; a 0-row data frame when no day is
+evaluable (a single agent never inhibited growth).}
 \item{drug_a_name, drug_b_name, combo_name}{Names of treatment groups for plotting}
 }
 }

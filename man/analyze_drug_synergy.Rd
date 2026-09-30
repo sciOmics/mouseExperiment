@@ -75,7 +75,14 @@ Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use
 A list containing the following components:
 \describe{
 \item{summary}{A data frame summarizing the tumor growth inhibition (TGI) for each treatment and synergy metrics.}
-\item{bliss_independence}{Results of the Bliss independence model, including expected vs. observed effects.}
+\item{bliss_independence}{Results of the Bliss independence model, including expected vs. observed effects.
+When \code{evaluable} is FALSE, \code{expected_effect}, \code{difference} and \code{synergy}
+are NA.}
+\item{evaluable}{FALSE when a single agent did not inhibit growth relative to control.
+Bliss independence is defined for inhibitory agents, so every Bliss quantity is then NA:
+the expectation and difference, the \code{synergy} flag, the "Bliss Expected" row of
+\code{summary} and the \code{Bliss_Excess_FE} interval in \code{synergy_ci}
+(CODE_REVIEW.md R14.2, R20.8).}
 \item{statistical_test}{Results of statistical tests comparing observed vs. expected effects.}
 \item{plot_data}{Data prepared for plotting, to be used with plot_drug_synergy function.}
 }

@@ -233,10 +233,11 @@ Function family: `apriori_power_analysis()`, `apriori_power_simulation()`. (`bay
 
 ### Analytic (`apriori_power_analysis()`)
 
-Standard t-test / one-way ANOVA power via `pwr::pwr.t.test` and `pwr::pwr.anova.test`. Fast (< 1 second). Use when:
-- You have an effect-size estimate from a prior study
-- The downstream analysis is a simple t-test or one-way ANOVA
+Two-sample t-test power via `stats::power.t.test`, for one treated-vs-control comparison. With k ≥ 3 groups the study is analysed as k − 1 such comparisons, so k enters only through the per-comparison alpha: `alpha / n_comparisons` under the default Bonferroni correction (`p_adjust_method = "bonferroni"`, `n_comparisons = k − 1`). `dropout_rate` converts the analysable N into the number to enrol (`Enroll_N`). Fast (< 1 second). Use when:
+- You have an effect-size estimate (Cohen's d, treated arm vs control) from a prior study
 - You're sketching the study design — first-pass numbers
+
+Before v0.24.0 the k ≥ 3 path powered a one-way ANOVA with f = d/√2 (CODE_REVIEW.md R20.7). The conversion for its own configuration is d/√(2k), and sample sizes came out 2.6–4× too small. Dunnett's exact correction (the Tumor Growth default) is slightly less conservative than Bonferroni, so the Bonferroni N slightly overestimates what a Dunnett analysis needs.
 
 ### LMM simulation (`apriori_power_simulation()`)
 
