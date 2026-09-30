@@ -5495,3 +5495,5 @@ Two commits: the key and names first, then units and survival.
 - `devtools::test()`: 285 tests, 777 expectations, 0 failed. The one skip is legitimate.
 - 13 new tests: 8 for the key and names, 2 for units, 3 for survival. All 13 fail or error on v0.24.0.
 - Four existing tests now declare `volume_units = "mm3"`.
+
+**v0.25.1 follow-up (found while wiring the dashboard, 2026-09-30).** The stricter `make_mouse_key()` also refused a frame with no rows, whose parts are all empty. It told the user to "check that the ID, treatment and cage columns exist", which is misleading, and `weight_loss_threshold()` reached it whenever no row had a usable day. An all-empty key is now `character(0)`; an empty part beside non-empty ones, or a NULL part, still errors. One test, which fails on v0.25.0.

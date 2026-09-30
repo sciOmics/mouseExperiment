@@ -16,6 +16,12 @@ make_mouse_key <- function(...) {
   # "Arm|||": one "mouse" per arm, and no error.
   parts <- list(...)
   n <- lengths(parts)
+  # A frame with no rows has no animals: every part is empty, and so is the
+  # result. An empty part beside non-empty ones is a missing column.
+  if (length(parts) && all(n == 0L) &&
+      !any(vapply(parts, is.null, logical(1L)))) {
+    return(character(0))
+  }
   if (!length(parts) || any(n == 0L)) {
     stop("make_mouse_key(): a key component is NULL or empty -- check that the ",
          "ID, treatment and cage columns exist.", call. = FALSE)

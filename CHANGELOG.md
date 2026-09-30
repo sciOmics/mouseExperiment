@@ -5,6 +5,16 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.1] - 2026-09-30
+
+### Fixed
+
+- **`make_mouse_key()` refused a frame with no rows (R20-N follow-up).** v0.25.0
+  made it reject empty parts, which also caught a data frame with no rows. The
+  error then blamed missing ID, treatment or cage columns. An all-empty key is
+  now `character(0)`. A NULL part, or an empty part beside non-empty ones, is
+  still an error.
+
 ## [0.25.0] - 2026-09-30
 
 Third implementation step of the Round 20 review (`CODE_REVIEW.md` R20-N): animal

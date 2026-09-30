@@ -154,6 +154,12 @@ test_that("T1: make_mouse_key() refuses a missing component", {
   expect_error(make_mouse_key(c("A", "B"), character(0)), "NULL or empty")
   expect_error(make_mouse_key(c("A", "B"), c("1", "2", "3")), "different lengths")
   expect_equal(make_mouse_key(c("A", "B"), "1"), c("A|||1", "B|||1"))
+  # A frame with no rows is not a missing column: no animals, no keys. The
+  # weight-loss and body-weight functions reached this on an empty subset and
+  # reported missing columns.
+  expect_identical(make_mouse_key(character(0), character(0), character(0)),
+                   character(0))
+  expect_error(make_mouse_key(character(0), NULL), "NULL or empty")
 })
 
 test_that("R20.3: tumour-growth and body-weight models give the same answer with reused IDs", {
