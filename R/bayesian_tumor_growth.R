@@ -91,8 +91,6 @@
 #'   \code{n_warmup}, \code{n_iter}, \code{seed}, and \code{backend}
 #'   arguments.
 #'
-#' @param model_type Which Bayesian model to fit: `"bayes"` (linear) or
-#'   `"bayes_gam"` (smooth time x treatment).
 #' @param necrotic_column Optional column holding a 0/1 necrosis flag.
 #' @param necrotic_handling How flagged observations are treated:
 #'   `"exclude"`, `"covariate"`, or `"none"`.
@@ -132,15 +130,14 @@
 #'     or \code{NULL} when \code{plots = FALSE}.}
 #'   \item{\code{residuals_plot}}{Posterior mean residuals vs. study day,
 #'     faceted by treatment group with a loess smoother. Systematic curvature
-#'     indicates that the log-linear time assumption is violated and a GAM or
-#'     nonlinear model should be considered. \code{NULL} when
-#'     \code{plots = FALSE}.}
+#'     indicates that the log-linear time assumption is violated. \code{NULL}
+#'     when \code{plots = FALSE}.}
 #'   \item{\code{growth_rates}}{Per-animal exponential growth rates. When the
 #'     LMM was fit with \code{random_effects_specification = "slope"}, these
 #'     are derived directly from the brms posterior — each row carries
 #'     \code{growth_rate} (posterior median) plus \code{growth_rate_lower}
 #'     and \code{growth_rate_upper} (2.5% / 97.5% credible intervals). For
-#'     intercept-only and GAM paths, falls back to log-linear OLS per
+#'     the intercept-only path, falls back to log-linear OLS per
 #'     animal and the credible-interval columns reflect OLS confidence
 #'     intervals (Round 2 E.3).}
 #'   \item{\code{data_summary}}{Descriptive statistics by treatment group and
@@ -210,7 +207,6 @@ bayesian_tumor_growth <- function(
   cage_column                  = NULL,
   dose_column                  = NULL,
   transform                    = c("log", "sqrt", "none"),
-  model_type                   = c("lmm", "gam"),
   random_effects_specification = c("intercept_only", "slope"),
   reference_group              = NULL,
   prior_strength               = c("skeptical", "weakly_informative", "informative", "diffuse", "manual"),
@@ -236,7 +232,6 @@ bayesian_tumor_growth <- function(
   # ── Dependency checks ──────────────────────────────────────────────────────
 
   transform                    <- match.arg(transform)
-  model_type                   <- match.arg(model_type)
   random_effects_specification <- match.arg(random_effects_specification)
   prior_strength               <- match.arg(prior_strength)
   necrotic_handling            <- match.arg(necrotic_handling)
@@ -334,19 +329,8 @@ bayesian_tumor_growth <- function(
     }
   }
 
-  # Linear interaction (LMM) vs group-specific smoother (GAM via brms s()).
-  # The smoother basis dimension is auto-chosen from observed time points.
-  if (model_type == "gam") {
-    n_days     <- length(unique(analysis_df[[time_column]]))
-    k_val      <- max(3L, min(10L, n_days - 1L))
-    fixed_part <- paste0(
-      volume_column, " ~ ", treatment_column,
-      " + s(", time_column, ", by = ", treatment_column,
-      ", k = ", k_val, ")"
-    )
-  } else {
-    fixed_part <- paste(volume_column, "~", treatment_column, "*", time_column)
-  }
+  # Linear treatment x time interaction on the transformed scale.
+  fixed_part <- paste(volume_column, "~", treatment_column, "*", time_column)
   if (isTRUE(include_necrotic_covariate)) {
     fixed_part <- paste(fixed_part, "+ necrotic_cov_flag")
   }
@@ -494,10 +478,9 @@ bayesian_tumor_growth <- function(
   # from the brms model itself (treatment fixed slope + per-animal random
   # slope draw) rather than falling back to OLS on log-volumes. The brms
   # version gives posterior credible intervals; the OLS version does not.
-  # Other paths (intercept_only, GAM) fall back to OLS.
+  # The intercept-only path falls back to OLS.
   brms_growth_rates <- NULL
-  if (model_type == "lmm" &&
-      random_effects_specification == "slope") {
+  if (random_effects_specification == "slope") {
     brms_growth_rates <- tryCatch(
       tg_brms_per_animal_growth_rates(model, treatment_column,
                                        id_column, time_column,
@@ -628,7 +611,7 @@ bayesian_tumor_growth <- function(
         ggplot2::facet_wrap(~ Treatment) +
         ggplot2::labs(
           title    = "Residuals vs. Study Day",
-          subtitle = "Curvature indicates non-linear growth — consider a GAM or nonlinear model",
+          subtitle = "Curvature indicates growth that is not log-linear",
           x        = time_column,
           y        = paste0("Residual (", transform, " scale)")
         ) +
@@ -639,11 +622,7 @@ bayesian_tumor_growth <- function(
   # ── Analysis summary metadata ──────────────────────────────────────────────
   .prior_desc <- describe_priors(selected_priors)
   analysis_summary <- list(
-    analysis_type = if (model_type == "gam") {
-      "Bayesian Generalized Additive Mixed Model (brms, group-specific smooths)"
-    } else {
-      "Bayesian Linear Mixed-Effects Model (brms)"
-    },
+    analysis_type = "Bayesian Linear Mixed-Effects Model (brms)",
     data_description = list(
       subjects         = length(unique(make_mouse_key(
         auc_df[[id_column]],
@@ -686,7 +665,7 @@ bayesian_tumor_growth <- function(
   # ── Return ─────────────────────────────────────────────────────────────────
   list(
     model                   = if (isTRUE(return_model)) model else NULL,
-    model_type_used         = if (model_type == "gam") "bayes_tg_gam" else "bayes_tg",
+    model_type_used         = "bayes_tg",
     transform_used          = transform,
     meta = me_result_meta(
       analysis_type   = "Bayesian linear mixed-effects model (brms)",

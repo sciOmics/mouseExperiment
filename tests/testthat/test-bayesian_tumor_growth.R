@@ -7,7 +7,7 @@
 # completes in < 60 s on CI and still exercises the full code path.
 # =============================================================================
 
-# brms, bayesplot, gamm4 and mgcv are hard Imports as of v0.10.0, so this
+# brms and bayesplot are hard Imports as of v0.10.0, so this
 # helper can no longer skip. Retained as a no-op because the call sites are
 # numerous, and because a skip here is exactly what let bayesian_synergy()
 # stay broken for five releases (CODE_REVIEW.md R3-L).

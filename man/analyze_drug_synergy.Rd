@@ -124,8 +124,7 @@ Interpret Bliss results cautiously when individual-agent TGIs exceed 50\%.
 fixed thresholds. They are descriptive summaries, not test results. Read them
 alongside \code{synergy_ci} (mouse-level bootstrap 95\% intervals) and
 \code{group_n}: a "Strong Synergy" label whose \code{Bliss_Excess_FE}
-interval spans zero is not evidence of synergy. For a model-based posterior
-treatment of the same question, use \code{\link{bayesian_synergy}}.
+interval spans zero is not evidence of synergy.
 }
 
 \examples{

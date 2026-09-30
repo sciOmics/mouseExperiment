@@ -1,21 +1,8 @@
 # Copyright (c) 2026 mouseExperiment Contributors
 # Licensed under the MIT License - see LICENSE file
 
-# Shared helper utilities used internally by all six Bayesian analysis
-# functions: bayesian_tumor_growth(), bayesian_body_weight(),
-# bayesian_survival(), bayesian_dose_response(), bayesian_synergy(), and
-# bayesian_therapeutic_window().
-
-# ── Back-transform ─────────────────────────────────────────────────────────────
-
-#' Back-transform posterior predictions to the original measurement scale
-#'
-#' @param x Numeric vector or matrix of predictions on the modelling scale.
-#' @param transform Character: \code{"log"}, \code{"sqrt"}, or \code{"none"}.
-#' @noRd
-bayes_backtransform <- function(x, transform) {
-  switch(transform, log = exp(x), sqrt = x ^ 2, x)
-}
+# Shared helper utilities used internally by the Bayesian analysis functions,
+# bayesian_tumor_growth() and bayesian_survival().
 
 
 # ── MCMC diagnostics ───────────────────────────────────────────────────────────
@@ -168,8 +155,7 @@ make_nuts_diagnostics <- function(model) {
 #'
 #' Returns a list with \code{b_sd} (normal SD for fixed-effect coefficients)
 #' and \code{exp_rate} (rate for Exponential priors on SD and sigma parameters).
-#' Used by bayesian_tumor_growth, bayesian_body_weight, bayesian_survival, and
-#' bayesian_synergy.
+#' Used by bayesian_tumor_growth and bayesian_survival.
 #' @noRd
 bayes_prior_params <- function(prior_strength) {
   switch(prior_strength,
@@ -397,8 +383,8 @@ setup_cage_column <- function(df, cage_column) {
 
 #' Prior vs posterior density overlay for treatment-effect coefficients
 #'
-#' Used by bayesian_tumor_growth(), bayesian_body_weight(), and
-#' bayesian_survival(). Requires \code{sample_prior = "yes"} at fit time.
+#' Used by bayesian_tumor_growth() and bayesian_survival(). Requires
+#' \code{sample_prior = "yes"} at fit time.
 #' @noRd
 bayes_prior_posterior_plot <- function(model, treatment_column) {
   post <- tryCatch(brms::as_draws_df(model), error = function(e) NULL)
@@ -464,25 +450,6 @@ bayes_prior_posterior_plot <- function(model, treatment_column) {
     ggplot2::theme(legend.position = "top")
 }
 
-
-# ── Posterior summary builder ──────────────────────────────────────────────────
-
-#' Extract and standardise fixed-effects posterior summary from a brmsfit
-#'
-#' Returns a data frame with columns: Parameter, Estimate, Est.Error,
-#' Lower_95_CrI, Upper_95_CrI, Rhat, Bulk_ESS, Tail_ESS.
-#' @noRd
-build_posterior_summary <- function(model) {
-  brms_smry <- summary(model)
-  fixed_df  <- as.data.frame(brms_smry$fixed)
-  fixed_df  <- cbind(
-    Parameter = rownames(fixed_df), fixed_df, stringsAsFactors = FALSE
-  )
-  rownames(fixed_df) <- NULL
-  names(fixed_df)[names(fixed_df) == "l-95% CI"] <- "Lower_95_CrI"
-  names(fixed_df)[names(fixed_df) == "u-95% CI"] <- "Upper_95_CrI"
-  fixed_df
-}
 
 
 # ── Data-scaled, per-coefficient priors ───────────────────────────────────────

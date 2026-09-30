@@ -12,7 +12,7 @@ bayesian_survival(
   id_column = "ID",
   cage_column = NULL,
   dose_column = NULL,
-  family = c("weibull", "lognormal", "exponential", "gamma"),
+  family = c("weibull", "lognormal"),
   include_cage_effect = TRUE,
   reference_group = NULL,
   prior_strength = c("skeptical", "weakly_informative", "informative", "diffuse",
@@ -64,11 +64,10 @@ decreasing, and constant hazards. Interpretable as both AFT (time
 ratio) and PH (hazard ratio).}
 \item{\code{"lognormal"}}{Log-normal AFT. Hazard rises then falls —
 biologically plausible for treated tumours.}
-\item{\code{"exponential"}}{Constant hazard. Special case of Weibull
-with shape = 1; use when a memoryless process is plausible.}
-\item{\code{"gamma"}}{Gamma AFT. More flexible tail than Weibull; good
-alternative when Weibull does not fit well.}
-}}
+}
+The exponential and gamma families were removed in v0.23.0
+(CODE_REVIEW.md R20-K): exponential is Weibull with shape fixed at 1, and
+gamma was the family most distorted by the shape prior (R20.38).}
 
 \item{include_cage_effect}{Logical. When \code{TRUE} (default) and
 \code{cage_column} is supplied, a cage-level random intercept (frailty)
@@ -99,8 +98,8 @@ when \code{prior_strength = "manual"}.}
 \code{"sd"}). Only used when \code{prior_strength = "manual"}.}
 
 \item{prior_aux}{brms prior string for the auxiliary parameter: \code{shape}
-for Weibull and Gamma; \code{sigma} for log-normal; ignored for
-exponential. Only used when \code{prior_strength = "manual"}.}
+for Weibull; \code{sigma} for log-normal. Only used when
+\code{prior_strength = "manual"}.}
 
 \item{n_chains}{Number of MCMC chains. Default \code{4}.}
 
@@ -141,7 +140,7 @@ A named list:
 \item{\code{summary}}{Named list of analysis metadata.}
 \item{\code{treatment_effects}}{Data frame with columns \code{Group},
 \code{Time_Ratio}, \code{Lower_CrI}, \code{Upper_CrI}, \code{HR}
-(hazard ratio; Weibull and exponential only, \code{NA} otherwise),
+(hazard ratio; Weibull only, \code{NA} for log-normal),
 \code{Median_Survival}, \code{Events}, \code{Total}, \code{Event_Rate},
 \code{Note}. Output schema mirrors \code{\link{survival_statistics}}.}
 \item{\code{posterior_summary}}{Data frame of fixed-effect posterior
@@ -178,11 +177,11 @@ All families are fitted in the AFT (accelerated failure time)
 parameterisation via \pkg{brms}. Treatment coefficients are on the
 log(mean survival time)
 scale; exponentiating gives \strong{time ratios} (TR): TR > 1 means the
-treated group survives longer. For Weibull and exponential families, an
+treated group survives longer. For the Weibull family, an
 approximate \strong{hazard ratio} (HR = TR\eqn{^{-\hat{\kappa}}}, where
 \eqn{\hat{\kappa}} is the posterior-median Weibull shape) is also reported;
-HR < 1 indicates a protective treatment effect. Lognormal and gamma are
-not proportional-hazards models; their \code{HR} column is \code{NA}.
+HR < 1 indicates a protective treatment effect. Log-normal is not a
+proportional-hazards model, so its \code{HR} column is \code{NA}.
 }
 
 \section{Frailty}{

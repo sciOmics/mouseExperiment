@@ -46,8 +46,7 @@ ME_ENDPOINT_METHODS <- c("model", "last_obs", "survivors")
 #'   \describe{
 #'     \item{`"model"`}{(default) group geometric means at `endpoint_day` from a
 #'       log-scale LMM fitted to every observation. Uses all animals.}
-#'     \item{`"last_obs"`}{each animal's own last observation, as
-#'       `bayesian_dose_response()` does since v0.4.14. Uses all animals but
+#'     \item{`"last_obs"`}{each animal's own last observation. Uses all animals but
 #'       evaluates them at *different days*, so it is not an estimate of volume
 #'       at `endpoint_day`: an animal removed on day 12 contributes its day-12
 #'       volume. On a simulated study with volume-triggered euthanasia this was

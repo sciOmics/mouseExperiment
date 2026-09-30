@@ -13,7 +13,7 @@ tumor_growth_statistics(
   id_column = "ID",
   dose_column = NULL,
   transform = c("log", "sqrt", "none"),
-  model_type = c("lme4", "gam", "auc"),
+  model_type = c("lme4", "auc"),
   random_effects_specification = c("intercept_only", "slope", "none"),
   handle_cage_effects = c("auto", "include_if_not_collinear", "always_include",
     "never_include", "as_random_effect"),
@@ -61,11 +61,10 @@ This allows for dose-response analysis. Default is NULL.}
 Options are "log", "sqrt", "none". Default is "log", which is recommended for exponential growth.}
 
 \item{model_type}{A character string specifying the type of model to fit. Options are:
-"lme4" (standard linear mixed effects model using lme4 package — linear time × treatment),
-"gam"  (generalized additive mixed model via gamm4 — group-specific smooth time terms;
-use this in place of fitting a high-order polynomial in time),
+"lme4" (linear mixed-effects model using lme4 — linear time × treatment),
 "auc"  (area under the curve analysis).
-Default is "lme4".}
+Default is "lme4". The GAMM option was removed in v0.23.0
+(CODE_REVIEW.md R20-K).}
 
 \item{random_effects_specification}{A character string specifying the random effects structure.
 "intercept_only" (default): (1|ID) - random intercepts by subject
@@ -168,10 +167,6 @@ denominator-df approximation nor normal random effects — but it is only valid
 if \code{unit} matches how the study actually randomised, so the unit is an
 explicit choice rather than a default. See \code{\link{perm_spec}}.
 CODE_REVIEW.md H.3.}
-
-\item{auc_method}{Removed in v0.4.5. The AUC path now always uses the
-trapezoidal rule. For last-observation-carried-forward (LOCF) AUC, use
-\code{\link{tumor_auc_analysis}(method = "last_observation")} directly.}
 }
 \value{
 A list containing the following components:
@@ -247,14 +242,5 @@ print(results$pairwise_comparisons)
 
 # Plot adjusted means for each treatment group
 print(results$plots$adjusted_means)
-
-# Analyze with a generalized additive mixed model (group-specific smooth
-# time terms via gamm4) — preferred over a high-order polynomial in time.
-results_gam <- tumor_growth_statistics(
-  tumor_data,
-  model_type = "gam",
-  transform = "log"
-)
-print(results_gam$treatment_effects_over_time)
 
 }

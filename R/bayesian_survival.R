@@ -32,11 +32,10 @@
 #'       ratio) and PH (hazard ratio).}
 #'     \item{\code{"lognormal"}}{Log-normal AFT. Hazard rises then falls —
 #'       biologically plausible for treated tumours.}
-#'     \item{\code{"exponential"}}{Constant hazard. Special case of Weibull
-#'       with shape = 1; use when a memoryless process is plausible.}
-#'     \item{\code{"gamma"}}{Gamma AFT. More flexible tail than Weibull; good
-#'       alternative when Weibull does not fit well.}
 #'   }
+#'   The exponential and gamma families were removed in v0.23.0
+#'   (CODE_REVIEW.md R20-K): exponential is Weibull with shape fixed at 1, and
+#'   gamma was the family most distorted by the shape prior (R20.38).
 #' @param include_cage_effect Logical. When \code{TRUE} (default) and
 #'   \code{cage_column} is supplied, a cage-level random intercept (frailty)
 #'   is added: \code{(1 | cage)}.
@@ -60,8 +59,8 @@
 #' @param prior_sd brms prior string for the frailty standard deviation (class
 #'   \code{"sd"}). Only used when \code{prior_strength = "manual"}.
 #' @param prior_aux brms prior string for the auxiliary parameter: \code{shape}
-#'   for Weibull and Gamma; \code{sigma} for log-normal; ignored for
-#'   exponential. Only used when \code{prior_strength = "manual"}.
+#'   for Weibull; \code{sigma} for log-normal. Only used when
+#'   \code{prior_strength = "manual"}.
 #' @param n_chains Number of MCMC chains. Default \code{4}.
 #' @param n_warmup Warm-up (burn-in) iterations per chain. Default \code{1000}.
 #' @param n_iter Post-warmup draws per chain. Default \code{500}.
@@ -91,7 +90,7 @@
 #'   \item{\code{summary}}{Named list of analysis metadata.}
 #'   \item{\code{treatment_effects}}{Data frame with columns \code{Group},
 #'     \code{Time_Ratio}, \code{Lower_CrI}, \code{Upper_CrI}, \code{HR}
-#'     (hazard ratio; Weibull and exponential only, \code{NA} otherwise),
+#'     (hazard ratio; Weibull only, \code{NA} for log-normal),
 #'     \code{Median_Survival}, \code{Events}, \code{Total}, \code{Event_Rate},
 #'     \code{Note}. Output schema mirrors \code{\link{survival_statistics}}.}
 #'   \item{\code{posterior_summary}}{Data frame of fixed-effect posterior
@@ -120,11 +119,11 @@
 #' parameterisation via \pkg{brms}. Treatment coefficients are on the
 #' log(mean survival time)
 #' scale; exponentiating gives \strong{time ratios} (TR): TR > 1 means the
-#' treated group survives longer. For Weibull and exponential families, an
+#' treated group survives longer. For the Weibull family, an
 #' approximate \strong{hazard ratio} (HR = TR\eqn{^{-\hat{\kappa}}}, where
 #' \eqn{\hat{\kappa}} is the posterior-median Weibull shape) is also reported;
-#' HR < 1 indicates a protective treatment effect. Lognormal and gamma are
-#' not proportional-hazards models; their \code{HR} column is \code{NA}.
+#' HR < 1 indicates a protective treatment effect. Log-normal is not a
+#' proportional-hazards model, so its \code{HR} column is \code{NA}.
 #'
 #' @section Frailty:
 #' Cage-level frailty \code{(1 | cage)} models unobserved between-cage
@@ -139,7 +138,7 @@
 #' @seealso \code{\link{survival_statistics}},
 #'   \code{\link{bayesian_tumor_growth}}
 #'
-#' @importFrom stats as.formula relevel median quantile qgamma pgamma pnorm
+#' @importFrom stats as.formula relevel median quantile pnorm
 #'   setNames
 #' @importFrom ggplot2 ggplot aes geom_density geom_line geom_ribbon geom_step
 #'   scale_fill_manual scale_colour_manual scale_y_continuous
@@ -154,7 +153,7 @@ bayesian_survival <- function(
   id_column        = "ID",
   cage_column      = NULL,
   dose_column      = NULL,
-  family              = c("weibull", "lognormal", "exponential", "gamma"),
+  family              = c("weibull", "lognormal"),
   include_cage_effect = TRUE,
   reference_group  = NULL,
   prior_strength   = c("skeptical", "weakly_informative", "informative",
@@ -248,10 +247,7 @@ bayesian_survival <- function(
   # ── brms family object ─────────────────────────────────────────────────────
   brms_family <- switch(family,
     weibull     = brms::weibull(),
-    lognormal   = brms::lognormal(),
-    exponential = brms::exponential(),
-    # R18.1: `Gamma` lives in stats, not brms -- `brms::Gamma` throws.
-    gamma       = stats::Gamma(link = "log")
+    lognormal   = brms::lognormal()
   )
 
   # ── Prior specification ────────────────────────────────────────────────────
@@ -311,13 +307,7 @@ bayesian_survival <- function(
                            brms::prior_string(paste0("exponential(", exp_rate, ")"),
                                               class = "sd"))
     }
-    if (family == "lognormal") {
-      aux_class <- "sigma"
-    } else if (family != "exponential") {
-      aux_class <- "shape"
-    } else {
-      aux_class <- NULL
-    }
+    aux_class <- if (family == "lognormal") "sigma" else "shape"
     if (!is.null(aux_class)) {
       selected_priors <- c(
         selected_priors,
@@ -577,9 +567,6 @@ bs_build_treatment_table <- function(
       if (family == "weibull" && !is.null(shape_draws)) {
         hr_draws <- exp(-shape_draws * coef_draws)
         results$HR[idx] <- round(stats::median(hr_draws), 4)
-      } else if (family == "exponential") {
-        # Exponential is Weibull(shape=1), so HR = 1/TR
-        results$HR[idx] <- round(1 / results$Time_Ratio[idx], 4)
       }
 
       if (!is.null(intercept_draws)) {
@@ -625,24 +612,12 @@ bs_median_from_draws <- function(linpred_draws, shape_draws,
         # Identity link: linpred = mu (log-scale mean); median = exp(mu)
         exp(linpred_draws)
       },
-      exponential = {
-        # Log link: linpred = log(mean); median = mean * log(2)
-        exp(linpred_draws) * log(2)
-      },
       weibull = {
         # log link: linpred = log(mean); convert via Weibull scale parameter
         if (is.null(shape_draws)) return(NA_real_)
         mu    <- exp(linpred_draws)
         scale <- mu / gamma(1 + 1 / shape_draws)
         scale * log(2)^(1 / shape_draws)
-      },
-      gamma = {
-        # log link: linpred = log(mean); rate = shape / mean
-        if (is.null(shape_draws)) return(NA_real_)
-        mu   <- exp(linpred_draws)
-        rate <- shape_draws / mu
-        mapply(function(sh, ra) stats::qgamma(0.5, shape = sh, rate = ra),
-               shape_draws, rate)
       }
     )
     round(stats::median(med_draws, na.rm = TRUE), 2)
@@ -791,26 +766,12 @@ bs_survival_matrix <- function(t_grid, linpred_draws, shape_draws,
         stats::pnorm((log(t_grid) - mu) / sig, lower.tail = FALSE)
       }, linpred_draws, sigma_draws))
     },
-    exponential = {
-      # Log link: linpred = log(mean); S(t) = exp(-t / mean)
-      t(sapply(linpred_draws, function(lp) {
-        exp(-t_grid / exp(lp))
-      }))
-    },
     weibull = {
       if (is.null(shape_draws)) shape_draws <- rep(1, n_draws)
       t(mapply(function(lp, sh) {
         mu    <- exp(lp)
         scale <- mu / gamma(1 + 1 / sh)
         exp(-(t_grid / scale)^sh)
-      }, linpred_draws, shape_draws))
-    },
-    gamma = {
-      if (is.null(shape_draws)) shape_draws <- rep(1, n_draws)
-      t(mapply(function(lp, sh) {
-        mu   <- exp(lp)
-        rate <- sh / mu
-        stats::pgamma(t_grid, shape = sh, rate = rate, lower.tail = FALSE)
       }, linpred_draws, shape_draws))
     }
   )

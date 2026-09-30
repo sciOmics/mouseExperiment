@@ -146,7 +146,7 @@ therapeutic_window_metric <- function(df,
   # Per mouse: baseline weight, nadir weight, max % loss
   # Filter to the earliest study day before aggregating so x[1] is ordered.
   # Aggregate by MouseKey (ID|||Treatment|||Cage) so reused IDs across cages
-  # don't collapse — same fix class as Round 1 1.8 for weight_corrected_tgi.
+  # don't collapse — same fix class as Round 1 1.8.
   # R15.2: was `wd[wd$Day == min(wd$Day), ]` -- the GLOBAL earliest day. Any
   # animal without an observation on that exact day was dropped by the merge
   # below, and the bias has a direction: those animals leave the toxicity

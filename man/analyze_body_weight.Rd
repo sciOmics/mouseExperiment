@@ -18,7 +18,6 @@ analyze_body_weight(
   volume_units = NULL,
   covariates = c("volume"),
   estimation = c("REML", "ML"),
-  model_type = c("lmm", "gam"),
   comparison_family = c("vs_reference", "all_pairs", "custom"),
   custom_contrasts = NULL,
   p_adjust_method = c("bonferroni", "holm", "fdr", "dunnett", "tukey", "none"),
@@ -55,10 +54,6 @@ correction by 1000 (R3.30).}
 \item{covariates}{Character vector of optional covariates: "volume", "sex", "initial_mass".}
 
 \item{estimation}{Character; "REML" (default) or "ML".}
-
-\item{model_type}{Character; "lmm" (default — linear mixed model via lme4) or
-"gam" (generalized additive mixed model via gamm4 with a group-specific
-smoother on Day, preferred when weight trajectories are non-monotonic).}
 
 \item{comparison_family}{Which comparisons to report and adjust over:
 "vs_reference" (default), "all_pairs", or "custom" (with

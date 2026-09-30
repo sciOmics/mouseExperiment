@@ -5,6 +5,56 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-09-29
+
+First implementation step of the Round 20 review (`CODE_REVIEW.md` R20-K): the
+package is narrowed to the models the maintainer decided to keep. The package
+has no external users, so these are removed outright rather than deprecated.
+
+### Removed — breaking
+
+- **Bayesian models other than tumour growth and survival:** `bayesian_synergy()`,
+  `bayesian_synergy_over_time()`, `bayesian_dose_response()`,
+  `bayesian_body_weight()`, `bayesian_therapeutic_window()`,
+  `bayesian_twm_from_data()`, `bayesian_power_analysis()`. Two of them carried
+  open Critical defects: the dose-response model failed on its default
+  `endpoint_day = NULL` (R20.12), and the therapeutic-window model scored weight
+  gain as toxicity (R20.13).
+- **Toxicity composites whose estimands were biased toward calling a toxic arm
+  safe or efficacious:** `body_weight_auc()` (R20.10), `total_benefit_area()`
+  (R20.11), `efficacy_toxicity_bivariate()` (R20.9), `weight_corrected_tgi()`
+  (R20.45).
+- **GAMM:** `model_type = "gam"` in `tumor_growth_statistics()`, the GAM option
+  of `analyze_body_weight()` (whose `model_type` argument is removed), and the
+  Bayesian GAMM (`bayesian_tumor_growth()` loses its `model_type` argument).
+  The GAM path's contrasts used residual degrees of freedom and were
+  anti-conservative (R20.28).
+- **`tumor_auc_analysis()`** — a second AUC implementation that always
+  extrapolated on the raw scale (R20.47). AUC remains available as
+  `tumor_growth_statistics(model_type = "auc")`.
+- **`repeated_measures_anova()`** (R20.26) and the `me_result` class it alone
+  produced: `new_me_result()`, its `print`/`summary`/`plot` methods, and
+  `export_diagnostics()`.
+- **Bayesian survival families `"exponential"` and `"gamma"`.** Exponential is
+  Weibull with shape fixed at 1; gamma was the family most distorted by the
+  shape prior (R20.38). Weibull and log-normal remain.
+- **Dependencies:** `gamm4` and `mgcv` are no longer imported.
+
+### Changed
+
+- `tumor_doubling_time()` moved to its own file, and its `cage_column` argument
+  is now documented.
+- Internal helpers used only by the removed code were deleted, as was the unused
+  `by` argument of the internal contrast builder.
+- The vignette's AUC section uses `tumor_growth_statistics(model_type = "auc")`
+  instead of `tumor_auc_analysis()`. The rest of the vignette is still broken
+  (R20.49).
+
+Suite: 391 tests / 986 expectations → 267 / 703, all passing (the difference is
+the removed functions' tests); the full run drops from 8.8 to 3.1 minutes. R CMD
+check status is unchanged from 0.22.0; the pre-existing examples error (R20.50)
+remains.
+
 ## [0.22.0] - 2026-08-05
 
 `R CMD check` had never been run during this review. It immediately found what

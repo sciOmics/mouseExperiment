@@ -10,15 +10,14 @@ For the Bayesian-specific diagnostics surface (Rhat, ESS, NUTS, LOO, Bayes R², 
 
 ## Tumor Growth
 
-Function family: `tumor_growth_statistics()`, `bayesian_tumor_growth()`, `tumor_auc_analysis()`, `tumor_doubling_time()`.
+Function family: `tumor_growth_statistics()`, `bayesian_tumor_growth()`, `tumor_doubling_time()`.
 
-The tumor growth pipeline supports four model types via `model_type`:
+The tumor growth pipeline supports three models:
 
 | Model | Function | Use when |
 |---|---|---|
 | `"lme4"` | `tumor_growth_statistics(..., model_type = "lme4")` | Default. Linear mixed-effects on log-volume; per-animal random intercept (and optionally slope). Comparable to common preclinical-oncology defaults. |
 | `"auc"` | `tumor_growth_statistics(..., model_type = "auc")` | When trajectories are non-monotonic or the time-window matters more than the per-mouse slope. Per-mouse AUC under the growth curve; pairwise treatment comparisons via Welch's t-test. |
-| `"gam"` | `tumor_growth_statistics(..., model_type = "gam")` | When growth is clearly non-linear (e.g., flattens then resumes after relapse). Penalized splines per group via `mgcv`. |
 | Bayesian LMM | `bayesian_tumor_growth(...)` | When you want posterior probability statements, credible intervals with direct probability interpretation, or you have small N where the prior matters. Slower (3-12 min); use `cmdstanr` backend for faster compile. |
 
 ### Required columns
@@ -65,14 +64,12 @@ Optional: `cage_column` (random intercept), `dose_column` (when crossed with tre
 
 - **LME4:** linearity on transformed scale; independent residuals within mouse (the random intercept absorbs mouse-level variation); homoscedasticity across treatments
 - **AUC:** unequal variances allowed (Welch); independence between animals; the AUC is a meaningful summary of growth (often arguable on its own — pair with growth rates)
-- **GAM:** smoothness penalty correctly trades fit vs wiggliness (the default `mgcv::s()` basis usually does fine; raise the basis dimension only if the smooth looks under-fitted)
 - **Bayesian LMM:** prior choice is honest; see [`BAYESIAN.md`](BAYESIAN.md)
 
 ### When to pick what
 
 - **Default:** LME4. Familiar; testable; fast.
 - **Small N (< 4 per group)**: Bayesian LMM with a `weakly_informative` or `informative` prior. Frequentist CIs at small N are notoriously narrow / over-confident; the Bayesian path is more honest.
-- **Non-exponential growth (flattening late):** GAM. The smooth captures the late-time shape.
 - **Direct comparison of total tumor burden:** AUC. Use it as a confirmatory metric alongside the rate-based model, not as a replacement.
 
 ---
@@ -99,14 +96,12 @@ Note: when PH is violated, the Cox HR is no longer a constant time-ratio — it'
 
 ### `bayesian_survival()` — Bayesian AFT
 
-Four parametric families:
+Two parametric families (exponential and gamma were removed in v0.23.0; exponential is Weibull with shape fixed at 1):
 
 | Family | Use when |
 |---|---|
 | `"weibull"` (default) | Flexible — handles increasing, decreasing, and constant hazards. Reportable as both AFT (time ratio) and PH (hazard ratio). |
 | `"lognormal"` | Hazard rises then falls. Biologically plausible for treated tumors where late-time animals tend to survive longer once they've cleared an initial dose |
-| `"exponential"` | Memoryless / constant hazard. Special case of Weibull with shape = 1. Use only when you have a strong reason to believe the hazard is constant |
-| `"gamma"` | More flexible tail than Weibull. Good alternative when Weibull's diagnostics don't fit |
 
 Returns the standard `treatment_effects` shape (Group, Time_Ratio, Lower_CrI, Upper_CrI, HR, Median_Survival, Events, Total, Event_Rate, Note) plus the Bayesian diagnostics block (Rhat, ESS, NUTS, LOO).
 
@@ -122,7 +117,9 @@ Returns the standard `treatment_effects` shape (Group, Time_Ratio, Lower_CrI, Up
 
 ## Body Weight / Toxicity
 
-Function family: `analyze_body_weight()`, `bayesian_body_weight()`, `body_weight_auc()`, `weight_corrected_tgi()`, `efficacy_toxicity_bivariate()`, `total_benefit_area()`, `therapeutic_window_metric()`, `bayesian_therapeutic_window()`, `bayesian_twm_from_data()`.
+Function family: `analyze_body_weight()`, `weight_loss_threshold()`, `therapeutic_window_metric()`.
+
+Body-weight AUC, weight-corrected TGI, the efficacy–toxicity bivariate metric, total benefit area, and the Bayesian body-weight and therapeutic-window models were removed in v0.23.0: each had an estimand flaw that biased it toward calling a toxic arm safe or efficacious (`CODE_REVIEW.md` R20.9–R20.13, R20-K).
 
 ### `analyze_body_weight()` — frequentist LME4
 
@@ -134,32 +131,9 @@ Linear mixed-effects model with random intercept per animal (and optional cage r
 
 Returns the same `treatment_effects` shape as `tumor_growth_statistics()` plus a `weight_trajectory_plot`.
 
-### `body_weight_auc()`
-
-AUC of weight loss as % from baseline. Lower AUC = better tolerated.
-
 ### `weight_loss_threshold` (event derivation)
 
 For survival-style analysis: time to ≥ X% weight loss. Wired into the dashboard's Survival module when "event source" is set to "weight loss".
-
-### `weight_corrected_tgi()`
-
-Tumor Growth Inhibition with weight loss correction:
-
-```
-TGI_uncorrected = 1 - (mean_treated / mean_control)   on volume scale
-TGI_corrected   = TGI_uncorrected × penalty(weight_loss)
-```
-
-The penalty grows non-linearly with weight loss — small losses (≤ 5%) have minimal effect; losses above the safety threshold (default 20%) penalize the TGI heavily.
-
-### `efficacy_toxicity_bivariate()`
-
-Joint analysis of efficacy (TGI or tumor AUC) and toxicity (max weight loss %) per mouse. Output includes per-mouse, per-group means, and a scatter `safety_efficacy_scatter` plot.
-
-### `total_benefit_area()`
-
-Total benefit = ∫(efficacy(t) − λ × toxicity(t)) dt over the study window. The lambda is a clinician-set tradeoff weight (default 1.0).
 
 ### Therapeutic Window Metric
 
@@ -167,22 +141,20 @@ Total benefit = ∫(efficacy(t) − λ × toxicity(t)) dt over the study window.
 TWM = TGI(%) / mean_weight_loss(%)
 ```
 
-Higher TWM = better therapeutic window. The Bayesian variants (`bayesian_therapeutic_window()`, `bayesian_twm_from_data()`) take posterior draws from the underlying TG + BW models and combine them draw-by-draw to propagate uncertainty.
+Higher TWM = better therapeutic window. (Planned change, `CODE_REVIEW.md` R20-K: the ratio is to be replaced by a two-axis summary — model-based TGI against worst weight loss, each with an interval — plus a tolerability flag.)
 
 ### Assumptions
 
 - **BW LME4:** linearity on natural weight scale; per-mouse random effect captures individual differences
 - **Adjusted weight:** the tumor density assumption (default 1.0 g/cm³) — most tumors are within 10% of this; large discrepancies matter
 - **TGI:** the comparison is on the chosen endpoint day; trajectories with different shapes can have the same TGI at one day and differ on another
-- **TWM:** independence between TG and BW models (current limitation; documented in `bayesian_therapeutic_window()` `@details`)
+- **TWM:** the efficacy and toxicity summaries come from separate models, so their uncertainty is not jointly propagated
 
 ---
 
 ## Drug Synergy
 
-Function family: `analyze_drug_synergy()`, `analyze_drug_synergy_over_time()`, `bayesian_synergy()`, `bayesian_synergy_over_time()`.
-
-Two synergy frameworks supported:
+Function family: `analyze_drug_synergy()`, `analyze_drug_synergy_over_time()`. (The Bayesian synergy models were removed in v0.23.0.)
 
 ### Bliss Independence
 
@@ -196,7 +168,7 @@ synergy < 0    = sub-additive (Bliss antagonism)
 synergy ≈ 0    = independent
 ```
 
-Reported as `bliss_summary` with the synergy score + 95% CI (or CrI for the Bayesian version).
+Reported with the synergy score and a mouse-level bootstrap 95% CI (`synergy_ci`).
 
 ### Why there is no Combination Index
 
@@ -226,12 +198,6 @@ change.
 
 Same metric, computed at each timepoint, returning a `synergy_summary` table with one row per `(day, treatment_pair)`. Useful for detecting late-onset synergy or synergy that decays.
 
-### Bayesian path
-
-`bayesian_synergy()` fits a Bayesian LMM on the four-arm design (A / B / combo / control), then derives the Bliss score from the posterior. Output includes `bliss_summary` with median + 95% CrI.
-
-Known caveat (CODE_REVIEW.md backend G.1): an earlier version wrapped `brms::brm()` in `suppressWarnings()`, hiding divergent-transition warnings. The current version exposes diagnostics via the standard `mcmc_diagnostics` + `nuts_diagnostics` fields.
-
 ### Assumptions
 
 - **Bliss:** the two drugs act independently (no shared targets / pathways). When the drugs hit the same pathway, "Bliss synergy" can look high but is mechanistically expected
@@ -241,7 +207,7 @@ Known caveat (CODE_REVIEW.md backend G.1): an earlier version wrapped `brms::brm
 
 ## Dose-Response
 
-Function family: `dose_response_statistics()`, `bayesian_dose_response()`.
+Function family: `dose_response_statistics()`. (The Bayesian dose-response model was removed in v0.23.0.)
 
 ### Frequentist (`drc` backend)
 
@@ -253,12 +219,6 @@ volume(dose) = lower + (upper - lower) / (1 + (dose / EC50)^slope)
 
 Returns: `linear_model`, `anova_model`, `statistics$ec50`, `hill_slope`, `lower_limit`, `upper_limit`, `growth_dose_p_value`, plus the analysis data.
 
-### Bayesian
-
-Same Hill / Emax form fit via `brms::brm()` with model-specific priors (`prior_emax`, `prior_ec50`, `prior_hill`, `prior_sigma`). Note: these priors are NOT bundled by `tg_priors()` because they're model-specific; only `mcmc = tg_mcmc()` applies here.
-
-Returns posterior summaries for each Hill parameter + `dose_response_curve_plot` with credible bands.
-
 ### Assumptions
 
 - Smooth, monotonic dose-response (no biphasic / hormetic effects)
@@ -269,7 +229,7 @@ Returns posterior summaries for each Hill parameter + `dose_response_curve_plot`
 
 ## Power Analysis
 
-Function family: `apriori_power_analysis()`, `apriori_power_simulation()`, `bayesian_power_analysis()`.
+Function family: `apriori_power_analysis()`, `apriori_power_simulation()`. (`bayesian_power_analysis()` was removed in v0.23.0.)
 
 ### Analytic (`apriori_power_analysis()`)
 
@@ -285,12 +245,6 @@ Simulates data under an LME4 model with specified variance structure, fits, and 
 - You have an estimate of within-mouse variance from prior data
 - You need to size for the right test (not the t-test approximation)
 
-### Bayesian simulation (`bayesian_power_analysis()`)
-
-Same idea as the LMM simulation but with Bayesian fitting at each simulated dataset. Reports posterior P(effect > 0) instead of frequentist power. Use when:
-- The actual analysis will be Bayesian (consistency)
-- You're sizing under genuine prior uncertainty
-
 ### Assumptions
 
 - Effect size is on the same scale you'll analyze on (log volume for `transform = "log"`; raw volume for `"none"`)
@@ -305,8 +259,6 @@ Same idea as the LMM simulation but with Bayesian fitting at each simulated data
 | `calculate_volume()` | Tumor volume from length × width. Default is the standard ellipsoid `V = (L × W²) × π / 6`. Other formulas: modified ellipsoid, cylinder, sphere. Dimensions are auto-corrected so the longer measurement is always L (handles "I measured them in the wrong order" data) |
 | `calculate_dates()` | Date-to-day conversion using a reference date. Two methods: `"direct"` (study day already in data) and `"computed"` (compute from a date column) |
 | `calculate_auc()` | Trapezoidal AUC over a time-volume vector |
-| `repeated_measures_anova()` | Simple wrapper for rmANOVA via `car::Anova` |
-| `export_diagnostics()` | Save diagnostic plots from an analysis result to disk |
 | `tumor_doubling_time()` | Doubling time from exponential growth rate (returns `log(2) / rate`) |
 | `tg_priors()`, `tg_mcmc()` | Config helpers (v0.4.7+) — bundle prior and MCMC arguments. See [`BAYESIAN.md`](BAYESIAN.md) |
 

@@ -13,7 +13,6 @@ bayesian_tumor_growth(
   cage_column = NULL,
   dose_column = NULL,
   transform = c("log", "sqrt", "none"),
-  model_type = c("lmm", "gam"),
   random_effects_specification = c("intercept_only", "slope"),
   reference_group = NULL,
   prior_strength = c("skeptical", "weakly_informative", "informative", "diffuse",
@@ -59,9 +58,6 @@ The column is also used for composite mouse-key construction.}
 \item{transform}{Volume transformation applied before modelling:
 \code{"log"} (default, recommended for exponential growth),
 \code{"sqrt"}, or \code{"none"}.}
-
-\item{model_type}{Which Bayesian model to fit: \code{"bayes"} (linear) or
-\code{"bayes_gam"} (smooth time x treatment).}
 
 \item{random_effects_specification}{Random effects structure:
 \code{"intercept_only"} (default, \code{(1 | ID)}) or
@@ -190,15 +186,14 @@ data updated the prior. \code{NULL} when \code{plots = FALSE}.}
 or \code{NULL} when \code{plots = FALSE}.}
 \item{\code{residuals_plot}}{Posterior mean residuals vs. study day,
 faceted by treatment group with a loess smoother. Systematic curvature
-indicates that the log-linear time assumption is violated and a GAM or
-nonlinear model should be considered. \code{NULL} when
-\code{plots = FALSE}.}
+indicates that the log-linear time assumption is violated. \code{NULL}
+when \code{plots = FALSE}.}
 \item{\code{growth_rates}}{Per-animal exponential growth rates. When the
 LMM was fit with \code{random_effects_specification = "slope"}, these
 are derived directly from the brms posterior — each row carries
 \code{growth_rate} (posterior median) plus \code{growth_rate_lower}
 and \code{growth_rate_upper} (2.5\% / 97.5\% credible intervals). For
-intercept-only and GAM paths, falls back to log-linear OLS per
+the intercept-only path, falls back to log-linear OLS per
 animal and the credible-interval columns reflect OLS confidence
 intervals (Round 2 E.3).}
 \item{\code{data_summary}}{Descriptive statistics by treatment group and

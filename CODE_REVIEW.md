@@ -5269,11 +5269,11 @@ Recorded in place here rather than by editing the earlier text, following the Ro
 | R20.6 | Survival `cluster(cage)` with 4–10 clusters: 28 % false positives | **Critical** | Open |
 | R20.7 | Analytic power k ≥ 3: required N 2.6–4× too small | **Critical** | Open |
 | R20.8 | R14.2 fixed in the label only | **Critical** | Open |
-| R20.9 | ETB scores early-removed animals as efficacious | **Critical** | Open |
-| R20.10 | `body_weight_auc` truncation: lethal arm scores safer | **Critical** | Open |
-| R20.11 | TBA survivor-conditioned toxicity; rank inverted | **Critical** | Open |
-| R20.12 | Bayesian dose-response fails on default `endpoint_day = NULL` | **Critical** | Open |
-| R20.13 | Bayesian TWM treats weight gain as toxicity | **Critical** | Open |
+| R20.9 | ETB scores early-removed animals as efficacious | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
+| R20.10 | `body_weight_auc` truncation: lethal arm scores safer | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
+| R20.11 | TBA survivor-conditioned toxicity; rank inverted | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
+| R20.12 | Bayesian dose-response fails on default `endpoint_day = NULL` | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
+| R20.13 | Bayesian TWM treats weight gain as toxicity | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
 | R20.14–R20.48 | Dose-response, synergy, survival/weight-loss, tumour growth, power, Bayesian, toxicity, cross-cutting (35 items) | Major | Open |
 | R20.49–R20.53, R20.55 | Vignette, examples, README, datasets, CI/process, test-suite gaps | Major | Open |
 | R20.54 | Build hygiene | Minor | Open |
@@ -5371,3 +5371,43 @@ Round 19 correction, added to R20-H: "`detect_volume_units()` — correct both w
 | Power, treated slope 0.13 vs 0.15, n = 5 / 8 / 10 per arm | ≈ 1.0 for all methods | random slope 0.26 / 0.43 / 0.55; intercept-only "0.92 / 0.96 / 0.95" (the inflation, not power) |
 | Singular fits, random-slope models | 50–60 % (the true slope variance is 0, so this is benign) | 0 % |
 | Time per fit | 17–30 ms, all models | 17–30 ms |
+
+
+---
+
+## R20-L Implementation log — v0.23.0, step 1: removals (2026-09-29)
+
+The first of the steps agreed in R20-K: remove what the maintainer decided to drop, before fixing what stays. Nothing here changes a number that a kept function returns.
+
+**Removed exports (15):** `bayesian_synergy()`, `bayesian_synergy_over_time()`, `bayesian_dose_response()`, `bayesian_body_weight()`, `bayesian_therapeutic_window()`, `bayesian_twm_from_data()`, `bayesian_power_analysis()`, `body_weight_auc()`, `total_benefit_area()`, `efficacy_toxicity_bivariate()`, `weight_corrected_tgi()`, `tumor_auc_analysis()`, `repeated_measures_anova()`, `export_diagnostics()` and `new_me_result()`. The `me_result` class and its `print`, `summary` and `plot` methods went with them, because nothing returned one any more. 27 exports remain.
+
+**Removed paths:**
+- GAMM, from `tumor_growth_statistics()` (`model_type` is now `"lme4"` or `"auc"`), `analyze_body_weight()` and `bayesian_tumor_growth()` (both lose `model_type`).
+- The exponential and gamma families, from `bayesian_survival()`; Weibull and log-normal remain.
+- `gamm4` and `mgcv`, from Imports.
+- Helpers left with no caller: `bayes_backtransform()`, `build_posterior_summary()` and `me_adjust_across_by()`. `build_requested_contrasts()` loses `by`, which only the GAM path used.
+
+`tumor_doubling_time()` moved to its own file, unchanged except that `cage_column` is now documented.
+
+The vignette's AUC section called `tumor_auc_analysis()`. It now uses `tumor_growth_statistics(model_type = "auc", p_adjust_method = "holm")`, verified on `master_synthetic_data`. The vignette as a whole still fails from its first data chunk, as R20.49 records; that item stays open.
+
+**Closed by removal:** R20.9, R20.10, R20.11, R20.12, R20.13 (Critical); R20.26, R20.28, R20.36, R20.42, R20.45, R20.47 (Major); R20.60 (Minor); R20.79 (Efficiency).
+
+**Partly closed; the rest stays open:**
+
+| ID | Gone with the removals | Still open |
+|---|---|---|
+| R20.22 | ETB, TBA, WCTGI and `body_weight_auc` | `therapeutic_window_metric()`, `analyze_body_weight()` and `weight_loss_threshold()` still drop weight rows |
+| R20.30 | the `body_weight_auc` `reference_group` row | the other rows |
+| R20.38 | the gamma shape prior | the Weibull shape prior |
+| R20.40 | the body-weight and synergy plots | tumour growth |
+| R20.41 | the GAM smooth-term prior | main-effect prior scaling for `transform = "none"` / `"sqrt"` |
+| R20.70 | the `weight_corrected_tgi` fraction and the `body_weight_auc` baselines | the TWM parts, which the two-axis redesign replaces |
+| R20.78 | five of the seven compiled entry points | compilation cost for tumour growth and survival |
+
+**Verification (executed):**
+- `devtools::test()`: 23 files, 267 tests, 703 expectations, 0 failed. One skip, which is legitimate.
+- `R CMD check --no-tests --no-manual --ignore-vignettes --as-cran`: 1 ERROR, 3 WARNINGs, 9 NOTEs, the same status as v0.22.0. The ERROR is the pre-existing `analyze_drug_synergy` example (R20.50). Against v0.22.0, the detailed output differs only by disappearances: the undocumented `cage_column` in `tumor_doubling_time.Rd`, the stale `auc_method` in `tumor_growth_statistics.Rd`, the `me_result` Rd mismatches, and the removed functions' global-variable notes.
+- Dashboard 26.09.001 was built and exercised against this version; see its R20-D.I.
+
+**Next:** step 2, the one-line and near-one-line bugs, then the study-design panel with the animal key and declared units (T1, R20.3, R20.43, R20.83).

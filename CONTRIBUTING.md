@@ -23,14 +23,14 @@ devtools::check()
 
 As of v0.10.0 `brms` ≥ 2.19 is a **required** dependency, not a suggestion, so
 `devtools::load_all()` needs it (and therefore a C++ toolchain) for *any*
-development, not only Bayesian work. The same applies to `bayesplot`, `gamm4`,
-`mgcv`, `pwr`, `coin`, `clinfun`, `ggpubr` and `posterior`.
+development, not only Bayesian work. The same applies to `bayesplot`,
+`pwr`, `coin`, `clinfun`, `ggpubr` and `posterior`.
 
 This is deliberate and worth understanding before you are tempted to reverse it.
 While `brms` was in `Suggests`, every Bayesian test file began with
 `skip_if_not_installed("brms")`, so on a machine without brms the entire Bayesian
 surface silently reported green. Two Critical defects survived five releases behind
-that skip — `bayesian_synergy()` was non-functional from v0.4.6 to v0.9.0, and
+that skip — `bayesian_synergy()` (since removed) was non-functional from v0.4.6 to v0.9.0, and
 `bayesian_survival()` errored on every call without a cage random effect. See
 `CODE_REVIEW.md` §R3-L.
 

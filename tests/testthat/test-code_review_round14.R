@@ -178,7 +178,7 @@ test_that("R14.4: pairwise_comparisons is a data frame on every model path", {
   # it silently, which is how the adjustment scope went missing from the header
   # on the default path.
   df <- tg_three_arm()
-  for (mt in c("lme4", "gam", "auc")) {
+  for (mt in c("lme4", "auc")) {
     r <- suppressWarnings(suppressMessages(
       tumor_growth_statistics(df, model_type = mt, plots = FALSE, verbose = FALSE)))
     expect_s3_class(r$pairwise_comparisons, "data.frame")
@@ -190,7 +190,7 @@ test_that("R14.4: every path carries the same canonical columns", {
   df <- tg_three_arm()
   need <- c("contrast", "P_Value_Adjusted", "Adjust_Scope",
             "Comparison_Family", "P_Adjust_Method")
-  for (mt in c("lme4", "gam", "auc")) {
+  for (mt in c("lme4", "auc")) {
     r <- suppressWarnings(suppressMessages(
       tumor_growth_statistics(df, model_type = mt, plots = FALSE, verbose = FALSE)))
     missing <- setdiff(need, names(r$pairwise_comparisons))

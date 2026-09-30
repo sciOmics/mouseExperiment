@@ -547,17 +547,6 @@ make_bw_df <- function() {
   rbind(mk("Control", 0), mk("DrugA", -0.06), mk("DrugB", -0.02))
 }
 
-test_that("R3.4: the body-weight GAM path returns a populated EMM table", {
-  res <- suppressWarnings(suppressMessages(analyze_body_weight(
-    make_bw_df(), volume_column = "Volume", cage_column = "Cage",
-    model_type = "gam", reference_group = "Control", volume_units = "mm3")))
-
-  # Both were silently NULL before: emmeans could not dispatch on the unpatched
-  # gamm4 stub and the error was swallowed by tryCatch.
-  expect_false(is.null(res$emmeans_table))
-  expect_equal(nrow(res$emmeans_table), 3L)
-  expect_false(is.null(res$pairwise_comparisons))
-})
 
 test_that("R3.12: analyze_body_weight returns adjusted pairwise comparisons", {
   df <- make_bw_df()
@@ -690,25 +679,8 @@ test_that("R3.5: the endpoint estimand reaches synergy and the other consumers",
   tgi <- function(r) r$summary$TGI_Percent[r$summary$Treatment == "DrugA"]
   expect_gt(tgi(s_model), tgi(s_surv))
   expect_false(is.null(s_model$attrition))
-
-  # weight_corrected_tgi and efficacy_toxicity_bivariate take the same argument.
-  expect_no_error(suppressWarnings(suppressMessages(
-    weight_corrected_tgi(df, reference_group = "Control",
-                         endpoint_method = "model"))))
-  expect_no_error(suppressWarnings(suppressMessages(
-    efficacy_toxicity_bivariate(df, reference_group = "Control",
-                                endpoint_method = "model"))))
 })
 
-test_that("R3.5: an animal with no row at the endpoint day still contributes", {
-  df <- make_attrition_df()[, c("ID", "Treatment", "Day", "Volume", "Weight")]
-  r <- suppressWarnings(suppressMessages(efficacy_toxicity_bivariate(
-    df, reference_group = "Control", endpoint_method = "model")))
-  # Previously `sub$Volume[sub$Day == max_day]` was numeric(0) for any animal
-  # removed early; every enrolled animal must appear exactly once.
-  expect_equal(nrow(r$per_mouse), length(unique(df$ID)))
-  expect_true(all(is.finite(r$per_mouse$Efficacy)))
-})
 
 # ---- G.6 / R3.6 / R3.7: bootstrap intervals ---------------------------------
 

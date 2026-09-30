@@ -132,23 +132,28 @@ print(p)
 
 ## AUC Analysis
 
-The `tumor_auc_analysis` function calculates the area under the curve:
+AUC is one of the `tumor_growth_statistics()` models. Its group comparisons are
+independent Welch t-tests, so choose a p-value correction such as Holm; Dunnett
+and Tukey need a single fitted model and are rejected on this path:
 
 ```{r auc}
 # Calculate AUC
-auc_results <- tumor_auc_analysis(
+auc_results <- tumor_growth_statistics(
   df = data_with_volume,
   time_column = "Day",
   volume_column = "Volume",
   treatment_column = "Treatment",
-  id_column = "Mouse_ID"
+  id_column = "Mouse_ID",
+  cage_column = "Cage",
+  model_type = "auc",
+  p_adjust_method = "holm"
 )
 
 # Visualize AUC
+auc_individual <- auc_results$auc_analysis$individual
 p_auc <- plot_auc(
-  auc_results$auc_data,
-  treatment_column = "Treatment",
-  auc_column = "AUC",
+  auc_individual,
+  group_column = intersect(c("Group", "Treatment"), names(auc_individual))[1],
   title = "Area Under the Curve by Treatment"
 )
 print(p_auc)
