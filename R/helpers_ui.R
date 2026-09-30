@@ -62,9 +62,30 @@ status_alert <- function(msg, type = "danger") {
     success = "check",
     "info-circle"
   )
-  icon_cls <- if (type == "info") paste(icon_name, "fa-spin") else icon_name
+  # R20.D21: "spinner fa-spin" as the icon *name* logged "does not correspond
+  # to a known icon" on every info alert; the spin is a class.
   shiny::div(class = paste0("alert alert-", type),
-             shiny::icon(icon_cls), msg)
+             shiny::icon(icon_name, class = if (type == "info") "fa-spin"), msg)
+}
+
+#' Multiple-comparison corrections offered for a tumour-growth model
+#'
+#' CODE_REVIEW.md R20.D39 -- the AUC path compares arms with independent Welch
+#' t-tests, which have no common error term or joint covariance, so Dunnett and
+#' Tukey are undefined there and the backend rejects them. The dropdown's
+#' default was Dunnett, so choosing AUC and clicking Run failed every time.
+#'
+#' @param model_type `"lme4"`, `"auc"` or `"bayes"`.
+#' @return Named character vector for `selectInput(choices =)`.
+#' @keywords internal
+tg_p_adjust_choices <- function(model_type = "lme4") {
+  joint <- c("Dunnett (exact, vs reference)" = "dunnett",
+             "Tukey HSD (all pairs)"         = "tukey")
+  family <- c("Bonferroni"             = "bonferroni",
+              "Holm"                   = "holm",
+              "Benjamini-Hochberg FDR" = "fdr",
+              "None (unadjusted)"      = "none")
+  if (identical(model_type, "auc")) family else c(joint, family)
 }
 
 #' Safely execute analysis function with error handling

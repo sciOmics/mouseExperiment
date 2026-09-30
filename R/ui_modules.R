@@ -187,7 +187,10 @@ column_mapping_ui <- function(col_names, detected_cols, ns = NS(NULL)) {
                      selected = detected_cols$date),
           textInput(ns("reference_date"), "Reference Date (YYYY-MM-DD)",
                    value = "2025-03-24",
-                   placeholder = "First measurement date")
+                   placeholder = "First measurement date"),
+          # R20.D4: a date the preview cannot use is reported here, where it
+          # was typed, instead of being swallowed.
+          uiOutput(ns("reference_date_status"))
         ),
 
         selectInput(ns("col_id"),
@@ -396,12 +399,7 @@ tumorGrowthUI <- function(id) {
 
           selectInput(ns("tg_p_adjust"),
                      "Multiple-comparison correction",
-                     choices = c("Dunnett (exact, vs reference)" = "dunnett",
-                                 "Tukey HSD (all pairs)"         = "tukey",
-                                 "Bonferroni"                    = "bonferroni",
-                                 "Holm"                          = "holm",
-                                 "Benjamini-Hochberg FDR"        = "fdr",
-                                 "None (unadjusted)"             = "none"),
+                     choices = tg_p_adjust_choices("lme4"),
                      selected = "dunnett"),
           helpText("The correction is applied over exactly the set of ",
                    "comparisons shown, so the family and the correction always ",
@@ -409,7 +407,9 @@ tumorGrowthUI <- function(id) {
                    "Tukey only for 'All Comparisons'; the other options work ",
                    "with either. Dunnett exploits the correlation between ",
                    "vs-control contrasts, so it is less conservative than ",
-                   "Bonferroni for the same family."),
+                   "Bonferroni for the same family. The AUC model compares ",
+                   "arms with separate t-tests that share no error term, so ",
+                   "Dunnett and Tukey are not offered for it; Holm is its default."),
 
           # 4. Data Transformation (LME4 only)
           conditionalPanel(ns = ns,
@@ -1581,7 +1581,7 @@ helpUI <- function() {
     h4("Power Analysis"),
     tags$dl(
       tags$dt("Analytic (a priori)"),
-      tags$dd("Classical power calculation for t-test or one-way ANOVA across a range of effect sizes and sample sizes."),
+      tags$dd("Classical power for each treated-vs-control comparison (two-sample t-test), with the alpha split across the comparisons a multi-arm study makes and an optional attrition allowance, across a range of effect sizes and sample sizes."),
       tags$dt("LMM simulation"),
       tags$dd("Simulates repeated-measures data under a linear mixed model and estimates power empirically across a grid of sample sizes. An optional euthanasia volume limit models attrition; leaving it blank assumes every animal is measured at every timepoint, which overstates power by roughly 6 points at 30 % attrition. Note that baseline SD and random-intercept SD do not affect the answer \u2014 the test is on growth rates, which are orthogonal to per-animal baselines. Random-slope SD is the parameter that matters.")
     ),

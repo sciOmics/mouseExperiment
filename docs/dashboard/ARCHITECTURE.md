@@ -251,7 +251,7 @@ The registry is multi-user-isolated via four independent layers; see [`SECURITY.
 | `inst/www/js/session-id.js` | Client-side cookie setter on first connect (256-bit CSPRNG). |
 | `R/resume_banner.R` | Banner UI + server. Reads `list_jobs(sid)`, renders rows, dispatches Resume/Cancel clicks via `register_resume_handler` / `dispatch_resume`. |
 | `R/bayes_job_runner.R` | Generic `attach_bayes_poller()` + `register_bayes_resume()`. Per-module files compose these. |
-| `R/tg_resume.R` etc. | Per-kind: `launch_<X>_bayes_job()`, `register_<X>_resume()`, the three finalizers, the `.legacy_inline_<X>_bayes()` fallback for when no sid is available. |
+| `R/tg_resume.R` etc. | Per-kind: `launch_<X>_bayes_job()`, `register_<X>_resume()`, the three finalizers. A session without the cookie gets a `make_local_sid()` key in `R/app.R` and uses the same registry path (R20.D3). |
 | `R/ttl_sweeper.R` | `start_ttl_sweeper()` — `later::later`-driven periodic eviction. Called once per R process from `runDashboard()`. |
 
 ---

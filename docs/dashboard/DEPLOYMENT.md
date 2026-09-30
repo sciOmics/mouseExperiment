@@ -208,7 +208,7 @@ Set via `docker compose.yml` or the compose-override file on the VPS.
 | `Failed to read shiny-prod from container` after deploy | Container started but Shiny didn't bind | Check the container's logs; usually a missing R dep |
 | 502 Bad Gateway from NPM | Container is down or unreachable | `docker ps`, `docker logs shiny-prod` |
 | Slow first request after deploy | Shiny process still warming up | Normal — first request triggers package load + Stan model compile cache |
-| F.7 banner doesn't show on reconnect | Cookie not set (no HTTPS / dev mode) | Use HTTPS in production; localhost dev falls back to legacy inline |
+| F.7 banner doesn't show on reconnect | Cookie not set (no HTTPS / dev mode) | Use HTTPS in production. Without the cookie (blocked, or a non-localhost host over HTTP) the session uses a local registry key: fits run but cannot be resumed |
 | Bayesian fit fails immediately | brms / Stan toolchain broken | Check Dockerfile's Layer 2; rebuild from scratch |
 
 For deeper troubleshooting: `mouseExperimentVPS/docs/troubleshooting.md`.
@@ -264,7 +264,7 @@ See `mouseExperimentVPS/docs/backup-restore.md` for the full procedure.
 | Port | `3838` | `3838` |
 | HTTPS | No (plain HTTP) | Yes (Let's Encrypt via NPM) |
 | F.7 cookie `Secure` flag | Can't be set (the cookie won't transmit) | Set; cookie works normally |
-| F.7 resume behavior | Falls back to legacy inline (no resume) | Full resume support |
+| F.7 resume behavior | Usually full (browsers treat localhost as a secure context); without the cookie, a local registry key: fits run, no resume | Full resume support |
 | Max upload | 5 MB | 100 MB |
 | Workers | `availableCores() - 1` | Same |
 | Logging | stdout | stdout → Docker → aggregator |

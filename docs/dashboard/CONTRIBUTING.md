@@ -108,7 +108,7 @@ Required steps for a resumable Bayesian fit:
    - `launch_<X>_bayes_job(sid, params, input, output, session, rv)`
    - `register_<X>_resume(input, output, session, rv)`
    - `.<X>_bayes_promise(p)`, `.finalize_<X>_success`, `.finalize_<X>_failure`, `.finalize_<X>_cancellation`
-   - `.legacy_inline_<X>_bayes(p, ...)` fallback for when sid is unavailable
+   - no separate cookie-less path: `R/app.R` gives such sessions a `make_local_sid()` key, so the registry path covers them (R20.D3)
 2. Wire your module's Bayesian branch to call `launch_<X>_bayes_job(rv$session_id, params, ...)` instead of the inline future.
 3. Call `register_<X>_resume(input, output, session, rv)` at the bottom of `<X>_server()`.
 4. Add the `kind` tag to `.kind_to_label()` in `R/resume_banner.R`.

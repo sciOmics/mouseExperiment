@@ -13,9 +13,12 @@
 #' @keywords internal
 launch_tg_bayes_job <- function(sid, bayes_params,
                                 input, output, session, rv) {
+  # R20.D3: every session now has a registry key -- app.R gives a session
+  # without the cookie a local one -- so the inline fallback, which could
+  # never run, is gone. This guard covers callers that bypass app.R.
   if (is.null(sid) || identical(sid, SID_NONE)) {
-    .legacy_inline_tg_bayes(bayes_params, input, output, session, rv)
-    return(invisible(NULL))
+    sid <- make_local_sid()
+    rv$session_id <- sid
   }
   show_analysis_modal(
     "Bayesian tumor growth fit running…",
@@ -125,19 +128,4 @@ register_tg_resume <- function(input, output, session, rv) {
   shiny::removeModal()
   output$tg_status_msg <- shiny::renderUI(
     status_alert("Bayesian analysis was cancelled.", "warning"))
-}
-
-.legacy_inline_tg_bayes <- function(bayes_params,
-                                    input, output, session, rv) {
-  show_analysis_modal(
-    "Bayesian tumor growth fit running…",
-    "Fitting Bayesian model. This may take 3–12 minutes.")
-  .tg_bayes_promise(bayes_params) %...>% (function(result) {
-    .finalize_tg_success(result, list(bayes_params = bayes_params),
-                         input, output, session, rv)
-  }) %...!% (function(err) {
-    .finalize_tg_failure(conditionMessage(err),
-                         input, output, session, rv)
-  })
-  invisible(NULL)
 }

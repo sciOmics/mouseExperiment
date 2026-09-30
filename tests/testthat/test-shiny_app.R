@@ -13,8 +13,10 @@
 
 skip_if_not_installed("shinytest2")
 skip_if_not_installed("shiny")
-skip_if_not_installed("chromote",
-                       message = "chromote not installed — skipping Shiny app tests")
+# R20.D11: skip_if_not_installed() has no `message` argument, so this line
+# errored at file level whenever shinytest2 was installed and none of the tests
+# below ever ran.
+skip_if_not_installed("chromote")
 
 # Check Chrome / Chromium is available
 skip_if(
@@ -22,9 +24,10 @@ skip_if(
   message = "Chrome/Chromium not found — skipping Shiny app tests"
 )
 
-# Build the minimal test app from helper-app.R
-app_obj <- build_test_app()
-skip_if(is.null(app_obj), "Could not build test app — package namespace unavailable")
+# The apps live in tests/testthat/apps/<name>/app.R and load the package
+# themselves: AppDriver runs them in a separate R process, which cannot see a
+# package loaded from source in this one (R20.D11).
+upload_app <- test_path("apps", "data-upload")
 
 # ===========================================================================
 # Helpers
@@ -32,7 +35,7 @@ skip_if(is.null(app_obj), "Could not build test app — package namespace unavai
 
 start_driver <- function(timeout = 15000) {
   shinytest2::AppDriver$new(
-    app_obj,
+    upload_app,
     name              = "dashboard-data-tab",
     timeout           = timeout,
     wait              = TRUE
@@ -47,7 +50,7 @@ test_that("app starts and renders the Data tab without error", {
   on.exit(app$stop(), add = TRUE)
 
   expect_no_error(app$wait_for_idle(timeout = 10000))
-  html <- app$get_html("#shiny-disconnected-overlay", timeout = 3000) %||% ""
+  html <- app$get_html("#shiny-disconnected-overlay") %||% ""
   expect_false(grepl("disconnected", html, ignore.case = TRUE),
                info = "App disconnected immediately after start")
 })
@@ -60,10 +63,10 @@ test_that("Load Demo Data (combo) sets data_valid to TRUE", {
   on.exit(app$stop(), add = TRUE)
 
   # Select the combo dataset
-  app$set_inputs(demo_dataset = "combo", wait_ = FALSE)
+  app$set_inputs(`data-demo_dataset` = "combo", wait_ = FALSE)
 
   # Click the Load Demo Data button and wait for reactivity to settle
-  app$click("load_demo_data")
+  app$click("data-load_demo_data")
   app$wait_for_idle(timeout = 15000)
 
   valid_text <- app$get_text("#test_data_valid")
@@ -75,8 +78,8 @@ test_that("Load Demo Data (combo) loads non-zero rows", {
   app <- start_driver()
   on.exit(app$stop(), add = TRUE)
 
-  app$set_inputs(demo_dataset = "combo", wait_ = FALSE)
-  app$click("load_demo_data")
+  app$set_inputs(`data-demo_dataset` = "combo", wait_ = FALSE)
+  app$click("data-load_demo_data")
   app$wait_for_idle(timeout = 15000)
 
   nrow_text <- app$get_text("#test_nrow")
@@ -92,8 +95,8 @@ test_that("Load Demo Data (dose_levels) sets data_valid to TRUE", {
   app <- start_driver()
   on.exit(app$stop(), add = TRUE)
 
-  app$set_inputs(demo_dataset = "dose_levels", wait_ = FALSE)
-  app$click("load_demo_data")
+  app$set_inputs(`data-demo_dataset` = "dose_levels", wait_ = FALSE)
+  app$click("data-load_demo_data")
   app$wait_for_idle(timeout = 15000)
 
   valid_text <- app$get_text("#test_data_valid")
@@ -108,8 +111,8 @@ test_that("success alert appears after loading combo demo data", {
   app <- start_driver()
   on.exit(app$stop(), add = TRUE)
 
-  app$set_inputs(demo_dataset = "combo", wait_ = FALSE)
-  app$click("load_demo_data")
+  app$set_inputs(`data-demo_dataset` = "combo", wait_ = FALSE)
+  app$click("data-load_demo_data")
   app$wait_for_idle(timeout = 15000)
 
   html <- app$get_html("body")
@@ -127,8 +130,8 @@ test_that("column mapping UI renders after loading demo data", {
   app <- start_driver()
   on.exit(app$stop(), add = TRUE)
 
-  app$set_inputs(demo_dataset = "combo", wait_ = FALSE)
-  app$click("load_demo_data")
+  app$set_inputs(`data-demo_dataset` = "combo", wait_ = FALSE)
+  app$click("data-load_demo_data")
   app$wait_for_idle(timeout = 15000)
 
   html <- app$get_html("body")
@@ -140,6 +143,35 @@ test_that("column mapping UI renders after loading demo data", {
 })
 
 `%||%` <- function(a, b) if (!is.null(a)) a else b
+
+# ===========================================================================
+# Test: the full dashboard starts a working session (R20.D3)
+# ===========================================================================
+# The first version of the R20.D3 fix read a reactive value in the top-level
+# server body. That closed every session at start-up, while the page still
+# loaded with HTTP 200 and testServer() -- which runs the body inside a reactive
+# context -- passed.
+test_that("the full dashboard starts a working session", {
+  app <- shinytest2::AppDriver$new(
+    test_path("apps", "dashboard"),
+    name         = "dashboard-full",
+    timeout      = 30000,
+    load_timeout = 90000,
+    wait         = TRUE
+  )
+  on.exit(app$stop(), add = TRUE)
+
+  expect_true(isTRUE(app$get_js("Shiny.shinyapp.isConnected()")))
+  # The server sends the disclaimer modal as the session starts.
+  expect_true(isTRUE(app$get_js("$('.modal-dialog').length > 0")))
+
+  # And the modules respond: loading a demo maps the weight column.
+  app$run_js("$('.modal-footer button').click();")
+  app$set_inputs(`data-demo_dataset` = "master", wait_ = FALSE)
+  app$click("data-load_demo_data")
+  app$wait_for_js("$('#data-col_weight').val() === 'Weight'", timeout = 30000)
+  expect_true(isTRUE(app$get_js("Shiny.shinyapp.isConnected()")))
+})
 
 # ===========================================================================
 # Test: end-to-end upload → run TG LME4 → verify results populate
@@ -157,12 +189,8 @@ test_that("column mapping UI renders after loading demo data", {
 test_that("end-to-end: load combo demo + run TG LME4 populates results", {
   skip_if_not_installed("mouseExperiment")
 
-  workflow_app <- build_workflow_test_app()
-  skip_if(is.null(workflow_app),
-          "Could not build workflow test app — package namespace incomplete")
-
   app <- shinytest2::AppDriver$new(
-    workflow_app,
+    test_path("apps", "workflow"),
     name    = "dashboard-workflow",
     timeout = 30000,
     wait    = TRUE
@@ -170,8 +198,8 @@ test_that("end-to-end: load combo demo + run TG LME4 populates results", {
   on.exit(app$stop(), add = TRUE)
 
   # Step 1 — load combo demo data
-  app$set_inputs(demo_dataset = "combo", wait_ = FALSE)
-  app$click("load_demo_data")
+  app$set_inputs(`data-demo_dataset` = "combo", wait_ = FALSE)
+  app$click("data-load_demo_data")
   app$wait_for_idle(timeout = 15000)
   expect_equal(trimws(app$get_text("#test_data_valid")), "TRUE",
                info = "Data should load successfully")

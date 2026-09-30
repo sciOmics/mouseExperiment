@@ -48,15 +48,23 @@ start_ttl_sweeper <- function(interval_seconds = 60L,
                  error = function(e2) NULL)
         0L
       })
-    later::later(do_sweep, delay = interval_seconds)
+    .sweeper_state$cancel <- later::later(do_sweep, delay = interval_seconds)
   }
-  later::later(do_sweep, delay = interval_seconds)
+  # Keep the cancel handle so .reset_ttl_sweeper() can remove the pending
+  # callback, not just the flag.
+  .sweeper_state$cancel <- later::later(do_sweep, delay = interval_seconds)
   invisible(NULL)
 }
 
 #' Reset the sweeper state. Test-only.
 #' @keywords internal
 .reset_ttl_sweeper <- function() {
+  # Cancel the pending callback too. Left on the global later loop, it keeps
+  # the loop non-empty, and shiny's testServer() waits for an empty loop every
+  # time a test reads an output -- so every later test file that read one hung
+  # until the callback was due (9,999 s in the sweeper's own test).
+  if (is.function(.sweeper_state$cancel)) .sweeper_state$cancel()
+  .sweeper_state$cancel  <- NULL
   .sweeper_state$started <- FALSE
   invisible(NULL)
 }

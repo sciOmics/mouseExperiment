@@ -82,13 +82,24 @@ detect_date_format <- function(data, date_column, reference_date) {
   start_date <- reference_date
 
   # Parse reference_date from its canonical YYYY-MM-DD or common dashboard formats
+  # R20.D4: the handler returned `NA_Date_`, which does not exist, so any
+  # reference date outside these formats raised "object 'NA_Date_' not found".
+  # The intended fallback -- today's date -- would count every Day from today,
+  # which is silently wrong, so an unusable reference date is reported instead.
+  if (is.null(start_date) || !nzchar(trimws(start_date))) {
+    stop("No reference date is set. Enter the study's reference date (Day 0) ",
+         "as YYYY-MM-DD, for example 2025-03-24.", call. = FALSE)
+  }
   ref_parsed_base <- tryCatch(
     as.Date(start_date,
             tryFormats = c("%Y-%m-%d", "%m/%d/%Y", "%d-%b-%Y",
                            "%B %d %Y", "%B %d, %Y")),
-    error = function(e) NA_Date_
+    error = function(e) as.Date(NA)
   )
-  if (is.na(ref_parsed_base)) ref_parsed_base <- Sys.Date()
+  if (is.na(ref_parsed_base)) {
+    stop("Reference date '", start_date, "' is not a recognised date. Enter ",
+         "it as YYYY-MM-DD, for example 2025-03-24.", call. = FALSE)
+  }
 
   if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_val)) {
     fmt <- "%m/%d/%Y"

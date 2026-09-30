@@ -42,6 +42,29 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     message(strrep("=", 78))
   }
 
+  app <- dashboard_app()
+
+  # Enable background async execution for Bayesian models (1 worker to avoid
+  # overloading the server; each Bayesian fit runs Stan in parallel internally)
+  if (requireNamespace("future", quietly = TRUE)) {
+    future::plan(future::multisession, workers = 1L)
+    on.exit(future::plan(future::sequential), add = TRUE)
+  }
+
+  shiny::runApp(app, host = host, port = port, launch.browser = TRUE)
+}
+
+#' Build the dashboard app without running it
+#'
+#' Everything `runDashboard()` serves: static assets, the UI, the TTL sweeper
+#' and the server function. Split out so a test can start a real session with
+#' `shiny::testServer(dashboard_app(), ...)`. The full server had no test, and
+#' a start-up error in it crashed every session while the page still loaded
+#' with HTTP 200.
+#'
+#' @return A `shiny.appobj`.
+#' @keywords internal
+dashboard_app <- function() {
   # Mount static assets from inst/www/ (bundled with package)
   # system.file() returns the installation path during normal use, and the
   # source directory root during devtools::load_all(), so inst/www resolves correctly in both cases.
@@ -166,7 +189,12 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     # read from the HTTP Cookie header, never from input$. NULL until
     # the JS that sets the cookie has run, but get_sid_or_none() returns
     # SID_NONE as a sentinel so downstream observers can pattern-match.
-    rv$session_id <- get_sid_or_none(session)
+    # R20.D3: a session without the cookie gets a local registry key rather than
+    # a separate inline path (see make_local_sid()). Resolved into a plain local
+    # first: reading rv$session_id here, outside a reactive context, is an error.
+    sid <- get_sid_or_none(session)
+    if (identical(sid, SID_NONE)) sid <- make_local_sid()
+    rv$session_id <- sid
     # Mount the resume banner. on_resume dispatches by job$kind; the
     # per-kind handlers are registered by each Bayesian module in
     # commits 3-4 via register_resume_handler().
@@ -283,13 +311,5 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     })
   }
 
-  # Enable background async execution for Bayesian models (1 worker to avoid
-  # overloading the server; each Bayesian fit runs Stan in parallel internally)
-  if (requireNamespace("future", quietly = TRUE)) {
-    future::plan(future::multisession, workers = 1L)
-    on.exit(future::plan(future::sequential), add = TRUE)
-  }
-
-  app <- shinyApp(ui = ui, server = server)
-  shiny::runApp(app, host = host, port = port, launch.browser = TRUE)
+  shinyApp(ui = ui, server = server)
 }

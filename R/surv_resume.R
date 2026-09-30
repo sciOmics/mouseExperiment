@@ -4,13 +4,16 @@
 #' @keywords internal
 launch_surv_bayes_job <- function(sid, bayes_params,
                                   input, output, session, rv) {
+  # R20.D3: every session now has a registry key -- app.R gives a session
+  # without the cookie a local one -- so the inline fallback, which could
+  # never run, is gone. This guard covers callers that bypass app.R.
   if (is.null(sid) || identical(sid, SID_NONE)) {
-    .legacy_inline_surv_bayes(bayes_params, input, output, session, rv)
-    return(invisible(NULL))
+    sid <- make_local_sid()
+    rv$session_id <- sid
   }
   show_analysis_modal(
     "Bayesian survival fit running…",
-    "Fitting Weibull model with brms. This may take 3–12 minutes.")
+    "Fitting the Bayesian AFT model with brms. This may take 3–12 minutes.")
   shinyjs::runjs(sprintf(
     "window.trackAnalysisStart('survival', 'bayes', '%s');",
     bayes_params$ref_group))
@@ -121,18 +124,4 @@ register_surv_resume <- function(input, output, session, rv) {
   shiny::removeModal()
   output$surv_status_msg <- shiny::renderUI(
     status_alert("Bayesian survival analysis was cancelled.", "warning"))
-}
-
-.legacy_inline_surv_bayes <- function(p, input, output, session, rv) {
-  show_analysis_modal(
-    "Bayesian survival fit running…",
-    "Fitting Weibull model with brms. This may take 3–12 minutes.")
-  .surv_bayes_promise(p) %...>% (function(result) {
-    .finalize_surv_success(result, list(bayes_params = p),
-                           input, output, session, rv)
-  }) %...!% (function(err) {
-    .finalize_surv_failure(conditionMessage(err),
-                           input, output, session, rv)
-  })
-  invisible(NULL)
 }

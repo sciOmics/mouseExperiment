@@ -206,6 +206,14 @@ data_upload_server <- function(id, rv) {
   # Mirrors the same transformations used in tumor_growth_server so the preview
   # shows Volume and Day exactly as analysis will see them.
   # ---------------------------------------------------------------------------
+  # R20.D4: the preview used to swallow a date error silently.
+  date_calc_error <- reactiveVal(NULL)
+  output$reference_date_status <- renderUI({
+    err <- date_calc_error()
+    if (is.null(err)) return(NULL)
+    status_alert(err, "warning")
+  })
+
   preview_data <- reactive({
     req(rv$uploaded_data, rv$data_valid)
     # Reactivity hook: when the user clicks Apply / Clear on the
@@ -227,9 +235,13 @@ data_upload_server <- function(id, rv) {
           date_column = input$col_date_for_day,
           date_format = date_info$date_format
         )
+        date_calc_error(NULL)
       }, error = function(e) {
         message("[TG Preview] Date calculation failed: ", conditionMessage(e))
+        date_calc_error(conditionMessage(e))
       })
+    } else {
+      date_calc_error(NULL)
     }
     
     # Apply volume calculation if selected
@@ -582,7 +594,13 @@ data_upload_server <- function(id, rv) {
   # non-empty value is selected.
   validate_col_input <- function(input_id) {
     val <- input[[input_id]]
-    if (!is.null(val) && nzchar(val)) {
+    # R20.D33: the observers below fire as soon as data is valid, before the
+    # mapping selectors are rendered. Feedback aimed at an input that has no
+    # binding yet made shinyFeedback throw "Cannot read properties of undefined"
+    # (20 console errors per demo load). An unbound input reads NULL; once
+    # bound it reports a value (possibly "") and the observer runs again.
+    if (is.null(val)) return(invisible(NULL))
+    if (nzchar(val)) {
       shinyFeedback::hideFeedback(input_id)
       shinyFeedback::showFeedbackSuccess(input_id, text = "")
     } else {

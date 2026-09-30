@@ -154,7 +154,8 @@ synergyUI <- function(id) {
                 tags$li(strong("Bliss_Expected_TGI"), " \u2014 predicted TGI under the Bliss independence model."),
                 tags$li(strong("Bliss_Difference"), " \u2014 TGI_Combo minus the expected TGI; positive values indicate synergy."),
                 tags$li(strong("P_Value_vs_Drug_A / P_Value_vs_Drug_B"), " \u2014 two-sample t-test p-value comparing the combination group to each mono-therapy; values below 0.05 indicate a statistically significant difference."),
-                tags$li(strong("Synergy_Assessment"), " \u2014 plain-language classification at each timepoint.")
+                tags$li(strong("Synergy_Assessment"), " \u2014 plain-language classification at each timepoint."),
+                tags$li(strong("Evaluable"), " \u2014 FALSE where a single agent did not inhibit growth that day. Bliss independence is defined only for inhibitory agents, so the Bliss columns are blank on those days and they cannot be the peak.")
               )
             ),
             div(class = "text-right", style = "margin-bottom: 6px;",
@@ -646,10 +647,19 @@ synergy_server <- function(id, rv) {
       
       if (isTRUE(rv$syn_over_time)) {
         cat("Analysis type: Over all timepoints\n\n")
-        if (!is.null(res$peak_bliss_synergy)) {
-          pb <- res$peak_bliss_synergy
+        # R20.8: the peak is taken over evaluable days only, and there is none
+        # when a single agent never inhibited growth.
+        pb <- res$peak_bliss_synergy
+        n_days <- NROW(res$synergy_summary)
+        n_eval <- sum(res$synergy_summary$Evaluable %||% rep(TRUE, n_days))
+        if (n_eval < n_days)
+          cat("Evaluable timepoints:", n_eval, "of", n_days,
+              "(Bliss is not evaluated where a single agent did not inhibit growth)\n")
+        if (!is.null(pb) && NROW(pb) > 0L) {
           cat("Peak Bliss synergy at timepoint:", pb$Time_Point,
               " (Bliss Difference =", round(pb$Bliss_Difference, 1), "%)\n")
+        } else if (!is.null(pb)) {
+          cat("No Bliss peak: no timepoint was evaluable.\n")
         }
       } else {
         cat("Analysis type: Single timepoint\n")
@@ -658,9 +668,17 @@ synergy_server <- function(id, rv) {
         if (!is.null(res$bliss_independence)) {
           bi <- res$bliss_independence
           cat("Bliss Independence:\n")
-          cat("  Expected effect:", round(bi$expected_effect, 4), "\n")
-          cat("  Observed effect:", round(bi$observed_effect, 4), "\n")
-          cat("  Synergistic:    ", bi$synergy, "\n")
+          # R20.8: when an agent did not inhibit growth the backend reports every
+          # Bliss quantity as NA; say so rather than printing "NA" as a verdict.
+          if (isFALSE(res$evaluable) || is.na(bi$synergy)) {
+            cat("  Not evaluable: a single agent did not inhibit growth, and Bliss\n",
+                "  independence is defined only for inhibitory agents.\n", sep = "")
+            cat("  Observed effect:", round(bi$observed_effect, 4), "\n")
+          } else {
+            cat("  Expected effect:", round(bi$expected_effect, 4), "\n")
+            cat("  Observed effect:", round(bi$observed_effect, 4), "\n")
+            cat("  Synergistic:    ", bi$synergy, "\n")
+          }
         }
       }
       elapsed_str <- format_elapsed(rv$syn_results$elapsed_seconds)

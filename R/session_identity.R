@@ -81,3 +81,20 @@ get_sid_or_none <- function(session) {
   sid <- get_sid(session)
   if (is.null(sid)) SID_NONE else sid
 }
+
+#' Registry key for a session that presented no identity cookie
+#'
+#' CODE_REVIEW.md R20.D3. Such sessions used to take a "legacy inline" path
+#' whose promise operators were never imported, so every Bayesian fit failed
+#' before it started and left the "fit running" modal open. They now use the job
+#' registry like every other session, under this key.
+#'
+#' The key starts with "local-". `get_sid()` accepts only 64 hex characters
+#' from the Cookie header, so no browser can ever present it: its jobs are
+#' reachable only from the session that created them, whatever the quality of
+#' the random suffix. Resuming after a disconnect still needs the cookie, so
+#' these sessions cannot resume -- the same as before.
+#'
+#' @return Character scalar: "local-" followed by 64 hex characters.
+#' @keywords internal
+make_local_sid <- function() paste0("local-", make_sid())

@@ -499,3 +499,103 @@ group_order_and_color_ui <- function(prefix, groups, ns = NS(NULL)) {
     shiny::tags$script(shiny::HTML(init_js))
   )
 }
+
+#' Hazard-ratio forest plot for the Survival tab
+#'
+#' Shared by the on-screen plot and its PNG download. CODE_REVIEW.md R20.D19:
+#' this was a local function inside `survival_server()`, so the download handler
+#' in `mod_survival_downloads.R` -- a separate top-level function -- could not
+#' find it, and "Download Plot" returned HTTP 500 while the plot showed fine.
+#'
+#' @param res Cox results table with `Group`, `HR`, `CI_Lower`, `CI_Upper`,
+#'   `P_Value`.
+#' @param ref_grp Reference group name.
+#' @param pt_color Point and error-bar colour.
+#' @param show_hr,show_ci,show_p Which annotations to print beside each row.
+#' @return A ggplot, or NULL when there is nothing to plot.
+#' @keywords internal
+build_surv_forest_plot <- function(res, ref_grp, pt_color, show_hr, show_ci, show_p) {
+  plot_df <- res[!is.na(res$HR), ]
+  if (!is.null(ref_grp)) plot_df <- plot_df[plot_df$Group != ref_grp, ]
+  if (nrow(plot_df) == 0) return(NULL)
+
+  # Add reference group row at HR = 1 (no CI)
+  ref_row <- plot_df[1L, , drop = FALSE]
+  ref_row[1L, ] <- NA
+  ref_row$Group    <- paste0(ref_grp, "\n(Reference)")
+  ref_row$HR       <- 1
+  ref_row$CI_Lower <- NA_real_
+  ref_row$CI_Upper <- NA_real_
+  plot_df <- rbind(plot_df, ref_row)
+
+  # Ensure numeric columns stay numeric after rbind
+  for (nc in c("HR", "CI_Lower", "CI_Upper", "P_Value")) {
+    if (nc %in% colnames(plot_df)) plot_df[[nc]] <- as.numeric(plot_df[[nc]])
+  }
+  plot_df$is_ref <- plot_df$Group == paste0(ref_grp, "\n(Reference)")
+
+  # Symmetric log10 axis (exclude reference row)
+  all_hr_vals <- c(plot_df$HR[!plot_df$is_ref],
+                   plot_df$CI_Lower[!plot_df$is_ref],
+                   plot_df$CI_Upper[!plot_df$is_ref])
+  all_hr_vals <- all_hr_vals[!is.na(all_hr_vals) & all_hr_vals > 0]
+  max_log10 <- max(ceiling(max(abs(log10(all_hr_vals)), na.rm = TRUE)), 1L)
+  x_lim    <- c(10^(-max_log10), 10^max_log10)
+  x_breaks <- 10^seq(-max_log10, max_log10, by = 1)
+  x_labels <- ifelse(x_breaks >= 1,
+                     as.character(round(x_breaks, 0)),
+                     as.character(x_breaks))
+
+  # Build per-row annotation labels (vapply avoids the apply(sapply) dim error)
+  hr_vals  <- as.numeric(plot_df$HR)
+  ci_lo    <- as.numeric(plot_df$CI_Lower)
+  ci_hi    <- as.numeric(plot_df$CI_Upper)
+  p_vals   <- as.numeric(plot_df$P_Value)
+  plot_df$label_text <- vapply(seq_len(nrow(plot_df)), function(i) {
+    if (isTRUE(plot_df$is_ref[i])) return("")
+    parts <- character(0)
+    if (show_hr && !is.na(hr_vals[i]))  parts <- c(parts, paste0("HR: ", round(hr_vals[i], 2)))
+    if (show_ci && !is.na(ci_lo[i]))    parts <- c(parts, paste0("[", round(ci_lo[i], 2), "\u2013", round(ci_hi[i], 2), "]"))
+    if (show_p  && !is.na(p_vals[i]))   parts <- c(parts, paste0("p = ", format_pval(p_vals[i])))
+    paste(parts, collapse = "  ")
+  }, character(1))
+
+  ggplot2::ggplot(plot_df,
+                 ggplot2::aes(x = HR, y = stats::reorder(Group, HR),
+                              xmin = CI_Lower, xmax = CI_Upper)) +
+    ggplot2::geom_vline(xintercept = 1, linetype = "dashed", color = "grey40") +
+    ggplot2::geom_errorbarh(
+      data = ~ subset(., !is_ref),
+      height = 0.25, linewidth = 0.8, color = pt_color
+    ) +
+    ggplot2::geom_point(
+      data = ~ subset(., !is_ref), size = 5, color = pt_color
+    ) +
+    ggplot2::geom_point(
+      data = ~ subset(., is_ref), size = 5, color = "grey50", shape = 18
+    ) +
+    { if (any(nzchar(plot_df$label_text[!plot_df$is_ref])))
+        ggplot2::geom_text(
+          data = ~ subset(., !is_ref),
+          ggplot2::aes(label = label_text),
+          vjust = 3, hjust = -0.1, size = 4, color = "grey30")
+      else list() } +
+    ggplot2::scale_x_continuous(
+      trans  = "log10",
+      limits = x_lim,
+      breaks = x_breaks,
+      labels = x_labels
+    ) +
+    ggplot2::labs(
+      title = paste("Forest Plot: Hazard Ratios vs", ref_grp),
+      # Plain "log10": the PNG device font has no subscript digits, so the
+      # label rendered as "log" plus two boxes, on screen and in the download.
+      x     = "Hazard Ratio (log10 scale)",
+      y     = NULL
+    ) +
+    ggplot2::theme_classic(base_size = 14) +
+    ggplot2::theme(
+      axis.text.y    = ggplot2::element_text(size = 11),
+      legend.position = "none"
+    )
+}

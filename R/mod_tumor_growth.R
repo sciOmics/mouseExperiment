@@ -87,14 +87,24 @@ tumor_growth_server <- function(id, rv) {
     
     # Handle time column - either use direct day or calculate from date
     if (rv$settings$time_method == "from_date") {
-      date_info <- detect_date_format(data, rv$settings$col_date_for_day,
-                                      rv$settings$reference_date)
-      data <- mouseExperiment::calculate_dates(
-        date_info$data,
-        start_date  = date_info$start_date,
-        date_column = rv$settings$col_date_for_day,
-        date_format = date_info$date_format
-      )
+      # R20.D4: a date error used to escape this observer and leave
+      # "Running analysis..." on screen. Report it and stop instead.
+      data <- tryCatch({
+        date_info <- detect_date_format(data, rv$settings$col_date_for_day,
+                                        rv$settings$reference_date)
+        mouseExperiment::calculate_dates(
+          date_info$data,
+          start_date  = date_info$start_date,
+          date_column = rv$settings$col_date_for_day,
+          date_format = date_info$date_format
+        )
+      }, error = function(e) {
+        log_caught_error("tumor_growth", "date preprocessing", e)
+        output$tg_status_msg <- renderUI(status_alert(conditionMessage(e), "danger"))
+        rv$tg_running <- FALSE
+        NULL
+      })
+      if (is.null(data)) return()
       time_col <- "Day"  # calculate_dates produces a "Day" column
     } else {
       time_col <- rv$settings$col_day
@@ -250,8 +260,8 @@ tumor_growth_server <- function(id, rv) {
       )
 
       # F.7 — route through the job registry so the fit survives tab
-      # disconnect / NPM proxy timeout. Falls back to the legacy
-      # inline path when no sid is available.
+      # disconnect / NPM proxy timeout. Sessions without the identity
+      # cookie use a local registry key (R20.D3) and cannot resume.
       launch_tg_bayes_job(rv$session_id, bayes_params,
                           input, output, session, rv)
 
@@ -289,7 +299,11 @@ tumor_growth_server <- function(id, rv) {
           # Dunnett is only defined for vs-reference and Tukey only for
           # all-pairs; the backend rejects a mismatch, so substitute the closest
           # valid default rather than surfacing an error the user cannot act on.
-          if (req_adj == "dunnett" && fam != "vs_reference") "tukey"
+          # R20.D39: neither is defined on the AUC path (independent t-tests),
+          # which the dropdown no longer offers; this covers a stale input.
+          if (identical(input$tg_model_type, "auc") &&
+              req_adj %in% c("dunnett", "tukey")) "holm"
+          else if (req_adj == "dunnett" && fam != "vs_reference") "tukey"
           else if (req_adj == "tukey" && fam != "all_pairs") "dunnett"
           else req_adj
         }),
@@ -1001,6 +1015,24 @@ tumor_growth_server <- function(id, rv) {
       selected = selected
     )
   }, ignoreNULL = FALSE)
+
+  # R20.D39: offer only corrections the selected model supports. Holm replaces a
+  # Dunnett/Tukey selection on the way into AUC, and Dunnett comes back on the
+  # way out if the user has not changed that Holm since.
+  p_adjust_auto_holm <- reactiveVal(FALSE)
+  observeEvent(input$tg_model_type, {
+    mt      <- input$tg_model_type %||% "lme4"
+    choices <- tg_p_adjust_choices(mt)
+    current <- isolate(input$tg_p_adjust) %||% "dunnett"
+    selected <- if (!current %in% choices) {
+      p_adjust_auto_holm(TRUE)
+      "holm"
+    } else if (mt != "auc" && isTRUE(p_adjust_auto_holm()) && current == "holm") {
+      p_adjust_auto_holm(FALSE)
+      "dunnett"
+    } else current
+    updateSelectInput(session, "tg_p_adjust", choices = choices, selected = selected)
+  }, ignoreInit = TRUE)
 
   # Dynamically insert / remove AUC tabs based on model type
   auc_tabs_inserted <- reactiveVal(FALSE)

@@ -2155,29 +2155,29 @@ Executed.
 |---|---|---|---|
 | R20.D1 | DD/MM dates read as MM/DD; wrong Day values | **Critical** | Open |
 | R20.D2 | Survival reduction merges reused IDs across arms | **Critical** | Open |
-| R20.D3 | Legacy inline Bayesian path crashes; modal stuck | Major | Open |
-| R20.D4 | `NA_Date_` crashes on non-US reference dates | Major | Open |
+| R20.D3 | Legacy inline Bayesian path crashes; modal stuck | Major | ✅ Fixed v26.09.002 (R20-D.J) |
+| R20.D4 | `NA_Date_` crashes on non-US reference dates | Major | ✅ Fixed v26.09.002 (R20-D.J) |
 | R20.D5 | Dismiss-all strands the modal and drops the result | Major | Open |
 | R20.D6 | Synchronous analyses freeze all users (power sim 121 s, no upload needed) | Major | Open |
 | R20.D7 | Cancel doesn't stop the worker; one worker for everyone | Major | Open |
 | R20.D8 | Bayesian survival from volume-derived events always fails | Major | Open |
 | R20.D9 | `.rda` upload dead, and loads into the shared global env | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
 | R20.D10 | Session restore deserialises and copies unvalidated keys | Major (hardening) | ✅ Closed by removal v26.09.001 (R20-D.I) |
-| R20.D11 | `test-shiny_app.R` has never executed | Major (process) | Open |
+| R20.D11 | `test-shiny_app.R` has never executed | Major (process) | ✅ Fixed v26.09.002 — the tests run and pass; CI is package R20.53 (R20-D.J) |
 | R20.D12 | Study strings sent to analytics | Major (confidentiality) | Open |
 | R20.D13 | "Natural death as event" checkbox never read | Major | Open |
 | R20.D14 | Survival/over-time synergy need an ID column named `ID` | Major | Open |
 | R20.D15 | HTML report headers merged into one cell | Major | Open |
 | R20.D16 | Combined E-T table and download always fail | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
-| R20.D17 | Power tab ignores multiplicity and attrition | Major | Open |
+| R20.D17 | Power tab ignores multiplicity and attrition | Major | ✅ Fixed v26.09.002 (R20-D.J) |
 | R20.D18 | Bayesian results keep their fit alive via `plot_env` | Major (memory) | Open |
-| R20.D19 | Survival forest-plot download calls an out-of-scope function (HTTP 500) | Major | Open |
+| R20.D19 | Survival forest-plot download calls an out-of-scope function (HTTP 500) | Major | ✅ Fixed v26.09.002 (R20-D.J) |
 | R20.D34 | Toxicity mass correction 1000× on the bundled demo; warning swallowed | **Critical** | Open |
 | R20.D35 | Synergy/TWM intervals shown as uncertainty for estimates they don't describe | **Critical** | Open (package R20.2) |
 | R20.D36 | Synergy fails after TG when a dose column is mapped | Major | Open |
 | R20.D37 | Synergy TGI plot re-derived from survivors; contradicts the table | Major | Open |
 | R20.D38 | Synergy Info tab documents response additivity, not Bliss | Major | Open |
-| R20.D39 | AUC fails on first click with the default correction | Major | Open |
+| R20.D39 | AUC fails on first click with the default correction | Major | ✅ Fixed v26.09.002 (R20-D.J) |
 | R20.D40 | GAMM forest plot crashes; download fails; ZIP omits it | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
 | R20.D41 | Dashboard overwrites the backend's GAMM residual plot with a broken one | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
 | R20.D42 | Q-Q plots against y = x on unstandardised values | Major | Open |
@@ -2218,7 +2218,7 @@ Executed.
 
 - **Volume units are declared by the user** (R20.D34). Data Upload gains a required mm³/cm³ selector, and the value is passed as `volume_units` to every backend call that converts volume to mass. The dashboard's own `/1000` re-derivation is removed.
 - **Survival: the user declares the unit of randomisation** (mouse or cage) when a cage column is mapped. Mouse gives Cox/Firth; cage gives a cage-level permutation log-rank with its resolution floor displayed (package R20-K). With 2–3 cages per arm a cage-randomised comparison cannot reach p < 0.05, and the tab must say so.
-- **Synergy and TGI are reported only on days with enough animals on study in every arm** (package R20-K). The "All dates" view becomes "all evaluable days".
+- **Synergy and TGI are reported only on days with enough animals on study in every arm** (package R20-K). The "All dates" view becomes "all evaluable days". **Rule confirmed 2026-09-30:** an arm is evaluable on a day when at least 50 % of its enrolled animals, and at least 3 animals, are still on study. **It must be relayed to users.** The Synergy, Toxicity (Therapeutic Window) and Dose-Response Info tabs state it, and every result that uses an evaluable day names the day used and lists the days and arms the rule excluded. This lands with the rule itself (step 4); stating it earlier would describe behaviour the code does not yet have.
 - **`.rda`/`.RData` upload is removed** (CSV upload stays), which closes R20.D9.
 - **Tumour growth:** the default random effects become correlated random slopes with fallback. **GAMM is removed** (with R20.D40 and R20.D41). **AUC is kept but must be redefined** (package R20.4 and R20.D39).
 - **Bayesian scope:** only **Bayesian tumour growth (LMM)** remains, to be made robust (compiled-model caching, the R20.D3/D5/D7/D18 fixes, resources). **Bayesian synergy and Bayesian dose-response are removed.**
@@ -2273,3 +2273,43 @@ This step applies the scope decisions in R20-D.H and needs backend 0.23.0 (packa
 - The Toxicity diagnostics stay empty after switching back from Therapeutic Window to Body Weight until the analysis is re-run. That is the same in 26.07.015: results belong to the mode that produced them.
 
 **Next:** step 2, the one-line and near-one-line bugs.
+
+
+---
+
+## R20-D.J Implementation log — v26.09.002, step 2: one-line and near-one-line bugs (2026-09-30)
+
+This step needs backend 0.24.0 (package R20-M).
+
+**Fixed:**
+
+| ID | Fix | Verified by |
+|---|---|---|
+| R20.D3 | Sessions without the identity cookie get a registry key, `make_local_sid()`: "local-" + 64 hex. `get_sid()` accepts only 64 hex characters from a Cookie header, so no browser can present the key. Both `.legacy_inline_*` paths are deleted, and the launchers fall back to a local key when called without one. | testServer: a cookie-less launch lands in the registry under a local key. Browser: see the note below this table. |
+| R20.D4 | An empty or unparseable reference date stops with "Enter it as YYYY-MM-DD", instead of `NA_Date_`. **Deviation from the suggested fix:** the review proposed `as.Date(NA)` and keeping the `Sys.Date()` fallback, but that would count every Day from today without a word. Tumour Growth and Survival now report the error and reset their run flags, and the Data tab shows it under the reference-date box. | testServer (TG run with "24/03/2025"); browser (message appears, and clears once corrected). |
+| R20.D11 | The skip call no longer passes `message =`. The test apps are now app directories that load the package themselves: AppDriver cannot carry a `load_all()` package into its process. Also fixed: the pre-module signatures, test hooks missing from the page, `get_html(timeout =)`, and a workflow hook that passed on a failed fit. | 8 browser tests run and pass. CI remains package R20.53. |
+| R20.D17 | The analytic Power tab passes `p_adjust_method` (Bonferroni by default), `n_comparisons` (follows k − 1) and `dropout_rate`. The summary states the family, the attrition and the backend's method note. The submode labels (`find_n`/`find_power`) were never matched and always printed "analytic"; now fixed. | testServer: k = 4, d = 1 gives 23 per group (was 7), Enroll_N 29 at 20 % attrition. Browser: the same, plus the comparison count following the group count. |
+| R20.D19 | `build_surv_forest_plot()` moved to `helpers_plot.R`. | testServer and browser: the download is a real PNG (it returned HTTP 500 before). R CMD check no longer lists the symbol as undefined. |
+| R20.D21 | `icon("spinner", class = "fa-spin")`. | The test fails on 26.09.001 (the notice is a message, not a warning). |
+| R20.D33 | **Different root cause from the one recorded.** The empty feedback text was not the problem: feedback was sent before the mapping selectors were bound, and shinyFeedback cannot look up a missing binding. The validator now skips inputs that read NULL. | Browser: 0 console errors on demo load (20 before, on both builds). |
+| R20.D39 | `tg_p_adjust_choices()` drops Dunnett/Tukey for AUC. Holm is selected on the way into AUC, and Dunnett returns on the way out; the server maps a stale Dunnett or Tukey to Holm. | testServer (a stale Dunnett runs with `p_adjust_method_used = "holm"`); browser (choices, run, restore). |
+| R20.8 (dashboard side) | The synergy summary says "Not evaluable" instead of "Synergistic: NA", reports evaluable timepoints, and has no peak line when there is no peak. The Info tab documents `Evaluable`. | testServer on real non-evaluable results, single day and over time. |
+
+**R20.D3 end to end.** In headless Chrome with cookies disabled through the DevTools protocol (`document.cookie` empty), a Bayesian tumour-growth fit (1 chain, 200 + 200 draws) ran through the registry. The modal closed, and the tab reported "Bayesian analysis completed successfully!" with a Bayesian summary. That run took 28 s; an earlier run in the same worker had compiled the model. Before the fix this case left the modal open with `Error in %...!%` in the log.
+
+Chrome treats `http://127.0.0.1` as a secure context and stores the Secure cookie there. The README's claim that local sessions have no cookie is therefore only sometimes true, but either way they now work.
+
+**Found and fixed during this step:**
+- **A start-up crash introduced and caught within the step.** The first R20.D3 edit read `rv$session_id` in the top-level server body. Every real session closed at start-up, while the page returned HTTP 200 and `testServer()` passed; it runs the body inside a reactive context. The headless browser check caught it. `runDashboard()` now builds its app with `dashboard_app()`, and a new browser test starts the full app. That test fails on the broken line (session not connected, no disclaimer, demo load times out) and passes on the fix.
+- **The forest-plot axis label** rendered "log₁₀" as "log" plus two boxes on screen and in the download (no subscript glyphs in the PNG font). It now reads "log10".
+- **A test-suite hang.** `.reset_ttl_sweeper()` reset a flag but left its 9,999 s callback on the global `later` loop. `MockShinySession$getOutput()` waits for that loop to empty (`shiny:::wait_for_it`), so every later test file that read an output hung at 0 % CPU. The existing files sorted before the sweeper test; `test-round21-fixes.R` did not. The reset now cancels the callback, and a test asserts the loop is empty after reset.
+- The Bayesian survival modal said "Weibull" for log-normal fits.
+
+**Tests.**
+- `test-round21-fixes.R` holds 9 tests and 34 expectations. Run against the 26.09.001 source with backend 0.24.0, 8 of 9 fail or error. The one that passed there was the icon test; it now uses `expect_no_message()` and fails too.
+- `test-shiny_app.R` holds 8 browser tests, including the new full-dashboard test; `test-resume_banner.R` gains the sweeper-reset test.
+
+**Verification (executed):**
+- Full suite: 21 files, 201 tests, 612 expectations. No failures, no skips; the one warning is pre-existing.
+- R CMD check: 6 WARNINGs, 5 NOTEs, as at baseline. Against 26.09.001 the only differences are notes that disappeared: `%...>%`, `%...!%`, `NA_Date_` and `build_surv_forest_plot` are no longer undefined.
+- Install plus boot gives HTTP 200, and the headless-Chrome script passes all checks with 0 console errors.

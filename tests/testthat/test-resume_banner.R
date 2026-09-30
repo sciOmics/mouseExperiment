@@ -129,3 +129,15 @@ test_that("start_ttl_sweeper is idempotent", {
   g("start_ttl_sweeper")(interval_seconds = 9999L)
   expect_true(g(".sweeper_state")$started)
 })
+
+test_that(".reset_ttl_sweeper removes the pending callback", {
+  # A callback left on the global later loop made testServer() hang in every
+  # later test file that read an output: MockShinySession waits for an empty
+  # loop (shiny:::wait_for_it) on each output read.
+  later::run_now(0)
+  g(".reset_ttl_sweeper")()
+  g("start_ttl_sweeper")(interval_seconds = 9999L)
+  expect_false(later::loop_empty())
+  g(".reset_ttl_sweeper")()
+  expect_true(later::loop_empty())
+})

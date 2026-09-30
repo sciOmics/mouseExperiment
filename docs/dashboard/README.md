@@ -24,8 +24,8 @@ The Bayesian fits (tumor growth and survival) run asynchronously via `future` / 
 
 | Item | State |
 |---|---|
-| Version | 26.09.001 |
-| Backend (`mouseExperiment`) requirement | ≥ 0.23.0 (the release that removed the analyses this dashboard no longer offers) |
+| Version | 26.09.002 |
+| Backend (`mouseExperiment`) requirement | ≥ 0.24.0 (vs-control power, Bliss gating) |
 | `CODE_REVIEW.md` (Round 1 + Round 2) | 24/25 dashboard items closed — only **I.6** (VPS-side CI smoke test) remains |
 | Test suite | 210/210 testthat, 1 shinytest2 (Data tab); 75 F.7-specific isolation/dispatch assertions |
 | Deployment | Docker + Nginx Proxy Manager (NPM) on a self-hosted VPS (see `mouseExperimentVPS` repo) |
@@ -35,7 +35,7 @@ The Bayesian fits (tumor growth and survival) run asynchronously via `future` / 
 ### Prerequisites
 
 - **R** ≥ 4.1
-- **mouseExperiment** ≥ 0.23.0 (see [mouseExperiment](https://github.com/sciOmics/mouseExperiment))
+- **mouseExperiment** ≥ 0.24.0 (see [mouseExperiment](https://github.com/sciOmics/mouseExperiment))
 - For Bayesian analysis: `brms` ≥ 2.19, `future` ≥ 1.33, `promises` ≥ 1.2, `bayesplot` ≥ 1.10
 
 ### Setup
@@ -46,7 +46,7 @@ devtools::load_all()
 runDashboard()
 ```
 
-The app opens at `http://localhost:3838`. Note that on plain `http://localhost` the session-identity cookie can't be `Secure`, so F.7 resume falls back to the legacy inline path — fits still run, just without disconnect-survival.
+The app opens at `http://localhost:3838`. Browsers treat `http://localhost` and `http://127.0.0.1` as secure contexts, so the `Secure` session-identity cookie is usually set even without HTTPS. Where it is not (cookies blocked, or another host over plain HTTP), the session gets a local registry key: Bayesian fits run through the job registry as usual but cannot be resumed after a disconnect. Before v26.09.002 that case took a legacy inline path that failed before the fit started (CODE_REVIEW.md R20.D3).
 
 ### Test suite
 
@@ -207,7 +207,7 @@ The dashboard is structured as a Shiny `navbarPage` with one tab per analysis mo
 |---------|-------------|---------|
 | R | 4.0 | Language runtime |
 | shiny | 1.7.0 | Web framework |
-| mouseExperiment | 0.23.0 | Statistical backend |
+| mouseExperiment | 0.24.0 | Statistical backend |
 | ggplot2 | 3.4.0 | Visualization |
 | dplyr, tidyr | 1.1, 1.3 | Data manipulation |
 | emmeans | 1.8.0 | Estimated marginal means |

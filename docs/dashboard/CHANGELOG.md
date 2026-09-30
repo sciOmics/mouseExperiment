@@ -4,6 +4,86 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.09.002] - 2026-09-30
+
+Requires mouseExperiment ≥ 0.24.0. Second implementation step of the Round 21
+review (`CODE_REVIEW.md` R20-D.J): the one-line and near-one-line bugs.
+
+### Fixed
+
+- **Bayesian fits in sessions without the identity cookie (R20.D3).** They took
+  a "legacy inline" path whose promise operators were never imported. The fit
+  never started, and the "fit running" modal stayed open until reload.
+  - That path is gone. Such sessions get a registry key that no browser can
+    present (`local-` + random hex), so their jobs run through the registry and
+    stay private to the session.
+  - This affected any browser that blocks the cookie. Verified in headless
+    Chrome with cookies disabled: the fit now runs and reports its result.
+    (Browsers do set the cookie on `http://localhost`, which counts as a secure
+    context, so the README's older claim that local runs lack it was wrong.)
+- **Reference date (R20.D4).** A date outside the accepted formats raised
+  "object 'NA_Date_' not found".
+  - Tumour Growth froze on "Running analysis…", Survival showed the raw
+    message, and the Data tab hid the error.
+  - The intended fallback, today's date, would have counted every Day from
+    today without a word, so the date is now reported instead: under the
+    reference-date box on the Data tab, and in the Tumour Growth and Survival
+    status messages.
+- **Browser tests never ran (R20.D11).**
+  - The skip call used an argument `skip_if_not_installed()` does not have.
+  - Behind that, the test apps used pre-module signatures, their test hooks
+    were missing from the page, and they were passed as objects that a fresh R
+    process cannot load.
+  - The apps are now app directories that load the package themselves. All 7
+    tests run, and the upload-to-fit workflow test now requires a successful
+    fit, not just a result object.
+- **Power tab (R20.D17), the dashboard half of package R20.7.** The analytic
+  path passed no multiplicity or attrition settings. It now has three controls,
+  and the summary states what the power refers to:
+  - a correction (Bonferroni by default);
+  - the number of treated-vs-control comparisons (follows k − 1);
+  - expected attrition, which gives Enroll_N.
+  - For 4 groups at d = 1 the tab recommended 7 per group; it now recommends
+    23, or 29 to enrol at 20 % attrition.
+- **Survival forest-plot download (R20.D19)** returned HTTP 500: its plot builder
+  was a local inside the survival server, invisible to the download handler.
+  The builder now lives in `helpers_plot.R`.
+- **AUC failed on first click (R20.D39).** The default correction, Dunnett, is
+  undefined for AUC's separate t-tests, and so is Tukey.
+  - Neither is offered for AUC any more. Holm is selected on the way in, and
+    Dunnett comes back on the way out.
+  - A stale Dunnett or Tukey still maps to Holm on the server.
+- **Synergy (package R20.8).** When an agent did not inhibit growth, the summary
+  printed "Synergistic: TRUE" and a peak day. It now says the case is not
+  evaluable, and the Info tab describes the new `Evaluable` column.
+- **Console noise:**
+  - Info alerts logged "does not correspond to a known icon" on every use
+    (R20.D21).
+  - Demo loads threw 20 shinyFeedback errors (R20.D33). The cause was not the
+    empty feedback text the review suggested: the feedback was sent before the
+    mapping selectors existed.
+
+- **Forest-plot axis label.** "Hazard Ratio (log₁₀ scale)" rendered as "log" plus
+  two boxes, both on screen and in the download, because the PNG device font has
+  no subscript digits. It now reads "log10".
+- **A test-suite trap.** The TTL sweeper's test reset only a flag and left its
+  callback on the global `later` loop. Shiny's `testServer()` waits for that loop
+  to empty on every output read, so any later test file that read an output
+  hung. The existing files happened to sort before it; the new one did not.
+  `.reset_ttl_sweeper()` now cancels the callback.
+
+### Changed
+
+- `runDashboard()` now builds its app with `dashboard_app()`, so the full app can
+  run under test. A new browser test starts it and checks that a session works.
+  `testServer()` could not have caught the start-up error found during this
+  step: it runs the server body inside a reactive context.
+- The Bayesian survival modal no longer says "Weibull" when the family is
+  log-normal.
+- The README, DEPLOYMENT, ARCHITECTURE and CONTRIBUTING docs no longer describe
+  the legacy inline path. The Power tab's Info panel and Help describe the
+  per-comparison method.
+
 ## [26.09.001] - 2026-09-29
 
 Requires mouseExperiment ≥ 0.23.0. First implementation step of the Round 21
