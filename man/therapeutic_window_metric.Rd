@@ -43,8 +43,14 @@ composite mouse key so reused IDs across cages are not collapsed.}
 
 \item{tumor_density}{Density in g/cm³ (default 1.0).}
 
-\item{volume_units}{Units of \code{volume_column}: "mm3", "cm3", or NULL
-(default) to auto-detect from the data and report the inference.}
+\item{volume_units}{Units of the volume column, \code{"mm3"} or \code{"cm3"}.
+Required when \code{adjust_tumor_weight = TRUE} and a volume column is used,
+because volume is converted to mass and subtracted from body weight: the
+wrong unit scales that correction by 1000. Units were inferred from the data
+before v0.25.0, which read small-tumour mm3 studies as cm3 (CODE_REVIEW.md
+R20.83); the data are now only checked against the declared unit, with a
+warning on disagreement and an error when the implied tumour mass exceeds
+half the body weight.}
 
 \item{reference_group}{Name of the control/reference group.}
 

@@ -289,3 +289,104 @@ test_that("R20.3 / R20.43 / R20.62: Bayesian fits group by animal and accept any
   expect_equal(bs$summary$data_description$subjects, 32L)  # was 8
   expect_equal(bs$summary$data_description$total_events, sum(s$Event))
 })
+
+# ---- R20.83: declared volume units -------------------------------------------
+
+test_that("R20.83: a small-tumour mm3 study is not read as cm3", {
+  # The dashboard's weight demo: 0.1-1,092.6 mm3, median 6.21 -- read as cm3
+  # before, which made every net weight 1000x wrong.
+  set.seed(3)
+  v <- c(stats::runif(300, 0.1, 10), stats::runif(60, 200, 1092.6))
+  expect_lt(stats::median(v), 20)
+  expect_identical(detect_volume_units(v), "mm3")
+  expect_identical(detect_volume_units(v / 1000), "cm3")
+})
+
+test_that("R20.83: mass adjustment needs declared units and refuses implausible masses", {
+  d <- r20_t1_df()
+  bw <- function(...) analyze_body_weight(d, weight_column = "Weight",
+    id_column = "UID", volume_column = "Volume", reference_group = "Control", ...)
+  expect_error(bw(), "volume_units is required")
+  expect_error(quiet(bw(volume_units = "cm3")), "exceeds 50% of body weight")
+  ok <- quiet(bw(volume_units = "mm3"))
+  expect_true(all(is.finite(ok$fixed_effects$Estimate)))
+  # Declaring mm3 for cm3 data is plausible by mass but flagged by the data.
+  d_cm3 <- d; d_cm3$Volume <- d_cm3$Volume / 1000
+  # Collect every warning: the influence refit adds an unrelated one (R20.76).
+  msgs <- character(0)
+  withCallingHandlers(
+    analyze_body_weight(d_cm3, weight_column = "Weight", id_column = "UID",
+      volume_column = "Volume", reference_group = "Control", volume_units = "mm3"),
+    warning = function(w) {
+      msgs <<- c(msgs, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    })
+  expect_true(any(grepl("look like 'cm3'", msgs, fixed = TRUE)))
+  expect_error(weight_loss_threshold(d, weight_column = "Weight", id_column = "UID",
+    volume_column = "Volume"), "volume_units is required")
+  expect_error(therapeutic_window_metric(d, weight_column = "Weight", id_column = "UID",
+    volume_column = "Volume", reference_group = "Control"), "volume_units is required")
+})
+
+# ---- R20.6: survival by declared unit of randomisation ------------------------
+
+# Two arms x `n_cages` cages x `per_cage` mice, one row per animal. A shared cage
+# frailty makes cage-mates correlated.
+r20_cage_surv <- function(n_cages = 2, per_cage = 5, hr = 1, seed = 1) {
+  set.seed(seed)
+  out <- list()
+  for (arm in c("Control", "Drug")) for (cg in seq_len(n_cages)) {
+    frail <- stats::rnorm(1, 0, 0.8)
+    rate  <- 0.08 * exp(frail) * (if (arm == "Drug") hr else 1)
+    t     <- stats::rexp(per_cage, rate)
+    out[[length(out) + 1]] <- data.frame(
+      ID = seq_len(per_cage), Treatment = arm, Cage = paste0(arm, "-", cg),
+      Time = pmin(t, 30), Event = as.integer(t <= 30))
+  }
+  do.call(rbind, out)
+}
+
+test_that("R20.6: randomisation by animal uses ordinary standard errors, no cluster()", {
+  s <- r20_cage_surv()
+  r <- quiet(survival_statistics(s, time_column = "Time", censor_column = "Event",
+    treatment_column = "Treatment", cage_column = "Cage", id_column = "ID",
+    reference_group = "Control", verbose = FALSE))
+  expect_identical(r$randomisation_unit, "mouse")
+  expect_false(r$cage_cluster_used)
+  expect_false(any(grepl("cluster", deparse(stats::formula(r$model)))))
+  expect_true(is.finite(r$results$CI_Lower[r$results$Group == "Drug"]))
+  # Housing by arm is reported, not hidden.
+  expect_match(r$cage_caveat, "cage-mates as independent")
+})
+
+test_that("R20.6: randomisation by cage permutes whole cages and reports the floor", {
+  s <- r20_cage_surv(n_cages = 2, hr = 0.2)
+  expect_warning(
+    r <- survival_statistics(s, time_column = "Time", censor_column = "Event",
+      treatment_column = "Treatment", cage_column = "Cage", id_column = "ID",
+      randomisation_unit = "cage", reference_group = "Control", verbose = FALSE),
+    "cannot reach p <")
+  cp <- r$cage_permutation
+  expect_equal(cp$Assignments, 6)                    # choose(4, 2)
+  expect_equal(cp$Min_Attainable_P, 1 / 3)
+  drug <- r$results[r$results$Group == "Drug", ]
+  expect_gte(drug$P_Value_Unadjusted, 1 / 3)         # however strong the effect
+  expect_true(is.na(drug$CI_Lower) && is.na(drug$CI_Upper))
+  expect_identical(drug$P_Method, "cage-level permutation log-rank")
+
+  # Three cages per arm: floor 0.1.
+  s3 <- r20_cage_surv(n_cages = 3, hr = 0.2)
+  r3 <- quiet(survival_statistics(s3, time_column = "Time", censor_column = "Event",
+    treatment_column = "Treatment", cage_column = "Cage", id_column = "ID",
+    randomisation_unit = "cage", reference_group = "Control", verbose = FALSE))
+  expect_equal(r3$cage_permutation$Min_Attainable_P, 0.1)
+})
+
+test_that("R20.6: cage randomisation is refused when cages hold several treatments", {
+  s <- r20_cage_surv()
+  s$Cage <- rep(c("C1", "C2"), length.out = nrow(s))   # every cage mixes arms
+  expect_error(quiet(survival_statistics(s, time_column = "Time", censor_column = "Event",
+    treatment_column = "Treatment", cage_column = "Cage", id_column = "ID",
+    randomisation_unit = "cage", reference_group = "Control", verbose = FALSE)),
+    "hold more than one treatment")
+})

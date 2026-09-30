@@ -24,7 +24,7 @@ The tumor growth pipeline supports three models:
 
 | Column | Notes |
 |---|---|
-| `id_column` | One identifier per animal (no duplicates across timepoints in the same group) |
+| `id_column` | Identifies the animal within its arm and cage. IDs may restart in each arm or cage: every entry point groups animals by treatment + ID + cage (v0.25.0, `CODE_REVIEW.md` T1) |
 | `time_column` | Numeric (day) or `Date` — date detection auto-converts |
 | `volume_column` | Tumor volume (mm³). If you have `Length`/`Width`, run `calculate_volume()` first |
 | `treatment_column` | Treatment group label |
@@ -94,6 +94,13 @@ Returns:
 
 Note: when PH is violated, the Cox HR is no longer a constant time-ratio — it's an average over the time window. Switch to the Bayesian AFT path or stratify the Cox model in that case.
 
+**Unit of randomisation (`randomisation_unit`, v0.25.0).** Say what treatment was assigned to:
+
+- `"mouse"` (default): Cox, or Firth when an arm has no events, with ordinary model-based standard errors; cage is not modelled. When each cage holds one arm, the result carries a `cage_caveat`. The p-values treat cage-mates as independent; in simulation with a moderate cage effect that gave 16–19 % false positives at α = 0.05, and 2–4 % with none.
+- `"cage"`: each arm is compared with the reference by a cage-level permutation log-rank that moves whole cages between the two arms, exactly when there are at most 5,000 assignments. `cage_permutation` records the assignments and the smallest attainable p-value: 1/3 with 2 cages per arm, 0.1 with 3 and 0.029 with 4. Hazard ratios are point estimates only, without an interval. Cages holding more than one treatment are refused, because treatment cannot then have been assigned to whole cages.
+
+Before v0.25.0 the function added `cluster(cage)` whenever cages were replicated. A sandwich variance from 4–10 clusters gave 28 % false positives under the null (`CODE_REVIEW.md` R20.6).
+
 ### `bayesian_survival()` — Bayesian AFT
 
 Two parametric families (exponential and gamma were removed in v0.23.0; exponential is Weibull with shape fixed at 1):
@@ -127,7 +134,7 @@ Linear mixed-effects model with random intercept per animal (and optional cage r
 
 - Treatment-time interaction (does weight diverge over time?)
 - Per-group adjusted means via `emmeans`
-- Optionally `adjust_tumor_weight = TRUE`: subtracts estimated tumor weight (volume × `tumor_density`) before modelling
+- Optionally `adjust_tumor_weight = TRUE`: subtracts estimated tumor weight (volume × `tumor_density`) before modelling. **`volume_units` (`"mm3"` or `"cm3"`) must then be declared** (v0.25.0, also for `weight_loss_threshold()` and `therapeutic_window_metric()`). The data are checked against the declared unit using the 90th percentile of volume, and a tumour mass above half the body weight stops the run. Units used to be inferred from the median volume, which read small-tumour mm³ studies as cm³ (`CODE_REVIEW.md` R20.83).
 
 Returns the same `treatment_effects` shape as `tumor_growth_statistics()` plus a `weight_trajectory_plot`.
 

@@ -5,6 +5,68 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-09-30
+
+Third implementation step of the Round 20 review (`CODE_REVIEW.md` R20-N): animal
+identity, column names, declared volume units, and survival by the declared unit
+of randomisation.
+
+### Fixed — Critical
+
+- **Reused IDs pooled different animals (R20.3, T1).** The random effects of
+  `tumor_growth_statistics()`, `analyze_body_weight()` and
+  `bayesian_tumor_growth()` grouped on the raw ID, so mouse "1" in every arm
+  was one animal.
+  - The tumour-growth SE fell from 0.097 to 0.030, and the null false-positive
+    rate per contrast rose to 0.52.
+  - Every entry point now groups by treatment + ID + cage, and on a fixture
+    whose IDs restart in each arm the fits match the unique-ID fits.
+  - `analyze_drug_synergy()` and `dose_response_statistics()` gain
+    `cage_column` for the key.
+- **Units were inferred, and wrongly (R20.83).** The median-volume heuristic read
+  small-tumour mm³ studies as cm³, which put the dashboard's default Toxicity
+  run at a net weight of −1,070 g.
+  - `volume_units` is now required whenever tumour mass is subtracted.
+  - The data are checked against the declared unit using the 90th percentile.
+  - A tumour mass above half the body weight is an error, not a warning.
+- **Survival with cages was anti-conservative (R20.6).** `cluster(cage)` from
+  4–10 clusters gave 28 % false positives. `survival_statistics()` gains
+  `randomisation_unit`:
+  - `"mouse"` uses ordinary standard errors, and reports a caveat when each cage
+    holds one arm.
+  - `"cage"` compares arms by a cage-level permutation log-rank and reports the
+    smallest attainable p-value.
+  - In 300 null simulations per design, the cage permutation never exceeded
+    α = 0.05 (0–1.3 % rejections).
+
+### Fixed — Major
+
+- **A column literally named "ID" was required (R20.15).**
+  `analyze_drug_synergy_over_time()` gains `id_column`, `cage_column`,
+  `endpoint_method`, `n_boot` and `boot_seed`. A missing ID column is now a
+  clear error instead of one "mouse" per arm, and `make_mouse_key()` rejects
+  empty parts.
+- **Column names with spaces broke formulas (R20.43).**
+  - Survival and both Bayesian functions copy their columns into fixed internal
+    names, and dose-response quotes names in its formulas.
+  - "Study Day", "Tumor Volume" and the like now work.
+  - So do the dashboard's `.__Derived*` columns, which brms rejected (dashboard
+    R20.D8).
+- `bayesian_survival()` read a factor event column by its level codes, which
+  inverted censoring (R20.62).
+
+### Changed — breaking
+
+- `volume_units` is required with `adjust_tumor_weight = TRUE` in
+  `analyze_body_weight()`, `weight_loss_threshold()` and
+  `therapeutic_window_metric()`.
+- `survival_statistics()` no longer adds `cluster(cage)`. `cage_cluster_used` is
+  always FALSE, and the results add `randomisation_unit`, `cage_permutation` and
+  `cage_caveat`.
+
+Suite: 272 tests / 728 expectations → 285 / 777, all passing. Every new test
+fails on 0.24.0.
+
 ## [0.24.0] - 2026-09-30
 
 Second implementation step of the Round 20 review (`CODE_REVIEW.md` R20-M): the

@@ -13,8 +13,14 @@
 #' @param volume_column Name of the tumor volume column. NULL to skip tumor adjustment.
 #' @param adjust_tumor_weight Logical; subtract estimated tumor weight.
 #' @param tumor_density Density in g/cm³ (default 1.0).
-#' @param volume_units Units of \code{volume_column}: "mm3", "cm3", or NULL
-#'   (default) to auto-detect from the data and report the inference.
+#' @param volume_units Units of the volume column, \code{"mm3"} or \code{"cm3"}.
+#'   Required when \code{adjust_tumor_weight = TRUE} and a volume column is used,
+#'   because volume is converted to mass and subtracted from body weight: the
+#'   wrong unit scales that correction by 1000. Units were inferred from the data
+#'   before v0.25.0, which read small-tumour mm3 studies as cm3 (CODE_REVIEW.md
+#'   R20.83); the data are now only checked against the declared unit, with a
+#'   warning on disagreement and an error when the implied tumour mass exceeds
+#'   half the body weight.
 #' @param threshold Fractional weight loss threshold (default 0.20 = 20%).
 #' @param baseline_day Day to use as baseline for initial weight. NULL = first observation per mouse.
 #' @param reference_group Name of the control/reference group.

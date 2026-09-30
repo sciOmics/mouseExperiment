@@ -22,6 +22,7 @@ test_that("analyze_body_weight returns expected structure", {
     id_column        = "ID",
     volume_column    = "Volume",
     adjust_tumor_weight = TRUE,
+    volume_units     = "mm3",   # required with adjustment since v0.25.0 (R20.83)
     covariates       = c("volume"),
     estimation       = "REML"
   )
@@ -157,7 +158,8 @@ test_that("therapeutic_window_metric returns expected structure", {
     time_column      = "Day",
     treatment_column = "Treatment",
     id_column        = "ID",
-    reference_group  = "Control"
+    reference_group  = "Control",
+    volume_units     = "mm3"
   )
 
   expect_type(res, "list")
@@ -180,6 +182,7 @@ test_that("therapeutic_window_metric noise_floor works", {
     treatment_column = "Treatment",
     id_column        = "ID",
     reference_group  = "Control",
+    volume_units     = "mm3",
     noise_floor      = 100  # Very high floor so all groups hit it
   )
 

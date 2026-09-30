@@ -5263,10 +5263,10 @@ Recorded in place here rather than by editing the earlier text, following the Ro
 |---|---|---|---|
 | R20.1 | Synergy default extrapolates the removed control; TGI overstated, synergy erased | **Critical** | Open |
 | R20.2 | Synergy/TWM intervals describe a different estimator from the point estimate | **Critical** | Open |
-| R20.3 | Random effects and reductions key on raw ID (8 sites) | **Critical** | Open |
+| R20.3 | Random effects and reductions key on raw ID (8 sites) | **Critical** | ✅ Fixed v0.25.0 (R20-N) |
 | R20.4 | AUC over each animal's own window; R3.3 never applied | **Critical** | Open |
 | R20.5 | Default intercept-only LMM: 73 % false positives on Treatment × Day | **Critical** | Open |
-| R20.6 | Survival `cluster(cage)` with 4–10 clusters: 28 % false positives | **Critical** | Open |
+| R20.6 | Survival `cluster(cage)` with 4–10 clusters: 28 % false positives | **Critical** | ✅ Fixed v0.25.0 (R20-N) |
 | R20.7 | Analytic power k ≥ 3: required N 2.6–4× too small | **Critical** | ✅ Fixed v0.24.0 (R20-M) |
 | R20.8 | R14.2 fixed in the label only | **Critical** | ✅ Fixed v0.24.0 (R20-M) |
 | R20.9 | ETB scores early-removed animals as efficacious | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
@@ -5336,7 +5336,7 @@ The lme4 `pairwise_comparisons` table has no CI columns, so the dashboard builds
 
 | ID | Issue | Severity | Status |
 |---|---|---|---|
-| R20.83 | Unit heuristic classes mm³ data as cm³; 1000× mass correction | **Critical** | Open |
+| R20.83 | Unit heuristic classes mm³ data as cm³; 1000× mass correction | **Critical** | ✅ Fixed v0.25.0 (R20-N) |
 | R20.84 | Q-Q plots against a y = x line on unstandardised values | Major | Open |
 | R20.85 | No adjusted intervals on contrasts; unadjusted CIs shown with adjusted p | Major | Open |
 | R20.86 | Bliss row name; data_summary scale | Minor | Open |
@@ -5443,3 +5443,55 @@ The two remaining items from R20-J's "one-line and near-one-line Criticals" (R20
 **Tests:** `test-code_review_round20.R` holds 5 tests and 25 expectations. Run against the v0.23.0 source, four of the five fail, 17 expectations in all: the R20.7 sample-size and sensitivity tests, and both R20.8 tests. The two-group guard passes there by design, because the old default was already "none". The R3.15 test now asks for `p_adjust_method = "none"` explicitly for its unadjusted baseline.
 
 **Verification (executed):** `devtools::test()`: 272 tests, 728 expectations, 0 failed. The one skip is legitimate, and per-file warning counts are unchanged from v0.23.0.
+
+
+---
+
+## R20-N Implementation log — v0.25.0, step 3 (package): animal key, column names, units, survival unit (2026-09-30)
+
+Two commits: the key and names first, then units and survival.
+
+**T1 / R20.3 — ✅ Fixed.** Every entry point now groups animals by treatment + ID + cage.
+- **`tumor_growth_statistics()`:** the model data carry the key in the ID column, so the random effects, the cage classification and the diagnostics group by animal. The growth-rate and AUC tables keep the original ID.
+- **`analyze_body_weight()`:** groups on an `Animal` factor.
+- **`bayesian_tumor_growth()`:** groups on an `Animal` key. Its per-animal growth-rate table matches on the key and shows the original ID.
+- **Synergy, over-time synergy and dose-response:** these gain `cage_column`, and dose-response groups on the key.
+- **`make_mouse_key()`:** rejects NULL or zero-length parts; recycling them away was the R20.15 mechanism.
+- **Executed on a fixture with IDs restarting in each arm:**
+  - Tumour-growth fixed effects match the unique-ID fit to 6e-14. The vcov matches to 1e-9, the optimiser noise from differently ordered levels. The model now has 32 groups, not 8.
+  - Body-weight `n_subjects` is 32, not 8.
+  - Synergy counts 8 animals per arm, not 4.
+  - Bayesian tumour growth fits 32 `Animal` levels.
+
+**R20.15 — ✅ Fixed (package side).** Synergy and survival require the ID column and name it in the error. `analyze_drug_synergy_over_time()` gains `id_column`, `cage_column`, `endpoint_method`, `n_boot` and `boot_seed`. The dashboard half is R20.D14.
+
+**R20.43 — ✅ Fixed.** `survival_statistics()`, `bayesian_tumor_growth()` and `bayesian_survival()` copy their columns into fixed internal names; dose-response quotes names with `me_bt()`.
+- **Executed:** with columns named "Study Day", "Tumor Volume", "Animal ID", "Treatment Group", "Cage No", "Days On Study" and "Death Event", tumour growth, survival, dose-response and over-time synergy all run, and match the canonical-name fits.
+- **Dashboard R20.D8:** a Bayesian survival fit on `.__DerivedTime` / `.__DerivedEvent` columns now runs; brms rejected those names before.
+
+**R20.62 — ✅ Fixed (incidentally).** `bayesian_survival()` reads a factor event through `as.character()`.
+
+**R20.83 — ✅ Fixed.**
+- `volume_units` is required whenever tumour mass is subtracted, in `analyze_body_weight()`, `weight_loss_threshold()` and `therapeutic_window_metric()`.
+- `detect_volume_units()` uses the 90th percentile and serves only as a mismatch warning. A weight-demo-like study, with a median of 6 mm³ and a maximum of 1,093, now reads as mm³.
+- `check_tumor_mass_plausible()` stops instead of warning.
+- R20.27 was already closed: the five functions that hard-coded mm³ were removed in v0.23.0.
+
+**R20.6 — ✅ Fixed.** `survival_statistics(randomisation_unit = c("mouse", "cage"))` no longer adds `cluster()`. Simulated null rejection rates (300 datasets per row, α = 0.05):
+
+| Design per arm | Cage frailty SD | `cluster(cage)` (before) | `"mouse"` | `"cage"` permutation |
+|---|---|---|---|---|
+| 2 cages × 5 | 0.8 | 0.287 | 0.190 | 0.000 |
+| 3 cages × 4 | 0.8 | 0.150 | 0.167 | 0.000 |
+| 4 cages × 4 | 0.8 | 0.110 | 0.160 | 0.013 |
+| 2 cages × 5 | 0 | 0.320 | 0.040 | 0.000 |
+| 4 cages × 4 | 0 | 0.080 | 0.020 | 0.013 |
+
+- **The cage permutation is exact and never exceeds α.** Its floor (1/3, 0.1, 0.029) is reported in `cage_permutation`, with a warning when it exceeds 0.05. Cages holding more than one treatment are refused.
+- **The mouse-level analysis is calibrated only when cage-mates are not alike.** With a real cage effect in by-arm housing it gives 16–19 % false positives, which is inherent to the design. So results with one arm per cage carry `cage_caveat` for the dashboard to show.
+- **The decision records a cage frailty only as a sensitivity analysis.** It is not implemented; with 2–3 cages per arm its variance estimate would be unstable.
+
+**Verification (executed):**
+- `devtools::test()`: 285 tests, 777 expectations, 0 failed. The one skip is legitimate.
+- 13 new tests: 8 for the key and names, 2 for units, 3 for survival. All 13 fail or error on v0.24.0.
+- Four existing tests now declare `volume_units = "mm3"`.

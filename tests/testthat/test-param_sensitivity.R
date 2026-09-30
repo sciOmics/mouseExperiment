@@ -169,7 +169,7 @@ test_that("therapeutic_window_metric: TGI < 0 is clamped to 0 (J.13)", {
     }))
   }))
   res <- suppressWarnings(suppressMessages(
-    therapeutic_window_metric(df, reference_group = "Control")
+    therapeutic_window_metric(df, reference_group = "Control", volume_units = "mm3")
   ))
   twm_tab <- res$twm_table
   bad_row <- twm_tab[twm_tab$Treatment == "BadDrug", , drop = FALSE]

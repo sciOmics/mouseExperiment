@@ -13,11 +13,14 @@
 #' @param sex_column Name of the sex column. NULL to omit.
 #' @param cage_column Name of the cage column. NULL to omit.
 #' @param adjust_tumor_weight Logical; subtract estimated tumor weight from body mass.
-#' @param volume_units Units of the volume column: `"mm3"`, `"cm3"`, or
-#'   `NULL` to infer from the magnitude of the values. Only used when
-#'   `adjust_tumor_weight = TRUE`, where volume is converted to mass and
-#'   subtracted from body weight -- getting the units wrong there scales the
-#'   correction by 1000 (R3.30).
+#' @param volume_units Units of the volume column, \code{"mm3"} or \code{"cm3"}.
+#'   Required when \code{adjust_tumor_weight = TRUE} and a volume column is used,
+#'   because volume is converted to mass and subtracted from body weight: the
+#'   wrong unit scales that correction by 1000. Units were inferred from the data
+#'   before v0.25.0, which read small-tumour mm3 studies as cm3 (CODE_REVIEW.md
+#'   R20.83); the data are now only checked against the declared unit, with a
+#'   warning on disagreement and an error when the implied tumour mass exceeds
+#'   half the body weight.
 #' @param tumor_density Density in g/cm³ for tumor weight estimation (default 1.0).
 #' @param covariates Character vector of optional covariates: "volume", "sex", "initial_mass".
 #' @param estimation Character; "REML" (default) or "ML".
