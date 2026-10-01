@@ -134,41 +134,41 @@ test_that("I.2: the permutation panel distinguishes 'not run' from a result", {
   })
 })
 
-# ---- Toxicity: the TWM ranking bounds (R3) ---------------------------------
+# ---- Toxicity: the tolerability note (R20-K) --------------------------------
 
-tox_res <- function(lower_a, upper_b) {
-  # The toxicity module nests the TWM result under $twm.
-  list(twm = list(
+tox_res <- function(over_a) {
+  # The toxicity module nests the therapeutic-window result under $twm. The
+  # TWM ratio and its ranking note were replaced by two axes in v26.09.005.
+  list(twm_reference = "Control", twm = list(
     error = FALSE,
-    twm_table = data.frame(
-      Treatment = c("DrugA", "DrugB"), TGI = c(0.55, 0.40),
-      TWM = c(1.8, 1.1), TWM_Lower = c(lower_a, 0.7),
-      TWM_Upper = c(2.5, upper_b), stringsAsFactors = FALSE),
-    attrition = data.frame(Treatment = c("DrugA", "DrugB"),
-                           N_Enrolled = c(8L, 8L), N_At_Endpoint = c(6L, 5L),
-                           Pct_Lost = c(25, 37.5)),
+    window_table = data.frame(
+      Treatment = c("Control", "DrugA", "DrugB"), N_Animals = c(8L, 8L, 8L),
+      TGI = c(0, 55, 40), TGI_Lower = c(0, 40, 22), TGI_Upper = c(0, 68, 55),
+      Worst_Loss = c(3, 9, 24), Worst_Loss_Lower = c(2, 6, 21),
+      Worst_Loss_Upper = c(4, 12, 27), N_Over_Threshold = c(0L, over_a, 6L),
+      Tolerability = c("Tolerated", "Tolerated", "Not tolerated"),
+      stringsAsFactors = FALSE),
+    tolerability_threshold = 20,
+    tolerability_rule = "Tolerated: the upper 95% bound ... below 20%.",
+    interval_note = "Weight-loss intervals: bootstrap of animals within arm.",
+    attrition = data.frame(Treatment = c("Control", "DrugA", "DrugB"),
+                           N_Enrolled = c(8L, 8L, 8L), N_At_Endpoint = c(6L, 6L, 5L),
+                           Pct_Lost = c(25, 25, 37.5)),
     endpoint_day = 28, endpoint_method = "model"))
 }
 
-test_that("I.2: the TWM ranking note separates ranked from overlapping arms", {
-  # This is the branch worth testing rather than merely rendering: a TWM ranking
-  # is a claim about ordering, and two arms whose intervals overlap are not
-  # ordered. The note must say so instead of presenting the point estimates as a
-  # ranking. Point estimates are identical in both cases below; only the bounds
-  # differ, so nothing but the interval logic can drive the difference.
+test_that("R20-K: the tolerability note states the rule and flags a tolerated arm with animals over", {
+  # A "Tolerated" arm describes its average animal; an animal over the
+  # threshold in such an arm must be called out, not hidden behind the flag.
   fn <- get("toxicity_server", envir = .pkg)
-
-  # Separable: DrugA's lower bound (1.2) clears DrugB's upper bound (1.0).
-  shiny::testServer(fn, args = list(rv = rv_for(tox_results = tox_res(1.2, 1.0))), {
-    sep_txt <- render_text(output$tox_twm_ranking_note)
-    expect_true(nzchar(sep_txt))
+  shiny::testServer(fn, args = list(rv = rv_for(tox_results = tox_res(0L))), {
+    txt <- render_text(output$tox_twm_tolerability_note)
+    expect_match(txt, "Tolerated: the upper 95% bound")
+    expect_false(grepl("reached the threshold on their own", txt))
   })
-
-  # Overlapping: DrugA's lower bound (0.9) sits below DrugB's upper (1.6).
-  shiny::testServer(fn, args = list(rv = rv_for(tox_results = tox_res(0.9, 1.6))), {
-    ov_txt <- render_text(output$tox_twm_ranking_note)
-    expect_true(nzchar(ov_txt))
-    # Whatever the wording, the overlapping case must not read as a clean ranking.
-    expect_match(tolower(ov_txt), "overlap|not separ|cannot|indistinguish")
+  shiny::testServer(fn, args = list(rv = rv_for(tox_results = tox_res(2L))), {
+    txt <- render_text(output$tox_twm_tolerability_note)
+    expect_match(txt, "DrugA \\(2 of 8\\)")
+    expect_match(txt, "reached the threshold on their own")
   })
 })

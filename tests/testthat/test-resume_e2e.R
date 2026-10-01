@@ -151,11 +151,8 @@ test_that("dispatch_resume cannot pop a job belonging to a different sid", {
 # Resume handlers for every Bayesian kind register successfully
 # ---------------------------------------------------------------------------
 test_that("every Bayesian kind has a register_<X>_resume helper", {
-  expected <- c("bayes_tg", "bayes_bw", "bayes_surv",
-                "bayes_syn", "bayes_dr", "bayes_twm")
-  registers <- c("register_tg_resume", "register_bw_resume",
-                 "register_surv_resume", "register_syn_resume",
-                 "register_dr_resume", "register_twm_resume")
+  # Bayesian scope is tumour growth and survival (CODE_REVIEW.md R20-D.H).
+  registers <- c("register_tg_resume", "register_surv_resume")
   for (r in registers) {
     expect_true(exists(r, envir = pkg),
                 info = sprintf("'%s' should be defined", r))

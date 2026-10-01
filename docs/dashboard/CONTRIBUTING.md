@@ -11,7 +11,8 @@ How to work on `mouseExperimentDashboard`. This document covers the conventions,
 setwd("/path/to/mouseExperimentDashboard")
 devtools::load_all()
 
-# The backend is a hard dependency at version >= 0.4.7
+# The backend is a hard dependency; DESCRIPTION's Imports gives the minimum
+# version (mouseExperiment >= 0.28.0 as of 26.09.007)
 # If you're developing both, sync the local backend:
 devtools::install("/path/to/mouseExperiment", quiet = TRUE, upgrade = FALSE)
 
@@ -108,7 +109,7 @@ Required steps for a resumable Bayesian fit:
    - `launch_<X>_bayes_job(sid, params, input, output, session, rv)`
    - `register_<X>_resume(input, output, session, rv)`
    - `.<X>_bayes_promise(p)`, `.finalize_<X>_success`, `.finalize_<X>_failure`, `.finalize_<X>_cancellation`
-   - `.legacy_inline_<X>_bayes(p, ...)` fallback for when sid is unavailable
+   - no separate cookie-less path: `R/app.R` gives such sessions a `make_local_sid()` key, so the registry path covers them (R20.D3)
 2. Wire your module's Bayesian branch to call `launch_<X>_bayes_job(rv$session_id, params, ...)` instead of the inline future.
 3. Call `register_<X>_resume(input, output, session, rv)` at the bottom of `<X>_server()`.
 4. Add the `kind` tag to `.kind_to_label()` in `R/resume_banner.R`.
@@ -173,7 +174,17 @@ devtools::test(filter = "helpers")              # helper functions
 | `test-tg_resume.R` | F.7 TG-specific helpers |
 | `test-resume_e2e.R` | F.7 disconnect/reconnect cycle |
 | `test-demo_data.R` | Demo dataset integrity |
-| `test-shiny_app.R` | shinytest2 headless-browser integration (one test, skips if `chromote` missing) |
+| `test-shiny_app.R` | shinytest2 headless-browser integration (skips if `chromote` missing) |
+| `test-backend-contract.R` | The named fields the dashboard reads from backend results (R3.D9, I.2, R4.D2) |
+| `test-backend-calls-resolve.R` | Every `mouseExperiment::` call names a function that exists (R17.3) |
+| `test-backend-version.R` | Installed backend vs sibling source skew; **fails**, does not skip (R4.D2) |
+| `test-demo-data-reachable.R` | The backend's demo datasets load from the app (D.12) |
+| `test-docs-current.R` | Info / Help tabs match the app and backend (D.13) |
+| `test-helpers_data.R`, `test-helpers_format.R`, `test-helpers_plot_ui.R` | Data, formatting, plot and UI helpers (D.1, D.9) |
+| `test-power-params.R` | Power module parameter plumbing (D.4, K.15) |
+| `test-render-logic.R` | Render paths driven through `testServer()` (I.2) |
+| `test-round21-fixes.R` | Round 21 fixes (R20.D*), labelled by finding ID |
+| `test-round21-study-design.R`, `test-round21-step4.R`, `test-round21-step5.R`, `test-round21-step6.R`, `test-round21-step7.R` | Steps 3–7 of the Round 20/21 implementation; each test fails on the previous version |
 | `helper-app.R` | Test fixtures (`make_test_rv()`, etc.) |
 
 ### F.7 security tests (specifically)
@@ -228,7 +239,7 @@ Keep these in sync with the code. When you change cookie attributes, update SECU
 
 ### CODE_REVIEW.md
 
-`CODE_REVIEW.md` (repo root) tracks the 25-item review across Round 1 + Round 2. When you close an item:
+`CODE_REVIEW.md` (repo root) tracks every review round, with item IDs per round (for example D.13, R20.D27). When you close an item:
 
 1. Edit the item's entry to add `✅ Fixed v<version>` with a one-line summary
 2. Update the status table at the bottom

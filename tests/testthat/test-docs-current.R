@@ -54,8 +54,7 @@ test_that("D.13: every model type in the selector is named in the Info tab", {
   src <- read_src("ui_modules.R")
   # A mode users can pick but that the documentation never mentions is the gap
   # this whole round was about.
-  labels <- c(lme4 = "LME4", gam = "GAMM", auc = "Area Under Curve",
-              bayes = "Bayesian LMM", bayes_gam = "Bayesian GAMM")
+  labels <- c(lme4 = "LME4", auc = "Area Under Curve", bayes = "Bayesian LMM")
   for (key in choice_values(src, "tg_model_type")) {
     lbl <- labels[[key]]
     if (is.null(lbl)) next  # a new mode: add it to this map and to the Info tab
@@ -113,12 +112,30 @@ test_that("D.13: Help does not describe a Power mode the app does not offer", {
                label = "Help must not claim a Bayesian power mode")
 })
 
-test_that("D.13: Help states the AUC comparison method the backend actually uses", {
-  # It said Kruskal-Wallis / pairwise Wilcoxon. The backend reports
-  # "Welch's one-way ANOVA (unequal variances)".
+test_that("D.13 / R20.4: Help states the AUC comparison method the backend actually uses", {
+  # It said Kruskal-Wallis / pairwise Wilcoxon, then Welch's ANOVA on per-animal
+  # AUCs. Since backend v0.26.0 the AUC is the area under each arm's fitted
+  # curve, compared by AUC ratios.
   ui <- read_src("ui_modules.R")
   expect_false(grepl("Kruskal-Wallis", ui, fixed = TRUE))
-  expect_match(ui, "Welch one-way ANOVA", fixed = TRUE)
+  expect_false(grepl("Welch one-way ANOVA", ui, fixed = TRUE))
+  expect_match(ui, "ratio of their AUCs", fixed = TRUE)
+  expect_match(ui, "fitted growth curve", fixed = TRUE)
+})
+
+test_that("R20.D38: the Synergy Info tab states Bliss, not response additivity", {
+  # It documented "Expected TGI = min(FE_A + FE_B, 1.0) x 100", the null R17.2
+  # removed, while the backend computes FE_A + FE_B - FE_A * FE_B.
+  syn <- read_src("mod_synergy.R")
+  expect_false(grepl("min(FE_A + FE_B", syn, fixed = TRUE))
+  expect_match(syn, "FE_A + FE_B \\u2212 FE_A \\u00d7 FE_B", fixed = TRUE)
+  expect_false(grepl("CI threshold", syn, fixed = TRUE))
+})
+
+test_that("R20-K: the Synergy, Toxicity and Dose Response Info tabs state the evaluable-day rule", {
+  for (f in c("mod_synergy.R", "mod_toxicity.R", "mod_dose_response.R")) {
+    expect_match(read_src(f), "evaluable_rule_text()", fixed = TRUE, info = f)
+  }
 })
 
 test_that("D.13: Help no longer claims Tukey is the default correction", {
@@ -134,7 +151,7 @@ test_that("D.13: every auto-detected column role appears in the Help table", {
   # users unaware the app can use a column they already have — which is how the
   # necrosis, sex and height columns went unmentioned.
   ui <- read_src("ui_modules.R")
-  roles <- c("Necrotic", "Sex", "Date", "Survival_Time", "Height")
+  roles <- c("Necrotic", "Sex", "Date", "Survival_Time", "Height", "Removal_Reason")
   for (r in roles) {
     expect_match(ui, r, fixed = TRUE, info = paste("Help omits role:", r))
   }
@@ -175,11 +192,13 @@ test_that("D.13: the endpoint estimand is documented wherever it is offered", {
   }
 })
 
-test_that("D.13: bootstrap intervals are documented wherever they are offered", {
+test_that("D.13: interval draws are documented wherever they are offered", {
+  # Since backend v0.26.0 the draws are of the fitted model under the model
+  # estimand and of the animals otherwise, so the control is "Interval draws".
   for (f in c("mod_toxicity.R", "mod_synergy.R")) {
     src <- read_src(f)
     if (!grepl('ns\\("[a-z]+_n_boot"\\)', src)) next
-    expect_match(src, "Bootstrap resamples", fixed = TRUE, info = f)
+    expect_match(src, "Interval draws", fixed = TRUE, info = f)
   }
 })
 
@@ -187,6 +206,39 @@ test_that("D.13: competing risks are documented in the toxicity KM section", {
   src <- read_src("mod_toxicity.R")
   expect_match(src, "Competing risks", fixed = TRUE)
   expect_match(src, "Aalen-Johansen", fixed = TRUE)
+  # R20.23: which removals compete depends on the removal-reason column.
+  expect_match(src, "removal-reason column", fixed = TRUE)
+})
+
+test_that("R20-K: the therapeutic window is documented as two axes, not the TWM ratio", {
+  # The Info and Help tabs described TWM = TGI / weight loss and its ranking
+  # for as long as the ratio existed; v26.09.005 withdrew it.
+  tox <- read_src("mod_toxicity.R")
+  ui  <- read_src("ui_modules.R")
+  for (src in list(tox, ui)) {
+    expect_false(grepl("TWM = TGI", src, fixed = TRUE))
+    expect_false(grepl("Therapeutic Window Metric (TWM)", src, fixed = TRUE))
+  }
+  for (flag in c("Tolerated", "Not tolerated", "Unclear")) {
+    expect_match(tox, flag, fixed = TRUE, info = flag)
+  }
+  expect_match(tox, "worst weight loss", fixed = TRUE)
+})
+
+test_that("R20.19: the Synergy docs describe the interval-based verdict, not the bands", {
+  syn <- read_src("mod_synergy.R")
+  expect_false(grepl("Strong Synergy above +0.1", syn, fixed = TRUE))
+  expect_match(syn, "Additive (no departure from Bliss detected)", fixed = TRUE)
+})
+
+test_that("R20.D47 / R20.D49 / R20.D13: Dose Response and Survival document what changed", {
+  dr <- read_src("mod_dose_response.R")
+  expect_match(dr, "One agent at a time", fixed = TRUE)
+  expect_match(dr, "It is two-sided", fixed = TRUE)
+  expect_match(dr, "computed on log dose", fixed = TRUE)
+  surv <- read_src("mod_survival.R")
+  expect_match(surv, "removal-reason column", fixed = TRUE)
+  expect_match(surv, "Count deaths from other causes as events", fixed = TRUE)
 })
 
 test_that("R14.3: the Tumor Growth tab does not claim to report TGI", {

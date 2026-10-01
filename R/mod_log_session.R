@@ -1,53 +1,34 @@
-#' Session Management Module
+#' Settings Preset and Subset Filter Module
 #'
-#' Server-side logic for the Session Save / Restore controls in the Data
-#' Upload tab. (The Analysis Log viewer was removed in v26.05.020; the
-#' \code{logger} package continues to write structured log lines to
-#' stdout — visible via \code{journalctl} / \code{docker logs} — so the
-#' operational signal is preserved without a user-facing tab.)
+#' Server-side logic for the settings preset and subset filter in the Data
+#' Upload tab. The Session Save / Restore controls were removed in
+#' v26.09.001 (CODE_REVIEW.md R20.D10, R20-D.H): the saved file carried only
+#' the uploaded data, column mappings and plot-group settings -- no results,
+#' plots or filters -- and restoring meant deserialising an uploaded R object.
+#' Re-uploading the CSV and loading a settings preset gives the same result.
 #'
 #' @name mod_log_session
 #' @keywords internal
 
 # ---------------------------------------------------------------------------
-# Session Save / Restore
+# Settings preset (CODE_REVIEW.md Round 2 F.2)
 # ---------------------------------------------------------------------------
 
-#' Session Save/Restore UI
+#' Settings preset UI
 #'
-#' Download / upload buttons for saving and restoring session state.
+#' Save / load buttons for the column-mapping and method settings preset.
 #' Intended to be placed inside the Data Upload tab.
 #'
 #' @param ns Namespace function from the enclosing module.
 #' @return A \code{tagList}.
 #' @keywords internal
-session_save_restore_ui <- function(ns) {
+settings_preset_ui <- function(ns) {
   wellPanel(
-    h5(strong(icon("floppy-disk"), " Session Save / Restore")),
-    p(style = "font-size:12px; color:#6c757d;",
-      "Save your current analysis state (settings, results, plots) ",
-      "and reload it later to continue where you left off."),
-    fluidRow(
-      column(6,
-        downloadButton(ns("save_session"), "Save Session",
-                       class = "btn-sm btn-success", style = "width:100%;")
-      ),
-      column(6,
-        fileInput(ns("restore_session"), NULL,
-                  accept = ".rds",
-                  buttonLabel = "Restore Session",
-                  placeholder = "No file")
-      )
-    ),
-    # CODE_REVIEW.md Round 2 F.2 — settings-only preset save/load.
-    # Smaller JSON file portable across datasets; doesn't carry uploaded
-    # data or results.
-    hr(style = "margin: 12px 0;"),
     h6(strong(icon("sliders-h"), " Settings preset (column mapping + methods)")),
     p(style = "font-size:11px; color:#6c757d; margin: 4px 0 8px 0;",
-      "Save just your column mappings and time / volume / formula settings ",
-      "to a small JSON file. Apply on a future dataset with the same column ",
-      "names to skip the mapping step."),
+      "Save your column mappings, time / volume / formula settings, study ",
+      "design and subset filter to a small JSON file. Load it after ",
+      "uploading a dataset with the same column names to skip these steps."),
     fluidRow(
       column(6,
         downloadButton(ns("save_preset"), "Save Preset",
@@ -63,71 +44,18 @@ session_save_restore_ui <- function(ns) {
   )
 }
 
-#' Session save handler — call from inside the data upload module server
+#' Settings preset handlers -- call from inside the data upload module server
 #'
 #' @param input   Module input.
 #' @param output  Module output.
 #' @param session Module session.
 #' @param rv      Shared reactiveValues.
+#' @param study_defaults The Data Upload module's reactiveVal of initial Study
+#'   Design selections; a loaded preset writes to it so the control group
+#'   survives the treatment-column update that follows.
 #' @keywords internal
-setup_session_save_restore <- function(input, output, session, rv) {
-
-  output$save_session <- downloadHandler(
-    filename = function() {
-      paste0("mouseExperiment_session_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".rds")
-    },
-    content = function(file) {
-      # Snapshot serialisable state only (skip reactive internals, ggplot envs)
-      snapshot <- list(
-        uploaded_data  = isolate(rv$uploaded_data),
-        data_valid     = isolate(rv$data_valid),
-        detected_cols  = isolate(rv$detected_cols),
-        settings       = isolate(rv$settings),
-        processed_data = isolate(rv$processed_data),
-        time_col       = isolate(rv$time_col),
-        vol_col        = isolate(rv$vol_col),
-        tx_col         = isolate(rv$tx_col),
-        id_col         = isolate(rv$id_col),
-        cage_col       = isolate(rv$cage_col),
-        dose_col       = isolate(rv$dose_col),
-        tg_col_names   = isolate(rv$tg_col_names),
-        tg_plot_groups = isolate(rv$tg_plot_groups),
-        surv_plot_groups = isolate(rv$surv_plot_groups),
-        saved_at       = Sys.time()
-      )
-      saveRDS(snapshot, file)
-      log_info("session_save | file=mouseExperiment_session.rds")
-      shinyjs::runjs("window.trackEvent('session_saved', {format: 'rds'});")
-    }
-  )
-
-  observeEvent(input$restore_session, {
-    file_info <- input$restore_session
-    req(file_info)
-    tryCatch({
-      snapshot <- readRDS(file_info$datapath)
-      if (!is.list(snapshot) || is.null(snapshot$uploaded_data)) {
-        showNotification("Invalid session file.", type = "error")
-        shinyjs::runjs("window.trackError('session', 'Invalid session file', 'session_restore');")
-        return()
-      }
-      # Restore keys
-      for (key in names(snapshot)) {
-        if (key != "saved_at") rv[[key]] <- snapshot[[key]]
-      }
-      shinyjs::runjs("window.trackEvent('session_restored', {format: 'rds'});")
-      showNotification(
-        paste("Session restored from", format(snapshot$saved_at, "%Y-%m-%d %H:%M")),
-        type = "message", duration = 5
-      )
-      log_info(sprintf("session_restore | saved_at=%s", snapshot$saved_at))
-    }, error = function(e) {
-      showNotification(paste("Failed to restore session:", e$message), type = "error")
-      shinyjs::runjs(sprintf("window.trackError('session', %s, 'session_restore');",
-                             js_string(e$message)))
-      log_caught_error("session", "restore", e)
-    })
-  })
+setup_settings_preset <- function(input, output, session, rv,
+                                  study_defaults = NULL) {
 
   # ── Settings preset save / load (CODE_REVIEW.md Round 2 F.2) ─────────────
   # The preset contains only the column mappings + time/volume methods —
@@ -139,10 +67,16 @@ setup_session_save_restore <- function(input, output, session, rv) {
              format(Sys.time(), "%Y%m%d_%H%M%S"), ".json")
     },
     content = function(file) {
+      # Version 2 (R20-D.H) adds the study design, which is part of
+      # rv$settings, and the subset filter.
       preset <- list(
-        format_version = "1",
+        format_version = "2",
         saved_at       = format(Sys.time(), "%Y-%m-%dT%H:%M:%S"),
-        settings       = isolate(rv$settings) %||% list()
+        settings       = isolate(rv$settings) %||% list(),
+        filters        = list(
+          exclude_ids        = I(isolate(rv$exclude_ids)        %||% character(0)),
+          exclude_treatments = I(isolate(rv$exclude_treatments) %||% character(0)),
+          exclude_cages      = I(isolate(rv$exclude_cages)      %||% character(0)))
       )
       jsonlite::write_json(preset, file, pretty = TRUE, auto_unbox = TRUE)
       log_info("preset_save | file=mouseExperiment_preset.json")
@@ -157,6 +91,13 @@ setup_session_save_restore <- function(input, output, session, rv) {
       preset <- jsonlite::read_json(file_info$datapath, simplifyVector = TRUE)
       if (!is.list(preset) || is.null(preset$settings)) {
         showNotification("Invalid preset file (missing settings).", type = "error")
+        return()
+      }
+      # The column selectors and the Study Design panel exist only once a
+      # dataset is loaded; updates sent before that were silently lost.
+      if (!isTRUE(rv$data_valid)) {
+        showNotification(paste("Load a dataset first: a preset applies to",
+                               "the loaded data's columns."), type = "warning")
         return()
       }
 
@@ -178,10 +119,60 @@ setup_session_save_restore <- function(input, output, session, rv) {
       updateSelectInput(session, "col_weight",        selected = st$col_weight        %||% "")
       updateSelectInput(session, "col_sex",           selected = st$col_sex           %||% "")
       updateSelectInput(session, "col_necrotic",      selected = st$col_necrotic      %||% "")
+      updateSelectInput(session, "col_removal_reason", selected = st$col_removal_reason %||% "")
       if (!is.null(st$time_method))    updateRadioButtons(session, "time_method",    selected = st$time_method)
       if (!is.null(st$volume_method))  updateRadioButtons(session, "volume_method",  selected = st$volume_method)
       if (!is.null(st$volume_formula)) updateSelectInput(session,  "volume_formula", selected = st$volume_formula)
       if (!is.null(st$reference_date)) updateTextInput(session,    "reference_date", value    = st$reference_date)
+      one_of <- function(x, allowed) {
+        x <- as.character(unlist(x))
+        if (length(x) == 1L && x %in% allowed) x else NULL
+      }
+      if (!is.null(v <- one_of(st$date_order, c("auto", "dmy", "mdy"))))
+        updateSelectInput(session, "date_order", selected = v)
+
+      # Study design (R20-D.H)
+      design <- list(volume_units = one_of(st$volume_units, c("mm3", "cm3")),
+                     randomisation_unit = one_of(st$randomisation_unit, c("mouse", "cage")),
+                     control_group = {
+                       cg <- as.character(unlist(st$control_group))
+                       if (length(cg) == 1L && nzchar(cg)) cg else NULL
+                     })
+      design <- design[!vapply(design, is.null, logical(1L))]
+      # Removal-reason categories: kept for when the mapping panel is drawn,
+      # and applied to the selectors already on screen.
+      rmap <- st$removal_reason_map
+      if (is.list(rmap) && length(rmap)) {
+        rmap <- rmap[vapply(rmap, function(x) length(x) == 1L &&
+                              as.character(x) %in% removal_reason_categories,
+                            logical(1L))]
+        rmap <- lapply(rmap, as.character)
+        design$removal_reason_map <- rmap
+        rcol <- as.character(unlist(st$col_removal_reason))
+        vals <- if (length(rcol) == 1L) removal_reason_values(rv$uploaded_data, rcol)
+                else character(0)
+        for (i in seq_along(vals)) if (!is.null(rmap[[vals[i]]]))
+          updateSelectInput(session, paste0("reason_cat_", i), selected = rmap[[vals[i]]])
+      }
+      if (is.function(study_defaults)) {
+        study_defaults(utils::modifyList(isolate(study_defaults()), design))
+      }
+      if (!is.null(design$volume_units))
+        updateRadioButtons(session, "volume_units", selected = design$volume_units)
+      if (!is.null(design$randomisation_unit))
+        updateRadioButtons(session, "randomisation_unit", selected = design$randomisation_unit)
+      if (!is.null(design$control_group))
+        updateSelectInput(session, "control_group", selected = design$control_group)
+
+      # Subset filter (format 2)
+      if (is.list(preset$filters)) {
+        chr <- function(x) as.character(unlist(x))
+        rv$exclude_ids        <- chr(preset$filters$exclude_ids)
+        rv$exclude_treatments <- chr(preset$filters$exclude_treatments)
+        rv$exclude_cages      <- chr(preset$filters$exclude_cages)
+        rv$processed_data     <- NULL
+        rv$filter_applied_at  <- Sys.time()
+      }
 
       saved_at <- preset$saved_at %||% "(unknown)"
       showNotification(
@@ -221,7 +212,7 @@ subset_filter_ui <- function(ns) {
                   "Exclude mice, treatments, or cages from all downstream analyses.")),
     fluidRow(
       column(4,
-        selectizeInput(ns("exclude_ids"), "Exclude IDs",
+        selectizeInput(ns("exclude_ids"), "Exclude animals",
                        choices = NULL, multiple = TRUE,
                        options = list(placeholder = "(none excluded)"))
       ),
@@ -247,7 +238,7 @@ subset_filter_ui <- function(ns) {
     p(style = "font-size:11px; color:#6c757d; margin:8px 0 0 0;",
       "Edit the lists above, then click ", strong("Apply Filtering"),
       ". The Dataset Summary and Data Preview below update to reflect ",
-      "what's currently applied. Filter state survives session save / restore.")
+      "what's currently applied. Filters apply to every analysis until you clear them.")
   )
 }
 
@@ -260,16 +251,29 @@ subset_filter_ui <- function(ns) {
 #' @keywords internal
 setup_subset_filter <- function(input, output, session, rv) {
 
-  # Populate choices whenever uploaded_data + column mappings change.
+  # Populate choices whenever uploaded_data + column mappings change, and
+  # after Apply / Clear / a preset load (filter_applied_at), which set the
+  # selections from rv$exclude_*.
   observe({
+    rv$filter_applied_at
     df <- rv$uploaded_data
     req(df)
     id_col <- rv$settings$col_id
     tx_col <- rv$settings$col_treatment
     cg_col <- rv$settings$col_cage
 
-    ids <- if (!is.null(id_col) && nzchar(id_col) && id_col %in% colnames(df))
-      sort(unique(as.character(df[[id_col]]))) else character(0)
+    # One entry per animal (treatment + ID + cage), labelled "3 (Vehicle,
+    # cage C1)": a reused ear tag is a different animal in each arm.
+    ids <- if (has_col(df, id_col) && has_col(df, tx_col)) {
+      cg  <- if (has_col(df, cg_col)) df[[cg_col]]
+      arm <- arm_labels(df, tx_col, rv$settings$col_dose)
+      key <- animal_key(arm, df[[id_col]], cg)
+      lab <- animal_label(arm, df[[id_col]], cg)
+      u   <- !duplicated(key)
+      idv <- as.character(df[[id_col]])[u]
+      o   <- order(arm[u], suppressWarnings(as.numeric(idv)), idv)
+      stats::setNames(key[u][o], lab[u][o])
+    } else character(0)
     txs <- if (!is.null(tx_col) && nzchar(tx_col) && tx_col %in% colnames(df))
       sort(unique(as.character(df[[tx_col]]))) else character(0)
     cgs <- if (!is.null(cg_col) && nzchar(cg_col) && cg_col %in% colnames(df))
@@ -277,7 +281,7 @@ setup_subset_filter <- function(input, output, session, rv) {
 
     updateSelectizeInput(session, "exclude_ids",
                         choices = ids,
-                        selected = intersect(isolate(rv$exclude_ids), ids),
+                        selected = intersect(isolate(rv$exclude_ids), unname(ids)),
                         server = TRUE)
     updateSelectizeInput(session, "exclude_treatments",
                         choices = txs,
@@ -324,7 +328,7 @@ setup_subset_filter <- function(input, output, session, rv) {
 
   # Status line — shows what's currently applied. Recomputes whenever
   # the user clicks Apply or Clear (via the filter_applied_at tick) or
-  # when rv$uploaded_data changes (e.g., new file or session restore).
+  # when rv$uploaded_data changes (e.g., a new file).
   output$subset_filter_status <- renderUI({
     rv$filter_applied_at  # tick dependency
     n_ids <- length(rv$exclude_ids        %||% character(0))
@@ -347,7 +351,7 @@ setup_subset_filter <- function(input, output, session, rv) {
       tags$span(
         style = "color: #155724; margin-left: 14px; font-size: 12px;",
         icon("check-circle"),
-        sprintf(" Active filter — %d ID(s), %d treatment(s), %d cage(s) excluded.",
+        sprintf(" Active filter — %d animal(s), %d treatment(s), %d cage(s) excluded.",
                 n_ids, n_tx, n_cg))
     }
   })

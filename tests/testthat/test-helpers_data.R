@@ -178,21 +178,26 @@ subset_rv <- function(...) {
                     col_cage = args$cg_col %||% "Cage"))
 }
 
-test_that("D.9: excluding animals, arms and cages each remove exactly their rows", {
-  expect_identical(nrow(apply_subset_filter(subset_df(), subset_rv())), 4L)
+# Excluded animals are animal_key() values: arm + ID (+ cage).
+key_of <- function(df, i) animal_key(df$Treatment[i], df$ID[i], df$Cage[i])
 
-  by_id <- apply_subset_filter(subset_df(), subset_rv(ids = "m2"))
+test_that("D.9: excluding animals, arms and cages each remove exactly their rows", {
+  df <- subset_df()
+  expect_identical(nrow(apply_subset_filter(df, subset_rv())), 4L)
+
+  by_id <- apply_subset_filter(df, subset_rv(ids = key_of(df, 2)))
   expect_identical(by_id$ID, c("m1", "m3", "m4"))
 
-  by_tx <- apply_subset_filter(subset_df(), subset_rv(tx = "DrugA"))
+  by_tx <- apply_subset_filter(df, subset_rv(tx = "DrugA"))
   expect_identical(unique(by_tx$Treatment), "Ctl")
 
-  by_cage <- apply_subset_filter(subset_df(), subset_rv(cg = "C2"))
+  by_cage <- apply_subset_filter(df, subset_rv(cg = "C2"))
   expect_identical(unique(by_cage$Cage), "C1")
 })
 
 test_that("D.9: exclusions compose rather than override one another", {
-  out <- apply_subset_filter(subset_df(), subset_rv(ids = "m1", cg = "C2"))
+  df <- subset_df()
+  out <- apply_subset_filter(df, subset_rv(ids = key_of(df, 1), cg = "C2"))
   expect_identical(out$ID, "m2")
 })
 
@@ -200,17 +205,26 @@ test_that("D.9: an unmapped or wrong column drops nothing", {
   # Fail-safe direction matters. If a mis-mapped ID column caused the %in% test
   # to match everything, the filter would silently return zero rows and the
   # analysis would fail somewhere far away from the cause.
-  out <- apply_subset_filter(subset_df(), subset_rv(ids = "m1", id_col = "NoSuchCol"))
+  df <- subset_df()
+  out <- apply_subset_filter(df, subset_rv(ids = key_of(df, 1), id_col = "NoSuchCol"))
   expect_identical(nrow(out), 4L)
-  out2 <- apply_subset_filter(subset_df(), subset_rv(ids = "m1", id_col = ""))
+  out2 <- apply_subset_filter(df, subset_rv(ids = key_of(df, 1), id_col = ""))
   expect_identical(nrow(out2), 4L)
 })
 
 test_that("D.9: IDs are compared as character, so numeric IDs still match", {
   df <- data.frame(ID = c(1, 2, 3), Treatment = "Ctl", Cage = "C1",
                    stringsAsFactors = FALSE)
-  out <- apply_subset_filter(df, subset_rv(ids = "2"))
+  out <- apply_subset_filter(df, subset_rv(ids = animal_key("Ctl", "2", "C1")))
   expect_identical(as.character(out$ID), c("1", "3"))
+})
+
+test_that("R20.D2: excluding a reused ear tag removes one animal, not every arm's", {
+  df <- data.frame(ID = c(3, 3, 3, 4), Treatment = c("Ctl", "DrugA", "DrugA", "Ctl"),
+                   Cage = c("C1", "C2", "C3", "C1"), stringsAsFactors = FALSE)
+  out <- apply_subset_filter(df, subset_rv(ids = animal_key("DrugA", "3", "C2")))
+  expect_identical(nrow(out), 3L)
+  expect_false(any(out$Treatment == "DrugA" & out$Cage == "C2"))
 })
 
 test_that("D.9: empty and NULL input survive the filter", {
@@ -224,40 +238,30 @@ test_that("D.9: empty and NULL input survive the filter", {
 # A misread date format silently produces wrong elapsed-day values, which shifts
 # every growth rate in the study. Each recognised layout is pinned.
 
-test_that("D.9: each supported date layout is recognised", {
+test_that("D.9: each supported date layout is read to the right day", {
   mk <- function(v) data.frame(Date = v, stringsAsFactors = FALSE)
-  expect_identical(detect_date_format(mk("03/24/2025"), "Date", "2025-03-24")$date_format,
-                   "%m/%d/%Y")
-  expect_identical(detect_date_format(mk("2025-03-24"), "Date", "2025-03-24")$date_format,
-                   "%Y-%m-%d")
-  expect_identical(detect_date_format(mk("24-Mar"), "Date", "2025-03-24")$date_format,
-                   "%d-%b")
-  expect_identical(detect_date_format(mk("March 24"), "Date", "2025-03-24")$date_format,
-                   "%B %d %Y")
+  day <- function(v, ...) study_days(mk(v), "Date", "2025-03-24", ...)$data$Day
+  expect_equal(day(c("03/24/2025", "03/31/2025")), c(0, 7))
+  expect_equal(day(c("24/03/2025", "31/03/2025")), c(0, 7))
+  expect_equal(day(c("2025-03-24", "2025-03-31 09:30")), c(0, 7))
+  expect_equal(day(c("24-Mar", "31-Mar")), c(0, 7))
+  expect_equal(day(c("March 24", "March 31")), c(0, 7))
+  expect_equal(day(c("24-Mar-2025", "March 31, 2025")), c(0, 7))
+  expect_equal(day(c("24.03.2025", "31.03.2025")), c(0, 7))
 })
 
-test_that("D.9: an unrecognised layout returns NULL rather than guessing", {
+test_that("D.9: an unrecognised layout is refused rather than guessed", {
   # Guessing would be worse than refusing: a wrong format yields plausible but
   # incorrect day numbers, which no downstream check would catch.
-  out <- detect_date_format(data.frame(Date = "24.03.2025", stringsAsFactors = FALSE),
-                            "Date", "2025-03-24")
-  expect_null(out$date_format)
+  expect_error(detect_date_format(data.frame(Date = c("24th March", "25th March")),
+                                  "Date", "2025-03-24"),
+               "None of the values")
 })
 
-test_that("D.9: the year-less layout is completed from the reference date", {
-  # "March 24" carries no year, so the function appends the reference year to the
-  # data. Getting this wrong shifts every date by a whole year.
+test_that("D.9: the year-less layout takes its year from the reference date", {
+  # "March 24" carries no year. Getting this wrong shifts every date by a year.
   out <- detect_date_format(data.frame(Date = c("March 24", "March 31"),
                                        stringsAsFactors = FALSE),
                             "Date", "2025-03-24")
-  expect_match(out$data$Date[1], "2025")
-  expect_identical(out$start_date, "March 24 2025")
-})
-
-test_that("D.9: the start date is returned in the same format as the data", {
-  # calculate_dates() is then called with both, so a mismatch fails to parse.
-  out <- detect_date_format(data.frame(Date = "03/24/2025", stringsAsFactors = FALSE),
-                            "Date", "2025-03-24")
-  expect_identical(out$start_date, "03/24/2025")
-  expect_identical(out$date_format, "%m/%d/%Y")
+  expect_equal(out$dates, as.Date(c("2025-03-24", "2025-03-31")))
 })

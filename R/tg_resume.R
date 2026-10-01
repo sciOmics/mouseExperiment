@@ -13,29 +13,40 @@
 #' @keywords internal
 launch_tg_bayes_job <- function(sid, bayes_params,
                                 input, output, session, rv) {
+  # R20.D3: every session now has a registry key -- app.R gives a session
+  # without the cookie a local one -- so the inline fallback, which could
+  # never run, is gone. This guard covers callers that bypass app.R.
   if (is.null(sid) || identical(sid, SID_NONE)) {
-    .legacy_inline_tg_bayes(bayes_params, input, output, session, rv)
+    sid <- make_local_sid()
+    rv$session_id <- sid
+  }
+  # R20.D7: one Bayesian fit per browser at a time. Repeated clicks used to
+  # queue several full fits on the one worker.
+  if (!is.null(busy <- active_job(sid))) {
+    rv$tg_running <- FALSE
+    shiny::showNotification(sprintf(paste0(
+      "A Bayesian %s fit from this browser is already %s. Wait for it, or ",
+      "cancel it from the banner at the top of the page."),
+      if (identical(busy$kind, "bayes_surv")) "survival" else "tumour-growth",
+      if (identical(busy$status, "queued")) "waiting" else "running"),
+      type = "warning", duration = 8)
     return(invisible(NULL))
   }
   show_analysis_modal(
-    if (bayes_params$model_type == "gam")
-      "Bayesian GAMM tumor growth fit running…"
-    else
-      "Bayesian tumor growth fit running…",
-    if (bayes_params$model_type == "gam")
-      "Fitting Bayesian GAMM with brms smoothers. This may take 3–12 minutes."
-    else
-      "Fitting Bayesian LMM with brms. This may take 3–12 minutes.")
+    "Bayesian tumor growth fit running…",
+    paste("Fitting the Bayesian LMM with brms. The first fit of a model",
+          "compiles it (about 20 s); later fits of the same structure reuse it."),
+    cancel_id = session$ns("tg_cancel_bayes"))
 
-  promise <- .tg_bayes_promise(bayes_params)
-  job_id <- launch_job(sid, "bayes_tg", promise,
+  job_id <- launch_job(sid, "bayes_tg", task = .tg_bayes_task(bayes_params),
                        context = list(bayes_params = bayes_params))
   rv$tg_job_id <- job_id
   attach_bayes_poller(input, output, session, rv,
                       job_id_field          = "tg_job_id",
                       finalize_success      = .finalize_tg_success,
                       finalize_failure      = .finalize_tg_failure,
-                      finalize_cancellation = .finalize_tg_cancellation)
+                      finalize_cancellation = .finalize_tg_cancellation,
+                      finalize_lost         = .finalize_tg_lost)
   invisible(NULL)
 }
 
@@ -51,14 +62,18 @@ register_tg_resume <- function(input, output, session, rv) {
     job_id_field          = "tg_job_id",
     finalize_success      = .finalize_tg_success,
     finalize_failure      = .finalize_tg_failure,
-    finalize_cancellation = .finalize_tg_cancellation)
+    finalize_cancellation = .finalize_tg_cancellation,
+    finalize_lost         = .finalize_tg_lost,
+    cancel_input          = "tg_cancel_bayes")
 }
 
 # ---- Per-kind specifics (package-private) ---------------------------------
 
-.tg_bayes_promise <- function(bayes_params) {
-  promises::future_promise({
-    mouseExperiment::bayesian_tumor_growth(
+# The fit, as a task for the job registry's background worker.
+.tg_bayes_task <- function(bayes_params) {
+  list(
+    fun  = mouseExperiment::bayesian_tumor_growth,
+    args = list(
       df                           = bayes_params$data,
       time_column                  = bayes_params$col_names$time_column,
       volume_column                = bayes_params$col_names$volume_column,
@@ -66,7 +81,6 @@ register_tg_resume <- function(input, output, session, rv) {
       treatment_column             = bayes_params$col_names$treatment_column,
       cage_column                  = bayes_params$col_names$cage_column,
       dose_column                  = bayes_params$dose_col,
-      model_type                   = bayes_params$model_type,
       random_effects_specification = bayes_params$random_effects,
       reference_group              = bayes_params$reference_group,
       prior_strength               = bayes_params$prior_strength,
@@ -80,25 +94,20 @@ register_tg_resume <- function(input, output, session, rv) {
       backend                      = bayes_params$backend,
       necrotic_column              = bayes_params$necrotic_col,
       necrotic_handling            = bayes_params$necrotic_handling,
-      return_model                 = TRUE,
-      # plots = TRUE so the MCMC Diagnostics tab can render
-      # posterior_dist_plot + residuals_plot (CODE_REVIEW.md DIAGNOSTICS
-      # gap 2). Small extra fit-time cost; the dashboard's other plots
-      # (growth curves etc.) are still built reactively from data.
+      # R20.D18: the model is not sent back. The diagnostics tab draws from
+      # the result's plots (built without the model since backend 0.28.0)
+      # and its posterior_draws; keeping the model cost ~31 MB per session.
+      return_model                 = FALSE,
       plots                        = TRUE,
-      verbose                      = FALSE
-    )
-  })
+      verbose                      = FALSE),
+    packages = "mouseExperiment")
 }
 
 .finalize_tg_success <- function(result, context,
                                  input, output, session, rv) {
   bayes_params <- context$bayes_params
   result$model_type_used <- "bayes"
-  if (!is.null(rv$bayes_models)) rv$bayes_models$tg <- result$model
-  else rv$bayes_models <- list(tg = result$model)
-  result$model <- NULL
-  gc()
+  result$model <- NULL   # not requested (R20.D18); a no-op kept for safety
   if (!is.null(rv$tg_results) &&
       !identical(rv$tg_results$model_type_used %||% "",
                  result$model_type_used)) {
@@ -134,17 +143,11 @@ register_tg_resume <- function(input, output, session, rv) {
     status_alert("Bayesian analysis was cancelled.", "warning"))
 }
 
-.legacy_inline_tg_bayes <- function(bayes_params,
-                                    input, output, session, rv) {
-  show_analysis_modal(
-    "Bayesian tumor growth fit running…",
-    "Fitting Bayesian model. This may take 3–12 minutes.")
-  .tg_bayes_promise(bayes_params) %...>% (function(result) {
-    .finalize_tg_success(result, list(bayes_params = bayes_params),
-                         input, output, session, rv)
-  }) %...!% (function(err) {
-    .finalize_tg_failure(conditionMessage(err),
-                         input, output, session, rv)
-  })
-  invisible(NULL)
+# R20.D5: the job left the registry before its result was shown.
+.finalize_tg_lost <- function(input, output, session, rv) {
+  rv$tg_running <- FALSE
+  shiny::removeModal()
+  output$tg_status_msg <- shiny::renderUI(status_alert(paste(
+    "This Bayesian analysis was dismissed or expired before its result was",
+    "shown. Run it again."), "warning"))
 }

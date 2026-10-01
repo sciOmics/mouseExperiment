@@ -544,7 +544,7 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     }
 
     p_label <- if (!is.na(p_col)) vapply(pc_df[[p_col]], format_pval, character(1)) else NULL
-    ref_grp <- if (!is.null(input$tg_reference) && nzchar(input$tg_reference)) input$tg_reference else NULL
+    ref_grp <- rv$tg_reference_used  # the reference of the displayed run
 
     contrast_labels <- as.character(pc_df[[label_col]])
     if (isTRUE(using_dunnett) && !is.null(ref_grp)) {
@@ -776,34 +776,6 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     plot(1, 1, type = "n",
          main = "Random-effects Q-Q not available (AUC path has no random effects)",
          xlab = "", ylab = "")
-  })
-
-  # GAM-specific diagnostics — only populated when model_type = "gam".
-  # The UI uses output$tg_show_gam_diag to gate the conditionalPanel.
-  output$tg_show_gam_diag <- shiny::reactive({
-    !is.null(rv$tg_results) &&
-      isTRUE(rv$tg_results$model_type_used == "gam") &&
-      (!is.null(rv$tg_results$gam_k_check) ||
-       !is.null(rv$tg_results$gam_concurvity))
-  })
-  shiny::outputOptions(output, "tg_show_gam_diag", suspendWhenHidden = FALSE)
-
-  output$tg_gam_k_check <- renderDT({
-    req(rv$tg_results)
-    kc <- rv$tg_results$gam_k_check
-    if (is.null(kc) || nrow(kc) == 0L)
-      return(datatable(data.frame(Message = "k.check not available")))
-    datatable(format_df_for_display(as.data.frame(kc)),
-              options = list(dom = "t", paging = FALSE, searching = FALSE))
-  })
-
-  output$tg_gam_concurvity <- renderDT({
-    req(rv$tg_results)
-    cc <- rv$tg_results$gam_concurvity
-    if (is.null(cc) || nrow(cc) == 0L)
-      return(datatable(data.frame(Message = "concurvity not available")))
-    datatable(format_df_for_display(as.data.frame(cc)),
-              options = list(dom = "t", paging = FALSE, searching = FALSE))
   })
 
   # CODE_REVIEW.md DIAGNOSTICS gap (13) — LMM influence diagnostics.

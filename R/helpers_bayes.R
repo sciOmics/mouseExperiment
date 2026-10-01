@@ -41,7 +41,7 @@ format_elapsed <- function(seconds) {
 #'   \item Bayes R^2 — posterior median + 95\% credible interval.
 #'   \item PPC coverage — empirical 50 / 80 / 95 \% interval coverage.
 #'   \item PSIS-LOO — \code{elpd_loo} ± SE and the count of observations
-#'     with Pareto-k > 0.7 (influential / unreliable LOO).
+#'     with Pareto-k above the backend's threshold (influential / unreliable LOO).
 #' }
 #' Fields that are missing from the result list are silently skipped, so
 #' the helper works for both v0.4.5 results (no PPC coverage) and v0.4.6+.
@@ -117,8 +117,9 @@ bayes_diagnostics_panel <- function(result) {
   }
   if (!is.null(loo) && nrow(loo) > 0L) {
     rows$loo <- sprintf(
-      "elpd_loo = %.2f (SE %.2f); %d observation(s) with Pareto-k > 0.7",
-      loo$elpd_loo[1], loo$se_elpd[1], as.integer(loo$n_high_k[1])
+      "elpd_loo = %.2f (SE %.2f); %d observation(s) with Pareto-k > %s",
+      loo$elpd_loo[1], loo$se_elpd[1], as.integer(loo$n_high_k[1]),
+      format(pareto_k_threshold(list(loo_diagnostics = loo)))
     )
   }
 
@@ -159,12 +160,14 @@ bayes_diagnostics_panel <- function(result) {
 #' display in a DT table on the dashboard's MCMC Diagnostics tab.
 #'
 #' @param result A Bayesian-analysis result list.
-#' @param threshold Pareto-k cutoff (default 0.7).
+#' @param threshold Pareto-k cutoff. Default: the backend's
+#'   \code{k_threshold}, which depends on the number of draws (0.667 at
+#'   1,000; backend R20.35), or 0.7 for an older result.
 #' @return A data frame with columns \code{Obs_Index} and \code{Pareto_k},
 #'   sorted descending. Returns an empty data frame when no influential
 #'   observations exist or the LOO field is missing.
 #' @keywords internal
-bayes_influential_obs <- function(result, threshold = 0.7) {
+bayes_influential_obs <- function(result, threshold = pareto_k_threshold(result)) {
   loo <- result$loo_diagnostics
   if (is.null(loo) || nrow(loo) == 0L) {
     return(data.frame(Obs_Index = integer(0), Pareto_k = numeric(0)))
@@ -228,7 +231,7 @@ build_ppc_coverage_plot <- function(result) {
     ggplot2::theme_classic()
 }
 
-#' Build a Pareto-k histogram with the 0.7 cut-off line.
+#' Build a Pareto-k histogram with the backend's cut-off line.
 #'
 #' Closes DIAGNOSTICS.md gap (11). The dashboard already shows the table
 #' of high-k observations; the histogram gives the full distribution so
@@ -245,23 +248,34 @@ build_pareto_k_plot <- function(result) {
   pk <- loo$pareto_k[[1]]
   if (is.null(pk) || length(pk) == 0L) return(NULL)
   if (!requireNamespace("ggplot2", quietly = TRUE)) return(NULL)
+  k_thr <- pareto_k_threshold(result)
   df <- data.frame(k = as.numeric(pk))
   ggplot2::ggplot(df, ggplot2::aes(x = .data[["k"]])) +
     ggplot2::geom_histogram(bins = 30L, fill = "#2c7bb6",
                             colour = "white") +
-    ggplot2::geom_vline(xintercept = 0.7, colour = "red",
+    ggplot2::geom_vline(xintercept = k_thr, colour = "red",
                         linetype = "dashed", linewidth = 0.8) +
     ggplot2::geom_vline(xintercept = 0.5, colour = "orange",
                         linetype = "dotted", linewidth = 0.6) +
-    ggplot2::annotate("text", x = 0.7, y = Inf, label = "  k = 0.7",
+    ggplot2::annotate("text", x = k_thr, y = Inf, label = sprintf("  k = %s", format(k_thr)),
                       colour = "red", hjust = 0, vjust = 1.4, size = 3.5) +
     ggplot2::annotate("text", x = 0.5, y = Inf, label = "  k = 0.5",
                       colour = "orange", hjust = 0, vjust = 1.4, size = 3.5) +
     ggplot2::labs(title = "PSIS-LOO Pareto-k distribution",
-                  subtitle = sprintf("n = %d; cut-off at 0.7 (red), 0.5 (orange)",
-                                     length(pk)),
+                  subtitle = sprintf("n = %d; cut-off at %s (red; depends on the number of draws), 0.5 (orange)",
+                                     length(pk), format(k_thr)),
                   x = "Pareto k", y = "Count of observations") +
     ggplot2::theme_classic()
+}
+
+#' The Pareto-k threshold of a result
+#'
+#' Backend 0.28.0 (R20.35) reports `k_threshold`, which depends on the number
+#' of draws; an older result falls back to 0.7.
+#' @keywords internal
+pareto_k_threshold <- function(result) {
+  k <- result$loo_diagnostics$k_threshold
+  if (length(k) >= 1L && is.finite(k[1])) as.numeric(k[1]) else 0.7
 }
 
 #' Build an MCMC rank-overlay plot.
@@ -280,12 +294,13 @@ build_pareto_k_plot <- function(result) {
 #'   parameters.
 #' @return ggplot, or NULL on failure.
 #' @keywords internal
-build_mcmc_rank_plot <- function(brmsfit, pars = NULL) {
-  if (is.null(brmsfit)) return(NULL)
+build_mcmc_rank_plot <- function(draws, pars = NULL) {
+  if (is.null(draws)) return(NULL)
   if (!requireNamespace("bayesplot", quietly = TRUE)) return(NULL)
   if (!requireNamespace("posterior", quietly = TRUE)) return(NULL)
   tryCatch({
-    draws <- posterior::as_draws_array(brmsfit)
+    # R20.D18: the result's headline draws (backend >= 0.28.0), or a fit.
+    draws <- posterior::as_draws_array(draws)
     # Drop lp__ which adds noise; keep treatment-relevant params.
     if (is.null(pars)) {
       keep <- dimnames(draws)$variable

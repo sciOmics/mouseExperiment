@@ -1684,3 +1684,871 @@ check, not just `testthat`. Both are fast; neither was being run.
 |---|---|---|---|
 | R19.6 | Stale NAMESPACE imports broke install → 503 | **Critical** | ✅ Fixed v26.07.015 |
 | — | `load_all()` never validates imports; suite green on unbuildable code | Process | ✅ Guarded + install/boot check documented |
+
+
+---
+
+# Review Round 21 (v26.07.015 — 2026-09-29)
+
+**Scope.** Every file in `R/`, `inst/www/js`, the docs and the test suite, reviewed by two reviewers (analysis modules; infrastructure and reliability) plus a lead. Cross-repo findings came from the package's Round 20 and the VPS repo's Round 3. Evidence was executed with `shiny::testServer()`, with shinytest2 in headless Chrome (installed for this round), and by calling helpers directly. The lead re-ran or read every Critical.
+
+**Baseline at HEAD (`b8a58c3`).**
+
+| Check | Result |
+|---|---|
+| `devtools::test()` | 574 expectations green, but see R20.D11: `test-shiny_app.R` has never executed |
+| `R CMD INSTALL` + `runDashboard()` on a real port | **HTTP 200**, 470 KB initial page, all six JS assets referenced (the Round 20 install-and-boot standard, re-run) |
+| `R CMD check` | 6 WARNINGs, 5 NOTEs (R20.D26). The NOTEs hide three live defects (R20.D3, R20.D4, R20.D19) |
+
+**How this relates to the package.** Most statistical Criticals surface here, because the dashboard calls the affected functions with their defaults. See package §R20-A (themes T1–T4) and R20.1–R20.13. This round records only what the dashboard itself does.
+
+## R20-D.A Critical
+
+### R20.D1 DD/MM/YYYY dates are silently read as MM/DD/YYYY, so every time-based result is wrong — **Critical**
+
+`R/helpers_data.R:93` (`detect_date_format`):
+
+```r
+if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_val)) { fmt <- "%m/%d/%Y" ...
+```
+
+The format is chosen from the **first row only**, and any `d/d/yyyy` value is assumed to be US month-first. A European export (DD/MM/YYYY) matches, `fmt` is non-NULL, and no warning fires. The item 1.4 "date_fmt_warning" fix fires only when the detector returns NULL, which never happens for this input.
+
+Lead re-run. The study starts 1 March 2025, with measurements on 01/03, 04/03, 08/03, 11/03, 15/03 and 18/03:
+
+```
+true days        0   3   7   10   14   17
+dashboard Day  -57  33 155  247   NA   NA
+```
+
+Days 1–12 are read as months and become silently wrong values; days 13–31 become NA and are dropped with only a generic "Some dates could not be parsed" toast. Every growth rate, TGI and KM time downstream is wrong.
+
+A related problem (lead, read-only): year-less formats (`15-Mar`, `March 15` plus the reference year) assume a single calendar year, so a study that crosses New Year gets negative days.
+
+**Fix:** don't accept an ambiguous `d/d/yyyy` layout on faith. Scan the whole column: any first component above 12 forces day-first, any second component above 12 forces month-first. When the order is still ambiguous, ask the user. Warn whenever `calculate_dates()` produces NA or negative days relative to the reference date.
+
+### R20.D2 The survival per-animal reduction keys animals by ID (plus cage) only, so IDs reused across arms are merged — **Critical**
+
+`R/mod_survival.R:649-660` (column mode) and `:730-735` (volume mode); the Bayesian path uses the same frame.
+
+```r
+key_cols <- if (has_cage) c(id_col_surv, cage_col_surv) else id_col_surv
+mask <- data[[id_col_surv]] == unique_animals[i, id_col_surv]
+```
+
+Ear tags reused per group are common. With no cage mapped, or cages numbered per arm, all of an ID's rows across arms become one record. That record takes the latest day, the maximum event across all arms, and the treatment of whichever row sorts last. The backend's one-row-per-animal check cannot detect this. Executed with the loop copied verbatim:
+
+| Case | Dashboard | Correct reduction |
+|---|---|---|
+| 32 animals | 8 records, all "Combo" → error `Reference group 'Vehicle' is not present` | — |
+| A silent case | 10 records (1 Vehicle, 9 DrugA); HR 0.197, p = 0.19; DrugA events 9/9 | 20 records; HR 0.123, p = 0.002; DrugA events 7/10 |
+
+A related problem: in column mode the reduction takes the **last day** even when rows continue after a flagged event. An event on day 20 with rows to day 28 gives Day 28, Event 1 (executed; `:666-677`).
+
+**Fix:** key by treatment + ID (+ cage). Better: move the reduction into the backend using `make_mouse_key()` (package T1), and use the first event day.
+
+### R20.D34 On the bundled Weight demo with default settings, the toxicity tumour-mass correction is 1000× too large, and the warning is swallowed — **Critical**
+
+`R/mod_toxicity.R:1316-1347,1377-1413` makes seven `mouseExperiment::` calls; none passes `volume_units`, and the UI has no unit selector. `R/mod_toxicity.R:1357-1358` re-derives net weight itself with a hard-coded `/1000`. The sidebar label (`:51`) says "Volume (mm³)". `R/helpers_ui.R:105-123`: `safe_analysis()` has only an `error =` handler, so warnings are dropped.
+
+The package's unit heuristic classes the demo's genuinely-mm³ volumes (median 6.21) as cm³ (package R20.83, lead re-run). Three backend functions therefore subtract tumour masses 1000× too large, while four others and the dashboard's own trajectory plot assume mm³. One tab ends up showing mutually inconsistent, impossible numbers under "Analysis completed successfully!". Executed:
+
+| Output | Shown | With `volume_units = "mm3"` |
+|---|---|---|
+| Net weight, LR/DMSO day 14 (22.2 g mouse, 1,092.6 mm³ tumour) | −1,070.4 g in the model; 21.1 g in the trajectory plot | 21.1 g |
+| Body-weight EMMs (g) | DMSO −173.4, Drug A −166.1, Drug A+B 17.1, Drug B −18.7 | positive |
+| ≥ 20 % weight-loss events | 20 of 20 animals | 0 of 20 |
+| Top TWM arm | Drug A+B (2.13) | Drug B (6.44) |
+
+The backend's own warning ("Estimated tumour mass exceeds 50 % of body weight (max 5309 %) … off by 1000x") never reaches the user.
+
+**Fix:**
+- Add a mm³/cm³ selector to Data Upload and pass `volume_units` to all seven calls (the package adds the argument to four functions under R20.27/R20.83).
+- Plot the backend's `Net_Weight` rather than re-deriving it.
+- Make `safe_analysis()` collect warnings with `withCallingHandlers()` and show them in the status box. That last change alone would have exposed this.
+
+### R20.D35 Synergy and TWM "95 % intervals" are shown as uncertainty for estimates they do not describe — **Critical** (root cause package R20.2)
+
+`R/mod_synergy.R:894-962` renders the CI table and an "interval excludes zero" verdict; `R/mod_toxicity.R:1584-1620` renders the TWM table and the ranking note. Under the default "Model-based" estimand, the backend's intervals come from last-observation arithmetic means (package R20.2).
+
+- **Master demo, day 20:** TGI_A is 90.2 % while its "95 % CI" is [72.5, 85.6]. The Bliss excess is 0.018 ("Synergy"), yet its interval is [0.054, 0.171], and the tab says *"The Bliss-excess 95 % interval [0.054, 0.171] excludes zero, consistent with … synergistic direction."*
+- **TWM table:** every treated arm has a point estimate outside its own bounds (Drug_A Low: TGI 87.97 %, CI [−1.34, 38.33]; TWM 6.43, CI [0, 2.93]). The ranking note orders arms by model TWM but separates them with last-observation bounds.
+- **Control case:** with `last_obs` selected, the point sits inside the interval (79.6 within [72.5, 85.6]).
+
+Executed.
+
+**Interim dashboard fix:** until the package bootstraps the reported estimand, suppress the interval columns and the verdict note when `endpoint_method == "model"`, or relabel them as "interval for the last-observation estimand".
+
+## R20-D.B Major
+
+### R20.D3 All six Bayesian "legacy inline" fallbacks crash; the "fit running" modal then stays open forever — **Major**
+
+`R/tg_resume.R:142,145`; `surv_resume.R:130,133`; `bw_resume.R:109,111`; `dr_resume.R:107,110`; `syn_resume.R:117,120`; `twm_resume.R:89,92`.
+
+`%...>%` and `%...!%` are not imported (`exists("%...>%", asNamespace("mouseExperimentDashboard"))` is FALSE, and R CMD check flags it). `a %...>% b %...!% c` parses as `` `%...!%`(`%...>%`(a, b), c) ``, so R fails to find `%...!%` before the promise is ever built, and **no fit starts**. `show_analysis_modal()` has already run, and `removeModal()` lives only in the finalisers, so the session is wedged until reload.
+
+The path is taken whenever `get_sid_or_none()` returns `SID_NONE`, i.e. no `mE_session` cookie on the websocket request. A normal first visit does get the cookie (verified in headless Chrome). Browsers that block or clear cookies do not. Executed:
+- Each `.legacy_inline_*` called directly gives `could not find function "%...!%"`, and the stubbed promise builder was called 0 times.
+- In headless Chrome with `Emulation.setDocumentCookieDisabled(TRUE)`, the "Bayesian tumor growth fit running…" modal was still open 12 s later, with `Error in %...!%` in the R log.
+
+**Fix:** delete the legacy path and give `SID_NONE` sessions a server-generated `make_sid()`, so they use the registry like everyone else. Failing that, use `promises::then()` as `launch_job()` already does, or `@importFrom promises %...>% %...!%`.
+
+### R20.D4 `NA_Date_` is undefined, so a non-US reference date crashes date preprocessing — **Major**
+
+`R/helpers_data.R:89`: `error = function(e) NA_Date_`. That symbol is not visible from the namespace. The handler fires when the *reference date* matches none of the five `tryFormats`, e.g. `24/03/2025`, `2025/03/24`, `24.03.2025`, `24 March 2025` or `20250324`. It then raises `object 'NA_Date_' not found` instead of falling back to `Sys.Date()`. What the user sees:
+- **Tumour Growth** (`mod_tumor_growth.R:90`, no surrounding `tryCatch`): the run observer errors, and "Running analysis…" stays up.
+- **Survival** (`mod_survival.R:614`, a bare `ensure_preprocessed(rv)`; every other module wraps it): the raw message.
+- **Data tab:** the error is swallowed and `rv$processed_data` stays NULL.
+
+**Fix:** `as.Date(NA)`. The next line already handles NA.
+
+### R20.D5 "Dismiss all" from a second tab strands the first tab's modal and discards its completed result — **Major**
+
+`R/bayes_job_runner.R:43-46`, `R/resume_banner.R:107-112`, `R/job_registry.R:110-112`.
+
+1. The banner renders in every tab that shares the cookie. **Dismiss all** retires every job, including running ones.
+2. The first tab's poller then finds `get_job()` NULL, clears its job id and returns **without calling a finaliser**, so the modal stays open.
+3. When the fit resolves, `onFulfilled` finds the job retired and drops the result.
+
+The modal backdrop is click-through (`overlay.js:33-35`, `custom.css:397`), so this can also happen within a single tab.
+
+Executed:
+- **Browser (two tabs):** tab 1 stayed `modal_open: 1`, "Running analysis…", `jobs: <none>`, through +17.5 s.
+- **Unit test:** retiring a job under a live poller fires no finaliser.
+
+The banner's **Cancel** is handled correctly.
+
+**Fix:** in the poller's `is.null(job)` branch, dismiss the modal and clear the running flag. Also let Dismiss clear terminal jobs only.
+
+### R20.D6 Long analyses run synchronously on the one R process and freeze every user, and the 2-minute power simulation is reachable without an upload — **Major**
+
+`future::plan(multisession, workers = 1L)` (`R/app.R:289`) serves only the six Bayesian promises. Everything else blocks the single Shiny process. Timings on the master demo with module defaults (executed):
+
+| Analysis | Blocks every session for |
+|---|---|
+| A-priori LMM power simulation, defaults (500 sims × 5 N × 2 α) | **121 s**, scaling to the UI maximum of 2,000 sims |
+| TG lme4 + permutation test, 999 / 9,999 permutations | 22 s / **145 s** |
+| TG lme4 with diagnostics (package R20.76) | ~8 s here, **20–140 s** on realistic sizes |
+| `analyze_body_weight` | 15 s |
+| GAMM, AUC, survival, synergy (2,000 boot), TWM, dose-response | < 1.5 s |
+
+The Power tab is enabled at startup with no data (`R/app.R:228`), so any anonymous visitor can freeze the server for about two minutes. Meanwhile every other session shows the disconnect overlay once the proxy timeout passes.
+
+**Fix:** route the power simulation, permutation test and body-weight fit through the same `future` job path. Fix R20.76 in the package (per-animal influence). Consider a second worker with a global cap.
+
+### R20.D7 `cancel_job()` does not stop the worker, one worker serialises every user's fit, and there is no per-browser cap — **Major**
+
+`R/job_registry.R:174-181` only sets `status = "cancelled"`; its docstring says the future "continues to completion". With `workers = 1L`, a second user's fit queues behind the first for up to 12 minutes. A user who cancels and re-runs waits for both. Repeated clicks enqueue multiple full fits.
+
+Read-only: this follows from `future_promise` queueing semantics and the implementation.
+
+**Fix:** tell users in the UI that only one fit runs at a time. Add a per-sid concurrent-job cap. Use an interruptible backend (e.g. `callr`-based) or more workers under a global cap.
+
+### R20.D8 Bayesian survival from volume-derived events always fails — **Major**
+
+`R/mod_survival.R:746-750` creates `.__DerivedTime` and `.__DerivedEvent`. brms rejects names with double underscores (`Variable names may not contain double underscores or underscores at the end`), so the "derive from tumour volume threshold" + Bayesian combination errors on every input (executed).
+
+**Fix:** use syntactic names without double underscores. In the package, map user columns to internal names before building any brms formula (package R20.43).
+
+### R20.D9 `.rda` upload does not work, and it loads into the process-wide global environment — **Major**
+
+`R/helpers_data.R:239-242`: `load(file_path, envir = .GlobalEnv); data <- get(ls()[1])`. Two problems:
+1. **The feature is dead.** `ls()` inside the function lists the function's own frame, so `get(ls()[1])` returns a local variable, and every valid `.rda` is rejected as "Loaded file is not a data frame" (executed).
+2. **Loaded objects persist and are shared.** The file's objects are written into `.GlobalEnv`, which every Shiny session in the container shares. They persist across sessions and can shadow functions that other code calls unqualified (`validate_uploaded_file()` calls `read.csv`; `logging.R:178` calls `tail`). Uploaded files must not be able to change the process-global environment.
+
+**Fix:** load into a private environment, accept only data frames, and never touch `.GlobalEnv`. If `.rda` is not a feature anyone needs, remove it from `accept =` (`ui_modules.R:130`); that is the simpler fix. Recorded at design level; no demonstration is reproduced here.
+
+### R20.D10 Session restore reads an uploaded `.rds` and copies every key into app state without validation — **Major (hardening)**
+
+`R/mod_log_session.R:104-117`:
+
+```r
+snapshot <- readRDS(file_info$datapath)
+...
+for (key in names(snapshot)) { if (key != "saved_at") rv[[key]] <- snapshot[[key]] }
+```
+
+An uploaded file is untrusted input. Here it is deserialised with `readRDS()`, and every top-level key is written into `rv` with no key allow-list, no type or shape checks, and no check that the restored column mappings (`settings$col_*`, `tx_col`, `vol_col`, …) name columns that exist in the restored data. The CSV upload path is safe on that last point, because `read.csv(check.names = TRUE)` sanitises headers. Restore bypasses that, and the package pastes column names into model formulas (package R20.43).
+
+The JSON **preset** path in the same file (`:153-196`) already does this correctly: it parses JSON and applies each setting through `updateSelectInput()`, which constrains values to the offered choices.
+
+**Fix:** replace the `.rds` snapshot with a data-only format (the uploaded data as CSV plus settings as JSON, modelled on the preset path). Restore only an allow-listed set of keys with type checks, validate every `col_*` against `names(data)`, and cap the file size. Recorded at design level.
+
+### R20.D11 `test-shiny_app.R` has never executed, and the only browser-level coverage is dead — **Major (process)**
+
+`tests/testthat/test-shiny_app.R:16`: `skip_if_not_installed("chromote", message = "…")`. testthat 3.3.2's `skip_if_not_installed()` has no `message` argument.
+- **Without shinytest2** (every previous run in this environment), the file skipped at line 14, at file level, so it never even appeared in the skip count.
+- **With shinytest2 and chromote installed**, it **errors** at line 16 before any `test_that()`. The full suite reports 574 passing and 1 error, and zero tests run from this file.
+
+**Fix:** drop the `message =` argument (use `skip_if()` for the Chrome check), install shinytest2/chromote in CI (package R20.53), and make a file-level error fail the run.
+
+### R20.D12 Treatment names, reference group and column names are sent to the analytics server — **Major (confidentiality)**
+
+`R/mod_tumor_growth.R:72-74` and `R/mod_survival.R:604-607` (`trackAnalysisStart`/`trackReferenceGroupSelected` carry the reference or treatment label, e.g. `"Drug_A Mid + Drug_B"`); `R/mod_data_upload.R:655-662` (`trackColumnMapping` carries the user's column names); `inst/www/js/umami-events.js:60-95`. Error payloads (`trackError`, up to 200 characters) can include a column name.
+
+The endpoint is first-party (self-hosted Umami), but unpublished compound and study identifiers end up in an analytics database with no notice. File names are **not** sent.
+
+Staging traffic is also recorded under the production website id, because the Umami tag in `app.R:127-131` is unconditional.
+
+**Fix:** send only non-identifying facts (analysis type, method, counts), and gate analytics on consent or a notice. Use a separate website id for staging.
+
+### R20.D13 The "Treat natural death as event (recommended)" checkbox is never read — **Major**
+
+`R/mod_survival.R:76-87` is the only reference to the input; the Info text (`:205-209`) says it matters. The event derivation (`:717-754`) never reads it, and the results are identical with the box checked or unchecked.
+
+Executed with a constructed natural death (animal 17 removed at day 10 at 248 mm³):
+- **Volume mode:** Event = 0 even with the box checked ("recommended"), so toxic deaths in treated arms are censored, which favours the treatment.
+- **Column mode:** Event = 1 even with it unchecked.
+- **Consequence:** the Drug_A Mid HR is 0.0074 or 0.0389 depending only on the event source.
+
+**Fix:** implement the option or remove it.
+
+### R20.D14 Survival and default over-time synergy fail unless the ID column is literally named `ID` — **Major**
+
+`mod_survival.R:805-815` and `mod_synergy.R:692-705` never pass `id_column`, while the column detector maps `mouse_id`, `animal_id`, `ear tag` and similar. Every bundled demo happens to use `ID`, which is why no test catches this. Executed on the master data with the ID column renamed "Animal":
+- **Frequentist survival** fails with `undefined columns selected`. The Bayesian survival path does pass `id_column`, and the direct backend call with `id_column = "Animal"` succeeds.
+- **Over-time synergy**, which runs on the default "All dates" time point, fails with the misleading "Could not calculate synergy for any time points". The same data works with a single day selected.
+
+"All dates" also silently ignores the Endpoint-estimand and Bootstrap inputs: the over-time function accepts neither argument, and no interval table or attrition table is shown, contrary to the sidebar help. Internally it still runs 2,000 bootstrap resamples at each of 11 days and throws them away (package R20.15, R20.81). Every survival run also prints the full HR report to server stdout, because `verbose = FALSE` is not passed.
+
+**Fix:** pass `id_column` (and cage) from both calls. The package gains the matching arguments in R20.15.
+
+### R20.D15 Every table in the downloadable HTML report has all its column names in one header cell — **Major**
+
+`R/helpers_report.R:44` applies `esc()` to `colnames(df)`, but `esc()` collapses vectors (`paste(xc, collapse = ", ")`). The header row is therefore a single `<th>` reading "Treatment, Estimate, SE", while each row has one `<td>` per column. Columns 2 onward are unlabelled in every table of every report, which is the artefact users send to colleagues.
+
+Lead, executed: `th count: 1, td per row: 3`. Cells, captions, settings and the title *are* HTML-escaped, which was verified.
+
+**Fix:** `vapply(colnames(df), esc, "")`.
+
+### R20.D16 The combined efficacy–toxicity table and its download always fail — **Major**
+
+`R/mod_toxicity.R:1741,1745`; `R/mod_toxicity_downloads.R:171,175`. The code selects `benefit_table[, c("Treatment","Benefit")]` and `comparison[, c("Treatment","Corrected_TGI","N_Excluded")]`, but the backend returns `Benefit_Score` and `TGI_Corrected`. The result is `undefined columns selected` whenever TWM and TBA succeed. `N_Excluded` lives in `excluded_summary`, not in `comparison`. Executed: every Efficacy–Toxicity run shows the error in the Combined Report tab, and `download_et_report` fails. `mod_toxicity.R:1479` `bt$Benefit` works only through `$` partial matching.
+
+**Fix:** use the backend's names, and add these columns to `test-backend-contract.R`.
+
+### R20.D17 The Power tab's analytic path ignores multiplicity and attrition — **Major**
+
+`R/mod_power.R:494-530` calls `apriori_power_analysis()` without `p_adjust_method`, `n_comparisons` or `dropout_rate`, so the R3.15 and K.15 fixes are unreachable from the UI (lead, read). Combined with package R20.7 (√k), sample sizes the Power tab recommends for k ≥ 3 arms are too small twice over.
+
+**Fix:** expose all three, defaulting to the k − 1 vs-control family.
+
+### R20.D18 `result$model <- NULL; gc()` frees nothing, so every Bayesian result keeps its ~31 MB fit alive — **Major (memory)**
+
+`tg_resume.R:100`, `bw_resume.R:69`, `surv_resume.R:84`, `syn_resume.R:72`, `dr_resume.R:68`. The result's ggplot objects hold the model in their `plot_env`, so the list still serialises to 30.8 MB without `$model` (0.01 MB once the plots are removed; package R20.80). `tg_results_prev` keeps an older fit alive as well. On a container limited to 4 GiB (1 GiB on staging, VPS V3.12), a handful of concurrent Bayesian users exhausts memory.
+
+**Fix:** store plots that don't capture the model (built from data frames, or pre-rendered), then drop the model.
+
+### R20.D19 The survival forest-plot download calls a function outside its scope — **Major**
+
+`R/mod_survival_downloads.R:84` calls `build_surv_forest_plot()`, which is defined as a local inside `survival_server`'s module closure (`R/mod_survival.R:1346`). `add_surv_download_handlers()` is a separate top-level function whose enclosing environment is the package namespace, where the symbol does not exist (`exists(..., asNamespace(...))` is FALSE, and R CMD check flags it). Executed under `testServer`: the on-screen forest plot renders, but "Download Plot" on it returns HTTP 500 (`could not find function "build_surv_forest_plot"`), and the user gets a failed browser download with no in-app message. The KM, Cox CSV and risk-table downloads work. A `codetools` scan of every namespace function found no other closure-captured helper, apart from the promise operators in R20.D3.
+
+**Fix:** move `build_surv_forest_plot()` to top level (`helpers_plot.R`), or pass it in as an argument, as the C.1/C.3 refactor convention prescribes for shared reactives.
+
+### R20.D52 "Download All" zips a directory shared by every session, so one user's download can contain another user's files — **Major (confidentiality)**
+
+`R/mod_tumor_growth_downloads.R:208-247`:
+
+```r
+outdir <- file.path(tempdir(), "mouseExperiment_results")
+...
+files <- list.files(outdir, full.names = TRUE)
+zip(file, files, flags = "-j")
+unlink(outdir, recursive = TRUE)
+```
+
+`tempdir()` is per process, and every user shares the one R process. `unlink()` runs only after a successful export (there is no `on.exit`), so any file left by another session's failed export is zipped into the next user's download. Executed: `OTHER_SESSION_growth_rates.csv` appeared in the ZIP. The Toxicity ZIP already uses a per-call directory correctly.
+
+**Fix:** `outdir <- tempfile("results_")` per call, with `on.exit(unlink(outdir, recursive = TRUE), add = TRUE)`.
+
+### Findings in the analysis modules
+
+#### R20.D36 Synergy always fails after a Tumor Growth run when a dose column is mapped — **Major**
+
+The Synergy selectors are built from the raw treatment column (`R/mod_synergy.R:512-537`). The analysis, however, uses `pp$tx_col` (`:627-630`), which the TG run has switched to "TreatmentGroup" (e.g. "Drug_A Mid 15"; `R/mod_tumor_growth.R:150-155`). The Synergy Info tab tells users to run TG first, and the Master demo auto-maps Dose, so the demo always ends in "The following specified groups do not exist in the treatment column" (executed).
+
+**Fix:** build the choices from `ensure_preprocessed(rv)$data[[tx_col]]`, or pass `rv$settings$col_treatment` as `treatment_column`.
+
+#### R20.D37 The Synergy "Tumor Growth Inhibition" plot recomputes TGI from surviving animals and contradicts the table beside it — **Major**
+
+`R/mod_synergy.R:1175-1196`: `tgi_vals <- 100 * (1 - g_rows[[vol_col]] / ctrl_mean)`, where `ctrl_mean` is taken over the animals present that day. That is the "survivors" estimand the tab itself warns against; at day 20 one of eight Vehicle mice remains. This is the re-derivation pattern recorded in the maintainer notes (the dashboard computing a number the package already returns). Executed:
+
+| Day | Arm | Backend table / trend plot | TGI plot |
+|---|---|---|---|
+| 20 | Drug_B | 76.0 | 55.7 |
+| 20 | Drug_A | 90.2 | 83.5 |
+| 18 | Drug_B | 72.0 | 56.8 |
+
+**Fix:** plot the backend's `synergy_summary` TGIs, or state the estimand on the plot.
+
+#### R20.D38 The Synergy Info tab documents the discredited response-additivity formula — **Major**
+
+`R/mod_synergy.R:107-110,124,133-136,204` says *"Expected TGI = min(FE_A + FE_B, 1.0) × 100"* and "sum of individual TGIs, capped at 100 %". That is the null R17.2 removed as biased toward antagonism. The backend computes Bliss, `FE_A + FE_B − FE_A·FE_B`, and the verdict box on the same tab states it correctly. The Info tab's "ceiling" warning is wrong as a result (50 % + 50 % gives an expected 75 %, not 100 %). It also says "two reference models are evaluated", lists one, and refers to a "CI threshold" (read-only).
+
+**Fix:** rewrite the panel, and add a Bliss-formula check to `test-docs-current.R`.
+
+#### R20.D39 The AUC model fails on first click with the default correction — **Major**
+
+The default is Dunnett (`R/ui_modules.R:401-409`). The substitution (`R/mod_tumor_growth.R:285-299`) only swaps Dunnett and Tukey, and the backend rejects both on the AUC path (`utils_contrasts.R:88-92`). Executed:
+- **With AUC selected and default settings:** "Error: p_adjust_method = 'dunnett' requires comparisons from a single fitted model…".
+- **With "All Comparisons":** Dunnett is swapped for Tukey, which fails the same way.
+
+**Fix:** for `model_type == "auc"`, map Dunnett/Tukey to Holm (or restrict the choices) and say so in the help text.
+
+#### R20.D40 The GAMM effect-size forest plot crashes; its download fails and the ZIP silently omits it — **Major**
+
+`R/mod_tumor_growth_plots.R:549-589`. GAM contrasts are per day: 25 rows with 5 repeated labels. `factor(Contrast, levels = …)` fails with "factor level [3] is duplicated", and the plot area shows the error. `download_tg_plot_effect_forest` errors, and `download_tg_all` drops `effect_forest.png` without saying so (executed).
+
+**Fix:** facet by day (or show the last day only), with unique labels.
+
+#### R20.D41 The dashboard replaces the backend's working GAMM residual plot with a broken one — **Major**
+
+`R/mod_tumor_growth.R:575-596`: `rf_df <- data.frame(Fitted = stats::fitted(result$model), Residuals = stats::residuals(result$model))`. On gamm4 objects both return NULL, so the frame is 0 × 0, and it overwrites the backend's valid `diag_resid_fitted_plot`. The Diagnostics panel shows "object 'Fitted' not found". The backend plot prints fine on the same fit (executed).
+
+**Fix:** keep the backend's `diag_*` plots and delete the re-derivation (`:540-596`).
+
+#### R20.D42 Residual and random-effect Q-Q plots always look non-normal — **Major**
+
+The displayed residual Q-Q is built in the dashboard (`R/mod_tumor_growth.R:544-556`: `qqnorm(resid)` + `geom_abline(0, 1)`), and the backend's RE and body-weight Q-Q plots have the same flaw (package R20.84). The help text (`ui_modules.R:1235-1245,1297-1305`) says "points should fall along the red dashed line", which cannot happen when the values are unstandardised. On the master demo (residual SD 0.163), 4.7 % of points lie within ±0.05 of the line for a correctly specified model (executed).
+
+**Fix:** standardise the values, or use a `qqline` reference (the package fix covers the backend plots), and delete the dashboard copy.
+
+#### R20.D43 Forest plots show unadjusted 95 % CIs next to multiplicity-adjusted p-values — **Major**
+
+`R/mod_tumor_growth_plots.R:533-544` builds `est ± qt(.975, df)·SE`; `R/mod_tumor_growth.R:614-624` uses the raw Welch CI with `p_adjusted` on the AUC path; `R/mod_toxicity_plots.R:114-136` uses a raw Welch CI with BH colouring. Master demo, interim data, Dunnett: "Drug_A Mid [−0.555, −0.031] p = 0.111". The interval clears zero while the annotation says not significant (executed).
+
+**Fix:** use adjusted intervals from the package (R20.85), or label the interval "unadjusted".
+
+#### R20.D44 The Tumor Growth Comparisons tab mislabels the correction, discards its own title, and reads the family at render time — **Major**
+
+- **Mislabelled correction.** The help (`R/mod_tumor_growth.R:1197`) says "p.value — adjusted p-value (Dunnett…)" even when the correction is None. The p.value is then 0.0341 unadjusted, where Dunnett gives 0.111.
+- **Discarded title.** `comparisons_title()` computes a correct title at `:1406-1418` and it is never used. `output$tg_comparisons_title` (`:1374-1389`) has no UI slot, although the GAMM Info tab says "The Comparisons header states this explicitly".
+- **Family read at render time.** After an "All Comparisons" run, switching the dropdown to "vs Reference" shows all 15 pairwise rows. After a vs-reference run, switching to "All Comparisons" shows "Comparisons not available for tukey", with no hint to re-run.
+- **AUC help.** It always says "Bonferroni … all pairwise".
+
+Executed.
+
+**Fix:** render `comparisons_title()` as the table caption; read the family from `rv$tg_results$comparison_family`; generate the help text from `p_adjust_method_used`.
+
+#### R20.D45 The TG Data Summary shows log-scale means labelled as mm³ — **Major**
+
+The table is at `R/mod_tumor_growth.R:1723-1732`, and the tab text (`ui_modules.R:1035-1047`) says "Mean — mean tumor volume (mm³)". The backend's `data_summary` is on the model scale, even on the AUC path (package R20.57). Drug_A High day 0 is shown as 4.31 where the raw mean is 75.9 mm³; Vehicle day 20 is shown as 8.29 where the raw mean is 3,991.6. The same table reaches the HTML report and the CSV (executed).
+
+**Fix:** back-transform (and call it a geometric mean), or label the scale from `meta$transform_used`. Ideally the package returns raw-scale summaries.
+
+#### R20.D46 The TG HTML report records the widgets' current values, not the settings that produced the numbers — **Major**
+
+`R/mod_tumor_growth.R:1629-1636` reads `input$tg_*` at download time. Executed: run LME4 / log / Vehicle / Holm, change the dropdowns without re-running, then download. The report says "model_type: auc, transform: sqrt, reference_group: Drug_B" above the LME4 / log / Vehicle tables. This is the same failure R3.D6 fixed for the on-screen metadata, now in the audit artefact.
+
+**Fix:** take settings from `result$meta` and fields stored at run time.
+
+#### R20.D47 Dose-Response pools different drugs by dose value — **Major** (dashboard side of package R20.16)
+
+`R/mod_dose_response.R:716-725` passes the whole dataset, and only the dose column defines groups. On the Master demo:
+- **Dose 10** is Drug_B, a different compound.
+- **Dose 15** pools Drug_A Mid with the Drug_A Mid + Drug_B combination (n = 16, SD 793).
+
+EC50 12.9, the Tukey table and the ANOVA all describe the mixture, and there is no control for choosing the agent (executed).
+
+**Fix:** add an agent filter (or require one treatment plus control), and warn when one dose maps to more than one treatment.
+
+#### R20.D48 Dose-Response "All dates" means each animal's last observation, and its TGI plot contradicts the Toxicity tab — **Major**
+
+- **"All dates" is mislabelled.** The choice (`R/mod_dose_response.R:640-649`) maps to the backend's `time_point = NULL`, "last measurement for each mouse", so Vehicle animals are compared at days 16–20 and treated animals at days 22–26 (package R20.17).
+- **The TGI plot re-derives TGI.** `:913-929` computes `(1 - vol / mean(control)) * 100` from the live `input$dr_control_group`. Its Drug_A Low mean is 18.3 %, while the Toxicity TWM table (model estimand, day 26) reports 88.0 % for the same arm, and the plot changes whenever the Reference dropdown moves, without a re-run.
+
+Executed.
+
+**Fix:** rename the choice ("Each animal's last observation"); state the estimand on the TGI plot or remove it (R14.3's own policy); store the control group at run time.
+
+#### R20.D49 Dose-Response never shows the Jonckheere–Terpstra test or the EC50 CI, although the backend returns both — **Major**
+
+`R/mod_dose_response.R:765-813,980-997`. The Info tab (`:192-206`) calls JT "the primary trend result", yet `res$trend_test$jonckheere_test` (re-enabled by package R3.31), `statistics$ec50_ci` ([11.28, 14.53]), `overall_trend_pvalue` and `aic_comparison_note` are never rendered or exported (executed; grep finds no `jonckheere` in server code). Same class as R14.5. Package R20.18 and R20.20 should be fixed before these are surfaced.
+
+**Fix:** render them in the Summary tab and `download_dr_stats`.
+
+#### R20.D50 The Toxicity Plots-tab "Download" never produces a file, for all eight plot types — **Major**
+
+`R/mod_toxicity_downloads.R:81,95`: `p <- tryCatch(output[[plot_id]](), error = function(e) NULL)`. In Shiny 1.13, reading an output aborts ("Can't read output …") unless `shiny.allowoutputreads` is set, and even then the value is not a function. The user sees the toast "Plot is not available." while the plot is on screen. `"bw_forest"` is also missing from the switch (executed: all 7 tested selections fail).
+
+**Fix:** hoist each plot into a `reactive()` shared by `renderPlot` and the handler, as the TG module does.
+
+#### R20.D51 Power's "Seed SD from loaded data" pools volumes across all days, inflating the required N 5–40× — **Major**
+
+`R/mod_power.R:415-419` computes one SD per group over every observation, so repeated measures and the growth trend are both counted as noise. Master demo: the seeded SD is 617.8, while within-day pooled SDs are 15.9 (day 0), 94.5 (day 10) and 265.0 (day 14). For Δ = 300 mm³ at 80 % power, that gives N = 68 per group, against 14 with the day-14 SD (executed). Combined with R20.D17 and package R20.7, the Power tab's recommendations can be wrong in either direction depending on the path taken.
+
+**Fix:** seed from one user-chosen endpoint day, using each animal's last observation up to it.
+
+### R20.D20 The synergy bar plot is all grey — **Minor**
+
+`plot_drug_synergy()` maps `fill` to `Type` (Observed/Expected), but the dashboard passes colours named by group (`mod_synergy.R:1036-1046`), giving "No shared levels" and grey50 bars (executed).
+
+**Fix:** name the palette by `Type`, or map `fill` to the group.
+
+## R20-D.C Minor
+
+| ID | Location | Issue | Fix |
+|---|---|---|---|
+| R20.D21 | `R/helpers_ui.R:61,65-67` | `icon("spinner fa-spin")` logs "does not correspond to a known icon" on every info alert and renders the regular-weight glyph | `icon("spinner", class = "fa-spin")` |
+| R20.D22 | `R/app.R:215`, `mod_data_upload.R:127,167,655`, `mod_dose_response.R:747`, … | about ten `runjs(sprintf("…'%s'…", value))` calls interpolate values inside JS quotes instead of using the existing `js_string()` (`helpers_ui.R:124`). Effect is limited to the user's own browser: a group or column name containing an apostrophe breaks the call | use `js_string()` everywhere |
+| R20.D23 | `R/helpers_data.R:235-281` | uploads: `shiny.maxRequestSize` is never set, so Shiny's 5 MB default applies while `DEPLOYMENT.md` says 100 MB; semicolon + decimal-comma CSVs are rejected with a raw error; Latin-1 and UTF-16 are rejected; tab-delimited `.csv` loads *silently* as one column; an unquoted comma in a value silently shifts columns. UTF-8 BOM works, and `.xlsx` is cleanly rejected (executed) | set the limit; sniff delimiter, decimal mark and encoding; actionable messages |
+| R20.D24 | `global.R`, `app_standalone.R`, `shiny-server-app.R` | dead entry points: `global.R` sources `R/helpers.R` and `R/log_session_modules.R`, neither of which exists; none is in `.Rbuildignore` | delete, or build-ignore |
+| R20.D25 | `R/logging.R:172-204` | every log line is teed into a process-global 500-line buffer that nothing reads (the Log tab was removed) | drop the appender |
+| R20.D26 | `DESCRIPTION`, `NAMESPACE`, `.Rbuildignore` | R CMD check: `later`, `posterior`, `survival` used via `::` but undeclared; Imports `tidyr` and `wesanderson` unused; no `man/`, so `runDashboard` is undocumented; `\|>` in `mod_tumor_growth_plots.R` needs R ≥ 4.1 (`Depends: R (>= 4.0)`); non-ASCII in 22 files; ~100 "no visible global" NOTEs, most of them `stats`/`utils` functions resolved by the search path but three real (R20.D3, R20.D4, R20.D19). `mouseExperiment (>= 0.12.0)` is stale (the dashboard needs ≥ 0.21.0 for `analysis_data`); `Date` is 2026-06-18; `.Rbuildignore` misses `.waylog` (AI transcripts end up in built tarballs), `CODE_REVIEW.md`, `CHANGELOG.md`, `docs` | declare, trim, raise the floor to 0.22.0, build-ignore |
+| R20.D27 | `docs/DEPLOYMENT.md`, `CONTRIBUTING.md` | `DEPLOYMENT.md` describes nonexistent Dockerfiles, a "pinned R so a CRAN bump can't break us" (the opposite of VPS V3.3), an HTTP-200 gate, Slack notification and SHA rollback that do not exist, `ssh root@…` (root login is disabled; port 2222; path `/opt/vps`), and `SHINY_FUTURE_WORKERS`/`SHINY_MAX_UPLOAD_MB` variables no code reads. `CONTRIBUTING.md` still says "backend ≥ 0.4.7" and "25-item review across Round 1 + Round 2", and its test table is incomplete | rewrite against VPS Round 3 |
+| R20.D28 | `R/app.R:31-43,294` | the proxy-timeout reminder never fires in production (keyed on `SHINY_PORT`, which is never set; VPS V3.22); `launch.browser = TRUE` in a headless container | fire unconditionally; `launch.browser = FALSE` |
+| R20.D29 | `mod_synergy.R:749,1126`; `mod_survival.R:848`; `mod_dose_response.R:661` | over-time plot `ylim(0, 100)` silently drops negative TGIs; the KM plot shows survminer's unadjusted omnibus log-rank p beside Bonferroni-adjusted Cox p-values; dose-response uses `rv$processed_data` rather than `ensure_preprocessed()`, so subset-filter changes after the first preprocess are not applied (read-only) | `coord_cartesian`; label the p; `ensure_preprocessed()` |
+| R20.D30 | `mod_tumor_growth.R:1237-1258`; `ui_modules.R:659` | explainer text: the Wald χ² is called a "likelihood-ratio chi-square"; the LMM Type III text is shown for the GAM smooth table (package R20.60); the AUC ANOVA help describes `aov` with equal variances while the backend returns Welch; a crossed cage "enters as a random intercept" while the backend's `auto` uses a fixed effect | correct the text |
+| R20.D31 | `mod_toxicity.R:1358,1378-1383` | trajectory plot hard-codes `/1000` (mm³, package R20.27); `cage_column` is not passed to `therapeutic_window_metric()` | resolve units; pass cage |
+| R20.D32 | NUTS alert | tells users to "raise adapt_delta", which no argument allows (package enhancement) | expose `control` or change the advice |
+| R20.D33 | `mod_data_upload.R:587,590` | `showFeedbackWarning`/`showFeedbackSuccess` with empty text spam the browser console with `Cannot read properties of undefined` | pass text or `hideFeedback()` |
+| R20.D54 | `mod_survival.R:146,204-205,233-234` | survival help: says P_Value is "for the individual group coefficient" when it is Bonferroni-adjusted (0.000841 vs unadjusted 0.000168); "interval excludes 1.0 ⇒ significant" is false under adjustment; promises KM log-rank p-values (not shown on the Cox/Firth paths) and censor-column auto-detection (not implemented) | correct the text |
+| R20.D55 | `mod_tumor_growth_plots.R:57-85` | the displayed growth-curve plot drops the necrotic × markers (47 on the master demo; the observer's correct plot is only a fallback), and "Extrapolation Points" has no effect without a mapped censor column | use the observer's plot; wire extrapolation |
+| R20.D56 | GAMM path; Bayesian synergy | GAMM silently applies hidden LME4-only controls (transform `sqrt`, cage `never_include` were applied while hidden), although the Info tab says GAMM uses log; Bayesian synergy uses the hidden `syn_time_point` | reset or ignore hidden inputs |
+| R20.D57 | `mod_tumor_growth.R:1580-1586`; `mod_tumor_growth_plots.R:178-180,565-572`; `ui_modules.R:995,1001` | drill-down merges cage-mates that share an ear tag (combo demo: 29 rows from two cages plotted as one mouse); the "geometric mean" bar clamps negative log-slopes to 1e-9 (−0.044 shown as 0.000); the all-pairs forest adds a spurious "Vehicle (Reference)" row; the growth-rate help says log1p where the backend uses `log()` | key by composite ID; plot the arithmetic mean of the slopes; fix labels |
+| R20.D58 | `mod_toxicity.R:1568-1571`; `mod_toxicity_downloads.R:207-210` | BW AUC BH adjustment covers 5 vs-reference rows on screen but all 15 pairs in the ZIP (3.91e-03 vs 5.34e-03); the "Tumor Volume" covariate (checked by default) is silently dropped when "Subtract estimated tumor weight" is also on (the default) | one family; surface the backend message |
+| R20.D59 | `helpers_bayes.R:58-94`; `tg_resume.R:94`; `mod_tumor_growth.R:1067-1092` | Bayesian panel shows a green "NUTS sampler diagnostics clean: NA divergence(s)" when the backend returns its failure default (the backend's `clean` flag is ignored); `output$tg_posterior_summary` has no UI slot; the finaliser overwrites `model_type_used` ("bayes_tg_gam" → "bayes"); the Posterior Check tab is inserted for "bayes" but not "bayes_gam"; Bayesian results never get a forest plot | read `clean`; add the slot; keep the field |
+| R20.D60 | `mod_synergy.R:858-871`; `mod_power.R:665,705-716` | "Bliss Difference" is an unrounded fraction ("0.0179841522745299") on the single-day path but percentage points elsewhere; the Power summary reads a nonexistent `input$pw_ap_target_power` and always says "at target power = 80 %" (it said so with 0.95 selected); the method label is always "analytic (analytic)" | one unit; read the real input |
+| R20.D61 | `ui_modules.R:692,716`; misc | Info tabs promise outputs that are never rendered (`treatment_effects_over_time`, "EMMs at five quantile days"); seven unused helpers; about 150 lines per TG run build plots that are never read; `detect_columns` maps the Necrotic demo's ID to "Tumor.Width..mm."; `translate_error`'s case-insensitive `"NaN\|NA\|missing values"` matches any "na" substring (latent); with `ragg` installed, drawing the RE Q-Q of a singular fit hangs the process (dev only; the production image has no ragg) | remove or render; tighten the regex |
+
+## R20-D.D Efficiency
+
+| ID | Where | Cost (executed) | Fix |
+|---|---|---|---|
+| R20.D53 | `mod_tumor_growth_plots.R:33-138` | every keystroke in the title, subtitle and axis-label boxes rebuilds the growth plot via `mouseExperiment::plot_tumor_growth()` and redraws it: typing a 33-character title caused 35 rebuilds and 19.5 s of rendering, all on the shared process | separate the data layer (keyed on data and extrapolation) from cosmetic layers; `debounce()` text inputs; `bindCache()` |
+| — | `mod_tumor_growth.R:314` | every frequentist TG run requests `include_diagnostics = TRUE`: the case-deletion refits take 6.4 s of 6.6 s on the 48-mouse master demo (package R20.76), synchronously for every user (R20.D6) | compute on demand, or per animal |
+| — | `mod_synergy.R:692-705` | over-time synergy runs 11 endpoint LMMs and 11 × 2,000 bootstrap resamples whose output is discarded (package R20.81) | fixed together with R20.D14 |
+
+## R20-D.E Verified correct (recorded so it is not re-audited)
+
+- **Install and boot at HEAD** (lead): `R CMD INSTALL` of both packages into an empty library, then `runDashboard()` on a real port, serves HTTP 200.
+- **Cross-sid isolation holds.** `list_jobs`/`get_job` are scoped by sid; sid B cannot see or fetch sid A's job even given its job id.
+- **No double finalisation.** Two pollers on one completed job run `finalize_success` exactly once.
+- **Registry cleanup.** `retire_job` frees memory, and `evict_stale_jobs` handles running jobs (`completed_at = NA`) without error.
+- **Cookie timing.** A fresh first visit gets the `mE_session` cookie before the websocket opens (headless Chrome, `HTTP_COOKIE` present on session 1).
+- **Cancel and resume.** Banner **Cancel** finalises correctly. Same-day resume of a completed job works end to end in a browser.
+- **Logging.** It records Shiny's own `session$token` and the user agent, never the `mE_session` value.
+- **Uploads.** CSV upload sanitises column names (`read.csv(check.names = TRUE)`), so formula-building from column names cannot be reached through an upload.
+- **Report escaping.** The HTML report escapes cells, captions, settings and the title; only the header is broken (R20.D15).
+- **Backend calls resolve correctly.** All 34 `mouseExperiment::` calls use argument names that exist in `formals()`, and every UI choice value is valid for the backend's `match.arg`, except AUC with dunnett/tukey (R20.D39). A `codetools` scan finds no closure-captured helper other than `build_surv_forest_plot` and the promise operators.
+- **Output slots.** Only `tg_comparisons_title` and `tg_posterior_summary` lack UI slots.
+- **Earlier fixes still hold.** R3.D1 (comparison tables are the backend's `pairwise_comparisons`, `p.value == P_Value_Adjusted`); R14.6 (AUC forest labels use adjusted p); R3.D5 (survival reduction takes the last day and the maximum event flag).
+- **Weight-loss KM.** The survminer p on the toxicity KM plot equals the backend's `log_rank` (5.80e-07).
+- **Cox path.** The standard Cox path renders its C-index, PH banner, Schoenfeld plot and Cox table.
+- **Dose-mapped labels.** They flow correctly through TG and Survival.
+- **Working downloads.** Every TG download on LME4 and AUC, every Synergy and Dose-Response download, and the KM, Cox CSV and risk-table survival downloads.
+
+## R20-D.F Open questions for the maintainer
+
+1. Is `.rda` upload a supported feature? If not, removing it closes R20.D9 outright.
+2. Should analytics carry any study-specific strings? Recommended: no (R20.D12).
+3. What is the intended upload limit? 5 MB applies today; the docs say 100 MB.
+4. The session snapshot: is carrying the uploaded data and results in one file a requirement, or would the JSON preset plus re-uploading the CSV be acceptable (R20.D10)?
+5. Should volume units be declared by the user rather than inferred? Recommended: yes (R20.D34, package R20.83).
+6. "Treat natural death as event": implement it (it needs a removal-cause column), or remove it (R20.D13)?
+7. Should Dose-Response require choosing one agent's dose series (R20.D47)?
+8. Should the frequentist fits move off the main process as the Bayesian ones do (R20.D6)?
+
+## R20-D.G Status — Round 21
+
+| ID | Issue | Severity | Status |
+|---|---|---|---|
+| R20.D1 | DD/MM dates read as MM/DD; wrong Day values | **Critical** | ✅ Fixed v26.09.003 (R20-D.K) |
+| R20.D2 | Survival reduction merges reused IDs across arms | **Critical** | ✅ Fixed v26.09.003 (R20-D.K) |
+| R20.D3 | Legacy inline Bayesian path crashes; modal stuck | Major | ✅ Fixed v26.09.002 (R20-D.J) |
+| R20.D4 | `NA_Date_` crashes on non-US reference dates | Major | ✅ Fixed v26.09.002 (R20-D.J) |
+| R20.D5 | Dismiss-all strands the modal and drops the result | Major | ✅ Fixed v26.09.006 (R20-D.N) |
+| R20.D6 | Synchronous analyses freeze all users (power sim 121 s, no upload needed) | Major | Open |
+| R20.D7 | Cancel doesn't stop the worker; one worker for everyone | Major | ✅ Fixed v26.09.006 (R20-D.N): a queue, one fit per browser, a cancel that interrupts. One worker remains (a resource decision) |
+| R20.D8 | Bayesian survival from volume-derived events always fails | Major | ✅ Fixed by backend 0.25.0 (internal column names, package R20.43); recorded v26.09.006 (R20-D.N) |
+| R20.D9 | `.rda` upload dead, and loads into the shared global env | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
+| R20.D10 | Session restore deserialises and copies unvalidated keys | Major (hardening) | ✅ Closed by removal v26.09.001 (R20-D.I) |
+| R20.D11 | `test-shiny_app.R` has never executed | Major (process) | ✅ Fixed v26.09.002 — the tests run and pass; CI is package R20.53 (R20-D.J) |
+| R20.D12 | Study strings sent to analytics | Major (confidentiality) | Open — the Tumour Growth and Survival reference names no longer sent (R20-D.K) |
+| R20.D13 | "Natural death as event" checkbox never read | Major | ✅ Fixed: removed v26.09.003 (R20-D.K); a working option with the removal-reason column v26.09.005 (R20-D.M) |
+| R20.D14 | Survival/over-time synergy need an ID column named `ID` | Major | ✅ Fixed v26.09.003 (R20-D.K) |
+| R20.D15 | HTML report headers merged into one cell | Major | ✅ Fixed v26.09.002 (9d5f674) |
+| R20.D16 | Combined E-T table and download always fail | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
+| R20.D17 | Power tab ignores multiplicity and attrition | Major | ✅ Fixed v26.09.002 (R20-D.J) |
+| R20.D18 | Bayesian results keep their fit alive via `plot_env` | Major (memory) | ✅ Fixed v26.09.006 (R20-D.N; package R20.80) |
+| R20.D19 | Survival forest-plot download calls an out-of-scope function (HTTP 500) | Major | ✅ Fixed v26.09.002 (R20-D.J) |
+| R20.D34 | Toxicity mass correction 1000× on the bundled demo; warning swallowed | **Critical** | ✅ Fixed v26.09.003 (R20-D.K) |
+| R20.D35 | Synergy/TWM intervals shown as uncertainty for estimates they don't describe | **Critical** | ✅ Fixed v26.09.004 (R20-D.L; package R20.2); the TWM ratio replaced by the two-axis window v26.09.005 (R20-D.M) |
+| R20.D36 | Synergy fails after TG when a dose column is mapped | Major | ✅ Fixed v26.09.003 (R20-D.K) |
+| R20.D37 | Synergy TGI plot re-derived from survivors; contradicts the table | Major | ✅ Fixed v26.09.004 (R20-D.L) |
+| R20.D38 | Synergy Info tab documents response additivity, not Bliss | Major | ✅ Fixed v26.09.004 (R20-D.L) |
+| R20.D39 | AUC fails on first click with the default correction | Major | ✅ Fixed v26.09.002 (R20-D.J) |
+| R20.D40 | GAMM forest plot crashes; download fails; ZIP omits it | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
+| R20.D41 | Dashboard overwrites the backend's GAMM residual plot with a broken one | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
+| R20.D42 | Q-Q plots against y = x on unstandardised values | Major | Open |
+| R20.D43 | Forest plots: unadjusted CI with adjusted p | Major | Open |
+| R20.D44 | Comparisons tab: mislabelled correction, discarded title, live family | Major | Open |
+| R20.D45 | Data Summary log-scale means labelled mm³ | Major | Open |
+| R20.D46 | HTML report records widget state, not run settings | Major | Open |
+| R20.D47 | Dose-Response pools drugs by dose value | Major | ✅ Fixed v26.09.005 (R20-D.M; package R20.16) |
+| R20.D48 | DR "All dates" = own last observation; TGI plot contradicts Toxicity | Major | ✅ Fixed v26.09.004 (R20-D.L; package R20.17) |
+| R20.D49 | JT test and EC50 CI returned but never shown | Major | ✅ Fixed v26.09.005 (R20-D.M; package R20.18, R20.20) |
+| R20.D50 | Toxicity plot downloads never produce a file | Major | Open. The therapeutic-window download ✅ fixed v26.09.005 (R20-D.M); trajectory and KM remain |
+| R20.D51 | Power "seed SD" pools all days (N inflated 5–40×) | Major | Open |
+| R20.D52 | Download-All ZIP can include another session's files | Major (confidentiality) | ✅ Fixed v26.09.002 (9d5f674) |
+| R20.D20 | Synergy bar plot all grey | Minor | Open |
+| R20.D21–R20.D33, R20.D54–R20.D61 | Minor | Minor | Open. Fixed: R20.D21, R20.D33 (R20-D.J); R20.D31 (R20-D.K); R20.D27, R20.D28 (R20-D.O). In part: R20.D29, R20.D54, R20.D57 (R20-D.K); R20.D29, R20.D30 (R20-D.L) |
+| R20.D53 | Plot-label keystrokes rebuild the growth plot | Efficiency | Open |
+| R20.D62 | One-worker multisession plan is sequential: every Bayesian fit froze every session | **Critical** | ✅ Fixed v26.09.006 (R20-D.N) |
+| R20.D63 | Resume retired the job before its poller delivered it; the result was lost | Major | ✅ Fixed v26.09.006 (R20-D.N) |
+| R20.D64 | Resume handlers were process-global; the newest browser session owned them all | Major | ✅ Fixed v26.09.006 (R20-D.N) |
+
+**Suggested order of work:**
+1. **The one-liners.**
+   - `NA_Date_` → `as.Date(NA)` (R20.D4)
+   - the promise import (R20.D3)
+   - `vapply(colnames(df), esc, "")` (R20.D15)
+   - `id_column = id_col_surv` (R20.D14)
+   - the real column names in the E-T report (R20.D16)
+   - `tempfile()` for the ZIP (R20.D52)
+   - move `build_surv_forest_plot` to top level (R20.D19)
+   - drop the `message =` argument in `test-shiny_app.R` (R20.D11)
+2. **Correctness of what users read.**
+   - date-order detection (R20.D1)
+   - the volume-unit selector plus a warning-surfacing `safe_analysis()` (R20.D34)
+   - the survival reduction key (R20.D2)
+   - suppress or relabel the model-estimand intervals (R20.D35)
+3. **Security hardening.** Remove `.rda` upload (R20.D9); move session restore to a data-only format (R20.D10); strip study strings from analytics (R20.D12).
+4. **Delete the dashboard's statistical re-derivations** (R20.D37, R20.D41, R20.D42, R20.D48) in favour of the backend's outputs. That is the recurring source of contradictions here.
+5. **Move the long synchronous fits into the job path** (R20.D6, R20.D7).
+
+## R20-D.H Maintainer decisions (2026-09-29)
+
+- **Volume units are declared by the user** (R20.D34). Data Upload gains a required mm³/cm³ selector, and the value is passed as `volume_units` to every backend call that converts volume to mass. The dashboard's own `/1000` re-derivation is removed.
+- **Survival: the user declares the unit of randomisation** (mouse or cage) when a cage column is mapped. Mouse gives Cox/Firth; cage gives a cage-level permutation log-rank with its resolution floor displayed (package R20-K). With 2–3 cages per arm a cage-randomised comparison cannot reach p < 0.05, and the tab must say so.
+- **Synergy and TGI are reported only on days with enough animals on study in every arm** (package R20-K). The "All dates" view becomes "all evaluable days". **Rule confirmed 2026-09-30:** an arm is evaluable on a day when at least 50 % of its enrolled animals, and at least 3 animals, are still on study. **It must be relayed to users.** The Synergy, Toxicity (Therapeutic Window) and Dose-Response Info tabs state it, and every result that uses an evaluable day names the day used and lists the days and arms the rule excluded. This lands with the rule itself (step 4); stating it earlier would describe behaviour the code does not yet have.
+- **`.rda`/`.RData` upload is removed** (CSV upload stays), which closes R20.D9.
+- **Tumour growth:** the default random effects become correlated random slopes with fallback. **GAMM is removed** (with R20.D40 and R20.D41). **AUC is kept but must be redefined** (package R20.4 and R20.D39).
+- **Bayesian scope:** only **Bayesian tumour growth (LMM)** remains, to be made robust (compiled-model caching, the R20.D3/D5/D7/D18 fixes, resources). **Bayesian synergy and Bayesian dose-response are removed.**
+- **Toxicity:** Body-weight AUC, Total Benefit Area, Efficacy–Toxicity bivariate and weight-corrected TGI are removed, along with the Combined Report (R20.D16). The tab keeps the body-weight model, time to weight-loss threshold, and the therapeutic window.
+- **Bayesian scope (revised 2026-09-29):** keep **tumour growth and survival**; remove body weight and therapeutic window as well. The F.7 resume layer keeps two job kinds (`bayes_tg`, `bayes_surv`); `bw_resume.R`, `syn_resume.R`, `dr_resume.R` and `twm_resume.R` go.
+- **Therapeutic window:** a two-axis view (TGI vs worst weight loss, each with intervals, plus a tolerability flag) replaces the ratio (package R20-K).
+- **Removal reasons:** an optional removal-reason column on Data Upload. The "natural death as event" checkbox appears only when it is mapped; otherwise the tab states its assumption.
+- **Bayesian survival families:** Weibull and log-normal only; exponential and gamma are removed from the selector.
+- **Session Save/Restore: removed** (decided 2026-09-29). The UI claims it saves "settings, results, plots" and that "filter state survives session save/restore". The snapshot (`mod_log_session.R:81-96`) actually holds only the uploaded data, column mappings and plot-group settings: no results, no plots, no subset filters. Re-uploading the CSV and loading the JSON settings preset gives the same result without deserialising an uploaded R object. Keep the preset and extend it with the study-design settings and subset filters. This also closes R20.D10.
+
+
+---
+
+## R20-D.I Implementation log — v26.09.001, step 1: removals (2026-09-29)
+
+This step applies the scope decisions in R20-D.H and needs backend 0.23.0 (package R20-L).
+
+**Removed:**
+- **Bayesian:** every fit except tumour growth and survival. Bayesian synergy, dose-response, body weight and therapeutic window go, with their settings, tabs, diagnostics, downloads and resume handlers.
+- **Tumour growth:** GAMM and Bayesian GAMM.
+- **Survival:** the exponential and gamma families.
+- **Toxicity:** body-weight AUC (with its nadir and comparison tables, the forest plot and the comparison-type selector), the safety-efficacy scatter, total benefit score, weight-corrected TGI and the Combined Report. The efficacy-toxicity mode is relabelled **Therapeutic Window**, since the TWM is all it now holds.
+- **Upload and session:** `.rda`/`.RData` upload, session save/restore, and the dead `mod_efficacy_toxicity.R` stubs.
+
+**Closed by removal:** R20.D9, R20.D10, R20.D16, R20.D40 and R20.D41 (Major), and R20.D56 (Minor: both halves concerned GAMM and Bayesian synergy).
+
+**Partly closed; the rest stays open:**
+
+| ID | Gone with the removals | Still open |
+|---|---|---|
+| R20.D3 | four of the six legacy inline fallbacks | tumour growth and survival (`tg_resume.R`, `surv_resume.R`) |
+| R20.D30 | the Type III text shown for the GAM smooth table | the other three explainer errors |
+| R20.D50 | five of the eight plot types | the trajectory, KM and TWM downloads still read an output and fail |
+| R20.D58 | the BW AUC adjustment mismatch | the silently dropped "Tumor Volume" covariate |
+| R20.D61 | the GAMM "EMMs at five quantile days" promise | the other items |
+
+**Verification (executed):**
+- `devtools::test()` against backend 0.23.0 installed in a scratch library: 184 tests, 564 expectations, 0 failures. The drop from 574 is the four removed resume kinds (8 expectations) and the two GAMM labels in `test-docs-current.R` (2). `test-shiny_app.R` still errors at file level whenever shinytest2 is installed (R20.D11); the fix is in step 2.
+- `testServer()` smoke on the master demo, with results, plots and downloads read back: 37 of 37 checks pass. The runs were body weight (7 outputs, 3 plots, 4 diagnostics, 4 downloads including the ZIP), Therapeutic Window (summary, table, ranking note, attrition, plot, plot groups, 2 downloads), tumour growth LME4 and AUC, survival, synergy (single day and over time, with CSV download) and dose-response.
+- Install plus `runDashboard()` gives HTTP 200. The served page has 604 element IDs and no duplicates. None of the removed input IDs or labels appears; the only `exponential` values left are the tumour-growth prior-distribution choices.
+- Headless Chrome ran the same script against this build and 26.07.015:
+  - Toxicity now offers `bw,et`.
+  - Body weight inserts Model Results and Weight Loss KM. Therapeutic Window inserts only its own tab.
+  - The TWM table and plot render.
+  - The TG choices are `lme4,auc,bayes`, the survival families `weibull,lognormal`, and no Bayesian selectors remain on Synergy or Dose-Response.
+  - Both builds log the same 20 console errors, all shinyFeedback on demo load (R20.D33), so none are new.
+- `R CMD check --no-tests --no-manual --as-cran`: 6 WARNINGs, 5 NOTEs, as at baseline. The detailed output differs only by lines that disappeared with the removed files.
+
+**Harness notes (no new findings):**
+- With a dose column mapped, tumour growth relabels arms "Treatment Dose" and offers those labels as the reference choices (`mod_tumor_growth.R:20-56`). A `testServer()` run must therefore pass "Vehicle 0", not "Vehicle". The same relabelling, written back into `rv$tx_col`, is what breaks synergy in R20.D36.
+- AUC with the default Dunnett correction fails exactly as R20.D39 describes.
+- The Toxicity diagnostics stay empty after switching back from Therapeutic Window to Body Weight until the analysis is re-run. That is the same in 26.07.015: results belong to the mode that produced them.
+
+**Next:** step 2, the one-line and near-one-line bugs.
+
+
+---
+
+## R20-D.J Implementation log — v26.09.002, step 2: one-line and near-one-line bugs (2026-09-30)
+
+This step needs backend 0.24.0 (package R20-M).
+
+**Fixed:**
+
+| ID | Fix | Verified by |
+|---|---|---|
+| R20.D3 | Sessions without the identity cookie get a registry key, `make_local_sid()`: "local-" + 64 hex. `get_sid()` accepts only 64 hex characters from a Cookie header, so no browser can present the key. Both `.legacy_inline_*` paths are deleted, and the launchers fall back to a local key when called without one. | testServer: a cookie-less launch lands in the registry under a local key. Browser: see the note below this table. |
+| R20.D4 | An empty or unparseable reference date stops with "Enter it as YYYY-MM-DD", instead of `NA_Date_`. **Deviation from the suggested fix:** the review proposed `as.Date(NA)` and keeping the `Sys.Date()` fallback, but that would count every Day from today without a word. Tumour Growth and Survival now report the error and reset their run flags, and the Data tab shows it under the reference-date box. | testServer (TG run with "24/03/2025"); browser (message appears, and clears once corrected). |
+| R20.D11 | The skip call no longer passes `message =`. The test apps are now app directories that load the package themselves: AppDriver cannot carry a `load_all()` package into its process. Also fixed: the pre-module signatures, test hooks missing from the page, `get_html(timeout =)`, and a workflow hook that passed on a failed fit. | 8 browser tests run and pass. CI remains package R20.53. |
+| R20.D17 | The analytic Power tab passes `p_adjust_method` (Bonferroni by default), `n_comparisons` (follows k − 1) and `dropout_rate`. The summary states the family, the attrition and the backend's method note. The submode labels (`find_n`/`find_power`) were never matched and always printed "analytic"; now fixed. | testServer: k = 4, d = 1 gives 23 per group (was 7), Enroll_N 29 at 20 % attrition. Browser: the same, plus the comparison count following the group count. |
+| R20.D19 | `build_surv_forest_plot()` moved to `helpers_plot.R`. | testServer and browser: the download is a real PNG (it returned HTTP 500 before). R CMD check no longer lists the symbol as undefined. |
+| R20.D21 | `icon("spinner", class = "fa-spin")`. | The test fails on 26.09.001 (the notice is a message, not a warning). |
+| R20.D33 | **Different root cause from the one recorded.** The empty feedback text was not the problem: feedback was sent before the mapping selectors were bound, and shinyFeedback cannot look up a missing binding. The validator now skips inputs that read NULL. | Browser: 0 console errors on demo load (20 before, on both builds). |
+| R20.D39 | `tg_p_adjust_choices()` drops Dunnett/Tukey for AUC. Holm is selected on the way into AUC, and Dunnett returns on the way out; the server maps a stale Dunnett or Tukey to Holm. | testServer (a stale Dunnett runs with `p_adjust_method_used = "holm"`); browser (choices, run, restore). |
+| R20.8 (dashboard side) | The synergy summary says "Not evaluable" instead of "Synergistic: NA", reports evaluable timepoints, and has no peak line when there is no peak. The Info tab documents `Evaluable`. | testServer on real non-evaluable results, single day and over time. |
+
+**R20.D3 end to end.** In headless Chrome with cookies disabled through the DevTools protocol (`document.cookie` empty), a Bayesian tumour-growth fit (1 chain, 200 + 200 draws) ran through the registry. The modal closed, and the tab reported "Bayesian analysis completed successfully!" with a Bayesian summary. That run took 28 s; an earlier run in the same worker had compiled the model. Before the fix this case left the modal open with `Error in %...!%` in the log.
+
+Chrome treats `http://127.0.0.1` as a secure context and stores the Secure cookie there. The README's claim that local sessions have no cookie is therefore only sometimes true, but either way they now work.
+
+**Found and fixed during this step:**
+- **A start-up crash introduced and caught within the step.** The first R20.D3 edit read `rv$session_id` in the top-level server body. Every real session closed at start-up, while the page returned HTTP 200 and `testServer()` passed; it runs the body inside a reactive context. The headless browser check caught it. `runDashboard()` now builds its app with `dashboard_app()`, and a new browser test starts the full app. That test fails on the broken line (session not connected, no disclaimer, demo load times out) and passes on the fix.
+- **The forest-plot axis label** rendered "log₁₀" as "log" plus two boxes on screen and in the download (no subscript glyphs in the PNG font). It now reads "log10".
+- **A test-suite hang.** `.reset_ttl_sweeper()` reset a flag but left its 9,999 s callback on the global `later` loop. `MockShinySession$getOutput()` waits for that loop to empty (`shiny:::wait_for_it`), so every later test file that read an output hung at 0 % CPU. The existing files sorted before the sweeper test; `test-round21-fixes.R` did not. The reset now cancels the callback, and a test asserts the loop is empty after reset.
+- The Bayesian survival modal said "Weibull" for log-normal fits.
+
+**Tests.**
+- `test-round21-fixes.R` holds 9 tests and 34 expectations. Run against the 26.09.001 source with backend 0.24.0, 8 of 9 fail or error. The one that passed there was the icon test; it now uses `expect_no_message()` and fails too.
+- `test-shiny_app.R` holds 8 browser tests, including the new full-dashboard test; `test-resume_banner.R` gains the sweeper-reset test.
+
+**Verification (executed):**
+- Full suite: 21 files, 201 tests, 612 expectations. No failures, no skips; the one warning is pre-existing.
+- R CMD check: 6 WARNINGs, 5 NOTEs, as at baseline. Against 26.09.001 the only differences are notes that disappeared: `%...>%`, `%...!%`, `NA_Date_` and `build_surv_forest_plot` are no longer undefined.
+- Install plus boot gives HTTP 200, and the headless-Chrome script passes all checks with 0 console errors.
+
+## R20-D.K Implementation log — v26.09.003, step 3: study design, one animal key, declared units, dates (2026-09-30)
+
+This step needs backend 0.25.2. That is package R20-N plus two follow-ups found while wiring the dashboard, both logged there:
+- v0.25.1: `make_mouse_key()` accepts a frame with no rows.
+- v0.25.2: two spurious warnings raised on every tumour-growth fit are gone.
+
+**The Study Design panel (maintainer decision R20-D.H).** Data Upload gains a panel below the column mapping, and every tab uses it:
+- **Volume units, mm³ or cm³.** The demos, and uploads whose volume is calculated, start at mm³; an upload with a volume column starts undeclared.
+- **Control group.** It replaces the five per-tab reference selectors.
+- **Unit of randomisation.** Shown when a cage column is mapped; it replaces the Tumour Growth permutation-unit selector.
+
+`study_reference()` maps the control into each tab's labels ("Vehicle" → "Vehicle 0" with a dose column). Each tab states the reference it used, and says so when the control is excluded by the subset filter. The panel renders once per dataset, so remapping a column does not reset the declared units. The preset (format 2) saves the design and the subset filter, and refuses to load before a dataset exists; before, its updates were lost.
+
+**Fixed:**
+
+| ID | Fix | Verified by |
+|---|---|---|
+| R20.D1 | `detect_date_format()` reads the whole column. A first number above 12 means day-first, a second above 12 means month-first; with neither, the declared order (new selector) is used, or the user is asked. Contradictory data, or data contradicting the declared order, are errors. Year-less dates take the year nearest the reference date. Month names are matched without the locale. `study_days()` hands the backend YYYY-MM-DD and reports unreadable values, mixed layouts, a New Year crossing and days before Day 0. Data Upload states the layout and the reason. All three date callers (preview, `ensure_preprocessed()`, Tumour Growth) use it. | The review's case: 0, 3, 7, 10, 14, 17 (was −57, 33, 155, 247, NA, NA). Ambiguous, declared, contradicting, New-Year and negative-day cases; the declared order through `ensure_preprocessed()`; the Data Upload note. Browser: the Combo demo reads MM/DD with its reason, and declaring DD/MM is reported as "would need month 24". |
+| R20.D2 | `survival_animal_rows()` keys animals by arm + ID (+ cage). The event time is the first flagged day; when every row is flagged, the flag is an animal-level status and the last day is used. `volume_threshold_events()` uses the same key. The demos flag only the event row, so their results do not change. | testServer: 10 + 10 animals with tags restarting per arm and no cage now give 20 records and 14 events (10 before), and the animal flagged on day 20 but measured to day 28 has time 20. Unit test of both flag encodings. |
+| R20.D13 | The unread checkbox is removed. The sidebar states the assumption of the chosen event source: in column mode events are the rows coded 1; in volume mode other removals are censored, which favours the treatment if they are treatment-related. The Info tab says the same. | testServer and UI-source test. |
+| R20.D14 | Survival passes `id_column`, `cage_column`, `randomisation_unit` and `verbose = FALSE`. "All dates" synergy passes `id_column`, `cage_column`, `endpoint_method`, `n_boot` and `boot_seed`; the bootstrap costs 0.7 s for 11 days at 200 resamples on the Master demo. | testServer: survival and over-time synergy with the ID column named "Animal" (both failed before). |
+| R20.D34 | `volume_units` goes to `analyze_body_weight()`, `weight_loss_threshold()` and `therapeutic_window_metric()`. With units undeclared, the correction is blocked with a message. The sidebar formula follows the declared unit. The trajectory plot draws the model's `weight_data$Net_Weight` per animal key and labels net or gross weight. `safe_analysis()` collects warnings with `withCallingHandlers()`, logs them and attaches them; `completion_status()` lists up to five. | testServer on the Weight demo: 0 of 20 threshold events (20 of 20 before), all net weights above 10 g, and the plot data equal to the model's net weights. With undeclared units the run is blocked. Browser: declaring cm³ is refused with the backend's "exceeds 50 % of body weight". |
+| R20.D36 | Synergy's selectors and analysis both use `arm_labels()` ("Treatment Dose" when a dose column is mapped), independent of whether Tumour Growth has run. | testServer: TG runs first, then Synergy runs with its own rendered choices ("groups do not exist" before). Browser: the same on the Master demo. |
+| R20.D31 | `cage_column` goes to `therapeutic_window_metric()`, and the trajectory re-derivation is gone (see R20.D34). | Mocked backend call receives `cage_column = "Cage"` and `volume_units = "mm3"`. |
+| Package R20.6, dashboard half | Survival passes the declared unit of randomisation. Model Results shows the cage-permutation table (cages per arm, assignments, p, smallest attainable p) and the backend's caveat when animals were randomised but housed one arm per cage. The floor warning reaches the status box. | testServer and browser on the Master demo, where 2 cages per arm give a floor of 1/3. |
+
+**Fixed in part:**
+- **R20.D12:** the Tumour Growth and Survival analytics events no longer send the reference name.
+- **R20.D29:** Toxicity and Dose-Response use `ensure_preprocessed()`, so the current subset filter applies. The KM p-value label and `coord_cartesian` remain.
+- **R20.D46:** the Tumour Growth report records the reference of the displayed run. The other settings still come from the widgets.
+- **R20.D48:** the Dose-Response TGI plot uses the control stored at run time. The "All dates" label and the TGI estimand remain.
+- **R20.D54:** the P_Value help now says the value is adjusted, and P_Method is documented. The other help errors remain.
+- **R20.D57:** the drill-down matches treatment + ID + cage (`drilldown_rows()`). The geometric-mean bar, the forest row and the log1p text remain.
+
+**Found and fixed during this step:**
+- **The subset filter excluded an ear tag from every arm.** It now lists and excludes animals by arm, ID and cage, for example "3 (Vehicle 0, cage C1)".
+- **Stale preprocessing cache.** Changing the reference date, date order, volume formula, height, cage or dose column did not clear the cache. Tabs reading it then disagreed with Tumour Growth, which recomputes on every run.
+- **The completion message rendered in fragments** ("Analysis completed ⏎ with ⏎ 1"). It is now built as one string.
+- **A dead Reset handler.** It had no button, and it replaced the mapping, summary and preview renderers with permanent NULLs; a Reset button added later would have blanked the next dataset. It was removed rather than fixed.
+
+**Status rows brought up to date.** R20.D15 (report headers) and R20.D52 (private ZIP directory) were fixed in commit 9d5f674, after the R20-D.J log was written; their rows now say so.
+
+**Surfaced but not fixed.** Showing warnings exposed two backend defects, left for the package:
+- **Weight-loss Cox fit with few or no events.** `weight_loss_threshold()` still fits Cox/Firth when no animal crosses the threshold. `coxphf` then reports "NAs introduced by coercion" and "Numerical problem in parameter estimation" on the Weight and Master demos.
+- **"NaNs produced" from Dose-Response on the Master demo.** To be traced in step 5, which reworks Dose-Response.
+
+**Tests.**
+- `test-round21-study-design.R` holds 24 tests and 83 expectations. Run against the v26.09.002 source with backend 0.25.1, all 24 fail or error; the module tests set the old inputs, so they fail on the defect, not on a missing input.
+- `test-shiny_app.R` gains a browser test of the panel and the date note (9 browser tests).
+- Updated to the new contracts:
+  - `test-helpers_data.R`: the date layouts are asserted as day values, and filter exclusions are animal keys; it gains a reused-tag exclusion test.
+  - `test-round21-fixes.R`: the Tumour Growth tests set the study's control instead of `tg_reference`, and the R20.D4 tests use a date that does not exist, since "24/03/2025" is now read.
+
+**Verification (executed):**
+- **Full suite:** 22 files, 228 tests, 704 expectations. No failures or skips; the one warning is pre-existing.
+- **Package suite at 0.25.2:** 286 tests, 0 failed, the 1 legitimate skip. It records 12 fewer warnings than at step 2 and the same assertions.
+- **R CMD check:** 6 WARNINGs and 5 NOTEs, in the same categories as the step 2 baseline. No new undefined symbols, and `get_groups` (the removed survival selector) is gone.
+- **Install and boot:** HTTP 200.
+- **Headless-Chrome script:** 18 checks across three sessions, all passing, with 0 console errors:
+  - Master: every tab runs from the study design; survival by animal and by cage; synergy after Tumour Growth; the preset JSON.
+  - Weight demo: mm³ correct, cm³ refused.
+  - Combo: date reading, the contradiction message, and Tumour Growth against Control.
+
+## R20-D.L Implementation log — v26.09.004, step 4: evaluable days relayed, one TGI, model-based AUC, random slopes (2026-09-30)
+
+This step needs backend 0.26.0: package R20-O, with its follow-ups `bliss_applies` and per-animal influence (R20.76).
+
+**The evaluable-day rule is relayed to users (maintainer decision R20-K, "it must be relayed to users on the dashboard").**
+- **Where the rule is stated:** the Study Design panel (read-only), and the Synergy, Toxicity (therapeutic window) and Dose Response Info tabs. The wording comes from `evaluable_rule_text()`, and a test keeps it identical to the backend's `evaluable_days()$rule`.
+- **Each result names its day** (`evaluability_note()`): "Evaluated on day 28, the last day on which all four arms are evaluable", with "Not evaluated: day 30 (Control 3/8); day 32 (Control 1/8)". Over-time synergy says "Analysed on every evaluable day: days 0–28".
+- **Day selectors list only evaluable days,** computed with the backend's `evaluable_days()`. On Synergy they depend on the four chosen arms. "All dates" became "All evaluable days" (Synergy) and "Last evaluable day" (Dose Response).
+
+**Fixed:**
+
+| ID | Fix | Verified by |
+|---|---|---|
+| R20.D35 (with package R20.2) | Synergy's intervals come from draws of the endpoint model under the model estimand, and the tab says so; the "excludes zero" note now reads an interval that describes the verdict's estimate. The therapeutic window's TGI intervals come from the same draws. The TWM ratio has no interval under the model estimand, and the ranking note says so and points to the TGI and weight-loss intervals. | testServer: the ranking note says "no interval". Package: interval coverage 92–93 % in simulation. |
+| R20.D37 | The Synergy TGI plot draws `synergy_summary`'s TGIs and 95 % intervals (`syn_tgi_long()`) instead of recomputing TGI from the animals present each day. The error-bar control is now "95% interval / None". | testServer: plot data equal the backend's TGIs and lower bounds; days stop at the last evaluable day. Browser: the plot renders. |
+| R20.D38 | The Synergy Info tab gives Bliss, `FE_A + FE_B − FE_A × FE_B`, a correct ceiling example (50 % + 50 % gives 75 %), and no "CI threshold". | `test-docs-current.R` checks the formula (the review's suggested guard). |
+| R20.D48 (with package R20.17) | Dose Response analyses the last evaluable day, and its TGI plot and new "TGI by dose" table show the backend's `tgi_table` (endpoint model; the same TGI as Synergy and Toxicity), with the control stored at run time since step 3. | testServer: the day equals `evaluable_days()$last_day`; the note names it; the plot renders. Browser: the same. |
+| Package R20.5, dashboard half | Tumour Growth defaults to "Random slopes (recommended)". An uncorrelated option is added, and intercept-only is labelled "all animals in an arm grow at the same rate". The summary states the structure used, any fallback, and the Satterthwaite F-tests. The Bayesian path maps the choice to slopes or intercept. | testServer: `random_effects$requested == "slope"`, F-test columns, "Satterthwaite" in the summary. Browser: default selected; LME4 runs in 2.1 s. |
+| Package R20.4, dashboard half | The AUC comparisons use the backend's model-based ratios and differences with intervals. The AUC plot shows each arm's AUC with its interval over the window. The summary gives the window, model and rule. The Help, Info, Comparisons, Treatment Effects, ANOVA and per-animal tab texts are rewritten; the per-animal tables are marked descriptive. | testServer: ratio columns with intervals; "Window: day 0 to day 16". Browser: the same. |
+
+**In part:**
+- **R20.D29:** the over-time synergy plot no longer drops negative TGIs (`coord_cartesian`).
+- **R20.D30:** the ANOVA help no longer calls the Wald χ² a likelihood-ratio statistic.
+
+**Found and fixed during this step:**
+- **"Evaluable" had two meanings.** The synergy table's `Evaluable` column (R20.8: does Bliss apply) sat beside the new evaluable-day rule, so a user saw "Evaluable = FALSE" on an evaluable day. The backend renamed it `bliss_applies` / `Bliss_Applies`, and the summary now says "Days where Bliss applies".
+- **Random slopes made Tumour Growth slow.** Per-observation influence refits (R20.76) took 12.8 s of a 13 s run on the Master demo, and would take minutes on larger studies. The backend now computes influence per animal (2.0 s), and the influence help says "one row per animal".
+- **A grammar slip in the first version of the note** ("every arm are evaluable") was caught in the browser run.
+
+**Tests:**
+- **New:** `test-round21-step4.R` holds 8 tests and 31 expectations. Run against the v26.09.003 source with backend 0.26.0, all 8 fail or error.
+- **Updated to the new contract:**
+  - `test-backend-contract.R`: the AUC contract now covers the model-based fields.
+  - `test-docs-current.R`: the AUC method, the R20.D38 Bliss formula, the rule in three Info tabs, and "Interval draws".
+  - `test-round21-fixes.R`: "Days where Bliss applies".
+
+**Verification (executed):**
+- **Full suite:** 23 files, 238 tests, 745 expectations. No failures or skips; the one warning is pre-existing. It now runs in about 1.2 min instead of 2.1, because of per-animal influence.
+- **R CMD check:** 6 WARNINGs and 5 NOTEs, in the same categories as step 3, with no new R-code NOTE tokens.
+- **Headless Chrome:** 8 checks, all passing, with 0 console errors in either session.
+  - Master demo: the rule on Study Design; random slopes by default with F-tests; the model-based AUC window; synergy on the last evaluable day, with its note and exclusions; all evaluable days with the TGI plot; the therapeutic-window note and interval explanation; Dose Response on the last evaluable day.
+  - Combo demo: the synergy day choices stop at day 28.
+
+---
+
+## R20-D.M Implementation log — v26.09.005, step 5: two-axis therapeutic window, synergy verdict, dose series, removal reasons (2026-09-30)
+
+This step needs backend 0.27.0 (package R20-P).
+
+**Maintainer decisions implemented (R20-D.H):**
+- **Therapeutic window, two axes.** The Toxicity tab's Therapeutic Window table sets, per arm:
+  - TGI at the endpoint day with its 95 % interval;
+  - the mean worst weight loss with its interval;
+  - the animals over the threshold ("2 of 8");
+  - the tolerability flag, coloured: Tolerated, Not tolerated or Unclear, or "No interval".
+  The sidebar sets the threshold (default 20 %). A note states the rule and where the intervals come from, and calls out a tolerated arm that has animals over the threshold. The plot shows TGI against worst weight loss, with both intervals, the threshold and the not-tolerated side shaded. The TWM ratio, bar chart and ranking note are removed. The CSV and ZIP export the backend's `window_table` and the per-animal nadirs.
+- **Removal-reason column.** It is mapped under Optional Columns and auto-detected from Removal_Reason, Reason, Cause_Of_Death or Fate. When it is mapped, Study Design lists each distinct value with a category: tumour volume limit, death or moribund, weight loss or body condition, planned end or data cut, or other. Categories are guessed from keywords and can be changed. The column and categories live in `rv$settings` and the preset.
+  - **Survival (R20.D13):** "Count deaths from other causes as events (recommended)" appears only when the column is mapped, ticked by default. An animal whose reason is a death becomes an event at its last measurement, under either event source. The sidebar states the assumption in force, and the summary gives the number of deaths added.
+  - **Toxicity:** the weight-loss threshold receives the reasons (package R20.23). The KM panel states the backend's assumption, "No removal-reason column: ..." or "Removal reasons: ...", before any competing-risk warning.
+
+**Fixed:**
+
+| ID | Fix | Verified by |
+|---|---|---|
+| R20.D47 (with package R20.16) | A "Dose series" selector lists the arms; the largest set of single-agent arms that share their first word and differ in dose is suggested (the three Drug_A arms on the Master demo). The run needs a choice. Other agents, combinations and arms that share a dose are refused with the backend's reason. The day selector lists the evaluable days of the chosen series. When the study's control group spans several doses (one treatment name at every dose), the dose-0 rows are the control, and the reference note says so. | testServer: the suggestion; no run without a choice; the series recorded; "Dose 15 holds more than one arm". Browser: the same. |
+| R20.D49 (with package R20.18, R20.20) | The Summary, Model Results and results CSV show the two-sided Jonckheere–Terpstra test with its direction, and the EC50 with its interval on log dose, the curve type and the backend's flags. | testServer: "Jonckheere-Terpstra, two-sided", "on log dose", "outside the tested doses" on the Master demo (EC50 2.4 below the lowest dose, 5). |
+| Package R20.19, dashboard half | The verdict box shows the interval-based verdict and the backend's `verdict_rule`. A verdict without an interval is shown as information, not green. "Not evaluable" becomes "Does not apply". The Info, Synergy Metrics and Help texts describe the rule instead of the asymmetric bands. | testServer: the rule under the verdict; "no interval" in blue with 0 draws. |
+| R20.D50, therapeutic window only | The plot download builds the plot with `tox_window_plot()` instead of reading an output. | Browser: a 64 KB PNG. |
+
+**Tests:**
+- **New:** `test-round21-step5.R` holds 9 tests and 69 expectations. Run against the v26.09.004 source with backend 0.27.0, all 9 fail or error.
+- **Updated to the new contract:**
+  - `test-backend-contract.R`: the window table and flag, and the weight-loss `assumption`.
+  - `test-render-logic.R`: the TWM ranking-note test becomes a tolerability-note test.
+  - `test-round21-step4.R`: the tolerability rule; Dose Response with a named series.
+  - `test-round21-study-design.R` and `test-backend-calls-resolve.R`: a named series.
+  - `test-round21-fixes.R`: "Does not apply".
+  - `test-docs-current.R`: the removal-reason role in Help, and new checks that the Toxicity, Help, Synergy, Dose Response and Survival texts describe the new behaviour and not the TWM ratio or the asymmetric bands.
+
+**Found and fixed during this step:**
+- **The backend's refusal named its argument.** A dose that two chosen arms share was reported as "choose its arms with `treatments =`", which means nothing on the dashboard. The tab now says "under 'Dose series' in the sidebar".
+
+**Verification (executed):**
+- **Full suite:** 24 files, 250 tests, 836 expectations. No failures or skips; the one warning is pre-existing.
+- **R CMD check:** 6 WARNINGs and 5 NOTEs, identical to step 4's log apart from the version.
+- **Headless Chrome:** 9 checks, all passing, with 0 console errors in either session.
+  - **Master demo:**
+    - The therapeutic-window table has the two axes and the flag; at a 12 % threshold, four arms are Unclear and two Not tolerated. The note states the rule, and the plot renders and downloads as a 64 KB PNG.
+    - The synergy verdict shows its rule, with the interval that decided it: Synergy, Bliss excess [0.015, 0.078].
+    - Dose Response suggests the three Drug_A arms, on evaluable days 0–16, and shows the two-sided JT test and the EC50 interval. Choosing Drug_A Mid with the combination is refused, with the sidebar named.
+  - **An uploaded CSV with a Removal_Reason column:**
+    - The column is detected, and its four values are guessed correctly.
+    - Survival shows the ticked checkbox and counts 2 deaths as events.
+    - The weight-loss panel reports 10 competing removals under "Removal reasons".
+
+---
+
+## R20-D.N Implementation log — v26.09.006, step 6: Bayesian robustness (2026-10-01)
+
+This step needs backend 0.28.0 (package R20-Q). The maintainer kept Bayesian tumour growth and survival and asked that they be made robust (R20-D.H): compiled-model caching, the R20.D3/D5/D7/D18 fixes, and resources. R20.D3 was fixed in step 2.
+
+**New findings (this step):**
+
+- **R20.D62 — Critical: the Bayesian fits ran in the Shiny process.** `runDashboard()` set `future::plan(multisession, workers = 1L)`, and future treats a one-worker multisession plan as sequential. Executed: the future ran with the main process's PID. Production starts the app with `runDashboard()` (`docker/Dockerfile.shiny` CMD). Consequences:
+  - Each Bayesian fit froze every session for its whole duration (3–12 min before compile caching).
+  - The job registry, its modal and "the app stays responsive" (Tumour Growth Info) described a background that did not exist.
+  - Review item R20.D7 ("a second user's fit queues behind the first") understated the effect: every request from every user waited, not just other fits.
+- **R20.D63 — Major: Resume lost the result it resumed.** The banner's Resume handler called the resume handler, which attached a poller, and then retired the job at once. On its first tick the poller found nothing, cleared its job id and returned. Executed (testServer): a finished fit resumed from the banner never reached `rv$tg_results`. The F.7 end-to-end test called the finaliser directly instead of going through the poller, so it passed.
+- **R20.D64 — Major: one browser session owned every resume handler.** Handlers lived in one environment for the R process, keyed by kind. Each new session's Tumour Growth and Survival modules overwrote them, so a Resume clicked in an earlier session ran the newest session's handler. That handler looked the job up under its own sid and found nothing. Data stayed isolated (lookups are sid-scoped), but Resume did nothing.
+
+**Fixed:**
+
+| ID | Fix | Verified by |
+|---|---|---|
+| R20.D62 | `use_background_worker()` sets `plan(multisession, workers = I(1))`, a real background worker (future ≥ 1.33.2); future now ≥ 1.49.0 for `cancel()`. | Test: the old plan runs a future in-process, the new one in another PID. Browser: an LME4 fit in a second session finished in 3.3 s while a Bayesian fit ran. |
+| R20.D7 | The job registry schedules fits itself (below). One active Bayesian fit per browser: a second Run is refused with a notification. Cancel, from the progress window or the banner, drops a queued fit or interrupts a running one (`future::cancel()`, then the future is queried so the worker is released, which future requires). The progress window shows the queue position or the elapsed time, and says fits run one at a time. | Tests: queue order and `jobs_ahead()`; a cancelled queued fit never starts; a cancelled 60-s fit frees the worker within seconds and the next fit runs; one fit per browser; the window's Cancel. Browser: a 20,000-iteration fit cancelled from the window; the next fit completed. |
+| R20.D5 | "Dismiss all" is "Dismiss finished": running and queued fits are stopped only by their Cancel. A poller whose job has left the registry (dismissed or evicted) closes the modal, clears the running flag and says the analysis was dismissed or expired. | Tests: Dismiss keeps a running job; a lost job closes its modal with the message. |
+| R20.D63 | Resume no longer retires the job; the poller retires it after delivering the result. The banner refreshes every 5 s while it lists jobs. | Test: Resume through the banner delivers the result, then the job is retired. It fails on v26.09.005. |
+| R20.D64 | Resume handlers are kept in the session's `userData`, which module sessions share with the app's session. | Tests: two sessions' handlers do not cross; a handler registered in the module is found from the app session. |
+| R20.D18 (with package R20.80) | Fits are requested with `return_model = FALSE`. The posterior predictive, trace and rank plots come from the result (`pp_check_plot`, `posterior_draws`), so `rv$bayes_models` is gone. The result is about 8 MB, the plots themselves; before, the model was kept alive at about 31 MB (twice over in transit). | Test: the three diagnostics render from a result without a model. Browser: they render after a real fit. |
+| Package R20.35, dashboard half | The influence table, histogram and diagnostics panel use the backend's draw-dependent Pareto-k threshold (`k_threshold`; 0.7 for older results). | Test: k = 0.66 is influential at threshold 0.64. |
+| R20.D12 (one more site) | The Bayesian survival launch sent the reference arm's name to analytics; it sends "study_control". | Code review. |
+
+**How the scheduler works.** A Bayesian fit is a task: a function and its arguments.
+- **Queued:** the task waits until the background worker is free, then runs as a future.
+- **Ending:** it ends completed, failed or cancelled.
+- **`.pump_jobs()`:** starts queued tasks in arrival order and collects finished ones. It runs on a one-second `later` timer while any job is pending, and on every poller tick.
+- **Why not `future_promise`:** `promises::future_promise()` hides the Future, so a fit could not be interrupted.
+
+**Executed in the browser** (headless Chrome, two sessions; all checks pass, no console errors):
+
+| Fit | Time | Note |
+|---|---|---|
+| First Bayesian fit | 39.8 s | Package loading and compilation in the worker |
+| Second fit, same structure | 11.3 s | The compiled model was reused (package R20.78) |
+| Fit after a cancel | 37.8 s | The interrupted worker restarts, so it loads and compiles again |
+
+**Tests:**
+- **New:** `test-round21-step6.R`, 10 tests and 35 expectations. Run against the v26.09.005 source with backend 0.28.0, all 10 fail or error.
+- **Updated to the new contract:**
+  - `test-resume_banner.R`: handlers take a session.
+  - `test-tg_resume.R`: no stored model; the handler is found on the session.
+  - `test-round21-fixes.R`: the R20.D3 launch is a queued task.
+
+**Verification (executed):**
+- **Full suite:** 25 files, 260 tests, 872 expectations. No failures or skips; the one warning is pre-existing.
+- **R CMD check:** 6 WARNINGs and 5 NOTEs. Against a check of v26.09.005 built the same way, the differences are an import fewer (brms moved to Suggests, now only probed with `requireNamespace()`) and two NOTEs from a local, untracked `.waylog` folder that the working-tree build includes.
+
+**Not changed:**
+- **R20.D6:** the power simulation, the permutation test and the body-weight fit still run in the Shiny process. The scheduler is ready to take them, but they are not Bayesian fits and were not in this step.
+- **One worker:** fits still run one at a time. A second worker is a resource decision for the VPS (memory limits, V3.12).
+
+## R20-D.O Implementation log — v26.09.007, step 7: the dashboard side of VPS Round 3 (2026-10-01)
+
+Step 7 implemented the VPS repository's Round 3 review (its CODE_REVIEW.md, V3-H). Three items live in this repository.
+
+**Fixed:**
+
+| ID | Fix | Verified by |
+|---|---|---|
+| R20.D28 / VPS V3.22 | `startup_proxy_reminder(host)` prints the proxy-timeout reminder whenever the app binds a non-local address, which is what the container does. It also prints under shiny-server, as before. `runDashboard()` opens a browser only in an interactive session (`launch.browser = interactive()`). | Test: `runDashboard(host = "0.0.0.0")` with `runApp` mocked prints the reminder and passes `launch.browser = FALSE`; on v26.09.006 it printed nothing and passed `TRUE`. |
+| VPS V3.12 (dashboard half) | Each Bayesian task first calls `.prefer_oom_kill()`, which raises the worker's `oom_score_adj` to 500. The compiler the worker starts inherits it. At the container's memory limit the kernel then kills the fit, not the process serving every session. It never applies to the launching process, so a sequential plan leaves the Shiny process alone. The function is passed with a base environment, so the worker needs no namespace to run it. | Tests: a temp file stands in for procfs. It is raised for another PID and left alone for the launching PID; a missing procfs is a no-op. A job still returns its value. The real-worker cancel test (step 6) runs the new expression in a separate process. |
+| R20.D27 | `docs/DEPLOYMENT.md` rewritten against the VPS pipeline as it now is: one Dockerfile on `rocker/r-ver:4.5.2` with the frozen snapshot; commit-SHA layers; the gate, the health-checked swap and rollback; the real environment (two variables, both only for the reminder; Shiny's 5 MB upload limit; one background worker); `ssh -p 2222`; backups without a "VPS image". `CONTRIBUTING.md`: the backend minimum is read from DESCRIPTION (0.28.0), the review is described per round, and the test table lists every file. | Read against the VPS repository at its step 7 head; every test file is now in the table. |
+
+**Tests:**
+- **New:** `test-round21-step7.R`, 4 tests and 12 expectations. Against the v26.09.006 source, the first three fail (no reminder, `launch.browser = TRUE`, no `.prefer_oom_kill`). The fourth guards that a job still returns its value.
+- **Against the image's package versions:** the VPS image now installs from rocker 4.5.2's frozen snapshot, which carries ggplot2 4.0.2 and dplyr 1.2.0 (development has 3.5.2 and 1.1.4). With those 54 versions installed ahead of the development library, the v26.09.006 suite passed: 260 tests, 872 expectations, no failures. Eight snapshot packages could not be built on this Mac (a local gfortran/clang mismatch); they are patch-level differences.
+
+**Verification (executed):**
+- **Full suite:** 26 files, 264 tests, 884 expectations. No failures or skips; the one warning is pre-existing.
+- **R CMD check** (`--no-manual --ignore-vignettes --no-tests`): 4 WARNINGs and 3 NOTEs. A check of v26.09.006 built the same way flags the same items with identical details; the two extra NOTEs come from the local, untracked `.waylog` folder that the working-tree build includes.
+

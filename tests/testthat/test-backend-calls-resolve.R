@@ -92,7 +92,8 @@ test_that("R17.3: dose-response plots have the data they need", {
     mouseExperiment::dose_response_statistics(
       do.call(rbind, rows), dose_column = "Dose", treatment_column = "Treatment",
       volume_column = "Volume", day_column = "Day", id_column = "ID",
-      control_group_name = "D0", verbose = FALSE)))
+      control_group_name = "D0", treatments = paste0("D", doses[-1]),  # one agent (R20.16)
+      verbose = FALSE)))
 
   expect_false(is.null(res$analysis_data))
   expect_s3_class(as.data.frame(res$analysis_data), "data.frame")

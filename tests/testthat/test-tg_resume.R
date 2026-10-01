@@ -45,7 +45,10 @@ test_that(".finalize_tg_success writes rv$tg_results + plot data", {
     })
   }, args = list(rv = rv), {
     expect_equal(shiny::isolate(rv$tg_results)$model_type_used, "bayes")
-    expect_equal(shiny::isolate(rv$bayes_models)$tg, "<fake brmsfit>")
+    # R20.D18: the fitted model is not kept (the diagnostics come from the
+    # result's plots and posterior_draws).
+    expect_null(shiny::isolate(rv$tg_results)[["model"]])
+    expect_null(shiny::isolate(rv$bayes_models))
     expect_false(shiny::isolate(rv$tg_running))
     expect_equal(shiny::isolate(rv$tg_plot_data), fake_params$data)
     expect_equal(shiny::isolate(rv$tg_col_names), fake_params$col_names)
@@ -80,8 +83,8 @@ test_that("register_tg_resume hooks into the resume dispatcher", {
     shiny::moduleServer(id, function(input, output, session) {
       g("register_tg_resume")(input, output, session, rv)
 
-      # Verify the handler is now resolvable by kind.
-      handler <- g(".resume_handlers")[["bayes_tg"]]
+      # Verify the handler is now resolvable by kind, on this session (R20.D64).
+      handler <- session$userData$mE_resume_handlers[["bayes_tg"]]
       expect_true(is.function(handler))
     })
   }, args = list(rv = rv), {})

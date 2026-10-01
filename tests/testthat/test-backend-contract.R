@@ -65,17 +65,23 @@ test_that("contract: synergy result carries the fields the Synergy tab renders",
   expect_true(all(c("Metric", "Value") %in% names(res$synergy_metrics)))
 })
 
-test_that("contract: TWM result carries the ranking bounds and attrition", {
+test_that("contract: the therapeutic window carries both axes, the flag and attrition", {
   res <- suppressWarnings(suppressMessages(
     mouseExperiment::therapeutic_window_metric(
       contract_df(), volume_column = "Volume", weight_column = "Weight",
       time_column = "Day", treatment_column = "Treatment", id_column = "ID",
       reference_group = "Control", adjust_tumor_weight = FALSE,
+      tolerability_threshold = 20,
       endpoint_method = "model", n_boot = 200, boot_seed = 1)))
 
-  # tox_twm_ranking_note reads these off twm_table directly.
-  expect_true(all(c("Treatment", "TGI", "TWM", "TWM_Lower", "TWM_Upper") %in%
-                    names(res$twm_table)))
+  # tox_et_twm_table / window_display_table / tox_window_plot read these.
+  expect_true(all(c("Treatment", "N_Animals", "TGI", "TGI_Lower", "TGI_Upper",
+                    "Worst_Loss", "Worst_Loss_Lower", "Worst_Loss_Upper",
+                    "N_Over_Threshold", "Tolerability") %in% names(res$window_table)))
+  # tox_twm_tolerability_note
+  expect_true(is.character(res$tolerability_rule) && nzchar(res$tolerability_rule))
+  expect_true(is.character(res$interval_note))
+  expect_equal(res$tolerability_threshold, 20)
   # tox_twm_attrition_ui / _table
   expect_false(is.null(res$attrition))
   expect_true(all(c("N_Enrolled", "N_At_Endpoint", "Pct_Lost") %in%
@@ -93,6 +99,7 @@ test_that("contract: weight-loss result carries the competing-risks fields", {
 
   # tox_km_competing_note / tox_km_censoring_table
   expect_false(is.null(res$n_competing_risk))
+  expect_true(is.character(res$assumption) && nzchar(res$assumption))
   expect_true(is.numeric(res$n_competing_risk))
   expect_false(is.null(res$censoring_summary))
   expect_true(all(c("Treatment", "Censor_Type", "Freq") %in%
@@ -101,17 +108,24 @@ test_that("contract: weight-loss result carries the competing-risks fields", {
   expect_true(all(c("Time", "Event", "Treatment") %in% names(res$event_data)))
 })
 
-test_that("contract: AUC result carries variance_test for the ANOVA tab", {
+test_that("contract: the model-based AUC result carries what the TG tab reads (R20.4)", {
   res <- suppressWarnings(suppressMessages(
     mouseExperiment::tumor_growth_statistics(
-      contract_df(), model_type = "auc", plots = FALSE, verbose = FALSE)))
-
-  # tg_variance_test_ui reads p_value; the table renders the whole frame.
-  expect_false(is.null(res$variance_test))
-  expect_true("p_value" %in% names(res$variance_test))
-  # The Welch omnibus replaced aov(); the ANOVA tab renders this frame.
-  expect_true("Method" %in% names(res$anova))
-  expect_match(res$anova$Method[1], "Welch")
+      contract_df(), model_type = "auc", p_adjust_method = "holm",
+      plots = FALSE, verbose = FALSE)))
+  # AUC by arm (Treatment Effects tab, AUC plot).
+  expect_true(all(c("Treatment", "AUC", "Lower_CL", "Upper_CL", "N", "Reference") %in%
+                    names(res$treatment_effects)))
+  # Comparisons (mod_tumor_growth.R reformats these by name).
+  expect_true(all(c("comparison", "estimate", "ci_lower", "ci_upper", "ratio",
+                    "ratio_lower", "ratio_upper", "z_value", "p_adjusted") %in%
+                    names(res$posthoc$pairwise)))
+  # ANOVA tab and summary.
+  expect_match(res$anova$Method[1], "model-based AUC")
+  expect_true(all(c("start", "end") %in% names(res$auc_window)))
+  expect_false(is.null(res$evaluability$rule))
+  # The Welch-era variance check is gone; the tab renders nothing for it.
+  expect_null(res$variance_test)
 })
 
 test_that("contract: permutation result carries every field the panel reads", {

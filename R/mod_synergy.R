@@ -22,58 +22,7 @@ synergyUI <- function(id) {
           
           h4("Analysis Options"),
 
-          selectInput(ns("syn_model_type"), "Statistical Model",
-            choices = c(
-              "Frequentist (Bliss)" = "frequentist",
-              "Bayesian LMM (brms)"       = "bayes"
-            ),
-            selected = "frequentist"
-          ),
-          helpText("Frequentist computes the Bliss synergy score. Bayesian fits a ",
-                   "linear mixed-effects model with brms and reports posterior credible ",
-                   "intervals; computation takes 3–12 minutes."),
-
-          conditionalPanel(ns = ns, "input.syn_model_type == 'frequentist'",
-            uiOutput(ns("syn_time_point_ui"))
-          ),
-
-          conditionalPanel(ns = ns, "input.syn_model_type == 'bayes'",
-            hr(),
-            h5(strong("Bayesian Settings")),
-            selectInput(ns("syn_prior_strength"), "Prior Strength",
-              choices = c(
-                "Skeptical (recommended)" = "skeptical",
-                "Weakly informative"      = "weakly_informative",
-                "Informative"             = "informative",
-                "Diffuse"                 = "diffuse"
-              ),
-              selected = "skeptical"
-            ),
-            selectInput(ns("syn_random_effects"), "Random Effects",
-              choices = c(
-                "Intercept only"    = "intercept_only",
-                "Intercept + Slope" = "slope"
-              ),
-              selected = "intercept_only"
-            ),
-            numericInput(ns("syn_bayes_chains"), "MCMC chains",
-                         value = 4, min = 1, max = 8, step = 1),
-            numericInput(ns("syn_bayes_warmup"), "Warmup per chain",
-                         value = 1000, min = 200, max = 5000, step = 100),
-            numericInput(ns("syn_bayes_iter"), "Post-warmup draws per chain",
-                         value = 500, min = 200, max = 5000, step = 100),
-            selectInput(ns("syn_bayes_backend"), "Stan backend",
-                        choices = c("rstan", "cmdstanr"),
-                        selected = "rstan"),
-            div(class = "alert alert-warning",
-                style = "font-size:0.85em; padding:8px; margin-top:6px;",
-              icon("clock"), " Bayesian fitting takes ~3–12 minutes. ",
-              "A progress modal will block other tabs while the model runs, ",
-              "but you can safely close the browser and return later — the ",
-              "fit continues on the server and the results will be waiting ",
-              "when you reconnect."
-            )
-          ),
+          uiOutput(ns("syn_time_point_ui")),
 
           br(),
 
@@ -120,20 +69,19 @@ synergyUI <- function(id) {
                   div(class = "panel-heading",
                     h4(class = "panel-title", tags$span(class = "label label-info", "Bliss Independence"))),
                   div(class = "panel-body",
-                    p("Under Bliss independence, drugs act on independent targets and their joint fractional effect (FE) is:"),
-                    tags$blockquote(tags$code("Expected TGI = min(FE_A + FE_B, 1.0) × 100")),
-                    p("where FE = TGI / 100 for each single agent. The cap at 1.0 prevents the expected value from exceeding the biological ceiling."),
+                    p("Under Bliss independence the drugs act independently on the fraction of tumour that survives each one. With FE = TGI / 100 for each single agent, the expected combined fractional effect is:"),
+                    tags$blockquote(tags$code("Expected FE = FE_A + FE_B \u2212 FE_A \u00d7 FE_B"),
+                                    tags$br(), tags$code("Expected TGI = 100 \u00d7 Expected FE")),
                     tags$dl(class = "dl-horizontal",
                       tags$dt("Bliss Difference"),
-                      tags$dd("TGI_combo − Expected TGI. Positive = synergy; negative = antagonism; near zero = independence.")
+                      tags$dd("FE_combo \u2212 Expected FE, shown in percentage points. Positive = synergy; negative = antagonism; near zero = independent action.")
                     ),
                     div(class = "alert alert-warning", style = "margin-top:10px;",
                       icon("triangle-exclamation"), " ",
                       strong("Ceiling effect: "),
-                      "When either individual drug achieves TGI > 50 %, the Bliss expected TGI approaches or reaches 100 %, ",
-                      "leaving no room to detect synergy even if it is real. ",
-                      "In this regime Bliss Difference will be near zero or negative regardless of combination performance. ",
-                      "Interpret Bliss results cautiously when single-agent TGIs are high."
+                      "when both single agents are strong, the Bliss expectation is already close to 100 % ",
+                      "(50 % and 50 % give 75 %; 80 % and 80 % give 96 %), which leaves little room for the combination ",
+                      "to exceed it. Read small Bliss differences cautiously when single-agent TGIs are high."
                     )
                   )
                 ),
@@ -143,33 +91,48 @@ synergyUI <- function(id) {
                   div(class = "panel-heading",
                     h4(class = "panel-title", tags$span(class = "label label-danger", "Uncertainty"), " — how far to trust the verdict")),
                   div(class = "panel-body",
-                    p("The synergy verdict is a categorical label derived from three group means. Without an ",
-                      "interval, a “Strong Synergy” resting on noise is indistinguishable on screen from one ",
-                      "resting on a real effect."),
+                    p("The synergy verdict comes from the 95% interval for the Bliss excess (backend v0.27.0): ",
+                      strong("Synergy"), " when the interval lies above zero, ", strong("Antagonism"),
+                      " when it lies below, and ", strong("Additive (no departure from Bliss detected)"),
+                      " when it contains zero. With Interval draws set to 0 there is no interval; the ",
+                      "verdict then compares the point estimate with symmetric bands of \u00b10.1 and says it ",
+                      "has no interval. Earlier versions labelled any positive excess “Synergy” but negative ",
+                      "ones down to \u22120.1 “Additivity”, so a Bliss-additive combination was called ",
+                      "synergistic in about half of simulated studies."),
                     tags$dl(class = "dl-horizontal",
-                      tags$dt("Bootstrap resamples"),
-                      tags$dd("Mouse-level resampling produces confidence intervals for the Bliss ",
-                              "metrics. The control arm is resampled too, so uncertainty in the denominator ",
-                              "propagates rather than being treated as known — which matters because every metric ",
-                              "here is a ratio against control. Set to 0 to skip; the verdict is then a point ",
-                              "estimate with no stated uncertainty."),
+                      tags$dt("Interval draws"),
+                      tags$dd("The 95 % intervals describe the reported estimates. Under the model ",
+                              "estimand they come from draws of the fitted model's coefficients; under the ",
+                              "per-animal estimands, from resampling animals within each arm, control included. ",
+                              "Either way the uncertainty of the control mean, the denominator of every TGI, ",
+                              "is carried through. Set to 0 to skip; the verdict is then a point estimate with ",
+                              "no stated uncertainty."),
                       tags$dt("Interval callout"),
-                      tags$dd("Beneath the verdict, an explicit statement of whether the 95 % interval for Bliss ",
-                              "excess excludes zero. This is the single most useful line in the tab: a verdict ",
-                              "whose interval spans zero is not evidence of synergy, whatever the label says."),
+                      tags$dd("Beneath the verdict, the 95 % interval for the Bliss excess that decided it, ",
+                              "and whether it excludes zero."),
                       tags$dt("Endpoint estimand"),
-                      tags$dd(strong("Model"), " (default) estimates endpoint group means from the fitted model, ",
-                              "using every observation each animal contributed. ", strong("Observed"), " uses only ",
+                      tags$dd(strong("Model"), " (default) estimates endpoint group means from a mixed model of ",
+                              "log volume with a smooth time course for each arm and a growth rate for each ",
+                              "animal, using every observation each animal contributed. ", strong("Observed"), " uses only ",
                               "animals still present at the endpoint. Because the fastest-growing controls are the ",
                               "ones removed early, the observed estimand shrinks the control mean and inflates every ",
                               "fractional effect derived from it — which propagates directly into both Bliss and ",
                               "the Bliss expectation. Per-arm attrition is shown so the exposure is visible.")
-                    ),
-                    p(tags$small(class = "text-muted",
-                      "A Bayesian synergy mode is also available: it propagates posterior uncertainty from the ",
-                      "growth model through the Bliss calculation, giving credible intervals for the ",
-                      "metrics directly rather than by resampling."
-                    ))
+                    )
+                  )
+                ),
+
+                # ── Evaluable days (R20-K) ───────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading", h4(class = "panel-title", "Evaluable days")),
+                  div(class = "panel-body",
+                    p(evaluable_rule_text()),
+                    p("Synergy is reported only on days when all four arms are evaluable. By default ",
+                      "the analysis uses the last such day; the day selector lists only evaluable days. ",
+                      "Later days are not analysed, because an arm's mean there would rest on a minority ",
+                      "of its animals or be extrapolated past them \u2014 the control arm, removed first ",
+                      "at the volume limit, is usually the one that runs out. Each result names the day ",
+                      "used and lists the days and arms the rule excluded.")
                   )
                 ),
 
@@ -177,8 +140,8 @@ synergyUI <- function(id) {
                 div(class = "panel panel-default",
                   div(class = "panel-heading", h4(class = "panel-title", "Over-Time Analysis")),
                   div(class = "panel-body",
-                    p("When 'Analyze over time' is enabled in the sidebar, the Bliss score is computed at every measured timepoint and plotted as a synergy trend. This reveals whether synergy emerges, fades, or reverses over the course of treatment."),
-                    p("Per-timepoint p-values (Combination vs Drug A and vs Drug B, two-sample t-test) are included in the Synergy Metrics table. These are unadjusted for multiple testing across timepoints — interpret overall patterns rather than individual p-values at isolated days.")
+                    p("With \u2018All evaluable days\u2019 selected, the Bliss score is computed on every evaluable day, from one fit of the model, and plotted as a synergy trend. This shows whether synergy emerges, fades, or reverses over the course of treatment."),
+                    p("Per-day p-values (Combination vs Drug A and vs Drug B, on the same estimand as the TGIs) are included in the Synergy Metrics table. They are unadjusted for multiple testing across days \u2014 interpret overall patterns rather than individual p-values at isolated days.")
                   )
                 ),
 
@@ -189,6 +152,8 @@ synergyUI <- function(id) {
 
           tabPanel("Summary",
             tab_info(strong("Synergy summary: "), "Overall assessment from the Bliss independence model. Reports whether the drug combination is synergistic, additive, or antagonistic at the evaluated timepoint, and lists the key quantitative scores."),
+            # R20-K: the day used and the days the rule excluded.
+            uiOutput(ns("syn_evaluability_note")),
             shinycssloaders::withSpinner(
               verbatimTextOutput(ns("syn_summary"))
             )
@@ -201,18 +166,21 @@ synergyUI <- function(id) {
               strong("Metric"), " / ", strong("Value"), ") summarising scores at the selected timepoint: ",
               tags$ul(
                 tags$li(strong("Bliss Difference"), " \u2014 observed combination effect minus the Bliss-independent expected effect (TGI\u2009combo \u2212 TGI\u2009Bliss). Positive = synergy; negative = antagonism."),
-                tags$li(strong("Interpretation"), " \u2014 plain-language summary based on the CI threshold.")
+                tags$li(strong("Interpretation"), " \u2014 the verdict, from the 95% interval for the Bliss excess: Synergy (above zero), Antagonism (below zero) or Additive (contains zero). Without an interval, symmetric bands of \u00b10.1 around zero, and the label says there is no interval.")
               ),
-              "When \u2018Analyze over time\u2019 is enabled, each row is a measured timepoint with columns:",
+              "With \u2018All evaluable days\u2019, each row is an evaluable day with columns:",
               tags$ul(
                 tags$li(strong("Time_Point"), " \u2014 study day."),
                 tags$li(strong("TGI_Drug_A / TGI_Drug_B / TGI_Combo"), " \u2014 % tumor growth inhibition for Drug A, Drug B, and the combination relative to control."),
                 tags$li(strong("Bliss_Expected_TGI"), " \u2014 predicted TGI under the Bliss independence model."),
                 tags$li(strong("Bliss_Difference"), " \u2014 TGI_Combo minus the expected TGI; positive values indicate synergy."),
-                tags$li(strong("P_Value_vs_Drug_A / P_Value_vs_Drug_B"), " \u2014 two-sample t-test p-value comparing the combination group to each mono-therapy; values below 0.05 indicate a statistically significant difference."),
-                tags$li(strong("Synergy_Assessment"), " \u2014 plain-language classification at each timepoint.")
+                tags$li(strong("*_Lower / *_Upper"), " \u2014 95% interval of each TGI and of the Bliss difference."),
+                tags$li(strong("P_Value_vs_Drug_A / P_Value_vs_Drug_B"), " \u2014 p-value comparing the combination group to each mono-therapy on the same estimand (a Wald test of the volume ratio under the model estimand); values below 0.05 indicate a statistically significant difference."),
+                tags$li(strong("Synergy_Assessment"), " \u2014 the verdict on each day, from that day's interval for the Bliss excess."),
+                tags$li(strong("Bliss_Applies"), " \u2014 FALSE where a single agent did not inhibit growth that day. Bliss independence is defined only for inhibitory agents, so the Bliss columns are blank on those days and they cannot be the peak.")
               )
             ),
+            uiOutput(ns("syn_evaluability_note_metrics")),
             div(class = "text-right", style = "margin-bottom: 6px;",
               downloadButton(ns("download_syn_metrics"), "Download Results")
             ),
@@ -271,10 +239,12 @@ synergyUI <- function(id) {
                     ),
                     conditionalPanel(ns = ns,
                       "input.syn_plot_selector == 'tgi'",
-                      selectInput(ns("syn_opt_error_bar"), "Error bars",
-                        choices  = c("SEM" = "SEM", "SD" = "SD",
-                                     "95% CI" = "CI", "None" = "none"),
-                        selected = "SEM"
+                      # The TGI plot shows the backend's TGIs and their 95 %
+                      # intervals (R20.D37), so SEM / SD bars of re-derived
+                      # per-animal TGIs no longer apply.
+                      selectInput(ns("syn_opt_error_bar"), "Intervals",
+                        choices  = c("95% interval" = "CI", "None" = "none"),
+                        selected = "CI"
                       )
                     )
                   ),
@@ -324,69 +294,25 @@ synergyUI <- function(id) {
           # had no checkable t-test assumptions. New per-group Q-Q + boxplot.
           tabPanel("Diagnostics",
             tab_info(
-              strong("Model-fit diagnostics. "),
-              "Frequentist (t-test path): per-group normality + outlier ",
-              "checks. Bayesian: MCMC convergence + posterior diagnostics. ",
-              "The view switches based on the selected model type."
+              strong("Checks on the estimate that is reported. "),
+              "Under the model estimand: the endpoint model's residuals by arm, and each arm's fitted ",
+              "curve over its data up to the evaluation day. Under the per-animal estimands: the ",
+              "per-animal volumes used, by arm."
             ),
-            # ── Freq diagnostics ───────────────────────────────────────────
-            conditionalPanel(
-              ns = ns,
-              condition = "input.syn_model_type != 'bayes'",
               fluidRow(
                 column(6,
-                  h4("Per-group Q-Q of tumor volumes"),
-                  tags$details(
-                    tags$summary(tags$small("How to read this plot")),
-                    tags$small(
-                      "One panel per treatment group; points on the red dashed ",
-                      "line = normally distributed. ",
-                      strong("S-shape: "), "heavy tails — Welch is robust but ",
-                      "consider a Mann-Whitney sanity check. ",
-                      strong("Far outliers: "), "investigate before reporting."
-                    )
-                  ),
+                  uiOutput(ns("syn_diag_left_heading")),
                   shinycssloaders::withSpinner(
                     plotOutput(ns("syn_diag_group_qq_plot"), height = "350px")
                   )
                 ),
                 column(6,
-                  h4("Per-group tumor volume boxplot"),
-                  tags$details(
-                    tags$summary(tags$small("How to read this plot")),
-                    tags$small(
-                      "Boxplots with individual mice jittered. Outliers in red. ",
-                      "Use to confirm group means are dominated by the bulk of ",
-                      "mice (not 1-2 extreme cases). ",
-                      strong("Wide IQR + an outlier: "), "the synergy / ",
-                      "antagonism call may be driven by that one mouse."
-                    )
-                  ),
+                  uiOutput(ns("syn_diag_right_heading")),
                   shinycssloaders::withSpinner(
                     plotOutput(ns("syn_diag_group_boxplot"), height = "350px")
                   )
                 )
               )
-            ),
-            # ── Bayes MCMC diagnostics ─────────────────────────────────────
-            conditionalPanel(
-              ns = ns,
-              condition = "input.syn_model_type == 'bayes'",
-              tab_info(
-                strong("MCMC convergence diagnostics. "),
-                "All Rhat values should be ≤ 1.01 before interpreting results."
-              ),
-              uiOutput(ns("syn_bayes_diagnostics")),
-              shinycssloaders::withSpinner(DTOutput(ns("syn_mcmc_diag_table"))),
-              br(),
-              h5(strong("Influential observations (Pareto-k > 0.7)")),
-              em(class = "text-muted",
-                 "Observations the LOO approximation can't reliably estimate."),
-              shinycssloaders::withSpinner(DTOutput(ns("syn_bayes_influential"))),
-              br(),
-              shinycssloaders::withSpinner(
-                plotOutput(ns("syn_mcmc_trace_plot"), height = "500px"))
-            )
           )
         )
       )
@@ -421,81 +347,6 @@ synergy_server <- function(id, rv) {
   current_syn_trend_plot <- reactiveVal(NULL)
   current_syn_tgi_plot   <- reactiveVal(NULL)
 
-  # ── Bayesian synergy tab management ───────────────────────────────────────
-  bayes_syn_tabs_inserted <- reactiveVal(FALSE)
-
-  observeEvent(input$syn_model_type, {
-    tabs_id <- "syn_results_tabs"
-    if (isTRUE(input$syn_model_type == "bayes") && !isTRUE(bayes_syn_tabs_inserted())) {
-      appendTab(inputId = tabs_id,
-        tabPanel("Posterior Check",
-          tab_info(
-            strong("Posterior predictive check (PPC)"), " — model-simulated distributions overlaid on observed data.",
-            em("Good fit: simulated densities envelope the observed density.")
-          ),
-          div(class = "text-right", style = "margin-bottom: 6px;",
-            downloadButton(session$ns("download_syn_pp_check"), "Download Plot")
-          ),
-          shinycssloaders::withSpinner(
-            plotOutput(session$ns("syn_pp_check_plot"), height = "450px")
-          )
-        ),
-        select = FALSE
-      )
-      bayes_syn_tabs_inserted(TRUE)
-    } else if (!isTRUE(input$syn_model_type == "bayes") && isTRUE(bayes_syn_tabs_inserted())) {
-      removeTab(inputId = tabs_id, target = "Posterior Check")
-      bayes_syn_tabs_inserted(FALSE)
-    }
-  }, ignoreNULL = FALSE)
-
-  output$syn_pp_check_plot <- renderPlot({
-    req(rv$syn_results)
-    req(isTRUE(rv$syn_results$model_type_used == "bayes_synergy"))
-    req(!isTRUE(rv$syn_results$error), !is.null(rv$bayes_models$syn))
-    brms::pp_check(rv$bayes_models$syn, type = "dens_overlay", ndraws = 50)
-  })
-
-  output$syn_mcmc_diag_table <- renderDT({
-    req(rv$syn_results)
-    req(isTRUE(rv$syn_results$model_type_used == "bayes_synergy"))
-    req(!isTRUE(rv$syn_results$error))
-    diag <- rv$syn_results$mcmc_diagnostics
-    req(!is.null(diag))
-    datatable(format_df_for_display(as.data.frame(diag)),
-              options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
-  })
-
-  output$syn_bayes_diagnostics <- renderUI({
-    req(rv$syn_results)
-    req(isTRUE(rv$syn_results$model_type_used == "bayes_synergy"))
-    req(!isTRUE(rv$syn_results$error))
-    bayes_diagnostics_panel(rv$syn_results)
-  })
-
-  output$syn_bayes_influential <- renderDT({
-    req(rv$syn_results)
-    req(isTRUE(rv$syn_results$model_type_used == "bayes_synergy"))
-    req(!isTRUE(rv$syn_results$error))
-    inf_df <- bayes_influential_obs(rv$syn_results)
-    if (nrow(inf_df) == 0L) {
-      return(datatable(
-        data.frame(Note = "No observations exceed the Pareto-k = 0.7 threshold."),
-        options = list(dom = "t", paging = FALSE, searching = FALSE), rownames = FALSE
-      ))
-    }
-    datatable(inf_df,
-              options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
-              rownames = FALSE)
-  })
-
-  output$syn_mcmc_trace_plot <- renderPlot({
-    req(rv$syn_results)
-    req(isTRUE(rv$syn_results$model_type_used == "bayes_synergy"))
-    req(!isTRUE(rv$syn_results$error), !is.null(rv$bayes_models$syn))
-    bayesplot::mcmc_trace(posterior::as_draws_array(rv$bayes_models$syn))
-  })
-
   syn_colors <- reactive({
     list(
       A     = input$syn_color_A     %||% "#2166AC",
@@ -516,25 +367,30 @@ synergy_server <- function(id, rv) {
                "Select Treatment column in Data Upload first."))
     }
     
-    groups <- sort(unique(as.character(na.omit(rv$uploaded_data[[treatment_col]]))))
+    # R20.D36: the choices are the arms the analysis uses ("Treatment Dose"
+    # when a dose column is mapped), whether or not Tumour Growth has run.
+    # They used to come from the raw column while the analysis switched to
+    # "Treatment Dose" labels after a Tumour Growth run, so every run failed.
+    groups  <- analysis_group_labels(rv)
     choices <- setNames(groups, groups)
-    
+    ctrl    <- study_reference(rv, groups)
+    others  <- setdiff(groups, ctrl)
+    combo   <- others[grepl("\\+|combo", others, ignore.case = TRUE)][1]
+    if (is.na(combo)) combo <- others[3]
+    singles <- setdiff(others, combo)
+
     tagList(
       selectInput(session$ns("syn_drug_a"), "Drug A (single agent)",
-                 choices = choices,
-                 selected = if (length(groups) >= 2) groups[2] else groups[1]),
-      
+                 choices = choices, selected = singles[1]),
+
       selectInput(session$ns("syn_drug_b"), "Drug B (single agent)",
-                 choices = choices,
-                 selected = if (length(groups) >= 3) groups[3] else groups[1]),
-      
+                 choices = choices, selected = singles[2]),
+
       selectInput(session$ns("syn_combo"), "Combination Treatment",
-                 choices = choices,
-                 selected = if (length(groups) >= 4) groups[4] else groups[1]),
-      
-      selectInput(session$ns("syn_control"), "Reference Group",
-                 choices = choices,
-                 selected = pick_reference_group(groups)),
+                 choices = choices, selected = combo),
+
+      # The reference is the study's control group (R20-D.H).
+      reference_note(rv, ctrl),
 
       # CODE_REVIEW.md backend R3.5 / G.3 -- the estimand, exposed. The default
       # is the statistically correct one; "survivors" exists to reproduce
@@ -556,49 +412,62 @@ synergy_server <- function(id, rv) {
         "points where the model-based one was off by ~5."),
 
       numericInput(session$ns("syn_n_boot"),
-                  "Bootstrap resamples (0 = skip)",
+                  "Interval draws (0 = skip)",
                   value = 2000, min = 0, max = 20000, step = 500),
-      helpText("Mouse-level bootstrap giving 95% intervals for every synergy ",
-               "metric. Set 0 for a faster point-estimate-only run.")
+      helpText("Draws behind the 95% intervals for every synergy metric: of ",
+               "the fitted model under the model estimand, of the animals ",
+               "otherwise. Set 0 for a point-estimate-only run.")
     )
   })
 
-  # Dynamic time-point selector: "All dates" (default) + individual Day values
+  # Day selector (R20-K): all evaluable days (the default), or one of them.
+  # The days are those on which the four chosen arms are all evaluable, from
+  # the backend's own rule, so a non-evaluable day cannot be requested.
   output$syn_time_point_ui <- renderUI({
-    days <- NULL
-    if (!is.null(rv$processed_data) && !is.null(rv$time_col) &&
-        rv$time_col %in% colnames(rv$processed_data)) {
-      days <- sort(unique(na.omit(rv$processed_data[[rv$time_col]])))
-    } else if (!is.null(rv$uploaded_data)) {
-      day_candidate <- if (!is.null(rv$settings$col_day) && nzchar(rv$settings$col_day)) rv$settings$col_day else "Day"
-      if (day_candidate %in% colnames(rv$uploaded_data))
-        days <- sort(unique(na.omit(suppressWarnings(
-          as.numeric(rv$uploaded_data[[day_candidate]])))))
+    days <- tryCatch({
+      pp <- ensure_preprocessed(rv)
+      d <- pp$data
+      d[[".arm"]] <- arm_labels(d, rv$settings$col_treatment, rv$settings$col_dose)
+      ctrl <- study_reference(rv, analysis_group_labels(rv))
+      arms <- unique(c(ctrl, input$syn_drug_a, input$syn_drug_b, input$syn_combo))
+      arms <- arms[!is.na(arms) & nzchar(arms)]
+      if (length(arms) < 4L) NULL else mouseExperiment::evaluable_days(
+        d, treatment_column = ".arm", id_column = rv$settings$col_id,
+        time_column = pp$time_col,
+        cage_column = if (has_col(d, rv$settings$col_cage)) rv$settings$col_cage,
+        volume_column = pp$vol_col, arms = arms)$days
+    }, error = function(e) NULL)
+    day_choices <- c("All evaluable days" = "all")
+    if (length(days)) {
+      day_choices <- c(day_choices, setNames(as.character(days), paste(
+        "Day", days, ifelse(days == max(days), "(last evaluable day)", ""))))
     }
-    day_choices <- c("All dates" = "all")
-    if (!is.null(days) && length(days) > 0)
-      day_choices <- c(day_choices, setNames(as.character(days), paste("Day", days)))
     selectInput(session$ns("syn_time_point"),
                 "Time Point for Analysis",
                 choices  = day_choices,
-                selected = "all")
+                selected = isolate(input$syn_time_point) %||% "all")
   })
 
   # Run synergy analysis
   observeEvent(input$run_syn_analysis, {
     req(rv$uploaded_data, rv$data_valid)
     
-    needed <- c(input$syn_drug_a, input$syn_drug_b, input$syn_combo, input$syn_control)
-    if (any(is.null(needed)) || any(needed == "")) {
+    syn_ctrl <- study_reference(rv, analysis_group_labels(rv))
+    needed <- list(input$syn_drug_a, input$syn_drug_b, input$syn_combo, syn_ctrl)
+    if (any(vapply(needed, function(x) is.null(x) || is.na(x) || !nzchar(x), logical(1L)))) {
       output$syn_status_msg <- renderUI({
-        status_alert("Please select all four treatment groups.", "danger")
+        status_alert(paste("Please select Drug A, Drug B and the combination, and the",
+                           "control group under Study Design on Data Upload."), "danger")
       })
       return()
     }
-    
+    needed <- unlist(needed)
+
     if (length(unique(needed)) < 4) {
       output$syn_status_msg <- renderUI({
-        status_alert("Each role (Drug A, Drug B, Combination, Control) must be a different group.", "danger")
+        status_alert(paste("Each role (Drug A, Drug B, Combination, Control) must be a different",
+                           "group; the control is the study's control group,", sQuote(syn_ctrl), "."),
+                     "danger")
       })
       return()
     }
@@ -627,7 +496,11 @@ synergy_server <- function(id, rv) {
     analysis_data <- pp$data
     vol_col  <- pp$vol_col
     time_col <- pp$time_col
-    tx_col   <- pp$tx_col
+    # R20.D36: analyse the same arm labels the selectors offer.
+    analysis_data[[".arm"]] <- arm_labels(analysis_data, rv$settings$col_treatment,
+                                          rv$settings$col_dose)
+    tx_col   <- ".arm"
+    cage_col_syn <- if (has_col(analysis_data, rv$settings$col_cage)) rv$settings$col_cage else NULL
     # Animal identifier: needed by the backend's mouse-level bootstrap and by its
     # endpoint helper. Fall back to the mapped ID column, then to "ID".
     id_col_syn <- if (!is.null(rv$settings$col_id) && nzchar(rv$settings$col_id)) {
@@ -656,35 +529,6 @@ synergy_server <- function(id, rv) {
 
     rv$syn_over_time <- is.null(eval_tp)
 
-    # ── Bayesian async path ────────────────────────────────────────────────────
-    if (isTRUE(input$syn_model_type == "bayes")) {
-
-      syn_bayes_params <- list(
-        data       = analysis_data,
-        vol_col    = vol_col,
-        time_col   = time_col,
-        tx_col     = tx_col,
-        drug_a     = input$syn_drug_a,
-        drug_b     = input$syn_drug_b,
-        combo      = input$syn_combo,
-        control    = input$syn_control,
-        endpoint_day = eval_tp,
-        id_col     = rv$id_col,
-        cage_col   = rv$cage_col,
-        prior_str  = input$syn_prior_strength  %||% "skeptical",
-        re_spec    = input$syn_random_effects   %||% "intercept_only",
-        n_chains   = as.integer(input$syn_bayes_chains  %||% 4L),
-        n_warmup   = as.integer(input$syn_bayes_warmup  %||% 1000L),
-        n_iter     = as.integer(input$syn_bayes_iter    %||% 500L),
-        backend    = input$syn_bayes_backend %||% "rstan"
-      )
-
-      # F.7 — route through the job registry.
-      launch_syn_bayes_job(rv$session_id, syn_bayes_params,
-                           input, output, session, rv)
-      return()
-    }
-
     # ── Frequentist path ───────────────────────────────────────────────────────
     show_analysis_modal("Fitting synergy model…", "Results will appear automatically when complete.")
     on.exit(shiny::removeModal(), add = TRUE)
@@ -699,7 +543,14 @@ synergy_server <- function(id, rv) {
           drug_a_name      = input$syn_drug_a,
           drug_b_name      = input$syn_drug_b,
           combo_name       = input$syn_combo,
-          control_name     = input$syn_control,
+          control_name     = syn_ctrl,
+          # R20.D14: the ID column (it had to be named "ID"), cage, and the
+          # estimand and bootstrap settings, which "All dates" used to ignore.
+          id_column        = id_col_syn,
+          cage_column      = cage_col_syn,
+          endpoint_method  = input$syn_endpoint_method %||% "model",
+          n_boot           = as.integer(input$syn_n_boot %||% 2000L),
+          boot_seed        = 20260730L,
           verbose          = FALSE
         )
       })
@@ -711,10 +562,11 @@ synergy_server <- function(id, rv) {
           volume_column    = vol_col,
           time_column      = time_col,
           id_column        = id_col_syn,
+          cage_column      = cage_col_syn,  # part of the animal key
           drug_a_name      = input$syn_drug_a,
           drug_b_name      = input$syn_drug_b,
           combo_name       = input$syn_combo,
-          control_name     = input$syn_control,
+          control_name     = syn_ctrl,
           eval_time_point  = eval_tp,
           # Backend v0.8.0+: "model" reads each arm's geometric mean at the
           # evaluation day off a log-scale LMM fitted to every observation, so
@@ -746,7 +598,8 @@ synergy_server <- function(id, rv) {
               values = c("Drug A" = "blue", "Drug B" = "red",
                          "Combination" = "purple", "Bliss Value" = "grey")) +
             ggplot2::labs(x = "Days", y = "Percent Tumor Growth Inhibition", color = NULL) +
-            ggplot2::ylim(0, 100) +
+            # R20.D29: ylim() dropped negative TGIs; zoom instead.
+            ggplot2::coord_cartesian(ylim = c(min(0, unlist(syn_df[, c("TGI_Drug_A", "TGI_Drug_B", "TGI_Combo")]), na.rm = TRUE), 100)) +
             ggplot2::theme_classic()
 
         }, error = function(e) {
@@ -777,7 +630,7 @@ synergy_server <- function(id, rv) {
       drug_a  = input$syn_drug_a,
       drug_b  = input$syn_drug_b,
       combo   = input$syn_combo,
-      control = input$syn_control
+      control = syn_ctrl
     )
     
     if (isTRUE(result$error)) {
@@ -785,9 +638,9 @@ synergy_server <- function(id, rv) {
         status_alert(paste("Error:", result$message), "danger")
       })
     } else {
-      output$syn_status_msg <- renderUI({
-        status_alert("Synergy analysis completed successfully!", "success")
-      })
+      # R20.D34: the backend's warnings are shown, not dropped.
+      output$syn_status_msg <- renderUI(completion_status(
+        list(result), "Synergy analysis completed successfully!"))
     }
   })
   
@@ -825,28 +678,53 @@ synergy_server <- function(id, rv) {
     res <- rv$syn_results
     paste(capture.output({
       cat("=== DRUG SYNERGY ANALYSIS SUMMARY ===\n\n")
-      cat("Drug A (single agent): ", input$syn_drug_a, "\n")
-      cat("Drug B (single agent): ", input$syn_drug_b, "\n")
-      cat("Combination:           ", input$syn_combo, "\n")
-      cat("Control:               ", input$syn_control, "\n\n")
+      # The roles of the displayed run, not the current selectors.
+      roles <- rv$syn_plot_inputs %||% list()
+      cat("Drug A (single agent): ", roles$drug_a %||% "", "\n")
+      cat("Drug B (single agent): ", roles$drug_b %||% "", "\n")
+      cat("Combination:           ", roles$combo %||% "", "\n")
+      cat("Control:               ", roles$control %||% "", "\n\n")
       
       if (isTRUE(rv$syn_over_time)) {
-        cat("Analysis type: Over all timepoints\n\n")
-        if (!is.null(res$peak_bliss_synergy)) {
-          pb <- res$peak_bliss_synergy
+        cat("Analysis type: Every evaluable day\n\n")
+        # R20.8: the peak is taken over evaluable days only, and there is none
+        # when a single agent never inhibited growth.
+        pb <- res$peak_bliss_synergy
+        n_days <- NROW(res$synergy_summary)
+        n_eval <- sum(res$synergy_summary$Bliss_Applies %||% rep(TRUE, n_days))
+        if (n_eval < n_days)
+          cat("Days where Bliss applies:", n_eval, "of", n_days,
+              "(it does not where a single agent did not inhibit growth)\n")
+        if (!is.null(pb) && NROW(pb) > 0L) {
           cat("Peak Bliss synergy at timepoint:", pb$Time_Point,
               " (Bliss Difference =", round(pb$Bliss_Difference, 1), "%)\n")
+        } else if (!is.null(pb)) {
+          cat("No Bliss peak: no timepoint was evaluable.\n")
         }
       } else {
-        cat("Analysis type: Single timepoint\n")
-        if (!is.null(res$evaluation_time_point)) cat("Evaluated at Day:", res$evaluation_time_point, "\n")
+        cat("Analysis type: Single day\n")
+        if (!is.null(res$evaluation_time_point)) {
+          last <- res$evaluability$last_day
+          cat("Evaluated at Day:", res$evaluation_time_point,
+              if (isTRUE(all.equal(res$evaluation_time_point, last)))
+                "(the last evaluable day)" else "", "\n")
+        }
         cat("\nOverall Assessment:", res$overall_assessment, "\n\n")
         if (!is.null(res$bliss_independence)) {
           bi <- res$bliss_independence
           cat("Bliss Independence:\n")
-          cat("  Expected effect:", round(bi$expected_effect, 4), "\n")
-          cat("  Observed effect:", round(bi$observed_effect, 4), "\n")
-          cat("  Synergistic:    ", bi$synergy, "\n")
+          # R20.8: when an agent did not inhibit growth the backend reports every
+          # Bliss quantity as NA; say so rather than printing "NA" as a verdict.
+          if (isFALSE(res$bliss_applies) || is.na(bi$synergy)) {
+            cat("  Does not apply: a single agent did not inhibit growth, and Bliss\n",
+                "  independence is defined only for inhibitory agents.\n", sep = "")
+            cat("  Observed effect:", round(bi$observed_effect, 4), "\n")
+          } else {
+            cat("  Expected effect:", round(bi$expected_effect, 4), "\n")
+            cat("  Observed effect:", round(bi$observed_effect, 4), "\n")
+            cat("  Synergistic:    ", bi$synergy, "\n")
+          }
+          if (!is.null(res$verdict_rule)) cat("  Verdict rule:   ", res$verdict_rule, "\n")
         }
       }
       elapsed_str <- format_elapsed(rv$syn_results$elapsed_seconds)
@@ -877,17 +755,32 @@ synergy_server <- function(id, rv) {
   # verdict can be read against its uncertainty, and v0.8.0 reports how many
   # animals actually reached the evaluation day. Neither was surfaced.
 
+  syn_eval_note <- reactive({
+    res <- rv$syn_results
+    req(res, !isTRUE(res$error))
+    evaluability_note(res$evaluability,
+                      day = if (isTRUE(rv$syn_over_time)) NULL else res$eval_time_point,
+                      arms_label = "all four arms")
+  })
+  output$syn_evaluability_note <- renderUI(syn_eval_note())
+  output$syn_evaluability_note_metrics <- renderUI(syn_eval_note())
+
   output$syn_ci_heading <- renderUI({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error) || is.null(rv$syn_results$synergy_ci)) return(NULL)
+    model_based <- identical(rv$syn_results$endpoint_method, "model")
     tagList(
       tags$hr(),
-      h4("Uncertainty \u2014 mouse-level bootstrap 95% intervals"),
+      h4("Uncertainty \u2014 95% intervals for the reported estimates"),
       p(class = "text-muted",
-        "Animals are resampled within group, ", strong("including the control arm"),
-        ", and every metric recomputed. Resampling the control propagates the ",
-        "uncertainty of the TGI denominator, which a point estimate treats as a ",
-        "known constant.")
+        if (model_based) tagList(
+          "From draws of the fitted endpoint model's coefficients, so each interval ",
+          "describes the model-based estimate beside it. The control mean, the ",
+          "denominator of every TGI, varies with each draw.")
+        else tagList(
+          "Animals are resampled within group, ", strong("including the control arm"),
+          ", and every metric recomputed, so the uncertainty of the TGI denominator ",
+          "is carried through."))
     )
   })
 
@@ -916,9 +809,13 @@ synergy_server <- function(id, rv) {
     oa <- rv$syn_results$overall_assessment
     if (is.null(oa) || !nzchar(oa)) return(NULL)
 
-    style <- if (grepl("Not evaluable", oa)) "warning"
-             else if (grepl("Synergy", oa)) "success"
-             else if (grepl("Antagonism", oa)) "danger" else "info"
+    # Backend v0.27.0 (R20.19): the verdict comes from the interval, and a
+    # label without one says so.
+    no_interval <- grepl("no interval", oa, fixed = TRUE)
+    style <- if (grepl("does not apply", oa, fixed = TRUE)) "warning"
+             else if (no_interval) "info"
+             else if (startsWith(oa, "Synergy")) "success"
+             else if (startsWith(oa, "Antagonism")) "danger" else "info"
 
     div(class = paste0("alert alert-", style),
       tags$strong("Synergy verdict: "), oa,
@@ -927,8 +824,7 @@ synergy_server <- function(id, rv) {
         "From the Bliss independence model: expected effect = ",
         tags$code("FE_A + FE_B \u2212 FE_A \u00d7 FE_B"),
         ", so the drugs are assumed to act independently on the surviving ",
-        "fraction. This is a threshold applied to three group means \u2014 read it ",
-        "against the interval below, not on its own."
+        "fraction. ", rv$syn_results$verdict_rule %||% ""
       )
     )
   })
@@ -947,9 +843,9 @@ synergy_server <- function(id, rv) {
       status_alert(paste0(
         "The Bliss-excess 95% interval [",
         signif(row$CI_Lower[1], 3), ", ", signif(row$CI_Upper[1], 3),
-        "] includes zero, so this data does not distinguish the combination from ",
-        "Bliss additivity. Read the synergy label above as descriptive only."),
-        "warning")
+        "] includes zero, so these data do not distinguish the combination from ",
+        "Bliss additivity; hence the verdict above."),
+        "info")
     } else {
       status_alert(paste0(
         "The Bliss-excess 95% interval [",
@@ -1151,71 +1047,11 @@ synergy_server <- function(id, rv) {
             list(drug_a = "Drug A", drug_b = "Drug B",
                  combo = "Combination", control = "Control")
 
-    # Retrieve the preprocessed data and column names
-    pp <- tryCatch(ensure_preprocessed(rv), error = function(e) NULL)
-    if (!is.null(pp) && !is.null(pp$date_fmt_warning)) {
-      showNotification(pp$date_fmt_warning, type = "warning", duration = 8)
-    }
-    req(pp)
-    analysis_data <- pp$data
-    vol_col  <- pp$vol_col
-    time_col <- pp$time_col
-    tx_col   <- pp$tx_col
-
-    # Filter to the 4 synergy groups
-    syn_groups <- c(grps$control, grps$drug_a, grps$drug_b, grps$combo)
-    df <- analysis_data[analysis_data[[tx_col]] %in% syn_groups, ]
-    req(nrow(df) > 0)
-
-    # Coerce types
-    df[[time_col]] <- suppressWarnings(as.numeric(df[[time_col]]))
-    df[[vol_col]]  <- suppressWarnings(as.numeric(df[[vol_col]]))
-    df <- df[!is.na(df[[time_col]]) & !is.na(df[[vol_col]]), ]
-
-    # Compute per-mouse TGI at each timepoint
-    # TGI = 100 * (1 - mouse_vol / control_mean_vol)
-    days <- sort(unique(df[[time_col]]))
-    tgi_rows <- list()
-    for (d in days) {
-      day_df <- df[df[[time_col]] == d, ]
-      ctrl_vols <- day_df[[vol_col]][day_df[[tx_col]] == grps$control]
-      ctrl_mean <- mean(ctrl_vols, na.rm = TRUE)
-      if (is.na(ctrl_mean) || ctrl_mean <= 0) next
-      # Compute TGI for each non-control mouse
-      for (g in c(grps$drug_a, grps$drug_b, grps$combo)) {
-        g_rows <- day_df[day_df[[tx_col]] == g, ]
-        if (nrow(g_rows) == 0) next
-        tgi_vals <- 100 * (1 - g_rows[[vol_col]] / ctrl_mean)
-        tgi_rows[[length(tgi_rows) + 1L]] <- data.frame(
-          Day       = d,
-          Treatment = g,
-          TGI       = tgi_vals,
-          stringsAsFactors = FALSE
-        )
-      }
-    }
-    req(length(tgi_rows) > 0)
-    tgi_df <- do.call(rbind, tgi_rows)
-    tgi_df$Treatment <- factor(tgi_df$Treatment,
-                               levels = c(grps$drug_a, grps$drug_b, grps$combo))
-
-    # Summarise per group per day
-    err_type <- input$syn_opt_error_bar %||% "SEM"
-    summ <- do.call(rbind, lapply(split(tgi_df, list(tgi_df$Day, tgi_df$Treatment)), function(chunk) {
-      if (nrow(chunk) == 0) return(NULL)
-      x <- chunk$TGI[!is.na(chunk$TGI)]
-      n <- length(x)
-      if (n == 0) return(NULL)
-      m <- mean(x)
-      half <- switch(err_type,
-        SEM = sd(x) / sqrt(n), SD = sd(x),
-        CI = qt(0.975, df = max(n - 1L, 1L)) * sd(x) / sqrt(n), 0)
-      data.frame(Day = chunk$Day[1], Treatment = chunk$Treatment[1],
-                 mean_tgi = m, lo = m - half, hi = m + half,
-                 stringsAsFactors = FALSE)
-    }))
-    summ$Treatment <- factor(summ$Treatment,
-                             levels = c(grps$drug_a, grps$drug_b, grps$combo))
+    # R20.D37: plot the TGIs the analysis reported, with their intervals. This
+    # plot used to recompute TGI from the animals present each day, the
+    # survivor estimand the tab warns against, and contradicted the table.
+    summ <- syn_tgi_long(rv$syn_results$synergy_summary, grps)
+    err_type <- input$syn_opt_error_bar %||% "CI"
 
     # Colours and linetypes
     cols      <- syn_colors()
@@ -1236,7 +1072,7 @@ synergy_server <- function(id, rv) {
       ggplot2::geom_line(linewidth = 1) +
       ggplot2::geom_point(size = 2.5)
 
-    if (err_type != "none") {
+    if (err_type != "none" && any(is.finite(summ$lo))) {
       p <- p + ggplot2::geom_errorbar(
         ggplot2::aes(ymin = lo, ymax = hi),
         width = diff(range(summ$Day, na.rm = TRUE)) * 0.02,
@@ -1247,7 +1083,9 @@ synergy_server <- function(id, rv) {
       ggplot2::scale_color_manual(values = color_vals) +
       ggplot2::scale_linetype_manual(values = lty_vals) +
       ggplot2::labs(x = "Days", y = "Tumor Growth Inhibition (%)",
-                    color = NULL, linetype = NULL) +
+                    color = NULL, linetype = NULL,
+                    caption = paste("TGI from the endpoint model on each evaluable day;",
+                                    "bars are 95% intervals.")) +
       ggplot2::theme_classic() +
       ggplot2::theme(text = ggplot2::element_text(size = text_sz))
 
@@ -1271,29 +1109,68 @@ synergy_server <- function(id, rv) {
                             current_syn_tgi_plot)
 
   # CODE_REVIEW.md DIAGNOSTICS gap (6) — frequentist synergy diagnostics.
+  # The diagnostics of the displayed result; for an over-time run, those of
+  # its last evaluable day (all days share one model).
+  syn_diag_source <- reactive({
+    res <- rv$syn_results
+    req(res, !isTRUE(res$error))
+    if (!is.null(res$timepoint_results) && length(res$timepoint_results)) {
+      res$timepoint_results[[length(res$timepoint_results)]]
+    } else res
+  })
+  syn_model_diag <- reactive(!is.null(syn_diag_source()$diag_fit_plot))
+
+  output$syn_diag_left_heading <- renderUI({
+    if (isTRUE(tryCatch(syn_model_diag(), error = function(e) FALSE))) {
+      tagList(h4("Endpoint model residuals by arm"),
+        tags$details(tags$summary(tags$small("How to read this plot")),
+          tags$small("Standardised residuals of the model behind the TGIs. Points near ",
+                     "the dashed line: the log-normal model fits. A curve or heavy tails ",
+                     "in one arm: that arm's volumes are not well described by it.")))
+    } else {
+      tagList(h4("Per-group Q-Q of tumor volumes"),
+        tags$details(tags$summary(tags$small("How to read this plot")),
+          tags$small("One panel per group; points on the red dashed line = normally ",
+                     "distributed. ", strong("S-shape: "), "heavy tails. ",
+                     strong("Far outliers: "), "investigate before reporting.")))
+    }
+  })
+
+  output$syn_diag_right_heading <- renderUI({
+    if (isTRUE(tryCatch(syn_model_diag(), error = function(e) FALSE))) {
+      tagList(h4("Each arm's fitted curve over its data"),
+        tags$details(tags$summary(tags$small("How to read this plot")),
+          tags$small("Log volume of every measurement, with the model's curve for the ",
+                     "arm. The curve should follow the points up to the evaluation day ",
+                     "(dashed line); where it does not, the TGI at that day is suspect.")))
+    } else {
+      tagList(h4("Per-group tumor volume boxplot"),
+        tags$details(tags$summary(tags$small("How to read this plot")),
+          tags$small("Boxplots with individual mice jittered; outliers in red. ",
+                     strong("Wide IQR + an outlier: "), "the call may be driven by that one mouse.")))
+    }
+  })
+
   output$syn_diag_group_qq_plot <- renderPlot({
-    req(rv$syn_results)
-    p <- rv$syn_results$diag_group_qq_plot
+    p <- syn_diag_source()$diag_group_qq_plot
     if (is.null(p)) {
       plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
-           main = "Per-group Q-Q not available (Bayesian or over-time path)")
+           main = "Q-Q plot not available")
       return(invisible(NULL))
     }
     p
   })
 
   output$syn_diag_group_boxplot <- renderPlot({
-    req(rv$syn_results)
-    p <- rv$syn_results$diag_group_boxplot
+    src <- syn_diag_source()
+    p <- src$diag_fit_plot %||% src$diag_group_boxplot
     if (is.null(p)) {
       plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
-           main = "Per-group boxplot not available (Bayesian or over-time path)")
+           main = "Plot not available")
       return(invisible(NULL))
     }
     p
   })
 
-  # F.7 — register the resume handler for bayes_syn jobs.
-  register_syn_resume(input, output, session, rv)
   })
 }

@@ -59,7 +59,7 @@ test_that("list_jobs returns only this sid's jobs", {
   sid_b <- strrep("b", 64L)
 
   g("launch_job")(sid_a, "bayes_tg", resolved_promise(1))
-  g("launch_job")(sid_a, "bayes_bw", resolved_promise(2))
+  g("launch_job")(sid_a, "bayes_tg", resolved_promise(2))
   g("launch_job")(sid_b, "bayes_surv", resolved_promise(3))
 
   jobs_a <- g("list_jobs")(sid_a)
@@ -67,9 +67,9 @@ test_that("list_jobs returns only this sid's jobs", {
 
   expect_length(jobs_a, 2L)
   expect_length(jobs_b, 1L)
-  # No bleed-through.
+  # No bleed-through: B's only job is the one kind A never launched.
   expect_true(all(vapply(jobs_a, function(j) j$kind, character(1L))
-                  %in% c("bayes_tg", "bayes_bw")))
+                  == "bayes_tg"))
   expect_equal(jobs_b[[1L]]$kind, "bayes_surv")
 })
 
@@ -192,7 +192,7 @@ test_that("then() callbacks write failure status for rejected promises", {
   g(".reset_job_registry")()
   on.exit(g(".reset_job_registry")(), add = TRUE)
   sid <- strrep("d", 64L)
-  job_id <- g("launch_job")(sid, "bayes_bw",
+  job_id <- g("launch_job")(sid, "bayes_surv",
     rejected_promise(simpleError("oops")))
   flush_promises()
   job <- g("get_job")(sid, job_id)
@@ -241,7 +241,7 @@ test_that("evict_stale_jobs drops old done jobs but keeps recent running ones", 
   # Job 2: running, started recently.
   resolver <- NULL
   p2 <- promises::promise(function(resolve, reject) { resolver <<- resolve })
-  jid2 <- g("launch_job")(sid, "bayes_bw", p2)
+  jid2 <- g("launch_job")(sid, "bayes_surv", p2)
 
   n <- g("evict_stale_jobs")(max_done_age = 1800, max_run_age = 14400)
   expect_equal(n, 1L)

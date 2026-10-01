@@ -20,62 +20,19 @@ doseResponseUI <- function(id) {
           conditionalPanel(ns = ns,
             condition = "output.dr_dose_available == true",
 
-            selectInput(ns("dr_control_group"),
-                       "Reference Group",
-                       choices = "",
-                       selected = ""),
+            # The reference is the study's control group (R20-D.H).
+            uiOutput(ns("dr_reference_note")),
 
-            selectInput(ns("dr_model_type"), "Statistical Model",
-              choices = c(
-                "Frequentist (ANOVA/regression)" = "frequentist",
-                "Bayesian Hill/Emax (brms)"      = "bayes"
-              ),
-              selected = "frequentist"
-            ),
-            helpText("Frequentist fits ANOVA with Tukey HSD and linear/non-linear ",
-                     "regression. Bayesian fits a Hill/Emax concentration-response model ",
-                     "with brms; computation takes 3–12 minutes."),
+            # R20.D47: one agent's dose series.
+            uiOutput(ns("dr_series_ui")),
 
-            conditionalPanel(ns = ns, "input.dr_model_type == 'frequentist'",
-              selectInput(ns("dr_comparison_type"),
-                         "Pairwise Comparison Type",
-                         choices = c(
-                           "vs. Reference Group" = "reference",
-                           "All Pairwise (Tukey HSD)" = "all"
-                         ),
-                         selected = "reference")
-            ),
-
-            conditionalPanel(ns = ns, "input.dr_model_type == 'bayes'",
-              hr(),
-              h5(strong("Bayesian Settings")),
-              selectInput(ns("dr_prior_strength"), "Prior Strength",
-                choices = c(
-                  "Skeptical (recommended)" = "skeptical",
-                  "Weakly informative"      = "weakly_informative",
-                  "Informative"             = "informative",
-                  "Diffuse"                 = "diffuse"
-                ),
-                selected = "skeptical"
-              ),
-              numericInput(ns("dr_bayes_chains"), "MCMC chains",
-                           value = 4, min = 1, max = 8, step = 1),
-              numericInput(ns("dr_bayes_warmup"), "Warmup per chain",
-                           value = 1000, min = 200, max = 5000, step = 100),
-              numericInput(ns("dr_bayes_iter"), "Post-warmup draws per chain",
-                           value = 500, min = 200, max = 5000, step = 100),
-              selectInput(ns("dr_bayes_backend"), "Stan backend",
-                          choices = c("rstan", "cmdstanr"),
-                          selected = "rstan"),
-              div(class = "alert alert-warning",
-                  style = "font-size:0.85em; padding:8px; margin-top:6px;",
-                icon("clock"), " Bayesian fitting takes ~3–12 minutes. ",
-                "A progress modal will block other tabs while the model runs, ",
-                "but you can safely close the browser and return later — the ",
-                "fit continues on the server and the results will be waiting ",
-                "when you reconnect."
-              )
-            ),
+            selectInput(ns("dr_comparison_type"),
+                       "Pairwise Comparison Type",
+                       choices = c(
+                         "vs. Reference Group" = "reference",
+                         "All Pairwise (Tukey HSD)" = "all"
+                       ),
+                       selected = "reference"),
 
             uiOutput(ns("dr_time_point_ui")),
 
@@ -115,10 +72,32 @@ doseResponseUI <- function(id) {
                       tags$li(strong("One-way ANOVA"), " — tests whether any dose group differs from the others, followed by Tukey HSD post-hoc comparisons if significant."),
                       tags$li(strong("Non-linear dose-response model (4PL)"), " — fits a four-parameter log-logistic (Hill) model to quantify ED50 and curve steepness.")
                     ),
+                    p(strong("One agent at a time. "),
+                      "A dose-response curve describes one agent at several doses, against the study's control. ",
+                      "Choose the agent's arms under ", strong("Dose series"), " in the sidebar; the dashboard ",
+                      "suggests the largest set of single-agent arms that share a name and differ in dose. Arms ",
+                      "that share a dose, or other agents and combinations, cannot join the same curve, and the ",
+                      "analysis stops rather than pool them. When one treatment name is used at every dose, the ",
+                      "rows with dose 0 are the control."),
                     p(tags$small(class = "text-muted",
-                      "Tumor Growth Analysis must be run before using this tab — dose-response uses volume data preprocessed there. ",
-                      "A Dose column must also be mapped in Data Upload."
+                      "A Dose column must be mapped in Data Upload."
                     ))
+                  )
+                ),
+
+                # ── Evaluable days (R20-K) ───────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading", h4(class = "panel-title", "Evaluable days")),
+                  div(class = "panel-body",
+                    p(evaluable_rule_text()),
+                    p("The analysis uses one day on which every dose group is evaluable: by default the ",
+                      "last such day, with the animals measured on it. The day selector lists only ",
+                      "evaluable days. Before, the default was each animal's own last measurement, so ",
+                      "controls removed at the volume limit contributed capped, earlier volumes and the ",
+                      "EC50 was biased. The results name the day and list the days and dose groups ",
+                      "the rule excluded."),
+                    p(strong("TGI by dose"), " is read at the same day from the model that the Drug ",
+                      "Synergy and Toxicity tabs use, so the three tabs agree.")
                   )
                 ),
 
@@ -173,6 +152,11 @@ doseResponseUI <- function(id) {
                       tags$dt("d"), tags$dd("Upper asymptote (response in the absence of drug)."),
                       tags$dt("ED50"), tags$dd("Dose producing 50 % of the maximal effect. The primary pharmacodynamic summary statistic.")
                     ),
+                    p("The EC50 reported is the dose giving half of the fitted response range, with a 95 % interval ",
+                      "computed on log dose, so it stays positive. The lower asymptote cannot go below zero, and the ",
+                      "five-parameter (asymmetric) curve is considered only with at least six dose levels. The summary ",
+                      "flags an EC50 outside the tested doses, and a curve with as many parameters as dose levels, which ",
+                      "fits the dose means exactly and so says nothing about its own shape; read either as descriptive."),
                     div(class = "alert alert-info", style = "margin-top:10px;",
                       icon("circle-info"), " ",
                       strong("AIC / BIC note: "),
@@ -195,7 +179,9 @@ doseResponseUI <- function(id) {
                       tags$dt("Jonckheere\u2013Terpstra"),
                       tags$dd("The test that actually respects dose ordering. It is sensitive to a consistent ",
                               "monotone trend and, unlike ANOVA, gains power from the ordering rather than ",
-                              "discarding it. This is the primary trend result."),
+                              "discarding it. This is the primary trend result. It is two-sided; the summary ",
+                              "also says whether volumes fall or rise with dose. (It was one-sided in the ",
+                              "direction the data suggested, which doubled its false-positive rate.)"),
                       tags$dt("Linear trend"),
                       tags$dd("p-value for a linear term in dose. Significant means a straight-line component ",
                               "is present; it says nothing about whether the relationship is ", em("only"), " linear."),
@@ -203,11 +189,7 @@ doseResponseUI <- function(id) {
                       tags$dd("Detects curvature \u2014 a plateau or a reversal at high dose. A significant quadratic ",
                               "term alongside a significant linear one usually means the response saturates, which ",
                               "matters when extrapolating to untested doses.")
-                    ),
-                    p(tags$small(class = "text-muted",
-                      "A Bayesian dose-response mode is also available, fitting the same curve by MCMC and ",
-                      "returning posterior distributions for ED50 and the slope rather than point estimates."
-                    ))
+                    )
                   )
                 ),
 
@@ -223,6 +205,7 @@ doseResponseUI <- function(id) {
               "A significant linear slope indicates a systematic increase or decrease in tumor volume with dose. ",
               "A significant ANOVA F-test indicates that at least one dose group differs from the others."
             ),
+            uiOutput(ns("dr_evaluability_note")),
             shinycssloaders::withSpinner(
               verbatimTextOutput(ns("dr_summary"))
             )
@@ -245,7 +228,12 @@ doseResponseUI <- function(id) {
             ),
             shinycssloaders::withSpinner(
               DTOutput(ns("dr_summary_table"))
-            )
+            ),
+            h4("TGI by dose"),
+            p(class = "text-muted",
+              "At the analysis day, from the endpoint model (the TGI the Drug Synergy and Toxicity tabs ",
+              "report), with 95% intervals from draws of the model."),
+            DTOutput(ns("dr_tgi_table"))
           ),
 
           tabPanel("Plots",
@@ -377,76 +365,50 @@ doseResponseUI <- function(id) {
           tabPanel("Diagnostics",
             tab_info(
               strong("Model-fit diagnostics. "),
-              "Frequentist (Hill / Emax): lack-of-fit + residuals. ",
-              "Bayesian: MCMC convergence + posterior diagnostics. ",
-              "The view switches based on the selected model type."
+              "Hill / Emax lack-of-fit and residuals."
             ),
-            # \u2500\u2500 Freq diagnostics \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-            conditionalPanel(
-              ns = ns,
-              condition = "input.dr_model_type != 'bayes'",
-              em("Only available when the drc Hill / Emax fit converged; ",
-                 "in pure-linear mode this section will be empty."),
-              fluidRow(
-                column(6,
-                  h4("Lack-of-fit test"),
-                  tags$details(
-                    tags$summary(tags$small("How to read this table")),
-                    tags$small(
-                      "drc::modelFit compares the Hill fit against a one-mean-",
-                      "per-dose smoother via an F-test. ",
-                      strong("Large p (\u2265 0.05): "),
-                      "the Hill model is as good as the smoother \u2014 ",
-                      "functional form is adequate. ",
-                      strong("Small p (< 0.05): "),
-                      "the smoother fits significantly better \u2014 the Hill ",
-                      "equation may be the wrong shape; inspect the residuals ",
-                      "plot for clues."
-                    )
-                  ),
-                  shinycssloaders::withSpinner(
-                    DTOutput(ns("dr_lack_of_fit_table"))
+            em("Only available when the drc Hill / Emax fit converged; ",
+               "in pure-linear mode this section will be empty."),
+            fluidRow(
+              column(6,
+                h4("Lack-of-fit test"),
+                tags$details(
+                  tags$summary(tags$small("How to read this table")),
+                  tags$small(
+                    "drc::modelFit compares the Hill fit against a one-mean-",
+                    "per-dose smoother via an F-test. ",
+                    strong("Large p (\u2265 0.05): "),
+                    "the Hill model is as good as the smoother \u2014 ",
+                    "functional form is adequate. ",
+                    strong("Small p (< 0.05): "),
+                    "the smoother fits significantly better \u2014 the Hill ",
+                    "equation may be the wrong shape; inspect the residuals ",
+                    "plot for clues."
                   )
                 ),
-                column(6,
-                  h4("Residuals vs Dose"),
-                  tags$details(
-                    tags$summary(tags$small("How to read this plot")),
-                    tags$small(
-                      "Points should scatter around the red zero line with no ",
-                      "trend. ",
-                      strong("Curved blue smoother: "),
-                      "the Hill function misses curvature at some dose range ",
-                      "\u2014 try a different model. ",
-                      strong("Fan shape (variance grows with dose): "),
-                      "heteroscedasticity; consider log-transforming the ",
-                      "volume axis or weighting."
-                    )
-                  ),
-                  shinycssloaders::withSpinner(
-                    plotOutput(ns("dr_residuals_plot"), height = "400px")
+                shinycssloaders::withSpinner(
+                  DTOutput(ns("dr_lack_of_fit_table"))
+                )
+              ),
+              column(6,
+                h4("Residuals vs Dose"),
+                tags$details(
+                  tags$summary(tags$small("How to read this plot")),
+                  tags$small(
+                    "Points should scatter around the red zero line with no ",
+                    "trend. ",
+                    strong("Curved blue smoother: "),
+                    "the Hill function misses curvature at some dose range ",
+                    "\u2014 try a different model. ",
+                    strong("Fan shape (variance grows with dose): "),
+                    "heteroscedasticity; consider log-transforming the ",
+                    "volume axis or weighting."
                   )
+                ),
+                shinycssloaders::withSpinner(
+                  plotOutput(ns("dr_residuals_plot"), height = "400px")
                 )
               )
-            ),
-            # \u2500\u2500 Bayes MCMC diagnostics \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-            conditionalPanel(
-              ns = ns,
-              condition = "input.dr_model_type == 'bayes'",
-              tab_info(
-                strong("MCMC convergence diagnostics. "),
-                "All Rhat values should be \u2264 1.01 before interpreting results."
-              ),
-              uiOutput(ns("dr_bayes_diagnostics")),
-              shinycssloaders::withSpinner(DTOutput(ns("dr_mcmc_diag_table"))),
-              br(),
-              h5(strong("Influential observations (Pareto-k > 0.7)")),
-              em(class = "text-muted",
-                 "Observations the LOO approximation can't reliably estimate."),
-              shinycssloaders::withSpinner(DTOutput(ns("dr_bayes_influential"))),
-              br(),
-              shinycssloaders::withSpinner(
-                plotOutput(ns("dr_mcmc_trace_plot"), height = "500px"))
             )
           )
         )
@@ -470,123 +432,6 @@ dose_response_server <- function(id, rv) {
   # That is why I.2 stayed open across four rounds: every attempt to assert render
   # behaviour got the "run an analysis first" placeholder back. Removed; the slot
   # reads NULL until an analysis writes it either way.
-
-  # ── Bayesian DR tab management ─────────────────────────────────────────────
-  bayes_dr_tabs_inserted <- reactiveVal(FALSE)
-
-  observeEvent(input$dr_model_type, {
-    tabs_id <- "dr_results_tabs"
-    if (isTRUE(input$dr_model_type == "bayes") && !isTRUE(bayes_dr_tabs_inserted())) {
-      appendTab(inputId = tabs_id,
-        tabPanel("Posterior Check",
-          tab_info(
-            strong("Posterior predictive check (PPC)"), " — model-simulated dose-response overlaid on observed data.",
-            em("Good fit: simulated densities envelope the observed density.")
-          ),
-          div(class = "text-right", style = "margin-bottom: 6px;",
-            downloadButton(session$ns("download_dr_pp_check"), "Download Plot")
-          ),
-          shinycssloaders::withSpinner(
-            plotOutput(session$ns("dr_pp_check_plot"), height = "450px")
-          )
-        ),
-        select = FALSE
-      )
-      appendTab(inputId = tabs_id,
-        tabPanel("Prior vs Posterior",
-          tab_info(
-            strong("Prior vs Posterior density overlay"), " — shows how much the data have updated the model's prior distributions."
-          ),
-          div(class = "text-right", style = "margin-bottom: 6px;",
-            downloadButton(session$ns("download_dr_prior_posterior"), "Download Plot")
-          ),
-          shinycssloaders::withSpinner(
-            plotOutput(session$ns("dr_prior_posterior_plot"), height = "400px")
-          )
-        ),
-        select = FALSE
-      )
-      bayes_dr_tabs_inserted(TRUE)
-    } else if (!isTRUE(input$dr_model_type == "bayes") && isTRUE(bayes_dr_tabs_inserted())) {
-      removeTab(inputId = tabs_id, target = "Posterior Check")
-      removeTab(inputId = tabs_id, target = "Prior vs Posterior")
-      bayes_dr_tabs_inserted(FALSE)
-    }
-  }, ignoreNULL = FALSE)
-
-  output$dr_pp_check_plot <- renderPlot({
-    req(rv$dr_results)
-    req(isTRUE(rv$dr_results$model_type_used == "bayes_dr"))
-    req(!isTRUE(rv$dr_results$error), !is.null(rv$bayes_models$dr))
-    brms::pp_check(rv$bayes_models$dr, type = "dens_overlay", ndraws = 50)
-  })
-
-  output$dr_mcmc_diag_table <- renderDT({
-    req(rv$dr_results)
-    req(isTRUE(rv$dr_results$model_type_used == "bayes_dr"))
-    req(!isTRUE(rv$dr_results$error))
-    diag <- rv$dr_results$mcmc_diagnostics
-    req(!is.null(diag))
-    datatable(format_df_for_display(as.data.frame(diag)),
-              options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
-  })
-
-  output$dr_bayes_diagnostics <- renderUI({
-    req(rv$dr_results)
-    req(isTRUE(rv$dr_results$model_type_used == "bayes_dr"))
-    req(!isTRUE(rv$dr_results$error))
-    bayes_diagnostics_panel(rv$dr_results)
-  })
-
-  output$dr_bayes_influential <- renderDT({
-    req(rv$dr_results)
-    req(isTRUE(rv$dr_results$model_type_used == "bayes_dr"))
-    req(!isTRUE(rv$dr_results$error))
-    inf_df <- bayes_influential_obs(rv$dr_results)
-    if (nrow(inf_df) == 0L) {
-      return(datatable(
-        data.frame(Note = "No observations exceed the Pareto-k = 0.7 threshold."),
-        options = list(dom = "t", paging = FALSE, searching = FALSE), rownames = FALSE
-      ))
-    }
-    datatable(inf_df,
-              options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
-              rownames = FALSE)
-  })
-
-  output$dr_mcmc_trace_plot <- renderPlot({
-    req(rv$dr_results)
-    req(isTRUE(rv$dr_results$model_type_used == "bayes_dr"))
-    req(!isTRUE(rv$dr_results$error), !is.null(rv$bayes_models$dr))
-    bayesplot::mcmc_trace(posterior::as_draws_array(rv$bayes_models$dr))
-  })
-
-  output$dr_prior_posterior_plot <- renderPlot({
-    req(rv$dr_results)
-    req(isTRUE(rv$dr_results$model_type_used == "bayes_dr"))
-    req(!isTRUE(rv$dr_results$error))
-    p <- rv$dr_results$prior_posterior_plot
-    req(!is.null(p))
-    print(p)
-  })
-
-  output$download_dr_pp_check <- downloadHandler(
-    filename = function() paste0("dr_posterior_check_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
-    content = function(file) {
-      req(!is.null(rv$bayes_models$dr))
-      p <- brms::pp_check(rv$bayes_models$dr, type = "dens_overlay", ndraws = 50)
-      ggplot2::ggsave(file, plot = p, width = 8, height = 5, dpi = 150)
-    }
-  )
-
-  output$download_dr_prior_posterior <- downloadHandler(
-    filename = function() paste0("dr_prior_posterior_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
-    content = function(file) {
-      req(!is.null(rv$dr_results$prior_posterior_plot))
-      ggplot2::ggsave(file, plot = rv$dr_results$prior_posterior_plot,
-                      width = 8, height = 5, dpi = 150)
-    }
-  )
 
   observe({
     toggle_downloads(
@@ -626,26 +471,92 @@ dose_response_server <- function(id, rv) {
     status_alert(paste("Dose column:", rv$dose_col), "success")
   })
 
-  # Populate control group choices from treatment column
-  observe({
+  # The study's control group, in this tab's treatment labels.
+  dr_ref <- reactive({
     req(rv$processed_data, rv$tx_col)
-    groups <- sort(unique(as.character(na.omit(rv$processed_data[[rv$tx_col]]))))
-    default_ctrl <- pick_reference_group(groups)
-    updateSelectInput(session, "dr_control_group",
-                      choices = groups,
-                      selected = default_ctrl)
+    study_reference(rv, rv$processed_data[[rv$tx_col]])
   })
 
-  # Dynamic time-point selector: "All dates" (default) + individual Day values
+  output$dr_reference_note <- renderUI({
+    si <- tryCatch(dr_series_info(), error = function(e) NULL)
+    if (!is.null(si) && is.null(si$control)) {
+      # One treatment name at every dose: its dose-0 rows are the control.
+      return(tags$p(style = "font-size:12px;", "Control: ", strong("the rows with dose 0"),
+        ", because the study's control group spans several doses."))
+    }
+    reference_note(rv, tryCatch(dr_ref(), error = function(e) NULL))
+  })
+
+  # R20.D47 / package R20.16: the arms that can form one agent's dose series,
+  # a suggested series, and the control. The study's control arm is the
+  # control when it is a dose-0 arm; when one treatment name spans every dose,
+  # the rows with dose 0 are.
+  dr_series_info <- reactive({
+    req(rv$processed_data, rv$dose_col)
+    pp <- ensure_preprocessed(rv)
+    d  <- pp$data
+    tx <- pp$tx_col
+    dose <- suppressWarnings(as.numeric(d[[rv$dose_col]]))
+    ctrl <- study_reference(rv, d[[tx]])
+    ctrl_rows <- !is.null(ctrl) & !is.na(d[[tx]]) & d[[tx]] %in% ctrl
+    ctrl_is_arm <- any(ctrl_rows) && all(is.na(dose[ctrl_rows]) | dose[ctrl_rows] == 0)
+    arms <- treatment_values(d, tx)
+    choices <- if (ctrl_is_arm) setdiff(arms, ctrl) else arms
+    list(data = d, tx_col = tx, time_col = pp$time_col, vol_col = pp$vol_col,
+         control = if (ctrl_is_arm) ctrl, choices = choices,
+         suggested = guess_dose_series(d, tx, rv$dose_col, choices))
+  })
+
+  output$dr_series_ui <- renderUI({
+    si <- tryCatch(dr_series_info(), error = function(e) NULL)
+    if (is.null(si)) return(NULL)
+    cur <- isolate(input$dr_treatments)
+    sel <- if (length(cur) && all(cur %in% si$choices)) cur else si$suggested
+    tagList(
+      selectizeInput(session$ns("dr_treatments"),
+        tagList("Dose series", help_tip("The arms of one agent at its different doses. Other agents, combinations and arms that share a dose cannot join one curve.")),
+        choices = si$choices, selected = sel, multiple = TRUE,
+        options = list(plugins = list("remove_button"),
+                       placeholder = "Choose one agent's arms")),
+      if (!length(sel)) tags$p(tags$small(class = "text-warning",
+        "Choose the arms of one agent; they could not be guessed from the names."))
+    )
+  })
+
+  # The rows the analysis will use: the chosen series and its control.
+  dr_series_rows <- function(si, series) {
+    d <- si$data
+    dose <- suppressWarnings(as.numeric(d[[rv$dose_col]]))
+    ctrl_rows <- if (!is.null(si$control)) !is.na(d[[si$tx_col]]) & d[[si$tx_col]] == si$control
+                 else is.finite(dose) & dose == 0
+    keep <- ctrl_rows | (!is.na(d[[si$tx_col]]) & d[[si$tx_col]] %in% series & is.finite(dose))
+    d <- d[keep, , drop = FALSE]
+    d[[".dose_group"]] <- ifelse(ctrl_rows[keep], 0, dose[keep])
+    d
+  }
+
+  # Day selector (R20-K, R20.D48): the last evaluable day (default) or another
+  # evaluable day of the chosen series. "All dates" meant each animal's own
+  # last observation.
   output$dr_time_point_ui <- renderUI({
-    req(rv$processed_data, rv$time_col)
-    days <- sort(unique(na.omit(rv$processed_data[[rv$time_col]])))
-    day_choices <- c("All dates" = "all",
-                     setNames(as.character(days), paste("Day", days)))
+    req(rv$processed_data, rv$time_col, rv$dose_col)
+    days <- tryCatch({
+      si <- dr_series_info()
+      d  <- dr_series_rows(si, input$dr_treatments %||% si$suggested)
+      mouseExperiment::evaluable_days(
+        d, treatment_column = ".dose_group", id_column = rv$settings$col_id,
+        time_column = si$time_col,
+        cage_column = if (has_col(d, rv$settings$col_cage)) rv$settings$col_cage,
+        volume_column = si$vol_col)$days
+    }, error = function(e) NULL)
+    day_choices <- c("Last evaluable day" = "default")
+    if (length(days)) {
+      day_choices <- c(day_choices, setNames(as.character(days), paste("Day", days)))
+    }
     selectInput(session$ns("dr_time_point"),
                 "Time Point for Analysis",
                 choices  = day_choices,
-                selected = "all")
+                selected = "default")
   })
 
   observeEvent(input$run_dr_analysis, {
@@ -658,12 +569,21 @@ dose_response_server <- function(id, rv) {
     # Track analysis start with Umami
     shinyjs::runjs("window.trackAnalysisStart('dose_response', 'linear_regression+anova', 'control');")
 
-    data     <- rv$processed_data
+    # R20.D29: ensure_preprocessed() applies the current subset filter;
+    # rv$processed_data carried the filter as it was when it was cached.
+    pp <- tryCatch(ensure_preprocessed(rv), error = function(e) {
+      output$dr_status_msg <- renderUI(status_alert(
+        paste0("Preprocessing failed: ", conditionMessage(e)), "danger"))
+      NULL
+    })
+    if (is.null(pp)) return()
+    data     <- pp$data
     dose_col <- rv$dose_col
-    vol_col  <- rv$vol_col
-    time_col <- rv$time_col
-    tx_col   <- rv$tx_col
+    vol_col  <- pp$vol_col
+    time_col <- pp$time_col
+    tx_col   <- pp$tx_col
     id_col   <- rv$id_col
+    ctrl     <- study_reference(rv, data[[tx_col]])
 
     # Coerce dose column to numeric
     data[[dose_col]] <- suppressWarnings(as.numeric(data[[dose_col]]))
@@ -675,37 +595,23 @@ dose_response_server <- function(id, rv) {
       return()
     }
 
+    # R20.D47: one agent's arms, and its control: the study's control arm when
+    # it is a dose-0 arm, otherwise the rows with dose 0.
+    si <- tryCatch(dr_series_info(), error = function(e) NULL)
+    series <- input$dr_treatments %||% character(0)
+    if (is.null(si) || !length(series)) {
+      output$dr_status_msg <- renderUI(status_alert(paste(
+        "Choose the arms of one agent's dose series under 'Dose series' in the",
+        "sidebar."), "warning"))
+      return()
+    }
+
     time_point_val <- if (!is.null(input$dr_time_point) &&
-                           input$dr_time_point != "all" &&
+                           !input$dr_time_point %in% c("all", "default") &&
                            nzchar(input$dr_time_point)) {
       as.numeric(input$dr_time_point)
     } else {
       NULL
-    }
-
-    # ── Bayesian async path ────────────────────────────────────────────────────
-    if (isTRUE(input$dr_model_type == "bayes")) {
-
-      dr_bayes_params <- list(
-        data          = data,
-        dose_col      = dose_col,
-        vol_col       = vol_col,
-        tx_col        = tx_col,
-        time_col      = time_col,
-        id_col        = id_col,
-        time_point    = time_point_val,
-        ref_group     = input$dr_control_group,
-        prior_str     = input$dr_prior_strength %||% "skeptical",
-        n_chains      = as.integer(input$dr_bayes_chains  %||% 4L),
-        n_warmup      = as.integer(input$dr_bayes_warmup  %||% 1000L),
-        n_iter        = as.integer(input$dr_bayes_iter    %||% 500L),
-        backend       = input$dr_bayes_backend %||% "rstan"
-      )
-
-      # F.7 — route through the job registry.
-      launch_dr_bayes_job(rv$session_id, dr_bayes_params,
-                          input, output, session, rv)
-      return()
     }
 
     # ── Frequentist path ───────────────────────────────────────────────────────
@@ -720,10 +626,20 @@ dose_response_server <- function(id, rv) {
         volume_column      = vol_col,
         day_column         = time_col,
         id_column          = id_col,
+        cage_column        = rv$cage_col,  # part of the animal key
         time_point         = time_point_val,
-        control_group_name = input$dr_control_group
+        control_group_name = si$control,
+        treatments         = series,
+        verbose            = FALSE  # the report went to the server log
       )
     })
+    # The plots and tables use the control of the displayed run (R20.D48).
+    if (is.list(result)) result$control_group_used <- si$control %||% "dose 0"
+    # The backend names its argument; here the choice is the sidebar selector.
+    if (isTRUE(result$error) && is.character(result$message)) {
+      result$message <- gsub("with `treatments =`", "under 'Dose series' in the sidebar",
+                             result$message, fixed = TRUE)
+    }
 
     # R17.3: this used to call mouseExperiment::prepare_dose_data() and
     # ::generate_summary_statistics() to re-derive the plotting frame. Neither is
@@ -755,9 +671,9 @@ dose_response_server <- function(id, rv) {
         status_alert(paste0("Error: ", result$message), "danger")
       })
     } else {
-      output$dr_status_msg <- renderUI({
-        status_alert("Dose-response analysis completed successfully!", "success")
-      })
+      # R20.D34: the backend's warnings are shown, not dropped.
+      output$dr_status_msg <- renderUI(completion_status(
+        list(result), "Dose-response analysis completed successfully!"))
     }
   })
 
@@ -769,8 +685,21 @@ dose_response_server <- function(id, rv) {
     res   <- rv$dr_results
     stats <- res$statistics
 
+    ser <- res$series
+    jt  <- res$trend_test$jonckheere_test
     lines <- c(
       "=== DOSE-RESPONSE ANALYSIS SUMMARY ===",
+      "",
+      if (!is.null(ser)) c(
+        sprintf("Dose series: %s", paste(ser$treatments, collapse = ", ")),
+        sprintf("Control:     %s (dose 0)", paste(ser$control, collapse = ", ")),
+        sprintf("Day:         %s", format(res$endpoint_day)),
+        ""),
+      "-- Trend (Jonckheere-Terpstra, two-sided) --",
+      if (!is.null(jt)) c(
+        sprintf("  p-value: %.4g  (volumes %s with dose)", jt$p.value,
+                jt$direction %||% "change"))
+      else "  Not run (needs at least three dose levels).",
       "",
       "-- Linear Regression --",
       sprintf("  Slope:   %.4f", stats$linear_slope %||% NA),
@@ -783,9 +712,13 @@ dose_response_server <- function(id, rv) {
     )
 
     if (!is.null(stats$ec50)) {
+      ci <- stats$ec50_ci
       lines <- c(lines,
         "-- Non-linear Dose-Response Model --",
-        sprintf("  EC50:         %.4g", stats$ec50),
+        sprintf("  EC50:         %.4g  (95%% interval %s, on log dose)", stats$ec50,
+                if (!is.null(ci)) sprintf("%.4g to %.4g", ci[["lower"]], ci[["upper"]])
+                else "not available"),
+        if (nzchar(stats$ec50_note %||% "")) paste("  Note:        ", stats$ec50_note),
         sprintf("  Hill Slope:   %.4f", stats$hill_slope),
         sprintf("  Lower Limit:  %.4f", stats$lower_limit),
         sprintf("  Upper Limit:  %.4f", stats$upper_limit),
@@ -913,58 +846,30 @@ dose_response_server <- function(id, rv) {
   output$dr_plot_tgi <- renderPlot({
     req(rv$dr_results)
     if (isTRUE(rv$dr_results$error)) return(NULL)
-    ad <- rv$dr_results$analysis_data
-    req(ad)
-    dose_col <- rv$dose_col %||% "Dose"
-    vol_col  <- rv$vol_col  %||% "Volume"
-    tx_col   <- rv$tx_col   %||% "Treatment"
-    ctrl     <- input$dr_control_group %||% ""
-
-    # Compute mean control volume
-    ctrl_mean <- mean(ad[[vol_col]][ad[[tx_col]] == ctrl], na.rm = TRUE)
-    if (is.na(ctrl_mean) || ctrl_mean == 0) return(NULL)
-
-    # Compute per-observation %TGI
-    tgi_data <- ad
-    tgi_data$pct_tgi <- (1 - tgi_data[[vol_col]] / ctrl_mean) * 100
-
-    pt_col   <- input$dr_scatter_pt_color   %||% "#555555"
-    ln_col   <- input$dr_scatter_line_color %||% "#2166AC"
-    pt_sz    <- input$dr_scatter_pt_size     %||% 2
-    jit_w    <- input$dr_opt_jitter_width    %||% 0
-    show_ci  <- isTRUE(input$dr_scatter_show_ci)
-    trend    <- input$dr_trend_method %||% "linear"
-    text_sz  <- input$dr_opt_text_size %||% 16
-    center   <- input$dr_opt_center_bar %||% "none"
-    err_bar  <- input$dr_opt_error_bar  %||% "none"
-    smooth_args <- if (trend == "loess") {
-      list(method = "loess", formula = y ~ x, color = ln_col, se = show_ci)
-    } else {
-      list(method = "lm", formula = y ~ x, color = ln_col, se = show_ci)
+    # R20.D48: plot the TGI the backend reported -- from the endpoint model at
+    # the analysis day, the same TGI as the Synergy and Toxicity tabs. It was
+    # recomputed here per animal against the live Reference dropdown and
+    # contradicted the Toxicity tab.
+    tt <- rv$dr_results$tgi_table
+    if (is.null(tt) || !nrow(tt)) {
+      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = "TGI needs a control (dose 0, or the study's control group)")
+      return(invisible(NULL))
     }
-    p <- ggplot2::ggplot(tgi_data, ggplot2::aes(x = .data[[dose_col]], y = .data[["pct_tgi"]])) +
-      ggplot2::geom_jitter(alpha = 0.7, color = pt_col, size = pt_sz,
-                           width = jit_w, height = 0) +
-      do.call(ggplot2::geom_smooth, smooth_args) +
+    ln_col  <- input$dr_scatter_line_color %||% "#2166AC"
+    pt_sz   <- input$dr_scatter_pt_size     %||% 2
+    text_sz <- input$dr_opt_text_size %||% 16
+    p <- ggplot2::ggplot(tt, ggplot2::aes(x = .data[["Dose"]], y = .data[["TGI"]])) +
       ggplot2::geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+      ggplot2::geom_line(colour = ln_col) +
+      ggplot2::geom_errorbar(ggplot2::aes(ymin = .data[["TGI_Lower"]], ymax = .data[["TGI_Upper"]]),
+                             width = 0.03 * diff(range(tt$Dose)), colour = "black") +
+      ggplot2::geom_point(size = pt_sz + 1, colour = ln_col) +
       ggplot2::labs(title = "Tumor Growth Inhibition vs Dose",
-                   x = "Dose", y = "% Tumor Growth Inhibition") +
+                    subtitle = sprintf("Day %s, from the endpoint model; bars are 95%% intervals",
+                                       format(rv$dr_results$endpoint_day)),
+                    x = "Dose", y = "% Tumor Growth Inhibition") +
       ggplot2::theme_classic()
-    summ <- dr_dose_summary(tgi_data, dose_col, "pct_tgi", center, err_bar)
-    if (!is.null(summ)) {
-      if (err_bar != "none")
-        p <- p + ggplot2::geom_errorbar(data = summ,
-                ggplot2::aes(x = x, ymin = lo, ymax = hi),
-                inherit.aes = FALSE, colour = "black",
-                width = 0.05 * diff(range(tgi_data[[dose_col]], na.rm = TRUE)),
-                linewidth = 0.9)
-      if (center != "none")
-        p <- p + ggplot2::geom_crossbar(data = summ,
-                ggplot2::aes(x = x, y = ctr, ymin = ctr, ymax = ctr),
-                inherit.aes = FALSE, colour = "black",
-                width = 0.07 * diff(range(tgi_data[[dose_col]], na.rm = TRUE)),
-                linewidth = 0.9)
-    }
     p <- apply_plot_labels(p, input$dr_plot_title %||% "", input$dr_plot_subtitle %||% "",
                       input$dr_plot_title_align %||% "center", text_sz,
                       input$dr_plot_xaxis_label %||% "",
@@ -975,6 +880,21 @@ dose_response_server <- function(id, rv) {
     p
   }, width = function() input$dr_plot_width %||% 800,
      height = function() input$dr_plot_height %||% 600)
+
+  output$dr_tgi_table <- renderDT({
+    req(rv$dr_results)
+    tt <- rv$dr_results$tgi_table
+    if (isTRUE(rv$dr_results$error) || is.null(tt)) return(NULL)
+    datatable(format_df_for_display(tt), rownames = FALSE,
+              options = list(paging = FALSE, searching = FALSE, scrollX = TRUE))
+  })
+
+  output$dr_evaluability_note <- renderUI({
+    req(rv$dr_results)
+    if (isTRUE(rv$dr_results$error)) return(NULL)
+    evaluability_note(rv$dr_results$evaluability, day = rv$dr_results$endpoint_day,
+                      arms_label = "all dose groups")
+  })
 
   # ---- Statistical Tests ----
   output$dr_stat_tests <- renderText({
@@ -987,10 +907,30 @@ dose_response_server <- function(id, rv) {
       if (!is.null(rv$dr_results$linear_model)) print(summary(rv$dr_results$linear_model))
       cat("\n=== ANOVA TABLE ===\n")
       if (!is.null(rv$dr_results$anova_model)) print(summary(rv$dr_results$anova_model))
+      jt <- rv$dr_results$trend_test$jonckheere_test
+      if (!is.null(jt)) {
+        cat("\n=== JONCKHEERE-TERPSTRA TREND TEST (two-sided) ===\n")
+        cat(sprintf("  JT = %s,  p-value: %.4g;  volumes %s with dose\n",
+                    format(unname(jt$statistic)), jt$p.value, jt$direction %||% "change"))
+      }
+      if (!is.null(stats$ec50)) {
+        cat("\n=== EC50 (ED50 of the fitted curve) ===\n")
+        ci <- stats$ec50_ci
+        cat(sprintf("  EC50: %.4g;  95%% interval on log dose: %s\n", stats$ec50,
+                    if (!is.null(ci)) sprintf("%.4g to %.4g", ci[["lower"]], ci[["upper"]])
+                    else "not available"))
+        cat(sprintf("  Curve: %s, %s parameters for %s dose levels\n",
+                    stats$dr_model_type %||% "?", stats$n_curve_parameters %||% "?",
+                    stats$n_dose_levels %||% "?"))
+        if (nzchar(stats$ec50_note %||% "")) cat("  Note:", stats$ec50_note, "\n")
+      }
       if (!is.null(stats$growth_dose_p_value)) {
         cat("\n=== GROWTH RATE vs DOSE ===\n")
         cat(sprintf("  p-value: %.4g,  R\u00b2: %.4f\n",
                     stats$growth_dose_p_value, stats$growth_dose_r_squared))
+        n_out <- stats$growth_rate_animals_left_out %||% 0
+        if (n_out > 0) cat(sprintf(paste0("  %d animal(s) left out: fewer than three days ",
+                                          "with a positive measured volume.\n"), n_out))
       }
     })
     paste(lines, collapse = "\n")
@@ -1010,8 +950,8 @@ dose_response_server <- function(id, rv) {
       if (!is.null(ad)) {
         dose_col <- rv$dose_col %||% "Dose"
         tx_col   <- rv$tx_col   %||% "Treatment"
-        ctrl     <- input$dr_control_group %||% ""
-        ref_doses <- unique(ad[ad[[tx_col]] == ctrl, dose_col])
+        # The control is dose 0 by construction (package R20.16).
+        ref_doses <- rv$dr_results$control_dose %||% "0"
         if (length(ref_doses) > 0) {
           ref_str <- as.character(ref_doses[[1]])
           keep <- grepl(paste0("^", ref_str, "-"), rownames(tbl)) |
@@ -1092,7 +1032,10 @@ dose_response_server <- function(id, rv) {
       out <- data.frame(
         Metric = c("Linear Slope", "Linear R2", "Linear P-value",
                    "ANOVA P-value",
-                   "EC50", "Hill Slope", "Lower Limit", "Upper Limit",
+                   "Jonckheere-Terpstra P-value (two-sided)",
+                   "EC50", "EC50 95% Lower (log dose)", "EC50 95% Upper (log dose)",
+                   "EC50 Within Tested Doses",
+                   "Hill Slope", "Lower Limit", "Upper Limit",
                    "Linear AIC", "Nonlinear AIC",
                    "Growth Rate P-value", "Growth Rate R2"),
         Value  = c(
@@ -1100,7 +1043,11 @@ dose_response_server <- function(id, rv) {
           stats$linear_r_squared %||% NA,
           stats$linear_p_value %||% NA,
           stats$anova_p_value %||% NA,
+          rv$dr_results$trend_test$jonckheere_test$p.value %||% NA,
           stats$ec50 %||% NA,
+          if (!is.null(stats$ec50_ci)) stats$ec50_ci[["lower"]] else NA,
+          if (!is.null(stats$ec50_ci)) stats$ec50_ci[["upper"]] else NA,
+          as.numeric(stats$ec50_in_range %||% NA),
           stats$hill_slope %||% NA,
           stats$lower_limit %||% NA,
           stats$upper_limit %||% NA,
@@ -1114,7 +1061,5 @@ dose_response_server <- function(id, rv) {
     }
   )
 
-  # F.7 — register the resume handler for bayes_dr jobs.
-  register_dr_resume(input, output, session, rv)
   })
 }

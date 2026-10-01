@@ -87,8 +87,8 @@ format_df_for_display <- function(df, digits = 4) {
 
 #' Back-transform values from analysis scale to original scale
 #'
-#' Inverse of the transform applied in `tumor_growth_statistics()` and the
-#' Bayesian / GAM tumor-growth fits, which all use `log(Volume)` (not
+#' Inverse of the transform applied in `tumor_growth_statistics()` and
+#' `bayesian_tumor_growth()`, which both use `log(Volume)` (not
 #' `log1p`). For `"sqrt"`, returns `x^2`. For `"none"`, returns `x` unchanged.
 #'
 #' @param x Numeric vector on the transformed scale
@@ -213,4 +213,38 @@ resolve_interval_cols <- function(df, result = NULL) {
   hi <- intersect(c("Upper_CL", "Upper_CrI", "upper.CL", "upper_CL",
                     "Upper", "upper"), colnames(df))[1]
   list(lower = lo, upper = hi)
+}
+
+
+#' A 95% interval as text, e.g. "[12.3, 18.9]"; a dash when there is none
+#' @keywords internal
+fmt_interval <- function(lo, hi, digits = 1) {
+  ifelse(is.finite(lo) & is.finite(hi),
+         sprintf(paste0("[%.", digits, "f, %.", digits, "f]"), lo, hi),
+         "\u2014")
+}
+
+#' The therapeutic window table as displayed
+#'
+#' R20-K (package v0.27.0): one row per arm with its TGI and mean worst
+#' weight loss, each with a 95% interval, the animals over the threshold and
+#' the tolerability flag. The CSV download keeps the backend's columns.
+#' @param w The backend's `window_table`.
+#' @param reference The reference arm, whose TGI is 0 by definition.
+#' @keywords internal
+window_display_table <- function(w, reference = NULL) {
+  is_ref <- !is.null(reference) & w$Treatment %in% reference
+  data.frame(
+    Treatment                  = w$Treatment,
+    Animals                    = w$N_Animals,
+    `TGI (%)`                  = ifelse(is_ref, NA_real_, round(w$TGI, 1)),
+    `TGI 95% interval`         = ifelse(is_ref, "reference",
+                                        fmt_interval(w$TGI_Lower, w$TGI_Upper)),
+    `Worst weight loss (%)`    = round(w$Worst_Loss, 1),
+    `Weight loss 95% interval` = fmt_interval(w$Worst_Loss_Lower, w$Worst_Loss_Upper),
+    `Over threshold`           = sprintf("%d of %d", as.integer(w$N_Over_Threshold),
+                                         as.integer(w$N_Animals)),
+    Tolerability               = ifelse(is.na(w$Tolerability), "No interval",
+                                        w$Tolerability),
+    check.names = FALSE, stringsAsFactors = FALSE)
 }

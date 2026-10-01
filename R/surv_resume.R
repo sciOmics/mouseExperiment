@@ -4,25 +4,40 @@
 #' @keywords internal
 launch_surv_bayes_job <- function(sid, bayes_params,
                                   input, output, session, rv) {
+  # R20.D3: every session now has a registry key -- app.R gives a session
+  # without the cookie a local one -- so the inline fallback, which could
+  # never run, is gone. This guard covers callers that bypass app.R.
   if (is.null(sid) || identical(sid, SID_NONE)) {
-    .legacy_inline_surv_bayes(bayes_params, input, output, session, rv)
+    sid <- make_local_sid()
+    rv$session_id <- sid
+  }
+  # R20.D7: one Bayesian fit per browser at a time.
+  if (!is.null(busy <- active_job(sid))) {
+    rv$surv_running <- FALSE
+    shiny::showNotification(sprintf(paste0(
+      "A Bayesian %s fit from this browser is already %s. Wait for it, or ",
+      "cancel it from the banner at the top of the page."),
+      if (identical(busy$kind, "bayes_surv")) "survival" else "tumour-growth",
+      if (identical(busy$status, "queued")) "waiting" else "running"),
+      type = "warning", duration = 8)
     return(invisible(NULL))
   }
   show_analysis_modal(
     "Bayesian survival fit running…",
-    "Fitting Weibull model with brms. This may take 3–12 minutes.")
-  shinyjs::runjs(sprintf(
-    "window.trackAnalysisStart('survival', 'bayes', '%s');",
-    bayes_params$ref_group))
-  promise <- .surv_bayes_promise(bayes_params)
-  job_id  <- launch_job(sid, "bayes_surv", promise,
+    paste("Fitting the Bayesian AFT model with brms. The first fit of a model",
+          "compiles it (about 20 s); later fits of the same structure reuse it."),
+    cancel_id = session$ns("surv_cancel_bayes"))
+  # R20.D12: no study strings (the reference arm's name) go to analytics.
+  shinyjs::runjs("window.trackAnalysisStart('survival', 'bayes', 'study_control');")
+  job_id  <- launch_job(sid, "bayes_surv", task = .surv_bayes_task(bayes_params),
                         context = list(bayes_params = bayes_params))
   rv$surv_job_id <- job_id
   attach_bayes_poller(input, output, session, rv,
                       job_id_field          = "surv_job_id",
                       finalize_success      = .finalize_surv_success,
                       finalize_failure      = .finalize_surv_failure,
-                      finalize_cancellation = .finalize_surv_cancellation)
+                      finalize_cancellation = .finalize_surv_cancellation,
+                      finalize_lost         = .finalize_surv_lost)
   invisible(NULL)
 }
 
@@ -37,12 +52,16 @@ register_surv_resume <- function(input, output, session, rv) {
     job_id_field          = "surv_job_id",
     finalize_success      = .finalize_surv_success,
     finalize_failure      = .finalize_surv_failure,
-    finalize_cancellation = .finalize_surv_cancellation)
+    finalize_cancellation = .finalize_surv_cancellation,
+    finalize_lost         = .finalize_surv_lost,
+    cancel_input          = "surv_cancel_bayes")
 }
 
-.surv_bayes_promise <- function(p) {
-  promises::future_promise({
-    mouseExperiment::bayesian_survival(
+# The fit, as a task for the job registry's background worker.
+.surv_bayes_task <- function(p) {
+  list(
+    fun  = mouseExperiment::bayesian_survival,
+    args = list(
       df               = p$data,
       time_column      = p$time_col,
       event_column     = p$event_col,
@@ -56,9 +75,10 @@ register_surv_resume <- function(input, output, session, rv) {
       n_warmup         = p$n_warmup,
       n_iter           = p$n_iter,
       backend          = p$backend,
-      return_model     = TRUE,
-      plots            = TRUE)
-  })
+      # R20.D18: the model is not sent back (see tg_resume.R).
+      return_model     = FALSE,
+      plots            = TRUE),
+    packages = "mouseExperiment")
 }
 
 .finalize_surv_success <- function(result, context,
@@ -67,6 +87,7 @@ register_surv_resume <- function(input, output, session, rv) {
   result$model_type_used    <- "bayes"
   if (!is.null(bayes_params)) {
     result$event_src_used     <- bayes_params$event_src
+    result$death_events_added <- bayes_params$death_events_added %||% NA_integer_
     result$vol_threshold_used <- bayes_params$vol_threshold
     result$time_method        <- bayes_params$time_method
     result$time_column_used   <- bayes_params$time_col_orig
@@ -79,10 +100,7 @@ register_surv_resume <- function(input, output, session, rv) {
         survival::Surv(Time, Event) ~ Treatment, data = sd)
     }, error = function(e) NULL)
   }
-  if (!is.null(rv$bayes_models)) rv$bayes_models$surv <- result$model
-  else rv$bayes_models <- list(surv = result$model)
-  result$model <- NULL
-  gc()
+  result$model <- NULL   # not requested (R20.D18); a no-op kept for safety
   rv$surv_results <- result
   shiny::updateTabsetPanel(session, "surv_results_tabs", selected = "Summary")
   rv$surv_running <- FALSE
@@ -123,16 +141,11 @@ register_surv_resume <- function(input, output, session, rv) {
     status_alert("Bayesian survival analysis was cancelled.", "warning"))
 }
 
-.legacy_inline_surv_bayes <- function(p, input, output, session, rv) {
-  show_analysis_modal(
-    "Bayesian survival fit running…",
-    "Fitting Weibull model with brms. This may take 3–12 minutes.")
-  .surv_bayes_promise(p) %...>% (function(result) {
-    .finalize_surv_success(result, list(bayes_params = p),
-                           input, output, session, rv)
-  }) %...!% (function(err) {
-    .finalize_surv_failure(conditionMessage(err),
-                           input, output, session, rv)
-  })
-  invisible(NULL)
+# R20.D5: the job left the registry before its result was shown.
+.finalize_surv_lost <- function(input, output, session, rv) {
+  rv$surv_running <- FALSE
+  shiny::removeModal()
+  output$surv_status_msg <- shiny::renderUI(status_alert(paste(
+    "This Bayesian analysis was dismissed or expired before its result was",
+    "shown. Run it again."), "warning"))
 }

@@ -60,6 +60,23 @@ powerAnalysisUI <- function(id) {
                         choices  = as.character(2:6),
                         selected = "2"),
 
+            # R20.D17 -- the analytic call passed none of these, so the backend's
+            # multiplicity and attrition handling (R3.15, K.15) was unreachable.
+            radioButtons(ns("pw_ap_p_adjust"), "Multiplicity correction",
+                         choices = c("Bonferroni over the comparisons (recommended)" = "bonferroni",
+                                     "None (unadjusted)" = "none"),
+                         selected = "bonferroni"),
+            numericInput(ns("pw_ap_n_comparisons"), "Treated-vs-control comparisons",
+                         value = 1, min = 1, max = 20, step = 1),
+            numericInput(ns("pw_ap_dropout"), "Expected attrition (%)",
+                         value = 0, min = 0, max = 90, step = 5),
+            helpText("Power is for each treated-vs-control comparison. A study with ",
+                     "k groups makes k \u2212 1 of them, and Bonferroni divides alpha ",
+                     "among them. Dunnett, the Tumor Growth default, is slightly less ",
+                     "conservative, so the N here is a small overestimate for it. ",
+                     "Attrition is the share of animals you expect to lose before the ",
+                     "endpoint; Enroll_N is the number to start with."),
+
             hr(),
 
             radioButtons(ns("pw_ap_submode"),
@@ -219,7 +236,7 @@ powerAnalysisUI <- function(id) {
                   div(class = "panel-body",
                     p("The Power Analysis tab supports prospective (a priori) sample-size planning before an experiment is run. Both methods estimate the probability of detecting a true effect of a specified magnitude at a chosen significance level."),
                     tags$ul(
-                      tags$li(strong("A priori — Analytic"), " — closed-form power calculation using a two-sample t-test (two groups) or one-way ANOVA (three or more groups). Fast; no simulation required."),
+                      tags$li(strong("A priori — Analytic"), " — closed-form power for each treated-vs-control comparison (two-sample t-test), with the alpha split across the k \u2212 1 comparisons a k-group study makes. Fast; no simulation required."),
                       tags$li(strong("A priori — LMM Simulation"), " — Monte Carlo simulation of longitudinal tumor-growth data. Fits the same mixed-effects model used in the Tumor Growth tab and extracts power from the Treatment × Day interaction. More realistic for repeated-measures designs.")
                     ),
                     p(tags$small(class = "text-muted",
@@ -237,13 +254,14 @@ powerAnalysisUI <- function(id) {
                   div(class = "panel-body",
 
                     h5(strong("Method")),
-                    p("For two groups, a two-sample t-test power calculation is used (non-central t-distribution). For three or more groups, one-way ANOVA power is computed via the non-central F distribution."),
+                    p("Power is computed for one treated-vs-control comparison: a two-sample t-test (non-central t-distribution) with Cohen's d = \u0394 / SD_pooled. That is how these studies are analysed, as k \u2212 1 comparisons against the control arm."),
                     tags$blockquote(
-                      p(tags$b("Two groups:"), " Cohen's d = Δ / SD_pooled; power from the non-central t-distribution."),
-                      p(tags$b("Three or more groups:"), " Cohen's d is converted to Cohen's f via ", tags$code("f = d / √2"), ". ",
-                        "This assumes the two most extreme groups span the full effect and overestimates f — and therefore power — when all treated groups are uniformly shifted vs control. ",
-                        "A method note is shown in the Scenario Table output when ≥ 3 groups are selected.")
+                      p(tags$b("Two groups:"), " one comparison at the chosen alpha."),
+                      p(tags$b("Three or more groups:"), " each comparison is tested at alpha / (number of comparisons) under the default Bonferroni correction, so each treated arm that differs from control by d is detected with the reported power. ",
+                        "Dunnett, the Tumor Growth default, is slightly less conservative, so the N shown is a small overestimate for it. ",
+                        "Versions before 26.09.002 used a one-way ANOVA with f = d / \u221a2 here, which gave sample sizes 2.6\u20134\u00d7 too small (CODE_REVIEW.md R20.7).")
                     ),
+                    p(tags$b("Attrition:"), " Required_N is the number that must reach the endpoint; with an expected attrition above 0 %, Enroll_N is the number to start with."),
 
                     hr(),
                     h5(strong("Effect Size Input")),
@@ -398,6 +416,13 @@ power_server <- function(id, rv) {
   # reads NULL until an analysis writes it either way.
 
   # ---- Seed pooled SD from loaded data (analytic a priori) ------------------
+  # R20.D17: the comparison family follows the number of groups (k - 1
+  # treated-vs-control comparisons) unless the user sets it afterwards.
+  observeEvent(input$pw_ap_n_groups, {
+    k <- as.integer(input$pw_ap_n_groups %||% 2)
+    updateNumericInput(session, "pw_ap_n_comparisons", value = max(1L, k - 1L))
+  })
+
   observeEvent(input$pw_seed_sd, {
     prep <- tryCatch(ensure_preprocessed(rv), error = function(e) NULL)
     if (is.null(prep)) {
@@ -485,6 +510,11 @@ power_server <- function(id, rv) {
       } else NULL
 
       n_groups <- as.integer(input$pw_ap_n_groups %||% 2)
+      # R20.D17: plan against the analysis that will be run -- k - 1
+      # vs-control comparisons with a correction -- and against attrition.
+      p_adj   <- input$pw_ap_p_adjust %||% "bonferroni"
+      n_comp  <- max(1L, as.integer(input$pw_ap_n_comparisons %||% (n_groups - 1L)))
+      dropout <- min(max(as.numeric(input$pw_ap_dropout %||% 0), 0), 90) / 100
 
       show_analysis_modal("Computing a priori power…", "Results will appear automatically when complete.")
       on.exit(shiny::removeModal(), add = TRUE)
@@ -500,6 +530,9 @@ power_server <- function(id, rv) {
               target_power         = power_vals,
               n_per_group          = n_vals,
               mode                 = input$pw_ap_submode,
+              p_adjust_method      = p_adj,
+              n_comparisons        = n_comp,
+              dropout_rate         = dropout,
               sd_sensitivity_range = 0   # no SD to vary
             ),
             error = function(e) list(error = TRUE, message = conditionMessage(e))
@@ -525,6 +558,9 @@ power_server <- function(id, rv) {
               target_power         = power_vals,
               n_per_group          = n_vals,
               mode                 = input$pw_ap_submode,
+              p_adjust_method      = p_adj,
+              n_comparisons        = n_comp,
+              dropout_rate         = dropout,
               sd_sensitivity_range = 0.4
             ),
             error = function(e) list(error = TRUE, message = conditionMessage(e))
@@ -552,7 +588,11 @@ power_server <- function(id, rv) {
         power_curve_data  = curve_df,
         sensitivity_table = sens_df,
         mode              = "apriori_analytic",
-        ap_submode        = input$pw_ap_submode
+        ap_submode        = input$pw_ap_submode,
+        method_note       = ap_runs[[1]]$method_note,
+        p_adjust_method   = p_adj,
+        n_comparisons     = n_comp,
+        dropout_rate      = dropout
       )
 
       shinyjs::runjs("window.trackAnalysisComplete('power', true);")
@@ -707,8 +747,8 @@ power_server <- function(id, rv) {
       "apriori_analytic" = sprintf(
         "A priori — analytic (%s)",
         switch(submode %||% "",
-          "n_required" = "find N for target power",
-          "power"      = "find power for fixed N",
+          "find_n"     = "find N for target power",
+          "find_power" = "find power for fixed N",
           "analytic"
         )
       ),
@@ -748,6 +788,20 @@ power_server <- function(id, rv) {
                  nrow(res$scenario_table), " row(s) in Scenario Table"),
           rec_n_html,
           attrition_html,
+          # R20.D17: say what the analytic power refers to and what it assumes.
+          if (identical(mode_ap, "apriori_analytic")) tags$p(
+            tags$strong("Comparisons:"), " ",
+            if (identical(res$p_adjust_method, "none")) {
+              "no multiplicity correction"
+            } else {
+              sprintf("Bonferroni over %d treated-vs-control comparison(s)",
+                      res$n_comparisons %||% 1L)
+            },
+            ". ", tags$strong("Attrition:"), " ",
+            sprintf("%.0f %%", 100 * (res$dropout_rate %||% 0)),
+            if ((res$dropout_rate %||% 0) > 0) " (Enroll_N in the Scenario Table is the number to start with)." else
+              " \u2014 none assumed; Required_N is the number that must reach the endpoint."),
+          if (!is.null(res$method_note)) tags$p(tags$small(class = "text-muted", res$method_note)),
           tags$hr(),
           tags$p(tags$small(class = "text-muted",
             "Full scenario grid is in the ", tags$strong("Scenario Table"),
