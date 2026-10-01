@@ -1,6 +1,6 @@
 Package: mouseExperimentDashboard
 Title: Interactive Dashboard for mouseExperiment Analysis
-Version: 26.09.006
+Version: 26.09.007
 Date: 2026-09-30
 Authors@R: 
     person("David", "Woods", , "david@sciomics.bio", role = c("aut", "cre"))
@@ -13,7 +13,7 @@ Description: Provides an interactive web-based dashboard interface for the mouse
 License: Proprietary + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 Imports:
     shiny (>= 1.7.0),
     shinycssloaders (>= 1.0.0),

@@ -214,11 +214,36 @@ jobs_ahead <- function(sid, job_id) {
   best
 }
 
+#' Make this process the kernel's preferred OOM victim
+#'
+#' VPS CODE_REVIEW.md V3.12: a Bayesian fit's model compile can take 2.5 GB.
+#' When the container reaches its memory limit, the kernel should kill the
+#' background worker (or the compiler it started, which inherits the setting),
+#' and the fit fails with an error, rather than the Shiny process that serves
+#' every session. Raising one's own `oom_score_adj` needs no privilege. Never
+#' applied to the process that launched the job: with a sequential plan the
+#' task runs in the Shiny process itself.
+#'
+#' @param main_pid PID of the process that launched the job.
+#' @param path The procfs file (a parameter for tests).
+#' @return `TRUE` (invisibly) when the score was raised.
+#' @keywords internal
+.prefer_oom_kill <- function(main_pid, path = "/proc/self/oom_score_adj") {
+  if (Sys.getpid() == main_pid || !file.exists(path)) return(invisible(FALSE))
+  invisible(!inherits(try(writeLines("500", path), silent = TRUE), "try-error"))
+}
+
 .start_job <- function(job) {
   task <- job$task
+  # Base functions only, so the worker needs no namespace to run it.
+  prefer_oom_kill <- .prefer_oom_kill
+  environment(prefer_oom_kill) <- baseenv()
   f <- tryCatch(
-    future::future(quote(do.call(fun, args)), substitute = FALSE,
-                   globals  = list(fun = task$fun, args = task$args),
+    future::future(quote({ prefer_oom_kill(main_pid); do.call(fun, args) }),
+                   substitute = FALSE,
+                   globals  = list(fun = task$fun, args = task$args,
+                                   prefer_oom_kill = prefer_oom_kill,
+                                   main_pid = Sys.getpid()),
                    packages = task$packages,
                    seed     = TRUE),
     error = function(e) e)

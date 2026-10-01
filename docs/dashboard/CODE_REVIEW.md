@@ -2192,7 +2192,7 @@ Executed.
 | R20.D51 | Power "seed SD" pools all days (N inflated 5–40×) | Major | Open |
 | R20.D52 | Download-All ZIP can include another session's files | Major (confidentiality) | ✅ Fixed v26.09.002 (9d5f674) |
 | R20.D20 | Synergy bar plot all grey | Minor | Open |
-| R20.D21–R20.D33, R20.D54–R20.D61 | Minor | Minor | Open. Fixed: R20.D21, R20.D33 (R20-D.J); R20.D31 (R20-D.K). In part: R20.D29, R20.D54, R20.D57 (R20-D.K); R20.D29, R20.D30 (R20-D.L) |
+| R20.D21–R20.D33, R20.D54–R20.D61 | Minor | Minor | Open. Fixed: R20.D21, R20.D33 (R20-D.J); R20.D31 (R20-D.K); R20.D27, R20.D28 (R20-D.O). In part: R20.D29, R20.D54, R20.D57 (R20-D.K); R20.D29, R20.D30 (R20-D.L) |
 | R20.D53 | Plot-label keystrokes rebuild the growth plot | Efficiency | Open |
 | R20.D62 | One-worker multisession plan is sequential: every Bayesian fit froze every session | **Critical** | ✅ Fixed v26.09.006 (R20-D.N) |
 | R20.D63 | Resume retired the job before its poller delivered it; the result was lost | Major | ✅ Fixed v26.09.006 (R20-D.N) |
@@ -2531,3 +2531,24 @@ This step needs backend 0.28.0 (package R20-Q). The maintainer kept Bayesian tum
 **Not changed:**
 - **R20.D6:** the power simulation, the permutation test and the body-weight fit still run in the Shiny process. The scheduler is ready to take them, but they are not Bayesian fits and were not in this step.
 - **One worker:** fits still run one at a time. A second worker is a resource decision for the VPS (memory limits, V3.12).
+
+## R20-D.O Implementation log — v26.09.007, step 7: the dashboard side of VPS Round 3 (2026-10-01)
+
+Step 7 implemented the VPS repository's Round 3 review (its CODE_REVIEW.md, V3-H). Three items live in this repository.
+
+**Fixed:**
+
+| ID | Fix | Verified by |
+|---|---|---|
+| R20.D28 / VPS V3.22 | `startup_proxy_reminder(host)` prints the proxy-timeout reminder whenever the app binds a non-local address, which is what the container does. It also prints under shiny-server, as before. `runDashboard()` opens a browser only in an interactive session (`launch.browser = interactive()`). | Test: `runDashboard(host = "0.0.0.0")` with `runApp` mocked prints the reminder and passes `launch.browser = FALSE`; on v26.09.006 it printed nothing and passed `TRUE`. |
+| VPS V3.12 (dashboard half) | Each Bayesian task first calls `.prefer_oom_kill()`, which raises the worker's `oom_score_adj` to 500. The compiler the worker starts inherits it. At the container's memory limit the kernel then kills the fit, not the process serving every session. It never applies to the launching process, so a sequential plan leaves the Shiny process alone. The function is passed with a base environment, so the worker needs no namespace to run it. | Tests: a temp file stands in for procfs. It is raised for another PID and left alone for the launching PID; a missing procfs is a no-op. A job still returns its value. The real-worker cancel test (step 6) runs the new expression in a separate process. |
+| R20.D27 | `docs/DEPLOYMENT.md` rewritten against the VPS pipeline as it now is: one Dockerfile on `rocker/r-ver:4.5.2` with the frozen snapshot; commit-SHA layers; the gate, the health-checked swap and rollback; the real environment (two variables, both only for the reminder; Shiny's 5 MB upload limit; one background worker); `ssh -p 2222`; backups without a "VPS image". `CONTRIBUTING.md`: the backend minimum is read from DESCRIPTION (0.28.0), the review is described per round, and the test table lists every file. | Read against the VPS repository at its step 7 head; every test file is now in the table. |
+
+**Tests:**
+- **New:** `test-round21-step7.R`, 4 tests and 12 expectations. Against the v26.09.006 source, the first three fail (no reminder, `launch.browser = TRUE`, no `.prefer_oom_kill`). The fourth guards that a job still returns its value.
+- **Against the image's package versions:** the VPS image now installs from rocker 4.5.2's frozen snapshot, which carries ggplot2 4.0.2 and dplyr 1.2.0 (development has 3.5.2 and 1.1.4). With those 54 versions installed ahead of the development library, the v26.09.006 suite passed: 260 tests, 872 expectations, no failures. Eight snapshot packages could not be built on this Mac (a local gfortran/clang mismatch); they are patch-level differences.
+
+**Verification (executed):**
+- **Full suite:** 26 files, 264 tests, 884 expectations. No failures or skips; the one warning is pre-existing.
+- **R CMD check** (`--no-manual --ignore-vignettes --no-tests`): 4 WARNINGs and 3 NOTEs. A check of v26.09.006 built the same way flags the same items with identical details; the two extra NOTEs come from the local, untracked `.waylog` folder that the working-tree build includes.
+

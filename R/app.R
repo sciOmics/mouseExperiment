@@ -21,26 +21,7 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
 
   if (!exists("APP_VERSION")) APP_VERSION <- "0.1.0 (Development)"
 
-  # CODE_REVIEW.md Round 2 E.3 — proxy timeout health check.
-  # When the dashboard is running under shiny-server (detected via
-  # SHINY_PORT) it's almost certainly behind a reverse proxy. The default
-  # proxy_read_timeout on most stacks (NPM, nginx) is 60s, which kills
-  # the websocket mid-Bayesian-fit and produces the disconnect overlay
-  # documented in Round 2 A.3. There's no way to introspect the live proxy
-  # config from inside the container, so the best we can do is log a
-  # prominent warning at startup so operators have a written reminder.
-  if (nzchar(Sys.getenv("SHINY_PORT", unset = "")) ||
-      nzchar(Sys.getenv("SHINY_SERVER_VERSION", unset = ""))) {
-    message(strrep("=", 78))
-    message("[startup] Detected shiny-server environment.")
-    message("[startup] Bayesian fits can take minutes; verify the reverse")
-    message("[startup] proxy ahead of this app uses proxy_read_timeout >= 3600s")
-    message("[startup] (NPM \"Advanced\" tab) AND allow_websocket_upgrade = true.")
-    message("[startup] Otherwise long fits will drop their websocket and surface")
-    message("[startup] as Shiny's disconnect overlay. See dashboard CODE_REVIEW.md")
-    message("[startup] Round 2 A.3 / E.3 and the VPS repo's NPM provisioner.")
-    message(strrep("=", 78))
-  }
+  startup_proxy_reminder(host)
 
   app <- dashboard_app()
 
@@ -51,7 +32,41 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
     on.exit(future::plan(future::sequential), add = TRUE)
   }
 
-  shiny::runApp(app, host = host, port = port, launch.browser = TRUE)
+  # R20.D28: only an interactive session opens a browser; the container runs
+  # `R -e`, where there is none to open.
+  shiny::runApp(app, host = host, port = port, launch.browser = interactive())
+}
+
+#' Remind the operator about the reverse proxy's timeouts
+#'
+#' CODE_REVIEW.md Round 2 E.3: Bayesian fits run for minutes with no traffic
+#' on the websocket, and a reverse proxy's default `proxy_read_timeout` (60 s
+#' in nginx) kills it mid-fit, which users see as Shiny's disconnect overlay.
+#' The proxy's configuration cannot be read from inside the container, so the
+#' app logs a reminder at startup.
+#'
+#' R20.D28 / VPS V3.22: the reminder fired only when `SHINY_PORT` or
+#' `SHINY_SERVER_VERSION` was set. The production containers run R directly
+#' with neither, so it never fired where it matters. It now fires whenever the
+#' app binds a non-local address, which is what it does behind a proxy.
+#'
+#' @param host The address `runDashboard()` binds.
+#' @return `TRUE` (invisibly) when the reminder was shown.
+#' @keywords internal
+startup_proxy_reminder <- function(host) {
+  behind_proxy <- !host %in% c("127.0.0.1", "localhost", "::1") ||
+    nzchar(Sys.getenv("SHINY_PORT", unset = "")) ||
+    nzchar(Sys.getenv("SHINY_SERVER_VERSION", unset = ""))
+  if (!behind_proxy) return(invisible(FALSE))
+  message(strrep("=", 78))
+  message("[startup] Serving on ", host, ", presumably behind a reverse proxy.")
+  message("[startup] Bayesian fits can take minutes; verify that the proxy uses")
+  message("[startup] proxy_read_timeout >= 3600s (NPM \"Advanced\" tab) AND")
+  message("[startup] allow_websocket_upgrade = true. Otherwise long fits drop their")
+  message("[startup] websocket and surface as Shiny's disconnect overlay. On the VPS,")
+  message("[startup] scripts/99-diagnose-shiny-dashboard.sh checks both.")
+  message(strrep("=", 78))
+  invisible(TRUE)
 }
 
 #' One background R process for the Bayesian fits
