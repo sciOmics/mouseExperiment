@@ -5691,3 +5691,12 @@ The maintainer kept the Bayesian tumour-growth and survival models (R20-K) and a
 **Verification (executed):**
 - **Full suite** (`NOT_CRAN=true`): 313 tests, 920 expectations, 0 failed. The one skip is legitimate.
 - **R CMD check:** 1 ERROR (examples, R20.49, pre-existing), 3 WARNINGs and 9 NOTEs. Against a check of v0.27.0 built from `git archive`, the only differences are two NOTEs from local, untracked folders (`.claude`, `.waylog`) that a working-tree build includes. There are no new R-code or Rd notes.
+
+## R20-R Step 7 note — the package against the deployment image's package versions (2026-10-01)
+
+Step 7 moved the VPS image to `rocker/r-ver:4.5.2`, whose CRAN is a frozen Posit snapshot (noble, 2026-03-10; VPS CODE_REVIEW.md V3.3). That snapshot carries **ggplot2 4.0.2, dplyr 1.2.0, vctrs 0.7.1, purrr 1.2.1, xml2 1.5.2 and survival 3.8-6**, where development has ggplot2 3.5.2 and dplyr 1.1.4. 62 of the 190 packages in both packages' dependency closure differ.
+
+**Executed:** the 54 differing versions that build on this Mac were installed ahead of the development library. The other eight are patch-level and failed only because of a local gfortran/clang mismatch. The full suite (`NOT_CRAN=true`) then ran 313 tests: 0 failed and 1 error.
+
+**The error was in a test, not the package.** `holds_brmsfit()`, the walker in the R20.80 test that proves no plot reaches a `brmsfit`, iterated with `for (el in o)`. ggplot2 4's S7 objects hold an empty symbol in a list, and binding it to `el` makes forcing it fail ("argument "el" is missing"). The walker now iterates by index. With ggplot2 4.0.2 and with 3.5.2, the step 6 file passes (8 tests, 32 expectations), so the property R20.80 checks holds under the image's ggplot2 too. No package code changed and the version stays 0.28.0.
+

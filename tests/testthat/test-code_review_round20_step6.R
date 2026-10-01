@@ -41,9 +41,12 @@ holds_brmsfit <- function(x) {
     } else if (is.function(o)) {
       walk(environment(o), depth + 1L)
     } else if (is.list(o)) {
-      for (el in o) walk(el, depth + 1L)
+      # By index: `for (el in o)` binds el to an empty symbol when a list holds
+      # one (ggplot2 4's S7 objects do), and forcing it errors.
+      for (i in seq_along(o)) walk(o[[i]], depth + 1L)
     }
-    for (a in attributes(o)) walk(a, depth + 1L)
+    at <- attributes(o)
+    for (i in seq_along(at)) walk(at[[i]], depth + 1L)
     invisible()
   }
   walk(x)
