@@ -576,7 +576,8 @@ cage_permutation_logrank <- function(df, group, reference_group,
 #' @noRd
 #' @keywords internal
 validate_one_row_per_subject <- function(df, id_column, treatment_column,
-                                         cage_column) {
+                                         cage_column,
+                                         caller = "survival_statistics()") {
   if (is.null(id_column) || !id_column %in% colnames(df)) return(invisible(NULL))
 
   key_parts <- list(as.character(df[[id_column]]))
@@ -591,10 +592,10 @@ validate_one_row_per_subject <- function(df, id_column, treatment_column,
   dup_n <- sum(duplicated(keys))
   if (dup_n > 0L) {
     stop(
-      "survival_statistics() requires one row per animal, but ", dup_n,
+      caller, " requires one row per animal, but ", dup_n,
       " duplicate subject key(s) were found (", length(unique(keys)),
       " unique animals across ", nrow(df), " rows).\n",
-      "This looks like a longitudinal data frame. Fitting a Cox model to it ",
+      "This looks like a longitudinal data frame. Fitting a survival model to it ",
       "would treat every measurement occasion as an independent subject.\n",
       "Reduce to one row per animal first — e.g. each animal's last ",
       "observation, carrying its event indicator — then call this function.",

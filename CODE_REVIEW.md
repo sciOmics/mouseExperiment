@@ -5274,11 +5274,11 @@ Recorded in place here rather than by editing the earlier text, following the Ro
 | R20.11 | TBA survivor-conditioned toxicity; rank inverted | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
 | R20.12 | Bayesian dose-response fails on default `endpoint_day = NULL` | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
 | R20.13 | Bayesian TWM treats weight gain as toxicity | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
-| R20.14–R20.48 | Dose-response, synergy, survival/weight-loss, tumour growth, power, Bayesian, toxicity, cross-cutting (35 items) | Major | Open. Fixed: R20.15 (R20-N); R20.17, R20.29, R20.34, R20.37 (R20-O); R20.14, R20.16, R20.18, R20.19, R20.20, R20.21, R20.22, R20.23 (R20-P) |
+| R20.14–R20.48 | Dose-response, synergy, survival/weight-loss, tumour growth, power, Bayesian, toxicity, cross-cutting (35 items) | Major | Open. Fixed: R20.15 (R20-N); R20.17, R20.29, R20.34, R20.37 (R20-O); R20.14, R20.16, R20.18, R20.19, R20.20, R20.21, R20.22, R20.23 (R20-P); R20.35, R20.38, R20.39, R20.40, R20.41 (R20-Q) |
 | R20.49–R20.53, R20.55 | Vignette, examples, README, datasets, CI/process, test-suite gaps | Major | Open |
 | R20.54 | Build hygiene | Minor | Open |
-| R20.56–R20.75 | Minor (20 items) | Minor | Open. R20.70 ✅ closed v0.27.0 (R20-P): its TWM parts went with the ratio |
-| R20.76–R20.82 | Efficiency (7 items; R20.76 blocks the dashboard for 20–140 s) | Efficiency | R20.76 ✅ Fixed v0.26.0 (R20-O); the rest open |
+| R20.56–R20.75 | Minor (20 items) | Minor | Open. R20.70 ✅ closed v0.27.0 (R20-P): its TWM parts went with the ratio. R20.74 ✅ v0.28.0 (R20-Q) for the kept models; its synergy, TWM and power items went with them (R20-L) |
+| R20.76–R20.82 | Efficiency (7 items; R20.76 blocks the dashboard for 20–140 s) | Efficiency | R20.76 ✅ Fixed v0.26.0 (R20-O); R20.78, R20.80 ✅ Fixed v0.28.0 (R20-Q); R20.79 closed by removal (R20-L); the rest open |
 | R3.3, R3.6, R3.8, R3.14, R3.30, R14.2 | Earlier ✅ entries corrected (R20-H) | — | Reopened / partial |
 
 **Suggested order of work:**
@@ -5630,3 +5630,64 @@ One test, which fails on v0.25.1.
 **Verification (executed):**
 - `devtools::test()`: 305 tests, 888 expectations, 0 failed. The one skip is legitimate.
 - R CMD check: 1 ERROR (examples, R20.49, pre-existing), 3 WARNINGs and 9 NOTEs, as in step 4. Against the step-4 log, the only difference is two fewer "no visible binding" notes (`log_volume`, `growth_rate`), gone with the rewritten growth-rate step.
+
+---
+
+## R20-Q Implementation log — v0.28.0, step 6 (package): Bayesian robustness (2026-10-01)
+
+The maintainer kept the Bayesian tumour-growth and survival models (R20-K) and asked that they be made robust. This step fixes the Major and Efficiency items that apply to them. Open question 11, whether the prior ladder should apply to treatment effects only, was not decided. This step follows the review's recommendation, which the maintainer can reverse: the shape and sigma priors no longer follow the ladder.
+
+**R20.78 — ✅ Fixed.** Compiled Stan models are reused.
+- **Priors as data:** the data-scaled prior values (`me_int_mu`, `me_b_sd`, `me_rate_sd`, …) are passed to Stan with `stanvars` instead of being pasted into the code. Models with the same structure therefore have identical Stan code, across arm labels and datasets.
+- **`me_brm()`:** hashes the generated code with the backend. When a model with the same hash was compiled earlier in the R session, it refits through `update(recompile = FALSE)` on a copy of that fit with its draws removed (at most six models are kept). Otherwise it compiles with `brm()`.
+- **Executed:**
+  - rstan recompiles identical code on every `brm()` call (19.2 s for the second fit).
+  - The cached refit took 0.7 s, against 20.2 s for a fresh fit, and its draws were identical (max |difference| 0).
+  - A second tumour-growth fit with other labels and a missing volume took 1.5 s, against 22.6 s.
+- **Controls:** results carry `model_reused`; `clear_compiled_model_cache()` (exported) empties the cache; `options(mouseExperiment.cache_compiled_models = FALSE)` turns it off.
+
+**R20.80 — ✅ Fixed.** Plots no longer hold the fitted model.
+- Every plot is built by a helper that receives only data frames or a small draws subset: credible intervals, residuals, predictive check, posterior areas, trace, prior-vs-posterior and survival curves.
+- **Executed:** a tumour-growth result without its model serialises to 7.9 MB, against 29.0 MB with it (the review measured 30.8 MB without it). What remains is ggplot2's own overhead (a trivial ggplot is 0.6 MB); each plot's environment is about 1 kB.
+- `posterior_draws` returns the headline draws (fixed effects, SDs, correlations, sigma or shape) as a `draws_array`, so trace and rank plots no longer need the model.
+
+**R20.35 — ✅ Fixed.**
+- `bayes_loo()`, `bayes_r2_summary()` and `bayes_ppc_coverage()` record warnings with `withCallingHandlers()` and keep their results; `loo_diagnostics$warnings` lists the warnings.
+- The Pareto-k threshold is min(1 − 1/log10 S, 0.7) (`k_threshold`): 0.64 at 600 draws.
+- **Executed:** with a planted 50× outlier, LOO is returned with `n_high_k` ≥ 1 (it was NULL).
+
+**R20.38 — ✅ Fixed.**
+- **New priors:** the Weibull shape has `lognormal(1, 1)` and the log-normal sigma `exponential(1)`, under every preset.
+- **Executed** (8 animals per arm, true shape 6, HR 0.088):
+
+  | Version | Shape | HR |
+  |---|---|---|
+  | v0.27.0 | 3.21 [1.66, 5.45] | 0.242 |
+  | v0.28.0 | 5.53 [3.04, 9.09] | 0.071 |
+
+  On three other seeds and designs the old HR was 0.26–0.30 and the new 0.03–0.13. With 15 animals per arm and no censoring the data dominate (shape 5.3 against 6.8).
+
+**R20.39 — ✅ Fixed.** `bayesian_survival()` requires one row per animal; the check is `validate_one_row_per_subject()`, shared with `survival_statistics()`.
+
+**R20.40 — ✅ Fixed.** brms names per-coefficient prior draws `prior_b_<coef>` (confirmed: `prior_b_TreatmentDrugX`, `prior_b_Day`, …), so the plot found no `prior_b` and had no prior layer. Each coefficient now takes its own prior draws, falling back to `prior_b`.
+
+**R20.41 — ✅ Fixed (the part left after R20-L).** With `transform = "sqrt"` or `"none"`, the main-effect width is the ladder value times MAD(y).
+
+**R20.74 — ✅ Fixed for the kept models.**
+- A manual prior missing an argument names it.
+- A backend from `tg_mcmc()` goes through `resolve_brms_backend()`.
+- Survival metadata reports the priors actually used (data-scaled intercept, shape or sigma prior), with the Stan data values filled in.
+- The residuals plot uses the rows brms kept, so a missing volume no longer blanks it.
+- Survival predictive coverage and its density overlay use uncensored times only.
+- Predictive draws and the survival-curve sample come from the fit's seed.
+- The documentation of `priors` (a `tg_priors()` object), `tg_mcmc(backend =)` (no fallback to rstan) and the preset priors is corrected in the Rd files and `docs/BAYESIAN.md`. The guide's example of overriding one prior of a preset never had any effect.
+
+**Also closed:** dashboard R20.D8 (Bayesian survival on volume-derived events). Since v0.25.0 the backend copies user columns to internal names before building the brms formula; the R20.43 test fits `.__DerivedTime` / `.__DerivedEvent`.
+
+**Tests:**
+- **New:** 8 tests in `test-code_review_round20_step6.R`: R20.78 (reuse, plus identical draws to an uncached fit), R20.80 / R20.40 / R20.74 (no plot reaches a brmsfit, prior layer, residuals with an NA volume), R20.35, R20.38 / R20.74, R20.39, R20.41, R20.74 and `clear_compiled_model_cache()`. All fail on v0.27.0.
+- **Guard:** R19.5, every export must be referenced by a test, caught the new export before its test existed.
+
+**Verification (executed):**
+- **Full suite** (`NOT_CRAN=true`): 313 tests, 920 expectations, 0 failed. The one skip is legitimate.
+- **R CMD check:** 1 ERROR (examples, R20.49, pre-existing), 3 WARNINGs and 9 NOTEs. Against a check of v0.27.0 built from `git archive`, the only differences are two NOTEs from local, untracked folders (`.claude`, `.waylog`) that a working-tree build includes. There are no new R-code or Rd notes.

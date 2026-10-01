@@ -31,7 +31,7 @@ The tumor growth pipeline supports three models:
 |---|---|---|
 | `"lme4"` | `tumor_growth_statistics(..., model_type = "lme4")` | Default. Linear mixed-effects on log-volume with per-animal random slopes `(Day \| animal)` since v0.26.0, falling back to uncorrelated slopes and then a random intercept (with a warning) when a fit fails. Type III F-tests with Satterthwaite degrees of freedom. |
 | `"auc"` | `tumor_growth_statistics(..., model_type = "auc")` | When total tumour burden over a window is the question. The area under each arm's fitted curve over the window in which every arm is evaluable, compared by AUC ratios with intervals from model draws (v0.26.0). |
-| Bayesian LMM | `bayesian_tumor_growth(...)` | When you want posterior probability statements, credible intervals with direct probability interpretation, or you have small N where the prior matters. Slower (3-12 min); use `cmdstanr` backend for faster compile. |
+| Bayesian LMM | `bayesian_tumor_growth(...)` | When you want posterior probability statements, credible intervals with direct probability interpretation, or you have small N where the prior matters. The first fit of a model structure in an R session compiles Stan code (about 20 s); later fits of the same structure reuse it. |
 
 ### Required columns
 
@@ -130,6 +130,8 @@ Two parametric families (exponential and gamma were removed in v0.23.0; exponent
 | `"lognormal"` | Hazard rises then falls. Biologically plausible for treated tumors where late-time animals tend to survive longer once they've cleared an initial dose |
 
 Returns the standard `treatment_effects` shape (Group, Time_Ratio, Lower_CrI, Upper_CrI, HR, Median_Survival, Events, Total, Event_Rate, Note) plus the Bayesian diagnostics block (Rhat, ESS, NUTS, LOO).
+
+It takes one row per animal, like `survival_statistics()`; a longitudinal frame is an error (v0.28.0; it used to be fitted with every measurement as a censored animal, `CODE_REVIEW.md` R20.39). The Weibull shape and log-normal sigma have weakly informative priors that do not follow `prior_strength` (R20.38; see [`BAYESIAN.md`](BAYESIAN.md)).
 
 `include_cage_effect = TRUE` adds a cage-level frailty `(1 | cage)`. Worth using when you have ≥ 5 cages per group and reason to believe between-cage variation is non-trivial.
 

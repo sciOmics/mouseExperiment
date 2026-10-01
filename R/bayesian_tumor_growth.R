@@ -39,23 +39,27 @@
 #'   names (\code{Control}, \code{Vehicle}, \code{control}, \code{vehicle},
 #'   \code{CTRL}, \code{ctrl}) before falling back to the first level
 #'   alphabetically.
-#' @param prior_strength Prior preset applied to all fixed effects:
+#' @param prior_strength Prior preset, scaled to the data (see
+#'   \code{docs/BAYESIAN.md}):
 #'   \describe{
-#'     \item{\code{"skeptical"}}{(default) \eqn{b \sim N(0, 0.25)};
-#'       \eqn{\text{sd}, \sigma \sim \text{Exponential}(2)}.
-#'       Expresses prior belief that treatment effects are small; requires
-#'       stronger data to support large estimated differences.}
-#'     \item{\code{"weakly_informative"}}{\eqn{b \sim N(0, 1)};
-#'       \eqn{\text{sd}, \sigma \sim \text{Exponential}(1)}.}
-#'     \item{\code{"informative"}}{\eqn{b \sim N(0, 0.5)};
-#'       \eqn{\text{sd}, \sigma \sim \text{Exponential}(2)}.}
-#'     \item{\code{"diffuse"}}{\eqn{b \sim N(0, 2.5)};
-#'       \eqn{\text{sd}, \sigma \sim \text{Exponential}(0.5)}.}
+#'     \item{\code{"skeptical"}}{(default) treatment main effects
+#'       \eqn{N(0, 0.25)} on log volume; slope and Treatment x Day terms
+#'       \eqn{N(0, \text{range}(y) / \text{span})}; SDs and \eqn{\sigma}
+#'       \eqn{\text{Exponential}(2 / \text{MAD}(y))}. Requires stronger
+#'       data to support large estimated differences.}
+#'     \item{\code{"informative"}}{main effects \eqn{N(0, 0.5)}, rate terms
+#'       1.5 times the range per span, SD rate 2 / MAD.}
+#'     \item{\code{"weakly_informative"}}{main effects \eqn{N(0, 1)}, rate
+#'       terms twice the range per span, SD rate 1 / MAD.}
+#'     \item{\code{"diffuse"}}{main effects \eqn{N(0, 2.5)}, rate terms five
+#'       times the range per span, SD rate 0.5 / MAD.}
 #'     \item{\code{"manual"}}{Use the \code{prior_b}, \code{prior_intercept},
 #'       \code{prior_sd}, and \code{prior_sigma} arguments to specify brms
-#'       prior strings directly.}
+#'       prior strings directly; all four are required.}
 #'   }
-#'   All presets use an intercept prior with SD = \eqn{2.5 \times \sigma_b}.
+#'   The intercept prior is \eqn{N(\text{median}(y), 2.5\,\text{MAD}(y))}.
+#'   With \code{transform = "sqrt"} or \code{"none"} the main-effect width is
+#'   multiplied by MAD(y) (v0.28.0, CODE_REVIEW.md R20.41).
 #' @param prior_b brms prior string for fixed-effect coefficients (class
 #'   \code{"b"}), e.g. \code{"normal(0, 0.25)"} or \code{"student_t(3, 0, 0.5)"}.
 #'   Only used when \code{prior_strength = "manual"}.
@@ -146,6 +150,15 @@
 #'     intervals (Round 2 E.3).}
 #'   \item{\code{data_summary}}{Descriptive statistics by treatment group and
 #'     day.}
+#'   \item{\code{loo_diagnostics}}{PSIS-LOO summary with \code{k_threshold},
+#'     \code{n_high_k}, the per-observation \code{pareto_k} and any
+#'     \code{warnings}; kept when loo warns (R20.35).}
+#'   \item{\code{posterior_draws}}{The headline posterior draws (fixed
+#'     effects, SDs and correlations, sigma) as a \code{draws_array}, for trace
+#'     and rank plots without the model. No plot in the result holds the model
+#'     any more, so dropping \code{model} frees it (R20.80).}
+#'   \item{\code{model_reused}}{TRUE when a compiled model from an earlier fit
+#'     with the same structure was reused (R20.78).}
 #' }
 #'
 #' @section Model:
@@ -164,9 +177,11 @@
 #'
 #' @section Assumptions and Limitations:
 #' \itemize{
-#'   \item Computation typically takes 3–12 minutes on modern hardware. The
-#'     Stan model is compiled on the first call with a given formula and
-#'     cached; subsequent calls with the same formula start faster.
+#'   \item Compiling the Stan model takes about 20 s with rstan. The prior
+#'     values are passed to Stan as data, so a later fit in the same R session
+#'     whose model has the same structure (formula, number of arms, random
+#'     effects) reuses the compiled model and starts sampling at once
+#'     (CODE_REVIEW.md R20.78); see \code{\link{clear_compiled_model_cache}}.
 #'   \item Credible intervals have a direct probability interpretation
 #'     ("there is 95 % posterior probability the parameter lies in this
 #'     interval"), unlike frequentist confidence intervals.
@@ -256,7 +271,8 @@ bayesian_tumor_growth <- function(
   n_warmup <- .m$warmup
   n_iter   <- .m$iter
   seed     <- .m$seed
-  backend  <- .m$backend
+  # R20.74: a backend from `mcmc` bypassed the check above.
+  backend  <- resolve_brms_backend(.m$backend)
 
   # ── Column validation ──────────────────────────────────────────────────────
   required_cols <- c(time_column, volume_column, treatment_column, id_column)
@@ -372,9 +388,17 @@ bayesian_tumor_growth <- function(
   brms_formula <- stats::as.formula(paste(fixed_part, "+", re_term))
 
   # ── Prior specification ────────────────────────────────────────────────────
+  prior_stanvars <- NULL
   if (prior_strength == "manual") {
-    if (any(is.null(c(prior_b, prior_intercept, prior_sd, prior_sigma)))) {
-      stop("When prior_strength = 'manual', all four prior_* arguments must be supplied.")
+    # R20.74: is.null(c(...)) is TRUE only when every argument is NULL, so one
+    # missing prior reached brms as an opaque set_prior() error.
+    missing_p <- c("prior_b", "prior_intercept", "prior_sd", "prior_sigma")[
+      vapply(list(prior_b, prior_intercept, prior_sd, prior_sigma), is.null,
+             logical(1L))]
+    if (length(missing_p)) {
+      stop("When prior_strength = 'manual', all four prior_* arguments must ",
+           "be supplied; missing: ", paste(missing_p, collapse = ", "), ".",
+           call. = FALSE)
     }
     selected_priors <- c(
       brms::prior_string(prior_b,         class = "b"),
@@ -390,8 +414,10 @@ bayesian_tumor_growth <- function(
     # Treatment:Day interaction effectively unconstrained.
     selected_priors <- bayes_scaled_priors(
       brms_formula, analysis_df, volume_column, prior_strength,
-      time_column = time_column, include_sd = TRUE
+      time_column = time_column, include_sd = TRUE,
+      log_scale = transform == "log"
     )
+    prior_stanvars <- attr(selected_priors, "me_stanvars")
   }
 
   # ── Fit model ──────────────────────────────────────────────────────────────
@@ -401,20 +427,21 @@ bayesian_tumor_growth <- function(
             n_warmup, " warmup)...")
   }
 
-  model <- brms::brm(
-    formula      = brms_formula,
-    data         = analysis_df,
-    prior        = selected_priors,
-    sample_prior = "yes",
-    chains       = as.integer(n_chains),
-    cores        = as.integer(n_chains),
-    iter         = as.integer(n_warmup + n_iter),
-    warmup       = as.integer(n_warmup),
-    seed         = as.integer(seed),
-    backend      = backend,
-    silent       = if (isTRUE(verbose)) 0L else 2L,
-    refresh      = if (isTRUE(verbose)) 100L else 0L
+  # R20.78: me_brm() reuses a compiled model with the same Stan code.
+  model <- me_brm(
+    formula  = brms_formula,
+    data     = analysis_df,
+    prior    = selected_priors,
+    stanvars = prior_stanvars,
+    chains   = as.integer(n_chains),
+    iter     = as.integer(n_warmup + n_iter),
+    warmup   = as.integer(n_warmup),
+    seed     = as.integer(seed),
+    backend  = backend,
+    silent   = if (isTRUE(verbose)) 0L else 2L,
+    refresh  = if (isTRUE(verbose)) 100L else 0L
   )
+  model_reused <- isTRUE(attr(model, "me_model_reused"))
 
   # ── Posterior summary (fixed effects) ──────────────────────────────────────
   brms_smry     <- summary(model)
@@ -433,7 +460,7 @@ bayesian_tumor_growth <- function(
   nuts_diagnostics <- make_nuts_diagnostics(model)
   loo_diagnostics  <- bayes_loo(model)
   bayes_r2         <- bayes_r2_summary(model)
-  ppc_coverage     <- bayes_ppc_coverage(model)
+  ppc_coverage     <- bayes_ppc_coverage(model, seed = seed)
 
   # ── Treatment effects and pairwise comparisons via emmeans ─────────────────
   treatment_effects    <- NULL
@@ -545,112 +572,42 @@ bayesian_tumor_growth <- function(
   mcmc_trace_plot         <- NULL
   residuals_plot          <- NULL
 
+  # The headline draws (fixed effects, SDs, sigma) travel with the result, so
+  # a caller can draw trace and rank plots without keeping the model (R20.80).
+  posterior_draws <- me_headline_draws(model)
+
   if (isTRUE(plots)) {
+    # CODE_REVIEW.md R20.80 -- every plot is built by a helper that sees only
+    # the data it draws. Built here, each plot held this function's frame and
+    # with it the model, so a result without `model` still weighed 31 MB.
+    pp_check_plot <- me_ppc_plot(model, seed = seed)
 
-    # Posterior predictive check
-    pp_check_plot <- tryCatch(
-      brms::pp_check(model, type = "dens_overlay", ndraws = 50),
-      error = function(e) NULL
-    )
-
-    # Treatment-parameter posterior densities and trace plots
-    if (requireNamespace("bayesplot", quietly = TRUE)) {
-      draws_arr <- tryCatch(posterior::as_draws_array(model),
-                            error = function(e) NULL)
-
-      if (!is.null(draws_arr)) {
-        all_pars <- dimnames(draws_arr)$variable
-        tx_pars  <- grep(
-          paste0("^b_",
-                 gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1",
-                      treatment_column, perl = TRUE)),
-          all_pars, value = TRUE
-        )
-
-        if (length(tx_pars) > 0) {
-          posterior_dist_plot <- tryCatch(
-            bayesplot::mcmc_areas(draws_arr, pars = tx_pars, prob = 0.95),
-            error = function(e) NULL
-          )
-          mcmc_trace_plot <- tryCatch(
-            bayesplot::mcmc_trace(draws_arr, pars = tx_pars),
-            error = function(e) NULL
-          )
-        }
-      }
+    tx_draws <- if (!is.null(posterior_draws)) {
+      v <- posterior::variables(posterior_draws)
+      v <- v[startsWith(v, paste0("b_", treatment_column))]
+      if (length(v)) posterior::subset_draws(posterior_draws, variable = v)
     }
+    posterior_dist_plot <- me_draws_area_plot(tx_draws)
+    mcmc_trace_plot     <- me_draws_trace_plot(tx_draws)
 
-    # Prior vs posterior overlay
     prior_posterior_plot <- tryCatch(
       bayes_prior_posterior_plot(model, treatment_column),
       error = function(e) NULL
     )
 
-    # Credible intervals forest plot from treatment_effects
-    if (!is.null(treatment_effects) && nrow(treatment_effects) > 0) {
-      te      <- treatment_effects
-      te$Group <- factor(te$Group, levels = rev(te$Group))
-      ref_val  <- te$Adjusted_Mean[as.character(te$Group) == reference_group]
-      is_ref   <- as.character(te$Group) == reference_group
+    credible_intervals_plot <- tg_bayes_ci_plot(treatment_effects,
+                                                reference_group, transform)
 
-      credible_intervals_plot <- ggplot2::ggplot(
-          te,
-          ggplot2::aes(
-            x    = .data[["Adjusted_Mean"]],
-            y    = .data[["Group"]],
-            xmin = .data[["Lower_CrI"]],
-            xmax = .data[["Upper_CrI"]],
-            colour = is_ref
-          )
-        ) +
-        ggplot2::geom_pointrange(size = 0.8, linewidth = 0.8) +
-        ggplot2::geom_vline(
-          xintercept = if (length(ref_val) > 0) ref_val[1] else NA_real_,
-          linetype = "dashed", colour = "grey50", linewidth = 0.5
-        ) +
-        ggplot2::scale_colour_manual(
-          values = c("TRUE" = "grey40", "FALSE" = "steelblue"),
-          guide  = "none"
-        ) +
-        ggplot2::labs(
-          title    = "Treatment Effects — 95 % Credible Intervals",
-          subtitle = paste0("Posterior medians at mean study day (", transform, " scale)"),
-          x        = paste0("Estimated marginal mean (", transform, " volume)"),
-          y        = NULL
-        ) +
-        ggplot2::theme_classic(base_size = 14)
-    }
-
-    # Residuals vs Day — curvature diagnostic
+    # Residuals vs day, on the rows brms used: rows with a missing volume are
+    # dropped by brms, and pairing its residuals with the full data failed
+    # whenever one was (R20.74).
     residuals_plot <- tryCatch({
-      resids   <- residuals(model, type = "ordinary")[, "Estimate"]
-      resid_df <- data.frame(
-        study_day = analysis_df[[time_column]],
-        Residual  = resids,
-        Treatment = analysis_df[[treatment_column]]
-      )
-      ggplot2::ggplot(
-          resid_df,
-          ggplot2::aes(x = .data[["study_day"]], y = .data[["Residual"]])
-        ) +
-        ggplot2::geom_point(alpha = 0.35, size = 1.5) +
-        ggplot2::geom_smooth(
-          method   = "loess", se = TRUE, formula = y ~ x,
-          colour   = "steelblue", linewidth = 0.8,
-          fill     = "steelblue", alpha = 0.15
-        ) +
-        ggplot2::geom_hline(
-          yintercept = 0, linetype = "dashed",
-          colour = "grey50", linewidth = 0.5
-        ) +
-        ggplot2::facet_wrap(~ Treatment) +
-        ggplot2::labs(
-          title    = "Residuals vs. Study Day",
-          subtitle = "Curvature indicates growth that is not log-linear",
-          x        = time_column,
-          y        = paste0("Residual (", transform, " scale)")
-        ) +
-        ggplot2::theme_classic(base_size = 14)
+      md <- model$data
+      tg_bayes_residuals_plot(
+        data.frame(study_day = md[[time_column]],
+                   Residual  = stats::residuals(model, type = "ordinary")[, "Estimate"],
+                   Treatment = md[[treatment_column]]),
+        transform, time_column)
     }, error = function(e) NULL)
   }
 
@@ -689,6 +646,8 @@ bayesian_tumor_growth <- function(
       prior_sigma     = .prior_desc$prior_sigma,
       prior_table     = .prior_desc$all,
       prior_scaling   = .prior_desc$scaling,
+      # R20.78: whether a compiled model was reused (no ~20 s compile).
+      compiled_model  = if (model_reused) "reused from an earlier fit" else "compiled for this fit",
       treatment_effects_note = paste0(
         "Estimated marginal means and 95 % HPD credible intervals ",
         "at mean study day (day ", round(mean(analysis_df[[time_column]]), 1),
@@ -727,8 +686,75 @@ bayesian_tumor_growth <- function(
     residuals_plot          = residuals_plot,
     growth_rates            = growth_rates,
     data_summary            = data_summary,
-    necrosis_summary        = necrosis_summary
+    necrosis_summary        = necrosis_summary,
+    posterior_draws         = posterior_draws,
+    model_reused            = model_reused
   )
+}
+
+#' Forest plot of the Bayesian treatment effects (model-free; R20.80)
+#' @noRd
+#' @keywords internal
+tg_bayes_ci_plot <- function(treatment_effects, reference_group, transform) {
+  if (is.null(treatment_effects) || !nrow(treatment_effects)) return(NULL)
+  te        <- treatment_effects
+  te$is_ref <- as.character(te$Group) == reference_group
+  te$Group  <- factor(te$Group, levels = rev(te$Group))
+  ref_val   <- te$Adjusted_Mean[te$is_ref]
+  ggplot2::ggplot(
+      te,
+      ggplot2::aes(
+        x      = .data[["Adjusted_Mean"]],
+        y      = .data[["Group"]],
+        xmin   = .data[["Lower_CrI"]],
+        xmax   = .data[["Upper_CrI"]],
+        colour = .data[["is_ref"]]
+      )
+    ) +
+    ggplot2::geom_pointrange(size = 0.8, linewidth = 0.8) +
+    ggplot2::geom_vline(
+      xintercept = if (length(ref_val) > 0) ref_val[1] else NA_real_,
+      linetype = "dashed", colour = "grey50", linewidth = 0.5
+    ) +
+    ggplot2::scale_colour_manual(
+      values = c("TRUE" = "grey40", "FALSE" = "steelblue"),
+      guide  = "none"
+    ) +
+    ggplot2::labs(
+      title    = "Treatment Effects \u2014 95 % Credible Intervals",
+      subtitle = paste0("Posterior medians at mean study day (", transform, " scale)"),
+      x        = paste0("Estimated marginal mean (", transform, " volume)"),
+      y        = NULL
+    ) +
+    ggplot2::theme_classic(base_size = 14)
+}
+
+#' Residuals against study day, by arm (model-free; R20.80)
+#' @noRd
+#' @keywords internal
+tg_bayes_residuals_plot <- function(resid_df, transform, time_label) {
+  ggplot2::ggplot(
+      resid_df,
+      ggplot2::aes(x = .data[["study_day"]], y = .data[["Residual"]])
+    ) +
+    ggplot2::geom_point(alpha = 0.35, size = 1.5) +
+    ggplot2::geom_smooth(
+      method   = "loess", se = TRUE, formula = y ~ x,
+      colour   = "steelblue", linewidth = 0.8,
+      fill     = "steelblue", alpha = 0.15
+    ) +
+    ggplot2::geom_hline(
+      yintercept = 0, linetype = "dashed",
+      colour = "grey50", linewidth = 0.5
+    ) +
+    ggplot2::facet_wrap(~ Treatment) +
+    ggplot2::labs(
+      title    = "Residuals vs. Study Day",
+      subtitle = "Curvature indicates growth that is not log-linear",
+      x        = time_label,
+      y        = paste0("Residual (", transform, " scale)")
+    ) +
+    ggplot2::theme_classic(base_size = 14)
 }
 
 

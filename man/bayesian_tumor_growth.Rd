@@ -73,23 +73,27 @@ names (\code{Control}, \code{Vehicle}, \code{control}, \code{vehicle},
 \code{CTRL}, \code{ctrl}) before falling back to the first level
 alphabetically.}
 
-\item{prior_strength}{Prior preset applied to all fixed effects:
+\item{prior_strength}{Prior preset, scaled to the data (see
+\code{docs/BAYESIAN.md}):
 \describe{
-\item{\code{"skeptical"}}{(default) \eqn{b \sim N(0, 0.25)};
-\eqn{\text{sd}, \sigma \sim \text{Exponential}(2)}.
-Expresses prior belief that treatment effects are small; requires
-stronger data to support large estimated differences.}
-\item{\code{"weakly_informative"}}{\eqn{b \sim N(0, 1)};
-\eqn{\text{sd}, \sigma \sim \text{Exponential}(1)}.}
-\item{\code{"informative"}}{\eqn{b \sim N(0, 0.5)};
-\eqn{\text{sd}, \sigma \sim \text{Exponential}(2)}.}
-\item{\code{"diffuse"}}{\eqn{b \sim N(0, 2.5)};
-\eqn{\text{sd}, \sigma \sim \text{Exponential}(0.5)}.}
+\item{\code{"skeptical"}}{(default) treatment main effects
+\eqn{N(0, 0.25)} on log volume; slope and Treatment x Day terms
+\eqn{N(0, \text{range}(y) / \text{span})}; SDs and \eqn{\sigma}
+\eqn{\text{Exponential}(2 / \text{MAD}(y))}. Requires stronger
+data to support large estimated differences.}
+\item{\code{"informative"}}{main effects \eqn{N(0, 0.5)}, rate terms
+1.5 times the range per span, SD rate 2 / MAD.}
+\item{\code{"weakly_informative"}}{main effects \eqn{N(0, 1)}, rate
+terms twice the range per span, SD rate 1 / MAD.}
+\item{\code{"diffuse"}}{main effects \eqn{N(0, 2.5)}, rate terms five
+times the range per span, SD rate 0.5 / MAD.}
 \item{\code{"manual"}}{Use the \code{prior_b}, \code{prior_intercept},
 \code{prior_sd}, and \code{prior_sigma} arguments to specify brms
-prior strings directly.}
+prior strings directly; all four are required.}
 }
-All presets use an intercept prior with SD = \eqn{2.5 \times \sigma_b}.}
+The intercept prior is \eqn{N(\text{median}(y), 2.5\,\text{MAD}(y))}.
+With \code{transform = "sqrt"} or \code{"none"} the main-effect width is
+multiplied by MAD(y) (v0.28.0, CODE_REVIEW.md R20.41).}
 
 \item{prior_b}{brms prior string for fixed-effect coefficients (class
 \code{"b"}), e.g. \code{"normal(0, 0.25)"} or \code{"student_t(3, 0, 0.5)"}.
@@ -202,6 +206,15 @@ animal and the credible-interval columns reflect OLS confidence
 intervals (Round 2 E.3).}
 \item{\code{data_summary}}{Descriptive statistics by treatment group and
 day.}
+\item{\code{loo_diagnostics}}{PSIS-LOO summary with \code{k_threshold},
+\code{n_high_k}, the per-observation \code{pareto_k} and any
+\code{warnings}; kept when loo warns (R20.35).}
+\item{\code{posterior_draws}}{The headline posterior draws (fixed
+effects, SDs and correlations, sigma) as a \code{draws_array}, for trace
+and rank plots without the model. No plot in the result holds the model
+any more, so dropping \code{model} frees it (R20.80).}
+\item{\code{model_reused}}{TRUE when a compiled model from an earlier fit
+with the same structure was reused (R20.78).}
 }
 }
 \description{
@@ -232,9 +245,11 @@ resolves this.
 \section{Assumptions and Limitations}{
 
 \itemize{
-\item Computation typically takes 3–12 minutes on modern hardware. The
-Stan model is compiled on the first call with a given formula and
-cached; subsequent calls with the same formula start faster.
+\item Compiling the Stan model takes about 20 s with rstan. The prior
+values are passed to Stan as data, so a later fit in the same R session
+whose model has the same structure (formula, number of arms, random
+effects) reuses the compiled model and starts sampling at once
+(CODE_REVIEW.md R20.78); see \code{\link{clear_compiled_model_cache}}.
 \item Credible intervals have a direct probability interpretation
 ("there is 95 \% posterior probability the parameter lies in this
 interval"), unlike frequentist confidence intervals.

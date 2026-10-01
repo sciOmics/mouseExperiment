@@ -5,6 +5,67 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] - 2026-09-30
+
+Sixth implementation step of the Round 20 review (`CODE_REVIEW.md` R20-Q):
+robustness of the Bayesian tumour-growth and survival models.
+
+### Added
+
+- **Compiled Stan models are reused (R20.78).** The prior values are passed to
+  Stan as data, so models with the same structure share their Stan code, and
+  a later fit in the same R session reuses the compiled model through
+  `update(recompile = FALSE)`. A fit that compiled for about 20 s now starts
+  sampling at once: 1.5 s against 22.6 s for a second tumour-growth fit with
+  different arm labels. Its draws are identical to a fresh fit's with the
+  same seed. Results carry `model_reused`; `clear_compiled_model_cache()`
+  empties the cache, and `options(mouseExperiment.cache_compiled_models =
+  FALSE)` turns it off.
+- **`posterior_draws` (R20.80):** the headline posterior draws (fixed effects,
+  SDs and correlations, sigma or shape), so trace and rank plots no longer
+  need the fitted model.
+
+### Fixed
+
+- **Every plot held the fitted model (R20.80).** Plots built inside the
+  fitting function kept its frame, so a result without `model` still weighed
+  31 MB and dropping the model freed nothing. Plots are now built from data
+  frames; a tumour-growth result without its model is 7.9 MB, the ggplot
+  objects themselves.
+- **LOO, Bayes R² and predictive coverage were discarded on any warning
+  (R20.35),** and loo warns precisely when an observation is influential, so
+  `n_high_k` could only be 0. Warnings are now recorded in
+  `loo_diagnostics$warnings`, and the Pareto-k threshold depends on the
+  number of draws, min(1 − 1/log10 S, 0.7), as in loo 2.6
+  (`k_threshold`).
+- **The Weibull shape prior followed the treatment-effect ladder (R20.38).**
+  The skeptical exponential(2) shrank the shape and, with it, pulled the
+  hazard ratio toward 1: on 8 animals per arm with true shape 6 and HR 0.088,
+  shape 3.2 [1.7, 5.5] and HR 0.242. The shape now has `lognormal(1, 1)` and
+  the log-normal sigma `exponential(1)` under every preset: shape 5.5
+  [3.0, 9.1], HR 0.071 on the same data.
+- **`bayesian_survival()` accepted longitudinal data (R20.39).** One row per
+  animal is now required, as in `survival_statistics()`.
+- **The prior-vs-posterior plot had no prior layer for tumour growth
+  (R20.40).** brms names per-coefficient prior draws `prior_b_<coef>`; each
+  coefficient now takes its own.
+- **On a raw or square-root scale the treatment prior was in log units
+  (R20.41).** Its width is multiplied by the response's MAD.
+- **Smaller items (R20.74):**
+  - A manual prior missing one argument now names it; it used to reach brms
+    as an opaque error.
+  - A backend from `tg_mcmc()` is checked like the `backend` argument.
+  - Survival metadata reports the priors used, including the shape prior
+    and the data-scaled intercept.
+  - The residuals plot survives a missing volume.
+  - Survival predictive coverage and its density overlay use uncensored
+    times only.
+  - Predictive draws and the survival-curve draw sample come from the fit's
+    seed, not the session's random-number stream.
+  - The documentation of `priors`, of `tg_mcmc(backend =)` (there is no
+    fallback to rstan) and of the preset priors is corrected, in the Rd files
+    and in `docs/BAYESIAN.md`.
+
 ## [0.27.0] - 2026-09-30
 
 Fifth implementation step of the Round 20 review (`CODE_REVIEW.md` R20-P): the

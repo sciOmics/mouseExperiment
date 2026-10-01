@@ -259,6 +259,7 @@ sim_power <- apriori_power_simulation(
 |----------|-------------|
 | `tg_priors(strength, b, intercept, sd, sigma)` | Prior-config object — bundles the five prior arguments |
 | `tg_mcmc(chains, warmup, iter, seed, backend)` | MCMC-config object — bundles the four MCMC arguments |
+| `clear_compiled_model_cache()` | Empties the session's cache of compiled Stan models; a fit whose model has the same structure as an earlier one reuses its compiled model and skips the ~20 s compile (v0.28.0) |
 
 ### Utilities
 | Function | Description |
