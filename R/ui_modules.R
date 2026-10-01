@@ -472,7 +472,8 @@ tumorGrowthUI <- function(id) {
                    "each arm's fitted growth curve over a window common to every arm. ",
                    "Bayesian LMM fits the same mixed-effects ",
                    "model as LME4 but reports full posterior distributions and 95 % ",
-                   "credible intervals; computation takes 3–12 minutes."),
+                   "credible intervals; it runs in the background and takes from ",
+                   "seconds to a few minutes."),
 
           # 2. Reference Group: the study's control group (R20-D.H)
           uiOutput(ns("tg_reference_note")),
@@ -679,11 +680,12 @@ tumorGrowthUI <- function(id) {
                         choices  = c("rstan", "cmdstanr"),
                         selected = "rstan"),
             div(class = "alert alert-warning", style = "font-size:0.85em; padding:8px; margin-top:6px;",
-              icon("clock"), " Bayesian fitting takes ~3–12 minutes. ",
-              "A progress modal will block other tabs while the model runs, ",
-              "but you can safely close the browser and return later — the ",
-              "fit continues on the server and the results will be waiting ",
-              "when you reconnect."
+              icon("clock"), " The first Bayesian fit of a model compiles it (about 20 s); ",
+              "a later fit with the same structure reuses it and usually takes under a minute. ",
+              "Fits run one at a time on a background worker, so other users and tabs stay ",
+              "responsive, and yours may wait for one ahead of it. You can close the browser ",
+              "and return later; the result waits for you, and the banner at the top lets ",
+              "you resume or cancel the fit."
             )
           ),
 
@@ -953,16 +955,17 @@ tumorGrowthUI <- function(id) {
                       tags$li(strong("Comparisons"), " — posterior contrasts of each group vs the reference."),
                       tags$li(strong("Posterior Check"), " — overlay of observed data density vs draws from the posterior predictive distribution. Systematic mismatch indicates model mis-specification. A coverage plot reports whether the stated credible intervals actually contain the observed values at the claimed rate."),
                       tags$li(strong("Diagnostics"), " (Bayesian view) — Rhat and effective sample size (ESS) per parameter, with trace and rank plots. Rhat > 1.01 indicates the chains have not mixed; low ESS means the posterior summaries are themselves noisy. Rank plots detect the mixing failures that trace plots hide once chains overlap."),
-                      tags$li(strong("Influence"), " — Pareto-k values from PSIS leave-one-out. Values above 0.7 mean the importance sampling is unreliable for that observation, which usually flags an animal the model fits badly rather than a coding error."),
+                      tags$li(strong("Influence"), " — Pareto-k values from PSIS leave-one-out. Values above the threshold (0.7 at most; lower with fewer posterior draws, e.g. 0.667 at 1,000) mean the importance sampling is unreliable for that observation, which usually flags an animal the model fits badly rather than a coding error."),
                       tags$li(strong("Growth Rates"), " — per-animal log-linear regression rates (same as LME4, not MCMC-based).")
                     ),
 
                     div(class = "alert alert-info", style = "margin-top:10px;",
                       icon("clock"), " ",
-                      strong("Computation time:"), " typically 3–12 minutes on modern hardware. ",
-                      "Stan compiles the model on the first call with a given formula and caches the result — ",
-                      "subsequent calls with the same formula are faster. ",
-                      "The dashboard runs fitting in the background; the app stays responsive while the model runs."
+                      strong("Computation time:"), " the first fit of a model compiles its Stan code (about 20 s); ",
+                      "a later fit whose model has the same structure (same number of arms, random effects and prior preset) ",
+                      "reuses the compiled model and starts sampling at once. ",
+                      "Fits run one at a time on a background worker, so the app stays responsive while a model runs; ",
+                      "the progress window shows how many fits are ahead of yours."
                     )
                   )
                 ),

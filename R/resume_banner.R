@@ -77,7 +77,10 @@ resume_banner_server <- function(id = "resume_banner",
       if (is.null(sid) || identical(sid, SID_NONE)) return(NULL)
       jobs <- list_jobs(sid)
       if (length(jobs) == 0L) return(NULL)
-      .build_resume_banner_ui(jobs)
+      # The registry is not reactive: re-read it while there is anything to
+      # show, so a finished or delivered fit's line updates on its own.
+      shiny::invalidateLater(5000L, session)
+      .build_resume_banner_ui(jobs, sid)
     })
 
     # ── Action handlers ──────────────────────────────────────────────
@@ -87,12 +90,14 @@ resume_banner_server <- function(id = "resume_banner",
       if (is.null(sid) || identical(sid, SID_NONE) || is.null(jid)) return()
       job <- get_job(sid, jid)
       if (is.null(job)) return()
+      # R20.D63: the job is not retired here. The resume handler attaches a
+      # poller that delivers the result and then retires the job; retiring
+      # first meant the poller found nothing and the result was lost.
       tryCatch(on_resume(job), error = function(e) {
         shiny::showNotification(
           sprintf("Failed to resume job: %s", conditionMessage(e)),
           type = "error")
       })
-      retire_job(sid, jid)
       refresh(refresh() + 1L)
     })
 
@@ -107,7 +112,12 @@ resume_banner_server <- function(id = "resume_banner",
     shiny::observeEvent(input$dismiss_clicked, {
       sid <- session_id()
       if (is.null(sid) || identical(sid, SID_NONE)) return()
-      for (jid in names(list_jobs(sid))) retire_job(sid, jid)
+      # R20.D5: only finished jobs. Dismissing a running job stranded the
+      # modal of the tab waiting for it and threw its result away; a running
+      # or queued fit is stopped with its own Cancel button.
+      for (job in list_jobs(sid)) {
+        if (job$status %in% c("completed", "failed", "cancelled")) retire_job(sid, job$id)
+      }
       refresh(refresh() + 1L)
     })
   })
@@ -115,14 +125,14 @@ resume_banner_server <- function(id = "resume_banner",
 
 # ---- UI builders (package-private) ----------------------------------------
 
-.build_resume_banner_ui <- function(jobs) {
-  # Sort: running first, then completed (newest first), then failed,
+.build_resume_banner_ui <- function(jobs, sid = NULL) {
+  # Sort: running, then queued, then completed (newest first), then failed,
   # then cancelled. Within each status, newest first.
   status_rank <- match(vapply(jobs, function(j) j$status, character(1L)),
-                       c("running", "completed", "failed", "cancelled"))
-  started_t   <- vapply(jobs, function(j) as.numeric(j$started_at),
+                       c("running", "queued", "completed", "failed", "cancelled"))
+  queued_t    <- vapply(jobs, function(j) as.numeric(j$queued_at %||% j$started_at),
                         numeric(1L))
-  ord <- order(status_rank, -started_t)
+  ord <- order(status_rank, -queued_t)
   jobs <- jobs[ord]
 
   shiny::div(
@@ -138,21 +148,25 @@ resume_banner_server <- function(id = "resume_banner",
     shiny::tags$ul(
       class = "list-unstyled",
       style = "margin: 10px 0 6px 24px;",
-      lapply(jobs, .render_one_resume_job)
+      lapply(jobs, .render_one_resume_job, sid = sid)
     ),
-    shiny::tags$button(
-      class            = "btn btn-default btn-sm mE-dismiss-btn",
-      `data-dismiss`   = "all",
-      type             = "button",
-      "Dismiss all"
-    )
+    if (any(vapply(jobs, function(j) j$status %in% c("completed", "failed", "cancelled"),
+                   logical(1L))))
+      shiny::tags$button(
+        class            = "btn btn-default btn-sm mE-dismiss-btn",
+        `data-dismiss`   = "finished",
+        type             = "button",
+        "Dismiss finished"
+      )
   )
 }
 
-.render_one_resume_job <- function(job) {
+.render_one_resume_job <- function(job, sid = NULL) {
+  since <- if (!is.null(job$started_at) && !is.na(job$started_at)) job$started_at
+           else job$queued_at %||% Sys.time()
   elapsed_sec <- as.numeric(difftime(
     if (is.na(job$completed_at)) Sys.time() else job$completed_at,
-    job$started_at, units = "secs"))
+    since, units = "secs"))
   elapsed_str <- if (elapsed_sec >= 60) {
     sprintf("%d min %d s", as.integer(elapsed_sec) %/% 60L,
                             as.integer(elapsed_sec) %% 60L)
@@ -160,6 +174,11 @@ resume_banner_server <- function(id = "resume_banner",
     sprintf("%d s", as.integer(elapsed_sec))
   }
   status_lbl <- switch(job$status,
+    queued    = {
+      ahead <- if (!is.null(sid)) jobs_ahead(sid, job$id) else 0L
+      sprintf("waiting for the fitting worker (%d %s ahead)", ahead,
+              if (ahead == 1L) "fit" else "fits")
+    },
     running   = sprintf("running (%s elapsed)", elapsed_str),
     completed = sprintf("completed %s ago", elapsed_str),
     failed    = "failed",
@@ -170,7 +189,7 @@ resume_banner_server <- function(id = "resume_banner",
     style = "margin-bottom: 6px;",
     shiny::tags$strong(kind_lbl), " — ", status_lbl,
     shiny::span(style = "margin-left: 12px;",
-      if (job$status %in% c("running", "completed")) {
+      if (job$status %in% c("queued", "running", "completed")) {
         shiny::tags$button(
           class            = "btn btn-primary btn-xs mE-resume-btn",
           `data-jid`       = job$id,
@@ -179,7 +198,7 @@ resume_banner_server <- function(id = "resume_banner",
           "Resume"
         )
       },
-      if (job$status == "running") {
+      if (job$status %in% c("queued", "running")) {
         shiny::tags$button(
           class      = "btn btn-default btn-xs mE-cancel-btn",
           `data-jid` = job$id,
@@ -207,8 +226,6 @@ resume_banner_server <- function(id = "resume_banner",
 # callback then dispatches by kind. Decouples the banner from any
 # specific module — the banner doesn't import the module servers.
 
-.resume_handlers <- new.env(parent = emptyenv())
-
 #' Register a resume handler for a specific job kind.
 #'
 #' Called by each Bayesian module's server at startup. The handler is
@@ -216,16 +233,28 @@ resume_banner_server <- function(id = "resume_banner",
 #' responsible for moving `job$result` into the right `rv$<kind>_results`
 #' slot and switching the navbar tab.
 #'
+#' CODE_REVIEW.md R20.D64: the handlers lived in one environment for the
+#' whole R process, keyed by kind, so the browser session that started last
+#' owned every handler. A Resume clicked in an earlier session ran the newer
+#' session's handler, which looked for the job under its own sid, found
+#' nothing, and did nothing. They are now kept in the session's `userData`,
+#' which a module's session shares with the app's.
+#'
 #' @param kind    String tag (e.g. "bayes_tg") matching the `kind`
 #'                passed to [launch_job()].
 #' @param handler `function(job, session, rv)` — receives the registry
 #'                job entry plus the active session and rv.
+#' @param session The session the handler belongs to.
 #' @return `invisible(NULL)`.
 #' @keywords internal
-register_resume_handler <- function(kind, handler) {
+register_resume_handler <- function(kind, handler,
+                                    session = shiny::getDefaultReactiveDomain()) {
   stopifnot(is.character(kind), length(kind) == 1L, nzchar(kind),
-            is.function(handler))
-  .resume_handlers[[kind]] <- handler
+            is.function(handler), !is.null(session))
+  if (!is.environment(session$userData$mE_resume_handlers)) {
+    session$userData$mE_resume_handlers <- new.env(parent = emptyenv())
+  }
+  session$userData$mE_resume_handlers[[kind]] <- handler
   invisible(NULL)
 }
 
@@ -237,7 +266,8 @@ register_resume_handler <- function(kind, handler) {
 #'
 #' @keywords internal
 dispatch_resume <- function(job, session, rv) {
-  handler <- .resume_handlers[[job$kind]]
+  handlers <- session$userData$mE_resume_handlers
+  handler  <- if (is.environment(handlers)) handlers[[job$kind]]
   if (is.null(handler)) {
     # showNotification needs an active Shiny session. Skip silently when
     # called from unit tests where no session exists.
@@ -251,9 +281,9 @@ dispatch_resume <- function(job, session, rv) {
   handler(job, session, rv)
 }
 
-#' Reset registered resume handlers. Test-only.
+#' Reset a session's registered resume handlers. Test-only.
 #' @keywords internal
-.reset_resume_handlers <- function() {
-  rm(list = ls(.resume_handlers, all.names = TRUE), envir = .resume_handlers)
+.reset_resume_handlers <- function(session = shiny::getDefaultReactiveDomain()) {
+  if (!is.null(session)) session$userData$mE_resume_handlers <- NULL
   invisible(NULL)
 }

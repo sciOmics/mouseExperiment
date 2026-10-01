@@ -22,7 +22,8 @@ survivalUI <- function(id) {
           ),
           helpText("Cox PH fits a proportional-hazards model. Bayesian Weibull ",
                    "models the full survival time distribution and reports posterior ",
-                   "credible intervals; computation takes 3–12 minutes."),
+                   "credible intervals; it runs in the background and takes from ",
+                   "seconds to a few minutes."),
 
           # The reference is the study's control group (R20-D.H).
           uiOutput(ns("surv_reference_note")),
@@ -58,11 +59,12 @@ survivalUI <- function(id) {
                         selected = "rstan"),
             div(class = "alert alert-warning",
                 style = "font-size:0.85em; padding:8px; margin-top:6px;",
-              icon("clock"), " Bayesian fitting takes ~3–12 minutes. ",
-              "A progress modal will block other tabs while the model runs, ",
-              "but you can safely close the browser and return later — the ",
-              "fit continues on the server and the results will be waiting ",
-              "when you reconnect."
+              icon("clock"), " The first Bayesian fit of a model compiles it (about 20 s); ",
+              "a later fit with the same structure reuses it and usually takes under a minute. ",
+              "Fits run one at a time on a background worker, so other users and tabs stay ",
+              "responsive, and yours may wait for one ahead of it. You can close the browser ",
+              "and return later; the result waits for you, and the banner at the top lets ",
+              "you resume or cancel the fit."
             )
           ),
 
@@ -948,8 +950,9 @@ survival_server <- function(id, rv) {
   output$surv_pp_check_plot <- renderPlot({
     req(rv$surv_results)
     req(isTRUE(rv$surv_results$model_type_used == "bayes"))
-    req(!isTRUE(rv$surv_results$error), !is.null(rv$bayes_models$surv))
-    brms::pp_check(rv$bayes_models$surv, type = "dens_overlay", ndraws = 50)
+    # R20.D18: from the result; the fitted model is no longer kept.
+    req(!isTRUE(rv$surv_results$error), !is.null(rv$surv_results$pp_check_plot))
+    rv$surv_results$pp_check_plot
   })
 
   output$surv_mcmc_diag_table <- renderDT({
@@ -979,7 +982,8 @@ survival_server <- function(id, rv) {
     inf_df <- bayes_influential_obs(rv$surv_results)
     if (nrow(inf_df) == 0L) {
       return(datatable(
-        data.frame(Note = "No observations exceed the Pareto-k = 0.7 threshold."),
+        data.frame(Note = sprintf("No observations exceed the Pareto-k threshold (%s).",
+                                  format(rv$surv_results$loo_diagnostics$k_threshold %||% 0.7))),
         options = list(dom = "t", paging = FALSE, searching = FALSE), rownames = FALSE
       ))
     }
@@ -992,8 +996,8 @@ survival_server <- function(id, rv) {
   output$surv_mcmc_trace_plot <- renderPlot({
     req(rv$surv_results)
     req(isTRUE(rv$surv_results$model_type_used == "bayes"))
-    req(!isTRUE(rv$surv_results$error), !is.null(rv$bayes_models$surv))
-    bayesplot::mcmc_trace(posterior::as_draws_array(rv$bayes_models$surv))
+    req(!isTRUE(rv$surv_results$error), !is.null(rv$surv_results$posterior_draws))
+    bayesplot::mcmc_trace(rv$surv_results$posterior_draws)
   })
 
   output$surv_prior_posterior_plot <- renderPlot({

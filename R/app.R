@@ -33,7 +33,7 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
       nzchar(Sys.getenv("SHINY_SERVER_VERSION", unset = ""))) {
     message(strrep("=", 78))
     message("[startup] Detected shiny-server environment.")
-    message("[startup] Bayesian fits take 3-12 minutes; verify the reverse")
+    message("[startup] Bayesian fits can take minutes; verify the reverse")
     message("[startup] proxy ahead of this app uses proxy_read_timeout >= 3600s")
     message("[startup] (NPM \"Advanced\" tab) AND allow_websocket_upgrade = true.")
     message("[startup] Otherwise long fits will drop their websocket and surface")
@@ -44,14 +44,27 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
 
   app <- dashboard_app()
 
-  # Enable background async execution for Bayesian models (1 worker to avoid
-  # overloading the server; each Bayesian fit runs Stan in parallel internally)
+  # Bayesian fits run on one background worker (each fit runs its chains in
+  # parallel inside it). See use_background_worker().
   if (requireNamespace("future", quietly = TRUE)) {
-    future::plan(future::multisession, workers = 1L)
+    use_background_worker()
     on.exit(future::plan(future::sequential), add = TRUE)
   }
 
   shiny::runApp(app, host = host, port = port, launch.browser = TRUE)
+}
+
+#' One background R process for the Bayesian fits
+#'
+#' CODE_REVIEW.md R20.D62: `future::plan(multisession, workers = 1L)` is not a
+#' background worker. future treats a one-worker multisession plan as
+#' sequential, so every Bayesian fit ran in the Shiny process itself and froze
+#' every session for its 3-12 minutes, while the job registry and its modal
+#' behaved as if it ran elsewhere. `workers = I(1)` asks for one real worker
+#' (future >= 1.33.2).
+#' @keywords internal
+use_background_worker <- function() {
+  future::plan(future::multisession, workers = I(1L))
 }
 
 #' Build the dashboard app without running it

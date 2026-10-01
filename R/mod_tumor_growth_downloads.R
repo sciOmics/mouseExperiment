@@ -24,9 +24,9 @@ add_tg_download_handlers <- function(input, output, session, rv,
   output$download_tg_pp_check <- downloadHandler(
     filename = "posterior_predictive_check.png",
     content = function(file) {
-      req(!is.null(rv$bayes_models$tg))
-      p <- brms::pp_check(rv$bayes_models$tg, type = "dens_overlay", ndraws = 50)
-      ggplot2::ggsave(file, plot = p, width = 8, height = 5, dpi = 150)
+      req(!is.null(rv$tg_results$pp_check_plot))
+      ggplot2::ggsave(file, plot = rv$tg_results$pp_check_plot, width = 8,
+                      height = 5, dpi = 150)
     }
   )
 

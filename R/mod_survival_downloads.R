@@ -20,9 +20,9 @@ add_surv_download_handlers <- function(input, output, session, rv, km_plot_r) {
   output$download_surv_pp_check <- downloadHandler(
     filename = function() paste0("surv_posterior_check_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content = function(file) {
-      req(!is.null(rv$bayes_models$surv))
-      p <- brms::pp_check(rv$bayes_models$surv, type = "dens_overlay", ndraws = 50)
-      ggplot2::ggsave(file, plot = p, width = 8, height = 5, dpi = 150)
+      req(!is.null(rv$surv_results$pp_check_plot))
+      ggplot2::ggsave(file, plot = rv$surv_results$pp_check_plot, width = 8,
+                      height = 5, dpi = 150)
     }
   )
 

@@ -92,15 +92,15 @@ test_that("banner HTML never contains the sid value", {
 # Resume dispatch
 # ---------------------------------------------------------------------------
 test_that("register_resume_handler + dispatch_resume route by kind", {
-  g(".reset_resume_handlers")()
-  on.exit(g(".reset_resume_handlers")(), add = TRUE)
-
+  # Handlers belong to a session (R20.D64); a stand-in session carries the
+  # userData environment.
+  sess <- list(userData = new.env())
   received <- NULL
   g("register_resume_handler")("bayes_tg",
-    function(job, session, rv) received <<- job)
+    function(job, session, rv) received <<- job, session = sess)
 
   fake_job <- list(kind = "bayes_tg", id = "job_test", result = "ok")
-  g("dispatch_resume")(fake_job, session = NULL, rv = NULL)
+  g("dispatch_resume")(fake_job, session = sess, rv = NULL)
   expect_equal(received$id, "job_test")
 })
 

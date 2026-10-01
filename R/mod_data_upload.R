@@ -31,7 +31,6 @@ data_upload_server <- function(id, rv) {
     rv$surv_plot_groups <- NULL
     rv$syn_plot_inputs  <- NULL
     rv$syn_over_time    <- FALSE
-    rv$bayes_models     <- list()
     gc()
   }
 

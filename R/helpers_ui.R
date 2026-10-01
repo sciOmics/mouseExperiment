@@ -19,10 +19,14 @@
 #' @keywords internal
 show_analysis_modal <- function(
     message = "Analysis running…",
-    detail  = "Results will appear automatically when complete.") {
+    detail  = "Results will appear automatically when complete.",
+    cancel_id = NULL) {
   shiny::showModal(shiny::modalDialog(
     title     = NULL,
-    footer    = NULL,
+    # R20.D7: a Bayesian fit can be cancelled from here; the banner only
+    # lists fits when the page loads.
+    footer    = if (!is.null(cancel_id))
+                  shiny::actionButton(cancel_id, "Cancel fit", class = "btn-default btn-sm"),
     easyClose = FALSE,
     size      = "s",
     shiny::tags$div(
@@ -41,9 +45,32 @@ show_analysis_modal <- function(
           style = "width:100%;"
         )
       ),
-      shiny::tags$p(detail, style = "color:#888; font-size:0.9em; margin-bottom:0;")
+      shiny::tags$p(detail, style = "color:#888; font-size:0.9em; margin-bottom:0;"),
+      # Filled in by the Bayesian job poller: queue position or elapsed time.
+      shiny::tags$p(id = "mE-job-status",
+                    style = "color:#666; font-size:0.85em; margin:8px 0 0;")
     )
   ))
+}
+
+#' The analysis modal's status line for a queued or running job
+#'
+#' CODE_REVIEW.md R20.D7: fits run one at a time on the server's background
+#' worker, so a fit can wait behind another user's. Say so, with the queue
+#' position, instead of a spinner that looks like the fit itself.
+#' @param job A registry job.
+#' @param ahead Fits that will run before it ([jobs_ahead()]).
+#' @keywords internal
+job_status_text <- function(job, ahead = 0L) {
+  if (identical(job$status, "queued")) {
+    return(sprintf(paste0("Waiting for the fitting worker: %d %s ahead. ",
+                          "Bayesian fits run one at a time on this server."),
+                   ahead, if (ahead == 1L) "fit" else "fits"))
+  }
+  secs <- as.integer(difftime(Sys.time(), job$started_at, units = "secs"))
+  if (is.na(secs)) secs <- 0L
+  sprintf("Fitting: %d:%02d elapsed. Bayesian fits run one at a time on this server.",
+          secs %/% 60L, secs %% 60L)
 }
 
 # ---- Alert helpers (consolidated validate/need pattern) ----------------------

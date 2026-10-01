@@ -2157,10 +2157,10 @@ Executed.
 | R20.D2 | Survival reduction merges reused IDs across arms | **Critical** | ✅ Fixed v26.09.003 (R20-D.K) |
 | R20.D3 | Legacy inline Bayesian path crashes; modal stuck | Major | ✅ Fixed v26.09.002 (R20-D.J) |
 | R20.D4 | `NA_Date_` crashes on non-US reference dates | Major | ✅ Fixed v26.09.002 (R20-D.J) |
-| R20.D5 | Dismiss-all strands the modal and drops the result | Major | Open |
+| R20.D5 | Dismiss-all strands the modal and drops the result | Major | ✅ Fixed v26.09.006 (R20-D.N) |
 | R20.D6 | Synchronous analyses freeze all users (power sim 121 s, no upload needed) | Major | Open |
-| R20.D7 | Cancel doesn't stop the worker; one worker for everyone | Major | Open |
-| R20.D8 | Bayesian survival from volume-derived events always fails | Major | Open |
+| R20.D7 | Cancel doesn't stop the worker; one worker for everyone | Major | ✅ Fixed v26.09.006 (R20-D.N): a queue, one fit per browser, a cancel that interrupts. One worker remains (a resource decision) |
+| R20.D8 | Bayesian survival from volume-derived events always fails | Major | ✅ Fixed by backend 0.25.0 (internal column names, package R20.43); recorded v26.09.006 (R20-D.N) |
 | R20.D9 | `.rda` upload dead, and loads into the shared global env | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
 | R20.D10 | Session restore deserialises and copies unvalidated keys | Major (hardening) | ✅ Closed by removal v26.09.001 (R20-D.I) |
 | R20.D11 | `test-shiny_app.R` has never executed | Major (process) | ✅ Fixed v26.09.002 — the tests run and pass; CI is package R20.53 (R20-D.J) |
@@ -2170,7 +2170,7 @@ Executed.
 | R20.D15 | HTML report headers merged into one cell | Major | ✅ Fixed v26.09.002 (9d5f674) |
 | R20.D16 | Combined E-T table and download always fail | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
 | R20.D17 | Power tab ignores multiplicity and attrition | Major | ✅ Fixed v26.09.002 (R20-D.J) |
-| R20.D18 | Bayesian results keep their fit alive via `plot_env` | Major (memory) | Open |
+| R20.D18 | Bayesian results keep their fit alive via `plot_env` | Major (memory) | ✅ Fixed v26.09.006 (R20-D.N; package R20.80) |
 | R20.D19 | Survival forest-plot download calls an out-of-scope function (HTTP 500) | Major | ✅ Fixed v26.09.002 (R20-D.J) |
 | R20.D34 | Toxicity mass correction 1000× on the bundled demo; warning swallowed | **Critical** | ✅ Fixed v26.09.003 (R20-D.K) |
 | R20.D35 | Synergy/TWM intervals shown as uncertainty for estimates they don't describe | **Critical** | ✅ Fixed v26.09.004 (R20-D.L; package R20.2); the TWM ratio replaced by the two-axis window v26.09.005 (R20-D.M) |
@@ -2194,6 +2194,9 @@ Executed.
 | R20.D20 | Synergy bar plot all grey | Minor | Open |
 | R20.D21–R20.D33, R20.D54–R20.D61 | Minor | Minor | Open. Fixed: R20.D21, R20.D33 (R20-D.J); R20.D31 (R20-D.K). In part: R20.D29, R20.D54, R20.D57 (R20-D.K); R20.D29, R20.D30 (R20-D.L) |
 | R20.D53 | Plot-label keystrokes rebuild the growth plot | Efficiency | Open |
+| R20.D62 | One-worker multisession plan is sequential: every Bayesian fit froze every session | **Critical** | ✅ Fixed v26.09.006 (R20-D.N) |
+| R20.D63 | Resume retired the job before its poller delivered it; the result was lost | Major | ✅ Fixed v26.09.006 (R20-D.N) |
+| R20.D64 | Resume handlers were process-global; the newest browser session owned them all | Major | ✅ Fixed v26.09.006 (R20-D.N) |
 
 **Suggested order of work:**
 1. **The one-liners.**
@@ -2471,3 +2474,60 @@ This step needs backend 0.27.0 (package R20-P).
     - The column is detected, and its four values are guessed correctly.
     - Survival shows the ticked checkbox and counts 2 deaths as events.
     - The weight-loss panel reports 10 competing removals under "Removal reasons".
+
+---
+
+## R20-D.N Implementation log — v26.09.006, step 6: Bayesian robustness (2026-10-01)
+
+This step needs backend 0.28.0 (package R20-Q). The maintainer kept Bayesian tumour growth and survival and asked that they be made robust (R20-D.H): compiled-model caching, the R20.D3/D5/D7/D18 fixes, and resources. R20.D3 was fixed in step 2.
+
+**New findings (this step):**
+
+- **R20.D62 — Critical: the Bayesian fits ran in the Shiny process.** `runDashboard()` set `future::plan(multisession, workers = 1L)`, and future treats a one-worker multisession plan as sequential. Executed: the future ran with the main process's PID. Production starts the app with `runDashboard()` (`docker/Dockerfile.shiny` CMD). Consequences:
+  - Each Bayesian fit froze every session for its whole duration (3–12 min before compile caching).
+  - The job registry, its modal and "the app stays responsive" (Tumour Growth Info) described a background that did not exist.
+  - Review item R20.D7 ("a second user's fit queues behind the first") understated the effect: every request from every user waited, not just other fits.
+- **R20.D63 — Major: Resume lost the result it resumed.** The banner's Resume handler called the resume handler, which attached a poller, and then retired the job at once. On its first tick the poller found nothing, cleared its job id and returned. Executed (testServer): a finished fit resumed from the banner never reached `rv$tg_results`. The F.7 end-to-end test called the finaliser directly instead of going through the poller, so it passed.
+- **R20.D64 — Major: one browser session owned every resume handler.** Handlers lived in one environment for the R process, keyed by kind. Each new session's Tumour Growth and Survival modules overwrote them, so a Resume clicked in an earlier session ran the newest session's handler. That handler looked the job up under its own sid and found nothing. Data stayed isolated (lookups are sid-scoped), but Resume did nothing.
+
+**Fixed:**
+
+| ID | Fix | Verified by |
+|---|---|---|
+| R20.D62 | `use_background_worker()` sets `plan(multisession, workers = I(1))`, a real background worker (future ≥ 1.33.2); future now ≥ 1.49.0 for `cancel()`. | Test: the old plan runs a future in-process, the new one in another PID. Browser: an LME4 fit in a second session finished in 3.3 s while a Bayesian fit ran. |
+| R20.D7 | The job registry schedules fits itself (below). One active Bayesian fit per browser: a second Run is refused with a notification. Cancel, from the progress window or the banner, drops a queued fit or interrupts a running one (`future::cancel()`, then the future is queried so the worker is released, which future requires). The progress window shows the queue position or the elapsed time, and says fits run one at a time. | Tests: queue order and `jobs_ahead()`; a cancelled queued fit never starts; a cancelled 60-s fit frees the worker within seconds and the next fit runs; one fit per browser; the window's Cancel. Browser: a 20,000-iteration fit cancelled from the window; the next fit completed. |
+| R20.D5 | "Dismiss all" is "Dismiss finished": running and queued fits are stopped only by their Cancel. A poller whose job has left the registry (dismissed or evicted) closes the modal, clears the running flag and says the analysis was dismissed or expired. | Tests: Dismiss keeps a running job; a lost job closes its modal with the message. |
+| R20.D63 | Resume no longer retires the job; the poller retires it after delivering the result. The banner refreshes every 5 s while it lists jobs. | Test: Resume through the banner delivers the result, then the job is retired. It fails on v26.09.005. |
+| R20.D64 | Resume handlers are kept in the session's `userData`, which module sessions share with the app's session. | Tests: two sessions' handlers do not cross; a handler registered in the module is found from the app session. |
+| R20.D18 (with package R20.80) | Fits are requested with `return_model = FALSE`. The posterior predictive, trace and rank plots come from the result (`pp_check_plot`, `posterior_draws`), so `rv$bayes_models` is gone. The result is about 8 MB, the plots themselves; before, the model was kept alive at about 31 MB (twice over in transit). | Test: the three diagnostics render from a result without a model. Browser: they render after a real fit. |
+| Package R20.35, dashboard half | The influence table, histogram and diagnostics panel use the backend's draw-dependent Pareto-k threshold (`k_threshold`; 0.7 for older results). | Test: k = 0.66 is influential at threshold 0.64. |
+| R20.D12 (one more site) | The Bayesian survival launch sent the reference arm's name to analytics; it sends "study_control". | Code review. |
+
+**How the scheduler works.** A Bayesian fit is a task: a function and its arguments.
+- **Queued:** the task waits until the background worker is free, then runs as a future.
+- **Ending:** it ends completed, failed or cancelled.
+- **`.pump_jobs()`:** starts queued tasks in arrival order and collects finished ones. It runs on a one-second `later` timer while any job is pending, and on every poller tick.
+- **Why not `future_promise`:** `promises::future_promise()` hides the Future, so a fit could not be interrupted.
+
+**Executed in the browser** (headless Chrome, two sessions; all checks pass, no console errors):
+
+| Fit | Time | Note |
+|---|---|---|
+| First Bayesian fit | 39.8 s | Package loading and compilation in the worker |
+| Second fit, same structure | 11.3 s | The compiled model was reused (package R20.78) |
+| Fit after a cancel | 37.8 s | The interrupted worker restarts, so it loads and compiles again |
+
+**Tests:**
+- **New:** `test-round21-step6.R`, 10 tests and 35 expectations. Run against the v26.09.005 source with backend 0.28.0, all 10 fail or error.
+- **Updated to the new contract:**
+  - `test-resume_banner.R`: handlers take a session.
+  - `test-tg_resume.R`: no stored model; the handler is found on the session.
+  - `test-round21-fixes.R`: the R20.D3 launch is a queued task.
+
+**Verification (executed):**
+- **Full suite:** 25 files, 260 tests, 872 expectations. No failures or skips; the one warning is pre-existing.
+- **R CMD check:** 6 WARNINGs and 5 NOTEs. Against a check of v26.09.005 built the same way, the differences are an import fewer (brms moved to Suggests, now only probed with `requireNamespace()`) and two NOTEs from a local, untracked `.waylog` folder that the working-tree build includes.
+
+**Not changed:**
+- **R20.D6:** the power simulation, the permutation test and the body-weight fit still run in the Shiny process. The scheduler is ready to take them, but they are not Bayesian fits and were not in this step.
+- **One worker:** fits still run one at a time. A second worker is a resource decision for the VPS (memory limits, V3.12).

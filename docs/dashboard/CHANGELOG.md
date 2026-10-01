@@ -4,6 +4,45 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.09.006] - 2026-10-01
+
+Requires mouseExperiment ≥ 0.28.0 and future ≥ 1.49.0. Sixth implementation
+step of the Round 21 review (`CODE_REVIEW.md` R20-D.N): Bayesian robustness.
+
+### Fixed
+
+- **Bayesian fits ran in the Shiny process and froze every session
+  (R20.D62).** `plan(multisession, workers = 1L)` is sequential in future; the
+  dashboard now uses one real background worker
+  (`plan(multisession, workers = I(1))`). An LME4 fit in another session now
+  finishes in seconds while a Bayesian fit runs.
+- **Cancel did not stop a fit, and repeated clicks queued several (R20.D7).**
+  The job registry now queues fits itself, runs one per browser at a time,
+  and interrupts a running fit on Cancel, which is also in the progress
+  window. The window shows the queue position or the elapsed time.
+- **Resume lost the result it resumed (R20.D63),** because the job was retired
+  before its poller could deliver it.
+- **Resume from an earlier browser session did nothing (R20.D64):** the newest
+  session owned every resume handler. Handlers are now per session.
+- **"Dismiss all" stranded a waiting tab's modal and dropped its result
+  (R20.D5).** It is now "Dismiss finished", and a tab whose job disappears
+  closes its modal with a message.
+- **Each session kept its Bayesian model alive, about 31 MB (R20.D18).** The
+  diagnostics now come from the result's plots and posterior draws (backend
+  R20.80), and the model is not returned.
+- The influence diagnostics use the backend's Pareto-k threshold, which
+  depends on the number of draws (backend R20.35).
+- Bayesian survival from volume-derived events works (R20.D8, fixed in the
+  backend's column handling).
+- The Bayesian survival launch no longer sends the reference arm's name to
+  analytics (R20.D12).
+
+### Changed
+
+- A second fit of the same model structure reuses the compiled model: 11 s
+  against 40 s for the first fit on the Master demo (backend R20.78). The
+  timing text in the Tumour Growth and Survival tabs says so.
+
 ## [26.09.005] - 2026-09-30
 
 Requires mouseExperiment ≥ 0.27.0. Fifth implementation step of the Round 21

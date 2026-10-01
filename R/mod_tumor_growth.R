@@ -11,7 +11,6 @@ tumor_growth_server <- function(id, rv) {
   # and the module mounts once, so it never cleared anything in production.
   # The two below are genuine initialisation of state this module owns.
   rv$tg_running    <- FALSE
-  rv$bayes_models  <- list()
 
   ordered_tg_grps <- reactive(
     get_ordered_groups(input, "tg", rv$tg_plot_groups)
@@ -1817,8 +1816,9 @@ tumor_growth_server <- function(id, rv) {
     req(rv$tg_results)
     req(isTRUE(rv$tg_results$model_type_used == "bayes"))
     req(!isTRUE(rv$tg_results$error))
-    req(!is.null(rv$bayes_models$tg))
-    brms::pp_check(rv$bayes_models$tg, type = "dens_overlay", ndraws = 50)
+    # R20.D18: from the result; the fitted model is no longer kept.
+    req(!is.null(rv$tg_results$pp_check_plot))
+    rv$tg_results$pp_check_plot
   })
 
   output$tg_mcmc_diag_table <- renderDT({
@@ -1849,7 +1849,8 @@ tumor_growth_server <- function(id, rv) {
     inf_df <- bayes_influential_obs(rv$tg_results)
     if (nrow(inf_df) == 0L) {
       return(datatable(
-        data.frame(Note = "No observations exceed the Pareto-k = 0.7 threshold."),
+        data.frame(Note = sprintf("No observations exceed the Pareto-k threshold (%s).",
+                                  format(rv$tg_results$loo_diagnostics$k_threshold %||% 0.7))),
         options = list(dom = "t", paging = FALSE, searching = FALSE), rownames = FALSE
       ))
     }
@@ -1863,8 +1864,8 @@ tumor_growth_server <- function(id, rv) {
     req(rv$tg_results)
     req(isTRUE(rv$tg_results$model_type_used == "bayes"))
     req(!isTRUE(rv$tg_results$error))
-    req(!is.null(rv$bayes_models$tg))
-    bayesplot::mcmc_trace(posterior::as_draws_array(rv$bayes_models$tg))
+    req(!is.null(rv$tg_results$posterior_draws))
+    bayesplot::mcmc_trace(rv$tg_results$posterior_draws)
   })
 
   # CODE_REVIEW.md DIAGNOSTICS gaps (10), (11), (12) — Bayesian extras.
@@ -1887,8 +1888,8 @@ tumor_growth_server <- function(id, rv) {
   output$tg_mcmc_rank_plot <- renderPlot({
     req(rv$tg_results)
     req(isTRUE(rv$tg_results$model_type_used == "bayes"))
-    req(!is.null(rv$bayes_models$tg))
-    p <- build_mcmc_rank_plot(rv$bayes_models$tg)
+    req(!is.null(rv$tg_results$posterior_draws))
+    p <- build_mcmc_rank_plot(rv$tg_results$posterior_draws)
     req(!is.null(p))
     p
   })

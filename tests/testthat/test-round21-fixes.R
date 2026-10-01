@@ -58,10 +58,12 @@ test_that("R20.D3: a session without the cookie gets a key no browser can presen
 
 test_that("R20.D3: a Bayesian launch without a cookie runs through the registry", {
   g(".reset_job_registry")()
-  on.exit(g(".reset_job_registry")(), add = TRUE)
-  testthat::local_mocked_bindings(
-    .tg_bayes_promise = function(bayes_params) promises::promise_resolve(list(ok = TRUE)),
-    .package = "mouseExperimentDashboard")
+  old <- options(mE.job_pump = FALSE)
+  on.exit({ g(".reset_job_registry")(); options(old) }, add = TRUE)
+  # Since v26.09.006 a fit is a queued task (R20.D7); with no free worker it
+  # stays queued, so no fit runs here.
+  testthat::local_mocked_bindings(.free_workers = function() 0L,
+                                  .package = "mouseExperimentDashboard")
   srv <- function(id, rv) shiny::moduleServer(id, function(input, output, session) {
     g("launch_tg_bayes_job")(g("SID_NONE"), list(data = NULL), input, output, session, rv)
   })
