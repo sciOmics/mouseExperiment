@@ -1,21 +1,8 @@
 # Copyright (c) 2026 mouseExperiment Contributors
 # Licensed under the MIT License - see LICENSE file
 
-# Shared helper utilities used internally by all six Bayesian analysis
-# functions: bayesian_tumor_growth(), bayesian_body_weight(),
-# bayesian_survival(), bayesian_dose_response(), bayesian_synergy(), and
-# bayesian_therapeutic_window().
-
-# ── Back-transform ─────────────────────────────────────────────────────────────
-
-#' Back-transform posterior predictions to the original measurement scale
-#'
-#' @param x Numeric vector or matrix of predictions on the modelling scale.
-#' @param transform Character: \code{"log"}, \code{"sqrt"}, or \code{"none"}.
-#' @noRd
-bayes_backtransform <- function(x, transform) {
-  switch(transform, log = exp(x), sqrt = x ^ 2, x)
-}
+# Shared helper utilities used internally by the Bayesian analysis functions,
+# bayesian_tumor_growth() and bayesian_survival().
 
 
 # ── MCMC diagnostics ───────────────────────────────────────────────────────────
@@ -168,8 +155,7 @@ make_nuts_diagnostics <- function(model) {
 #'
 #' Returns a list with \code{b_sd} (normal SD for fixed-effect coefficients)
 #' and \code{exp_rate} (rate for Exponential priors on SD and sigma parameters).
-#' Used by bayesian_tumor_growth, bayesian_body_weight, bayesian_survival, and
-#' bayesian_synergy.
+#' Used by bayesian_tumor_growth and bayesian_survival.
 #' @noRd
 bayes_prior_params <- function(prior_strength) {
   switch(prior_strength,
@@ -235,19 +221,23 @@ resolve_brms_backend <- function(backend = c("rstan", "cmdstanr")) {
 #' Returns a one-row data frame:
 #' \code{cov_50}, \code{cov_80}, \code{cov_95} (empirical coverage as a
 #' proportion of training observations falling within the interval), and
-#' an \code{n_obs} count. Returns \code{NULL} on any failure so the
-#' analysis still completes.
+#' an \code{n_obs} count. Returns \code{NULL} on failure so the analysis
+#' still completes.
+#'
+#' CODE_REVIEW.md R20.35 / R20.74: a warning no longer discards the result,
+#' the draws come from `seed` rather than the global RNG, and `observed`
+#' restricts the check to uncensored survival times (a censored time is a
+#' lower bound, not an observation to cover).
 #'
 #' Limitation: this is \emph{in-sample} coverage. It catches obvious
 #' mis-specification (e.g. residuals far heavier-tailed than the assumed
 #' family) but does not substitute for out-of-sample validation
 #' (\code{\link{bayes_loo}} for that).
 #' @noRd
-bayes_ppc_coverage <- function(model, response_var = NULL) {
+bayes_ppc_coverage <- function(model, response_var = NULL, seed = NULL,
+                               observed = NULL) {
   if (is.null(model)) return(NULL)
-  yrep <- tryCatch(brms::posterior_predict(model),
-                   error = function(e) NULL,
-                   warning = function(w) NULL)
+  yrep <- me_keep_warnings(me_with_seed(seed, brms::posterior_predict(model)))$value
   if (is.null(yrep) || !is.matrix(yrep)) return(NULL)
 
   y_obs <- tryCatch({
@@ -258,6 +248,12 @@ bayes_ppc_coverage <- function(model, response_var = NULL) {
     }
   }, error = function(e) NULL)
   if (is.null(y_obs) || length(y_obs) != ncol(yrep)) return(NULL)
+  if (!is.null(observed) && length(observed) == length(y_obs)) {
+    keep  <- !is.na(observed) & observed
+    if (!any(keep)) return(NULL)
+    y_obs <- y_obs[keep]
+    yrep  <- yrep[, keep, drop = FALSE]
+  }
 
   # Per-observation predictive quantile bounds
   q_bounds <- apply(yrep, 2L, function(col) {
@@ -316,9 +312,8 @@ emm_p_direction <- function(emm_or_contrast, n_contrasts = NULL) {
 #' @noRd
 bayes_r2_summary <- function(model) {
   if (is.null(model)) return(NULL)
-  r2 <- tryCatch(brms::bayes_R2(model, summary = TRUE),
-                 error = function(e) NULL,
-                 warning = function(w) NULL)
+  # R20.35: a warning used to discard the result.
+  r2 <- me_keep_warnings(brms::bayes_R2(model, summary = TRUE))$value
   if (is.null(r2) || !is.matrix(r2)) return(NULL)
   data.frame(
     Estimate     = round(unname(r2["R2", "Estimate"]),  4),
@@ -333,10 +328,18 @@ bayes_r2_summary <- function(model) {
 #' PSIS-LOO cross-validation + Pareto-k diagnostics for a brmsfit
 #'
 #' Returns a one-row data frame with the standard summary plus a per-mouse
-#' \code{pareto_k} vector (\code{NA} when LOO failed). The Bayesian
-#' counterparts of AIC (\code{elpd_loo}) and Cook's distance
-#' (\code{pareto_k > 0.7} flags influential observations). Returns
-#' \code{NULL} on any error so the analysis still returns a result list.
+#' \code{pareto_k} vector. The Bayesian counterparts of AIC (\code{elpd_loo})
+#' and Cook's distance (a high \code{pareto_k} flags an influential
+#' observation). Returns \code{NULL} on an error so the analysis still
+#' returns a result list.
+#'
+#' CODE_REVIEW.md R20.35: brms and loo warn whenever an observation is
+#' influential, and the warning used to discard the whole result, so
+#' \code{n_high_k} could only ever be 0: the influence tables came up empty
+#' exactly when they should have shown something. Warnings are now kept in
+#' \code{warnings}. The threshold for a high k depends on the number of
+#' draws S, \eqn{\min(1 - 1/\log_{10} S, 0.7)} (0.667 at S = 1,000), as in
+#' loo 2.6.
 #'
 #' \itemize{
 #'   \item \code{elpd_loo} — expected log pointwise predictive density.
@@ -344,34 +347,66 @@ bayes_r2_summary <- function(model) {
 #'   \item \code{p_loo} — effective number of parameters; if larger than the
 #'         actual parameter count, the model may be mis-specified.
 #'   \item \code{looic} — \code{-2 * elpd_loo}; on the AIC/BIC scale.
-#'   \item \code{n_high_k} — count of observations with Pareto-k > 0.7.
+#'   \item \code{k_threshold} — the Pareto-k threshold used.
+#'   \item \code{n_high_k} — count of observations with Pareto-k above it.
 #'         These are the mice / data points the LOO approximation can't
 #'         reliably estimate; investigate them individually.
 #'   \item \code{pareto_k} — list-column with the full per-observation
 #'         Pareto-k vector.
+#'   \item \code{warnings} — the warnings raised, or "".
 #' }
 #'
 #' @noRd
 bayes_loo <- function(model) {
   if (is.null(model)) return(NULL)
-  loo_obj <- tryCatch(brms::loo(model, save_psis = TRUE),
-                      error = function(e) NULL,
-                      warning = function(w) NULL)
+  res     <- me_keep_warnings(brms::loo(model, save_psis = TRUE))
+  loo_obj <- res$value
   if (is.null(loo_obj) || !is.list(loo_obj)) return(NULL)
 
   ests <- tryCatch(loo_obj$estimates, error = function(e) NULL)
   pk   <- tryCatch(loo_obj$diagnostics$pareto_k, error = function(e) NULL)
   if (is.null(ests) || is.null(pk)) return(NULL)
+  n_draws <- tryCatch(brms::ndraws(model), error = function(e) NA_integer_)
+  k_thr   <- me_pareto_k_threshold(n_draws)
 
   data.frame(
-    elpd_loo = round(unname(ests["elpd_loo", "Estimate"]), 3),
-    se_elpd  = round(unname(ests["elpd_loo", "SE"]),       3),
-    p_loo    = round(unname(ests["p_loo",    "Estimate"]), 3),
-    looic    = round(unname(ests["looic",    "Estimate"]), 3),
-    n_high_k = as.integer(sum(pk > 0.7, na.rm = TRUE)),
-    pareto_k = I(list(pk)),
+    elpd_loo    = round(unname(ests["elpd_loo", "Estimate"]), 3),
+    se_elpd     = round(unname(ests["elpd_loo", "SE"]),       3),
+    p_loo       = round(unname(ests["p_loo",    "Estimate"]), 3),
+    looic       = round(unname(ests["looic",    "Estimate"]), 3),
+    k_threshold = round(k_thr, 3),
+    n_high_k    = as.integer(sum(pk > k_thr, na.rm = TRUE)),
+    pareto_k    = I(list(pk)),
+    warnings    = paste(res$warnings, collapse = " | "),
     stringsAsFactors = FALSE
   )
+}
+
+#' The Pareto-k threshold for S posterior draws (loo >= 2.6)
+#' @noRd
+#' @keywords internal
+me_pareto_k_threshold <- function(n_draws) {
+  if (!is.finite(n_draws) || n_draws < 11) return(0.7)
+  min(1 - 1 / log10(n_draws), 0.7)
+}
+
+#' Evaluate an expression, keeping its value and its warnings
+#'
+#' CODE_REVIEW.md R20.35: `tryCatch(..., warning = function(w) NULL)` turned
+#' every warning into a missing result. Here a warning is recorded and
+#' muffled, and only an error gives `NULL`.
+#' @return `list(value, warnings)`.
+#' @noRd
+#' @keywords internal
+me_keep_warnings <- function(expr) {
+  warnings <- character(0)
+  value <- withCallingHandlers(
+    tryCatch(expr, error = function(e) NULL),
+    warning = function(w) {
+      warnings <<- c(warnings, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    })
+  list(value = value, warnings = unique(warnings))
 }
 
 
@@ -395,12 +430,17 @@ setup_cage_column <- function(df, cage_column) {
 
 # ── Prior vs posterior plot ────────────────────────────────────────────────────
 
-#' Prior vs posterior density overlay for treatment-effect coefficients
+#' Prior and posterior draws of the treatment-effect coefficients
 #'
-#' Used by bayesian_tumor_growth(), bayesian_body_weight(), and
-#' bayesian_survival(). Requires \code{sample_prior = "yes"} at fit time.
+#' Requires \code{sample_prior = "yes"} at fit time. CODE_REVIEW.md R20.40:
+#' with per-coefficient priors brms names the prior draws
+#' \code{prior_b_<coef>}, and the plot looked only for \code{prior_b}, so
+#' "Prior vs. Posterior" showed the posterior alone. Each coefficient now
+#' takes its own prior draws, falling back to the class-level ones.
+#' @return A long data frame (Parameter, Value, Source), or NULL.
 #' @noRd
-bayes_prior_posterior_plot <- function(model, treatment_column) {
+#' @keywords internal
+bayes_prior_posterior_data <- function(model, treatment_column) {
   post <- tryCatch(brms::as_draws_df(model), error = function(e) NULL)
   if (is.null(post)) return(NULL)
 
@@ -409,25 +449,33 @@ bayes_prior_posterior_plot <- function(model, treatment_column) {
   tx_cols <- grep(paste0("^b_", safe_tx), names(post), value = TRUE)
   if (length(tx_cols) == 0) return(NULL)
 
-  prior_col <- if ("prior_b" %in% names(post)) post$prior_b else NULL
-
   clean <- function(x) sub(paste0("^b_", treatment_column), "", x)
-
-  post_long <- do.call(rbind, lapply(tx_cols, function(col) {
-    data.frame(Parameter = clean(col), Value = post[[col]],
-               Source = "Posterior", stringsAsFactors = FALSE)
+  do.call(rbind, lapply(tx_cols, function(col) {
+    coef  <- sub("^b_", "", col)
+    prior <- if (paste0("prior_b_", coef) %in% names(post)) post[[paste0("prior_b_", coef)]]
+             else if ("prior_b" %in% names(post)) post[["prior_b"]]
+    rbind(
+      data.frame(Parameter = clean(col), Value = post[[col]],
+                 Source = "Posterior", stringsAsFactors = FALSE),
+      if (!is.null(prior))
+        data.frame(Parameter = clean(col), Value = as.numeric(prior),
+                   Source = "Prior", stringsAsFactors = FALSE))
   }))
+}
 
-  plot_df <- if (!is.null(prior_col)) {
-    prior_long <- do.call(rbind, lapply(tx_cols, function(col) {
-      data.frame(Parameter = clean(col), Value = prior_col,
-                 Source = "Prior", stringsAsFactors = FALSE)
-    }))
-    rbind(post_long, prior_long)
-  } else {
-    post_long
-  }
+#' Prior vs posterior density overlay for treatment-effect coefficients
+#'
+#' Used by bayesian_tumor_growth() and bayesian_survival(). Built from a data
+#' frame, so the plot does not hold the fitted model (R20.80).
+#' @noRd
+bayes_prior_posterior_plot <- function(model, treatment_column) {
+  me_prior_posterior_plot(bayes_prior_posterior_data(model, treatment_column))
+}
 
+#' @noRd
+#' @keywords internal
+me_prior_posterior_plot <- function(plot_df) {
+  if (is.null(plot_df) || !nrow(plot_df)) return(NULL)
   plot_df$Source <- factor(plot_df$Source, levels = c("Prior", "Posterior"))
 
   ggplot2::ggplot(
@@ -443,12 +491,12 @@ bayes_prior_posterior_plot <- function(model, treatment_column) {
       xintercept = 0, linetype = "dashed",
       colour = "grey30", linewidth = 0.5
     ) +
-    ggplot2::facet_wrap(~ Parameter, scales = "free_y") +
+    ggplot2::facet_wrap(~ Parameter, scales = "free") +
     ggplot2::scale_fill_manual(
-      values = c(Prior = "grey60", Posterior = "steelblue")
+      values = c(Prior = "grey60", Posterior = "steelblue"), drop = FALSE
     ) +
     ggplot2::scale_colour_manual(
-      values = c(Prior = "grey40", Posterior = "steelblue4")
+      values = c(Prior = "grey40", Posterior = "steelblue4"), drop = FALSE
     ) +
     ggplot2::labs(
       title    = "Prior vs. Posterior Distributions",
@@ -464,24 +512,66 @@ bayes_prior_posterior_plot <- function(model, treatment_column) {
     ggplot2::theme(legend.position = "top")
 }
 
+# ── Plots that do not hold the model (CODE_REVIEW.md R20.80) ──────────────────
+#
+# A ggplot keeps the environment it was built in. Built inside the fitting
+# function, every plot held the brmsfit, so a result with `model = NULL` still
+# serialised to 30.8 MB. These builders receive only the data they draw.
 
-# ── Posterior summary builder ──────────────────────────────────────────────────
-
-#' Extract and standardise fixed-effects posterior summary from a brmsfit
+#' The headline posterior draws: fixed effects, group-level SDs and
+#' correlations, and the family's auxiliary parameters
 #'
-#' Returns a data frame with columns: Parameter, Estimate, Est.Error,
-#' Lower_95_CrI, Upper_95_CrI, Rhat, Bulk_ESS, Tail_ESS.
+#' Small (a few hundred kB), so a caller can draw trace, rank and density plots
+#' without keeping the fitted model.
+#' @return A `draws_array`, or NULL.
 #' @noRd
-build_posterior_summary <- function(model) {
-  brms_smry <- summary(model)
-  fixed_df  <- as.data.frame(brms_smry$fixed)
-  fixed_df  <- cbind(
-    Parameter = rownames(fixed_df), fixed_df, stringsAsFactors = FALSE
-  )
-  rownames(fixed_df) <- NULL
-  names(fixed_df)[names(fixed_df) == "l-95% CI"] <- "Lower_95_CrI"
-  names(fixed_df)[names(fixed_df) == "u-95% CI"] <- "Upper_95_CrI"
-  fixed_df
+#' @keywords internal
+me_headline_draws <- function(model) {
+  d <- tryCatch(posterior::as_draws_array(model), error = function(e) NULL)
+  if (is.null(d)) return(NULL)
+  v <- posterior::variables(d)
+  keep <- v[grepl("^(b_|sd_|cor_|sigma$|shape$)", v)]
+  if (!length(keep)) return(NULL)
+  posterior::subset_draws(d, variable = keep)
+}
+
+#' @noRd
+#' @keywords internal
+me_draws_area_plot <- function(draws) {
+  if (is.null(draws)) return(NULL)
+  tryCatch(bayesplot::mcmc_areas(draws, prob = 0.95), error = function(e) NULL)
+}
+
+#' @noRd
+#' @keywords internal
+me_draws_trace_plot <- function(draws) {
+  if (is.null(draws)) return(NULL)
+  tryCatch(bayesplot::mcmc_trace(draws), error = function(e) NULL)
+}
+
+#' Posterior predictive density overlay from a seeded sample of draws
+#'
+#' @param observed Optional logical: the observations to show (uncensored
+#'   survival times).
+#' @noRd
+#' @keywords internal
+me_ppc_plot <- function(model, seed = NULL, ndraws = 50L, observed = NULL) {
+  if (is.null(model)) return(NULL)
+  yrep <- me_keep_warnings(me_with_seed(seed, brms::posterior_predict(
+    model, ndraws = min(ndraws, brms::ndraws(model)))))$value
+  y <- tryCatch(brms::standata(model)$Y, error = function(e) NULL)
+  if (is.null(yrep) || is.null(y) || ncol(yrep) != length(y)) return(NULL)
+  if (!is.null(observed) && length(observed) == length(y)) {
+    keep <- !is.na(observed) & observed
+    y <- y[keep]; yrep <- yrep[, keep, drop = FALSE]
+  }
+  me_ppc_plot_from(as.numeric(y), yrep)
+}
+
+#' @noRd
+#' @keywords internal
+me_ppc_plot_from <- function(y, yrep) {
+  tryCatch(bayesplot::ppc_dens_overlay(y, yrep), error = function(e) NULL)
 }
 
 
@@ -522,18 +612,6 @@ build_posterior_summary <- function(model) {
 # gives "skeptical" a concrete meaning: a total treatment-vs-control difference
 # of exp(0.25) ~ 1.3x is already a large effect under it.
 
-#' Build data-scaled, per-coefficient priors for a brms LMM
-#'
-#' @param formula The brms formula.
-#' @param data The modelling data frame (post-transform).
-#' @param response Name of the response column on the modelling scale.
-#' @param prior_strength One of the non-manual presets.
-#' @param time_column Name of the time covariate, used to identify slope and
-#'   interaction coefficients and to scale them by the study span.
-#' @param include_sd Logical; add a `class = "sd"` prior (random effects present).
-#' @return A `brmsprior` object.
-#' @noRd
-#' @keywords internal
 #' Prior scale constants derived from the data
 #'
 #' Split out from \code{bayes_scaled_priors()} so the arithmetic is unit-testable
@@ -543,11 +621,13 @@ build_posterior_summary <- function(model) {
 #' @param y Numeric response on the modelling scale.
 #' @param tt Numeric time covariate.
 #' @param prior_strength Non-manual preset name.
+#' @param log_scale FALSE when the response is raw or square-root volume:
+#'   the main-effect width is then multiplied by the response's MAD (R20.41).
 #' @return List with `response_median`, `response_mad`, `time_span`,
 #'   `b_sd_total`, `b_sd_per_time`, `intercept_sd`, `aux_rate`.
 #' @noRd
 #' @keywords internal
-bayes_prior_scales <- function(y, tt, prior_strength) {
+bayes_prior_scales <- function(y, tt, prior_strength, log_scale = TRUE) {
   pp   <- bayes_prior_params(prior_strength)
   b_sd <- pp$b_sd
 
@@ -595,7 +675,11 @@ bayes_prior_scales <- function(y, tt, prior_strength) {
     response_range  = y_range,
     time_span       = time_span,
     # Width for coefficients on the response scale (group-mean differences).
-    b_sd_total      = b_sd,
+    # CODE_REVIEW.md R20.41: the ladder's widths are log-fold changes, so on
+    # a raw or square-root scale they are multiplied by the response's spread.
+    # In raw mm3, normal(0, 0.25) pinned the treatment main effect at 0.003
+    # against 323 from lmer; the log scale (the dashboard's) is unchanged.
+    b_sd_total      = if (isTRUE(log_scale)) b_sd else b_sd * y_mad,
     # Width for per-time-unit coefficients (the Day slope and the
     # Treatment:Day interactions). Scales with the response range and inversely
     # with the study duration, so it is invariant to both the response units and
@@ -608,15 +692,26 @@ bayes_prior_scales <- function(y, tt, prior_strength) {
   )
 }
 
+#' Build data-scaled, per-coefficient priors for a brms LMM
+#'
+#' @param formula The brms formula.
+#' @param data The modelling data frame (post-transform).
+#' @param response Name of the response column on the modelling scale.
+#' @param prior_strength One of the non-manual presets.
+#' @param time_column Name of the time covariate, used to identify slope and
+#'   interaction coefficients and to scale them by the study span.
+#' @param include_sd Logical; add a `class = "sd"` prior (random effects present).
+#' @param log_scale Logical; FALSE when the response is raw or square-root
+#'   volume (R20.41).
+#' @return A `brmsprior` object, with the Stan data it names in attribute
+#'   `me_stanvars` and the scale constants in `me_prior_scaling`.
+#' @noRd
+#' @keywords internal
 bayes_scaled_priors <- function(formula, data, response, prior_strength,
-                                time_column = "Day", include_sd = TRUE) {
-  sc        <- bayes_prior_scales(data[[response]], data[[time_column]],
-                                  prior_strength)
-  b_sd      <- sc$b_sd_total
-  b_sd_rate <- sc$b_sd_per_time
-  y_med     <- sc$response_median
-  y_mad     <- sc$response_mad
-  time_span <- sc$time_span
+                                time_column = "Day", include_sd = TRUE,
+                                log_scale = TRUE) {
+  sc <- bayes_prior_scales(data[[response]], data[[time_column]],
+                           prior_strength, log_scale = log_scale)
 
   # Discover the actual coefficient names rather than guessing at them.
   gp <- tryCatch(brms::get_prior(formula, data = data),
@@ -625,39 +720,161 @@ bayes_scaled_priors <- function(formula, data, response, prior_strength,
     unique(gp$coef[gp$class == "b" & nzchar(gp$coef)])
   } else character(0)
 
+  # CODE_REVIEW.md R20.78 -- the data-scaled values used to be pasted into the
+  # Stan code as literals, so no two datasets shared a compiled model and
+  # every fit spent about 20 s compiling. The priors now name Stan data
+  # variables, declared with `stanvars`, so the code depends only on the
+  # model's structure and `me_brm()` can reuse a compiled model.
   priors <- c(
     # Intercept on the response scale, as brms does by default.
-    brms::prior_string(
-      paste0("normal(", round(y_med, 4), ", ",
-             round(sc$intercept_sd, 4), ")"),
-      class = "Intercept"
-    ),
+    brms::prior_string("normal(me_int_mu, me_int_sd)", class = "Intercept"),
     # Blanket fallback for any coefficient not matched below.
-    brms::prior_string(paste0("normal(0, ", b_sd, ")"), class = "b")
+    brms::prior_string("normal(0, me_b_sd)", class = "b")
   )
 
   # Slope and interaction coefficients get the per-day scale.
   rate_coefs <- b_coefs[b_coefs == time_column |
                           grepl(paste0("(^|:)", time_column, "($|:)"), b_coefs)]
   for (cf in rate_coefs) {
-    priors <- c(priors, brms::prior_string(
-      paste0("normal(0, ", signif(b_sd_rate, 6), ")"), class = "b", coef = cf
-    ))
+    priors <- c(priors, brms::prior_string("normal(0, me_rate_sd)",
+                                           class = "b", coef = cf))
   }
 
   # Residual and random-effect SDs scaled to the response's spread.
-  priors <- c(priors, brms::prior_string(
-    paste0("exponential(", signif(sc$aux_rate, 6), ")"), class = "sigma"
-  ))
+  priors <- c(priors, brms::prior_string("exponential(me_aux_rate)",
+                                         class = "sigma"))
   if (isTRUE(include_sd)) {
-    priors <- c(priors, brms::prior_string(
-      paste0("exponential(", signif(sc$aux_rate, 6), ")"), class = "sd"
-    ))
+    priors <- c(priors, brms::prior_string("exponential(me_aux_rate)",
+                                           class = "sd"))
   }
 
   sc$rate_coefficients <- rate_coefs
+  attr(priors, "me_stanvars") <- me_prior_stanvars(c(
+    me_int_mu   = sc$response_median,
+    me_int_sd   = sc$intercept_sd,
+    me_b_sd     = sc$b_sd_total,
+    me_rate_sd  = sc$b_sd_per_time,
+    me_aux_rate = sc$aux_rate))
   attr(priors, "me_prior_scaling") <- sc
   priors
+}
+
+#' Prior hyperparameters as Stan data
+#' @param values Named numeric vector.
+#' @return A `stanvars` object declaring each value in the data block.
+#' @noRd
+#' @keywords internal
+me_prior_stanvars <- function(values) {
+  sv <- NULL
+  for (nm in names(values)) {
+    one <- brms::stanvar(as.numeric(values[[nm]]), name = nm)
+    sv  <- if (is.null(sv)) one else sv + one
+  }
+  sv
+}
+
+#' Prior strings with their Stan data values filled in, for reporting
+#' @noRd
+#' @keywords internal
+me_fill_prior_values <- function(x, stanvars) {
+  if (is.null(stanvars) || !length(x)) return(x)
+  for (sv in stanvars) {
+    if (is.null(sv$name) || is.null(sv$sdata)) next
+    x <- gsub(paste0("\\b", sv$name, "\\b"), format(signif(sv$sdata, 4)), x,
+              perl = TRUE)
+  }
+  x
+}
+
+
+# ── Compiled-model cache (CODE_REVIEW.md R20.78) ───────────────────────────────
+#
+# brms compiles a Stan model on every brm() call, about 20 s, while sampling a
+# study of this size takes about a second per chain. With the prior values
+# passed as data, two fits whose models have the same structure share their
+# Stan code, and the second reuses the first's compiled model through
+# update(recompile = FALSE). The draws are identical to a fresh fit's with the
+# same seed (tested). The cache lives in the R process (in the dashboard, the
+# background worker), keyed by the Stan code and backend, and keeps a copy of
+# each fit without its draws.
+
+.me_model_cache <- new.env(parent = emptyenv())
+
+#' Fit a brms model, reusing a compiled model with the same Stan code
+#'
+#' Options: `mouseExperiment.cache_compiled_models` (default TRUE) and
+#' `mouseExperiment.model_cache_size` (default 6 models).
+#' @return The brmsfit, with attribute `me_model_reused` (TRUE when a
+#'   compiled model was reused).
+#' @noRd
+#' @keywords internal
+me_brm <- function(formula, data, prior, stanvars = NULL, family = NULL,
+                   chains = 4L, iter = 1500L, warmup = 1000L, seed = 42L,
+                   backend = "rstan", silent = 2L, refresh = 0L) {
+  family  <- if (is.null(family)) stats::gaussian() else family
+  caching <- isTRUE(getOption("mouseExperiment.cache_compiled_models", TRUE))
+  key <- if (caching) tryCatch({
+    code <- brms::make_stancode(formula, data = data, family = family,
+                                prior = prior, stanvars = stanvars,
+                                sample_prior = "yes")
+    rlang::hash(list(backend, as.character(code)))
+  }, error = function(e) NULL)
+
+  entry    <- if (!is.null(key)) .me_model_cache[[key]]
+  template <- if (!is.null(entry)) entry$template
+  if (!is.null(template)) {
+    fit <- tryCatch(suppressMessages(stats::update(
+      template, newdata = data, prior = prior, stanvars = stanvars,
+      recompile = FALSE, chains = chains, cores = chains, iter = iter,
+      warmup = warmup, seed = seed, silent = silent, refresh = refresh)),
+      error = function(e) NULL)
+    if (inherits(fit, "brmsfit")) {
+      attr(fit, "me_model_reused") <- TRUE
+      return(fit)
+    }
+  }
+
+  fit <- brms::brm(formula = formula, data = data, family = family,
+                   prior = prior, stanvars = stanvars, sample_prior = "yes",
+                   chains = chains, cores = chains, iter = iter,
+                   warmup = warmup, seed = seed, backend = backend,
+                   silent = silent, refresh = refresh)
+  if (!is.null(key)) me_model_cache_put(key, fit)
+  attr(fit, "me_model_reused") <- FALSE
+  fit
+}
+
+#' @noRd
+#' @keywords internal
+me_model_cache_put <- function(key, fit) {
+  template <- fit
+  # The compiled model is all a later update() needs; the draws are dropped.
+  template$fit@sim$samples <- NULL
+  assign(key, list(template = template, cached_at = Sys.time()),
+         envir = .me_model_cache)
+  n_max <- getOption("mouseExperiment.model_cache_size", 6L)
+  keys  <- ls(.me_model_cache, all.names = TRUE)
+  if (length(keys) > n_max) {
+    when <- vapply(keys, function(k) as.numeric(.me_model_cache[[k]]$cached_at),
+                   numeric(1L))
+    rm(list = keys[order(when)][seq_len(length(keys) - n_max)],
+       envir = .me_model_cache)
+  }
+  invisible(NULL)
+}
+
+#' Empty the compiled-model cache
+#'
+#' Fits of the Bayesian models reuse a compiled Stan model when one with the
+#' same Stan code was compiled earlier in the R session, which saves about
+#' 20 s per fit. This empties that cache; set
+#' \code{options(mouseExperiment.cache_compiled_models = FALSE)} to turn it off.
+#' @return The number of cached models removed, invisibly.
+#' @export
+clear_compiled_model_cache <- function() {
+  keys <- ls(.me_model_cache, all.names = TRUE)
+  rm(list = keys, envir = .me_model_cache)
+  invisible(length(keys))
 }
 
 #' Describe the priors actually used, for the methods metadata
@@ -675,12 +892,14 @@ bayes_scaled_priors <- function(formula, data, response, prior_strength,
 #'   priors came from `bayes_scaled_priors()`).
 #' @noRd
 #' @keywords internal
-describe_priors <- function(priors) {
+describe_priors <- function(priors, stanvars = attr(priors, "me_stanvars")) {
   if (is.null(priors)) return(list(all = NULL, scaling = NULL))
   pdf <- tryCatch(as.data.frame(priors), error = function(e) NULL)
   if (is.null(pdf) || !all(c("prior", "class") %in% names(pdf))) {
     return(list(all = NULL, scaling = attr(priors, "me_prior_scaling")))
   }
+  # Priors that name Stan data (R20.78) are reported with their values.
+  pdf$prior <- me_fill_prior_values(pdf$prior, stanvars)
 
   fmt <- function(cls) {
     rows <- pdf[pdf$class == cls & nzchar(pdf$prior), , drop = FALSE]
@@ -694,6 +913,7 @@ describe_priors <- function(priors) {
     prior_intercept = fmt("Intercept"),
     prior_sd        = fmt("sd"),
     prior_sigma     = fmt("sigma"),
+    prior_shape     = fmt("shape"),
     all             = pdf[nzchar(pdf$prior), c("prior", "class", "coef")],
     scaling         = attr(priors, "me_prior_scaling")
   )

@@ -11,7 +11,8 @@
 #          the v0.4.5 fix for J.2 introduced a reference to a data frame that
 #          does not exist.
 #
-# Both were *fixes* that stopped working. Neither had a test.
+# Both were *fixes* that stopped working. Neither had a test. (Both functions
+# were removed in v0.23.0, CODE_REVIEW.md R20-K.)
 #
 # These tests target the Round 1/2 fixes whose failure mode is SILENT — a wrong
 # number or an empty result rather than an error. A fix that fails loudly does not
@@ -41,7 +42,8 @@ test_that("R1-1.8: same ID in different arms stays two distinct animals", {
   # The recurring bug class: aggregating by ID alone collapses mice that share a
   # numeric ear-tag across treatment groups. Fixed in body_weight_auc (v0.3.1),
   # weight_corrected_tgi (1.8), therapeutic_window_metric (J.14),
-  # efficacy_toxicity_bivariate (J.18) and analyze_body_weight (R3.11).
+  # efficacy_toxicity_bivariate (J.18) and analyze_body_weight (R3.11); all but
+  # therapeutic_window_metric and analyze_body_weight were removed in v0.23.0.
   k1 <- make_mouse_key("Control", "1", "C1")
   k2 <- make_mouse_key("DrugA",   "1", "C1")
   expect_false(identical(k1, k2))
@@ -71,72 +73,32 @@ test_that("R1-3.6: calculate_auc is the single AUC implementation and is correct
 
 # ---- Round 1 §2.5: LOCF AUC is an area, not a volume ------------------------
 
-test_that("R1-2.5: LOCF AUC returns an area, not a bare last volume", {
-  # The bug added a volume (mm3) to an area (mm3.day). A flat trajectory carried
-  # forward has an exactly computable area, so this is checkable rather than
-  # approximate.
-  # M1 stops at day 10 on a flat trajectory; others run to day 20, so the study
-  # maximum is 20 and M1's record must be carried forward across that gap.
-  # Two arms because the function fits an ANOVA internally.
-  flat <- function(id, tx, days) data.frame(
-    ID = id, Treatment = tx, Cage = "C1", Day = days,
-    Volume = rep(100, length(days)), stringsAsFactors = FALSE)
-  df <- rbind(
-    flat("M1", "A", c(0, 5, 10)),          # early dropout -> LOCF applies
-    flat("M2", "A", c(0, 5, 10, 20)),
-    flat("M3", "B", c(0, 5, 10, 20)),
-    flat("M4", "B", c(0, 5, 10, 20))
-  )
-
-  res <- suppressWarnings(suppressMessages(tumor_auc_analysis(
-    df, auc_method = "last_observation")))
-  # tumor_auc_analysis() returns per-animal rows in `auc_data` (the AUC path of
-  # tumor_growth_statistics() calls its table `individual` -- the two differ,
-  # which is itself a B7.1-adjacent inconsistency worth noting).
-  # Field names differ from the AUC path of tumor_growth_statistics(), which
-  # calls its table `individual` and keys animals on `ID`. Here it is `auc_data`
-  # keyed on `Subject`. That inconsistency is B7.1-adjacent and is pinned here so
-  # a future harmonisation has to update this test deliberately.
-  auc <- res$auc_data$AUC[res$auc_data$Subject == "M1"]
-
-  # Observed 0-10 at constant 100 = 1000, plus LOCF 10-20 = 1000. Total 2000.
-  # The bug returned `last_volume + extension`, i.e. ~100 + 1000, mixing a
-  # volume (mm3) with an area (mm3.day).
-  expect_equal(auc, 2000, tolerance = 1e-6)
-  expect_gt(auc, 1000)   # strictly more than the observed window alone
-
-  # On a flat trajectory the carried-forward animal must land on exactly the
-  # same area as animals that ran the full course -- that is what "carry the
-  # last observation forward" means, and it is what the dimensional bug broke.
-  full <- res$auc_data$AUC[res$auc_data$Subject == "M2"]
-  expect_equal(auc, full, tolerance = 1e-6)
-  expect_true(res$auc_data$Extrapolated[res$auc_data$Subject == "M1"])
-})
 
 # ---- Round 1 §1.7: baselines must come from the earliest day ----------------
 
 test_that("R1-1.7: baseline is the earliest day regardless of row order", {
   # aggregate(x[1]) took whatever row happened to be first. Shuffling the rows
   # must not change the answer.
+  # Three animals: the evaluable-day rule (v0.26.0) needs at least 3 per arm.
   mk <- function(order_idx) {
     d <- data.frame(
-      ID = rep(c("m1", "m2"), each = 3), Treatment = "A", Cage = "C1",
-      Day = rep(c(0, 7, 14), 2),
-      Weight = c(20, 19, 18, 22, 21, 20),
-      Volume = rep(c(100, 200, 300), 2),
+      ID = rep(c("m1", "m2", "m3"), each = 3), Treatment = "A", Cage = "C1",
+      Day = rep(c(0, 7, 14), 3),
+      Weight = c(20, 19, 18, 22, 21, 20, 21, 20, 19),
+      Volume = rep(c(100, 200, 300), 3),
       stringsAsFactors = FALSE)
     d[order_idx, , drop = FALSE]
   }
   ordered_res <- suppressWarnings(suppressMessages(therapeutic_window_metric(
-    mk(1:6), reference_group = "A", adjust_tumor_weight = FALSE, n_boot = 0)))
+    mk(1:9), reference_group = "A", adjust_tumor_weight = FALSE, n_boot = 0)))
   shuffled_res <- suppressWarnings(suppressMessages(therapeutic_window_metric(
-    mk(c(3, 6, 1, 4, 2, 5)), reference_group = "A",
+    mk(c(3, 6, 9, 1, 4, 7, 2, 5, 8)), reference_group = "A",
     adjust_tumor_weight = FALSE, n_boot = 0)))
 
   expect_equal(ordered_res$weight_loss_data$Baseline_Weight,
                shuffled_res$weight_loss_data$Baseline_Weight)
   # Baselines must be the day-0 weights, not some later row.
-  expect_setequal(round(ordered_res$weight_loss_data$Baseline_Weight, 6), c(20, 22))
+  expect_setequal(round(ordered_res$weight_loss_data$Baseline_Weight, 6), c(20, 22, 21))
 })
 
 # ---- Round 1 §2.4 / §I.1: one Bliss implementation --------------------------
@@ -152,33 +114,6 @@ test_that("R1-2.4: Bliss expectation is shared and behaves at its ceiling", {
   # to demonstrate synergy. This is the limitation §2.4 required be documented,
   # pinned so the formula cannot drift away from it.
   expect_gt(synergy_bliss_expected(0.9, 0.9), 0.98)
-})
-
-# ---- Round 2 §G.6 / R3.35: the gamm4 stub patch -----------------------------
-
-test_that("R2-G.6/R3.35: the gamm4 stub patch is shared and effective", {
-  skip_if_not_installed("gamm4")
-  # R3.4 found that analyze_body_weight() had its own inline gamm4 fit and never
-  # received this patch, so emmeans silently returned NULL. The patch is now a
-  # shared helper -- verify it does what both callers depend on.
-  set.seed(3)
-  d <- data.frame(
-    ID = factor(rep(1:6, each = 5)),
-    Treatment = factor(rep(c("Control", "DrugA"), each = 15)),
-    Day = rep(c(0, 5, 10, 15, 20), 6))
-  d$y <- 5 + 0.1 * d$Day + stats::rnorm(30, 0, 0.3)
-
-  fit <- suppressWarnings(suppressMessages(
-    gamm4::gamm4(y ~ Treatment + s(Day, by = Treatment, k = 4),
-                 random = ~ (1 | ID), data = d)))
-
-  # Unpatched: emmeans cannot dispatch on the stub.
-  expect_error(emmeans::emmeans(fit$gam, ~ Treatment), regexp = "NULL|class")
-
-  patched <- patch_gamm4_stub(fit)
-  expect_true(all(c("glm", "lm") %in% class(patched$gam)))
-  expect_false(is.null(patched$gam$call))
-  expect_no_error(emmeans::emmeans(patched$gam, ~ Treatment))
 })
 
 # ---- Round 2 §J.2 / R3.37: plots must actually be produced ------------------

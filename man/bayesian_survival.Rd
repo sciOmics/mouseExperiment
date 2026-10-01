@@ -12,7 +12,7 @@ bayesian_survival(
   id_column = "ID",
   cage_column = NULL,
   dose_column = NULL,
-  family = c("weibull", "lognormal", "exponential", "gamma"),
+  family = c("weibull", "lognormal"),
   include_cage_effect = TRUE,
   reference_group = NULL,
   prior_strength = c("skeptical", "weakly_informative", "informative", "diffuse",
@@ -34,9 +34,11 @@ bayesian_survival(
 )
 }
 \arguments{
-\item{df}{Data frame containing one row per animal (or one row per event
-time if the animal experienced the event; censored animals contribute one
-row with their last observed day).}
+\item{df}{Data frame with one row per animal: its event or censoring
+time and event indicator. A longitudinal frame (several rows per animal)
+is an error, as in \code{\link{survival_statistics}}; it used to be
+fitted with every measurement as a censored "animal" (CODE_REVIEW.md
+R20.39).}
 
 \item{time_column}{Column name for time-to-event (days). Default
 \code{"Day"}.}
@@ -64,11 +66,10 @@ decreasing, and constant hazards. Interpretable as both AFT (time
 ratio) and PH (hazard ratio).}
 \item{\code{"lognormal"}}{Log-normal AFT. Hazard rises then falls —
 biologically plausible for treated tumours.}
-\item{\code{"exponential"}}{Constant hazard. Special case of Weibull
-with shape = 1; use when a memoryless process is plausible.}
-\item{\code{"gamma"}}{Gamma AFT. More flexible tail than Weibull; good
-alternative when Weibull does not fit well.}
-}}
+}
+The exponential and gamma families were removed in v0.23.0
+(CODE_REVIEW.md R20-K): exponential is Weibull with shape fixed at 1, and
+gamma was the family most distorted by the shape prior (R20.38).}
 
 \item{include_cage_effect}{Logical. When \code{TRUE} (default) and
 \code{cage_column} is supplied, a cage-level random intercept (frailty)
@@ -77,8 +78,14 @@ is added: \code{(1 | cage)}.}
 \item{reference_group}{Treatment group used as the reference level.
 Auto-detected alphabetically if \code{NULL}.}
 
-\item{prior_strength}{Prior preset for fixed-effect coefficients (log time
-ratios):
+\item{prior_strength}{Prior preset for the treatment coefficients (log time
+ratios) and the cage frailty SD. The Weibull shape and the log-normal
+sigma get the same weakly informative prior under every preset,
+\code{lognormal(1, 1)} and \code{exponential(1)}: they describe how
+event times are spread, not the treatment effect. Before v0.28.0 the
+ladder's \code{exponential(2)} shrank the shape toward 0.5 and pulled
+the hazard ratio toward 1 (true shape 6, HR 0.088: shape 3.86, HR 0.246;
+CODE_REVIEW.md R20.38).
 \describe{
 \item{\code{"skeptical"}}{(default) \eqn{b \sim N(0, 0.25)}.
 Requires strong data to support large time-ratio differences.}
@@ -99,8 +106,8 @@ when \code{prior_strength = "manual"}.}
 \code{"sd"}). Only used when \code{prior_strength = "manual"}.}
 
 \item{prior_aux}{brms prior string for the auxiliary parameter: \code{shape}
-for Weibull and Gamma; \code{sigma} for log-normal; ignored for
-exponential. Only used when \code{prior_strength = "manual"}.}
+for Weibull; \code{sigma} for log-normal. Only used when
+\code{prior_strength = "manual"}.}
 
 \item{n_chains}{Number of MCMC chains. Default \code{4}.}
 
@@ -122,13 +129,14 @@ Default \code{TRUE}.}
 \item{backend}{brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
 See \code{\link{bayesian_tumor_growth}} for details.}
 
-\item{priors}{Optional named list of \code{brms::prior()} objects applied
-verbatim, bypassing \code{prior_strength}. For callers that need full
-control of the prior specification.}
+\item{priors}{Optional \code{\link{tg_priors}()} object; its fields
+override \code{prior_strength} and the \code{prior_*} arguments
+(\code{sigma} sets \code{prior_aux}). It was documented as a list of
+\code{brms::prior()} objects, which was never accepted (R20.74).}
 
-\item{mcmc}{Optional named list of sampler settings
-(\code{chains}, \code{warmup}, \code{iter}, \code{seed}, \code{backend}) overriding the
-individual arguments. Resolved by \code{.resolve_mcmc()}.}
+\item{mcmc}{Optional \code{\link{tg_mcmc}()} object overriding
+\code{n_chains}, \code{n_warmup}, \code{n_iter}, \code{seed} and
+\code{backend}.}
 }
 \value{
 A named list:
@@ -141,7 +149,7 @@ A named list:
 \item{\code{summary}}{Named list of analysis metadata.}
 \item{\code{treatment_effects}}{Data frame with columns \code{Group},
 \code{Time_Ratio}, \code{Lower_CrI}, \code{Upper_CrI}, \code{HR}
-(hazard ratio; Weibull and exponential only, \code{NA} otherwise),
+(hazard ratio; Weibull only, \code{NA} for log-normal),
 \code{Median_Survival}, \code{Events}, \code{Total}, \code{Event_Rate},
 \code{Note}. Output schema mirrors \code{\link{survival_statistics}}.}
 \item{\code{posterior_summary}}{Data frame of fixed-effect posterior
@@ -163,6 +171,11 @@ dashed line marks zero (no effect). \code{NULL} when
 \item{\code{survival_curve_plot}}{Parametric survival curves with 95 \%
 posterior credible bands overlaid on Kaplan-Meier step functions, or
 \code{NULL} when \code{plots = FALSE}.}
+\item{\code{posterior_draws}}{The headline posterior draws (fixed
+effects, frailty SD, shape or sigma) as a \code{draws_array}, for trace
+and rank plots without the model.}
+\item{\code{model_reused}}{TRUE when a compiled model from an earlier
+fit with the same structure was reused (no compilation).}
 }
 }
 \description{
@@ -178,11 +191,11 @@ All families are fitted in the AFT (accelerated failure time)
 parameterisation via \pkg{brms}. Treatment coefficients are on the
 log(mean survival time)
 scale; exponentiating gives \strong{time ratios} (TR): TR > 1 means the
-treated group survives longer. For Weibull and exponential families, an
+treated group survives longer. For the Weibull family, an
 approximate \strong{hazard ratio} (HR = TR\eqn{^{-\hat{\kappa}}}, where
 \eqn{\hat{\kappa}} is the posterior-median Weibull shape) is also reported;
-HR < 1 indicates a protective treatment effect. Lognormal and gamma are
-not proportional-hazards models; their \code{HR} column is \code{NA}.
+HR < 1 indicates a protective treatment effect. Log-normal is not a
+proportional-hazards model, so its \code{HR} column is \code{NA}.
 }
 
 \section{Frailty}{

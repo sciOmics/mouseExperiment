@@ -196,26 +196,17 @@ test_that("R3.30: volume units are resolved rather than assumed to be mm3", {
 
 # ---- R3.18 ------------------------------------------------------------------
 
-test_that("R3.18: TWM is continuous across the noise floor for any noise_floor", {
+test_that("R3.18 / R20-K: the TWM ratio and its noise floor are gone", {
+  # R3.18 made the ratio continuous at its noise floor. v0.27.0 replaced the
+  # ratio with a two-axis summary, so there is no floor to be continuous at:
+  # an arm that loses no weight is simply reported with a worst loss near 0.
   df <- make_tox_df(reuse_ids = FALSE)
-
-  twm_at <- function(wl, tgi, nf) tgi / max(wl, nf)   # the implemented form
-  for (nf in c(1.0, 2.5, 5.0)) {
-    below <- twm_at(nf - 1e-8, 60, nf)
-    above <- twm_at(nf + 1e-8, 60, nf)
-    expect_equal(below, above, tolerance = 1e-6,
-                 info = paste("discontinuity at noise_floor =", nf))
-  }
-
-  # Behaviour at the default noise_floor = 1.0 is unchanged (backward compat):
-  # negligible weight loss still scores TWM == TGI.
+  expect_false("noise_floor" %in% names(formals(therapeutic_window_metric)))
   res <- suppressMessages(therapeutic_window_metric(
-    df, reference_group = "Control", volume_units = "mm3"))
-  neg <- res$twm_table$Mean_Pct_Weight_Loss <= 1.0
-  if (any(neg)) {
-    expect_equal(res$twm_table$TWM[neg], pmax(res$twm_table$TGI[neg], 0),
-                 tolerance = 1e-8)
-  }
+    df, reference_group = "Control", volume_units = "mm3", n_boot = 0))
+  expect_null(res$twm_table)
+  expect_true(all(is.finite(res$window_table$Worst_Loss)))
+  expect_true(all(res$window_table$Worst_Loss >= 0))
 })
 
 # ---- R3.31 ------------------------------------------------------------------
@@ -237,20 +228,26 @@ test_that("R3.31: Jonckheere-Terpstra trend test actually runs", {
 
   res <- suppressWarnings(suppressMessages(dose_response_statistics(
     df, dose_column = "Dose", volume_column = "Volume",
-    day_column = "Day", id_column = "ID", verbose = FALSE
+    day_column = "Day", id_column = "ID", verbose = FALSE,
+    treatments = c("Dose_10", "Dose_30", "Dose_100")      # one agent (R20.16)
   )))
   jt <- res$trend_test$jonckheere_test
 
   expect_false(is.null(jt))
   expect_true(is.numeric(jt$p.value))
-  expect_identical(jt$alternative_used, "decreasing")
+  # Two-sided since v0.27.0 (R20.20).
+  expect_identical(jt$alternative_used, "two.sided")
+  expect_identical(jt$direction, "decreasing")
   expect_equal(jt$p.value,
                clinfun::jonckheere.test(df$Volume, df$Dose,
-                                        alternative = "decreasing")$p.value,
+                                        alternative = "two.sided")$p.value,
                tolerance = 1e-10)
 })
 
-test_that("R3.31: JT direction is derived from the data, not hardcoded", {
+test_that("R3.31 / R20.20: JT detects either direction, and reports it", {
+  # R3.31 chose the alternative from the data so that stimulatory data could be
+  # tested; that choice doubled the false-positive rate (R20.20). A two-sided
+  # test detects both directions, and the direction is reported.
   set.seed(4)
   doses <- c(0, 10, 30, 100)
   # Stimulatory: volume INCREASES with dose.
@@ -258,7 +255,8 @@ test_that("R3.31: JT direction is derived from the data, not hardcoded", {
     Dose = d, Volume = 300 + 6 * d + rnorm(8, 0, 40), stringsAsFactors = FALSE
   )))
   jt <- run_jonckheere_test(df, "Dose", "Volume", verbose = FALSE)
-  expect_identical(jt$alternative_used, "increasing")
+  expect_identical(jt$alternative_used, "two.sided")
+  expect_identical(jt$direction, "increasing")
   expect_lt(jt$p.value, 0.05)
 })
 
@@ -547,17 +545,6 @@ make_bw_df <- function() {
   rbind(mk("Control", 0), mk("DrugA", -0.06), mk("DrugB", -0.02))
 }
 
-test_that("R3.4: the body-weight GAM path returns a populated EMM table", {
-  res <- suppressWarnings(suppressMessages(analyze_body_weight(
-    make_bw_df(), volume_column = "Volume", cage_column = "Cage",
-    model_type = "gam", reference_group = "Control", volume_units = "mm3")))
-
-  # Both were silently NULL before: emmeans could not dispatch on the unpatched
-  # gamm4 stub and the error was swallowed by tryCatch.
-  expect_false(is.null(res$emmeans_table))
-  expect_equal(nrow(res$emmeans_table), 3L)
-  expect_false(is.null(res$pairwise_comparisons))
-})
 
 test_that("R3.12: analyze_body_weight returns adjusted pairwise comparisons", {
   df <- make_bw_df()
@@ -612,21 +599,26 @@ test_that("R3.5: the endpoint estimand corrects survivor bias in TGI", {
   full <- make_attrition_df()
   df   <- full[, c("ID", "Treatment", "Day", "Volume", "Weight")]
 
-  # Ground truth: each arm's geometric mean volume at day 28 had nobody been
-  # removed, computed from the simulation's own per-animal growth rates.
-  mice  <- unique(full[, c("ID", "Treatment", "TrueRate")])
-  truth <- vapply(split(mice, mice$Treatment),
-                  function(g) exp(mean(log(150) + g$TrueRate * 28)), numeric(1))
-  true_tgi <- (1 - truth / truth[["Control"]]) * 100
-
   tgi_for <- function(m) {
     r <- suppressWarnings(suppressMessages(therapeutic_window_metric(
       df, reference_group = "Control", endpoint_method = m,
       n_boot = 0, adjust_tumor_weight = FALSE)))
-    stats::setNames(r$tgi_data$TGI, r$tgi_data$Treatment)
+    list(tgi = stats::setNames(r$tgi_data$TGI, r$tgi_data$Treatment),
+         day = r$endpoint_day)
   }
-  surv  <- tgi_for("survivors")
-  model <- tgi_for("model")
+  surv_r  <- tgi_for("survivors")
+  model_r <- tgi_for("model")
+  surv  <- surv_r$tgi
+  model <- model_r$tgi
+
+  # Ground truth: each arm's geometric mean volume at the evaluation day (the
+  # last evaluable day, R20-K) had nobody been removed, computed from the
+  # simulation's own per-animal growth rates.
+  day   <- model_r$day
+  mice  <- unique(full[, c("ID", "Treatment", "TrueRate")])
+  truth <- vapply(split(mice, mice$Treatment),
+                  function(g) exp(mean(log(150) + g$TrueRate * day)), numeric(1))
+  true_tgi <- (1 - truth / truth[["Control"]]) * 100
 
   err <- function(x) mean(abs(x[c("DrugA", "DrugB")] -
                                 true_tgi[c("DrugA", "DrugB")]))
@@ -680,35 +672,24 @@ test_that("R3.5: the endpoint estimand reaches synergy and the other consumers",
   }))
   df <- rbind(df, combo)
 
+  # Day 28 is no longer evaluable (4 of 10 controls on study, R20-K); the
+  # default is the last evaluable day, where controls have already been lost.
   syn <- function(m) suppressWarnings(suppressMessages(analyze_drug_synergy(
     df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
-    control_name = "Control", eval_time_point = 28, endpoint_method = m,
+    control_name = "Control", endpoint_method = m,
     n_boot = 0, verbose = FALSE)))
 
   s_surv  <- syn("survivors")
   s_model <- syn("model")
+  expect_lt(s_model$eval_time_point, 28)
+  a <- s_model$attrition
+  expect_lt(a$N_At_Endpoint[a$Treatment == "Control"],
+            a$N_Enrolled[a$Treatment == "Control"])
   tgi <- function(r) r$summary$TGI_Percent[r$summary$Treatment == "DrugA"]
   expect_gt(tgi(s_model), tgi(s_surv))
   expect_false(is.null(s_model$attrition))
-
-  # weight_corrected_tgi and efficacy_toxicity_bivariate take the same argument.
-  expect_no_error(suppressWarnings(suppressMessages(
-    weight_corrected_tgi(df, reference_group = "Control",
-                         endpoint_method = "model"))))
-  expect_no_error(suppressWarnings(suppressMessages(
-    efficacy_toxicity_bivariate(df, reference_group = "Control",
-                                endpoint_method = "model"))))
 })
 
-test_that("R3.5: an animal with no row at the endpoint day still contributes", {
-  df <- make_attrition_df()[, c("ID", "Treatment", "Day", "Volume", "Weight")]
-  r <- suppressWarnings(suppressMessages(efficacy_toxicity_bivariate(
-    df, reference_group = "Control", endpoint_method = "model")))
-  # Previously `sub$Volume[sub$Day == max_day]` was numeric(0) for any animal
-  # removed early; every enrolled animal must appear exactly once.
-  expect_equal(nrow(r$per_mouse), length(unique(df$ID)))
-  expect_true(all(is.finite(r$per_mouse$Efficacy)))
-})
 
 # ---- G.6 / R3.6 / R3.7: bootstrap intervals ---------------------------------
 
@@ -746,28 +727,35 @@ test_that("R3.6/R3.7: synergy metrics carry bootstrap intervals", {
   expect_null(r0$synergy_ci)
 })
 
-test_that("R3.6/R3.7: TWM carries bootstrap intervals for its ranking", {
+test_that("R3.6/R3.7: the therapeutic window carries intervals on both axes", {
   df <- make_attrition_df()[, c("ID", "Treatment", "Day", "Volume", "Weight")]
-  r <- suppressWarnings(suppressMessages(therapeutic_window_metric(
-    df, reference_group = "Control", endpoint_method = "model",
-    n_boot = 500, boot_seed = 2, adjust_tumor_weight = FALSE)))
-
-  expect_false(is.null(r$twm_ci))
-  expect_true(all(c("TWM_Lower", "TWM_Upper") %in% names(r$twm_table)))
-  ok <- is.finite(r$twm_table$TWM_Lower) & is.finite(r$twm_table$TWM_Upper)
-  expect_true(all(r$twm_table$TWM_Lower[ok] <= r$twm_table$TWM_Upper[ok]))
+  for (m in c("model", "last_obs")) {
+    r <- suppressWarnings(suppressMessages(therapeutic_window_metric(
+      df, reference_group = "Control", endpoint_method = m,
+      n_boot = 500, boot_seed = 2, adjust_tumor_weight = FALSE)))
+    w <- r$window_table[r$window_table$Treatment != "Control", ]
+    # Every interval exists and holds its own point estimate (R20.2).
+    expect_true(all(is.finite(c(w$TGI_Lower, w$TGI_Upper))), info = m)
+    expect_true(all(w$TGI_Lower <= w$TGI & w$TGI <= w$TGI_Upper), info = m)
+    expect_true(all(w$Worst_Loss_Lower <= w$Worst_Loss &
+                      w$Worst_Loss <= w$Worst_Loss_Upper), info = m)
+  }
 })
 
 # ---- R3.15 ------------------------------------------------------------------
 
 test_that("R3.15: power analysis accounts for multiplicity and attrition", {
+  # The default became "bonferroni" in v0.24.0 (R20.7), so the unadjusted
+  # baseline is requested explicitly.
   base <- apriori_power_analysis(effect_size = 0.8, n_groups = 4,
-                                 alpha = 0.05, target_power = 0.8)
+                                 alpha = 0.05, target_power = 0.8,
+                                 p_adjust_method = "none")
   adj  <- apriori_power_analysis(effect_size = 0.8, n_groups = 4,
                                  alpha = 0.05, target_power = 0.8,
                                  p_adjust_method = "bonferroni")
   drop <- apriori_power_analysis(effect_size = 0.8, n_groups = 4,
                                  alpha = 0.05, target_power = 0.8,
+                                 p_adjust_method = "none",
                                  dropout_rate = 0.2)
 
   # Adjusting for 3 vs-control comparisons needs more animals.
@@ -785,19 +773,16 @@ test_that("R3.15: power analysis accounts for multiplicity and attrition", {
 
 # ---- R3.22 ------------------------------------------------------------------
 
-test_that("R3.22: the AUC omnibus test is Welch's, matching its pairwise tests", {
+test_that("R3.22 (superseded by R20.4): the AUC omnibus and pairwise tests share one model", {
+  # R3.22 matched a Welch omnibus to Welch pairwise tests on per-animal AUCs.
+  # Since v0.26.0 both come from the model-based AUCs and their draws.
   df <- make_tg_df()
   r <- suppressWarnings(suppressMessages(tumor_growth_statistics(
     df, model_type = "auc", plots = FALSE, verbose = FALSE)))
-
-  expect_true(grepl("Welch", r$anova$Method[1]))
-  expect_equal(
-    r$anova$p_value[1],
-    stats::oneway.test(AUC ~ Treatment, data = r$auc_analysis$individual,
-                       var.equal = FALSE)$p.value,
-    tolerance = 1e-10)
-  # Variance homogeneity is reported rather than assumed.
-  expect_false(is.null(r$variance_test))
+  expect_match(r$anova$Method[1], "model-based AUC")
+  expect_true(is.finite(r$anova$p_value[1]))
+  pw <- r$posthoc$pairwise
+  expect_true(all(pw$ratio_lower <= pw$ratio & pw$ratio <= pw$ratio_upper))
 })
 
 # ---- H.4 --------------------------------------------------------------------
@@ -834,7 +819,9 @@ test_that("H.4: the log-rank fallback uses an exact permutation test", {
 
 # ---- H.2 --------------------------------------------------------------------
 
-test_that("H.2: AUC comparisons gain a permutation p-value", {
+test_that("H.2 (superseded by R20.4): auc_permutations is ignored, with a warning", {
+  # The per-animal permutation p-values belonged to the Welch t-tests, which
+  # the model-based AUC replaced in v0.26.0.
   set.seed(3)
   days <- c(0, 4, 8, 12, 16, 20)
   rows <- list()
@@ -850,22 +837,11 @@ test_that("H.2: AUC comparisons gain a permutation p-value", {
     }
   }
   df <- do.call(rbind, rows)
-
-  r <- suppressWarnings(suppressMessages(tumor_growth_statistics(
-    df, model_type = "auc", auc_permutations = 2000, auc_bootstrap_seed = 1,
-    plots = FALSE, verbose = FALSE)))
-  pw <- r$pairwise_comparisons
-
-  expect_true(all(c("perm_p_value", "perm_p_adjusted") %in% names(pw)))
-  expect_true(all(is.finite(pw$perm_p_value)))
-  # The (1 + count) / (1 + n) estimator can never return exactly zero.
-  expect_true(all(pw$perm_p_value > 0))
-  # Distinct comparisons must get distinct p-values (each pair is seeded apart).
-  expect_equal(length(unique(pw$perm_p_value)), nrow(pw))
-  # Off by default so existing callers are unaffected.
-  r0 <- suppressWarnings(suppressMessages(tumor_growth_statistics(
-    df, model_type = "auc", plots = FALSE, verbose = FALSE)))
-  expect_true(all(is.na(r0$pairwise_comparisons$perm_p_value)))
+  expect_warning(
+    suppressMessages(tumor_growth_statistics(
+      df, model_type = "auc", auc_permutations = 2000, auc_bootstrap_seed = 1,
+      plots = FALSE, verbose = FALSE)),
+    "ignored")
 })
 
 test_that("H.2: the permutation test warns when its resolution is too coarse", {

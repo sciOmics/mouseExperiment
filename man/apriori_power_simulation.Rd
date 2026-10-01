@@ -115,6 +115,16 @@ where \eqn{\mu_i} = group geometric-mean baseline volume,
 Volumes are obtained by exponentiating: \eqn{V_{ij} = \exp(\cdot)}.
 The fitted model is \code{log(Volume) ~ Treatment * Day + (Day | ID)};
 power is the proportion of LRTs where the \code{Treatment:Day} p-value < \eqn{\alpha}.
+
+\strong{Which analysis is powered.} This is the default
+\code{tumor_growth_statistics()} model since v0.26.0 (correlated random
+slopes; CODE_REVIEW.md R20.34). Before that the default analysis had a
+random intercept only, so the power reported here was for an analysis
+users did not run. The default analysis tests the interaction with a
+Satterthwaite F-test rather than this likelihood-ratio test; at the group
+sizes typical here the two agree closely. An analysis run with
+\code{random_effects_specification = "intercept_only"} is not the one
+powered here.
 }
 
 \section{Parameter scale}{

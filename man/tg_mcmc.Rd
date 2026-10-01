@@ -21,10 +21,11 @@ tg_mcmc(
 
 \item{seed}{PRNG seed (default 42).}
 
-\item{backend}{"rstan" (default) or "cmdstanr". Resolved by
-\code{resolve_brms_backend()} before being passed to \code{brms::brm()}, so
-if \code{cmdstanr} is requested but unavailable the call falls back to
-\code{rstan} rather than erroring.}
+\item{backend}{"rstan" (default) or "cmdstanr". A request for
+"cmdstanr" is checked before fitting: without the cmdstanr package and
+a CmdStan toolchain the fit stops with installation instructions. (The
+documentation used to say it fell back to rstan, which it never did;
+CODE_REVIEW.md R20.74.)}
 }
 \value{
 An object of class \code{tg_mcmc} (a tagged list).

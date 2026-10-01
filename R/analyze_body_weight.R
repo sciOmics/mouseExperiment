@@ -13,17 +13,17 @@
 #' @param sex_column Name of the sex column. NULL to omit.
 #' @param cage_column Name of the cage column. NULL to omit.
 #' @param adjust_tumor_weight Logical; subtract estimated tumor weight from body mass.
-#' @param volume_units Units of the volume column: `"mm3"`, `"cm3"`, or
-#'   `NULL` to infer from the magnitude of the values. Only used when
-#'   `adjust_tumor_weight = TRUE`, where volume is converted to mass and
-#'   subtracted from body weight -- getting the units wrong there scales the
-#'   correction by 1000 (R3.30).
+#' @param volume_units Units of the volume column, \code{"mm3"} or \code{"cm3"}.
+#'   Required when \code{adjust_tumor_weight = TRUE} and a volume column is used,
+#'   because volume is converted to mass and subtracted from body weight: the
+#'   wrong unit scales that correction by 1000. Units were inferred from the data
+#'   before v0.25.0, which read small-tumour mm3 studies as cm3 (CODE_REVIEW.md
+#'   R20.83); the data are now only checked against the declared unit, with a
+#'   warning on disagreement and an error when the implied tumour mass exceeds
+#'   half the body weight.
 #' @param tumor_density Density in g/cm³ for tumor weight estimation (default 1.0).
 #' @param covariates Character vector of optional covariates: "volume", "sex", "initial_mass".
 #' @param estimation Character; "REML" (default) or "ML".
-#' @param model_type Character; "lmm" (default — linear mixed model via lme4) or
-#'   "gam" (generalized additive mixed model via gamm4 with a group-specific
-#'   smoother on Day, preferred when weight trajectories are non-monotonic).
 #' @param comparison_family Which comparisons to report and adjust over:
 #'   "vs_reference" (default), "all_pairs", or "custom" (with
 #'   \code{custom_contrasts}). The multiplicity adjustment covers exactly this
@@ -53,7 +53,6 @@ analyze_body_weight <- function(df,
                                 volume_units     = NULL,
                                 covariates       = c("volume"),
                                 estimation       = c("REML", "ML"),
-                                model_type       = c("lmm", "gam"),
                                 comparison_family = c("vs_reference", "all_pairs", "custom"),
                                 custom_contrasts = NULL,
                                 p_adjust_method  = c("bonferroni", "holm", "fdr",
@@ -61,7 +60,6 @@ analyze_body_weight <- function(df,
                                 reference_group  = NULL) {
 
   estimation <- match.arg(estimation)
-  model_type <- match.arg(model_type)
   comparison_family <- match.arg(comparison_family)
   p_adjust_method   <- match.arg(p_adjust_method)
 
@@ -88,10 +86,16 @@ analyze_body_weight <- function(df,
     stringsAsFactors = FALSE
   )
 
-  # Tumor volume (for adjustment and/or covariate)
+  # Tumor volume (for adjustment and/or covariate). R20.22: volume is filled
+  # in on weighing days without a calliper measurement, so those weighings are
+  # kept rather than dropped.
   has_volume <- !is.null(volume_column) && volume_column %in% names(df)
   if (has_volume) {
-    wd$Volume <- as.numeric(df[[volume_column]])
+    fill_key <- make_mouse_key(
+      as.character(df[[treatment_column]]), as.character(df[[id_column]]),
+      if (!is.null(cage_column) && cage_column %in% names(df))
+        as.character(df[[cage_column]]) else "")
+    wd$Volume <- me_fill_volume(fill_key, wd$Day, as.numeric(df[[volume_column]]))
   }
 
   # Tumor weight adjustment
@@ -135,6 +139,10 @@ analyze_body_weight <- function(df,
     make_mouse_key(as.character(wd$Treatment), as.character(wd$ID))
   }
   wd <- wd[order(wd$.MouseKey, wd$Day), ]
+  # CODE_REVIEW.md T1 / R20.3 -- the random effects were (1 + Day | ID), so a
+  # mouse "1" in every arm became one animal (null familywise rejection 0.71,
+  # SE ratio 0.30, n_subjects 8 for 24 mice). Group by the composite key.
+  wd$Animal <- factor(wd$.MouseKey)
 
   first_day <- stats::aggregate(Day ~ .MouseKey, data = wd, FUN = min)
   names(first_day)[2] <- ".FirstDay"
@@ -191,120 +199,13 @@ analyze_body_weight <- function(df,
   model <- NULL
   model_simplified <- FALSE
 
-  # GAM path — fit via gamm4 with a group-specific smoother on Day and
-  # return early with a compatible result-list shape.
-  if (model_type == "gam") {
-    n_days <- length(unique(wd$Day))
-    k_val  <- max(3L, min(10L, n_days - 1L))
-
-    gam_fixed <- paste0(
-      response_col, " ~ Treatment + s(Day, by = Treatment, k = ", k_val, ")"
-    )
-    if ("volume" %in% covariates && has_volume) {
-      gam_fixed <- paste(gam_fixed, "+ Volume")
-    }
-    if ("sex" %in% covariates && has_sex) {
-      gam_fixed <- paste(gam_fixed, "+ Sex")
-    }
-    if ("initial_mass" %in% covariates) {
-      gam_fixed <- paste(gam_fixed, "+ Initial_Mass")
-    }
-    gam_random <- if (has_cage) {
-      stats::as.formula("~ (1 | Cage) + (1 | ID)")
-    } else {
-      stats::as.formula("~ (1 | ID)")
-    }
-
-    gam_fit <- tryCatch(
-      gamm4::gamm4(
-        formula = stats::as.formula(gam_fixed),
-        random  = gam_random,
-        data    = wd,
-        REML    = (estimation == "REML")
-      ),
-      error = function(e) {
-        stop("gamm4 fit failed: ", conditionMessage(e))
-      }
-    )
-
-    # CODE_REVIEW.md R3.4 — gamm4's $gam component is a stub whose class vector
-    # lacks c("glm","lm") and whose $call is NULL, so emmeans::recover_data.gam
-    # rejects it with "Can't handle an object of class 'NULL'". v0.4.11 patched
-    # this for the tumour-growth path inside tgs_fit_gamm4_model(), but this
-    # function fits gamm4 inline and never got the patch — so the emmeans call
-    # below always errored, the tryCatch turned it into NULL, and the
-    # body-weight GAM path silently returned an empty marginal-means table,
-    # indistinguishable from "no effect".
-    gam_fit <- patch_gamm4_stub(gam_fit)
-
-    emm_obj <- tryCatch(
-      emmeans::emmeans(gam_fit$gam, ~ Treatment,
-                       at = list(Day = mean(wd$Day))),
-      error = function(e) {
-        warning("emmeans on the fitted GAMM failed: ", conditionMessage(e),
-                call. = FALSE)
-        NULL
-      }
-    )
-    emm <- if (!is.null(emm_obj)) as.data.frame(emm_obj) else NULL
-
-    # CODE_REVIEW.md R3.12 — the function previously returned group marginal
-    # means and nothing inferential, so it could not answer "did this arm lose
-    # more weight than control", the primary toxicity question.
-    pairwise <- if (!is.null(emm_obj)) {
-      bw_pairwise_table(emm_obj, comparison_spec, ref_level, custom_contrasts)
-    } else NULL
-
-    return(list(
-      model          = gam_fit,
-      fixed_effects  = data.frame(
-        Term = "Smooth: s(Day, by = Treatment)",
-        Note = paste0("k = ", k_val, " (auto-chosen)"),
-        stringsAsFactors = FALSE
-      ),
-      random_effects = tryCatch(
-        as.data.frame(lme4::VarCorr(gam_fit$mer)),
-        error = function(e) NULL
-      ),
-      emmeans_table  = emm,
-      pairwise_comparisons = pairwise,
-      comparison_family    = comparison_spec$family,
-      p_adjust_method_used = comparison_spec$p_adjust_method,
-      model_info     = list(
-        estimation       = estimation,
-        response         = response_col,
-        fixed_formula    = gam_fixed,
-        model_type       = "gam",
-        model_simplified = FALSE,
-        adjust_tumor     = adjust_tumor_weight && has_volume,
-        tumor_density    = tumor_density,
-        smoother_k       = k_val,
-        n_obs            = nrow(wd),
-        n_subjects       = length(unique(wd$ID)),
-        n_groups         = length(levels(wd$Treatment))
-      ),
-      weight_data    = wd,
-      summary_text   = paste(c(
-        "=== BODY WEIGHT GAMM ===",
-        "",
-        sprintf("Response: %s",
-                if (adjust_tumor_weight && has_volume) "Net Weight (body - tumor)" else "Body Weight"),
-        sprintf("Estimation: %s", estimation),
-        sprintf("Random effects: %s", deparse1(gam_random)),
-        sprintf("Fixed effects: %s (smoother basis k = %d)", gam_fixed, k_val),
-        sprintf("Observations: %d  |  Subjects: %d  |  Groups: %d",
-                nrow(wd), length(unique(wd$ID)), length(levels(wd$Treatment)))
-      ), collapse = "\n")
-    ))
-  }
-
   # Random-effects spec: per-mouse intercept + slope, plus cage random
   # intercept when a cage column was supplied. CODE_REVIEW.md J.11 — the
   # cage column was previously attached to the data frame but never
   # appeared in the formula, the same silent-ignore bug class as
   # Round 1 1.1 (handle_cage_effects in tumor_growth_statistics).
-  re_full   <- if (has_cage) "(1 + Day | ID) + (1 | Cage)" else "(1 + Day | ID)"
-  re_simple <- if (has_cage) "(1 | ID) + (1 | Cage)"        else "(1 | ID)"
+  re_full   <- if (has_cage) "(1 + Day | Animal) + (1 | Cage)" else "(1 + Day | Animal)"
+  re_simple <- if (has_cage) "(1 | Animal) + (1 | Cage)"        else "(1 | Animal)"
 
   # Try random slope + intercept first
   formula_full <- stats::as.formula(
@@ -367,10 +268,10 @@ analyze_body_weight <- function(df,
     "",
     sprintf("Response: %s", if (adjust_tumor_weight && has_volume) "Net Weight (body - tumor)" else "Body Weight"),
     sprintf("Estimation: %s", estimation),
-    sprintf("Random effects: %s", if (model_simplified) "(1 | ID) [simplified]" else "(1 + Day | ID)"),
+    sprintf("Random effects: %s", if (model_simplified) "(1 | Animal) [simplified]" else "(1 + Day | Animal)"),
     sprintf("Fixed effects: %s", fixed_terms),
     sprintf("Observations: %d  |  Subjects: %d  |  Groups: %d",
-            nrow(wd), length(unique(wd$ID)), length(levels(wd$Treatment))),
+            nrow(wd), length(unique(wd$Animal)), length(levels(wd$Treatment))),
     ""
   )
 
@@ -390,20 +291,14 @@ analyze_body_weight <- function(df,
   # CODE_REVIEW.md J.12 — Bayesian counterpart returns pp_check_plot,
   # mcmc_trace_plot, etc. v0.4.8 — use the shared helper so TG/BW/AUC
   # paths produce identical diagnostic shape.
-  rd <- if (model_type == "lmm")
-    build_residual_diagnostic_plots(model, title_prefix = "Body-weight LMM")
-  else
-    list(diag_qq_plot = NULL,
-         diag_resid_fitted_plot = NULL,
-         diag_scale_location_plot = NULL)
+  rd <- build_residual_diagnostic_plots(model, title_prefix = "Body-weight LMM")
   diag_qq_plot             <- rd$diag_qq_plot
   diag_resid_fitted_plot   <- rd$diag_resid_fitted_plot
   diag_scale_location_plot <- rd$diag_scale_location_plot
-  diag_re_qq_plot          <- if (model_type == "lmm")
-    build_random_effects_qq_plot(model, title_prefix = "Body-weight LMM")
-  else NULL
+  diag_re_qq_plot          <- build_random_effects_qq_plot(
+    model, title_prefix = "Body-weight LMM")
   # CODE_REVIEW.md DIAGNOSTICS gap (13) — LMM influence diagnostics.
-  lmm_infl <- if (model_type == "lmm") build_lmm_influence(model) else NULL
+  lmm_infl <- build_lmm_influence(model, groups = "Animal")
 
   list(
     model          = model,
@@ -422,7 +317,7 @@ analyze_body_weight <- function(df,
       tumor_density    = tumor_density,
       cage_in_model    = has_cage,
       n_obs            = nrow(wd),
-      n_subjects       = length(unique(wd$ID)),
+      n_subjects       = length(unique(wd$Animal)),
       n_groups         = length(levels(wd$Treatment))
     ),
     diag_qq_plot             = diag_qq_plot,

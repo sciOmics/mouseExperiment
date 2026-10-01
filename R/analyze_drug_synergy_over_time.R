@@ -15,14 +15,32 @@
 #' @param control_name A character string specifying the name of the control/vehicle group. Default is "Control".
 #' @param min_time_point Optional. A numeric value specifying the minimum time point to include in analysis. Default is NULL.
 #' @param max_time_point Optional. A numeric value specifying the maximum time point to include in analysis. Default is NULL.
+#' @param id_column Column identifying individual animals (required). Before
+#'   v0.25.0 this function had no such argument: each day's analysis looked for a
+#'   column literally named "ID", and without one every animal in an arm shared a
+#'   key, so every day failed (CODE_REVIEW.md R20.15).
+#' @param cage_column Optional cage column, part of the animal key.
+#' @param endpoint_method,n_boot,boot_seed As in
+#'   \code{\link{analyze_drug_synergy}}. Under the model estimand one endpoint
+#'   model is fitted and evaluated on every day.
 #' @param verbose Logical. If TRUE, prints detailed results to the console.
 #'        Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.
 #'
 #' @return A list containing the following components:
 #' \describe{
 #'   \item{timepoint_results}{A list of results at each time point, each containing the outputs from analyze_drug_synergy}
-#'   \item{synergy_summary}{A data frame summarizing synergy metrics across all time points}
-#'   \item{peak_bliss_synergy}{Information about when Bliss synergy was strongest}
+#'   \item{synergy_summary}{One row per evaluable day: TGIs, the Bliss
+#'     expectation and difference, their 95 % intervals (\code{*_Lower},
+#'     \code{*_Upper}), p-values of the combination against each agent, and
+#'     \code{Bliss_Applies} (FALSE when a single agent did not inhibit growth that
+#'     day, so Bliss does not apply; named \code{Evaluable} before v0.26.0).}
+#'   \item{evaluability}{The evaluable-day record: only days on which all four
+#'     arms have at least 50 % of their enrolled animals, and at least 3, on
+#'     study are analysed; the others are listed in \code{excluded} with the
+#'     arms that failed (CODE_REVIEW.md R20.1, R20-K).}
+#'   \item{peak_bliss_synergy}{The row of \code{synergy_summary} with the largest
+#'     Bliss difference among evaluable days; a 0-row data frame when no day is
+#'     evaluable (a single agent never inhibited growth).}
 #'   \item{drug_a_name, drug_b_name, combo_name}{Names of treatment groups for plotting}
 #' }
 #'
@@ -32,7 +50,6 @@
 #' including:
 #'
 #' 1. Bliss Independence effect differences at each time point
-#' 2. Combination Index (CI) at each time point
 #' 3. Statistical significance of combination advantage over monotherapies
 #'
 #' To visualize the results, use the plot_synergy_trend
@@ -87,10 +104,17 @@ analyze_drug_synergy_over_time <- function(df,
                                       control_name = "Control",
                                       min_time_point = NULL,
                                       max_time_point = NULL,
+                                      id_column = "ID",
+                                      cage_column = NULL,
+                                      endpoint_method = c("model", "last_obs", "survivors"),
+                                      n_boot = 2000L,
+                                      boot_seed = NULL,
                                       verbose = TRUE) {
-  
+
+  endpoint_method <- match.arg(endpoint_method)
+
   # Input validation
-  required_columns <- c(treatment_column, volume_column, time_column)
+  required_columns <- c(treatment_column, volume_column, time_column, id_column)
   missing_cols <- required_columns[!required_columns %in% colnames(df)]
   
   if (length(missing_cols) > 0) {
@@ -106,9 +130,29 @@ analyze_drug_synergy_over_time <- function(df,
          paste(missing_groups, collapse = ", "))
   }
   
-  # Get all time points
-  all_timepoints <- sort(unique(df[[time_column]]))
-  
+  if (!is.null(cage_column) && !cage_column %in% colnames(df)) cage_column <- NULL
+  arms <- c(control_name, drug_a_name, drug_b_name, combo_name)
+
+  # CODE_REVIEW.md R20.1 / R20-K -- only evaluable days: every one of the four
+  # arms has >= 50 % and >= 3 of its animals on study. Days after the control
+  # arm has thinned out used to be evaluated anyway, by extrapolation.
+  d_std <- data.frame(
+    MouseKey  = if (!is.null(cage_column)) {
+      make_mouse_key(as.character(df[[treatment_column]]),
+                     as.character(df[[id_column]]),
+                     as.character(df[[cage_column]]))
+    } else {
+      make_mouse_key(as.character(df[[treatment_column]]),
+                     as.character(df[[id_column]]))
+    },
+    Treatment = as.character(df[[treatment_column]]),
+    Day       = as.numeric(df[[time_column]]),
+    Volume    = as.numeric(df[[volume_column]]),
+    stringsAsFactors = FALSE)
+  d_std <- d_std[is.finite(d_std$Day) & is.finite(d_std$Volume), , drop = FALSE]
+  evaluability <- me_evaluability(d_std, arms)
+  all_timepoints <- evaluability$days
+
   # Apply time point filters if specified
   if (!is.null(min_time_point)) {
     all_timepoints <- all_timepoints[all_timepoints >= min_time_point]
@@ -116,84 +160,78 @@ analyze_drug_synergy_over_time <- function(df,
   if (!is.null(max_time_point)) {
     all_timepoints <- all_timepoints[all_timepoints <= max_time_point]
   }
-  
-  # Check if we have any time points to analyze
   if (length(all_timepoints) == 0) {
-    stop("No time points available for analysis after applying filters.")
+    stop(if (!length(evaluability$days)) me_no_evaluable_day_msg(evaluability)
+         else "No evaluable day lies within min_time_point and max_time_point.",
+         call. = FALSE)
   }
-  
-  message(paste("Analyzing drug synergy across", length(all_timepoints), "time points..."))
-  
-  # Initialize lists to store results
+
+  # One endpoint model for every day, so the days are estimates from the same
+  # fit rather than from a refit per day.
+  endpoint_model <- if (endpoint_method == "model") me_endpoint_model(d_std) else NULL
+
+  if (isTRUE(verbose)) {
+    message("Analyzing drug synergy across ", length(all_timepoints),
+            " evaluable days...")
+  }
+
   timepoint_results <- list()
   synergy_rows <- list()
-  
-  # Loop through each time point and calculate synergy
-  for (tp in all_timepoints) {
-    # Create subset of data for this time point
-    tp_data <- df[df[[time_column]] == tp, ]
-    
-    # Check if we have data for all required groups at this time point
-    groups_at_tp <- unique(tp_data[[treatment_column]])
-    missing_at_tp <- all_groups[!all_groups %in% groups_at_tp]
-    
-    if (length(missing_at_tp) > 0) {
-      warning(paste("Time point", tp, "is missing data for groups:", paste(missing_at_tp, collapse = ", "), 
-                   "- skipping this time point."))
-      next
-    }
-    
-    # Try to calculate synergy for this time point
-    tryCatch({
-      # Run the synergy analysis for this time point
-      synergy_results <- analyze_drug_synergy(
-        df = df,
-        treatment_column = treatment_column,
-        volume_column = volume_column,
-        time_column = time_column,
-        drug_a_name = drug_a_name,
-        drug_b_name = drug_b_name,
-        combo_name = combo_name,
-        control_name = control_name,
-        eval_time_point = tp,
-        verbose = FALSE
-      )
-      
-      # Store full results
-      timepoint_results[[as.character(tp)]] <- synergy_results
-      
-      # Extract key metrics for summary
-      bliss_result <- synergy_results$bliss_independence
-      stat_tests <- synergy_results$statistical_tests
-      
-      # Get tumor growth inhibition values directly from the results to ensure consistency
-      summary_df <- synergy_results$summary
-      tgi_drug_a <- summary_df$TGI_Percent[summary_df$Treatment == drug_a_name]
-      tgi_drug_b <- summary_df$TGI_Percent[summary_df$Treatment == drug_b_name]
-      tgi_combo <- summary_df$TGI_Percent[summary_df$Treatment == combo_name]
-      
-      # Bliss expected value, read straight from summary_df
-      bliss_expected <- summary_df$TGI_Percent[summary_df$Treatment == "Bliss Expected"]
 
-      # Accumulate row for this time point
+  for (tp in all_timepoints) {
+    tryCatch({
+      ep <- endpoint_volumes(
+        df, id_column = id_column, treatment_column = treatment_column,
+        time_column = time_column, volume_column = volume_column,
+        cage_column = cage_column, endpoint_day = tp,
+        endpoint_method = endpoint_method, arms = arms,
+        model = endpoint_model)
+      synergy_results <- me_synergy_from_endpoint(
+        ep, control_name = control_name, drug_a_name = drug_a_name,
+        drug_b_name = drug_b_name, combo_name = combo_name,
+        n_boot = n_boot, boot_seed = boot_seed, verbose = FALSE,
+        warn_not_evaluable = FALSE)
+      timepoint_results[[as.character(tp)]] <- synergy_results
+
+      bliss_result <- synergy_results$bliss_independence
+      stat_tests   <- synergy_results$statistical_tests
+      summary_df   <- synergy_results$summary
+      ci           <- synergy_results$synergy_ci
+      ci_of <- function(metric, col) {
+        if (is.null(ci)) return(NA_real_)
+        v <- ci[[col]][ci$Metric == metric]
+        if (length(v)) v else NA_real_
+      }
+
       synergy_rows[[length(synergy_rows) + 1]] <- data.frame(
         Time_Point = tp,
-        TGI_Drug_A = tgi_drug_a,
-        TGI_Drug_B = tgi_drug_b,
-        TGI_Combo = tgi_combo,
-        Bliss_Expected_TGI = bliss_expected,
+        TGI_Drug_A = summary_df$TGI_Percent[summary_df$Treatment == drug_a_name],
+        TGI_Drug_B = summary_df$TGI_Percent[summary_df$Treatment == drug_b_name],
+        TGI_Combo  = summary_df$TGI_Percent[summary_df$Treatment == combo_name],
+        Bliss_Expected_TGI = summary_df$TGI_Percent[summary_df$Treatment == "Bliss Expected"],
         Bliss_Difference = bliss_result$difference * 100,
+        # Intervals for the reported estimates (R20.2), in the same units.
+        TGI_Drug_A_Lower = ci_of("TGI_A_pct", "CI_Lower"),
+        TGI_Drug_A_Upper = ci_of("TGI_A_pct", "CI_Upper"),
+        TGI_Drug_B_Lower = ci_of("TGI_B_pct", "CI_Lower"),
+        TGI_Drug_B_Upper = ci_of("TGI_B_pct", "CI_Upper"),
+        TGI_Combo_Lower  = ci_of("TGI_Combo_pct", "CI_Lower"),
+        TGI_Combo_Upper  = ci_of("TGI_Combo_pct", "CI_Upper"),
+        Bliss_Difference_Lower = 100 * ci_of("Bliss_Excess_FE", "CI_Lower"),
+        Bliss_Difference_Upper = 100 * ci_of("Bliss_Excess_FE", "CI_Upper"),
         P_Value_vs_Drug_A = stat_tests$P_Value[1],
         P_Value_vs_Drug_B = stat_tests$P_Value[2],
         Synergy_Assessment = synergy_results$overall_assessment,
+        # FALSE when a single agent did not inhibit growth that day, so the
+        # Bliss columns are NA (R20.8).
+        Bliss_Applies = isTRUE(synergy_results$bliss_applies),
         stringsAsFactors = FALSE
       )
-      
     }, error = function(e) {
-      warning(paste("Error analyzing time point", tp, ":", e$message))
+      warning(paste("Error analyzing time point", tp, ":", e$message), call. = FALSE)
     })
   }
-  
+
   # Combine accumulated rows into summary data frame
   synergy_summary <- if (length(synergy_rows) > 0) do.call(rbind, synergy_rows) else data.frame()
 
@@ -204,9 +242,22 @@ analyze_drug_synergy_over_time <- function(df,
   
   # Order the summary by time point
   synergy_summary <- synergy_summary[order(synergy_summary$Time_Point), ]
+
+  # One warning for all the days on which Bliss does not apply (R14.2, R20.8).
+  not_bliss <- synergy_summary$Time_Point[!synergy_summary$Bliss_Applies]
+  if (length(not_bliss)) {
+    warning("Bliss synergy is not evaluated on ", length(not_bliss), " day(s) (",
+            paste(not_bliss, collapse = ", "), "): a single agent did not inhibit ",
+            "growth relative to control on those days.", call. = FALSE)
+  }
   
-  # Find when Bliss synergy was strongest
-  peak_bliss_synergy <- synergy_summary[which.max(synergy_summary$Bliss_Difference), ]
+  # Find when Bliss synergy was strongest -- over evaluable days only (R20.8).
+  # A day on which an agent accelerated growth has no Bliss difference, so it
+  # cannot be the peak. With no evaluable day there is no peak: a 0-row frame.
+  evaluable_days <- synergy_summary[is.finite(synergy_summary$Bliss_Difference), ,
+                                    drop = FALSE]
+  peak_bliss_synergy <- evaluable_days[which.max(evaluable_days$Bliss_Difference), ,
+                                       drop = FALSE]
   
   # Print summary of findings (only when verbose)
   if (isTRUE(verbose)) {
@@ -215,8 +266,12 @@ analyze_drug_synergy_over_time <- function(df,
         min(synergy_summary$Time_Point), " to ", max(synergy_summary$Time_Point), "\n")
     
     message("Peak Synergy Findings:")
-    message("Strongest Bliss Synergy at Day ", peak_bliss_synergy$Time_Point, 
-               " (Difference = ", round(peak_bliss_synergy$Bliss_Difference, 1), "%)\n")
+    if (nrow(peak_bliss_synergy) > 0L) {
+      message("Strongest Bliss Synergy at Day ", peak_bliss_synergy$Time_Point,
+              " (Difference = ", round(peak_bliss_synergy$Bliss_Difference, 1), "%)\n")
+    } else {
+      message("No evaluable day: a single agent did not inhibit growth on any day.\n")
+    }
     
     message("Synergy Summary by Time Point:")
     message(paste(utils::capture.output(
@@ -230,6 +285,11 @@ analyze_drug_synergy_over_time <- function(df,
     timepoint_results = timepoint_results,
     synergy_summary = synergy_summary,
     peak_bliss_synergy = peak_bliss_synergy,
+    # The rule, the evaluable days and the days it excluded, with the arms
+    # that failed it (R20-K).
+    evaluability = evaluability,
+    endpoint_method = endpoint_method,
+    endpoint_model = me_endpoint_model_info(endpoint_model),
     # Add these for plotting functions
     drug_a_name = drug_a_name,
     drug_b_name = drug_b_name,
@@ -305,11 +365,15 @@ plot_synergy_trend <- function(synergy_results, custom_title = NULL, custom_colo
     ggplot2::geom_line(ggplot2::aes(y = TGI_Combo, color = combo_name), linewidth = 1.2) +
     ggplot2::geom_line(ggplot2::aes(y = Bliss_Expected_TGI, color = "Bliss Expected"), linetype = "dashed") +
     # Synergy area (when combo effect > bliss expected)
-    ggplot2::geom_ribbon(data = subset(synergy_summary, TGI_Combo > Bliss_Expected_TGI),
+    # Ribbons only where Bliss applies: non-evaluable days have NA expectations
+    # and are dropped explicitly (R20.8).
+    ggplot2::geom_ribbon(data = subset(synergy_summary, is.finite(Bliss_Expected_TGI) &
+                                         TGI_Combo > Bliss_Expected_TGI),
                       ggplot2::aes(ymin = Bliss_Expected_TGI, ymax = TGI_Combo),
                       fill = "lightgreen", alpha = 0.4) +
     # Antagonism area (when combo effect < bliss expected)
-    ggplot2::geom_ribbon(data = subset(synergy_summary, TGI_Combo < Bliss_Expected_TGI),
+    ggplot2::geom_ribbon(data = subset(synergy_summary, is.finite(Bliss_Expected_TGI) &
+                                         TGI_Combo < Bliss_Expected_TGI),
                       ggplot2::aes(ymin = TGI_Combo, ymax = Bliss_Expected_TGI),
                       fill = "pink", alpha = 0.4) +
     # Formatting

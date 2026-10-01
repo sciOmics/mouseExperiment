@@ -61,10 +61,11 @@ tg_priors <- function(strength  = c("skeptical", "weakly_informative",
 #' @param warmup Warm-up iterations per chain (default 1000).
 #' @param iter Post-warm-up iterations per chain (default 500).
 #' @param seed PRNG seed (default 42).
-#' @param backend "rstan" (default) or "cmdstanr". Resolved by
-#'   `resolve_brms_backend()` before being passed to `brms::brm()`, so
-#'   if `cmdstanr` is requested but unavailable the call falls back to
-#'   `rstan` rather than erroring.
+#' @param backend "rstan" (default) or "cmdstanr". A request for
+#'   "cmdstanr" is checked before fitting: without the cmdstanr package and
+#'   a CmdStan toolchain the fit stops with installation instructions. (The
+#'   documentation used to say it fell back to rstan, which it never did;
+#'   CODE_REVIEW.md R20.74.)
 #' @return An object of class `tg_mcmc` (a tagged list).
 #' @seealso [tg_priors()]
 #' @examples

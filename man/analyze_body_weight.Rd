@@ -18,7 +18,6 @@ analyze_body_weight(
   volume_units = NULL,
   covariates = c("volume"),
   estimation = c("REML", "ML"),
-  model_type = c("lmm", "gam"),
   comparison_family = c("vs_reference", "all_pairs", "custom"),
   custom_contrasts = NULL,
   p_adjust_method = c("bonferroni", "holm", "fdr", "dunnett", "tukey", "none"),
@@ -46,19 +45,18 @@ analyze_body_weight(
 
 \item{tumor_density}{Density in g/cm³ for tumor weight estimation (default 1.0).}
 
-\item{volume_units}{Units of the volume column: \code{"mm3"}, \code{"cm3"}, or
-\code{NULL} to infer from the magnitude of the values. Only used when
-\code{adjust_tumor_weight = TRUE}, where volume is converted to mass and
-subtracted from body weight -- getting the units wrong there scales the
-correction by 1000 (R3.30).}
+\item{volume_units}{Units of the volume column, \code{"mm3"} or \code{"cm3"}.
+Required when \code{adjust_tumor_weight = TRUE} and a volume column is used,
+because volume is converted to mass and subtracted from body weight: the
+wrong unit scales that correction by 1000. Units were inferred from the data
+before v0.25.0, which read small-tumour mm3 studies as cm3 (CODE_REVIEW.md
+R20.83); the data are now only checked against the declared unit, with a
+warning on disagreement and an error when the implied tumour mass exceeds
+half the body weight.}
 
 \item{covariates}{Character vector of optional covariates: "volume", "sex", "initial_mass".}
 
 \item{estimation}{Character; "REML" (default) or "ML".}
-
-\item{model_type}{Character; "lmm" (default — linear mixed model via lme4) or
-"gam" (generalized additive mixed model via gamm4 with a group-specific
-smoother on Day, preferred when weight trajectories are non-monotonic).}
 
 \item{comparison_family}{Which comparisons to report and adjust over:
 "vs_reference" (default), "all_pairs", or "custom" (with

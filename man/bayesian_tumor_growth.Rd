@@ -13,8 +13,7 @@ bayesian_tumor_growth(
   cage_column = NULL,
   dose_column = NULL,
   transform = c("log", "sqrt", "none"),
-  model_type = c("lmm", "gam"),
-  random_effects_specification = c("intercept_only", "slope"),
+  random_effects_specification = c("slope", "intercept_only"),
   reference_group = NULL,
   prior_strength = c("skeptical", "weakly_informative", "informative", "diffuse",
     "manual"),
@@ -60,12 +59,13 @@ The column is also used for composite mouse-key construction.}
 \code{"log"} (default, recommended for exponential growth),
 \code{"sqrt"}, or \code{"none"}.}
 
-\item{model_type}{Which Bayesian model to fit: \code{"bayes"} (linear) or
-\code{"bayes_gam"} (smooth time x treatment).}
-
 \item{random_effects_specification}{Random effects structure:
-\code{"intercept_only"} (default, \code{(1 | ID)}) or
-\code{"slope"} (\code{(Day | ID)}, adds per-animal random slopes).}
+\code{"slope"} (default since v0.26.0, \code{(Day | animal)}, as in
+\code{\link{tumor_growth_statistics}}: per-animal random slopes, so the
+Treatment x Day effect is not judged against a residual that holds the
+animals' differing growth rates; CODE_REVIEW.md R20.5) or
+\code{"intercept_only"} (\code{(1 | animal)}), which assumes every
+animal in an arm grows at the same rate.}
 
 \item{reference_group}{Treatment group used as the reference (Intercept)
 level. Auto-detected if \code{NULL}: checks for common control-group
@@ -73,23 +73,27 @@ names (\code{Control}, \code{Vehicle}, \code{control}, \code{vehicle},
 \code{CTRL}, \code{ctrl}) before falling back to the first level
 alphabetically.}
 
-\item{prior_strength}{Prior preset applied to all fixed effects:
+\item{prior_strength}{Prior preset, scaled to the data (see
+\code{docs/BAYESIAN.md}):
 \describe{
-\item{\code{"skeptical"}}{(default) \eqn{b \sim N(0, 0.25)};
-\eqn{\text{sd}, \sigma \sim \text{Exponential}(2)}.
-Expresses prior belief that treatment effects are small; requires
-stronger data to support large estimated differences.}
-\item{\code{"weakly_informative"}}{\eqn{b \sim N(0, 1)};
-\eqn{\text{sd}, \sigma \sim \text{Exponential}(1)}.}
-\item{\code{"informative"}}{\eqn{b \sim N(0, 0.5)};
-\eqn{\text{sd}, \sigma \sim \text{Exponential}(2)}.}
-\item{\code{"diffuse"}}{\eqn{b \sim N(0, 2.5)};
-\eqn{\text{sd}, \sigma \sim \text{Exponential}(0.5)}.}
+\item{\code{"skeptical"}}{(default) treatment main effects
+\eqn{N(0, 0.25)} on log volume; slope and Treatment x Day terms
+\eqn{N(0, \text{range}(y) / \text{span})}; SDs and \eqn{\sigma}
+\eqn{\text{Exponential}(2 / \text{MAD}(y))}. Requires stronger
+data to support large estimated differences.}
+\item{\code{"informative"}}{main effects \eqn{N(0, 0.5)}, rate terms
+1.5 times the range per span, SD rate 2 / MAD.}
+\item{\code{"weakly_informative"}}{main effects \eqn{N(0, 1)}, rate
+terms twice the range per span, SD rate 1 / MAD.}
+\item{\code{"diffuse"}}{main effects \eqn{N(0, 2.5)}, rate terms five
+times the range per span, SD rate 0.5 / MAD.}
 \item{\code{"manual"}}{Use the \code{prior_b}, \code{prior_intercept},
 \code{prior_sd}, and \code{prior_sigma} arguments to specify brms
-prior strings directly.}
+prior strings directly; all four are required.}
 }
-All presets use an intercept prior with SD = \eqn{2.5 \times \sigma_b}.}
+The intercept prior is \eqn{N(\text{median}(y), 2.5\,\text{MAD}(y))}.
+With \code{transform = "sqrt"} or \code{"none"} the main-effect width is
+multiplied by MAD(y) (v0.28.0, CODE_REVIEW.md R20.41).}
 
 \item{prior_b}{brms prior string for fixed-effect coefficients (class
 \code{"b"}), e.g. \code{"normal(0, 0.25)"} or \code{"student_t(3, 0, 0.5)"}.
@@ -190,19 +194,27 @@ data updated the prior. \code{NULL} when \code{plots = FALSE}.}
 or \code{NULL} when \code{plots = FALSE}.}
 \item{\code{residuals_plot}}{Posterior mean residuals vs. study day,
 faceted by treatment group with a loess smoother. Systematic curvature
-indicates that the log-linear time assumption is violated and a GAM or
-nonlinear model should be considered. \code{NULL} when
-\code{plots = FALSE}.}
+indicates that the log-linear time assumption is violated. \code{NULL}
+when \code{plots = FALSE}.}
 \item{\code{growth_rates}}{Per-animal exponential growth rates. When the
 LMM was fit with \code{random_effects_specification = "slope"}, these
 are derived directly from the brms posterior — each row carries
 \code{growth_rate} (posterior median) plus \code{growth_rate_lower}
 and \code{growth_rate_upper} (2.5\% / 97.5\% credible intervals). For
-intercept-only and GAM paths, falls back to log-linear OLS per
+the intercept-only path, falls back to log-linear OLS per
 animal and the credible-interval columns reflect OLS confidence
 intervals (Round 2 E.3).}
 \item{\code{data_summary}}{Descriptive statistics by treatment group and
 day.}
+\item{\code{loo_diagnostics}}{PSIS-LOO summary with \code{k_threshold},
+\code{n_high_k}, the per-observation \code{pareto_k} and any
+\code{warnings}; kept when loo warns (R20.35).}
+\item{\code{posterior_draws}}{The headline posterior draws (fixed
+effects, SDs and correlations, sigma) as a \code{draws_array}, for trace
+and rank plots without the model. No plot in the result holds the model
+any more, so dropping \code{model} frees it (R20.80).}
+\item{\code{model_reused}}{TRUE when a compiled model from an earlier fit
+with the same structure was reused (R20.78).}
 }
 }
 \description{
@@ -233,9 +245,11 @@ resolves this.
 \section{Assumptions and Limitations}{
 
 \itemize{
-\item Computation typically takes 3–12 minutes on modern hardware. The
-Stan model is compiled on the first call with a given formula and
-cached; subsequent calls with the same formula start faster.
+\item Compiling the Stan model takes about 20 s with rstan. The prior
+values are passed to Stan as data, so a later fit in the same R session
+whose model has the same structure (formula, number of arms, random
+effects) reuses the compiled model and starts sampling at once
+(CODE_REVIEW.md R20.78); see \code{\link{clear_compiled_model_cache}}.
 \item Credible intervals have a direct probability interpretation
 ("there is 95 \% posterior probability the parameter lies in this
 interval"), unlike frequentist confidence intervals.

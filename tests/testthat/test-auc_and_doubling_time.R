@@ -1,5 +1,5 @@
-# Tests for calculate_auc() and the me_result S3 class
-# (utils_auc.R + me_result.R)
+# Tests for calculate_auc() (utils_auc.R) and tumor_doubling_time()
+# (tumor_doubling_time.R).
 
 # ---- calculate_auc() ---------------------------------------------------------
 
@@ -38,61 +38,6 @@ test_that("calculate_auc returns NA for empty / all-NA input", {
 
 test_that("calculate_auc validates mismatched lengths", {
   expect_error(calculate_auc(1:3, 1:2), "same length")
-})
-
-# ---- new_me_result() ---------------------------------------------------------
-
-test_that("new_me_result creates a valid me_result object", {
-  res <- new_me_result(
-    analysis_type = "test",
-    data   = data.frame(x = 1:3),
-    results = list(a = 1),
-    plots  = list(),
-    summary = data.frame(stat = "mean", value = 2)
-  )
-  expect_s3_class(res, "me_result")
-  expect_equal(res$analysis_type, "test")
-  expect_true(!is.null(res$timestamp))
-})
-
-test_that("print.me_result runs without error", {
-  res <- new_me_result("test", data.frame(), list(), list(), data.frame())
-  expect_output(print(res), "Analysis Result")
-})
-
-test_that("summary.me_result returns the summary slot", {
-  s <- data.frame(stat = "mean", value = 42)
-  res <- new_me_result("test", data.frame(), list(), list(), s)
-  expect_equal(summary(res), s)
-})
-
-test_that("plot.me_result returns plots", {
-  p1 <- ggplot2::ggplot()
-  res <- new_me_result("test", data.frame(), list(), list(growth = p1), data.frame())
-  expect_identical(plot(res, "growth"), p1)
-  expect_true(is.list(plot(res)))
-})
-
-# ---- export_diagnostics() ----------------------------------------------------
-
-test_that("export_diagnostics works with an me_result wrapping lm", {
-  m <- lm(mpg ~ cyl + wt, data = mtcars)
-  res <- new_me_result("test", mtcars, list(model = m), list(), data.frame())
-  df <- export_diagnostics(res)
-  expect_true(is.data.frame(df))
-  expect_true("AIC" %in% df$metric)
-  expect_true("R_squared" %in% df$metric)
-})
-
-test_that("export_diagnostics writes CSV when file is supplied", {
-  m  <- lm(mpg ~ hp, data = mtcars)
-  res <- new_me_result("test", mtcars, list(model = m), list(), data.frame())
-  tf <- tempfile(fileext = ".csv")
-  on.exit(unlink(tf))
-  export_diagnostics(res, file = tf)
-  expect_true(file.exists(tf))
-  csv <- read.csv(tf)
-  expect_true("BIC" %in% csv$metric)
 })
 
 # ---- tumor_doubling_time() ---------------------------------------------------

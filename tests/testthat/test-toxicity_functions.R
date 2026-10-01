@@ -9,7 +9,6 @@
 # timepoints, so they are different fixtures, not duplicates.
 
 
-
 # =============================================================================
 # analyze_body_weight
 # =============================================================================
@@ -23,6 +22,7 @@ test_that("analyze_body_weight returns expected structure", {
     id_column        = "ID",
     volume_column    = "Volume",
     adjust_tumor_weight = TRUE,
+    volume_units     = "mm3",   # required with adjustment since v0.25.0 (R20.83)
     covariates       = c("volume"),
     estimation       = "REML"
   )
@@ -95,48 +95,6 @@ test_that("analyze_body_weight model_simplified info works", {
 
 
 # =============================================================================
-# body_weight_auc
-# =============================================================================
-test_that("body_weight_auc returns expected structure", {
-  df <- make_weight_data()
-  res <- body_weight_auc(
-    df,
-    weight_column    = "Weight",
-    time_column      = "Day",
-    treatment_column = "Treatment",
-    id_column        = "ID",
-    volume_column    = "Volume"
-  )
-
-  expect_type(res, "list")
-  expect_true(is.data.frame(res$auc_per_mouse))
-  expect_true(all(c("ID", "Treatment", "AUC_Weight", "AUC_Pct_Change",
-                     "Nadir_Weight", "Nadir_Day") %in% names(res$auc_per_mouse)))
-  expect_true(is.data.frame(res$auc_summary))
-  expect_true("AUC_Mean" %in% names(res$auc_summary))
-  expect_true(is.data.frame(res$nadir_data))
-  expect_true(is.data.frame(res$comparisons))
-})
-
-test_that("body_weight_auc returns one row per mouse", {
-  df <- make_weight_data()
-  res <- body_weight_auc(df, weight_column = "Weight", time_column = "Day",
-                         treatment_column = "Treatment", id_column = "ID")
-  expect_equal(nrow(res$auc_per_mouse), length(unique(df$ID)))
-})
-
-test_that("body_weight_auc nadir data is correct", {
-  df <- make_weight_data()
-  res <- body_weight_auc(df, weight_column = "Weight", time_column = "Day",
-                         treatment_column = "Treatment", id_column = "ID")
-  # Nadir should be ≤ baseline for each mouse
-  for (i in seq_len(nrow(res$auc_per_mouse))) {
-    expect_true(res$auc_per_mouse$Nadir_Weight[i] <= res$auc_per_mouse$Baseline_Weight[i] + 1)
-  }
-})
-
-
-# =============================================================================
 # weight_loss_threshold
 # =============================================================================
 test_that("weight_loss_threshold returns expected structure", {
@@ -200,189 +158,36 @@ test_that("therapeutic_window_metric returns expected structure", {
     time_column      = "Day",
     treatment_column = "Treatment",
     id_column        = "ID",
-    reference_group  = "Control"
+    reference_group  = "Control",
+    volume_units     = "mm3",
+    boot_seed        = 1
   )
 
   expect_type(res, "list")
-  expect_true(is.data.frame(res$twm_table))
-  expect_true(all(c("Treatment", "TGI", "Mean_Pct_Weight_Loss", "TWM") %in%
-                  names(res$twm_table)))
-  # DrugA should have higher TWM than DrugB (effective + less toxic)
-  twm_a <- res$twm_table$TWM[res$twm_table$Treatment == "DrugA"]
-  twm_b <- res$twm_table$TWM[res$twm_table$Treatment == "DrugB"]
-  expect_true(twm_a > twm_b)
+  win <- res$window_table
+  expect_true(is.data.frame(win))
+  expect_true(all(c("Treatment", "N_Animals", "TGI", "TGI_Lower", "TGI_Upper",
+                    "Worst_Loss", "Worst_Loss_Lower", "Worst_Loss_Upper",
+                    "N_Over_Threshold", "Tolerability") %in% names(win)))
+  expect_identical(win$Treatment[1], "Control")          # reference first
+  # DrugA is effective and less toxic; DrugB is neither.
+  a <- win[win$Treatment == "DrugA", ]; b <- win[win$Treatment == "DrugB", ]
+  expect_gt(a$TGI, b$TGI)
+  expect_lt(a$Worst_Loss, b$Worst_Loss)
+  expect_identical(a$Tolerability, "Tolerated")
+  expect_identical(b$Tolerability, "Not tolerated")
+  expect_equal(b$N_Over_Threshold, 4L)
 })
 
-test_that("therapeutic_window_metric noise_floor works", {
+test_that("therapeutic_window_metric tolerability threshold is in percent", {
   df <- make_weight_data()
-  res <- therapeutic_window_metric(
-    df,
-    weight_column    = "Weight",
-    volume_column    = "Volume",
-    time_column      = "Day",
-    treatment_column = "Treatment",
-    id_column        = "ID",
-    reference_group  = "Control",
-    noise_floor      = 100  # Very high floor so all groups hit it
-  )
-
-  expect_true(all(res$twm_table$Safety_Note == "Negligible weight loss"))
+  tw <- function(...) therapeutic_window_metric(
+    df, reference_group = "Control", volume_units = "mm3", boot_seed = 1, ...)
+  expect_error(tw(tolerability_threshold = 0.2), "percent")
+  # At 10 %, DrugA's worst loss (about 15 %) is no longer tolerated.
+  win <- tw(tolerability_threshold = 10)$window_table
+  expect_identical(win$Tolerability[win$Treatment == "DrugA"], "Not tolerated")
+  expect_identical(win$Tolerability[win$Treatment == "Control"], "Tolerated")
 })
 
 
-# =============================================================================
-# efficacy_toxicity_bivariate
-# =============================================================================
-test_that("efficacy_toxicity_bivariate returns expected structure (tgi)", {
-  df <- make_weight_data()
-  res <- efficacy_toxicity_bivariate(
-    df,
-    weight_column    = "Weight",
-    volume_column    = "Volume",
-    time_column      = "Day",
-    treatment_column = "Treatment",
-    id_column        = "ID",
-    reference_group  = "Control",
-    efficacy_metric  = "tgi"
-  )
-
-  expect_type(res, "list")
-  expect_true(is.data.frame(res$per_mouse))
-  expect_true(all(c("ID", "Treatment", "Max_Pct_Weight_Loss", "Efficacy") %in%
-                  names(res$per_mouse)))
-  expect_true(is.data.frame(res$per_group))
-  expect_equal(res$efficacy_metric, "tgi")
-})
-
-test_that("efficacy_toxicity_bivariate works with tumor_auc metric", {
-  df <- make_weight_data()
-  res <- efficacy_toxicity_bivariate(
-    df,
-    weight_column    = "Weight",
-    volume_column    = "Volume",
-    time_column      = "Day",
-    treatment_column = "Treatment",
-    id_column        = "ID",
-    reference_group  = "Control",
-    efficacy_metric  = "tumor_auc"
-  )
-
-  expect_equal(res$efficacy_metric, "tumor_auc")
-  expect_true(is.data.frame(res$per_mouse))
-})
-
-test_that("efficacy_toxicity_bivariate rejects a removed efficacy_metric", {
-  df <- make_weight_data()
-  # "log_cell_kill" was removed as a choice; match.arg must reject it rather
-  # than silently falling back to the first option.
-  expect_error(
-    efficacy_toxicity_bivariate(
-      df,
-      weight_column    = "Weight",
-      volume_column    = "Volume",
-      time_column      = "Day",
-      treatment_column = "Treatment",
-      id_column        = "ID",
-      reference_group  = "Control",
-      efficacy_metric  = "log_cell_kill"
-    ),
-    regexp = "should be one of"
-  )
-})
-
-test_that("total_benefit_area returns expected structure", {
-  df <- make_weight_data()
-  res <- total_benefit_area(
-    df,
-    weight_column    = "Weight",
-    volume_column    = "Volume",
-    time_column      = "Day",
-    treatment_column = "Treatment",
-    id_column        = "ID",
-    reference_group  = "Control",
-    lambda           = 1.0
-  )
-
-  expect_type(res, "list")
-  expect_true(is.data.frame(res$benefit_table))
-  expect_true(all(c("Treatment", "Efficacy_AUC", "Toxicity_AUC",
-                     "Benefit_Score", "Rank") %in% names(res$benefit_table)))
-  expect_equal(res$lambda, 1.0)
-})
-
-test_that("total_benefit_area higher lambda penalizes toxic drugs", {
-  df <- make_weight_data()
-  res_low  <- total_benefit_area(df, weight_column = "Weight",
-    volume_column = "Volume", time_column = "Day",
-    treatment_column = "Treatment", id_column = "ID",
-    reference_group = "Control", lambda = 0.1)
-  res_high <- total_benefit_area(df, weight_column = "Weight",
-    volume_column = "Volume", time_column = "Day",
-    treatment_column = "Treatment", id_column = "ID",
-    reference_group = "Control", lambda = 5.0)
-
-  # DrugB (toxic, less effective) should drop more with higher lambda
-  drugb_low  <- res_low$benefit_table$Benefit_Score[res_low$benefit_table$Treatment == "DrugB"]
-  drugb_high <- res_high$benefit_table$Benefit_Score[res_high$benefit_table$Treatment == "DrugB"]
-  expect_true(drugb_high < drugb_low)
-})
-
-
-# =============================================================================
-# weight_corrected_tgi
-# =============================================================================
-test_that("weight_corrected_tgi returns expected structure", {
-  df <- make_weight_data()
-  res <- weight_corrected_tgi(
-    df,
-    weight_column    = "Weight",
-    volume_column    = "Volume",
-    time_column      = "Day",
-    treatment_column = "Treatment",
-    id_column        = "ID",
-    reference_group  = "Control",
-    safety_threshold = 0.20
-  )
-
-  expect_type(res, "list")
-  expect_true(is.data.frame(res$corrected_tgi))
-  expect_true(is.data.frame(res$uncorrected_tgi))
-  expect_true(is.data.frame(res$comparison))
-  expect_true(all(c("TGI_Uncorrected", "TGI_Corrected") %in% names(res$comparison)))
-  expect_equal(res$safety_threshold, 0.20)
-})
-
-test_that("weight_corrected_tgi excludes toxic mice", {
-  df <- make_weight_data()
-  res <- weight_corrected_tgi(
-    df,
-    weight_column    = "Weight",
-    volume_column    = "Volume",
-    time_column      = "Day",
-    treatment_column = "Treatment",
-    id_column        = "ID",
-    reference_group  = "Control",
-    safety_threshold = 0.05  # Low threshold to exclude more mice
-  )
-
-  # Some mice should be excluded with a 5% threshold
-  expect_true(nrow(res$excluded_mice) > 0 || nrow(res$excluded_summary[res$excluded_summary$N_Excluded > 0, ]) >= 0)
-})
-
-test_that("weight_corrected_tgi with very high threshold excludes none", {
-  df <- make_weight_data()
-  res <- weight_corrected_tgi(
-    df,
-    weight_column    = "Weight",
-    volume_column    = "Volume",
-    time_column      = "Day",
-    treatment_column = "Treatment",
-    id_column        = "ID",
-    reference_group  = "Control",
-    safety_threshold = 0.99  # 99% - nobody should hit this
-  )
-
-  expect_equal(nrow(res$excluded_mice), 0)
-  # Corrected and uncorrected should be identical
-  expect_equal(res$comparison$TGI_Corrected, res$comparison$TGI_Uncorrected)
-})

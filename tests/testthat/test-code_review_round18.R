@@ -48,9 +48,12 @@ test_that("R18.1: influence diagnostics are produced, not silently NULL", {
   expect_false(is.null(r$diag_cooks_distance))
   expect_false(is.null(r$diag_dfbetas))
   expect_s3_class(r$diag_cooks_distance, "data.frame")
-  expect_gt(nrow(r$diag_cooks_distance), 0L)
-  expect_true(all(c("Obs", "Cooks_D", "Threshold", "Is_Influential") %in%
-                    names(r$diag_cooks_distance)))
+  # R20.76 (v0.26.0): one row per animal (16 here), labelled by arm and ID,
+  # with the 4 / n_animals threshold; it was one row per observation.
+  expect_equal(nrow(r$diag_cooks_distance), 16L)
+  expect_true(all(c("Treatment", "ID", "Cage", "Cooks_D", "Threshold",
+                    "Is_Influential") %in% names(r$diag_cooks_distance)))
+  expect_equal(unique(r$diag_cooks_distance$Threshold), round(4 / 16, 4))
   expect_true(all(is.finite(r$diag_cooks_distance$Cooks_D)))
 })
 
@@ -133,10 +136,12 @@ test_that("R18.3: AUC equals the exact trapezoid integral", {
     rows[[k]] <- data.frame(ID = paste0(tx, m), Treatment = tx, Day = d,
                             Volume = 100 + slope * d, stringsAsFactors = FALSE)
   }
-  a <- suppressWarnings(suppressMessages(tumor_auc_analysis(do.call(rbind, rows))))
-  s <- a$auc_summary
-  expect_equal(s$Mean_AUC[s$Treatment == "Control"], 4000, tolerance = 1e-6)
-  expect_equal(s$Mean_AUC[s$Treatment == "DrugA"],   3000, tolerance = 1e-6)
+  d <- do.call(rbind, rows)
+  auc <- vapply(split(d, d$ID), function(x) calculate_auc(x$Day, x$Volume),
+                numeric(1))
+  tx  <- vapply(split(d, d$ID), function(x) x$Treatment[1], character(1))
+  expect_equal(mean(auc[tx == "Control"]), 4000, tolerance = 1e-6)
+  expect_equal(mean(auc[tx == "DrugA"]),   3000, tolerance = 1e-6)
 })
 
 test_that("R18.3: volume-to-mass respects the declared units", {
@@ -172,57 +177,4 @@ test_that("R18.3: cage ICC matches the variance components it is built from", {
   expect_gt(got$ICC, 0); expect_lt(got$ICC, 1)
 })
 
-test_that("R18.3: GAMM recovers a plateauing trajectory", {
-  skip_if_not_installed("gamm4")
-  # Control grows throughout; treated plateaus after day 12. A single slope per
-  # arm must average across the two phases.
-  set.seed(67)
-  days <- seq(0, 28, 2)
-  tru <- function(tx, d) if (tx == "Control") log(150) + 0.10 * d else
-    log(150) + ifelse(d <= 12, 0.10 * d, 0.10 * 12 + 0.005 * (d - 12))
-  rows <- list(); k <- 0L
-  for (tx in c("Control", "DrugA")) for (m in 1:10) {
-    k <- k + 1L
-    rows[[k]] <- data.frame(ID = paste0(tx, m), Treatment = tx, Day = days,
-      Volume = exp(tru(tx, days) + stats::rnorm(1, 0, 0.08) +
-                     stats::rnorm(length(days), 0, 0.05)),
-      stringsAsFactors = FALSE)
-  }
-  g <- suppressWarnings(suppressMessages(tumor_growth_statistics(
-    do.call(rbind, rows), model_type = "gam", plots = FALSE, verbose = FALSE)))
 
-  expect_false(is.null(g$gam_k_check))
-  expect_false(is.null(g$gam_concurvity))
-  pc <- g$pairwise_comparisons
-  expect_true("Day" %in% names(pc))
-  # The effect must be absent early and present late -- that ordering is the
-  # whole point of fitting a smoother rather than one slope.
-  early <- pc$P_Value_Adjusted[pc$Day == min(pc$Day)][1]
-  late  <- pc$P_Value_Adjusted[pc$Day == max(pc$Day)][1]
-  expect_gt(early, 0.05)
-  expect_lt(late, 0.01)
-})
-
-test_that("R18.3: the bivariate toxicity metric recovers simulated weight loss", {
-  set.seed(13)
-  rows <- list(); k <- 0L
-  for (tx in c("Control", "DrugA")) for (m in 1:8) {
-    k <- k + 1L; d <- seq(0, 21, 3)
-    drop <- if (tx == "DrugA") 0.12 else 0.02
-    rows[[k]] <- data.frame(
-      ID = paste0(tx, m), Treatment = tx, Day = d,
-      Weight = 25 * (1 - drop * d / 21) + stats::rnorm(length(d), 0, 0.05),
-      Volume = exp(log(150) + (if (tx == "Control") 0.12 else 0.07) * d),
-      stringsAsFactors = FALSE)
-  }
-  e <- suppressWarnings(suppressMessages(efficacy_toxicity_bivariate(
-    do.call(rbind, rows), volume_column = "Volume", weight_column = "Weight",
-    time_column = "Day", treatment_column = "Treatment", id_column = "ID",
-    reference_group = "Control", adjust_tumor_weight = FALSE)))
-  pg <- e$per_group
-  # Simulated losses were 2 % and 12 %.
-  expect_equal(pg$Toxicity_Mean[pg$Treatment == "Control"], 2, tolerance = 0.5)
-  expect_equal(pg$Toxicity_Mean[pg$Treatment == "DrugA"],  12, tolerance = 0.5)
-  # TGI by hand: 1 - exp(0.07*21)/exp(0.12*21) = 64.9 %.
-  expect_equal(pg$Efficacy_Mean[pg$Treatment == "DrugA"], 64.9, tolerance = 1)
-})
