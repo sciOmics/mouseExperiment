@@ -28,7 +28,7 @@ The Bayesian fits (tumor growth and survival) run asynchronously via `future` / 
 | Backend (`mouseExperiment`) requirement | ≥ 0.26.0 (evaluable days, one endpoint model for TGI, model-based AUC, random slopes by default) |
 | `CODE_REVIEW.md` (Round 1 + Round 2) | 24/25 dashboard items closed — only **I.6** (VPS-side CI smoke test) remains |
 | Test suite | 238 testthat tests in 23 files (745 expectations), 9 of them in a headless browser (shinytest2) |
-| Deployment | Docker + Nginx Proxy Manager (NPM) on a self-hosted VPS (see `mouseExperimentVPS` repo) |
+| Deployment | Docker + Nginx Proxy Manager (NPM) on a self-hosted VPS (see `sciOmicsVPS` repo) |
 
 ## Local installation & development
 
@@ -224,7 +224,7 @@ See `DESCRIPTION` for the complete list.
 
 ## Deployment
 
-Production deployment is handled by the companion [mouseExperimentVPS](../mouseExperimentVPS) repository — Docker + Nginx Proxy Manager (NPM) on a self-hosted VPS. Key NPM settings the dashboard depends on:
+Production deployment is handled by the companion [sciOmicsVPS](https://github.com/sciOmics/sciOmicsVPS) repository — Docker + Nginx Proxy Manager (NPM) on a self-hosted VPS. Key NPM settings the dashboard depends on:
 - Websocket support enabled (required for Shiny's reactivity layer)
 - Proxy read / send timeouts ≥ 15 minutes (so Bayesian fits don't trigger the NPM disconnect overlay; F.7 covers the gap)
 - HTTPS (Let's Encrypt) so `Secure` cookies work for F.7

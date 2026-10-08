@@ -275,7 +275,7 @@ Keep these in sync with the code. When you change cookie attributes, update SECU
 | What columns does the dashboard accept? | [`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md) |
 | What does the Bayesian X mean? | Backend `docs/BAYESIAN.md` and `docs/METHODS.md` |
 | Why is X organized this way? | `CODE_REVIEW.md` (the relevant item explains the history) |
-| Deployment broke | `mouseExperimentVPS/docs/troubleshooting.md` |
+| Deployment broke | `sciOmicsVPS/docs/troubleshooting.md` |
 | A test is failing | Read the test + the code path it exercises; many tests have detailed comments |
 
 ---
