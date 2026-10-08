@@ -1,6 +1,6 @@
 # Deployment
 
-How the dashboard is deployed to production. This document covers the dashboard-side concerns; the VPS infrastructure (NPM, Cloudflare, Docker base image, webhooks, monitoring) is detailed in the companion `mouseExperimentVPS` repository.
+How the dashboard is deployed to production. This document covers the dashboard-side concerns; the VPS infrastructure (NPM, Cloudflare, Docker base image, webhooks, monitoring) is detailed in the companion `sciOmicsVPS` repository.
 
 The production URL is `https://mouseexperiment.com`; the staging URL is `https://staging.mouseexperiment.com` (Basic Auth required). Both are R Shiny applications served from long-lived Docker containers behind Nginx Proxy Manager (NPM) on a self-hosted VPS.
 
@@ -90,7 +90,7 @@ Staging is behind an Access Control List (ACL) in NPM. Users with the staging UR
 
 Production is public.
 
-See `mouseExperimentVPS/docs/npm-proxy-rules.md` for the canonical NPM settings.
+See `sciOmicsVPS/docs/npm-proxy-rules.md` for the canonical NPM settings.
 
 ---
 
@@ -172,7 +172,7 @@ docker tag shiny-mouseexperiment-prod:<tag> shiny-mouseexperiment-prod:latest
 cd /opt/vps && docker compose --profile shiny up -d --no-deps --no-build --force-recreate --wait shiny-prod
 ```
 
-For more, see `mouseExperimentVPS/docs/shiny-deployment.md`.
+For more, see `sciOmicsVPS/docs/shiny-deployment.md`.
 
 ---
 
@@ -222,7 +222,7 @@ so an over-limit model compile fails that fit instead of killing the session-ser
 | F.7 banner doesn't show on reconnect | Cookie not set (no HTTPS / dev mode) | Use HTTPS in production. Without the cookie (blocked, or a non-localhost host over HTTP) the session uses a local registry key: fits run but cannot be resumed |
 | Bayesian fit fails immediately | brms / Stan toolchain broken | Cannot ship any more: the gate compiles and samples with both backends. On a running container, check `docker logs`; an OOM-killed compile shows as a failed fit |
 
-For deeper troubleshooting: `mouseExperimentVPS/docs/troubleshooting.md`.
+For deeper troubleshooting: `sciOmicsVPS/docs/troubleshooting.md`.
 
 ---
 
@@ -231,7 +231,7 @@ For deeper troubleshooting: `mouseExperimentVPS/docs/troubleshooting.md`.
 Three sources of operational visibility:
 
 1. **Structured logs (stdout):** the dashboard logs every analysis click, every download, every session start/end as a JSON line. Docker keeps them (`docker logs shiny-prod`); there is no central log aggregator.
-2. **Uptime checks:** `https://status.sciomics.bio` (Uptime Kuma) checks production and staging every 5 minutes (monitors are added by hand; see `mouseExperimentVPS/docs/monitoring-setup.md`).
+2. **Uptime checks:** `https://status.sciomics.bio` (Uptime Kuma) checks production and staging every 5 minutes (monitors are added by hand; see `sciOmicsVPS/docs/monitoring-setup.md`).
 3. **Umami analytics:** `https://analytics.mouseexperiment.com` records page views and the custom events emitted by `inst/www/js/umami-events.js` (analysis-start, analysis-complete, download).
 
 If the dashboard isn't responding, the first place to look is the Docker container's stdout:
@@ -252,7 +252,7 @@ The dashboard itself has **no persistent state** — every artifact (uploaded CS
 What is backed up (to Backblaze B2):
 - A weekly snapshot of the services' configuration under `/opt/services` (NPM hosts,
   certificates and access lists, Uptime Kuma, Homepage), with consistent SQLite copies
-  (`mouseExperimentVPS/scripts/08-backup-server-image.sh`)
+  (`sciOmicsVPS/scripts/08-backup-server-image.sh`)
 - Nightly SQL dumps of the Umami database
 
 What is **not** backed up:
@@ -263,7 +263,7 @@ What is **not** backed up:
 If the VPS dies: deploy a fresh VPS with `scripts/00-deploy-all.sh`, restore the snapshot and
 dumps, then `scripts/12-deploy-shiny.sh` rebuilds both images (Scenario C in the runbook).
 
-See `mouseExperimentVPS/docs/backup-restore.md` for the full procedure.
+See `sciOmicsVPS/docs/backup-restore.md` for the full procedure.
 
 ---
 
@@ -296,17 +296,17 @@ A short hardening checklist; see [`SECURITY.md`](SECURITY.md) for the threat mod
 - **HSTS:** set via NPM advanced config. `Strict-Transport-Security: max-age=63072000; includeSubDomains`.
 - **CSP:** not yet set. Recommended: `default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'`. Add via NPM advanced config to mitigate the residual XSS-to-cookie risk noted in [`SECURITY.md`](SECURITY.md).
 - **Cloudflare WAF:** enabled. Blocks common XSS / SQLi patterns at the edge before they reach the VPS.
-- **SSH:** key-only; root login disabled; CrowdSec on the VPS bans repeat-offender IPs. See `mouseExperimentVPS/docs/security.md`.
+- **SSH:** key-only; root login disabled; CrowdSec on the VPS bans repeat-offender IPs. See `sciOmicsVPS/docs/security.md`.
 
 ---
 
 ## See also
 
-- `mouseExperimentVPS/docs/shiny-deployment.md` — full deployment workflow
-- `mouseExperimentVPS/docs/npm-proxy-rules.md` — NPM configuration reference
-- `mouseExperimentVPS/docs/architecture.md` — VPS architecture overview
-- `mouseExperimentVPS/docs/troubleshooting.md` — troubleshooting playbook
-- `mouseExperimentVPS/docs/backup-restore.md` — disaster recovery
+- `sciOmicsVPS/docs/shiny-deployment.md` — full deployment workflow
+- `sciOmicsVPS/docs/npm-proxy-rules.md` — NPM configuration reference
+- `sciOmicsVPS/docs/architecture.md` — VPS architecture overview
+- `sciOmicsVPS/docs/troubleshooting.md` — troubleshooting playbook
+- `sciOmicsVPS/docs/backup-restore.md` — disaster recovery
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — dashboard architecture
 - [`SECURITY.md`](SECURITY.md) — threat model and F.7 isolation
 - [`DATA_FORMAT.md`](DATA_FORMAT.md) — what data the dashboard accepts
