@@ -102,6 +102,42 @@ zero_floor_line <- function(res) {
           if (identical(as.integer(zf$n_floored), 1L)) "" else "s")
 }
 
+#' The tumour-growth data summary, labelled for display -- R20.D45
+#'
+#' @param ds The backend's `data_summary` (volume scale since 0.31.0).
+#' @param unit The declared unit's label, from [volume_unit_label()].
+#' @return A data frame with display headers.
+#' @keywords internal
+data_summary_display <- function(ds, unit) {
+  ds <- as.data.frame(ds)
+  labels <- c(Treatment = "Treatment", Day = "Day", n = "N",
+              mean_volume = paste0("Mean (", unit, ")"),
+              sd_volume = "SD", sem_volume = "SEM",
+              geometric_mean_volume = paste0("Geometric mean (", unit, ")"))
+  keep <- intersect(names(labels), names(ds))
+  ds <- ds[, keep, drop = FALSE]
+  names(ds) <- unname(labels[keep])
+  ds
+}
+
+#' What the forest plot's intervals are -- R20.D43
+#'
+#' @param pc_df The comparison table the plot is drawn from.
+#' @param lower_col The column the lower limits came from.
+#' @return One caption line.
+#' @keywords internal
+forest_ci_note <- function(pc_df, lower_col) {
+  adj <- if ("CI_Adjustment" %in% names(pc_df)) as.character(pc_df$CI_Adjustment[1]) else NA_character_
+  if (is.na(lower_col) || !lower_col %in% c("CI_Adjusted_Lower", "lower.CL") || is.na(adj)) {
+    return("Intervals: 95%, not adjusted for multiple comparisons")
+  }
+  if (startsWith(adj, "none:")) {          # BH: no simultaneous interval exists
+    return("Intervals: 95% per comparison; the FDR correction has no matching interval")
+  }
+  if (startsWith(adj, "none")) return("Intervals: 95% per comparison (no correction applied)")
+  paste0("Intervals adjusted for multiple comparisons (", adj, "), like the p-values")
+}
+
 #' Back-transform values from analysis scale to original scale
 #'
 #' Inverse of the transform applied in `tumor_growth_statistics()` and
@@ -170,6 +206,34 @@ extract_summary_table <- function(result) {
 #' @param family_label Human-readable family name.
 #' @return A character title.
 #' @keywords internal
+#' A correction's display name
+#' @keywords internal
+pretty_adjust <- function(adj) {
+  switch(adj %||% "",
+    bonferroni = "Bonferroni", holm = "Holm",
+    fdr = "Benjamini-Hochberg FDR",
+    dunnett = "Dunnett (exact, multivariate-t)",
+    tukey = "Tukey HSD", none = "unadjusted", adj %||% "")
+}
+
+#' The p-value line of the Comparisons help, from the correction used -- R20.D44
+#'
+#' It said "Dunnett ... Tukey HSD" whatever the run had used, including no
+#' correction at all.
+#'
+#' @param res A tumour-growth result, or NULL before a run.
+#' @return One sentence.
+#' @keywords internal
+p_value_help <- function(res) {
+  adj <- res$p_adjust_method_used
+  if (is.null(adj)) return("p-value, adjusted by the correction chosen in the sidebar.")
+  if (identical(adj, "none")) {
+    return("p-value, not adjusted for multiple comparisons (the sidebar's correction is None).")
+  }
+  paste0("p-value adjusted for multiple comparisons (", pretty_adjust(adj),
+         "). Values below 0.05 indicate a significant difference.")
+}
+
 comparisons_title <- function(res, family_label) {
   adj   <- res$p_adjust_method_used %||% NULL
   scope <- if (!is.null(res$pairwise_comparisons) &&
@@ -178,14 +242,7 @@ comparisons_title <- function(res, family_label) {
     unique(res$pairwise_comparisons$Adjust_Scope)[1]
   } else NULL
 
-  adj_txt <- if (is.null(adj)) "" else {
-    pretty <- switch(adj,
-      bonferroni = "Bonferroni", holm = "Holm",
-      fdr = "Benjamini-Hochberg FDR",
-      dunnett = "Dunnett (exact, multivariate-t)",
-      tukey = "Tukey HSD", none = "unadjusted", adj)
-    paste0(" (", pretty, ")")
-  }
+  adj_txt <- if (is.null(adj)) "" else paste0(" (", pretty_adjust(adj), ")")
   scope_txt <- if (is.null(scope)) "" else paste0(" — ", scope)
   paste0("Comparisons: ", family_label, adj_txt, scope_txt)
 }

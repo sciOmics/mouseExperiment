@@ -178,7 +178,10 @@ dashboard_app <- function() {
         tags$script(
           async = NA,
           src = "https://analytics.mouseexperiment.com/script.js",
-          `data-website-id` = "f820d0f9-9d2b-4048-b34f-078aa2fea7da"
+          `data-website-id` = "f820d0f9-9d2b-4048-b34f-078aa2fea7da",
+          # R20.D12: count production only. Staging (and local runs) were
+          # recorded under the production website id.
+          `data-domains` = "mouseexperiment.com,www.mouseexperiment.com"
         ),
         tags$script(src = v("js/umami-events.js"))
       ),

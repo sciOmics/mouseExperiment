@@ -426,7 +426,8 @@ toxicityUI <- function(id) {
                   tags$details(
                     tags$summary(tags$small("How to read this plot")),
                     tags$small(
-                      "Points should fall along the red reference line. ",
+                      "The residuals are standardised, so for a well-fitting model the ",
+                      "points fall along the red reference line. ",
                       strong("S-shape: "), "heavy-tailed residuals — outliers or a ",
                       "transform issue. ",
                       strong("Bow: "), "skewed residuals — usually fixed by changing the ",

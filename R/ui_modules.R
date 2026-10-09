@@ -1118,14 +1118,15 @@ tumorGrowthUI <- function(id) {
 
           tabPanel("Data Summary",
             tab_info(
-              strong("Descriptive statistics for tumor volume "), "by treatment group and timepoint. Shows mean, standard deviation, and standard error across subjects measured at each study day.",
+              strong("Descriptive statistics for tumor volume "), "by treatment group and timepoint, on the volume scale in the declared units, whatever transform the model used.",
               tags$ul(
                 tags$li(strong("Treatment"), " \u2014 treatment group."),
                 tags$li(strong("Day"), " \u2014 study day (measurement timepoint)."),
-                tags$li(strong("Mean"), " \u2014 mean tumor volume (mm\u00b3) for the group at that timepoint."),
+                tags$li(strong("N"), " \u2014 number of animals with a volume measured on that day."),
+                tags$li(strong("Mean"), " \u2014 arithmetic mean tumor volume for the group at that timepoint."),
                 tags$li(strong("SD"), " \u2014 standard deviation of volume across animals in the group."),
                 tags$li(strong("SEM"), " \u2014 standard error of the mean (SD / \u221aN)."),
-                tags$li(strong("N"), " \u2014 number of animals with a measurement on that day.")
+                tags$li(strong("Geometric mean"), " (log transform only) \u2014 the mean on the log scale the model uses, back-transformed; zeros count at the floor stated in the Summary. Tumour volumes are right-skewed, so it is usually below the arithmetic mean.")
               ),
               em("Useful for inspecting raw descriptive trends across time and confirming data entry. Statistical comparisons should use the ANOVA, Comparisons, or AUC Summary tabs as appropriate.")
             ),
@@ -1319,7 +1320,8 @@ tumorGrowthUI <- function(id) {
                 tags$details(
                   tags$summary(tags$small("How to read this plot")),
                   tags$small(
-                    "Points should fall along the red dashed reference line. ",
+                    "The residuals are standardised (centred and divided by their SD), so ",
+                    "for a well-fitting model the points fall along the red dashed line. ",
                     strong("S-shape: "), "residuals have heavier tails than normal — ",
                     "consider a robust likelihood or check for outliers. ",
                     strong("Bow: "), "skewed residuals — check the volume transform ",
@@ -1382,8 +1384,9 @@ tumorGrowthUI <- function(id) {
                   tags$summary(tags$small("How to read this plot")),
                   tags$small(
                     "Per-animal random intercepts (and slopes, if used) should ",
-                    "be normally distributed. Points along the red line = ",
-                    "assumption met. Heavy tails / clear S-shape: the LMM ",
+                    "be normally distributed. The values are standardised, so points ",
+                    "along the red line = assumption met. A component with no spread ",
+                    "(estimated variance zero) is left out. Heavy tails / clear S-shape: the LMM ",
                     "may be giving a few animals too much / too little ",
                     "shrinkage. Rare and usually safe to ignore at N ≤ 30."
                   )
@@ -1787,6 +1790,21 @@ citationUI <- function() {
               )
             )
           )
+        )
+      )
+    ),
+
+    # R20.D12: say what is counted.
+    fluidRow(
+      column(12,
+        wellPanel(
+          h4(icon("chart-simple"), " Usage analytics"),
+          p("mouseexperiment.com counts page views and which features are used, with ",
+            "self-hosted Umami analytics: no cookies, and nothing sent to a third party. ",
+            "Events carry only the analysis type, the method, counts such as the number ",
+            "of rows, and yes/no flags. They never include your data, file names, column ",
+            "names, treatment names or error messages. Uploaded data stays in your ",
+            "session on this server.")
         )
       )
     )

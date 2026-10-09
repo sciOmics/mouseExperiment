@@ -523,8 +523,10 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     label_col <- intersect(c("contrast", "Contrast", "comparison", "pair"), colnames(pc_df))[1]
     est_col   <- intersect(c("estimate", "Estimate"), colnames(pc_df))[1]
     se_col    <- intersect(c("SE"), colnames(pc_df))[1]
-    lower_col <- intersect(c("lower.CL", "Lower", "lower_CL", "lower"), colnames(pc_df))[1]
-    upper_col <- intersect(c("upper.CL", "Upper", "upper_CL", "upper"), colnames(pc_df))[1]
+    # R20.D43: the backend's adjusted intervals first (0.31.0, R20.85), so the
+    # interval and the adjusted p-value beside it agree.
+    lower_col <- intersect(c("CI_Adjusted_Lower", "lower.CL", "Lower", "lower_CL", "lower"), colnames(pc_df))[1]
+    upper_col <- intersect(c("CI_Adjusted_Upper", "upper.CL", "Upper", "upper_CL", "upper"), colnames(pc_df))[1]
     # R14.6: "p_value" held the ADJUSTED p-value on the GAM path and the RAW
     # one on the AUC path, so this sniff marked significance from unadjusted
     # p-values on AUC while using adjusted ones on GAM. Backend R14.4 now
@@ -690,7 +692,8 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
          ggplot2::scale_x_log10(limits = x_lim, breaks = x_breaks)
        else
          ggplot2::scale_x_continuous(limits = x_lim, breaks = x_breaks)) +
-      ggplot2::labs(x = x_lab, y = NULL, title = "Effect Size Forest Plot") +
+      ggplot2::labs(x = x_lab, y = NULL, title = "Effect Size Forest Plot",
+                    caption = forest_ci_note(pc_df, lower_col)) +
       ggplot2::theme_classic() +
       ggplot2::theme(axis.text.y = ggplot2::element_text(size = 10))
     apply_plot_labels(p,

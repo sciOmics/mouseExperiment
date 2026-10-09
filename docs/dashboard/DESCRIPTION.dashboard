@@ -1,6 +1,6 @@
 Package: mouseExperimentDashboard
 Title: Interactive Dashboard for mouseExperiment Analysis
-Version: 26.10.002
+Version: 26.10.003
 Date: 2026-09-30
 Authors@R: 
     person("David", "Woods", , "david@sciomics.bio", role = c("aut", "cre"))
@@ -35,7 +35,7 @@ Imports:
     later,
     survival,
     bayesplot (>= 1.10),
-    mouseExperiment (>= 0.30.0)
+    mouseExperiment (>= 0.31.0)
 Suggests:
     brms (>= 2.19),
     posterior,

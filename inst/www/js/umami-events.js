@@ -34,6 +34,12 @@ window.trackEvent = function(eventName, properties) {
 };
 
 // Specialized tracking functions
+//
+// CODE_REVIEW.md R20.D12: no event carries a study string. Column names,
+// treatment and reference-arm names and error messages (which can quote a
+// column name) are unpublished study details; they are dropped here, the one
+// place every event passes through, whatever the caller passes. Events carry
+// only the analysis type, the method, counts, booleans and fixed codes.
 
 /**
  * Track data file upload
@@ -58,11 +64,11 @@ window.trackDataUpload = function(format, rows, cols) {
  * @param {boolean} survivalMapped - whether survival event column is mapped
  */
 window.trackColumnMapping = function(treatment, time, volume, survivalMapped) {
+  // R20.D12: which mapping options were used, never the column names.
   window.trackEvent('column_mapping_complete', {
-    treatment_col: treatment,
-    time_col: time,
-    volume_col: volume,
-    survival_event_mapped: survivalMapped,
+    time_from_date: time === 'date',
+    volume_calculated: volume === 'calculated',
+    survival_event_mapped: survivalMapped === true,
     timestamp: new Date().toISOString()
   });
 };
@@ -86,10 +92,10 @@ window.trackTabNavigation = function(tabName) {
  */
 window.trackAnalysisStart = function(analysisType, method, referenceGroup) {
   window.analysisStartTime = Date.now(); // Store start time for duration calculation
+  // R20.D12: the reference arm's name is never sent.
   window.trackEvent('analysis_run', {
     analysis_type: analysisType,
     method: method,
-    reference_group: referenceGroup,
     timestamp: new Date().toISOString()
   });
 };
@@ -115,8 +121,9 @@ window.trackAnalysisComplete = function(analysisType, success, errorMessage, dur
     timestamp: new Date().toISOString()
   };
   
+  // R20.D12: whether it failed, not the message.
   if (errorMessage) {
-    properties.error = errorMessage;
+    properties.error = true;
   }
   
   window.trackEvent('analysis_complete', properties);
@@ -157,9 +164,10 @@ window.trackDownload = function(analysisType, contentType, format) {
  * @param {string} context - module/section where error occurred
  */
 window.trackError = function(errorType, errorMessage, context) {
+  // R20.D12: the message can quote a column name; only its type and the
+  // module are sent.
   window.trackEvent('error_encountered', {
     error_type: errorType,
-    error_message: errorMessage.substring(0, 200), // Truncate to 200 chars
     context: context,
     timestamp: new Date().toISOString()
   });
@@ -171,9 +179,9 @@ window.trackError = function(errorType, errorMessage, context) {
  * @param {string} referenceGroup - selected reference group value
  */
 window.trackReferenceGroupSelected = function(analysisType, referenceGroup) {
+  // R20.D12: that a reference was chosen, not which arm.
   window.trackEvent('reference_group_selected', {
     analysis_type: analysisType,
-    reference_group: referenceGroup,
     timestamp: new Date().toISOString()
   });
 };
