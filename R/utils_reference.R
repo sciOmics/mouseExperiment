@@ -64,3 +64,31 @@ me_resolve_reference <- function(arms, reference_group = NULL, fn = "analysis",
   }
   hits
 }
+
+#' Arms from treatment and dose -- CODE_REVIEW.md R20.30
+#'
+#' `dose_column` used to change nothing, and a treatment given at three doses
+#' was analysed as one pooled arm. A treatment given at more than one dose now
+#' becomes one arm per dose, labelled "<treatment> <dose>". A treatment at a
+#' single dose keeps its label, so labels that already include the dose (the
+#' dashboard passes "HDACi 10") are left as they are.
+#'
+#' @return The arm labels, one per row.
+#' @noRd
+#' @keywords internal
+me_arms_with_dose <- function(treatment, df, dose_column, fn = "analysis") {
+  if (!dose_column %in% names(df)) {
+    stop(fn, "(): dose_column \"", dose_column, "\" is not a column of the data.",
+         call. = FALSE)
+  }
+  tx <- as.character(treatment)
+  ds <- as.character(df[[dose_column]])
+  n_dose <- tapply(ds, tx, function(x) length(unique(x[!is.na(x)])))
+  multi <- names(n_dose)[!is.na(n_dose) & n_dose > 1L]
+  if (!length(multi)) return(tx)
+  split <- tx %in% multi
+  tx[split] <- paste(tx[split], ds[split])
+  message(fn, "(): ", paste(multi, collapse = ", "),
+          " given at more than one dose; analysed as one arm per dose.")
+  tx
+}

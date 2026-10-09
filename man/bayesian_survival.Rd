@@ -57,7 +57,8 @@ When supplied and \code{include_cage_effect = TRUE}, a cage-level
 frailty (\code{(1 | cage)}) is added to account for between-cage
 heterogeneity.}
 
-\item{dose_column}{Reserved for future use; currently ignored.}
+\item{dose_column}{Optional dose column. A treatment given at more than one
+dose is analysed as one arm per dose (CODE_REVIEW.md R20.30).}
 
 \item{family}{Parametric distribution for event times:
 \describe{

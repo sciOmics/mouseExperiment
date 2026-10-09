@@ -13,7 +13,8 @@
 #' @noRd
 #' @keywords internal
 tgs_compute_growth_rates <- function(auc_df, treatment_column, id_column,
-                                     cage_column, time_column, volume_column) {
+                                     cage_column, time_column, volume_column,
+                                     zero_floor = 2) {
   tryCatch({
     # Calculate growth rates for each subject
     # Use auc_df (untransformed volumes) so growth rates are not double-transformed
@@ -40,7 +41,8 @@ tgs_compute_growth_rates <- function(auc_df, treatment_column, id_column,
         raw_vol       <- subject_data[[volume_column]]
         positive_vals <- raw_vol[is.finite(raw_vol) & raw_vol > 0]
         if (length(positive_vals) == 0L) return(NULL)
-        raw_vol[raw_vol <= 0] <- min(positive_vals, na.rm = TRUE) / 2
+        # R20.32: the fixed zero floor, not half this animal's smallest volume.
+        raw_vol[is.finite(raw_vol) & raw_vol <= 0] <- zero_floor
         log_volume <- log(raw_vol)
         
         # Fit linear model
@@ -666,6 +668,15 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'   \code{0} (skip; \code{boot_ci_*} columns are \code{NA}).
 #' @param auc_bootstrap_seed Optional integer seed for reproducible bootstrap
 #'   resampling. \code{NULL} (default) uses the caller's RNG state.
+#' @param volume_units Units of the volume column, \code{"mm3"} (default) or
+#'   \code{"cm3"}. Used for the zero floor, and to warn when the volumes do not
+#'   look like the declared units.
+#' @param zero_floor On the log scale, the value that replaces a zero (or
+#'   negative) volume, in the volume column's units. Default \code{NULL}: 2 mm3
+#'   (half a just-palpable 2 x 2 mm tumour, about 4 mm3), i.e. 0.002 cm3. It is
+#'   reported as \code{zero_floor} in the result. Until v0.30.0 zeros became
+#'   half the smallest positive volume in the data, so one small reading in one
+#'   arm changed another arm's estimate (CODE_REVIEW.md R20.32).
 #' @param permutation_test Optional \code{\link{perm_spec}} object. When supplied
 #'   (and \code{model_type = "lme4"}), a randomisation test of the treatment x
 #'   time interaction is run and returned as \code{permutation_test}. Unlike the
@@ -781,7 +792,9 @@ tumor_growth_statistics <- function(df,
                                   auc_bootstrap_n = 0L,
                                   auc_bootstrap_seed = NULL,
                                   auc_permutations = 0L,
-                                  permutation_test = NULL) {
+                                  permutation_test = NULL,
+                                  volume_units = c("mm3", "cm3"),
+                                  zero_floor = NULL) {
   # Check for required packages
   
   # Match arguments
@@ -792,6 +805,8 @@ tumor_growth_statistics <- function(df,
   comparison_family <- match.arg(comparison_family)
   p_adjust_method <- match.arg(p_adjust_method)
   necrotic_handling <- match.arg(necrotic_handling)
+  volume_units <- match.arg(volume_units)
+  floor_value  <- me_zero_floor(volume_units, zero_floor)     # R20.32
 
   # CODE_REVIEW.md R3.1 / G.1 — resolve the comparison family and adjustment
   # once, up front, so both model paths use the same validated spec and
@@ -826,6 +841,13 @@ tumor_growth_statistics <- function(df,
     if (isTRUE(verbose)) message("No cage column provided: cage effects will not be analysed.")
   }
   
+  # R20.30: dose_column changed nothing, and a treatment given at three doses
+  # was analysed as one pooled arm.
+  if (!is.null(dose_column)) {
+    df[[treatment_column]] <- me_arms_with_dose(df[[treatment_column]], df, dose_column,
+                                                "tumor_growth_statistics")
+  }
+
   # R20.46: a named reference must be an arm; without one, the control is
   # recognised by name, and the call stops if none is. (It used to be the
   # alphabetically first arm, which depends on the locale.) Numeric arm codes
@@ -885,23 +907,21 @@ tumor_growth_statistics <- function(df,
       if (is.null(n_excl)) n_excl <- 0L
       message("Necrosis handling: '", necrotic_handling, "'. Excluded: ", n_excl, " observations.")
     }
+    # R20.30: "exclude" changed only the mixed model; AUC, growth rates and
+    # the permutation statistic still used every row, while necrosis_summary
+    # reported the rows as handled.
+    if (necrotic_handling == "exclude") auc_df <- analysis_df
   }
 
   # Apply transformations if needed
+  n_zero_floored <- 0L
   if (transform == "log") {
-    # Replace zeros/negatives with half the smallest positive value.
-    # CODE_REVIEW.md R3.20 — guard the all-non-positive case. min(numeric(0))
-    # is Inf, so without this the fill silently becomes Inf and log(Inf) = Inf
-    # corrupts the fit. The Bayesian path was hardened against this in B3.3;
-    # the frequentist entry point was not.
-    vol           <- analysis_df[[volume_column]]
-    positive_vals <- vol[is.finite(vol) & vol > 0]
-    if (length(positive_vals) == 0L) {
-      stop("No positive values in '", volume_column,
-           "' after filtering. Cannot apply log transform.", call. = FALSE)
-    }
-    vol[vol <= 0] <- min(positive_vals, na.rm = TRUE) / 2
-    analysis_df[[volume_column]] <- log(vol)
+    # R20.32: zeros take the fixed floor (default 2 mm3), not half the
+    # smallest positive volume in the data.
+    vol <- me_floor_zeros(analysis_df[[volume_column]], floor_value, volume_units,
+                          "tumor_growth_statistics")
+    n_zero_floored <- attr(vol, "n_floored")
+    analysis_df[[volume_column]] <- log(as.numeric(vol))
     if (isTRUE(verbose)) message("Applied log transformation to volume data")
   } else if (transform == "sqrt") {
     analysis_df[[volume_column]] <- sqrt(analysis_df[[volume_column]])
@@ -909,8 +929,11 @@ tumor_growth_statistics <- function(df,
   }
   
   # Growth rate analysis
+  zero_floor_info <- list(value = floor_value, units = volume_units,
+                          n_floored = n_zero_floored)
   growth_rates <- tgs_compute_growth_rates(auc_df, treatment_column, id_column,
-                                           cage_column, time_column, volume_column)
+                                           cage_column, time_column, volume_column,
+                                           zero_floor = floor_value)
 
   # CODE_REVIEW.md T1 / R20.3 -- the model's random effects grouped on the raw
   # ID, so mouse "1" in Control and mouse "1" in DrugA were one animal. With IDs
@@ -993,7 +1016,7 @@ tumor_growth_statistics <- function(df,
   # Return the results for AUC model
   if (model_type == "auc") {
     # CODE_REVIEW.md D.1 — the AUC path body lives in R/tgs_path_auc.R
-    return(tgs_path_auc(
+    auc_out <- tgs_path_auc(
       auc_analysis        = auc_analysis,
       growth_rates        = growth_rates,
       auc_df              = auc_df,
@@ -1013,7 +1036,9 @@ tumor_growth_statistics <- function(df,
       cage_column         = cage_column,
       time_column         = time_column,
       volume_column       = volume_column
-    ))
+    )
+    auc_out$zero_floor <- zero_floor_info        # R20.32
+    return(auc_out)
   } else {
     # Create ANOVA table
     # car is a hard Import (and always was). The dead fallback ran
@@ -1239,7 +1264,7 @@ tumor_growth_statistics <- function(df,
     if (!is.null(permutation_test)) {
       perm_result <- tryCatch(
         trajectory_permutation_test(
-          df               = df,
+          df               = auc_df,   # after any necrotic exclusion (R20.30)
           time_column      = time_column,
           volume_column    = volume_column,
           treatment_column = treatment_column,
@@ -1265,6 +1290,7 @@ tumor_growth_statistics <- function(df,
       # what was requested.
       model_type_used = "lme4",
       transform_used  = transform,
+      zero_floor      = zero_floor_info,                # R20.32
       # CODE_REVIEW.md B7.1 / B7.2 -- canonical provenance so consumers can
       # interrogate the object instead of sniffing column names.
       meta = me_result_meta(

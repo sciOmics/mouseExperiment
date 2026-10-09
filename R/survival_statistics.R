@@ -36,7 +36,9 @@
 #'       comparison can reach is reported: with 2 cages per arm it is 1/3, and
 #'       with 3 it is 0.1, so neither can reach p < 0.05.
 #'   }
-#' @param dose_column Optional name of column containing dose information. Default: NULL
+#' @param dose_column Optional dose column. A treatment given at more than one
+#'   dose is analysed as one arm per dose, labelled "<treatment> <dose>"
+#'   (CODE_REVIEW.md R20.30). Default: NULL
 #' @param reference_group Treatment group to use as reference. Default: NULL (uses first alphabetically)
 #' @param firth_correction Whether to apply Firth's correction for separation issues. Default: TRUE
 #' @param p_adjust_method Multiplicity adjustment applied across the k-1
@@ -146,6 +148,13 @@ survival_statistics <- function(df,
     stop("ID column '", if (is.null(id_column)) "NULL" else id_column,
          "' not found. Pass the column ",
          "that identifies each animal as id_column.", call. = FALSE)
+  }
+
+  # R20.30: dose_column changed nothing. A treatment given at more than one
+  # dose is now analysed as one arm per dose.
+  if (!is.null(dose_column)) {
+    df[[treatment_column]] <- me_arms_with_dose(df[[treatment_column]], df, dose_column,
+                                                "survival_statistics")
   }
 
   # CODE_REVIEW.md R20.43 -- formulas below are built by pasting column names,

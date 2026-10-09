@@ -33,7 +33,9 @@ bayesian_tumor_growth(
   necrotic_handling = c("exclude", "covariate", "none"),
   backend = c("rstan", "cmdstanr"),
   priors = NULL,
-  mcmc = NULL
+  mcmc = NULL,
+  volume_units = c("mm3", "cm3"),
+  zero_floor = NULL
 )
 }
 \arguments{
@@ -53,7 +55,9 @@ intercept is added to the model (\code{(1|cage/ID)} for intercept-only
 random effects, \code{(Day|ID) + (1|cage)} for random slopes).
 The column is also used for composite mouse-key construction.}
 
-\item{dose_column}{Reserved for future use; currently ignored.}
+\item{dose_column}{Optional dose column. A treatment given at more than one
+dose is analysed as one arm per dose, labelled "\if{html}{\out{<treatment>}} \if{html}{\out{<dose>}}"
+(CODE_REVIEW.md R20.30).}
 
 \item{transform}{Volume transformation applied before modelling:
 \code{"log"} (default, recommended for exponential growth),
@@ -156,6 +160,10 @@ five prior arguments into a single value.}
 supplied, its fields override the individual \code{n_chains},
 \code{n_warmup}, \code{n_iter}, \code{seed}, and \code{backend}
 arguments.}
+
+\item{volume_units, zero_floor}{As in \code{\link[=tumor_growth_statistics]{tumor_growth_statistics()}}: the units of
+the volume column (\code{"mm3"} or \code{"cm3"}) and the value that replaces
+a zero volume on the log scale (default 2 mm3).}
 }
 \value{
 A named list:

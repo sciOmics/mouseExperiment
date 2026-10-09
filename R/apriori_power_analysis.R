@@ -149,6 +149,13 @@ apriori_power_analysis <- function(effect_size   = NULL,
 
   # Effective per-comparison alpha. Defaults to the k-1 vs-control family when
   # the user does not say otherwise, which is what these studies actually run.
+  # R20.30: n_comparisons was silently ignored without an adjustment, yet
+  # echoed in the table as if it had been applied.
+  if (!is.null(n_comparisons) && p_adjust_method == "none" && n_comparisons > 1L) {
+    warning("n_comparisons = ", n_comparisons, " has no effect with p_adjust_method = ",
+            "\"none\": each comparison is tested at alpha = ",
+            paste(alpha, collapse = ", "), ".", call. = FALSE)
+  }
   n_comp_used <- if (!is.null(n_comparisons)) {
     n_comparisons
   } else if (p_adjust_method == "none") {

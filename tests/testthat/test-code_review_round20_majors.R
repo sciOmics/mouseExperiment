@@ -161,3 +161,84 @@ test_that("R20.25: the default path works above 3,000 rows (asymptotic emmeans c
   expect_true(all(is.finite(tg$treatment_effects$Lower_CL)))
   expect_true(all(is.finite(tg$treatment_effects$Upper_CL)))
 })
+
+# ---- R20.30: arguments that changed nothing -----------------------------------
+
+test_that("R20.30: necrotic exclusion reaches AUC, growth rates and the permutation test", {
+  fit <- function(...) quiet(tumor_growth_statistics(m, reference_group = "Vehicle",
+                                                     plots = FALSE, ...))
+  ex <- list(necrotic_column = "Necrotic", necrotic_handling = "exclude")
+  a0 <- fit(model_type = "auc"); a1 <- do.call(fit, c(list(model_type = "auc"), ex))
+  expect_false(isTRUE(all.equal(a0$treatment_effects, a1$treatment_effects)))
+  g0 <- fit(); g1 <- do.call(fit, ex)
+  expect_false(isTRUE(all.equal(g0$growth_rates, g1$growth_rates)))
+  ps <- perm_spec(unit = "mouse", n_perm = 49, seed = 1)
+  p0 <- fit(permutation_test = ps); p1 <- do.call(fit, c(list(permutation_test = ps), ex))
+  expect_false(isTRUE(all.equal(p0$permutation_test$observed_statistic,
+                                p1$permutation_test$observed_statistic)))
+})
+
+test_that("R20.30: dose_column analyses one arm per dose, and leaves dosed labels alone", {
+  dd <- quiet(calculate_volume(calculate_dates(dose_levels_synthetic_data,
+                                               start_date = "24-Mar", year = 2025)))
+  t1 <- quiet(tumor_growth_statistics(dd, reference_group = "Control", plots = FALSE,
+                                      dose_column = "Dose"))
+  # v0.29.0 pooled the three HDACi doses into one arm.
+  expect_setequal(unique(t1$growth_rates$Treatment),
+                  c("Control", "HDACi 10", "HDACi 50", "HDACi 100"))
+  # Labels that already include the dose (as the dashboard passes them) are kept.
+  expect_identical(me_arms_with_dose(c("HDACi 10", "HDACi 50"), data.frame(D = c(10, 50)), "D"),
+                   c("HDACi 10", "HDACi 50"))
+  pa <- dd[order(dd$Cage, dd$ID, dd$Day), ]
+  pa <- pa[!duplicated(paste(pa$Treatment, pa$Cage, pa$ID), fromLast = TRUE), ]
+  s1 <- quiet(survival_statistics(pa, reference_group = "Control", dose_column = "Dose",
+                                  verbose = FALSE))
+  expect_setequal(s1$results$Group, c("Control", "HDACi 10", "HDACi 50", "HDACi 100"))
+})
+
+test_that("R20.30: calculate_volume replaces an existing Volume and accepts tibbles", {
+  cv <- quiet(calculate_volume(m[1:3, ], formula = "sphere"))
+  expect_equal(sum(names(cv) == "Volume"), 1L)       # v0.29.0 appended a second one
+  expect_equal(cv$Volume, pi / 6 * pmin(m$Length[1:3], m$Width[1:3])^3)
+  tb <- dplyr::as_tibble(combo_treatment_synthetic_data[1:5, ])
+  expect_true(is.numeric(calculate_volume(tb)$Volume))   # v0.29.0 errored
+})
+
+test_that("R20.30: n_comparisons without an adjustment warns instead of being ignored", {
+  expect_warning(apriori_power_analysis(effect_size = 1, n_groups = 4, n_comparisons = 5,
+                                        p_adjust_method = "none"),
+                 "has no effect with p_adjust_method")
+})
+
+# ---- R20.32: the zero floor ------------------------------------------------------
+
+test_that("R20.32: zeros take a fixed floor of 2 mm3 (0.002 cm3), reported in the result", {
+  expect_identical(me_zero_floor("mm3"), 2)
+  expect_identical(me_zero_floor("cm3"), 0.002)
+  expect_identical(me_zero_floor("mm3", 0.5), 0.5)
+  v <- suppressWarnings(me_floor_zeros(c(0, 150, 300, 0), 2))
+  expect_equal(as.numeric(v), c(2, 150, 300, 2))
+  expect_identical(attr(v, "n_floored"), 2L)
+  dd <- quiet(calculate_volume(calculate_dates(dose_levels_synthetic_data,
+                                               start_date = "24-Mar", year = 2025)))
+  t1 <- quiet(tumor_growth_statistics(dd, reference_group = "Control", plots = FALSE))
+  expect_identical(t1$zero_floor$value, 2)
+  expect_gt(t1$zero_floor$n_floored, 0L)
+})
+
+test_that("R20.32: one small reading elsewhere no longer moves the floor", {
+  dd <- quiet(calculate_volume(calculate_dates(dose_levels_synthetic_data,
+                                               start_date = "24-Mar", year = 2025)))
+  dd2 <- dd; i <- which(dd2$Treatment == "Control" & dd2$Volume > 0)[1]; dd2$Volume[i] <- 0.3
+  f <- function(d) quiet(tumor_growth_statistics(d, reference_group = "Control",
+                                                  plots = FALSE))$zero_floor$value
+  # v0.29.0 floored at half the smallest positive volume: 0.15 after this edit.
+  expect_identical(f(dd), f(dd2))
+})
+
+test_that("R20.32: volumes that look like cm3 declared as mm3 draw a warning", {
+  cm <- m; cm$Volume <- cm$Volume / 1000
+  expect_warning(quiet_msg <- suppressMessages(tumor_growth_statistics(cm,
+                   reference_group = "Vehicle", plots = FALSE, include_diagnostics = FALSE)),
+                 "Are the volumes in mm3")
+})

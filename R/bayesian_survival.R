@@ -26,7 +26,8 @@
 #'   When supplied and \code{include_cage_effect = TRUE}, a cage-level
 #'   frailty (\code{(1 | cage)}) is added to account for between-cage
 #'   heterogeneity.
-#' @param dose_column Reserved for future use; currently ignored.
+#' @param dose_column Optional dose column. A treatment given at more than one
+#'   dose is analysed as one arm per dose (CODE_REVIEW.md R20.30).
 #' @param family Parametric distribution for event times:
 #'   \describe{
 #'     \item{\code{"weibull"}}{(default) Flexible — handles increasing,
@@ -228,6 +229,12 @@ bayesian_survival <- function(
   missing_cols  <- required_cols[!required_cols %in% colnames(df)]
   if (length(missing_cols) > 0) {
     stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+
+  # R20.30: one arm per dose when a treatment has several (dose_column was ignored).
+  if (!is.null(dose_column)) {
+    df[[treatment_column]] <- me_arms_with_dose(df[[treatment_column]], df, dose_column,
+                                                "bayesian_survival")
   }
 
   # ── Internal column names (CODE_REVIEW.md R20.43, dashboard R20.D8) ────────

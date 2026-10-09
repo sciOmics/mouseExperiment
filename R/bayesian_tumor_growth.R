@@ -23,7 +23,12 @@
 #'   \code{cage_column} is supplied, a cage random intercept is included in the
 #'   random-effects structure. Set \code{FALSE} to use cage only for key
 #'   construction without modelling it.
-#' @param dose_column Reserved for future use; currently ignored.
+#' @param dose_column Optional dose column. A treatment given at more than one
+#'   dose is analysed as one arm per dose, labelled "<treatment> <dose>"
+#'   (CODE_REVIEW.md R20.30).
+#' @param volume_units,zero_floor As in [tumor_growth_statistics()]: the units of
+#'   the volume column (\code{"mm3"} or \code{"cm3"}) and the value that replaces
+#'   a zero volume on the log scale (default 2 mm3).
 #' @param transform Volume transformation applied before modelling:
 #'   \code{"log"} (default, recommended for exponential growth),
 #'   \code{"sqrt"}, or \code{"none"}.
@@ -253,12 +258,16 @@ bayesian_tumor_growth <- function(
   necrotic_handling            = c("exclude", "covariate", "none"),
   backend                      = c("rstan", "cmdstanr"),
   priors                       = NULL,
-  mcmc                         = NULL
+  mcmc                         = NULL,
+  volume_units                 = c("mm3", "cm3"),
+  zero_floor                   = NULL
 ) {
 
   # ── Dependency checks ──────────────────────────────────────────────────────
 
   transform                    <- match.arg(transform)
+  volume_units <- match.arg(volume_units)
+  floor_value  <- me_zero_floor(volume_units, zero_floor)     # R20.32
   random_effects_specification <- match.arg(random_effects_specification)
   prior_strength               <- match.arg(prior_strength)
   necrotic_handling            <- match.arg(necrotic_handling)
@@ -287,6 +296,13 @@ bayesian_tumor_growth <- function(
   missing_cols  <- required_cols[!required_cols %in% colnames(df)]
   if (length(missing_cols) > 0) {
     stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+
+  # R20.30: one arm per dose when a treatment has several (dose_column was
+  # ignored). Done on the caller's data, before the internal copy below.
+  if (!is.null(dose_column)) {
+    df[[treatment_column]] <- me_arms_with_dose(df[[treatment_column]], df, dose_column,
+                                                "bayesian_tumor_growth")
   }
 
   # ── Internal column names (CODE_REVIEW.md R20.43) ───────────────────────────
@@ -360,8 +376,9 @@ bayesian_tumor_growth <- function(
         "' after filtering. Cannot apply log transform."
       )
     }
-    vol[vol <= 0] <- min(positive_vals, na.rm = TRUE) / 2
-    analysis_df[[volume_column]] <- log(vol)
+    # R20.32: the fixed zero floor (default 2 mm3), as in tumor_growth_statistics().
+    vol <- me_floor_zeros(vol, floor_value, volume_units, "bayesian_tumor_growth")
+    analysis_df[[volume_column]] <- log(as.numeric(vol))
   } else if (transform == "sqrt") {
     analysis_df[[volume_column]] <- sqrt(analysis_df[[volume_column]])
   }
@@ -561,7 +578,8 @@ bayesian_tumor_growth <- function(
   } else {
     tgs_compute_growth_rates(
       auc_df, treatment_column, id_column,
-      cage_column, time_column, volume_column
+      cage_column, time_column, volume_column,
+      zero_floor = floor_value
     )
   }
 
