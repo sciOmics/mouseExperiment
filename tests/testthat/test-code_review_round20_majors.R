@@ -292,3 +292,41 @@ test_that("R20.33: the seed leaves the caller's RNG alone, and power rises with 
                                 seed = 2)$power_table
   expect_false(is.unsorted(a$Power))               # each alpha was re-simulated
 })
+
+# ---- R20.44 / R20.73: body weight --------------------------------------------------
+
+bw_fit <- function(d, ...) quiet(analyze_body_weight(d, volume_column = "Volume",
+  volume_units = "mm3", cage_column = "Cage", reference_group = "Vehicle", ...))
+
+test_that("R20.44: the primary comparison is the rate of weight change, unmoved by a baseline offset", {
+  shifted <- m
+  shifted$Weight[shifted$Treatment == "Drug_B"] <- shifted$Weight[shifted$Treatment == "Drug_B"] + 1.5
+  est <- function(r) {
+    p <- r$pairwise_comparisons
+    p$estimate[grepl("Drug_B", p$contrast) & !grepl("\\+", p$contrast)]
+  }
+  a <- bw_fit(m); b <- bw_fit(shifted)
+  # v0.29.0 compared weight at the mean day: 0.40 g became 1.90 g.
+  expect_equal(est(a), est(b), tolerance = 1e-6)
+  expect_match(a$estimand, "rate of weight change")
+  expect_true("Weight_Change_Per_Day" %in% names(a$emmeans_table))
+  expect_false(is.null(a$level_comparisons))
+})
+
+test_that("R20.44: a missing first weight keeps the animal, and the counts are the model's", {
+  d <- m; d$Weight[d$ID == 3 & d$Day == 0] <- NA
+  r <- bw_fit(d, covariates = "initial_mass")
+  # v0.29.0 reported 618 observations while the model used 609.
+  expect_identical(r$model_info$n_obs, stats::nobs(r$model))
+  expect_identical(r$model_info$n_subjects, 48L)
+})
+
+test_that("R20.73: a simplified body-weight model says why", {
+  r <- bw_fit(m)
+  if (isTRUE(r$model_info$model_simplified)) {
+    expect_match(r$model_info$simplify_reason, "random-slope model")
+  } else {
+    expect_true(is.na(r$model_info$simplify_reason))
+  }
+  expect_false(grepl("due to sample size", r$summary_text))
+})
