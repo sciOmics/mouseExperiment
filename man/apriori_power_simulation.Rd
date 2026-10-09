@@ -19,7 +19,8 @@ apriori_power_simulation(
   alpha = c(0.05),
   n_simulations = 500L,
   seed = NULL,
-  progress_fn = NULL
+  progress_fn = NULL,
+  p_adjust_method = c("bonferroni", "none")
 )
 }
 \arguments{
@@ -71,21 +72,28 @@ leave this at \code{Inf}.}
 
 \item{alpha}{Numeric vector of significance levels (default \code{c(0.05)}).}
 
-\item{n_simulations}{Integer. Number of LMM fits per (N, alpha) combination
-(default 500). Values ≥ 1000 give more stable estimates but are slow.}
+\item{n_simulations}{Integer. Number of simulated studies per N (default
+500); every alpha uses the same studies, so power rises with alpha.}
 
 \item{seed}{Integer or \code{NULL}. RNG seed for reproducibility (default
-\code{NULL}).}
+\code{NULL}). It applies inside this call only: the caller's random-number
+state is restored afterwards.}
 
 \item{progress_fn}{Function or \code{NULL}. Called with a single numeric
 argument (proportion complete 0–1) after each completed N scenario; use
 for progress reporting in Shiny.}
+
+\item{p_adjust_method}{\code{"bonferroni"} (default: each arm is tested at
+\eqn{\alpha/(k-1)}) or \code{"none"}.}
 }
 \value{
 A list with:
 \describe{
 \item{\code{power_table}}{Data frame: N_Per_Group, N_Groups, Alpha,
-Power, SE_Power, N_Significant, N_Simulations.}
+Alpha_Per_Comparison, Power (per arm vs control), Power_Lower and
+Power_Upper (Wilson 95\\% interval), SE_Power, Power_Any, Power_All,
+Power_Omnibus, N_Significant (arm tests significant), N_Simulations
+(fitted) and N_Failed (simulated studies that could not be fitted).}
 \item{\code{power_curve_data}}{Same as \code{power_table} — suitable
 for direct ggplot2 use.}
 \item{\code{params}}{Named list of the simulation parameters used.}
@@ -113,16 +121,26 @@ where \eqn{\mu_i} = group geometric-mean baseline volume,
 \eqn{b_0 \sim N(0, \sigma_{b0}^2)}, \eqn{b_1 \sim N(0, \sigma_{b1}^2)},
 \eqn{\varepsilon \sim N(0, \sigma_e^2)}, all on the log scale.
 Volumes are obtained by exponentiating: \eqn{V_{ij} = \exp(\cdot)}.
-The fitted model is \code{log(Volume) ~ Treatment * Day + (Day | ID)};
-power is the proportion of LRTs where the \code{Treatment:Day} p-value < \eqn{\alpha}.
+The fitted model is \code{log(Volume) ~ Treatment * Day + (Day | ID)} by
+REML, falling back to uncorrelated slopes and then a random intercept when a
+fit fails, as \code{tumor_growth_statistics()} does.
+
+\strong{What "power" is} (CODE_REVIEW.md R20.33, v0.30.0). \code{Power} is
+the chance that a given treated arm's growth rate is declared different from
+control: a Satterthwaite t-test of that arm's \code{Treatment:Day}
+coefficient at \eqn{\alpha/(k-1)} with the default Bonferroni adjustment,
+the same comparison family as \code{\link[=apriori_power_analysis]{apriori_power_analysis()}}. With
+\eqn{k \ge 3} arms the table also gives \code{Power_Any} (at least one
+arm detected), \code{Power_All} (every arm detected) and
+\code{Power_Omnibus} (the joint F-test of all arms). Until v0.30.0 the
+function reported omnibus power from a likelihood-ratio test, which is
+anti-conservative at these sizes (size 0.09 at n = 5).
 
 \strong{Which analysis is powered.} This is the default
 \code{tumor_growth_statistics()} model since v0.26.0 (correlated random
 slopes; CODE_REVIEW.md R20.34). Before that the default analysis had a
 random intercept only, so the power reported here was for an analysis
-users did not run. The default analysis tests the interaction with a
-Satterthwaite F-test rather than this likelihood-ratio test; at the group
-sizes typical here the two agree closely. An analysis run with
+users did not run. An analysis run with
 \code{random_effects_specification = "intercept_only"} is not the one
 powered here.
 }

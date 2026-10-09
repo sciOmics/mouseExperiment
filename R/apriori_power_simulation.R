@@ -15,16 +15,26 @@
 #' \eqn{b_0 \sim N(0, \sigma_{b0}^2)}, \eqn{b_1 \sim N(0, \sigma_{b1}^2)},
 #' \eqn{\varepsilon \sim N(0, \sigma_e^2)}, all on the log scale.
 #' Volumes are obtained by exponentiating: \eqn{V_{ij} = \exp(\cdot)}.
-#' The fitted model is \code{log(Volume) ~ Treatment * Day + (Day | ID)};
-#' power is the proportion of LRTs where the \code{Treatment:Day} p-value < \eqn{\alpha}.
+#' The fitted model is \code{log(Volume) ~ Treatment * Day + (Day | ID)} by
+#' REML, falling back to uncorrelated slopes and then a random intercept when a
+#' fit fails, as \code{tumor_growth_statistics()} does.
+#'
+#' \strong{What "power" is} (CODE_REVIEW.md R20.33, v0.30.0). \code{Power} is
+#' the chance that a given treated arm's growth rate is declared different from
+#' control: a Satterthwaite t-test of that arm's \code{Treatment:Day}
+#' coefficient at \eqn{\alpha/(k-1)} with the default Bonferroni adjustment,
+#' the same comparison family as [apriori_power_analysis()]. With
+#' \eqn{k \ge 3} arms the table also gives \code{Power_Any} (at least one
+#' arm detected), \code{Power_All} (every arm detected) and
+#' \code{Power_Omnibus} (the joint F-test of all arms). Until v0.30.0 the
+#' function reported omnibus power from a likelihood-ratio test, which is
+#' anti-conservative at these sizes (size 0.09 at n = 5).
 #'
 #' \strong{Which analysis is powered.} This is the default
 #' \code{tumor_growth_statistics()} model since v0.26.0 (correlated random
 #' slopes; CODE_REVIEW.md R20.34). Before that the default analysis had a
 #' random intercept only, so the power reported here was for an analysis
-#' users did not run. The default analysis tests the interaction with a
-#' Satterthwaite F-test rather than this likelihood-ratio test; at the group
-#' sizes typical here the two agree closely. An analysis run with
+#' users did not run. An analysis run with
 #' \code{random_effects_specification = "intercept_only"} is not the one
 #' powered here.
 #'
@@ -123,18 +133,24 @@
 #'   complete-data behaviour. See the \emph{Dropout} section for what it costs to
 #'   leave this at \code{Inf}.
 #' @param alpha Numeric vector of significance levels (default \code{c(0.05)}).
-#' @param n_simulations Integer. Number of LMM fits per (N, alpha) combination
-#'   (default 500). Values ≥ 1000 give more stable estimates but are slow.
+#' @param n_simulations Integer. Number of simulated studies per N (default
+#'   500); every alpha uses the same studies, so power rises with alpha.
 #' @param seed Integer or \code{NULL}. RNG seed for reproducibility (default
-#'   \code{NULL}).
+#'   \code{NULL}). It applies inside this call only: the caller's random-number
+#'   state is restored afterwards.
 #' @param progress_fn Function or \code{NULL}. Called with a single numeric
 #'   argument (proportion complete 0–1) after each completed N scenario; use
 #'   for progress reporting in Shiny.
+#' @param p_adjust_method \code{"bonferroni"} (default: each arm is tested at
+#'   \eqn{\alpha/(k-1)}) or \code{"none"}.
 #'
 #' @return A list with:
 #' \describe{
 #'   \item{\code{power_table}}{Data frame: N_Per_Group, N_Groups, Alpha,
-#'     Power, SE_Power, N_Significant, N_Simulations.}
+#'     Alpha_Per_Comparison, Power (per arm vs control), Power_Lower and
+#'     Power_Upper (Wilson 95\% interval), SE_Power, Power_Any, Power_All,
+#'     Power_Omnibus, N_Significant (arm tests significant), N_Simulations
+#'     (fitted) and N_Failed (simulated studies that could not be fitted).}
 #'   \item{\code{power_curve_data}}{Same as \code{power_table} — suitable
 #'     for direct ggplot2 use.}
 #'   \item{\code{params}}{Named list of the simulation parameters used.}
@@ -165,9 +181,10 @@ apriori_power_simulation <- function(n_per_group          = c(5L, 8L, 10L, 12L, 
                                      alpha                = c(0.05),
                                      n_simulations        = 500L,
                                      seed                 = NULL,
-                                     progress_fn          = NULL) {
+                                     progress_fn          = NULL,
+                                     p_adjust_method      = c("bonferroni", "none")) {
 
-
+  p_adjust_method <- match.arg(p_adjust_method)
   n_groups     <- as.integer(n_groups)
   n_simulations <- as.integer(n_simulations)
   n_per_group  <- as.integer(n_per_group)
@@ -178,185 +195,190 @@ apriori_power_simulation <- function(n_per_group          = c(5L, 8L, 10L, 12L, 
       is.na(dropout_limit) || dropout_limit <= 0) {
     stop("dropout_limit must be a single positive number, or Inf for none.")
   }
-  if (!is.null(seed)) set.seed(seed)
+  alpha <- sort(unique(alpha))
+
+  # R20.33: set.seed(seed) clobbered the caller's random-number stream. The
+  # seed now applies inside this call only; the caller's state is restored.
+  if (!is.null(seed)) {
+    had_seed <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+    old_seed <- if (had_seed) get(".Random.seed", envir = globalenv()) else NULL
+    on.exit({
+      if (had_seed) assign(".Random.seed", old_seed, envir = globalenv())
+      else if (exists(".Random.seed", envir = globalenv(), inherits = FALSE))
+        rm(".Random.seed", envir = globalenv())
+    }, add = TRUE)
+    set.seed(seed)
+  }
 
   group_names   <- c("Control", paste0("Treatment", seq_len(n_groups - 1L)))
   growth_rates  <- c(control_growth_rate,
                      rep(control_growth_rate - treatment_effect, n_groups - 1L))
-
+  n_comparisons <- n_groups - 1L
   n_timepoints <- length(timepoints)
-  total_steps  <- length(n_per_group) * length(alpha)
-  step_i       <- 0L
+  total_steps  <- length(n_per_group)
 
-  rows      <- vector("list", total_steps)
-  attr_rows <- vector("list", total_steps)
-  idx       <- 0L
+  rows      <- list()
+  attr_rows <- list()
 
-  for (n in n_per_group) {
-    for (a in alpha) {
-      n_sig <- 0L
-      n_fit <- 0L
-      # Realised attrition, accumulated so the caller can see what the reported
-      # power was actually planned against.
-      obs_kept <- 0L; obs_total <- 0L
-      mice_truncated <- 0L; mice_total <- 0L
-
-      for (sim in seq_len(n_simulations)) {
-        # ---- Simulate data ---------------------------------------------------
-        sim_list <- vector("list", n_groups)
-        # Per-mouse baseline draws (log-scale CV ≈ baseline_sd / baseline_volume
-        # mapped to log-scale SD via the delta-method first-order approximation
-        # log_sd ≈ baseline_sd / baseline_volume for small CVs).
-        log_baseline_sd <- if (baseline_sd > 0 && baseline_volume > 0) {
-          baseline_sd / baseline_volume
-        } else 0
-        for (g in seq_len(n_groups)) {
-          ids <- paste0(group_names[g], "_", seq_len(n))
-          # Draw standard normals and scale, rather than passing the SD to
-          # rnorm(). R's rnorm() returns `mu` without calling norm_rand() when
-          # sigma == 0, so an SD of zero silently advances the RNG stream by a
-          # different amount and reshuffles every subsequent draw -- making
-          # `sd = 0` a discontinuity rather than the limiting case it reads as.
-          # For sd > 0 this form is bit-identical to rnorm(n, 0, sd).
-          b0  <- random_intercept_sd * stats::rnorm(n)
-          b1  <- random_slope_sd     * stats::rnorm(n)
-          per_mouse_log_baseline <- log(baseline_volume) +
-            log_baseline_sd * stats::rnorm(n)
-          for (j in seq_len(n)) {
-            # Log-normal data: log(V) = log(baseline_j) + b0 + (rate + b1)*t + e
-            # Matches the log(Volume) LMM fitted below.
-            log_vol <- per_mouse_log_baseline[j] + b0[j] +
-              (growth_rates[g] + b1[j]) * timepoints +
-              stats::rnorm(n_timepoints, 0, residual_sd)
-            vol <- exp(log_vol)
-
-            # Euthanasia on the volume limit: drop this animal's observations
-            # from the first crossing onward. Dropout is MAR given the observed
-            # trajectory, which is why the LMM below remains valid -- see the
-            # Dropout section.
-            keep <- if (is.finite(dropout_limit)) {
-              hit <- which(vol >= dropout_limit)
-              if (length(hit)) seq_len(hit[1]) else seq_along(timepoints)
-            } else {
-              seq_along(timepoints)
-            }
-            mice_total <- mice_total + 1L
-            obs_total  <- obs_total + n_timepoints
-            obs_kept   <- obs_kept + length(keep)
-            if (length(keep) < n_timepoints) mice_truncated <- mice_truncated + 1L
-
-            sim_list[[(g - 1L) * n + j]] <- data.frame(
-              ID        = ids[j],
-              Treatment = group_names[g],
-              Day       = timepoints[keep],
-              Volume    = vol[keep],
-              stringsAsFactors = FALSE
-            )
-          }
-        }
-        df_sim <- do.call(rbind, sim_list)
-        df_sim$Treatment <- factor(df_sim$Treatment, levels = group_names)
-
-        # An aggressive limit can leave a group with too little signal to fit a
-        # random-slope model. Skip rather than let lmer fail into the warning
-        # fallback, which would silently change the model being powered.
-        n_obs_per_mouse <- table(df_sim$ID)
-        if (length(unique(df_sim$Treatment[!is.na(df_sim$Treatment)])) < 2L ||
-            sum(n_obs_per_mouse >= 2L) < 2L * n_groups) {
-          next
-        }
-
-        # ---- Fit LMM on log(Volume) ------------------------------------------
-        # Matches tumor_growth_statistics() which log-transforms before fitting.
-        fit <- tryCatch(
-          lme4::lmer(log(Volume) ~ Treatment * Day + (Day | ID),
-                     data    = df_sim,
-                     REML    = FALSE,
-                     control = lme4::lmerControl(optimizer = "bobyqa",
-                                                 calc.derivs = FALSE)),
-          error   = function(e) NULL,
-          warning = function(w) {
-            tryCatch(
-              lme4::lmer(log(Volume) ~ Treatment * Day + (1 | ID),
-                         data    = df_sim,
-                         REML    = FALSE,
-                         control = lme4::lmerControl(optimizer = "bobyqa",
-                                                     calc.derivs = FALSE)),
-              error = function(e2) NULL
-            )
-          }
-        )
-        if (is.null(fit)) next
-        n_fit <- n_fit + 1L
-
-        # ---- Extract p-value for Treatment:Day ------------------------------
-        # Prefer LRT (statistically preferred for LMMs); lme4 does not compute
-        # p-values by default so the coefficient table rarely has Pr(>|t|).
-        p_val <- tryCatch({
-          fit_red <- tryCatch(
-            lme4::lmer(log(Volume) ~ Treatment + Day + (Day | ID),
-                       data    = df_sim,
-                       REML    = FALSE,
-                       control = lme4::lmerControl(optimizer = "bobyqa",
-                                                   calc.derivs = FALSE)),
-            error = function(e) NULL
-          )
-          if (!is.null(fit_red)) {
-            lrt <- stats::anova(fit_red, fit)
-            lrt$`Pr(>Chisq)`[2]
-          } else if (requireNamespace("lmerTest", quietly = TRUE)) {
-            # Fall back to Satterthwaite approximation
-            fit2      <- lmerTest::as_lmerModLmerTest(fit)
-            coefs2    <- as.data.frame(stats::coef(summary(fit2)))
-            int_rows2 <- coefs2[
-              grep(":", rownames(coefs2), fixed = TRUE), , drop = FALSE
-            ]
-            if (nrow(int_rows2) > 0 && "Pr(>|t|)" %in% colnames(int_rows2)) {
-              min(int_rows2[["Pr(>|t|)"]], na.rm = TRUE)
-            } else {
-              NA_real_
-            }
-          } else {
-            NA_real_
-          }
-        }, error = function(e) NA_real_)
-
-        if (!is.na(p_val) && p_val < a) n_sig <- n_sig + 1L
-      }
-
-      power_est <- if (n_fit > 0) n_sig / n_fit else NA_real_
-      se_est    <- if (n_fit > 1 && !is.na(power_est))
-        sqrt(power_est * (1 - power_est) / n_fit) else NA_real_
-
-      idx <- idx + 1L
-      rows[[idx]] <- data.frame(
-        N_Per_Group   = n,
-        N_Groups      = n_groups,
-        Alpha         = a,
-        Power         = power_est,
-        SE_Power      = se_est,
-        N_Significant = n_sig,
-        N_Simulations = n_fit,
-        stringsAsFactors = FALSE
-      )
-      attr_rows[[idx]] <- data.frame(
-        N_Per_Group      = n,
-        Alpha            = a,
-        Dropout_Limit    = dropout_limit,
-        Pct_Obs_Lost     = if (obs_total > 0)
-          100 * (1 - obs_kept / obs_total) else 0,
-        Pct_Mice_Truncated = if (mice_total > 0)
-          100 * mice_truncated / mice_total else 0,
-        stringsAsFactors = FALSE
-      )
-
-      step_i <- step_i + 1L
-      if (is.function(progress_fn))
-        progress_fn(step_i / total_steps)
+  # The analysis being powered: tumor_growth_statistics()'s default, a REML
+  # fit with correlated random slopes, falling back to uncorrelated slopes and
+  # then a random intercept (R20-K). Tests are Satterthwaite t (each arm's
+  # slope difference from control) and F (all arms jointly), from lmerTest.
+  ctrl <- lme4::lmerControl(optimizer = "bobyqa", calc.derivs = FALSE)
+  fit_one <- function(d) {
+    for (re in c("(Day | ID)", "(Day || ID)", "(1 | ID)")) {
+      f <- stats::as.formula(paste("log(Volume) ~ Treatment * Day +", re))
+      fit <- tryCatch(lmerTest::lmer(f, data = d, REML = TRUE, control = ctrl),
+                      error = function(e) NULL, warning = function(w) NULL)
+      if (!is.null(fit)) return(fit)
     }
+    NULL
+  }
+  arm_p_values <- function(fit) {
+    ct <- stats::coef(summary(fit))
+    int <- paste0("Treatment", group_names[-1], ":Day")
+    p_arm <- ct[int, "Pr(>|t|)"]
+    L <- matrix(0, nrow = length(int), ncol = nrow(ct), dimnames = list(NULL, rownames(ct)))
+    for (j in seq_along(int)) L[j, int[j]] <- 1
+    p_omni <- tryCatch(lmerTest::contest(fit, L, joint = TRUE,
+                                         ddf = "Satterthwaite")$`Pr(>F)`,
+                       error = function(e) NA_real_)
+    c(p_arm, omnibus = p_omni)
+  }
+  wilson <- function(x, n, z = stats::qnorm(0.975)) {
+    if (!is.finite(n) || n == 0) return(c(NA_real_, NA_real_))
+    ph <- x / n; den <- 1 + z^2 / n
+    centre <- (ph + z^2 / (2 * n)) / den
+    half <- z * sqrt(ph * (1 - ph) / n + z^2 / (4 * n^2)) / den
+    c(centre - half, centre + half)
   }
 
-  power_table <- do.call(rbind, rows[seq_len(idx)])
+  for (n in n_per_group) {
+    # R20.33: one set of replicates per N, shared by every alpha, so power can
+    # no longer go down as alpha goes up (0.233 at 0.05 vs 0.217 at 0.06).
+    pvals <- matrix(NA_real_, nrow = n_simulations, ncol = n_comparisons + 1L)
+    n_failed <- 0L
+    obs_kept <- 0L; obs_total <- 0L
+    mice_truncated <- 0L; mice_total <- 0L
+
+    for (sim in seq_len(n_simulations)) {
+      # ---- Simulate data ---------------------------------------------------
+      sim_list <- vector("list", n_groups)
+      # Per-mouse baseline draws (log-scale CV ≈ baseline_sd / baseline_volume
+      # mapped to log-scale SD via the delta-method first-order approximation
+      # log_sd ≈ baseline_sd / baseline_volume for small CVs).
+      log_baseline_sd <- if (baseline_sd > 0 && baseline_volume > 0) {
+        baseline_sd / baseline_volume
+      } else 0
+      for (g in seq_len(n_groups)) {
+        ids <- paste0(group_names[g], "_", seq_len(n))
+        # Draw standard normals and scale, rather than passing the SD to
+        # rnorm(). R's rnorm() returns `mu` without calling norm_rand() when
+        # sigma == 0, so an SD of zero silently advances the RNG stream by a
+        # different amount and reshuffles every subsequent draw -- making
+        # `sd = 0` a discontinuity rather than the limiting case it reads as.
+        # For sd > 0 this form is bit-identical to rnorm(n, 0, sd).
+        b0  <- random_intercept_sd * stats::rnorm(n)
+        b1  <- random_slope_sd     * stats::rnorm(n)
+        per_mouse_log_baseline <- log(baseline_volume) +
+          log_baseline_sd * stats::rnorm(n)
+        for (j in seq_len(n)) {
+          # Log-normal data: log(V) = log(baseline_j) + b0 + (rate + b1)*t + e
+          # Matches the log(Volume) LMM fitted below.
+          log_vol <- per_mouse_log_baseline[j] + b0[j] +
+            (growth_rates[g] + b1[j]) * timepoints +
+            stats::rnorm(n_timepoints, 0, residual_sd)
+          vol <- exp(log_vol)
+
+          # Euthanasia on the volume limit: drop this animal's observations
+          # from the first crossing onward. Dropout is MAR given the observed
+          # trajectory, which is why the LMM below remains valid -- see the
+          # Dropout section.
+          keep <- if (is.finite(dropout_limit)) {
+            hit <- which(vol >= dropout_limit)
+            if (length(hit)) seq_len(hit[1]) else seq_along(timepoints)
+          } else {
+            seq_along(timepoints)
+          }
+          mice_total <- mice_total + 1L
+          obs_total  <- obs_total + n_timepoints
+          obs_kept   <- obs_kept + length(keep)
+          if (length(keep) < n_timepoints) mice_truncated <- mice_truncated + 1L
+
+          sim_list[[(g - 1L) * n + j]] <- data.frame(
+            ID        = ids[j],
+            Treatment = group_names[g],
+            Day       = timepoints[keep],
+            Volume    = vol[keep],
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+      df_sim <- do.call(rbind, sim_list)
+      df_sim$Treatment <- factor(df_sim$Treatment, levels = group_names)
+
+      # An aggressive limit can leave a group with too little signal to fit a
+      # random-slope model. Counted as a failure (R20.33: failures used to
+      # leave the denominator silently).
+      n_obs_per_mouse <- table(df_sim$ID)
+      if (length(unique(df_sim$Treatment[!is.na(df_sim$Treatment)])) < 2L ||
+          sum(n_obs_per_mouse >= 2L) < 2L * n_groups) {
+        n_failed <- n_failed + 1L
+        next
+      }
+      fit <- fit_one(df_sim)
+      if (is.null(fit)) { n_failed <- n_failed + 1L; next }
+      pv <- tryCatch(arm_p_values(fit), error = function(e) NULL)
+      if (is.null(pv) || anyNA(pv[seq_len(n_comparisons)])) { n_failed <- n_failed + 1L; next }
+      pvals[sim, ] <- pv
+    }
+
+    ok <- stats::complete.cases(pvals[, seq_len(n_comparisons), drop = FALSE])
+    p_ok <- pvals[ok, , drop = FALSE]
+    n_fit <- nrow(p_ok)
+    for (a in alpha) {
+      a_cmp <- if (p_adjust_method == "bonferroni") a / n_comparisons else a
+      sig <- p_ok[, seq_len(n_comparisons), drop = FALSE] < a_cmp
+      n_sig_tests <- sum(sig); n_tests <- length(sig)
+      power <- if (n_tests > 0) n_sig_tests / n_tests else NA_real_
+      ci <- wilson(n_sig_tests, n_tests)
+      rows[[length(rows) + 1L]] <- data.frame(
+        N_Per_Group          = n,
+        N_Groups             = n_groups,
+        Alpha                = a,
+        Alpha_Per_Comparison = a_cmp,
+        Power                = power,
+        Power_Lower          = ci[1],
+        Power_Upper          = ci[2],
+        SE_Power             = if (n_tests > 1 && is.finite(power))
+                                 sqrt(power * (1 - power) / n_tests) else NA_real_,
+        Power_Any            = if (n_fit) mean(rowSums(sig) > 0) else NA_real_,
+        Power_All            = if (n_fit) mean(rowSums(sig) == n_comparisons) else NA_real_,
+        Power_Omnibus        = if (n_fit) mean(p_ok[, n_comparisons + 1L] < a, na.rm = TRUE)
+                               else NA_real_,
+        N_Significant        = n_sig_tests,
+        N_Simulations        = n_fit,
+        N_Failed             = n_failed,
+        stringsAsFactors = FALSE
+      )
+      attr_rows[[length(attr_rows) + 1L]] <- data.frame(
+        N_Per_Group        = n,
+        Alpha              = a,
+        Dropout_Limit      = dropout_limit,
+        Pct_Obs_Lost       = if (obs_total > 0) 100 * (1 - obs_kept / obs_total) else 0,
+        Pct_Mice_Truncated = if (mice_total > 0) 100 * mice_truncated / mice_total else 0,
+        stringsAsFactors = FALSE
+      )
+    }
+    if (n_failed > 0.1 * n_simulations) {
+      warning(sprintf("apriori_power_simulation(): %d of %d simulations at n = %d could ",
+                      n_failed, n_simulations, n), "not be fitted; power is based on the rest.",
+              call. = FALSE)
+    }
+    if (is.function(progress_fn)) progress_fn(match(n, n_per_group) / total_steps)
+  }
+
+  power_table <- do.call(rbind, rows)
 
   list(
     power_table      = power_table,
@@ -374,8 +396,9 @@ apriori_power_simulation <- function(n_per_group          = c(5L, 8L, 10L, 12L, 
       timepoints           = timepoints,
       dropout_limit        = dropout_limit,
       alpha                = alpha,
-      n_simulations        = n_simulations
+      n_simulations        = n_simulations,
+      p_adjust_method      = p_adjust_method
     ),
-    attrition = do.call(rbind, attr_rows[seq_len(idx)])
+    attrition = do.call(rbind, attr_rows)
   )
 }

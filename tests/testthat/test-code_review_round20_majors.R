@@ -266,3 +266,29 @@ test_that("R20.31: the Treatment row no longer depends on where time is counted 
   expect_equal(a[["Pr(>F)"]], b[["Pr(>F)"]], tolerance = 1e-6)
   expect_equal(a[["F value"]], b[["F value"]], tolerance = 1e-6)
 })
+
+# ---- R20.33: simulation power ------------------------------------------------------
+
+test_that("R20.33: the simulation's test holds its size, and power is per arm at alpha/(k-1)", {
+  null <- suppressWarnings(apriori_power_simulation(n_per_group = 5L, treatment_effect = 0,
+                                                    n_simulations = 200L, seed = 11))
+  # v0.29.0's likelihood-ratio test rejected about 9 % of the time at n = 5.
+  expect_lt(null$power_table$Power, 0.08)
+  k4 <- apriori_power_simulation(n_per_group = 8L, n_groups = 4L, treatment_effect = 0.04,
+                                 n_simulations = 40L, seed = 3)$power_table
+  expect_equal(k4$Alpha_Per_Comparison, 0.05 / 3)
+  expect_true(all(c("Power_Any", "Power_All", "Power_Omnibus", "Power_Lower",
+                    "Power_Upper", "N_Failed") %in% names(k4)))
+  expect_lte(k4$Power_All, k4$Power)
+  expect_lte(k4$Power, k4$Power_Any)
+})
+
+test_that("R20.33: the seed leaves the caller's RNG alone, and power rises with alpha", {
+  set.seed(99); before <- stats::runif(1)
+  set.seed(99); invisible(apriori_power_simulation(n_per_group = 5L, n_simulations = 10L, seed = 1))
+  expect_identical(stats::runif(1), before)          # v0.29.0 re-seeded the session
+  a <- apriori_power_simulation(n_per_group = 8L, treatment_effect = 0.04,
+                                alpha = c(0.05, 0.06, 0.1), n_simulations = 40L,
+                                seed = 2)$power_table
+  expect_false(is.unsorted(a$Power))               # each alpha was re-simulated
+})
