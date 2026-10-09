@@ -216,6 +216,9 @@ resume_banner_server <- function(id = "resume_banner",
   switch(kind,
     bayes_tg    = "Bayesian Tumor Growth",
     bayes_surv  = "Bayesian Survival",
+    power_sim   = "Power simulation",          # R20.D6
+    tg_perm     = "Randomisation test",
+    bw_model    = "Body-weight model",
     kind)
 }
 

@@ -63,6 +63,12 @@ test_that("updateTabsetPanel(... selected = 'Summary') is wired in every module"
       next   # skip on installed-package mode where R/ is not exposed
     }
     txt <- readLines(src_path, warn = FALSE)
+    # R20.D6: a run that finishes on the background worker switches the tab
+    # from its finalizer, which lives beside the module.
+    helper <- c("R/mod_toxicity.R" = "R/tox_background.R")[f]
+    if (!is.na(helper)) {
+      txt <- c(txt, readLines(file.path(dirname(dirname(src_path)), helper), warn = FALSE))
+    }
     has_switch <- any(grepl(
       "updateTabsetPanel\\(session,.*selected\\s*=\\s*[\"']Summary[\"']", txt
     ))

@@ -158,3 +158,39 @@ register_tg_resume <- function(input, output, session, rv) {
     "This Bayesian analysis was dismissed or expired before its result was",
     "shown. Run it again."), "warning"))
 }
+
+# ---- The randomisation test on the worker (CODE_REVIEW.md R20.D6) ----------
+
+# Runs tumor_growth_statistics() with the test and returns only the test.
+# Base environment, so the worker needs only the backend.
+.tg_perm_only <- function(...) mouseExperiment::tumor_growth_statistics(...)$permutation_test
+environment(.tg_perm_only) <- baseenv()
+
+# The result joins the run it belongs to; a later run discards it.
+.finalize_perm_success <- function(result, context, input, output, session, rv) {
+  cur <- shiny::isolate(rv$tg_results)
+  if (is.null(cur) || !identical(cur$run_token, context$run_token)) return(invisible(NULL))
+  if (is.null(result$p_value)) {
+    rv$tg_perm_status <- paste(c("The randomisation test could not be run on these data.",
+                                 result$analysis_warnings), collapse = " ")
+    return(invisible(NULL))
+  }
+  cur$permutation_test <- result
+  rv$tg_results <- cur
+  rv$tg_perm_status <- NULL
+}
+
+.finalize_perm_failure <- function(err_msg, input, output, session, rv) {
+  res <- background_failure(err_msg, "tg_perm")
+  rv$tg_perm_status <- paste("The randomisation test failed:", res$message)
+}
+
+.finalize_perm_cancellation <- function(input, output, session, rv) {
+  rv$tg_perm_status <- "cancelled"
+}
+
+.finalize_perm_lost <- function(input, output, session, rv) {
+  rv$tg_perm_status <- paste("The randomisation test was dismissed or expired",
+                             "before its result was shown. Run the analysis again.")
+}
+

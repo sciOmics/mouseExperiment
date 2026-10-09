@@ -2158,7 +2158,7 @@ Executed.
 | R20.D3 | Legacy inline Bayesian path crashes; modal stuck | Major | ✅ Fixed v26.09.002 (R20-D.J) |
 | R20.D4 | `NA_Date_` crashes on non-US reference dates | Major | ✅ Fixed v26.09.002 (R20-D.J) |
 | R20.D5 | Dismiss-all strands the modal and drops the result | Major | ✅ Fixed v26.09.006 (R20-D.N) |
-| R20.D6 | Synchronous analyses freeze all users (power sim 121 s, no upload needed) | Major | Open |
+| R20.D6 | Synchronous analyses freeze all users (power sim 121 s, no upload needed) | Major | ✅ Fixed v26.10.004 (R20-D.R) |
 | R20.D7 | Cancel doesn't stop the worker; one worker for everyone | Major | ✅ Fixed v26.09.006 (R20-D.N): a queue, one fit per browser, a cancel that interrupts. One worker remains (a resource decision) |
 | R20.D8 | Bayesian survival from volume-derived events always fails | Major | ✅ Fixed by backend 0.25.0 (internal column names, package R20.43); recorded v26.09.006 (R20-D.N) |
 | R20.D9 | `.rda` upload dead, and loads into the shared global env | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
@@ -2606,4 +2606,34 @@ This step covers the Majors whose output misstated what it showed (R20.D42–R20
 **Not changed here:**
 - **Consent.** R20.D12 suggested "consent or a notice". This step adds the notice; Umami sets no cookies.
 - **A separate staging website id.** It would need a second Umami site. Staging is simply not counted.
+
+## R20-D.R Implementation log — v26.10.004: long analyses on the background worker (2026-10-09)
+
+R20.D6: the Bayesian fits already ran on the background worker (R20.D62). The three other long analyses ran in the one Shiny process, and every session on the server froze until they finished:
+
+| Analysis | Blocked every session for | Now |
+|---|---|---|
+| Power: LMM simulation (defaults; reachable before any upload) | 121 s | Queued on the worker, with a progress window and Cancel |
+| Tumour growth: randomisation test | 22 s at 999 permutations, 145 s at 9,999 | The fit is shown at once; the same call with the test runs on the worker and its result fills the panel when it arrives |
+| Toxicity: body-weight model | 15 s | Queued on the worker, with a progress window and Cancel; the weight-loss analysis and plots follow when it returns |
+
+**How.**
+- **Shared helpers.** `launch_background_job()` (`R/bayes_job_runner.R`) generalises `launch_tg_bayes_job()`: one job per browser, an optional progress window with Cancel, and a poller that hands the result to the module's finalizers. Each module registers its kind with `register_bayes_resume()`, so Cancel and Resume from the banner work as for the Bayesian fits. `.kind_to_label()` names the new kinds.
+- **Warnings.** The registry collects a future's value with warnings suppressed, and the dashboard shows backend warnings (R20.D34). `background_task()` therefore runs the call in the worker inside `.run_capturing()`, which returns the warnings in `analysis_warnings`, the field `safe_analysis()` uses. A NULL result (a skipped randomisation test) keeps its reason. A failed job is reported through `background_failure()`, with `safe_analysis()`'s error translation.
+- **Power.** `.finalize_power_success()` is the code that used to follow the call.
+- **Randomisation test.** The tumour-growth arguments are built once (`tg_args`). The fit on screen runs without the test, and `.tg_perm_only()` runs the same arguments with it, so the test sees exactly what the model saw (rows after a necrosis exclusion, transform, cage, zero floor). Each run carries a `run_token`, and a test that arrives after a newer run is discarded. The panel shows "running" with a Cancel button, then the result. If another analysis from the browser is running, it says so instead.
+- **Body weight.** The rest of the branch (weight-loss threshold, trajectory data) and the tail shared with the therapeutic window moved to `R/tox_background.R` (`.tox_bw_rest()`, `.tox_finish()`). The inputs travel in the job's context, so a run resumed after a page reload can finish. A failed model still gets the weight-loss analysis and gross-weight plots, as before.
+- **Wording.** The progress window's button reads "Cancel" instead of "Cancel fit", and Resume says "an analysis".
+
+**Executed:**
+- **With a real worker** (`multisession`, one worker): launching the power simulation and the randomisation test returned in 0.03 s, and both completed on the worker with the expected results (power columns, permutation p).
+- **Tests.** `test-round21-background.R` has 6 tests:
+  - With the worker held busy (mocked), each of the three analyses returns at once, its job queued and no result yet. Freed, the result arrives and the job is retired.
+  - Plus: warnings travel back, a NULL result keeps its reason, and a stale randomisation test is discarded.
+- **Adapted tests.** Two source-text tests followed the moved code: the tab switch is now in `R/tox_background.R`, and the simulation's attrition is in its finalizer.
+- **Full suite:** 29 files, 282 tests, no failures or skips.
+
+**Not changed:**
+- **One worker.** Jobs from different browsers queue behind each other, so a power simulation can wait behind another user's Bayesian fit. A second worker under a global cap is a memory decision for the VPS (V3.12).
+- **Short analyses.** AUC, survival, synergy, the therapeutic window and dose-response take under 1.5 s and still run inline.
 

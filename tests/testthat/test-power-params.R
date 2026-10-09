@@ -91,7 +91,8 @@ test_that("K.14: the UI no longer claims random intercept SD drives power", {
 
 test_that("K.15: attrition is carried into the results object", {
   src <- power_src()
-  expect_match(src, "lmm_attrition\\s*=\\s*result_lmm\\$attrition")
+  # R20.D6: the simulation's result arrives in .finalize_power_success().
+  expect_match(src, "lmm_attrition\\s*=\\s*result(_lmm)?\\$attrition")
   expect_match(src, "Dropout modelled:",
                info = "Summary tab must report realised attrition")
   expect_match(src, "none modelled",

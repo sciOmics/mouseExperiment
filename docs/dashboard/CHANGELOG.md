@@ -4,6 +4,20 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.10.004] - 2026-10-09
+
+Long analyses no longer freeze every user (`CODE_REVIEW.md` R20-D.R).
+
+### Fixed
+
+- **The power simulation, the randomisation test and the body-weight model
+  ran in the Shiny process (R20.D6),** and every session on the server froze
+  while they did: two minutes for the default simulation, which anyone could
+  start without uploading data. They now run on the background worker, like
+  the Bayesian fits, with a progress window, Cancel, and Resume from the
+  banner. The tumour-growth fit appears at once and the randomisation test
+  fills its panel when it finishes. Backend warnings are still shown.
+
 ## [26.10.003] - 2026-10-09
 
 Requires mouseExperiment ≥ 0.31.0. Plots and tables that mislabelled their
