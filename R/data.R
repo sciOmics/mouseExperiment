@@ -1,65 +1,59 @@
-
-#' Synthetic tumor growth data
-#' 
-#' A dataset containing synthetic tumor volume measurements over time
-#' for different treatment groups.
-#' 
-#' @format A data frame with 120 rows and 7 variables:
-#' \describe{
-#'   \item{Mouse_ID}{Mouse identifier, with format M followed by a number}
-#'   \item{Day}{Day of measurement, starting from day 0}
-#'   \item{Treatment}{Treatment group (Control, Treatment A, Treatment B)}
-#'   \item{Volume}{Tumor volume measurement}
-#'   \item{Group}{Same as Treatment, an alternative name for the treatment group}
-#'   \item{ID}{Numeric identifier for the mouse, without the "M" prefix}
-#'   \item{Cage}{Cage number where the mouse is housed}
-#' }
-#' @source Synthetic data generated using random number generation
-#' @examples
-#' data(synthetic_data)
-#' head(synthetic_data)
-"synthetic_data"
+# Package datasets (CODE_REVIEW.md R20.52). Built by data-raw/create_datasets.R
+# from the CSVs in data-raw/, which are also the dashboard's demo files;
+# master_synthetic_data has its own generator, data-raw/create_master_dataset.R.
 
 #' Combination treatment synthetic data
-#' 
-#' A dataset containing synthetic tumor volume measurements over time
-#' for different combination treatment groups.
-#' 
-#' @format A data frame with rows for each mouse at each timepoint and 6 variables:
+#'
+#' Caliper measurements for a two-drug combination study, laid out as a
+#' laboratory records them: calendar dates rather than study days, ear-punch
+#' codes rather than unique animal numbers, and length and width rather than
+#' volume. It is the dashboard's "Combo Treatment" demo.
+#'
+#' @format A data frame with 458 rows and 7 variables:
 #' \describe{
-#'   \item{Mouse_ID}{Mouse identifier, with format M followed by a number}
-#'   \item{Day}{Day of measurement, starting from day 0}
-#'   \item{Treatment}{Treatment group (Control, aPD1, HDACi, HDACi + PD1)}
-#'   \item{Volume}{Tumor volume measurement}
-#'   \item{ID}{Numeric identifier for the mouse, without the "M" prefix}
-#'   \item{Cage}{Cage number where the mouse is housed}
+#'   \item{Date}{Measurement date, "MM/DD/YYYY" (24 March to 25 April 2025).
+#'     Convert with [calculate_dates()], start date "03/24/2025".}
+#'   \item{Cage}{Cage number, 1 to 8; two cages per arm.}
+#'   \item{ID}{Ear-punch code ("L", "R", "LR", "N"). It repeats in every
+#'     cage, so an animal is identified by treatment, cage and ID together.}
+#'   \item{Treatment}{"Control", "aPD1", "HDACi" or "HDACi + PD1"; 8 animals each.}
+#'   \item{Length, Width}{Caliper measurements (mm). 0 means no palpable
+#'     tumour yet. Volume comes from [calculate_volume()].}
+#'   \item{Survival_Censor}{1 on the last row of an animal removed at the
+#'     tumour endpoint, otherwise 0.}
 #' }
-#' @source Synthetic data generated using random number generation with treatment-specific effects
+#' @source Synthetic; `data-raw/combo_treatment_synthetic_data.csv`.
+#' @seealso [master_synthetic_data], which has every column the package uses.
 #' @examples
-#' data(combo_treatment_synthetic_data)
-#' head(combo_treatment_synthetic_data)
+#' d <- calculate_dates(combo_treatment_synthetic_data, start_date = "03/24/2025")
+#' d <- calculate_volume(d)
+#' head(d)
 "combo_treatment_synthetic_data"
 
-
 #' Dose levels synthetic data
-#' 
-#' A dataset containing synthetic tumor volume measurements over time
-#' for different dose levels of a single drug.
-#' 
-#' @format A data frame with rows for each mouse at each timepoint and 7 variables:
+#'
+#' Caliper measurements for one drug at three doses and a vehicle control. It
+#' is the dashboard's "Dose Levels" demo.
+#'
+#' @format A data frame with 172 rows and 8 variables:
 #' \describe{
-#'   \item{Mouse_ID}{Mouse identifier, with format M followed by a number}
-#'   \item{Day}{Day of measurement, starting from day 0}
-#'   \item{Treatment}{Treatment name (always "Drug X")}
-#'   \item{Dose}{Dose level (0, 10, 25, 50, 100)}
-#'   \item{Volume}{Tumor volume measurement}
-#'   \item{ID}{Numeric identifier for the mouse, without the "M" prefix}
-#'   \item{Cage}{Cage number where the mouse is housed}
+#'   \item{Date}{Measurement date, "DD-Mon" without a year (24 March to
+#'     18 April). Convert with [calculate_dates()], start date "24-Mar", year
+#'     2025.}
+#'   \item{Cage}{Cage number, 1 to 4; one cage per arm.}
+#'   \item{ID}{Ear-punch code, repeated in every cage.}
+#'   \item{Treatment}{"Control" or "HDACi".}
+#'   \item{Dose}{0 for Control; 10, 50 or 100 for HDACi.}
+#'   \item{Length, Width}{Caliper measurements (mm); 0 means no palpable
+#'     tumour yet.}
+#'   \item{Survival_Censor}{1 on the last row of an animal removed at the
+#'     tumour endpoint, otherwise 0.}
 #' }
-#' @source Synthetic data generated using random number generation with dose-dependent effects
+#' @source Synthetic; `data-raw/dose_levels_synthetic_data.csv`.
 #' @examples
-#' data(dose_levels_synthetic_data)
-#' head(dose_levels_synthetic_data)
+#' d <- calculate_dates(dose_levels_synthetic_data, start_date = "24-Mar", year = 2025)
+#' d <- calculate_volume(d)
+#' table(d$Treatment, d$Dose)
 "dose_levels_synthetic_data"
 
 #' Master synthetic dataset — all analysis scenarios
@@ -148,59 +142,25 @@
 #'                 Treatment %in% c("Vehicle","Drug_A Low","Drug_A Mid","Drug_A High"))
 "master_synthetic_data"
 
-
-#' Necrotic tumour synthetic data
-#'
-#' Caliper measurements with a necrosis flag, used to exercise the necrotic
-#' handling options in `tumor_growth_statistics()`. Column names deliberately
-#' use the non-standard spellings ("Mouse Tag", "Tumor Length (mm)") that the
-#' dashboard's column auto-detection is built to recognise, so the file doubles
-#' as a detection fixture.
-#'
-#' Shipped as CSV rather than `.rda`: it is loaded through the dashboard's demo
-#' selector, which reads files, and R CMD check flagged it as an undocumented
-#' data set because `data/` contents are treated as package data either way
-#' (R18.3).
-#'
-#' @format A data frame with 40 rows and 6 variables:
-#' \describe{
-#'   \item{Day}{Study day of measurement}
-#'   \item{Mouse Tag}{Animal identifier}
-#'   \item{Treatment}{Treatment group (None, Drug)}
-#'   \item{Tumor Length (mm)}{Caliper long axis}
-#'   \item{Tumor Width (mm)}{Caliper short axis}
-#'   \item{Necrotic}{0/1 flag marking observations with a necrotic core}
-#' }
-#' @source Synthetic data generated using random number generation
-#' @examples
-#' \dontrun{
-#' d <- utils::read.csv(system.file("data", "necrotic_synthetic_data.csv",
-#'                                  package = "mouseExperiment"))
-#' }
-"necrotic_synthetic_data"
-
 #' Body-weight synthetic data
 #'
-#' Pre-calculated tumour volumes paired with body weights, used to exercise the
-#' toxicity path (`analyze_body_weight()`, `therapeutic_window_metric()`). Dates
-#' are supplied instead of a numeric study day, so it also exercises
-#' `calculate_dates()`.
-#'
-#' Shipped as CSV rather than `.rda`, for the same reason as
-#' [necrotic_synthetic_data] (R18.3).
+#' Tumour volumes with body weights, for the toxicity functions
+#' ([analyze_body_weight()], [therapeutic_window_metric()]). The column names
+#' contain spaces, as exported spreadsheets often do. It is the dashboard's
+#' "Weight" demo.
 #'
 #' @format A data frame with 100 rows and 5 variables:
 #' \describe{
-#'   \item{Date}{Measurement date, from which elapsed days are derived}
-#'   \item{Ear Tag}{Animal identifier}
-#'   \item{Treatment}{Treatment group (DMSO, Drug A, Drug B, Drug A+B)}
-#'   \item{Tumor Volume}{Pre-calculated tumour volume}
-#'   \item{Mouse Weight}{Body weight in grams}
+#'   \item{Date}{Measurement date, "Month D" without a year (1 to 15 March).
+#'     Convert with [calculate_dates()], start date "March 1", year 2025.}
+#'   \item{Ear Tag}{Animal number 1 to 5, repeated in every arm, so an animal
+#'     is identified by treatment and ear tag together.}
+#'   \item{Treatment}{"DMSO", "Drug A", "Drug B" or "Drug A + B".}
+#'   \item{Tumor Volume}{Tumour volume (mm³), already calculated.}
+#'   \item{Mouse Weight}{Body weight (g).}
 #' }
-#' @source Synthetic data generated using random number generation
+#' @source Synthetic; `data-raw/weight_synthetic_data.csv`.
 #' @examples
-#' \dontrun{
-#' d <- utils::read.csv(system.file("data", "weight_synthetic_data.csv",
-#'                                  package = "mouseExperiment"))
-#' }
+#' d <- calculate_dates(weight_synthetic_data, start_date = "March 1", year = 2025)
+#' head(d)
 "weight_synthetic_data"
