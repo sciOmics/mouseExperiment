@@ -5,6 +5,60 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.0] - 2026-10-09
+
+The Round 20 process items (`CODE_REVIEW.md` R20-S): `R CMD check` passes,
+with examples and the vignette, and runs in CI.
+
+### Fixed
+
+- **Examples failed in `R CMD check` (R20.50).** The synergy and tumour-growth
+  examples called `calculate_volume()` on a dataset without `Length`, and
+  most of the rest were wrapped in `\dontrun{}`, so they never ran. Every
+  example now uses shipped data (mostly `master_synthetic_data`) and runs. The
+  Bayesian ones are in `\donttest{}`, since they compile Stan. Exported functions
+  that had no example now have one.
+- **The vignette never built (R20.49).** It is rewritten as a complete
+  analysis of `master_synthetic_data`. The stale `mouseExperiment_combo_demo.html`
+  is deleted. The two personal Quarto demos, which installed packages from
+  local paths, move to `dev/demos/` and are no longer shipped.
+- **The README examples did not run (R20.51).** Usage is rewritten against
+  `master_synthetic_data`, and `tests/testthat/test-readme.R` runs every
+  non-Bayesian block.
+- **Install warnings (R20.50).** `import(drc)` and `import(stats)` clashed
+  with dplyr and each other (five "replacing previous import" warnings, with
+  `stats::lag` shadowing `dplyr::lag`). drc is now imported by function, and
+  stats without `filter` and `lag`. No code called the shadowed functions.
+- **Other check findings (R20.50, R20.54):** non-ASCII characters in code
+  (now `\u` escapes); about 30 ggplot column names declared with
+  `utils::globalVariables()`; undocumented `necrotic_column`,
+  `necrotic_handling` and `point_size`; malformed nested lists in
+  `tumor_growth_statistics()`'s help; a LICENSE that was not the DCF stub
+  (the full text is now `LICENSE.md`); a stale `Date` field.
+
+### Changed
+
+- **Datasets (R20.52).** Each name is now one dataset. `combo_treatment_synthetic_data`
+  and `dose_levels_synthetic_data` are the clean CSV versions the dashboard
+  uses: dates, ear-punch IDs, caliper length and width, survival events. They
+  replace `.rda` files that had volumes on a 0–7 scale, negative day-0 volumes
+  and NaN. They are built by `data-raw/create_datasets.R`. `synthetic_data`
+  (random values, crossed cages) and `necrotic_synthetic_data` are removed;
+  `master_synthetic_data` covers both, necrosis included.
+- **Requires R ≥ 4.1.0** (the code uses `|>`). It declared 3.5.
+- **Build hygiene (R20.54).** `.Rbuildignore` now leaves out `.claude/`,
+  `.waylog/`, `docs/`, `data-raw/`, `dev/` and the development files. Before,
+  a locally built tarball included the AI session transcripts. `build.R`, which
+  rewrote `NAMESPACE` with functions that no longer exist, is deleted along with
+  `temp/` and the tracked `Rplots.pdf`.
+
+### Added
+
+- **CI (R20.53).** `.github/workflows/R-CMD-check.yaml` runs `R CMD check`
+  (vignette and full test suite, Bayesian tests included) on every push and pull
+  request and nightly, then the README examples. CONTRIBUTING no longer
+  describes a CI that did not exist, or a brms skip that the package forbids.
+
 ## [0.28.0] - 2026-09-30
 
 Sixth implementation step of the Round 20 review (`CODE_REVIEW.md` R20-Q):
