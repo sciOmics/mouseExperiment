@@ -1122,7 +1122,8 @@ tumor_growth_statistics <- function(df,
       treatment_column    = treatment_column,
       cage_column         = cage_column,
       time_column         = time_column,
-      volume_column       = volume_column
+      volume_column       = volume_column,
+      zero_floor_info     = zero_floor_info
     )
     auc_out$zero_floor <- zero_floor_info        # R20.32
     return(auc_out)
@@ -1315,7 +1316,7 @@ tumor_growth_statistics <- function(df,
         posthoc_method = posthoc_method,
         growth_rate_calculation = paste0(
           "Growth rates are calculated by fitting a linear regression model to log-transformed volume data over time for each subject ",
-          "(non-positive volumes are replaced with half the smallest positive value before the log). ",
+          "(zero volumes take the fixed floor, ", floor_value, " ", volume_units, ", before the log). ",
           "The slope coefficient from this model represents the exponential growth rate. ",
           "A value of 0.1 indicates approximately 10% tumor volume increase per day. ",
           "Only subjects with 3 or more time points are included in growth rate calculations."
@@ -1371,7 +1372,8 @@ tumor_growth_statistics <- function(df,
           cage_column      = if (no_cage_mode) NULL else cage_column,
           transform        = transform,
           spec             = permutation_test,
-          verbose          = verbose
+          verbose          = verbose,
+          zero_floor       = floor_value
         ),
         error = function(e) {
           warning("Permutation test skipped: ", conditionMessage(e),

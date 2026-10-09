@@ -141,6 +141,10 @@ enumerate_label_perms <- function(labels) {
 #'   `"sqrt"`, or `"none"`. Should match what the primary analysis used.
 #' @param spec A [perm_spec()] object.
 #' @param verbose Print progress.
+#' @param zero_floor With `transform = "log"`, the volume a zero takes before
+#'   the log (CODE_REVIEW.md R20.32): 2 for mm3 (the default), 0.002 for cm3.
+#'   [tumor_growth_statistics()] passes its own floor, so both test the same
+#'   response.
 #' @return A list with:
 #'   \item{p_value}{Two-sided permutation p-value, `(1 + #{T* >= T}) / (1 + n_perm)`
 #'     so it is never exactly zero.}
@@ -179,7 +183,8 @@ trajectory_permutation_test <- function(df,
                                         cage_column      = "Cage",
                                         transform        = c("log", "sqrt", "none"),
                                         spec             = perm_spec(),
-                                        verbose          = FALSE) {
+                                        verbose          = FALSE,
+                                        zero_floor       = 2) {
   transform <- match.arg(transform)
   if (!inherits(spec, "perm_spec")) {
     stop("`spec` must come from perm_spec(). ",
@@ -216,7 +221,9 @@ trajectory_permutation_test <- function(df,
     if (!length(pos)) {
       stop("No positive values; cannot apply the log transform.", call. = FALSE)
     }
-    d$.y[d$.y <= 0] <- min(pos) / 2
+    # R20.32: a fixed floor; half the smallest positive volume moved with the
+    # data.
+    d$.y[d$.y <= 0] <- zero_floor
     d$.y <- log(d$.y)
   } else if (transform == "sqrt") {
     d$.y <- sqrt(pmax(d$.y, 0))

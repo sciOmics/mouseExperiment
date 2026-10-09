@@ -240,6 +240,17 @@ test_that("R20.32: one small reading elsewhere no longer moves the floor", {
   expect_equal(floor_seen(d2), 2)
 })
 
+test_that("R20.32: the permutation test uses the same floor as the model", {
+  d <- m[m$Treatment %in% c("Vehicle", "Drug_A High"), ]
+  d$Volume[d$Treatment == "Drug_A High" & d$Day >= 20] <- 0
+  d_floored <- d; d_floored$Volume[d_floored$Volume <= 0] <- 2
+  perm_T <- function(x) quiet(trajectory_permutation_test(
+    x, cage_column = NULL, spec = perm_spec("mouse", n_perm = 19L, seed = 1L)
+  ))$observed_statistic
+  # v0.29.0 floored at half the smallest positive volume instead.
+  expect_equal(perm_T(d), perm_T(d_floored))
+})
+
 test_that("R20.32: volumes that look like cm3 declared as mm3 draw a warning", {
   cm <- m; cm$Volume <- cm$Volume / 1000
   expect_warning(quiet_msg <- suppressMessages(tumor_growth_statistics(cm,
