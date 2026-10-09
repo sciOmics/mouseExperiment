@@ -776,13 +776,15 @@ tumorGrowthUI <- function(id) {
 
                     hr(),
                     h5(strong("ANOVA Tab")),
-                    p("Wald chi-square tests for Treatment, Day, and the Treatment \u00d7 Day interaction, reported as ",
-                      code("Chisq"), " / ", code("Df"), " / ", code("Pr(>Chisq)"), ". A significant interaction indicates that treatment groups differ in their growth trajectories \u2014 the primary analysis target."),
+                    p("F-tests with Satterthwaite degrees of freedom, reported as ",
+                      code("NumDF"), " / ", code("DenDF"), " / ", code("F value"), " / ", code("Pr(>F)"),
+                      ", in this order: whether the arms' growth rates differ (treatment \u00d7 time, the primary ",
+                      "analysis target); whether the arms differ at the mean study day; and whether there is growth ",
+                      "on average. A ", code("Tests"), " column states each question."),
                     p(tags$small(class = "text-muted",
-                      "These are chi-square rather than F tests because the model is fitted by maximum likelihood: a ",
-                      "mixed model has no exact residual degrees of freedom, so an F reference distribution would ",
-                      "need an approximation the chi-square avoids. The trade-off is that it is anti-conservative in ",
-                      "small samples \u2014 with few animals per arm, prefer the randomisation test below."
+                      "The treatment row compares the arms at the mean study day, not at day 0, so it does not ",
+                      "change when time is counted from implantation instead of randomisation. With few animals ",
+                      "per arm, the randomisation test below makes fewer assumptions."
                     )),
 
                     hr(),

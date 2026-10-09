@@ -246,6 +246,7 @@ tumor_growth_server <- function(id, rv) {
         dose_col          = rv$dose_col,
         necrotic_col      = rv$necrotic_col,
         necrotic_handling = input$tg_necrotic_handling %||% "none",
+        volume_units      = backend_volume_units(rv),
         plot_groups       = rv$tg_plot_groups
       )
 
@@ -310,6 +311,7 @@ tumor_growth_server <- function(id, rv) {
         } else NULL,
         necrotic_column   = rv$necrotic_col,
         necrotic_handling = input$tg_necrotic_handling %||% "none",
+        volume_units      = backend_volume_units(rv),   # backend R20.32 zero floor
         return_model = TRUE,
         include_diagnostics = TRUE,
         plots = FALSE
@@ -921,6 +923,7 @@ tumor_growth_server <- function(id, rv) {
       "MODEL SPECIFICATION:",
       paste("  Model Type:", summary_list$analysis_type),
       paste("  Transformation:", paste(summary_list$methods$volume_transformation)),
+      zero_floor_line(rv$tg_results),
       "",
       "DATA DESCRIPTION:",
       paste("  Subjects:", summary_list$data_description$subjects),
@@ -1238,7 +1241,7 @@ tumor_growth_server <- function(id, rv) {
           strong("What is being compared:"), " these contrasts compare model-predicted ",
           strong("tumor volume"), " between groups \u2014 not growth rate. Each group\u2019s marginal mean is evaluated at the ",
           em("average study day"), ", so ", strong("estimate"), " answers: \u201cAt the typical timepoint, how much larger or smaller is one group\u2019s predicted volume relative to another?\u201d",
-          " To test whether ", em("growth trajectories diverge"), " across groups, see the ", strong("Treatment:Time"), " interaction row in the ANOVA tab. Per-animal growth rates are in the Growth Rates tab."
+          " To test whether ", em("growth trajectories diverge"), " across groups, see the first (treatment \u00d7 time) row in the ANOVA tab. Per-animal growth rates are in the Growth Rates tab."
         ),
         tags$ul(
           tags$li(strong("contrast"), " \u2014 the two groups being compared (\u2018Treatment \u2212 Reference\u2019 for Dunnett, \u2018A \u2212 B\u2019 for Tukey)."),
@@ -1299,15 +1302,23 @@ tumor_growth_server <- function(id, rv) {
         "For pairwise differences see the Comparisons tab."
       )
     } else {
+      # Backend 0.30.0 (R20.31): growth rate first, and Treatment at the mean
+      # study day. The old Type III "Treatment" row tested day 0, so its
+      # p-value depended on where time was counted from.
       tab_info(
-        strong("Type III ANOVA "), "from the linear mixed-effects model: F-tests with Satterthwaite degrees of freedom. Tests whether each fixed effect (treatment group, time, and their interaction) explains variance in tumor volume after accounting for all other terms.",
+        strong("F-tests "), "from the linear mixed-effects model, with Satterthwaite degrees of freedom. Each row answers the question in its ", em("Tests"), " column:",
         tags$ul(
-          tags$li(strong("F value"), " \u2014 F statistic for the effect. Larger values indicate stronger evidence against the null hypothesis."),
-          tags$li(strong("NumDF / DenDF"), " \u2014 numerator degrees of freedom (parameters tested) and Satterthwaite denominator degrees of freedom."),
-          tags$li(strong("Pr(>F)"), " \u2014 p-value. Values below 0.05 indicate a statistically significant effect at the 5% level.")
+          tags$li(strong("First row, treatment \u00d7 time"), " (e.g. ", em("Treatment:Day"), ") \u2014 do the arms' growth rates differ? This is the primary test: a small p-value means the arms' tumours grow at different rates on the analysis scale."),
+          tags$li(strong("Second row, treatment at day X"), " \u2014 do the arms differ in volume at the mean study day, the day the adjusted means use? It does not depend on where time is counted from."),
+          tags$li(strong("Third row, time (average over arms)"), " \u2014 is there growth on average? Almost always significant; it confirms the model sees growth."),
+          tags$li("Cage or necrosis rows, when present, are adjustment terms.")
         ),
-        "With per-animal random slopes (the default), the Treatment:Time test is judged against how much animals' growth rates vary; with a random intercept only it is not, and it finds differences that are not there.",
-        "The ", em("Treatment:Time"), " interaction row is the most biologically informative: a significant interaction means treatment groups diverge in their growth trajectories over time, not just in overall volume."
+        tags$ul(
+          tags$li(strong("F value"), " \u2014 F statistic; larger values are stronger evidence against no difference."),
+          tags$li(strong("NumDF / DenDF"), " \u2014 numerator degrees of freedom (number of constraints tested) and Satterthwaite denominator degrees of freedom."),
+          tags$li(strong("Pr(>F)"), " \u2014 p-value for the question in that row.")
+        ),
+        "With per-animal random slopes (the default), the growth-rate test is judged against how much animals' growth rates vary; with a random intercept only it is not, and it finds differences that are not there."
       )
     }
   })

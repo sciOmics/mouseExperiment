@@ -94,6 +94,7 @@ register_tg_resume <- function(input, output, session, rv) {
       backend                      = bayes_params$backend,
       necrotic_column              = bayes_params$necrotic_col,
       necrotic_handling            = bayes_params$necrotic_handling,
+      volume_units                 = bayes_params$volume_units %||% "mm3",
       # R20.D18: the model is not sent back. The diagnostics tab draws from
       # the result's plots (built without the model since backend 0.28.0)
       # and its posterior_draws; keeping the model cost ~31 MB per session.

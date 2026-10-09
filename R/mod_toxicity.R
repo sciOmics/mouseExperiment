@@ -278,7 +278,7 @@ toxicityUI <- function(id) {
           tabPanel("Summary",
             tab_info(
               strong("Analysis summary. "),
-              "Body Weight Analysis: mixed-effects model output, fixed effects, and marginal means. ",
+              "Body Weight Analysis: mixed-effects model output, fixed effects, and each arm's rate of weight change. ",
               "Therapeutic Window: TGI and worst weight loss per arm, with the tolerability flag."
             ),
             shinycssloaders::withSpinner(verbatimTextOutput(ns("tox_summary")))
@@ -290,9 +290,13 @@ toxicityUI <- function(id) {
             shinycssloaders::withSpinner(DTOutput(ns("tox_fixed_effects"))),
             downloadButton(ns("download_tox_model"), "Download Fixed Effects CSV"),
             hr(),
-            h4("Estimated Marginal Means by Treatment"),
+            h4("Rate of Weight Change by Treatment (g/day)"),
             shinycssloaders::withSpinner(DTOutput(ns("tox_emmeans"))),
-            downloadButton(ns("download_tox_emmeans_csv"), "Download EMMs CSV")
+            downloadButton(ns("download_tox_emmeans_csv"), "Download Rates CSV"),
+            hr(),
+            h4("Difference in Rate vs the Reference (g/day)"),
+            shinycssloaders::withSpinner(DTOutput(ns("tox_rate_comparisons"))),
+            downloadButton(ns("download_tox_rate_comparisons_csv"), "Download Comparisons CSV")
           ),
 
           tabPanel("Weight Loss KM",
@@ -620,9 +624,13 @@ toxicity_server <- function(id, rv) {
           shinycssloaders::withSpinner(DTOutput(ns("tox_fixed_effects"))),
           downloadButton(ns("download_tox_model"), "Download Fixed Effects CSV"),
           hr(),
-          h4("Estimated Marginal Means by Treatment"),
+          h4("Rate of Weight Change by Treatment (g/day)"),
           shinycssloaders::withSpinner(DTOutput(ns("tox_emmeans"))),
-          downloadButton(ns("download_tox_emmeans_csv"), "Download EMMs CSV")
+          downloadButton(ns("download_tox_emmeans_csv"), "Download Rates CSV"),
+          hr(),
+          h4("Difference in Rate vs the Reference (g/day)"),
+          shinycssloaders::withSpinner(DTOutput(ns("tox_rate_comparisons"))),
+          downloadButton(ns("download_tox_rate_comparisons_csv"), "Download Comparisons CSV")
         )
       )
       insertTab(inputId = tabs_id, target = "Model Results", position = "after",
@@ -950,11 +958,19 @@ toxicity_server <- function(id, rv) {
   # ---- BW: Tab info outputs ----
 
   output$tox_bw_mixed_model_tab_info <- renderUI({
+    # Backend 0.30.0 (R20.44): the comparison is the rate of weight change.
+    # Weight at the mean day moved with any baseline imbalance and had much
+    # less power (0.14 against 0.84 in the review's simulation).
     tab_info(
       strong("Body Weight Mixed Model. "),
-      "Fixed effects test whether weight trajectories differ by treatment group over time. ",
-      "The ", tags$code("Treatment \u00d7 Day"), " interaction is the primary term of interest. ",
-      "Estimated marginal means give group-level weight estimates adjusted for covariates."
+      "The model fits each arm's weight trajectory over time. ",
+      strong("Rate of weight change"), " is each arm's average change in weight per day (g/day, ",
+      "negative when animals lose weight), adjusted for the covariates. ",
+      strong("Difference in rate"), " compares each arm with the reference arm: a negative ",
+      "estimate means the arm loses weight faster (or gains more slowly) than the reference. ",
+      "p-values are adjusted for the number of comparisons. ",
+      "Rates are not affected by differences in starting weight, which a comparison of ",
+      "weights at one day would be."
     )
   })
 
@@ -973,6 +989,15 @@ toxicity_server <- function(id, rv) {
     if (isTRUE(mm$error) || is.null(mm$emmeans_table))
       return(datatable(data.frame(Message = "Not available")))
     datatable(format_df_for_display(mm$emmeans_table),
+              options = list(scrollX = TRUE), rownames = FALSE)
+  })
+
+  output$tox_rate_comparisons <- renderDT({
+    req(rv$tox_results, rv$tox_results$mixed_model)
+    mm <- rv$tox_results$mixed_model
+    if (isTRUE(mm$error) || is.null(mm$pairwise_comparisons))
+      return(datatable(data.frame(Message = "Not available")))
+    datatable(format_df_for_display(as.data.frame(mm$pairwise_comparisons)),
               options = list(scrollX = TRUE), rownames = FALSE)
   })
 

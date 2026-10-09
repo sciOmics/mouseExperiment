@@ -63,12 +63,15 @@ test_that("D.13: every model type in the selector is named in the Info tab", {
   }
 })
 
-test_that("D.13: the ANOVA tab is not described as an F-test", {
-  # The LME4 path reports Chisq / Df / Pr(>Chisq) — a Wald chi-square. Calling it
-  # an F-test misstates both the statistic and why it is used.
+test_that("D.13 / backend R20.31: the ANOVA tab is described as the backend reports it", {
+  # D.13: the LME4 path once reported Wald chi-squares while the docs said F.
+  # Backend 0.30.0 reports Satterthwaite F-tests (NumDF / DenDF / Pr(>F)),
+  # growth rate first; the docs must say that and not the chi-square.
   src <- read_src("ui_modules.R")
   expect_false(grepl("Type III ANOVA F-test", src, fixed = TRUE))
-  expect_match(src, "Wald chi-square", fixed = TRUE)
+  expect_false(grepl("Wald chi-square tests for Treatment", src, fixed = TRUE))
+  expect_match(src, "F-tests with Satterthwaite degrees of freedom", fixed = TRUE)
+  expect_match(src, "growth rates differ", fixed = TRUE)
 })
 
 test_that("D.13: extrapolation is documented as affecting plots only", {

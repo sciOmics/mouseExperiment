@@ -85,6 +85,23 @@ format_df_for_display <- function(df, digits = 4) {
   df
 }
 
+#' The zero-floor line of the tumour-growth summary
+#'
+#' Backend 0.30.0 (R20.32): on the log scale a zero volume takes a fixed
+#' floor, 2 mm³ or 0.002 cm³, reported in `result$zero_floor`.
+#'
+#' @param res A `tumor_growth_statistics()` result.
+#' @return One summary line, or `character(0)` when no floor applies.
+#' @keywords internal
+zero_floor_line <- function(res) {
+  zf <- res$zero_floor
+  if (is.null(zf) || !identical(res$transform_used, "log")) return(character(0))
+  unit <- switch(zf$units %||% "mm3", cm3 = "cm³", "mm³")
+  sprintf("  Zero volumes: set to %s %s before the log (%d value%s)",
+          format(zf$value), unit, as.integer(zf$n_floored %||% 0L),
+          if (identical(as.integer(zf$n_floored), 1L)) "" else "s")
+}
+
 #' Back-transform values from analysis scale to original scale
 #'
 #' Inverse of the transform applied in `tumor_growth_statistics()` and

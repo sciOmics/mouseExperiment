@@ -301,7 +301,10 @@ powerAnalysisUI <- function(id) {
                     p("where ", tags$code("b₀"), " ~ N(0, random intercept SD), ", tags$code("b₁"), " ~ N(0, random slope SD), and ",
                       tags$code("ε"), " ~ N(0, residual SD). Volumes are exponentiated back to the original scale."),
                     p("For each simulated dataset, ", tags$code("log(Volume) ~ Treatment × Day + (Day | ID)"),
-                      " is fitted via lme4 and significance assessed by a likelihood-ratio test (LRT). Power = proportion of simulations where p < α."),
+                      " is fitted as in the Tumor Growth analysis (REML; uncorrelated slopes, then a random intercept, when a fit fails). ",
+                      "Each treated arm's growth rate is compared with the control's by a Satterthwaite t-test at \u03b1/(k\u22121). ",
+                      "Power = proportion of simulations in which a given arm is significant; the Scenario Table also gives the chance that ",
+                      "any arm, or every arm, is significant."),
 
                     hr(),
                     h5(strong("Key Parameters")),
@@ -402,6 +405,32 @@ powerAnalysisUI <- function(id) {
 
 #' Power Analysis Server Logic
 #' @keywords internal
+#' What the LMM simulation's power refers to
+#'
+#' Backend 0.30.0 (R20.33): `Power` is per treated arm against the control,
+#' tested at alpha/(k-1). It used to be an omnibus likelihood-ratio test that
+#' rejected 9 % of the time under the null at n = 5.
+#'
+#' @param st The simulation's `power_table`.
+#' @return A `tags$p`, or NULL.
+#' @keywords internal
+lmm_power_note <- function(st) {
+  if (is.null(st) || !nrow(st) || is.null(st$Alpha_Per_Comparison)) return(NULL)
+  k <- st$N_Groups[1]
+  failed <- sum(st$N_Failed, na.rm = TRUE)
+  tags$p(
+    tags$strong("Power:"), " the chance that a given treated arm is significant against ",
+    "the control, using the tumour-growth analysis's test of growth rates (Satterthwaite t)",
+    if (isTRUE(k > 2)) sprintf(" at α/(k−1) = %s for %d treated arms",
+                               format(signif(st$Alpha_Per_Comparison[1], 3)), k - 1L),
+    ". In the Scenario Table, ", tags$em("Power_Any"), " is the chance at least one arm ",
+    "is significant, ", tags$em("Power_All"), " that every arm is, and ",
+    tags$em("Power_Omnibus"), " that the joint test of all arms is.",
+    if (failed > 0) sprintf(" %d simulated stud%s could not be fitted and are excluded.",
+                            failed, if (failed == 1) "y" else "ies")
+  )
+}
+
 power_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
 
@@ -788,6 +817,8 @@ power_server <- function(id, rv) {
                  nrow(res$scenario_table), " row(s) in Scenario Table"),
           rec_n_html,
           attrition_html,
+          # Backend 0.30.0 (R20.33): what the simulated power refers to.
+          if (identical(mode_ap, "apriori_lmm")) lmm_power_note(res$scenario_table),
           # R20.D17: say what the analytic power refers to and what it assumes.
           if (identical(mode_ap, "apriori_analytic")) tags$p(
             tags$strong("Comparisons:"), " ",
@@ -839,9 +870,10 @@ power_server <- function(id, rv) {
                            colour = factor(Alpha), group = factor(Alpha))) +
             ggplot2::geom_line(linewidth = 0.9) +
             ggplot2::geom_point(size = 2) +
+            # Backend 0.30.0 (R20.33): Wilson limits, which stay inside
+            # [0, 1] and do not collapse to zero width at 0 % or 100 %.
             ggplot2::geom_ribbon(
-              ggplot2::aes(ymin = pmax(0, Power - 1.96 * SE_Power),
-                           ymax = pmin(1, Power + 1.96 * SE_Power),
+              ggplot2::aes(ymin = Power_Lower, ymax = Power_Upper,
                            fill = factor(Alpha)),
               alpha = 0.15, colour = NA) +
             ggplot2::geom_hline(yintercept = 0.80, linetype = "dashed",
@@ -851,7 +883,7 @@ power_server <- function(id, rv) {
             ggplot2::scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
             ggplot2::labs(
               title    = "A Priori Power — LMM Simulation",
-              subtitle = "Shaded band: ±1.96 × SE (Monte Carlo uncertainty)",
+              subtitle = "Power for one treated arm vs control. Shaded band: Wilson 95% interval (simulation uncertainty)",
               x        = "N per Group",
               y        = "Estimated Power",
               colour   = "Alpha",
