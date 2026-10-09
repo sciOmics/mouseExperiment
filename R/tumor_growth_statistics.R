@@ -341,6 +341,11 @@ tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
         msgs <<- c(msgs, conditionMessage(e))
         NULL
       })
+    # R20-T: a failed gradient check is retried from the estimates before
+    # the structure is given up.
+    rs <- me_lmer_restart(fit, msgs)
+    fit <- rs$fit; msgs <- rs$msgs
+    if (!is.null(rs$note) && isTRUE(verbose)) message(rs$note)
     converged <- !is.null(fit) &&
       !any(grepl("failed to converge|unable to evaluate|unidentifiable|degenerate",
                  msgs, ignore.case = TRUE))

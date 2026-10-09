@@ -80,6 +80,14 @@ The last nine Round 20 Majors, with the maintainer's four decisions
   colours (Drug A was labelled "Drug_B").
 - **Power simulation fallback (R20.72).** It is replaced along with the test
   (R20.33).
+- **A false convergence warning dropped the random slopes.** lme4's gradient
+  check fails spuriously on some data, versions and platforms. It sent the
+  shipped data's body-weight model to a random intercept: the Drug_B rate
+  difference was −0.0068 g/day instead of −0.0111. The fits had reached the
+  optimum (same log-likelihood). Tumour growth and body weight now check such
+  a warning before falling back. First they restart from the estimates; then
+  they refit with another optimizer, and keep the fit when it reaches the same
+  optimum. Body weight reports the check in `model_info$convergence_note`.
 
 ## [0.29.0] - 2026-10-09
 

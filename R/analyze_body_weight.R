@@ -227,7 +227,11 @@ analyze_body_weight <- function(df,
       tryCatch(lme4::lmer(f, data = wd, REML = (estimation == "REML")),
                error = function(e) { w <<- c(w, conditionMessage(e)); NULL }),
       warning = function(x) { w <<- c(w, conditionMessage(x)); invokeRestart("muffleWarning") })
-    list(model = m, warnings = w)
+    # R20-T: a failed gradient check is retried from the estimates before
+    # the random slope is given up; under lme4 2.0.6 the shipped data's
+    # model warned spuriously and lost its slopes.
+    rs <- me_lmer_restart(m, w)
+    list(model = rs$fit, warnings = rs$msgs, note = rs$note)
   }
   formula_full <- stats::as.formula(paste(response_col, "~", fixed_terms, "+", re_full))
   full <- fit_lmer(formula_full)
@@ -347,6 +351,7 @@ analyze_body_weight <- function(df,
       fixed_formula    = fixed_terms,
       model_simplified = model_simplified,
       simplify_reason  = if (model_simplified) simplify_reason else NA_character_,
+      convergence_note = if (model_simplified) NULL else full$note,   # R20-T
       adjust_tumor     = adjust_tumor_weight && has_volume,
       tumor_density    = tumor_density,
       cage_in_model    = has_cage,

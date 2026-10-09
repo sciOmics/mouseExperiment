@@ -317,8 +317,12 @@ test_that("R20.44: the primary comparison is the rate of weight change, unmoved 
     p$estimate[grepl("Drug_B", p$contrast) & !grepl("\\+", p$contrast)]
   }
   a <- bw_fit(m); b <- bw_fit(shifted)
-  # v0.29.0 compared weight at the mean day: 0.40 g became 1.90 g.
-  expect_equal(est(a), est(b), tolerance = 1e-6)
+  # v0.29.0 compared weight at the mean day: 0.40 g became 1.90 g. The slopes
+  # cannot move; the tolerance is the optimizer's (the two fits reach the same
+  # optimum by different paths, R20-T).
+  expect_equal(est(a), est(b), tolerance = 1e-3)
+  expect_true(is.na(a$model_info$simplify_reason))
+  expect_true(is.na(b$model_info$simplify_reason))
   expect_match(a$estimand, "rate of weight change")
   expect_true("Weight_Change_Per_Day" %in% names(a$emmeans_table))
   expect_false(is.null(a$level_comparisons))

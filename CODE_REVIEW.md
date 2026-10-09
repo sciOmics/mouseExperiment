@@ -5761,6 +5761,14 @@ This step closes every Major still open in R20.14–R20.48. Four of them needed 
 
 **Tests:** 29 in `test-code_review_round20_majors.R`. Each fails on v0.29.0, which was checked by running the file against a copy of that version. The R20.32 tests read the floor from the fitted model, because `$zero_floor` does not exist on v0.29.0 and a comparison of it passed vacuously. Three existing tests were adapted to the new messages: the unknown Bayesian reference (R20.46), all-zero volumes (R20.32) and a `\%` in new roxygen text that R18.2's guard caught.
 
+**Found by CI (the first run on this branch).**
+- **The failure.** The R20.44 test fits body weight twice: on the shipped data, and with 1.5 g added to one arm. In CI (lme4 2.0-6), one fit kept its random slopes and the other fell back to a random intercept. The Drug_B rate difference was −0.0111 in one and −0.0068 g/day in the other.
+- **The cause.** lme4's gradient check warned "failed to converge", and R20.73 treats non-convergence as a reason to simplify. Every fit had reached the same optimum: log-likelihood −451.2811 and the same slopes, whether restarted or not. Locally, under lme4 2.0.1, both fits fell back, so the test passed with both at −0.0068.
+- **The fix.** `me_lmer_restart()` (`R/utils_lmer.R`) applies lme4's documented checks before the fallback, in tumour growth and body weight:
+  1. Restart from the estimates, and keep the restart if it is clean.
+  2. Otherwise refit with another optimizer, and keep the fit if it reaches the same log-likelihood (within 0.001) and fixed effects (within 0.01 SE).
+- **Result.** Both fits now keep their random slopes under both lme4 versions (−0.011120 and −0.011120, 4e-7 apart). The test tolerance is now the optimizer's (1e-3 relative), and the test asserts that neither fit simplified. The power simulation is unaffected: it fits with `calc.derivs = FALSE`, so the check never runs.
+
 **Follow-ups, not done here:**
 - **The endpoint model still floors at the smallest positive volume.** `me_endpoint_model()` (`R/utils_endpoint.R`) sets a regression to zero at the study's smallest positive volume. It serves the AUC path, endpoint estimates, synergy and dose-response, and the last two have no units argument. Moving it to the fixed floor needs `volume_units` there.
 - **Centre time inside the tumour-growth fit.** With correlated random slopes on uncentred time, the optimiser can stop short: after a 14-day shift the log-likelihood was 366.45 against 365.93, which moves standard errors slightly. The R20.31 time-origin test therefore uses intercept-only random effects.
