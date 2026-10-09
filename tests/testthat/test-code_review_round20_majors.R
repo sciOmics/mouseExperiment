@@ -227,13 +227,17 @@ test_that("R20.32: zeros take a fixed floor of 2 mm3 (0.002 cm3), reported in th
 })
 
 test_that("R20.32: one small reading elsewhere no longer moves the floor", {
-  dd <- quiet(calculate_volume(calculate_dates(dose_levels_synthetic_data,
-                                               start_date = "24-Mar", year = 2025)))
-  dd2 <- dd; i <- which(dd2$Treatment == "Control" & dd2$Volume > 0)[1]; dd2$Volume[i] <- 0.3
-  f <- function(d) quiet(tumor_growth_statistics(d, reference_group = "Control",
-                                                  plots = FALSE))$zero_floor$value
-  # v0.29.0 floored at half the smallest positive volume: 0.15 after this edit.
-  expect_identical(f(dd), f(dd2))
+  d <- m
+  d$Volume[d$Treatment == "Drug_A High" & d$Day >= 20] <- 0     # complete regressions
+  floor_seen <- function(x) {
+    t <- quiet(tumor_growth_statistics(x, reference_group = "Vehicle", plots = FALSE,
+                                       include_diagnostics = FALSE))
+    exp(min(stats::model.response(stats::model.frame(t$model))))
+  }
+  expect_equal(floor_seen(d), 2)
+  d2 <- d; d2$Volume[which(d2$Treatment == "Vehicle")[1]] <- 2.5
+  # v0.29.0 used half the smallest positive volume: 1.25 after this one edit.
+  expect_equal(floor_seen(d2), 2)
 })
 
 test_that("R20.32: volumes that look like cm3 declared as mm3 draw a warning", {
