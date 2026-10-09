@@ -85,9 +85,9 @@ The last nine Round 20 Majors, with the maintainer's four decisions
   shipped data's body-weight model to a random intercept: the Drug_B rate
   difference was −0.0068 g/day instead of −0.0111. The fits had reached the
   optimum (same log-likelihood). Tumour growth and body weight now check such
-  a warning before falling back. First they restart from the estimates; then
-  they refit with another optimizer, and keep the fit when it reaches the same
-  optimum. Body weight reports the check in `model_info$convergence_note`.
+  a warning before falling back. First they restart from the estimates. Then
+  they refit with another optimizer, and use that fit if it converges, or keep
+  the first fit when both reach the same optimum. Body weight reports the check in `model_info$convergence_note`.
 
 ## [0.29.0] - 2026-10-09
 

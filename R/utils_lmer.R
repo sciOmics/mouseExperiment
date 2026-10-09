@@ -11,9 +11,10 @@
 # -451.2811, the same slopes).
 #
 # lme4's documented checks are a restart from the estimates and a fit with a
-# different optimizer: when the restart is clean, or the other optimizer
-# reaches the same optimum, the warning was a false alarm and the fit is
-# kept. Otherwise the caller's fallback proceeds as before.
+# different optimizer. A clean restart, or a clean fit with the other
+# optimizer, is used. When the other optimizer warns too but reaches the same
+# optimum, the warning was a false alarm and the first fit is kept. Otherwise
+# the caller's fallback proceeds as before.
 
 #' Confirm or dismiss an lmer gradient warning
 #'
@@ -54,13 +55,19 @@ me_lmer_restart <- function(fit, msgs, env = parent.frame()) {
                 note = "lme4's gradient check failed; a restart from the estimates converged."))
   }
 
-  # 2. Another optimizer, from lme4's default start. The same optimum means
-  #    the warning was a false alarm.
+  # 2. Another optimizer, from lme4's default start. If it converges cleanly,
+  #    its fit is used; if it reaches the same optimum as the first fit, the
+  #    first warning was a false alarm.
   ctrl <- if (is.null(base_call$control)) lme4::lmerControl() else eval(base_call$control, env)
   ctrl$optimizer <- if (identical(fit@optinfo$optimizer, "bobyqa")) "nloptwrap" else "bobyqa"
   cl <- base_call
   cl$control <- ctrl
   r <- refit_quietly(cl)
+  if (clean(r)) {
+    return(list(fit = r$fit, msgs = c(msgs[!grad_warning], r$msgs), note = paste0(
+      "lme4's gradient check failed; a fit with the ", ctrl$optimizer,
+      " optimizer converged and is used.")))
+  }
   if (!is.null(r$fit)) {
     se <- sqrt(diag(as.matrix(stats::vcov(fit))))
     same_ll   <- abs(as.numeric(stats::logLik(r$fit)) - as.numeric(stats::logLik(fit))) < 1e-3

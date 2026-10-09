@@ -320,9 +320,11 @@ test_that("R20.44: the primary comparison is the rate of weight change, unmoved 
   # v0.29.0 compared weight at the mean day: 0.40 g became 1.90 g. The slopes
   # cannot move; the tolerance is the optimizer's (the two fits reach the same
   # optimum by different paths, R20-T).
-  expect_equal(est(a), est(b), tolerance = 1e-3)
-  expect_true(is.na(a$model_info$simplify_reason))
-  expect_true(is.na(b$model_info$simplify_reason))
+  why <- function(r) paste0(r$model_info$simplify_reason, " | ",
+                            paste(r$model_info$convergence_note, collapse = " "))
+  expect_equal(est(a), est(b), tolerance = 1e-3, info = paste(why(a), "//", why(b)))
+  expect_true(is.na(a$model_info$simplify_reason), info = why(a))
+  expect_true(is.na(b$model_info$simplify_reason), info = why(b))
   expect_match(a$estimand, "rate of weight change")
   expect_true("Weight_Change_Per_Day" %in% names(a$emmeans_table))
   expect_false(is.null(a$level_comparisons))
