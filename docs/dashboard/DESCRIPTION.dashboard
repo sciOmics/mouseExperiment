@@ -10,7 +10,7 @@ Description: Provides an interactive web-based dashboard interface for the mouse
     package. Users can upload tumor growth data, configure analysis parameters through
     a point-and-click interface, and interactively explore statistical results and
     visualizations without requiring R programming knowledge.
-License: Proprietary + file LICENSE
+License: file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
@@ -22,7 +22,6 @@ Imports:
     DT (>= 0.28),
     dplyr (>= 1.1.0),
     ggplot2 (>= 3.4.0),
-    tidyr (>= 1.3.0),
     scales (>= 1.2.0),
     emmeans (>= 1.8.0),
     survminer (>= 0.4.9),
@@ -31,13 +30,15 @@ Imports:
     htmlwidgets (>= 1.6.0),
     logger (>= 0.3.0),
     jsonlite (>= 1.8.0),
-    wesanderson (>= 0.3.7),
     future (>= 1.49.0),
     promises (>= 1.2.0),
+    later,
+    survival,
     bayesplot (>= 1.10),
     mouseExperiment (>= 0.28.0)
 Suggests:
     brms (>= 2.19),
+    posterior,
     testthat (>= 3.0.0),
     shinytest2 (>= 0.2.0),
     chromote,
