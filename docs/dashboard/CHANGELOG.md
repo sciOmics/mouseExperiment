@@ -4,6 +4,24 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.10.001] - 2026-10-09
+
+Requires mouseExperiment ≥ 0.28.0.
+
+### Changed
+
+- **Demo datasets cleaned up.** "Try Demo Data" now offers four datasets with
+  short names, in this order: Combo Treatment, Dose Levels, Weight, All Features.
+  - "Simple" (random values) and "Necrotic Data" are removed, with their files.
+    The necrosis feature stays; All Features carries a necrosis flag.
+  - "Master" is renamed **All Features** (`all_features_synthetic_data.csv`). It
+    gains a `Removal_Reason` column, so the reason-dependent options have data:
+    tumour volume limit (19 animals), end of study (26), weight loss >20% (two
+    Drug_A High animals, whose weights now fall past 20 % before removal) and
+    found dead (one combination animal, day 14). Both new removals are censored
+    for the tumour endpoint, so Survival's "count deaths as events" and the
+    Toxicity tab's weight-loss separation each change a result.
+
 ## [26.09.006] - 2026-10-01
 
 Requires mouseExperiment ≥ 0.28.0 and future ≥ 1.49.0. Sixth implementation

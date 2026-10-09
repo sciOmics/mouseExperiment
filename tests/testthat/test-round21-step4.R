@@ -38,7 +38,7 @@ combo_rv <- function() {
 
 master_rv <- function(...) {
   shiny::reactiveValues(
-    uploaded_data = demo_csv("master_synthetic_data.csv"), data_valid = TRUE,
+    uploaded_data = demo_csv("all_features_synthetic_data.csv"), data_valid = TRUE,
     session_id = NULL,
     settings = utils::modifyList(list(
       col_id = "ID", col_day = "Day", time_method = "day", col_volume = "Volume",
@@ -57,7 +57,7 @@ test_that("R20-K: the dashboard states the backend's evaluable-day rule, word fo
 
 test_that("R20-K: the Study Design panel states the rule", {
   shiny::testServer(g("data_upload_server"), args = list(rv = shiny::reactiveValues()), {
-    session$setInputs(demo_dataset = "master", load_demo_data = 1)
+    session$setInputs(demo_dataset = "all_features", load_demo_data = 1)
     expect_match(html_of(output$study_design_ui), "Evaluable days")
   })
 })
@@ -123,7 +123,7 @@ test_that("R20.17 / R20.D48: Dose Response analyses the last evaluable day and s
     session$setInputs(dr_treatments = arms, dr_time_point = "default", run_dr_analysis = 1)
     res <- rv$dr_results
     expect_false(isTRUE(res$error))
-    m <- demo_csv("master_synthetic_data.csv")
+    m <- demo_csv("all_features_synthetic_data.csv")
     ev <- mouseExperiment::evaluable_days(
       transform(m[m$Treatment %in% c("Vehicle", arms), ], DoseGroup = as.character(Dose)),
       treatment_column = "DoseGroup", cage_column = "Cage", volume_column = "Volume")

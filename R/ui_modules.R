@@ -102,12 +102,10 @@ dataUploadUI <- function(id) {
               selectInput(ns("demo_dataset"), NULL,
                 choices = c(
                   "-- Select a demo dataset --" = "",
-                  "Master (all features: 6 arms, dose, cage, weight, necrosis, survival, L/W/H)" = "master",
-                  "Simple (3 arms, pre-calculated volume — quickest way to see the app work)" = "simple",
-                  "Combo Treatment (Control / HDACi / aPD1 / HDACi+PD1, survival data)" = "combo",
-                  "Dose Levels (dose-response data with survival)" = "dose_levels",
-                  "Necrotic Data (None / Drug, length & width columns)" = "necrotic",
-                  "Weight Data (DMSO / Drug A / Drug B / Drug A+B, pre-calculated volume)" = "weight"
+                  "Combo Treatment" = "combo",
+                  "Dose Levels"     = "dose_levels",
+                  "Weight"          = "weight",
+                  "All Features"    = "all_features"
                 ),
                 selected = ""
               ),
@@ -1582,14 +1580,15 @@ helpUI <- function() {
     p("Upload data in ", strong("long format"), ": one row per measurement per animal. Accepted format: CSV (.csv)."),
 
     h4("Demo data"),
-    p("No data of your own? The Data tab ships six demo datasets:"),
+    p("No data of your own? The Data tab ships four demo datasets:"),
     tags$ul(
-      tags$li(tags$strong("Master"), " \u2014 the most complete: 619 rows, six arms, with length/width/height, body weight, dose, cage, necrosis flags and survival censoring. This is the one that reaches every module."),
-      tags$li(tags$strong("Simple"), " \u2014 three arms with pre-calculated volume; the quickest way to see the app work."),
       tags$li(tags$strong("Combo Treatment"), " \u2014 four arms with survival data, for the Drug Synergy tab."),
       tags$li(tags$strong("Dose Levels"), " \u2014 graded doses with survival, for Dose Response."),
-      tags$li(tags$strong("Necrotic"), " \u2014 length and width columns with necrosis flags."),
-      tags$li(tags$strong("Weight"), " \u2014 four arms with body weight, for Toxicity.")
+      tags$li(tags$strong("Weight"), " \u2014 four arms with body weight, for Toxicity."),
+      tags$li(tags$strong("All Features"), " \u2014 the most complete, and the one that reaches every module: ",
+              "six arms (vehicle, a three-dose series, a second drug and a combination), length/width/height, ",
+              "body weight, dose, two cages per arm, necrosis flags, survival censoring and a removal-reason ",
+              "column (tumour volume limit, weight loss, found dead, end of study).")
     ),
 
     h4("Column auto-detection"),

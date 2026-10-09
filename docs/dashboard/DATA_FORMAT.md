@@ -243,14 +243,14 @@ This was added in v26.06.002 as CODE_REVIEW.md F.5.
 
 The dashboard ships sample datasets in `inst/sample_data/` for testing without uploading your own data:
 
-| File | Description |
-|---|---|
-| `combo_treatment_synthetic_data.csv` | Two-drug combination with tumor + weight + survival columns |
-| `dose_levels_synthetic_data.csv` | Multiple doses of a single drug |
-| `weight_synthetic_data.csv` | Body-weight trajectories |
-| `necrotic_synthetic_data.csv` | Includes necrosis indicator |
+| Demo name | File | Description |
+|---|---|---|
+| Combo Treatment | `combo_treatment_synthetic_data.csv` | Two-drug combination with tumor + weight + survival columns |
+| Dose Levels | `dose_levels_synthetic_data.csv` | Multiple doses of a single drug |
+| Weight | `weight_synthetic_data.csv` | Body-weight trajectories |
+| All Features | `all_features_synthetic_data.csv` | Every optional column: six arms (vehicle, a three-dose series, a second drug and their combination), length/width/height, weight, dose, cage, necrosis flag, survival event and removal reason |
 
-Load them via the Data Upload tab's "Load Sample Data" dropdown, or read directly in R via `system.file("sample_data/combo_treatment_synthetic_data.csv", package = "mouseExperimentDashboard")`.
+Load them from the Data Upload tab's "Try Demo Data" list, or read directly in R via `system.file("sample_data/combo_treatment_synthetic_data.csv", package = "mouseExperimentDashboard")`.
 
 ---
 

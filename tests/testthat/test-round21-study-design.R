@@ -33,7 +33,7 @@ master_settings <- function(...) {
     list(...))
 }
 
-master_rv <- function(data = demo_csv("master_synthetic_data.csv"), ...) {
+master_rv <- function(data = demo_csv("all_features_synthetic_data.csv"), ...) {
   shiny::reactiveValues(uploaded_data = data, data_valid = TRUE, session_id = NULL,
                         settings = master_settings(...))
 }
@@ -129,7 +129,7 @@ test_that("R20.D1: Data Upload says how the dates were read", {
 
 test_that("Study Design: a demo declares mm3 and the control; settings carry the design", {
   shiny::testServer(g("data_upload_server"), args = list(rv = shiny::reactiveValues()), {
-    session$setInputs(demo_dataset = "master", load_demo_data = 1)
+    session$setInputs(demo_dataset = "all_features", load_demo_data = 1)
     ui <- html_of(output$study_design_ui)
     expect_match(ui, 'value="mm3"[^>]*checked')
     expect_match(ui, '<option value="Vehicle" selected>')
@@ -148,7 +148,7 @@ test_that("Study Design: a demo declares mm3 and the control; settings carry the
 test_that("Study Design: an uploaded volume column starts with units undeclared", {
   shiny::testServer(g("data_upload_server"), args = list(rv = shiny::reactiveValues()), {
     f <- tempfile(fileext = ".csv")
-    utils::write.csv(demo_csv("synthetic_data.csv"), f, row.names = FALSE)
+    utils::write.csv(demo_csv("all_features_synthetic_data.csv"), f, row.names = FALSE)
     session$setInputs(data_file = list(name = "study.csv", datapath = f))
     expect_true(rv$data_valid)
     ui <- html_of(output$study_design_ui)
@@ -160,7 +160,7 @@ test_that("Study Design: an uploaded volume column starts with units undeclared"
 
 test_that("Study Design: the preset carries the design and the subset filter", {
   shiny::testServer(g("data_upload_server"), args = list(rv = shiny::reactiveValues()), {
-    session$setInputs(demo_dataset = "master", load_demo_data = 1)
+    session$setInputs(demo_dataset = "all_features", load_demo_data = 1)
     session$setInputs(col_treatment = "Treatment", col_id = "ID", col_cage = "Cage",
                       volume_units = "cm3", control_group = "Drug_B",
                       randomisation_unit = "cage", date_order = "dmy")
@@ -263,7 +263,7 @@ test_that("R20.D2: the per-animal reduction handles row-level and animal-level f
 })
 
 test_that("R20.D14: survival runs with an ID column not named 'ID'", {
-  d <- demo_csv("master_synthetic_data.csv")
+  d <- demo_csv("all_features_synthetic_data.csv")
   names(d)[names(d) == "ID"] <- "Animal"
   suppressWarnings(shiny::testServer(g("survival_server"),
                                      args = list(rv = master_rv(d, col_id = "Animal")), {
