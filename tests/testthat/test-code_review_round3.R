@@ -275,7 +275,7 @@ test_that("R3.20: all-non-positive volumes error instead of producing log(Inf)",
   expect_error(
     suppressWarnings(tumor_growth_statistics(df, transform = "log",
                                              plots = FALSE, verbose = FALSE)),
-    regexp = "No positive values"
+    regexp = "no positive volumes"  # message from the R20.32 zero floor
   )
 })
 

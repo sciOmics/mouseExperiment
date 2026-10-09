@@ -91,7 +91,7 @@ A list with:
 \describe{
 \item{\code{power_table}}{Data frame: N_Per_Group, N_Groups, Alpha,
 Alpha_Per_Comparison, Power (per arm vs control), Power_Lower and
-Power_Upper (Wilson 95\\% interval), SE_Power, Power_Any, Power_All,
+Power_Upper (Wilson 95\% interval), SE_Power, Power_Any, Power_All,
 Power_Omnibus, N_Significant (arm tests significant), N_Simulations
 (fitted) and N_Failed (simulated studies that could not be fitted).}
 \item{\code{power_curve_data}}{Same as \code{power_table} — suitable
