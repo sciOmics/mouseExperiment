@@ -39,13 +39,16 @@ jobs:
           use-public-rspm: true
 
       # rstan comes as a binary, which skips its LinkingTo packages, but brms
-      # compiles each model at run time and needs the Boost headers (BH) then.
-      # Without BH every Bayesian test fails with "Boost not found".
+      # compiles each model at run time and needs their headers then. Of
+      # rstan's LinkingTo, Rcpp, RcppParallel and StanHeaders are installed
+      # anyway (Imports/Depends); BH and RcppEigen are not, and without them
+      # every Bayesian test fails ("Boost not found", "Eigen not found").
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           dependencies: '"hard"'
           extra-packages: |
             any::BH
+            any::RcppEigen
             any::rcmdcheck
             any::devtools
             any::testthat
