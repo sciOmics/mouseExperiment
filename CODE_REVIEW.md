@@ -5277,7 +5277,7 @@ Recorded in place here rather than by editing the earlier text, following the Ro
 | R20.14–R20.48 | Dose-response, synergy, survival/weight-loss, tumour growth, power, Bayesian, toxicity, cross-cutting (35 items) | Major | ✅ All closed. R20.24, R20.25, R20.30, R20.31, R20.32, R20.33, R20.44, R20.46, R20.48 fixed v0.30.0 (R20-T). Earlier: R20.15 (R20-N); R20.17, R20.29, R20.34, R20.37 (R20-O); R20.14, R20.16, R20.18, R20.19, R20.20, R20.21, R20.22, R20.23 (R20-P); R20.35, R20.38, R20.39, R20.40, R20.41 (R20-Q); closed by removal v0.23.0 (R20-L) but not marked until R20-S: R20.26, R20.27, R20.28, R20.36, R20.42, R20.45, R20.47; R20.43 fixed v0.25.0 (R20-N) |
 | R20.49–R20.53, R20.55 | Vignette, examples, README, datasets, CI/process, test-suite gaps | Major | ✅ R20.49–R20.53 fixed v0.29.0 (R20-S). R20.55 in part: the source-reading tests skip under R CMD check instead of passing vacuously, and CI runs them from source; the suite's remaining warnings (the Firth survival path) go with R20.24/R20.64 |
 | R20.54 | Build hygiene | Minor | ✅ Fixed v0.29.0 (R20-S) |
-| R20.56–R20.75 | Minor (20 items) | Minor | Open. R20.63, R20.64, R20.72, R20.73 ✅ fixed v0.30.0 (R20-T). R20.70 ✅ closed v0.27.0 (R20-P): its TWM parts went with the ratio. R20.74 ✅ v0.28.0 (R20-Q) for the kept models; its synergy, TWM and power items went with them (R20-L). R20.60 closed by removal v0.23.0 (R20-L) |
+| R20.56–R20.75 | Minor (20 items) | Minor | Open. R20.57 ✅ fixed v0.31.0 (R20-U). R20.63, R20.64, R20.72, R20.73 ✅ fixed v0.30.0 (R20-T). R20.70 ✅ closed v0.27.0 (R20-P): its TWM parts went with the ratio. R20.74 ✅ v0.28.0 (R20-Q) for the kept models; its synergy, TWM and power items went with them (R20-L). R20.60 closed by removal v0.23.0 (R20-L) |
 | R20.76–R20.82 | Efficiency (7 items; R20.76 blocks the dashboard for 20–140 s) | Efficiency | R20.76 ✅ Fixed v0.26.0 (R20-O); R20.78, R20.80 ✅ Fixed v0.28.0 (R20-Q); R20.79 closed by removal (R20-L); the rest open |
 | R3.3, R3.6, R3.8, R3.14, R3.30, R14.2 | Earlier ✅ entries corrected (R20-H) | — | Reopened / partial |
 
@@ -5337,9 +5337,9 @@ The lme4 `pairwise_comparisons` table has no CI columns, so the dashboard builds
 | ID | Issue | Severity | Status |
 |---|---|---|---|
 | R20.83 | Unit heuristic classes mm³ data as cm³; 1000× mass correction | **Critical** | ✅ Fixed v0.25.0 (R20-N) |
-| R20.84 | Q-Q plots against a y = x line on unstandardised values | Major | Open |
-| R20.85 | No adjusted intervals on contrasts; unadjusted CIs shown with adjusted p | Major | Open |
-| R20.86 | Bliss row name; data_summary scale | Minor | Row name ✅ fixed v0.26.0 (R20-O); data_summary scale open |
+| R20.84 | Q-Q plots against a y = x line on unstandardised values | Major | ✅ Fixed v0.31.0 (R20-U) |
+| R20.85 | No adjusted intervals on contrasts; unadjusted CIs shown with adjusted p | Major | ✅ Fixed v0.31.0 (R20-U) |
+| R20.86 | Bliss row name; data_summary scale | Minor | Row name ✅ fixed v0.26.0 (R20-O); data_summary scale ✅ fixed v0.31.0 (R20-U) |
 
 Round 19 correction, added to R20-H: "`detect_volume_units()` — correct both ways" held only for well-separated magnitudes (R20.83).
 
@@ -5776,3 +5776,30 @@ This step closes every Major still open in R20.14–R20.48. Four of them needed 
 - **Dashboard.** It needs to show the ANOVA `Tests` column, label body-weight slopes as g/day, show the new simulation columns, pass `volume_units` to both tumour-growth functions, and show `nested_partial`.
 
 **Status:** every Major in R20.14–R20.48 is now closed. Of the Minors, R20.63, R20.64, R20.72 and R20.73 close here.
+
+## R20-U Implementation log — v0.31.0: the dashboard audit's package findings (2026-10-09)
+
+The dashboard audit traced four defects to this package (the Round 20 addendum). R20.83 was fixed in v0.25.0. This step fixes the other three, which dashboard R20.D42, R20.D43 and R20.D45 depend on.
+
+| Item | Fix |
+|---|---|
+| R20.84 Q-Q plots | `me_qq_frame()` (`R/utils_diagnostics.R`) standardises the values before `qqnorm()`, so the y = x reference fits. It is used for the residual Q-Q (tumour growth, AUC model, body weight) and for each random-effect component. Values with no spread (SD below 1e-10, a singular fit's BLUPs) return NULL: that component is left out, and with none left there is no plot. Before, they could hang the device under `ragg`. |
+| R20.85 adjusted intervals | `me_pairwise_frame()` asks emmeans for intervals (`infer = c(TRUE, TRUE)`) and adds `CI_Adjusted_Lower`, `CI_Adjusted_Upper` and `CI_Adjustment`, the latter from emmeans' own note. emmeans adjusts intervals exactly for Dunnett (mvt), Tukey and Bonferroni, and uses Bonferroni-level intervals for Holm and BH, since those have none of their own; the column says so. On the AUC path, `me_auc_ci_adjustment()` sets the level: 1 − 0.05/m for Bonferroni and Holm, 0.95 otherwise, with the label saying BH has no simultaneous interval. The difference gets percentile intervals from the model draws at that level. The ratio gets Wald intervals on the log scale of the test (`Ratio_CI_Adjusted_*`), which agree exactly with the Bonferroni p-values. |
+| R20.57 / R20.86 data summary | `tgs_compute_summary()` takes the untransformed rows the model used: `auc_df` in `tumor_growth_statistics()`, and a copy taken before the transform in `bayesian_tumor_growth()`. It reports the mean, SD, SEM and `n` over measured volumes; `n` counted rows, so NA rows shrank the SEM. With a log transform it adds `geometric_mean_volume` (zeros at the floor), which is the model's scale back-transformed. The cage table's means are taken from the untransformed rows too. |
+
+**Executed (shipped data; v0.30.0 → v0.31.0):**
+- **Residual Q-Q:** the SD of the plotted values went from 0.090 to 1. The share of points within 0.05 of y = x went from 4.4% to 81.4%; within 0.25, from 21.6% to 99.8%.
+- **Vehicle, last day (one animal left):** the summary's mean went from 8.29 (log scale) to 3,991.6 mm³.
+- **Interim data (days ≤ 10), Dunnett, Drug_A Mid vs Vehicle:** estimate −0.535, adjusted p 0.013. The unadjusted t interval is [−0.825, −0.245]. The new adjusted interval is [−0.938, −0.131]: wider, and it agrees with the p-value.
+
+**Tests:** 6 in `test-code_review_round20_addendum.R`. Each fails on v0.30.0, which was checked by running the file against a worktree of that version. They check:
+- the standardised residual and random-effect Q-Q, and the singular case;
+- that the lme4 intervals exclude zero exactly when the adjusted p is below 0.05, for Dunnett, Bonferroni and none;
+- that the AUC ratio intervals agree with the Bonferroni p-values and are wider than the unadjusted ones;
+- the volume-scale summary with its geometric mean;
+- `n` over measured volumes.
+
+**Also fixed:** the roxygen block of `tgs_fit_lme4_models()` had ended up above `tgs_growth_first_anova()` in v0.30.0; it is back above its function.
+
+**Status:** R20.84 and R20.85 are closed, and so are R20.57 and the data_summary part of R20.86. Every item in the Round 20 addendum is now closed.
+

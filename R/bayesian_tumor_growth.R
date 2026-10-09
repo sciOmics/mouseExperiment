@@ -154,7 +154,8 @@
 #'     animal and the credible-interval columns reflect OLS confidence
 #'     intervals (Round 2 E.3).}
 #'   \item{\code{data_summary}}{Descriptive statistics by treatment group and
-#'     day.}
+#'     day, on the volume scale: mean, SD, SEM and n (measured volumes only),
+#'     plus the geometric mean with \code{transform = "log"}.}
 #'   \item{\code{loo_diagnostics}}{PSIS-LOO summary with \code{k_threshold},
 #'     \code{n_high_k}, the per-observation \code{pareto_k} and any
 #'     \code{warnings}; kept when loo warns (R20.35).}
@@ -367,6 +368,7 @@ bayesian_tumor_growth <- function(
     include_necrotic_covariate <- necrotic_handling == "covariate"
   }
 
+  untransformed_df <- analysis_df   # for the volume-scale summary (R20.57)
   if (transform == "log") {
     vol           <- analysis_df[[volume_column]]
     positive_vals <- vol[is.finite(vol) & vol > 0]
@@ -585,7 +587,8 @@ bayesian_tumor_growth <- function(
 
   # ── Data summary ───────────────────────────────────────────────────────────
   data_summary <- tgs_compute_summary(
-    analysis_df, treatment_column, time_column, volume_column
+    untransformed_df, treatment_column, time_column, volume_column,
+    zero_floor = if (transform == "log") floor_value
   )
 
   # ── Plots ──────────────────────────────────────────────────────────────────

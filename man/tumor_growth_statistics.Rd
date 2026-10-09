@@ -234,7 +234,7 @@ and why any fallback happened.}
 \item{diagnostics}{Model diagnostic information including residuals, random effects, and variance components}
 \item{auc_data}{Area under the curve data and statistics (when model_type="auc")}
 \item{plots}{List of standard plots for visualizing results}
-\item{data_summary}{Descriptive statistics of the processed data by treatment and time point, including mean, SD, and SEM of volumes}
+\item{data_summary}{Descriptive statistics by treatment and time point, on the volume scale whatever the transform: mean, SD, SEM and n (measured volumes only), plus the geometric mean (zeros at the floor) with \code{transform = "log"}}
 }
 }
 \description{

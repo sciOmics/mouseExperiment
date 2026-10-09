@@ -216,10 +216,31 @@ me_pairwise_frame <- function(x, comparison_spec = NULL,
                               adjusted_col = NULL, raw_col = NULL,
                               adjust_scope = NULL) {
   if (is.null(x)) return(NULL)
+  ci_msg <- NULL
   df <- tryCatch(
-    if (is.data.frame(x)) as.data.frame(x) else as.data.frame(summary(x)),
+    if (is.data.frame(x)) {
+      as.data.frame(x)
+    } else {
+      # R20.85: with intervals, which emmeans adjusts to match the p-values
+      # (Dunnett/mvt, Tukey, Bonferroni; Bonferroni-level for Holm and BH).
+      s <- tryCatch(summary(x, infer = c(TRUE, TRUE)), error = function(e) summary(x))
+      ci_msg <- attr(s, "mesg")
+      as.data.frame(s)
+    },
     error = function(e) NULL)
   if (is.null(df) || !nrow(df)) return(df)
+
+  if (!is.data.frame(x) && !"CI_Adjusted_Lower" %in% names(df)) {
+    lim <- me_emm_limits(df)
+    if (!all(is.na(lim$lower))) {
+      df$CI_Adjusted_Lower <- lim$lower
+      df$CI_Adjusted_Upper <- lim$upper
+      adj <- grep("^Conf-level adjustment: ", ci_msg, value = TRUE)
+      df$CI_Adjustment <- if (length(adj)) {
+        sub("^Conf-level adjustment: ", "", adj[1])
+      } else "none (95% per comparison)"
+    }
+  }
 
   # Canonical contrast label. The AUC path calls it `comparison`.
   if (!"contrast" %in% names(df)) {
@@ -247,6 +268,33 @@ me_pairwise_frame <- function(x, comparison_spec = NULL,
     df$Adjust_Scope <- adjust_scope
   }
   df
+}
+
+#' The interval level that matches a p-value adjustment -- CODE_REVIEW.md R20.85
+#'
+#' For the AUC path's draws-based comparisons. Bonferroni and Holm get
+#' Bonferroni-level intervals, as emmeans gives on the model paths; BH and
+#' none have no simultaneous interval.
+#'
+#' @param padjust_method A `stats::p.adjust` method.
+#' @param m Number of comparisons.
+#' @return `list(level, label)`.
+#' @noRd
+#' @keywords internal
+me_auc_ci_adjustment <- function(padjust_method, m) {
+  m <- max(1L, as.integer(m))
+  if (identical(padjust_method, "bonferroni") || identical(padjust_method, "holm")) {
+    list(level = 1 - 0.05 / m,
+         label = sprintf("bonferroni method for %d estimates", m))
+  } else {
+    list(level = 0.95,
+         label = if (identical(padjust_method, "none") || is.na(padjust_method)) {
+           "none (95% per comparison)"
+         } else {
+           sprintf("none: %s has no simultaneous interval (95%% per comparison)",
+                   padjust_method)
+         })
+  }
 }
 
 # emmeans names its interval columns lower.CL/upper.CL with finite degrees of

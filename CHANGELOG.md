@@ -5,6 +5,35 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.0] - 2026-10-09
+
+The Round 20 addendum: the findings of the dashboard audit that live in this
+package (`CODE_REVIEW.md` R20-U).
+
+### Fixed
+
+- **Q-Q plots always looked non-normal (R20.84).** The residual and
+  random-effect Q-Q plots drew a y = x line over raw residuals (SD 0.09 on the
+  shipped data), so 4% of points lay near it for a well-specified model. The
+  values are now standardised: 81% lie within 0.05 of the line. A random
+  effect with no spread (a singular fit) is left out of its plot instead of
+  being drawn, which could hang the graphics device.
+- **Contrasts had no intervals to match their adjusted p-values (R20.85).**
+  Consumers built unadjusted 95% intervals and showed them beside
+  multiplicity-adjusted p-values, so an interval could exclude zero next to
+  "not significant". `pairwise_comparisons` now has `CI_Adjusted_Lower`,
+  `CI_Adjusted_Upper` and `CI_Adjustment`. On the mixed-model path they are
+  emmeans' intervals for the same correction: Dunnett, Tukey and Bonferroni
+  exactly, and Bonferroni-level for Holm and BH, as `CI_Adjustment` says.
+  The AUC path also gives `Ratio_CI_Adjusted_*` on the scale of its test,
+  which agree exactly with its Bonferroni p-values.
+- **The data summary was on the log scale, labelled as volume (R20.57).**
+  `data_summary` showed 8.29 for a mean of 3,991.6 mm³. It is now on the
+  volume scale whatever the transform. With `transform = "log"` it adds the
+  geometric mean, with zeros at the floor. `n` counts measured volumes rather
+  than rows, which had shrunk the SEM. The cage table's means are on the
+  volume scale too.
+
 ## [0.30.0] - 2026-10-09
 
 The last nine Round 20 Majors, with the maintainer's four decisions
