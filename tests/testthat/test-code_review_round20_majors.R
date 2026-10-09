@@ -118,3 +118,46 @@ test_that("R20.64: verbose = FALSE prints nothing, and data with no events stop"
   expect_error(survival_statistics(none, reference_group = "Vehicle", verbose = FALSE),
                "no animal has an event")
 })
+
+# ---- R20.25: cage handling and large data -------------------------------------
+
+has_cage_term <- function(tg) grepl("Cage", paste(deparse(stats::formula(tg$model)), collapse = ""))
+tg_fit <- function(d, ...) quiet(tumor_growth_statistics(d, reference_group = "Vehicle",
+                                plots = FALSE, include_diagnostics = FALSE, ...))
+
+test_that("R20.25: an unused factor level does not drop the cage random effect", {
+  d <- m
+  d$Treatment <- factor(d$Treatment, levels = c(unique(m$Treatment), "Unused arm"))
+  tg <- tg_fit(d)
+  # v0.29.0 counted the unused level as an arm with no cages: "confounded".
+  expect_identical(tg$cage_analysis$structure$structure, "nested_replicated")
+  expect_true(has_cage_term(tg))
+})
+
+test_that("R20.25: one single-cage arm keeps (1|Cage) for the study, with a warning", {
+  d <- m; d$Cage[d$Treatment == "Drug_B"] <- "C09"
+  out <- with_warnings(tumor_growth_statistics(d, reference_group = "Vehicle",
+                                               plots = FALSE, include_diagnostics = FALSE))
+  expect_identical(out$value$cage_analysis$structure$structure, "nested_partial")
+  expect_true(has_cage_term(out$value))
+  expect_true(any(grepl("Drug_B is housed in a single cage", out$warnings)))
+})
+
+test_that("R20.25: a request that cannot be honoured is refused out loud", {
+  d <- m; d$Cage <- paste0("K", as.integer(factor(d$Treatment)))   # every arm one cage
+  out <- with_warnings(tumor_growth_statistics(d, reference_group = "Vehicle",
+                         handle_cage_effects = "as_random_effect", plots = FALSE,
+                         include_diagnostics = FALSE))
+  expect_true(any(grepl("'as_random_effect' cannot be honoured", out$warnings)))
+  expect_false(has_cage_term(out$value))
+})
+
+test_that("R20.25: the default path works above 3,000 rows (asymptotic emmeans columns)", {
+  big <- do.call(rbind, lapply(1:6, function(k) {
+    d <- m; d$ID <- d$ID + 1000 * k; d$Cage <- paste0(d$Cage, "_", k); d
+  }))
+  expect_gt(nrow(big), 3000)
+  tg <- tg_fit(big)                       # v0.29.0: "differing number of rows: 6, 0"
+  expect_true(all(is.finite(tg$treatment_effects$Lower_CL)))
+  expect_true(all(is.finite(tg$treatment_effects$Upper_CL)))
+})

@@ -233,6 +233,10 @@ survival_statistics <- function(df,
   # downward-biased: 28 % false positives with 2 cages x 5 mice per arm. The
   # declared unit of randomisation decides instead (see randomisation_unit).
   use_cage_cluster <- FALSE
+  if (cage_structure$structure == "nested_partial") {
+    warning("Some arms are housed in a single cage: ", cage_structure$description,
+            " Their hazard ratios include any cage effect.", call. = FALSE)
+  }
   if (cage_structure$structure == "nested_confounded") {
     warning("Cage and treatment are completely confounded: ",
             cage_structure$description,

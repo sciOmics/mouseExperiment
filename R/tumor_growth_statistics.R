@@ -1068,8 +1068,10 @@ tumor_growth_statistics <- function(df,
       )
       emm_time_df <- as.data.frame(summary(lsmeans_time))
       names(emm_time_df)[names(emm_time_df) == "emmean"]   <- "Adjusted_Mean"
-      names(emm_time_df)[names(emm_time_df) == "lower.CL"] <- "Lower_CL"
-      names(emm_time_df)[names(emm_time_df) == "upper.CL"] <- "Upper_CL"
+      lim_time <- me_emm_limits(emm_time_df)                     # R20.25
+      emm_time_df <- emm_time_df[, setdiff(names(emm_time_df), lim_time$columns), drop = FALSE]
+      emm_time_df$Lower_CL <- lim_time$lower
+      emm_time_df$Upper_CL <- lim_time$upper
 
       # Extract treatment effects
       emm_summary <- summary(lsmeans_obj)
@@ -1078,8 +1080,8 @@ tumor_growth_statistics <- function(df,
         Adjusted_Mean = emm_summary$emmean,
         SE = emm_summary$SE,
         DF = emm_summary$df,
-        Lower_CL = emm_summary$lower.CL,
-        Upper_CL = emm_summary$upper.CL
+        Lower_CL = me_emm_limits(emm_summary)$lower,               # R20.25
+        Upper_CL = me_emm_limits(emm_summary)$upper
       )
 
       # Add reference group note
