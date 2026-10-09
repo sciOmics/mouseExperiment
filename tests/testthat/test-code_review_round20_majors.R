@@ -246,3 +246,23 @@ test_that("R20.32: volumes that look like cm3 declared as mm3 draw a warning", {
                    reference_group = "Vehicle", plots = FALSE, include_diagnostics = FALSE)),
                  "Are the volumes in mm3")
 })
+
+# ---- R20.31: growth rate first; Treatment at the mean day ---------------------
+
+test_that("R20.31: the growth-rate test leads, and each row says what it tests", {
+  tg <- tg_fit(m)
+  expect_identical(rownames(tg$anova)[1], "Treatment:Day")
+  expect_true(grepl("^Treatment \\(at day", rownames(tg$anova)[2]))
+  expect_identical(tg$anova$Tests[1], "Do growth rates differ between arms?")
+  expect_match(tg$anova_method, "Treatment compares the arms at the mean study day")
+})
+
+test_that("R20.31: the Treatment row no longer depends on where time is counted from", {
+  # Random intercepts only, so the fit itself is identical under a time shift.
+  f <- function(d) tg_fit(d, random_effects_specification = "intercept_only")$anova
+  a <- f(m); m14 <- m; m14$Day <- m14$Day + 14
+  b <- f(m14)
+  # v0.29.0 tested the arms at day 0: p = 0.86 here, and 7e-26 from day 14.
+  expect_equal(a[["Pr(>F)"]], b[["Pr(>F)"]], tolerance = 1e-6)
+  expect_equal(a[["F value"]], b[["F value"]], tolerance = 1e-6)
+})

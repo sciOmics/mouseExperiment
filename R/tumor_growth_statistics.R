@@ -147,6 +147,93 @@ tgs_compute_cage_effects <- function(analysis_df, cage_column, treatment_column,
 #' @return List with model, model_selection, and best_model
 #' @noRd
 #' @keywords internal
+#' The tumour-growth ANOVA, growth rate first -- CODE_REVIEW.md R20.31
+#'
+#' With `Volume ~ Day * Treatment`, treatment coding and an uncentred Day, the
+#' Type III "Treatment" row tested the arms' difference at day 0, so its
+#' p-value depended on where time was counted from (0.970 from randomisation,
+#' 0.138 from implantation, same data). Decided 2026-10-09: the growth-rate
+#' test (Treatment x Day) is the headline; "Treatment" compares the arms at the
+#' mean study day, the day the adjusted means are reported at; "Day" is the
+#' average growth rate across arms. Each is a linear hypothesis on the fitted
+#' model, so the result does not depend on the parameterisation or on the
+#' random-effects structure. Other terms (cage, necrosis) keep their rows.
+#'
+#' @return A data frame with `NumDF`, `DenDF` (NA for Wald tests), `F value`
+#'   (or `Chisq`), `Pr(>F)` (or `Pr(>Chisq)`) and a `Tests` column, or NULL.
+#' @noRd
+#' @keywords internal
+tgs_growth_first_anova <- function(model, time_column, treatment_column, centre_day,
+                                   other_rows = NULL, satterthwaite = TRUE) {
+  beta <- if (inherits(model, "merMod")) lme4::fixef(model) else stats::coef(model)
+  mm <- stats::model.matrix(model)
+  labels <- attr(stats::terms(model), "term.labels")
+  asg <- attr(mm, "assign")
+  term_cols <- function(lab) which(asg == match(lab, labels))
+  tx_lab  <- labels[labels %in% c(treatment_column, paste0("`", treatment_column, "`"))]
+  int_lab <- labels[grepl(":", labels, fixed = TRUE) &
+                      vapply(strsplit(labels, ":", fixed = TRUE), function(p)
+                        setequal(gsub("`", "", p), c(time_column, treatment_column)), logical(1))]
+  day_lab <- labels[gsub("`", "", labels) == time_column]
+  if (length(tx_lab) != 1L || length(int_lab) != 1L || length(day_lab) != 1L) return(NULL)
+  tx  <- term_cols(tx_lab); int <- term_cols(int_lab); day <- term_cols(day_lab)
+  if (length(tx) != length(int) || !length(tx)) return(NULL)
+  k <- length(tx) + 1L
+  L_of <- function(rows) {
+    L <- matrix(0, nrow = length(rows), ncol = length(beta), dimnames = list(NULL, names(beta)))
+    for (i in seq_along(rows)) L[i, names(rows[[i]])] <- rows[[i]]
+    L
+  }
+  nm <- names(beta)
+  hyp <- list(
+    interaction = L_of(lapply(seq_along(int), function(j) stats::setNames(1, nm[int[j]]))),
+    treatment   = L_of(lapply(seq_along(tx), function(j)
+                    stats::setNames(c(1, centre_day), nm[c(tx[j], int[j])]))),
+    day         = L_of(list(stats::setNames(c(1, rep(1 / k, length(int))), nm[c(day, int)])))
+  )
+  test <- function(L) {
+    if (satterthwaite && inherits(model, "lmerMod")) {
+      r <- tryCatch(lmerTest::contest(lmerTest::as_lmerModLmerTest(model), L,
+                                      joint = TRUE, ddf = "Satterthwaite"),
+                    error = function(e) NULL)
+      if (!is.null(r)) return(data.frame(NumDF = r$NumDF, DenDF = r$DenDF,
+                                         `F value` = r$`F value`, `Pr(>F)` = r$`Pr(>F)`,
+                                         check.names = FALSE))
+    }
+    V <- as.matrix(stats::vcov(model)); b <- L %*% beta
+    chi <- as.numeric(t(b) %*% solve(L %*% V %*% t(L), b))
+    if (inherits(model, "lm") && !inherits(model, "merMod")) {
+      q <- nrow(L); dfr <- stats::df.residual(model)
+      return(data.frame(NumDF = q, DenDF = dfr, `F value` = chi / q,
+                        `Pr(>F)` = stats::pf(chi / q, q, dfr, lower.tail = FALSE),
+                        check.names = FALSE))
+    }
+    data.frame(NumDF = nrow(L), DenDF = NA_real_, `F value` = chi / nrow(L),
+               `Pr(>F)` = stats::pchisq(chi, nrow(L), lower.tail = FALSE), check.names = FALSE)
+  }
+  day_txt <- format(round(centre_day, 1), nsmall = 0)
+  out <- rbind(test(hyp$interaction), test(hyp$treatment), test(hyp$day))
+  rownames(out) <- c(paste0(treatment_column, ":", time_column),
+                     paste0(treatment_column, " (at day ", day_txt, ")"),
+                     paste0(time_column, " (average over arms)"))
+  out$Tests <- c("Do growth rates differ between arms?",
+                 paste0("Do the arms differ at the mean study day (day ", day_txt, ")?"),
+                 "Is there growth, on average across arms?")
+  if (!is.null(other_rows) && nrow(other_rows)) {
+    keep <- setdiff(rownames(other_rows),
+                    c(gsub("`", "", c(tx_lab, int_lab, day_lab)), tx_lab, int_lab, day_lab,
+                      paste0(time_column, ":", treatment_column), "(Intercept)"))
+    if (length(keep)) {
+      extra <- as.data.frame(other_rows)[keep, intersect(names(out), names(other_rows)), drop = FALSE]
+      for (cn in setdiff(names(out), names(extra))) extra[[cn]] <- NA
+      extra$Tests <- "Adjustment term"
+      out <- rbind(out, extra[, names(out)])
+    }
+  }
+  attr(out, "centre_day") <- centre_day
+  out
+}
+
 tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
                                 treatment_column, id_column, cage_column,
                                 random_effects_specification,
@@ -1064,6 +1151,18 @@ tumor_growth_statistics <- function(df,
       "Type III F-tests, Satterthwaite degrees of freedom (lmerTest)"
     } else "Type III Wald chi-square tests (car)"
     if (is.null(anova_table)) anova_table <- car::Anova(model, type = "III")
+    # R20.31: growth rate first, and "Treatment" at the mean study day (not day 0).
+    growth_first <- tgs_growth_first_anova(
+      model, time_column, treatment_column,
+      centre_day = mean(analysis_df[[time_column]]),
+      other_rows = anova_table,
+      satterthwaite = grepl("Satterthwaite", anova_type))
+    if (!is.null(growth_first)) {
+      anova_table <- growth_first
+      anova_type <- paste0(anova_type, "; Treatment x Day first; Treatment compares ",
+                           "the arms at the mean study day (day ",
+                           format(round(attr(growth_first, "centre_day"), 1)), ")")
+    }
     
     # Create pairwise comparisons
     if (requireNamespace("emmeans", quietly = TRUE)) {
