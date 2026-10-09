@@ -284,7 +284,7 @@ group order, …) take effect without re-running the analysis.
 two_arms <- subset(master_synthetic_data, Treatment \%in\% c("Vehicle", "Drug_A High"))
 fit <- bayesian_tumor_growth(two_arms, cage_column = "Cage", n_chains = 2,
                              n_warmup = 500, n_iter = 250, plots = FALSE)
-fit$summary
+fit$treatment_effects
 }
 }
 \references{

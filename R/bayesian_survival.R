@@ -273,13 +273,10 @@ bayesian_survival <- function(
   use_cage_re  <- isTRUE(include_cage_effect) && !no_cage_mode
 
   # ── Reference group ────────────────────────────────────────────────────────
+  # R20.46: shared reference rule (see me_resolve_reference()).
   treatment_groups <- unique(as.character(df[[treatment_column]]))
-  if (is.null(reference_group)) {
-    reference_group <- sort(treatment_groups)[1]
-  } else if (!reference_group %in% treatment_groups) {
-    stop("Reference group '", reference_group,
-         "' not found in treatment column.")
-  }
+  reference_group <- me_resolve_reference(treatment_groups, reference_group,
+                                          "bayesian_survival")
 
   df[[treatment_column]] <- stats::relevel(
     factor(df[[treatment_column]]), ref = reference_group

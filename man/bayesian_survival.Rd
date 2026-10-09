@@ -212,7 +212,7 @@ m <- master_synthetic_data[order(master_synthetic_data$ID, master_synthetic_data
 per_animal <- m[!duplicated(m$ID, fromLast = TRUE), ]
 fit <- bayesian_survival(per_animal, reference_group = "Vehicle", n_chains = 2,
                          n_warmup = 500, n_iter = 250, plots = FALSE)
-fit$summary
+fit$treatment_effects
 }
 }
 \references{

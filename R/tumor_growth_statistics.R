@@ -823,19 +823,16 @@ tumor_growth_statistics <- function(df,
   if (no_cage_mode) {
     cage_column <- ".cage_placeholder"
     df[[cage_column]] <- "1"
-    if (isTRUE(verbose)) message("No cage column provided 2014 cage effects will not be analysed.")
+    if (isTRUE(verbose)) message("No cage column provided: cage effects will not be analysed.")
   }
   
-  # Set reference group if not specified
-  treatment_groups <- unique(df[[treatment_column]])
-  if (is.null(reference_group)) {
-    reference_group <- sort(treatment_groups)[1]
-  } else if (!reference_group %in% treatment_groups) {
-    stop("Reference group '", reference_group, "' is not present in the data.")
-  }
-  if (isTRUE(verbose)) {
-    message("Using ", reference_group, " as reference group for statistical comparisons")
-  }
+  # R20.46: a named reference must be an arm; without one, the control is
+  # recognised by name, and the call stops if none is. (It used to be the
+  # alphabetically first arm, which depends on the locale.) Numeric arm codes
+  # crashed lme4, so arms are labels from here on.
+  df[[treatment_column]] <- as.character(df[[treatment_column]])
+  reference_group <- me_resolve_reference(df[[treatment_column]], reference_group,
+                                          "tumor_growth_statistics")
   
   # CODE_REVIEW.md R3.9 / G.4 — statistical extrapolation is deprecated.
   #

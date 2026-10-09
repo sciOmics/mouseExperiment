@@ -326,12 +326,10 @@ bayesian_tumor_growth <- function(
   df$Animal <- make_mouse_key(df$Treatment, df$ID, as.character(df[[cage_column]]))
 
   # ── Reference group resolution ─────────────────────────────────────────────
+  # R20.46: shared reference rule (see me_resolve_reference()).
   treatment_groups <- unique(as.character(df[[treatment_column]]))
-  if (is.null(reference_group)) {
-    reference_group <- sort(treatment_groups)[1]
-  } else if (!reference_group %in% treatment_groups) {
-    stop("Reference group '", reference_group, "' not found in treatment column.")
-  }
+  reference_group <- me_resolve_reference(treatment_groups, reference_group,
+                                          "bayesian_tumor_growth")
 
   # Relevel so reference group is first (controls contrast coding in brms)
   df[[treatment_column]] <- stats::relevel(

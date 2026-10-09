@@ -163,12 +163,14 @@ analyze_body_weight <- function(df,
   wd <- wd[!is.na(wd$Net_Weight) & !is.na(wd$Day), ]
   if (nrow(wd) == 0) stop("No valid weight observations after cleaning.")
 
-  # Set reference group
-  if (!is.null(reference_group) && reference_group %in% levels(wd$Treatment)) {
-    wd$Treatment <- stats::relevel(wd$Treatment, ref = reference_group)
-  }
+  # R20.46: shared reference rule. A reference_group that matched no arm used
+  # to be ignored silently, and the first level used instead.
+  reference_group <- me_resolve_reference(wd$Treatment, reference_group,
+                                          "analyze_body_weight")
+  wd$Treatment <- stats::relevel(factor(as.character(wd$Treatment)),
+                                 ref = reference_group)
   # The level the vs_reference contrasts are taken against.
-  ref_level <- levels(wd$Treatment)[1]
+  ref_level <- reference_group
 
   # --- Build formula ---
   # CODE_REVIEW.md R3.10 — `adjust_tumor_weight` and a "volume" covariate are
@@ -306,6 +308,7 @@ analyze_body_weight <- function(df,
   lmm_infl <- build_lmm_influence(model, groups = "Animal")
 
   list(
+    reference_group = reference_group,   # R20.46
     model          = model,
     fixed_effects  = fe,
     random_effects = re,
