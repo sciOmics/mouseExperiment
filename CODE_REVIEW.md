@@ -5274,10 +5274,10 @@ Recorded in place here rather than by editing the earlier text, following the Ro
 | R20.11 | TBA survivor-conditioned toxicity; rank inverted | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
 | R20.12 | Bayesian dose-response fails on default `endpoint_day = NULL` | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
 | R20.13 | Bayesian TWM treats weight gain as toxicity | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
-| R20.14–R20.48 | Dose-response, synergy, survival/weight-loss, tumour growth, power, Bayesian, toxicity, cross-cutting (35 items) | Major | Open. Fixed: R20.15 (R20-N); R20.17, R20.29, R20.34, R20.37 (R20-O); R20.14, R20.16, R20.18, R20.19, R20.20, R20.21, R20.22, R20.23 (R20-P); R20.35, R20.38, R20.39, R20.40, R20.41 (R20-Q); closed by removal v0.23.0 (R20-L) but not marked until R20-S: R20.26, R20.27, R20.28, R20.36, R20.42, R20.45, R20.47; R20.43 fixed v0.25.0 (R20-N) |
+| R20.14–R20.48 | Dose-response, synergy, survival/weight-loss, tumour growth, power, Bayesian, toxicity, cross-cutting (35 items) | Major | ✅ All closed. R20.24, R20.25, R20.30, R20.31, R20.32, R20.33, R20.44, R20.46, R20.48 fixed v0.30.0 (R20-T). Earlier: R20.15 (R20-N); R20.17, R20.29, R20.34, R20.37 (R20-O); R20.14, R20.16, R20.18, R20.19, R20.20, R20.21, R20.22, R20.23 (R20-P); R20.35, R20.38, R20.39, R20.40, R20.41 (R20-Q); closed by removal v0.23.0 (R20-L) but not marked until R20-S: R20.26, R20.27, R20.28, R20.36, R20.42, R20.45, R20.47; R20.43 fixed v0.25.0 (R20-N) |
 | R20.49–R20.53, R20.55 | Vignette, examples, README, datasets, CI/process, test-suite gaps | Major | ✅ R20.49–R20.53 fixed v0.29.0 (R20-S). R20.55 in part: the source-reading tests skip under R CMD check instead of passing vacuously, and CI runs them from source; the suite's remaining warnings (the Firth survival path) go with R20.24/R20.64 |
 | R20.54 | Build hygiene | Minor | ✅ Fixed v0.29.0 (R20-S) |
-| R20.56–R20.75 | Minor (20 items) | Minor | Open. R20.70 ✅ closed v0.27.0 (R20-P): its TWM parts went with the ratio. R20.74 ✅ v0.28.0 (R20-Q) for the kept models; its synergy, TWM and power items went with them (R20-L). R20.60 closed by removal v0.23.0 (R20-L) |
+| R20.56–R20.75 | Minor (20 items) | Minor | Open. R20.63, R20.64, R20.72, R20.73 ✅ fixed v0.30.0 (R20-T). R20.70 ✅ closed v0.27.0 (R20-P): its TWM parts went with the ratio. R20.74 ✅ v0.28.0 (R20-Q) for the kept models; its synergy, TWM and power items went with them (R20-L). R20.60 closed by removal v0.23.0 (R20-L) |
 | R20.76–R20.82 | Efficiency (7 items; R20.76 blocks the dashboard for 20–140 s) | Efficiency | R20.76 ✅ Fixed v0.26.0 (R20-O); R20.78, R20.80 ✅ Fixed v0.28.0 (R20-Q); R20.79 closed by removal (R20-L); the rest open |
 | R3.3, R3.6, R3.8, R3.14, R3.30, R14.2 | Earlier ✅ entries corrected (R20-H) | — | Reopened / partial |
 
@@ -5725,3 +5725,45 @@ The Round 20 process items, done together because they depend on each other: the
 - **Source-tree tests and README:** run separately; 8 README blocks pass.
 
 **Not done here:** R20.55's remaining warnings come from the Firth path of `weight_loss_threshold()` and `survival_statistics()` (R20.24, R20.64), and are left to that work.
+
+## R20-T Implementation log — v0.30.0: the last nine Majors (2026-10-09)
+
+This step closes every Major still open in R20.14–R20.48. Four of them needed an estimand chosen, and the maintainer decided them on 2026-10-09:
+
+| Item | Decision |
+|---|---|
+| R20.31 ANOVA | Growth rate first: `Treatment:Day` leads, and Treatment is tested at the mean study day |
+| R20.32 zero offset | A fixed floor of 2 mm³, settable (`zero_floor`), not a censored likelihood |
+| R20.44 body weight | The primary comparison is the rate of weight change (g/day) |
+| R20.46 reference arm | Detect the control by name; otherwise stop and ask |
+
+| Item | Fix |
+|---|---|
+| R20.46 reference | `me_resolve_reference()` (`R/utils_reference.R`) is the one rule for tumour growth, survival, body weight, both Bayesian entry points, `therapeutic_window_metric()` and `weight_loss_threshold()`. Control names (control, ctrl, vehicle, DMSO, PBS, saline, untreated, placebo, isotype, IgG…) match as whole words inside longer names. A combination ("Drug A + Vehicle") loses to a single arm. None or several matches stop with the arms listed, and an unknown `reference_group` is an error. The choice is messaged, and the two toxicity functions now return `reference_group`. Arms become labels before lme4 sees them (numeric codes crashed it). The dashboard passes an explicit reference, so it does not depend on detection. |
+| R20.24 Firth survival | The interval is `cbind(model$ci.lower, model$ci.upper)`, coxphf's profile limits. A Firth failure, or `firth_correction = FALSE`, runs the pairwise log-rank tests (`run_logrank()`), so the H.4 permutation log-rank is reachable again. The standard Cox fit is skipped when an arm has no events. The dead median fallback is removed. |
+| R20.63 events | The event column must be 0/1 (logical accepted). Coding 1/2 and text codes stop with a message that says what was found. Rows with a missing time or event are dropped with a warning; they used to force Firth through "Groups with no events: NA". |
+| R20.64 verbose, no events | `verbose = FALSE` prints nothing; `check_cage_distribution()` and `check_separation()` take `verbose`. Data with no events stop instead of reporting HR 1 [1, 1], p = 1. |
+| R20.25 cage | `classify_cage_structure()` counts arms as labels, so an unused factor level is not an arm. A new structure, `nested_partial` (some arms in two or more cages, others in one), keeps `(1\|Cage)` and warns with the single-cage arms named. An explicit `as_random_effect` that cannot be fitted (every arm in one cage) is refused with a warning that says so. `me_emm_limits()` reads emmeans' interval columns under either name (`lower.CL`, `asymp.LCL`, `lower.HPD`), so the default path runs above 3,000 rows. Survival warns for `nested_partial` too. |
+| R20.30 arguments | `necrotic_handling = "exclude"` sets `auc_df` after the exclusion, so AUC, growth rates and the permutation test see it. `dose_column` splits a treatment given at several doses into one arm per dose (`me_arms_with_dose()`), in tumour growth, survival and both Bayesian functions; a treatment at one dose keeps its label, so the dashboard's "HDACi 10" is unchanged. `calculate_volume()` replaces `Volume` and takes tibbles. `apriori_power_analysis()` warns when `n_comparisons` has no effect. `body_weight_auc` went in v0.23.0. |
+| R20.32 zero floor | `me_zero_floor()` and `me_floor_zeros()` (`R/utils_volume.R`): 2 mm³, half a just-palpable 2 × 2 mm tumour, or 0.002 cm³, from the new `volume_units` and `zero_floor` arguments. Used by the mixed model, growth rates, the Bayesian model and `trajectory_permutation_test()` (new `zero_floor`, which `tumor_growth_statistics()` passes). Reported as `$zero_floor` (value, units, number floored). It warns when the median volume is within 10× of the floor (wrong units) and when more than 20% of volumes are zero (suggesting `transform = "sqrt"`). The methods text states the floor. |
+| R20.31 ANOVA | `tgs_growth_first_anova()` builds the table from linear hypotheses on the fitted model (`lmerTest::contest`, Satterthwaite; Wald, or lm's F, as fallbacks). In order: `Treatment:Day`, "Treatment (at day X)" at the mean study day (the day the adjusted means use), and Day averaged over arms. Each row has a plain-language `Tests` column. Cage and necrosis rows are kept as adjustment terms. The rows no longer depend on the contrast coding, and Treatment no longer depends on the time origin. |
+| R20.33 simulation | `apriori_power_simulation()` fits `tumor_growth_statistics()`'s default model (REML; correlated slopes, then uncorrelated, then intercept-only) once per simulated study. It tests each arm against the control with a Satterthwaite t at α/(k−1) (`p_adjust_method = "none"` available). It reports `Power` with a Wilson interval, `Power_Any`, `Power_All`, `Power_Omnibus` (joint F) and `N_Failed`. The seed is restored on exit, and every α uses the same simulated studies. This also closes R20.72: the fallback's mismatched reduced model is gone with the LRT. |
+| R20.44 body weight | The primary comparison is `emtrends()` on Treatment × Day: `emmeans_table` holds `Weight_Change_Per_Day`, and `pairwise_comparisons` the slope differences. The level at the mean day is kept as `level_means` and `level_comparisons`, and `estimand` says which is which. `Initial_Mass` is computed after the NA filter and only when it is a covariate. `n_obs` and `n_subjects` come from `nobs()` and `ngrps()`. Pre-implant weighings with no volume already ran on v0.29.0 (volume filling, R20.22); checked again here. |
+| R20.73 fallback | Only a failure, a singular fit or non-convergence moves the body-weight model to a random intercept. The reason is recorded (`simplify_reason`) and other warnings pass through. |
+| R20.48 legend | `breaks = names(color_values)`, so each line carries its own label. |
+
+**Executed:**
+- **R20.31:** on the same data, counting time from randomisation or from implantation gave Treatment p = 0.86 and 7e-26 before. The new row is unchanged by the shift, and so is `Treatment:Day`.
+- **R20.32:** one 2.5 mm³ control reading moved the floor of a complete-regression arm to 1.25 mm³; it now stays at 2. On the shipped data with complete regressions in one arm, the permutation statistic was 322 with the old offset and 183 with the model's floor.
+- **R20.33:** null size at n = 5 is 0.050 (Wilson 0.033–0.076), against 0.090 for the LRT. A study takes about 20 ms.
+- **R20.44:** a +1.5 g baseline offset with identical weight change turned a 0.40 g level difference into 1.90 g; the slope difference does not move.
+- **R20.25:** the null false-positive rate with cage dropped was 0.16–0.29, against 0.02–0.035 with cage kept. Both triggers now keep it.
+
+**Tests:** 29 in `test-code_review_round20_majors.R`. Each fails on v0.29.0, which was checked by running the file against a copy of that version. The R20.32 tests read the floor from the fitted model, because `$zero_floor` does not exist on v0.29.0 and a comparison of it passed vacuously. Three existing tests were adapted to the new messages: the unknown Bayesian reference (R20.46), all-zero volumes (R20.32) and a `\%` in new roxygen text that R18.2's guard caught.
+
+**Follow-ups, not done here:**
+- **The endpoint model still floors at the smallest positive volume.** `me_endpoint_model()` (`R/utils_endpoint.R`) sets a regression to zero at the study's smallest positive volume. It serves the AUC path, endpoint estimates, synergy and dose-response, and the last two have no units argument. Moving it to the fixed floor needs `volume_units` there.
+- **Centre time inside the tumour-growth fit.** With correlated random slopes on uncentred time, the optimiser can stop short: after a 14-day shift the log-likelihood was 366.45 against 365.93, which moves standard errors slightly. The R20.31 time-origin test therefore uses intercept-only random effects.
+- **Dashboard.** It needs to show the ANOVA `Tests` column, label body-weight slopes as g/day, show the new simulation columns, pass `volume_units` to both tumour-growth functions, and show `nested_partial`.
+
+**Status:** every Major in R20.14–R20.48 is now closed. Of the Minors, R20.63, R20.64, R20.72 and R20.73 close here.
