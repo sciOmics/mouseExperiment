@@ -641,6 +641,13 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #' @param include_diagnostics Boolean. Should model diagnostic information be included? Default is TRUE.
 #' @param plots Boolean. Should standard plots be generated and returned? Default is TRUE.
 #' @param verbose Boolean. Should detailed information be printed during analysis? Default is FALSE.
+#' @param necrotic_column Optional. Name of a column flagging necrotic
+#'   observations (Y/N, yes/no, 1/0, TRUE/FALSE, case-insensitive). Defaults
+#'   to \code{NULL}, in which case every observation is used.
+#' @param necrotic_handling How flagged observations enter the model when
+#'   \code{necrotic_column} is given: \code{"exclude"} (default) drops
+#'   them, \code{"covariate"} adds a 0/1 necrotic fixed effect, and
+#'   \code{"none"} uses them as they are.
 #' @param extrapolation_points \strong{Deprecated} and ignored as of v0.8.0.
 #'   It appended one synthetic final-day observation per animal and handed it to
 #'   the model as measured data, so the fit's uncertainty did not reflect the
@@ -690,14 +697,14 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'   \item{treatment_effects}{Estimated treatment effects on tumor growth, showing adjusted means for each treatment group}
 #'   \item{growth_rates}{Data frame containing growth rates for each subject, calculated as the slope of log-volume over time. Higher values indicate faster tumor growth.}
 #'   \item{cage_analysis}{Analysis of cage effects, including:
-#'     \itemize{
+#'     \describe{
 #'       \item{structure}{The cage design structure from \code{classify_cage_structure()}, which decides how cage enters the model}
 #'       \item{handling}{The cage handling applied}
 #'       \item{effects}{Data frame of cage-level statistics (mean and SD of volume by cage and treatment)}
 #'     }
 #'   }
 #'   \item{model_selection}{Results of model selection process, including:
-#'     \itemize{
+#'     \describe{
 #'       \item{aic}{AIC values for each model specification}
 #'       \item{bic}{BIC values for each model specification}
 #'       \item{selected_model}{Name of the model with lowest BIC (most parsimonious)}
@@ -739,23 +746,11 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #' - Treatment effect estimation with proper reference group handling
 #'
 #' @examples
-#' # Load example data
-#' data(combo_treatment_synthetic_data)
-#' tumor_data <- calculate_volume(combo_treatment_synthetic_data)
-#' tumor_data <- calculate_dates(tumor_data, start_date = "03/24/2025")
-#' 
-#' # Basic analysis with default settings
-#' results <- tumor_growth_statistics(tumor_data)
-#' 
-#' # View ANOVA table to assess treatment effects
-#' print(results$anova)
-#' 
-#' # View pairwise comparisons
-#' print(results$pairwise_comparisons)
-#' 
-#' # Plot adjusted means for each treatment group
-#' print(results$plots$adjusted_means)
-#'
+#' tg <- tumor_growth_statistics(master_synthetic_data, reference_group = "Vehicle",
+#'                               p_adjust_method = "holm")
+#' tg$anova
+#' tg$pairwise_comparisons
+#' tg$random_effects
 #' @export
 tumor_growth_statistics <- function(df,
                                   time_column = "Day",

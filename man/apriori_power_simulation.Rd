@@ -191,3 +191,9 @@ loses 30\% of its observations — enough to justify an extra animal or two per
 arm, not enough to invalidate the planning exercise.
 }
 
+\examples{
+# A short run; use n_simulations = 500 or more in practice
+sim <- apriori_power_simulation(n_per_group = c(6L, 10L), n_simulations = 50L,
+                                seed = 1)
+sim
+}

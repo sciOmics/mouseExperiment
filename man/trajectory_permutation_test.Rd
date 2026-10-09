@@ -97,13 +97,10 @@ point of the approach.
 }
 
 \examples{
-\dontrun{
-data(master_synthetic_data)
 trajectory_permutation_test(
   master_synthetic_data,
   spec = perm_spec(unit = "mouse", n_perm = 199, seed = 1)
 )
-}
 }
 \seealso{
 \code{\link[=perm_spec]{perm_spec()}}, \code{\link[=tumor_growth_statistics]{tumor_growth_statistics()}}

@@ -145,6 +145,11 @@
 #'     study rather than an idealised one.}
 #' }
 #'
+#' @examples
+#' # A short run; use n_simulations = 500 or more in practice
+#' sim <- apriori_power_simulation(n_per_group = c(6L, 10L), n_simulations = 50L,
+#'                                 seed = 1)
+#' sim
 #' @export
 apriori_power_simulation <- function(n_per_group          = c(5L, 8L, 10L, 12L, 15L),
                                      n_groups             = 2L,

@@ -151,6 +151,15 @@ process downward. Use the model-based endpoint means instead
 propagate the uncertainty. Extrapolation for \emph{plotting} is unaffected
 — see \code{\link{plot_tumor_growth}}. CODE_REVIEW.md R3.9 / G.4.}
 
+\item{necrotic_column}{Optional. Name of a column flagging necrotic
+observations (Y/N, yes/no, 1/0, TRUE/FALSE, case-insensitive). Defaults
+to \code{NULL}, in which case every observation is used.}
+
+\item{necrotic_handling}{How flagged observations enter the model when
+\code{necrotic_column} is given: \code{"exclude"} (default) drops
+them, \code{"covariate"} adds a 0/1 necrotic fixed effect, and
+\code{"none"} uses them as they are.}
+
 \item{auc_bootstrap_n}{Integer >= 0. When > 0 and \code{model_type = "auc"},
 each pairwise Welch's t-test gains a non-parametric percentile-bootstrap
 95\% CI for the mean difference (\code{boot_ci_lower}, \code{boot_ci_upper}
@@ -196,14 +205,14 @@ and why any fallback happened.}
 \item{treatment_effects}{Estimated treatment effects on tumor growth, showing adjusted means for each treatment group}
 \item{growth_rates}{Data frame containing growth rates for each subject, calculated as the slope of log-volume over time. Higher values indicate faster tumor growth.}
 \item{cage_analysis}{Analysis of cage effects, including:
-\itemize{
+\describe{
 \item{structure}{The cage design structure from \code{classify_cage_structure()}, which decides how cage enters the model}
 \item{handling}{The cage handling applied}
 \item{effects}{Data frame of cage-level statistics (mean and SD of volume by cage and treatment)}
 }
 }
 \item{model_selection}{Results of model selection process, including:
-\itemize{
+\describe{
 \item{aic}{AIC values for each model specification}
 \item{bic}{BIC values for each model specification}
 \item{selected_model}{Name of the model with lowest BIC (most parsimonious)}
@@ -252,21 +261,9 @@ The function automatically handles:
 }
 }
 \examples{
-# Load example data
-data(combo_treatment_synthetic_data)
-tumor_data <- calculate_volume(combo_treatment_synthetic_data)
-tumor_data <- calculate_dates(tumor_data, start_date = "03/24/2025")
-
-# Basic analysis with default settings
-results <- tumor_growth_statistics(tumor_data)
-
-# View ANOVA table to assess treatment effects
-print(results$anova)
-
-# View pairwise comparisons
-print(results$pairwise_comparisons)
-
-# Plot adjusted means for each treatment group
-print(results$plots$adjusted_means)
-
+tg <- tumor_growth_statistics(master_synthetic_data, reference_group = "Vehicle",
+                              p_adjust_method = "holm")
+tg$anova
+tg$pairwise_comparisons
+tg$random_effects
 }

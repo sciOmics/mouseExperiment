@@ -61,7 +61,7 @@ test_that("R16.1: clean reflects validity, not efficiency", {
   # reported but excluded, because hitting the limit makes sampling slow rather
   # than wrong. The roxygen used to claim all three were required, which the code
   # has never done.
-  doc <- paste(readLines(testthat::test_path("..", "..", "R", "utils_bayes.R"),
+  doc <- paste(readLines(pkg_source_files("utils_bayes.R"),
                          warn = FALSE), collapse = "\n")
   expect_false(grepl("iff all three pass", doc, fixed = TRUE))
   expect_match(doc, "deliberately excluded", fixed = TRUE)

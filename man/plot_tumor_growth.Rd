@@ -47,6 +47,8 @@ plot_tumor_growth(
 necrotic flag values (Y/N, yes/no, 1/0, TRUE/FALSE, case-insensitive).
 When supplied, an × marker is overlaid on each necrotic observation and a
 caption note is added. Defaults to \code{NULL} (no necrotic marking).}
+
+\item{point_size}{Size of the individual-observation points. Default 2.}
 }
 \value{
 A ggplot of tumor growth curves colored by treatment group
@@ -55,26 +57,11 @@ A ggplot of tumor growth curves colored by treatment group
 Plot Tumor Growth Curves by Treatment Group
 }
 \examples{
-\dontrun{
-data(synthetic_data)
-df <- calculate_volume(synthetic_data)
-df <- calculate_dates(df, start_date = "2022-02-24")
+plot_tumor_growth(master_synthetic_data, necrotic_column = "Necrotic")
 
-# Standard plot using Treatment column
-plot_tumor_growth(df, treatment_column = "Treatment")
-
-# Plot with extrapolated volumes for deceased mice
-plot_tumor_growth(df, treatment_column = "Treatment", extrapolate_volumes = TRUE)
-
-# For data with dose information
-dose_data <- calculate_volume(dose_data)
-dose_data <- calculate_dates(dose_data, start_date = "24-Mar", date_format = "\%d-\%b", year = 2023)
-plot_tumor_growth(dose_data, treatment_column = "Treatment", dose_column = "Dose")
-
-# Combining multiple options: dose information and extrapolation
-plot_tumor_growth(dose_data, 
-                treatment_column = "Treatment", 
-                dose_column = "Dose",
-                extrapolate_volumes = TRUE)
-}
+# One agent's dose series, labelled by dose
+plot_tumor_growth(
+  subset(master_synthetic_data,
+         Treatment \%in\% c("Vehicle", "Drug_A Low", "Drug_A Mid", "Drug_A High")),
+  dose_column = "Dose")
 }

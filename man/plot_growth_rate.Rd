@@ -48,32 +48,7 @@ tumor_growth_statistics function. It produces a single plot showing growth rates
 treatment group as individual points with optional mean lines and error bars.
 }
 \examples{
-\dontrun{
-# Calculate tumor growth statistics
-result <- tumor_growth_statistics(
-  data, 
-  time_column = "Day", 
-  volume_column = "Volume",
-  id_column = "Mouse_ID", 
-  treatment_column = "Treatment"
-)
-
-# Extract growth rates data
-growth_data <- result$growth_rates
-
-# Basic usage
-plot_growth_rate(growth_data)
-
-# With custom error bars and no mean line
-plot_growth_rate(growth_data, show_mean = FALSE, error_bar_type = "SD")
-
-# Create a custom color palette for treatment groups
-colors <- c("Control" = "gray", "Treatment A" = "blue", 
-           "Treatment B" = "green", "Treatment C" = "red")
-plot_growth_rate(growth_data, colors = colors)
-
-# Specify a custom order for the groups
-plot_growth_rate(growth_data, group_order = c("Control", "Treatment B", "Treatment A", "Treatment C"))
-}
-
+tg <- tumor_growth_statistics(master_synthetic_data, reference_group = "Vehicle",
+                              plots = FALSE)
+plot_growth_rate(tg$growth_rates, error_bar_type = "CI")
 }

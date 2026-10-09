@@ -101,26 +101,13 @@
 #' (CODE_REVIEW.md R20.19).
 #'
 #' @examples
-#' # Example with synthetic dataset
-#' data(combo_treatment_synthetic_data)
-#' data_processed <- calculate_volume(combo_treatment_synthetic_data)
-#' data_processed <- calculate_dates(data_processed, start_date = "03/24/2025")
-#' 
-#' synergy_results <- analyze_drug_synergy(
-#'   df = data_processed,
-#'   drug_a_name = "Drug A",
-#'   drug_b_name = "Drug B", 
-#'   combo_name = "Combo",
-#'   control_name = "Control"
-#' )
-#' 
-#' # Print the summary
-#' print(synergy_results$summary)
-#' 
-#' # Create and display the synergy visualization
-#' synergy_plot <- plot_drug_synergy(synergy_results)
-#' print(synergy_plot)
-#'
+#' m <- master_synthetic_data
+#' syn <- analyze_drug_synergy(m,
+#'   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
+#'   combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
+#'   cage_column = "Cage", n_boot = 200, boot_seed = 1, verbose = FALSE)
+#' syn$summary
+#' plot_drug_synergy(syn)
 #' @import dplyr
 #' @import ggplot2
 #' @param id_column Column identifying individual animals. Used to resample
@@ -600,22 +587,11 @@ synergy_permouse_diagnostics <- function(pm, t) {
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # First run the analysis
-#' results <- analyze_drug_synergy(
-#'   df = tumor_data,
-#'   drug_a_name = "Drug A",
-#'   drug_b_name = "Drug B", 
-#'   combo_name = "Drug A + Drug B",
-#'   control_name = "Vehicle"
-#' )
-#' 
-#' # Then create the plot
-#' plot_drug_synergy(results)
-#' 
-#' # With custom title
-#' plot_drug_synergy(results, custom_title = "Custom Analysis Title")
-#' }
+#' syn <- analyze_drug_synergy(master_synthetic_data,
+#'   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
+#'   combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
+#'   n_boot = 200, boot_seed = 1, verbose = FALSE)
+#' plot_drug_synergy(syn, custom_title = "Drug_A Mid + Drug_B vs Bliss")
 plot_drug_synergy <- function(synergy_results, custom_title = NULL, custom_colors = NULL) {
   # Validate input
   if (!is.list(synergy_results) || is.null(synergy_results$plot_data)) {

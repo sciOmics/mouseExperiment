@@ -92,6 +92,11 @@
 #' their own, which can happen in a "Tolerated" arm. Worst loss is taken over
 #' each animal's whole record, not only up to the evaluation day, because
 #' toxicity after that day still counts.
+#' @examples
+#' tw <- therapeutic_window_metric(master_synthetic_data, volume_units = "mm3",
+#'                                 cage_column = "Cage", reference_group = "Vehicle",
+#'                                 n_boot = 200, boot_seed = 1)
+#' tw$window_table
 #' @export
 therapeutic_window_metric <- function(df,
                                       weight_column    = "Weight",

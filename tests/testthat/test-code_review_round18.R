@@ -17,8 +17,7 @@ test_that("R18.1: the five previously-unresolvable calls are gone", {
   #   brms::update       (update is a stats generic)
   #   lme4::influence    (influence is a stats generic; lme4 registers the method)
   #   brms::ebfmi        (not exported by brms at all)
-  code <- unlist(lapply(list.files(testthat::test_path("..", "..", "R"),
-                                   pattern = "[.]R$", full.names = TRUE),
+  code <- unlist(lapply(pkg_source_files(),
                         function(f) sub("#.*$", "", readLines(f, warn = FALSE))))
   for (bad in c("stats::make\\.names", "brms::Gamma", "brms::update",
                 "lme4::influence", "brms::ebfmi")) {
@@ -78,8 +77,7 @@ test_that("R18.2: percent stays escaped inside literal Rd macros", {
   # The correction has a boundary: roxygen does NOT escape % inside \code{},
   # \eqn{} or \deqn{}, so there it must remain `\%`. A blanket unescape breaks
   # those -- the percent starts an Rd comment and eats the rest of the line.
-  src <- unlist(lapply(list.files(testthat::test_path("..", "..", "R"),
-                                  pattern = "[.]R$", full.names = TRUE),
+  src <- unlist(lapply(pkg_source_files(),
                        function(f) readLines(f, warn = FALSE)))
   rox <- grep("^#'", src, value = TRUE)
   offenders <- grep("\\\\(code|eqn|deqn)\\{[^}]*[^\\\\]%", rox, value = TRUE)

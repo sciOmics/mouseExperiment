@@ -597,8 +597,8 @@ validate_one_row_per_subject <- function(df, id_column, treatment_column,
       " unique animals across ", nrow(df), " rows).\n",
       "This looks like a longitudinal data frame. Fitting a survival model to it ",
       "would treat every measurement occasion as an independent subject.\n",
-      "Reduce to one row per animal first — e.g. each animal's last ",
-      "observation, carrying its event indicator — then call this function.",
+      "Reduce to one row per animal first \u2014 e.g. each animal's last ",
+      "observation, carrying its event indicator \u2014 then call this function.",
       call. = FALSE
     )
   }
@@ -931,7 +931,7 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     if (!is.null(ph_test) && isTRUE(verbose)) {
       global_p <- tryCatch(ph_test$table["GLOBAL", "p"], error = function(e) NA_real_)
       if (is.finite(global_p) && global_p < 0.05) {
-        message(sprintf("Proportional-hazards check: global p = %.4f (< 0.05) — PH assumption may be violated.", global_p))
+        message(sprintf("Proportional-hazards check: global p = %.4f (< 0.05) \u2014 PH assumption may be violated.", global_p))
       }
     }
 

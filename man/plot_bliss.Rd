@@ -45,22 +45,12 @@ Creates a line plot showing tumor growth inhibition percentages over time
 for individual drugs and their combination, along with the calculated Bliss value.
 }
 \examples{
-\dontrun{
-# First run the synergy analysis
-synergy_results <- synergy_stats(
-  df = tumor_data,
-  drug_a_name = "Drug A",
-  drug_b_name = "Drug B", 
-  combo_name = "Combination"
-)
-
-# Create the Bliss plot
-plot_bliss(synergy_results$synergy_summary)
-
-# With custom colors
-custom_colors <- c("Drug A" = "blue", "Drug B" = "red", 
-                 "Combination" = "purple", "Bliss Value" = "grey")
-plot_bliss(synergy_results$synergy_summary, colors = custom_colors)
-}
-
+trend <- analyze_drug_synergy_over_time(master_synthetic_data,
+  drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
+  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
+  min_time_point = 2,  # day 0 has no growth to inhibit
+  n_boot = 200, boot_seed = 1, verbose = FALSE)
+plot_bliss(trend$synergy_summary,
+           drug_a_label = "Drug_A Mid", drug_b_label = "Drug_B",
+           combo_label = "Drug_A Mid + Drug_B")
 }

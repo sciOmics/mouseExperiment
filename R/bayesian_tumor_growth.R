@@ -216,6 +216,14 @@
 #' @importFrom ggplot2 ggplot aes geom_density geom_point geom_pointrange
 #'   geom_smooth geom_vline geom_hline scale_colour_manual scale_fill_manual
 #'   facet_wrap labs theme theme_classic
+#' @examples
+#' \donttest{
+#' # Compiles a Stan model on first use (about 30 s), then samples.
+#' two_arms <- subset(master_synthetic_data, Treatment %in% c("Vehicle", "Drug_A High"))
+#' fit <- bayesian_tumor_growth(two_arms, cage_column = "Cage", n_chains = 2,
+#'                              n_warmup = 500, n_iter = 250, plots = FALSE)
+#' fit$treatment_effects
+#' }
 #' @export
 bayesian_tumor_growth <- function(
   df,
@@ -423,7 +431,7 @@ bayesian_tumor_growth <- function(
   # ── Fit model ──────────────────────────────────────────────────────────────
   if (isTRUE(verbose)) {
     message("Fitting Bayesian LMM via brms (",
-            n_chains, " chains × ", n_iter, " post-warmup draws, ",
+            n_chains, " chains \u00d7 ", n_iter, " post-warmup draws, ",
             n_warmup, " warmup)...")
   }
 
@@ -634,7 +642,7 @@ bayesian_tumor_growth <- function(
       transform          = transform
     ),
     methods = list(
-      engine          = paste0("brms (", n_chains, " chains × ",
+      engine          = paste0("brms (", n_chains, " chains \u00d7 ",
                                n_iter, " draws + ", n_warmup,
                                " warmup, seed = ", seed, ")"),
       # CODE_REVIEW.md R3.8 — report the priors actually handed to brms rather

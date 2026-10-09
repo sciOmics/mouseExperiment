@@ -39,6 +39,11 @@
 #'   pairwise_comparisons (the requested contrast family with adjusted
 #'   p-values), comparison_family, p_adjust_method_used, model_info,
 #'   weight_data, summary_text.
+#' @examples
+#' bw <- analyze_body_weight(master_synthetic_data, volume_column = "Volume",
+#'                           volume_units = "mm3", cage_column = "Cage",
+#'                           reference_group = "Vehicle")
+#' names(bw)
 #' @export
 analyze_body_weight <- function(df,
                                 weight_column    = "Weight",
