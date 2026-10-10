@@ -21,195 +21,180 @@ An R package for statistical analysis of mouse tumor growth experiments. Covers 
 
 | Item | State |
 |---|---|
-| Version | 0.11.0 |
-| `CODE_REVIEW.md` | Rounds 1–5 complete; Rounds 3–5 fully closed |
-| Bayesian diagnostics surface | Rhat / ESS / NUTS / Bayes R² / PPC coverage / LOO / Pareto-k / posterior P direction |
-| Test suite | testthat, 644 tests. **No test skips a required dependency** — the Bayesian and permutation paths always run (see below) |
-| Coverage measurement | `Rscript coverage.R` |
+| Version | see `DESCRIPTION` |
+| Review | `CODE_REVIEW.md`, cumulative rounds; Round 20 is the latest |
+| Checks | `R CMD check` and the test suite run on every push and nightly (GitHub Actions) |
+| README | every non-Bayesian code block below is run by `tests/testthat/test-readme.R` |
 
 ### A note on dependencies
 
-As of v0.10.0 the statistical packages (`brms`, `bayesplot`, `coin`,
-`clinfun`, `ggpubr`, `posterior`) are **required**, not suggested.
-Installing therefore needs a working C++ toolchain, because `brms` pulls the Stan
-stack.
+The statistical packages (`brms`, `bayesplot`, `coin`, `clinfun`, `ggpubr`,
+`posterior`) are **required**, not suggested, so installing needs a working C++
+toolchain: `brms` pulls in the Stan stack.
 
-That cost is deliberate. While `brms` sat in `Suggests`, the Bayesian tests skipped
-wholesale whenever it was absent — and two Critical defects survived five releases
-behind that skip, including `bayesian_synergy()` (since removed) being entirely
-non-functional from v0.4.6 to v0.9.0 while this README advertised it. Optionality
-was not free; it was the mechanism. See `CODE_REVIEW.md` §R3-L and §R4.
+That cost is deliberate. While `brms` sat in `Suggests`, the Bayesian tests were
+skipped whenever it was absent, and two Critical defects survived five releases
+behind that skip (`CODE_REVIEW.md` R3-L and R4).
 
-`cmdstanr` remains genuinely optional — it is a user-selected *alternative* Stan
-backend and fails loudly with install instructions when chosen and missing.
+`cmdstanr` remains optional. It is an alternative Stan backend, and asking for it
+when it is missing fails with install instructions.
 
 ## Installation
 
 ```r
-# Development version from GitHub
-devtools::install_github("sciOmics/mouseExperiment")
+# From GitHub (brms and the Stan stack are installed as dependencies)
+remotes::install_github("sciOmics/mouseExperiment")
 
-# For Bayesian analyses also install:
-install.packages(c("brms", "bayesplot"))
-
-# Optional: cmdstanr backend for 3-10x faster Stan compilation
+# Optional: the cmdstanr backend, 3-10x faster Stan compilation
 install.packages("cmdstanr",
-                 repos = c("https://mc-stan.org/r-packages/",
-                           getOption("repos")))
+                 repos = c("https://mc-stan.org/r-packages/", getOption("repos")))
 cmdstanr::install_cmdstan()
 ```
 
 ## Usage
 
-### Tumor Growth — frequentist + Bayesian
+Every example uses `master_synthetic_data`, which ships with the package and has
+every column the functions use. The vignette, `vignette("mouseExperiment")`, walks
+through the same analysis with explanations.
+
+### Preparing data
 
 ```r
 library(mouseExperiment)
 
-data(combo_treatment_synthetic_data)
-df <- combo_treatment_synthetic_data
+# Raw laboratory data: calendar dates and caliper measurements
+d <- calculate_dates(combo_treatment_synthetic_data, start_date = "03/24/2025")
+d <- calculate_volume(d)     # ellipsoid, pi * L * W^2 / 6
+head(d)
 
-# ---- Frequentist LME4 ----
-results <- tumor_growth_statistics(
-  df               = df,
-  time_column      = "Day",
-  volume_column    = "Volume",
-  id_column        = "ID",
-  treatment_column = "Treatment",
-  cage_column      = "Cage",
-  model_type       = "lme4"
-)
-print(results$treatment_effects)
-plot_tumor_growth(results$tumor_growth_plot)
+m <- master_synthetic_data  # already has Day and Volume
+evaluable_days(m, volume_column = "Volume")$last_day
+```
 
-# ---- Bayesian LMM (recommended config-helper style, v0.4.7+) ----
-bayes_results <- bayesian_tumor_growth(
-  df     = df,
+### Tumor growth
+
+```r
+library(mouseExperiment)
+m <- master_synthetic_data
+
+tg <- tumor_growth_statistics(m, reference_group = "Vehicle",
+                              p_adjust_method = "holm")
+tg$anova                   # Type III F-tests (Satterthwaite)
+tg$pairwise_comparisons    # each arm vs Vehicle, Holm-adjusted
+tg$random_effects          # structure requested and used
+plot_tumor_growth(m)
+plot_growth_rate(tg$growth_rates)
+```
+
+```r
+# Bayesian LMM (compiles a Stan model on first use, about 30 s)
+library(mouseExperiment)
+m <- master_synthetic_data
+fit <- bayesian_tumor_growth(
+  subset(m, Treatment %in% c("Vehicle", "Drug_A High")),
+  cage_column = "Cage",
   priors = tg_priors(strength = "weakly_informative"),
   mcmc   = tg_mcmc(chains = 4, warmup = 1000, iter = 500, seed = 42))
-
-print(bayes_results$treatment_effects)     # group EMMs with 95 % CrI
-print(bayes_results$mcmc_diagnostics)      # Rhat, ESS, Converged flag
-print(bayes_results$bayes_R2)              # Bayes R² + 95 % CrI
-print(bayes_results$loo_diagnostics)       # elpd_loo, n_high_k (Pareto-k > 0.7)
-bayes_results$pp_check_plot                # posterior predictive density overlay
-bayes_results$prior_posterior_plot         # how much the data updated each prior
-
-# The individual `prior_strength`, `n_chains`, `n_iter`, etc. arguments
-# still work as before — supply either the config helpers or the
-# individual args, not both.
+fit$treatment_effects      # group means with 95 % credible intervals
+fit$mcmc_diagnostics       # Rhat, ESS, convergence flag
+fit$loo_diagnostics        # elpd_loo, Pareto-k
 ```
 
-### Data-only path (analysis without ggplot generation)
+Every analysis function takes `plots = FALSE` to return only data frames.
 
-Every analysis function accepts `plots = FALSE` to skip plot construction and return only the data frames. Useful for headless CI or when callers want to render their own plots from the data via the package's `plot_*()` helpers (or their own renderers). CODE_REVIEW.md D.3.
+### Survival
 
 ```r
-data_only <- bayesian_tumor_growth(df = df, plots = FALSE,
-                                   priors = tg_priors(),
-                                   mcmc   = tg_mcmc(chains = 2, iter = 200))
-data_only$treatment_effects            # populated
-data_only$pp_check_plot                # NULL
-data_only$prior_posterior_plot         # NULL
+library(mouseExperiment)
+m <- master_synthetic_data
+
+# One row per animal: its last record carries the event indicator
+mm <- m[order(m$ID, m$Day), ]
+per_animal <- mm[!duplicated(mm$ID, fromLast = TRUE), ]
+
+surv <- survival_statistics(per_animal, reference_group = "Vehicle",
+                            verbose = FALSE)
+surv$results               # hazard ratios, intervals, p-values, medians
+surv$method_used           # "coxphf" (Firth) by default
 ```
 
-### Survival Analysis
-
 ```r
-data(combo_treatment_synthetic_data)
-df <- combo_treatment_synthetic_data
-
-# Frequentist (KM + Cox + log-rank + cox.zph PH check)
-surv_results <- survival_statistics(
-  df               = df,
-  time_column      = "Day",
-  censor_column    = "Survival_Censor",
-  treatment_column = "Treatment",
-  id_column        = "ID"
-)
-print(surv_results$km_fit)
-print(surv_results$ph_test_table)         # cox.zph() output
-print(surv_results$concordance)           # C-index
-
-# Bayesian AFT
-bayes_surv <- bayesian_survival(
-  df               = df,
-  time_column      = "Day",
-  event_column     = "Survival_Censor",
-  treatment_column = "Treatment",
-  id_column        = "ID",
-  family           = "weibull",
-  priors           = tg_priors(strength = "weakly_informative"),
-  mcmc             = tg_mcmc(chains = 4, iter = 500))
-print(bayes_surv$treatment_effects)       # Time Ratio + HR with 95 % CrI
+# Bayesian AFT model (Weibull or log-normal)
+library(mouseExperiment)
+m <- master_synthetic_data
+mm <- m[order(m$ID, m$Day), ]
+per_animal <- mm[!duplicated(mm$ID, fromLast = TRUE), ]
+bayes_surv <- bayesian_survival(per_animal, reference_group = "Vehicle",
+                                family = "weibull",
+                                mcmc = tg_mcmc(chains = 4, iter = 500))
+bayes_surv$treatment_effects   # time ratio and hazard ratio, with 95 % CrI
 ```
 
-### Body Weight / Toxicity
+### Body weight and toxicity
 
 ```r
-# Frequentist LME4
-bw_results <- analyze_body_weight(
-  df               = weight_data,
-  time_column      = "Day",
-  weight_column    = "Weight",
-  id_column        = "ID",
-  treatment_column = "Treatment")
+library(mouseExperiment)
+m <- master_synthetic_data
+
+bw <- analyze_body_weight(m, volume_column = "Volume", volume_units = "mm3",
+                          cage_column = "Cage", reference_group = "Vehicle")
+bw$pairwise_comparisons
+
+wl <- weight_loss_threshold(m, cage_column = "Cage", threshold = 0.1,
+                            reference_group = "Vehicle")
 ```
 
-### Drug Synergy
+### Drug synergy
 
 ```r
-# Frequentist Bliss independence
-syn_results <- analyze_drug_synergy(
-  df               = combo_treatment_synthetic_data,
-  drug_a_name      = "DrugA",
-  drug_b_name      = "DrugB",
-  combo_name       = "Combo",
-  control_name     = "Control")
-plot_drug_synergy(syn_results)
+library(mouseExperiment)
+m <- master_synthetic_data
+
+syn <- analyze_drug_synergy(m,
+  drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
+  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
+  cage_column = "Cage", n_boot = 500, boot_seed = 1, verbose = FALSE)
+syn$summary
+plot_drug_synergy(syn)
 ```
 
-### Dose-Response
+### Dose-response
 
 ```r
-data(dose_levels_synthetic_data)
-df <- dose_levels_synthetic_data
+library(mouseExperiment)
+m <- master_synthetic_data
 
-# Frequentist Hill / Emax (drc backend)
-dr_results <- dose_response_statistics(
-  df                 = df,
-  dose_column        = "Dose",
-  volume_column      = "Volume",
-  treatment_column   = "Treatment",
-  day_column         = "Day",
-  id_column          = "ID")
+dr <- dose_response_statistics(m,
+  treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High"),
+  control_group_name = "Vehicle", cage_column = "Cage", verbose = FALSE)
+dr$summary_table
+dr$trend_test        # Jonckheere-Terpstra
 ```
 
-### Therapeutic Window
+### Therapeutic window
 
 ```r
-data(master_synthetic_data)
-tw <- therapeutic_window_metric(
-  df               = master_synthetic_data,
-  reference_group  = "Vehicle",
-  cage_column      = "Cage",
-  volume_units     = "mm3",           # needed to subtract tumour mass
-  tolerability_threshold = 20)        # percent of baseline weight
+library(mouseExperiment)
+m <- master_synthetic_data
+
+tw <- therapeutic_window_metric(m,
+  reference_group = "Vehicle", cage_column = "Cage",
+  volume_units = "mm3",               # needed to subtract tumour mass
+  tolerability_threshold = 20,        # percent of baseline weight
+  n_boot = 500, boot_seed = 1)
 tw$window_table   # TGI and worst weight loss per arm, with intervals and a flag
 ```
 
-### Power Analysis
+### Power analysis
 
 ```r
-# Analytic a priori power
-power <- apriori_power_analysis(
-  effect_sizes = c(0.5, 0.8, 1.2),
-  alpha        = 0.05)
+library(mouseExperiment)
 
-# LMM simulation
-sim_power <- apriori_power_simulation(
-  n_per_group = seq(5, 20, by = 5),
-  n_sim       = 500)
+# Analytic: animals per group for a standardised effect of 1.2, three groups
+apriori_power_analysis(effect_size = 1.2, n_groups = 3)
+
+# Simulation with the same mixed model (use 500+ simulations in practice)
+apriori_power_simulation(n_per_group = c(6L, 10L), n_simulations = 50L, seed = 1)
 ```
 
 ## Functions
@@ -272,10 +257,10 @@ sim_power <- apriori_power_simulation(
 
 | Dataset | Description |
 |---------|-------------|
-| `combo_treatment_synthetic_data` | Two-drug combination treatment with tumor + body-weight + survival columns |
-| `dose_levels_synthetic_data` | Multiple dose levels of a single drug |
-| `master_synthetic_data` | Master synthetic dataset with multiple treatment groups |
-| `synthetic_data` | Single-treatment baseline data |
+| `master_synthetic_data` | Six arms with every column the package uses: Day, Length/Width/Height, Volume, Weight, Dose, Cage, Necrotic and Survival_Censor (the dashboard's "All Features" demo) |
+| `combo_treatment_synthetic_data` | Two-drug combination as a laboratory records it: dates, ear-punch IDs, caliper length and width, survival events |
+| `dose_levels_synthetic_data` | One drug at three doses and a vehicle control: dates, caliper length and width, survival events |
+| `weight_synthetic_data` | Tumour volume with body weight; column names contain spaces |
 
 ## Coverage measurement
 
@@ -284,23 +269,18 @@ Rscript coverage.R           # per-file coverage summary to stdout
 Rscript coverage.R --html    # also write covr_report.html
 ```
 
-The script excludes Bayesian entry points by default because brms compilation dominates the run. See the K.10 entry in `CODE_REVIEW.md` for the known caveat about stale tests (`test-post_power_analysis.R` and one branch of `test-toxicity_functions.R`) blocking a clean baseline until they're cleaned up under K.11.
+The script leaves out the Bayesian entry points by default, because brms
+compilation dominates the run.
 
-## Vignettes
+## Vignette
 
-| File | Description |
-|------|-------------|
-| `vignettes/mouseExperiment.Rmd` | Package overview vignette |
-| `vignettes/mouseExperiment_combo_demo.qmd` | Worked combination-treatment example |
-| `vignettes/mouseExperiment_dose_demo.qmd` | Worked dose-response example |
-
-Build with `quarto render` (for `.qmd`) or `devtools::build_vignettes()` (for `.Rmd`).
+`vignette("mouseExperiment")`, a complete analysis of `master_synthetic_data`.
 
 ## Development
 
 ```r
 devtools::load_all()
-devtools::test()                # 644 tests; nothing skips a required dependency
+devtools::test()                # the full suite; nothing skips a required dependency
 devtools::test(filter = "bayesian_tumor_growth")
 devtools::document()            # regenerate NAMESPACE + .Rd files
 devtools::check()               # R CMD check

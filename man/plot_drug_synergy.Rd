@@ -21,20 +21,9 @@ Creates a bar plot visualizing tumor growth inhibition (TGI) for different treat
 and synergy metrics from a drug combination analysis.
 }
 \examples{
-\dontrun{
-# First run the analysis
-results <- analyze_drug_synergy(
-  df = tumor_data,
-  drug_a_name = "Drug A",
-  drug_b_name = "Drug B", 
-  combo_name = "Drug A + Drug B",
-  control_name = "Vehicle"
-)
-
-# Then create the plot
-plot_drug_synergy(results)
-
-# With custom title
-plot_drug_synergy(results, custom_title = "Custom Analysis Title")
-}
+syn <- analyze_drug_synergy(master_synthetic_data,
+  drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
+  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
+  n_boot = 200, boot_seed = 1, verbose = FALSE)
+plot_drug_synergy(syn, custom_title = "Drug_A Mid + Drug_B vs Bliss")
 }

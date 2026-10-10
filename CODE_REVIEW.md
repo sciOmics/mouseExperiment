@@ -5274,10 +5274,10 @@ Recorded in place here rather than by editing the earlier text, following the Ro
 | R20.11 | TBA survivor-conditioned toxicity; rank inverted | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
 | R20.12 | Bayesian dose-response fails on default `endpoint_day = NULL` | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
 | R20.13 | Bayesian TWM treats weight gain as toxicity | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
-| R20.14–R20.48 | Dose-response, synergy, survival/weight-loss, tumour growth, power, Bayesian, toxicity, cross-cutting (35 items) | Major | Open. Fixed: R20.15 (R20-N); R20.17, R20.29, R20.34, R20.37 (R20-O); R20.14, R20.16, R20.18, R20.19, R20.20, R20.21, R20.22, R20.23 (R20-P); R20.35, R20.38, R20.39, R20.40, R20.41 (R20-Q) |
-| R20.49–R20.53, R20.55 | Vignette, examples, README, datasets, CI/process, test-suite gaps | Major | Open |
-| R20.54 | Build hygiene | Minor | Open |
-| R20.56–R20.75 | Minor (20 items) | Minor | Open. R20.70 ✅ closed v0.27.0 (R20-P): its TWM parts went with the ratio. R20.74 ✅ v0.28.0 (R20-Q) for the kept models; its synergy, TWM and power items went with them (R20-L) |
+| R20.14–R20.48 | Dose-response, synergy, survival/weight-loss, tumour growth, power, Bayesian, toxicity, cross-cutting (35 items) | Major | Open. Fixed: R20.15 (R20-N); R20.17, R20.29, R20.34, R20.37 (R20-O); R20.14, R20.16, R20.18, R20.19, R20.20, R20.21, R20.22, R20.23 (R20-P); R20.35, R20.38, R20.39, R20.40, R20.41 (R20-Q); closed by removal v0.23.0 (R20-L) but not marked until R20-S: R20.26, R20.27, R20.28, R20.36, R20.42, R20.45, R20.47; R20.43 fixed v0.25.0 (R20-N) |
+| R20.49–R20.53, R20.55 | Vignette, examples, README, datasets, CI/process, test-suite gaps | Major | ✅ R20.49–R20.53 fixed v0.29.0 (R20-S). R20.55 in part: the source-reading tests skip under R CMD check instead of passing vacuously, and CI runs them from source; the suite's remaining warnings (the Firth survival path) go with R20.24/R20.64 |
+| R20.54 | Build hygiene | Minor | ✅ Fixed v0.29.0 (R20-S) |
+| R20.56–R20.75 | Minor (20 items) | Minor | Open. R20.70 ✅ closed v0.27.0 (R20-P): its TWM parts went with the ratio. R20.74 ✅ v0.28.0 (R20-Q) for the kept models; its synergy, TWM and power items went with them (R20-L). R20.60 closed by removal v0.23.0 (R20-L) |
 | R20.76–R20.82 | Efficiency (7 items; R20.76 blocks the dashboard for 20–140 s) | Efficiency | R20.76 ✅ Fixed v0.26.0 (R20-O); R20.78, R20.80 ✅ Fixed v0.28.0 (R20-Q); R20.79 closed by removal (R20-L); the rest open |
 | R3.3, R3.6, R3.8, R3.14, R3.30, R14.2 | Earlier ✅ entries corrected (R20-H) | — | Reopened / partial |
 
@@ -5700,3 +5700,28 @@ Step 7 moved the VPS image to `rocker/r-ver:4.5.2`, whose CRAN is a frozen Posit
 
 **The error was in a test, not the package.** `holds_brmsfit()`, the walker in the R20.80 test that proves no plot reaches a `brmsfit`, iterated with `for (el in o)`. ggplot2 4's S7 objects hold an empty symbol in a list, and binding it to `el` makes forcing it fail ("argument "el" is missing"). The walker now iterates by index. With ggplot2 4.0.2 and with 3.5.2, the step 6 file passes (8 tests, 32 expectations), so the property R20.80 checks holds under the image's ggplot2 too. No package code changed and the version stays 0.28.0.
 
+## R20-S Implementation log — v0.29.0: R CMD check passes, and CI (2026-10-09)
+
+The Round 20 process items, done together because they depend on each other: the examples need clean datasets, CI needs a passing check, and the check needs the vignette to build.
+
+**Starting point.** `R CMD build` failed at the vignette. Built without it, `R CMD check` gave 1 ERROR (examples), 3 WARNINGs and 3 NOTEs.
+
+| Item | Fix |
+|---|---|
+| R20.50 examples | Every `@examples` block was rewritten against shipped data, mostly `master_synthetic_data`, and runs. `\dontrun{}` is gone. The Bayesian examples are `\donttest{}` because they compile Stan. Exported functions without examples gained them (body weight, weight-loss threshold, therapeutic window, both power functions, both Bayesian entry points, `clear_compiled_model_cache()`). The 33 examples sections run in 14 s with no warnings; the synergy-over-time examples start at day 2, since day 0 has no growth to inhibit. |
+| R20.50 install warnings | `import(drc)` became `importFrom(drc, drm, LL.4, LL.5, ED, modelFit)`, and `import(stats)` became `import(stats, except = c(filter, lag))`. No package code calls `lag()`, `gaussian()` or `getInitial()` unqualified, and `filter()` already resolved to dplyr's, so no behaviour changes. |
+| R20.50 other findings | Non-ASCII characters in code strings (`×`, `—`, `–`, `→`) became `\u` escapes; they print the same. The ggplot/dplyr column names were declared with `utils::globalVariables()`. `necrotic_column`, `necrotic_handling` and `point_size` are documented, and the nested lists in `tumor_growth_statistics()`'s `@return` are `\describe`. LICENSE became the DCF stub, with the full text in `LICENSE.md`; the stale `Date` field was removed. |
+| R20.49 vignette | Rewritten as a complete analysis of `master_synthetic_data`. It renders in 4 s. Its one printed warning is `coxph` on two arms with no events, and the text explains that the Firth estimate reported stays finite. The 4.2 MB stale HTML was deleted. The two `.qmd` demos moved to `dev/demos/` (not built, with a README saying why they do not run). |
+| R20.51 README | Usage rewritten against `master_synthetic_data`. The status, install and dataset sections were corrected (brms is in Imports, there is one vignette, the coverage caveat is resolved). `tests/testthat/test-readme.R` runs all 8 non-Bayesian Usage blocks. |
+| R20.52 datasets | Each name is one dataset, built by `data-raw/create_datasets.R` from CSVs that are the dashboard's demos. `combo_treatment_synthetic_data` and `dose_levels_synthetic_data` replace `.rda` files that had volumes on a 0–7 scale, negative day-0 volumes and NaN. They contain dates, ear-punch IDs, caliper length and width, and survival events; no NA, nothing negative. `synthetic_data` (crossed cages, random values) and `necrotic_synthetic_data` were removed, in line with the maintainer's removal of those dashboard demos (2026-10-09); `master_synthetic_data` covers necrosis. `data.R` states formats, units and the reused-ID convention. The two tests that used the old files were adapted: the R20.14 test builds its own four never-measurable animals. |
+| R20.53 CI | `.github/workflows/R-CMD-check.yaml` runs on every push to staging/production, on every PR and nightly. It runs `R CMD check --no-manual` with the vignette and the full suite (Bayesian included), failing on warnings, then the source-tree tests. `build.R` and `temp/` were deleted. CONTRIBUTING was corrected: the CI it described now exists, its brms skip advice contradicted the no-skip rule, and the examples guidance now says `\donttest` and never `\dontrun`. |
+| R20.54 hygiene | `.Rbuildignore` gained `.claude`, `.waylog`, `docs`, `data-raw`, `dev`, `coverage.R`, `CONTRIBUTING.md` and `LICENSE.md`; a local tarball had included the AI session transcripts. `Depends: R (>= 4.1.0)`, since the code uses `\|>`. The tracked `Rplots.pdf` and the `R/data/` stubs were removed. |
+| R20.55 (in part) | Three tests read `R/` sources. Under R CMD check, which runs against the installed package, one failed to open its file and two passed on an empty file list without checking anything. They now skip there via `pkg_source_files()` (`helper-source.R`), and CI runs them from the source tree with the README test. |
+
+**Verification (executed):**
+- **Build:** `R CMD build` (vignette included) succeeds.
+- **Check:** `R CMD check --no-manual` has no warnings and no notes. The examples and the vignette re-build pass.
+- **Tests under check:** 891 passed and 4 skipped. The one failure was the source-reading test above, fixed here.
+- **Source-tree tests and README:** run separately; 8 README blocks pass.
+
+**Not done here:** R20.55's remaining warnings come from the Firth path of `weight_loss_threshold()` and `survival_statistics()` (R20.24, R20.64), and are left to that work.

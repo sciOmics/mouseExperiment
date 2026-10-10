@@ -12,3 +12,13 @@
 ^CHANGELOG\.md$
 ^DASHBOARD_PLAN\.md$
 ^build\.R$
+^\.claude$
+^\.waylog$
+^\.DS_Store$
+^docs$
+^data-raw$
+^coverage\.R$
+^CONTRIBUTING\.md$
+^LICENSE\.md$
+^dev$
+^README\.Rmd$

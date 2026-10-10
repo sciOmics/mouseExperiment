@@ -166,13 +166,10 @@ enumerate_label_perms <- function(labels) {
 #'     is not to be trusted on this dataset.}
 #' @seealso [perm_spec()], [tumor_growth_statistics()]
 #' @examples
-#' \dontrun{
-#' data(master_synthetic_data)
 #' trajectory_permutation_test(
 #'   master_synthetic_data,
 #'   spec = perm_spec(unit = "mouse", n_perm = 199, seed = 1)
 #' )
-#' }
 #' @export
 trajectory_permutation_test <- function(df,
                                         time_column      = "Day",
@@ -241,7 +238,7 @@ trajectory_permutation_test <- function(df,
            cage_info$description,
            "\nA cage holding more than one treatment has no single label to ",
            "permute. If animals were randomised individually and then re-housed, ",
-           "the randomisation unit is the mouse — use perm_spec(unit = 'mouse').",
+           "the randomisation unit is the mouse \u2014 use perm_spec(unit = 'mouse').",
            call. = FALSE)
     }
     unit_of <- d$.cage
@@ -260,7 +257,7 @@ trajectory_permutation_test <- function(df,
   n_units <- length(unit_labels)
   if (n_units < 3L) {
     stop("Only ", n_units, " exchangeable ", spec$unit,
-         "(s) — too few to permute.", call. = FALSE)
+         "(s) \u2014 too few to permute.", call. = FALSE)
   }
 
   # Resolution ceiling. Two steps, and the second is easy to get wrong.

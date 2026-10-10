@@ -111,25 +111,12 @@ where active single agents sit. See \code{\link{analyze_drug_synergy}}.
 }
 
 \examples{
-# Analyze synergy over all available time points
-data(combo_treatment_synthetic_data)
-data_processed <- calculate_volume(combo_treatment_synthetic_data)
-data_processed <- calculate_dates(data_processed, start_date = "03/24/2025")
-
-synergy_results <- analyze_drug_synergy_over_time(
-  df = data_processed,
-  drug_a_name = "Drug A",
-  drug_b_name = "Drug B", 
-  combo_name = "Combo",
-  control_name = "Control"
-)
-
-# Access synergy metrics at each time point
-print(head(synergy_results$synergy_summary))
-trend_plot <- plot_synergy_trend(synergy_results)
-print(trend_plot)
-
-# Check when synergy was strongest
-print(synergy_results$peak_bliss_synergy)
-
+trend <- analyze_drug_synergy_over_time(master_synthetic_data,
+  drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
+  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
+  min_time_point = 2,  # day 0 has no growth to inhibit
+  cage_column = "Cage", n_boot = 200, boot_seed = 1, verbose = FALSE)
+head(trend$synergy_summary)
+trend$peak_bliss_synergy
+plot_synergy_trend(trend)
 }

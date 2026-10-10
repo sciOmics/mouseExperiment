@@ -88,6 +88,9 @@
 #'   analysable; \code{Enroll_N = ceiling(Required_N / (1 - dropout_rate))} is
 #'   the number to enrol. Default 0 for backward compatibility, but in
 #'   preclinical oncology it is rarely 0.
+#' @examples
+#' # Animals per group for a standardised effect of 1.2 with three groups
+#' apriori_power_analysis(effect_size = 1.2, n_groups = 3)
 #' @export
 apriori_power_analysis <- function(effect_size   = NULL,
                                    delta         = NULL,

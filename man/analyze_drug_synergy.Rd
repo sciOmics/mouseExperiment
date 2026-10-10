@@ -174,24 +174,11 @@ was labelled synergistic in about half of simulated studies
 }
 
 \examples{
-# Example with synthetic dataset
-data(combo_treatment_synthetic_data)
-data_processed <- calculate_volume(combo_treatment_synthetic_data)
-data_processed <- calculate_dates(data_processed, start_date = "03/24/2025")
-
-synergy_results <- analyze_drug_synergy(
-  df = data_processed,
-  drug_a_name = "Drug A",
-  drug_b_name = "Drug B", 
-  combo_name = "Combo",
-  control_name = "Control"
-)
-
-# Print the summary
-print(synergy_results$summary)
-
-# Create and display the synergy visualization
-synergy_plot <- plot_drug_synergy(synergy_results)
-print(synergy_plot)
-
+m <- master_synthetic_data
+syn <- analyze_drug_synergy(m,
+  drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
+  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
+  cage_column = "Cage", n_boot = 200, boot_seed = 1, verbose = FALSE)
+syn$summary
+plot_drug_synergy(syn)
 }

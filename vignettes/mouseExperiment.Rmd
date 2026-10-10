@@ -1,7 +1,6 @@
 ---
 title: "Analyzing Mouse Tumor Growth Experiments with mouseExperiment"
 author: "David Woods"
-date: "`r Sys.Date()`"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{Analyzing Mouse Tumor Growth Experiments with mouseExperiment}
@@ -14,262 +13,195 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
   fig.width = 7,
-  fig.height = 5
+  fig.height = 4.5,
+  message = FALSE
 )
 ```
 
-# Introduction
-
-The `mouseExperiment` package provides a comprehensive set of tools for analyzing mouse tumor growth experiments. It includes functions for:
-
-* Calculating tumor volumes
-* Analyzing growth rates
-* Generating summary statistics
-* Performing survival analysis
-* Assessing treatment synergy
-* Visualizing results
-
-# Installation
-
-You can install the `mouseExperiment` package from GitHub:
-
-```{r install, eval = FALSE}
-# Install devtools if not already installed
-if (!requireNamespace("devtools", quietly = TRUE)) {
-  install.packages("devtools")
-}
-
-# Install mouseExperiment from GitHub
-devtools::install_github("yourusername/mouseExperiment")
-```
-
-# Getting Started
-
-## Loading the Package
+This vignette walks through a complete analysis of one synthetic study,
+`master_synthetic_data`, which has every column the package uses. It ships with
+the package and is the dashboard's "All Features" demo.
 
 ```{r library}
 library(mouseExperiment)
+m <- master_synthetic_data
+str(m)
+table(m$Treatment)
 ```
 
-## Available Datasets
+Six arms of 8 mice each sit in two cages per arm: a vehicle control, a Drug_A
+dose series (low, mid and high), Drug_B, and the combination of Drug_A Mid with
+Drug_B. Mice are measured every two days until day 26, or until they are removed
+at the tumour volume endpoint (`Survival_Censor = 1` on their last row).
 
-The package includes synthetic datasets for demonstration:
+# From raw measurements to volumes and study days
 
-```{r datasets}
-data(combo_treatment_synthetic_data)
-data(survival_synthetic_data)
-data(single_treatment_synthetic_data)
+The study already carries `Volume` and `Day`. Raw laboratory data usually has
+calendar dates and caliper measurements instead, as the combination dataset
+does. `calculate_dates()` and `calculate_volume()` convert them.
+
+```{r prepare}
+raw <- combo_treatment_synthetic_data
+head(raw, 3)
+d <- calculate_dates(raw, start_date = "03/24/2025")
+d <- calculate_volume(d)          # ellipsoid: pi * L * W^2 / 6
+head(d[, c("Treatment", "Cage", "ID", "Day", "Volume")], 3)
 ```
 
-# Basic Analysis
+`calculate_volume()` also offers the modified ellipsoid, cylinder, sphere, box
+and a three-axis ellipsoid when a height is measured
+(`height_column = "Height"`).
 
-## Volume Calculation
+# Which days can be compared
 
-The `calculate_volume` function converts tumor measurements to volume:
+Once mice start leaving at the endpoint, late days compare survivors only. An
+arm is evaluable on a day while at least half of its enrolled animals, and at
+least three, are still on study. Endpoint-based summaries such as tumour growth
+inhibition (TGI) and synergy use only those days.
 
-```{r volume}
-# Calculate volume from dimensions
-data_with_volume <- calculate_volume(
-  df = combo_treatment_synthetic_data,
-  length_column = "Length",
-  width_column = "Width"
-)
-
-# View the first few rows
-head(data_with_volume)
+```{r evaluable}
+ev <- evaluable_days(m, volume_column = "Volume")
+ev$rule
+ev$last_day
 ```
 
-## Date Calculation
+# Tumour growth
 
-The `calculate_dates` function converts study days to actual dates:
-
-```{r dates}
-# Calculate dates from days
-data_with_dates <- calculate_dates(
-  df = data_with_volume,
-  start_date = "01/15/2023"
-)
-
-# View the first few rows
-head(data_with_dates)
+```{r growth-plot}
+plot_tumor_growth(m, necrotic_column = "Necrotic")
 ```
 
-# Tumor Growth Analysis
+`tumor_growth_statistics()` fits a linear mixed model to log volume, with
+correlated random intercepts and slopes per animal by default. It falls back to
+simpler structures, with a warning, when the data cannot support them. Tests are
+Type III F-tests with Satterthwaite degrees of freedom, and comparisons are
+against the reference group.
 
-## Statistical Analysis
-
-The `tumor_growth_statistics` function analyzes tumor growth:
-
-```{r growth_stats}
-# Perform statistical analysis
-results <- tumor_growth_statistics(
-  df = data_with_volume,
-  time_column = "Day",
-  volume_column = "Volume",
-  treatment_column = "Treatment",
-  id_column = "Mouse_ID",
-  cage_column = "Cage"
-)
-
-# View summary statistics
-print(results$summary)
+```{r growth-stats}
+tg <- tumor_growth_statistics(m, reference_group = "Vehicle",
+                              p_adjust_method = "holm")
+tg$random_effects
+tg$anova
+tg$pairwise_comparisons
 ```
 
-## Growth Rate Visualization
+Per-animal growth rates, and the fixed effects with their intervals:
 
-The `plot_growth_rate` function visualizes tumor growth rates:
-
-```{r growth_rate_plot}
-# Create growth rate plot
-p <- plot_growth_rate(
-  results$growth_rates,
-  treatment_column = "Treatment",
-  growth_rate_column = "growth_rate",
-  title = "Tumor Growth Rate by Treatment"
-)
-print(p)
+```{r growth-plots}
+plot_growth_rate(tg$growth_rates, error_bar_type = "CI")
+plot_caterpillar(tg$model, show_intercept = FALSE)
 ```
 
-## AUC Analysis
+`tumor_doubling_time()` reports doubling times per animal, and
+`trajectory_permutation_test()` gives a permutation test of whole trajectories
+at the declared unit of randomisation (`perm_spec(unit = "mouse")` or
+`"cage"`).
 
-AUC is one of the `tumor_growth_statistics()` models. Since v0.26.0 it is the
-area under each arm's fitted curve over the window in which every arm is
-evaluable (see `evaluable_days()`), and arms are compared by the ratio of their
-AUCs. Choose a p-value correction such as Holm; Dunnett and Tukey are not
-offered on this path. Each animal's own trapezoidal AUC is kept in
-`auc_analysis$individual` for description, as plotted below:
+# Drug synergy
 
-```{r auc}
-# Calculate AUC
-auc_results <- tumor_growth_statistics(
-  df = data_with_volume,
-  time_column = "Day",
-  volume_column = "Volume",
-  treatment_column = "Treatment",
-  id_column = "Mouse_ID",
-  cage_column = "Cage",
-  model_type = "auc",
-  p_adjust_method = "holm"
-)
-
-# Visualize AUC
-auc_individual <- auc_results$auc_analysis$individual
-p_auc <- plot_auc(
-  auc_individual,
-  group_column = intersect(c("Group", "Treatment"), names(auc_individual))[1],
-  title = "Area Under the Curve by Treatment"
-)
-print(p_auc)
-```
-
-# Survival Analysis
-
-The `survival_statistics` function performs survival analysis:
-
-```{r survival}
-# Perform survival analysis
-surv_results <- survival_statistics(
-  df = survival_synthetic_data,
-  time_column = "Time",
-  censor_column = "Event",
-  treatment_column = "Treatment",
-  id_column = "Mouse_ID"
-)
-
-# Print summary
-print_results(surv_results)
-```
-
-# Synergy Analysis
-
-## Bliss Independence
-
-The `bliss_independence()` function calculates Bliss synergy:
-
-```{r bliss}
-# Calculate Bliss synergy
-bliss_results <- bliss_independence(
-  data = combo_treatment_synthetic_data,
-  time_column = "Day",
-  volume_column = "Volume",
-  id_column = "Mouse_ID",
-  treatment_column = "Treatment",
-  cage_column = "Cage"
-)
-
-# Visualize Bliss synergy
-p_bliss <- plot_bliss(
-  bliss_results,
-  title = "Bliss Synergy Over Time",
-  ylab = "Bliss Synergy Score"
-)
-print(p_bliss)
-```
-
-## Synergy assessment
-
-The `analyze_drug_synergy()` function evaluates a combination against the Bliss
-independence expectation. A Loewe-style Combination Index was removed in v0.21.0:
-what it computed was response additivity rather than Loewe additivity, and it
-labelled genuinely additive combinations antagonistic across most of the range
-where active single agents sit.
+Bliss independence compares the combination's growth inhibition with what two
+independently acting drugs would give. The verdict depends on the interval of
+the Bliss difference, not on its point estimate.
 
 ```{r synergy}
-# Bliss independence synergy on the four-arm design
-synergy_results <- analyze_drug_synergy(
-  combo_treatment_synthetic_data,
-  treatment_column = "Treatment",
-  volume_column    = "Volume",
-  time_column      = "Day",
-  id_column        = "Mouse_ID",
-  drug_a_name      = "HDACi",
-  drug_b_name      = "aPD1",
-  combo_name       = "HDACi + PD1",
-  control_name     = "Control",
-  n_boot           = 500
-)
-
-# The verdict is a label derived from three group means. Read it against the
-# bootstrap interval: a "Synergy" whose Bliss-excess interval spans zero is not
-# evidence of synergy.
-synergy_results$overall_assessment
-synergy_results$synergy_ci
+syn <- analyze_drug_synergy(m,
+  drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
+  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
+  cage_column = "Cage", n_boot = 500, boot_seed = 1, verbose = FALSE)
+syn$summary
+plot_drug_synergy(syn)
 ```
 
+The same comparison on every evaluable day:
 
-# Additional Features
-
-## Customizing Plots
-
-All plotting functions support customization:
-
-```{r custom_plot}
-# Customize growth rate plot
-p_custom <- plot_growth_rate(
-  results$growth_rates,
-  treatment_column = "Treatment",
-  growth_rate_column = "growth_rate",
-  title = "Customized Growth Rate Plot",
-  ylab = "Growth Rate (mm³/day)",
-  line_color = "blue",
-  point_size = 3,
-  theme = theme_bw()
-)
-print(p_custom)
+```{r synergy-trend}
+trend <- analyze_drug_synergy_over_time(m,
+  drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
+  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
+  min_time_point = 2, cage_column = "Cage", n_boot = 500, boot_seed = 1,
+  verbose = FALSE)
+plot_synergy_trend(trend)
 ```
 
-## Exporting Results
+# Dose-response
 
-You can export results to various formats:
+Dose-response analyses one agent's dose series against its control.
 
-```{r export}
-# Export results to CSV
-write.csv(results$summary, "tumor_growth_summary.csv", row.names = FALSE)
-
-# Save plots
-ggsave("growth_rate_plot.pdf", p, width = 10, height = 6)
+```{r dose}
+dr <- dose_response_statistics(m,
+  treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High"),
+  control_group_name = "Vehicle", cage_column = "Cage", verbose = FALSE)
+dr$summary_table
+dr$trend_test
 ```
 
-# Conclusion
+# Survival
 
-The `mouseExperiment` package provides a comprehensive set of tools for analyzing mouse tumor growth experiments. This vignette demonstrates the main functionality, but there are many more features available. For more information, see the package documentation and examples. 
+Survival needs one row per animal: its last record, carrying the event
+indicator. Here the unit of randomisation is the mouse. With
+`randomisation_unit = "cage"` the comparison becomes a cage-level permutation
+log-rank test instead.
+
+```{r survival}
+mm <- m[order(m$ID, m$Day), ]
+per_animal <- mm[!duplicated(mm$ID, fromLast = TRUE), ]
+surv <- survival_statistics(per_animal, reference_group = "Vehicle",
+                            verbose = FALSE)
+surv$method_used
+surv$results
+```
+
+Two arms (Drug_A High and the combination) have no events, so an ordinary Cox
+model has no finite estimate for them. `coxph` says so in its warning. The
+hazard ratios reported come from Firth's penalised likelihood
+(`method_used = "coxphf"`), which stays finite with zero events.
+
+# Body weight and the therapeutic window
+
+Body weight is modelled with the tumour's own mass subtracted
+(`adjust_tumor_weight = TRUE`). That needs the volume units, so they are
+declared rather than guessed.
+
+```{r weight}
+bw <- analyze_body_weight(m, volume_column = "Volume", volume_units = "mm3",
+                          cage_column = "Cage", reference_group = "Vehicle")
+bw$pairwise_comparisons
+```
+
+The therapeutic window puts efficacy (model-based TGI at the last evaluable
+day) beside tolerability (each arm's worst weight loss from its own baseline),
+each with an interval:
+
+```{r window}
+tw <- therapeutic_window_metric(m, volume_units = "mm3", cage_column = "Cage",
+                                reference_group = "Vehicle",
+                                n_boot = 500, boot_seed = 1)
+tw$window_table
+```
+
+# Planning the next study
+
+```{r power}
+# Animals per group for a standardised effect of 1.2, three groups
+apriori_power_analysis(effect_size = 1.2, n_groups = 3)
+```
+
+`apriori_power_simulation()` simulates whole studies with the same mixed model,
+including random slopes and dropout at a volume limit. Use at least 500
+simulations in practice.
+
+# Bayesian models
+
+`bayesian_tumor_growth()` and `bayesian_survival()` fit the Bayesian versions of
+the growth model and the survival model with brms. Priors are scaled to the
+data, and their strength is chosen with `prior_strength` or `tg_priors()`. The
+first fit compiles a Stan model, which takes about 30 seconds; later fits with
+the same structure reuse it.
+
+```{r bayes, eval = FALSE}
+two_arms <- subset(m, Treatment %in% c("Vehicle", "Drug_A High"))
+fit <- bayesian_tumor_growth(two_arms, cage_column = "Cage",
+                             priors = tg_priors(strength = "weakly_informative"),
+                             mcmc = tg_mcmc(chains = 4, iter = 1000))
+fit$treatment_effects
+```

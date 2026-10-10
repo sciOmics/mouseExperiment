@@ -58,50 +58,10 @@ with options for displaying mean values, error bars, and differentiation between
 extrapolated and non-extrapolated data points.
 }
 \examples{
-\dontrun{
-# Generate some example data
+set.seed(1)
 auc_data <- data.frame(
-  Subject = paste0("S", 1:20),
-  Group = rep(c("Control", "Treatment"), each = 10),
-  AUC = c(rnorm(10, 100, 15), rnorm(10, 70, 10)),
-  Extrapolated = c(rep(FALSE, 15), rep(TRUE, 5))
+  Group = rep(c("Vehicle", "Drug"), each = 8),
+  AUC   = c(stats::rnorm(8, 9000, 1500), stats::rnorm(8, 5000, 1000))
 )
-
-# Basic plot
-plot_auc(auc_data)
-
-# With mean, SEM error bars, and differentiation of extrapolated points
-plot_auc(
-  auc_data,
-  title = "Tumor Growth AUC by Group",
-  show_mean = TRUE,
-  error_bar_type = "SEM",
-  extrapolated_column = "Extrapolated"
-)
-
-# With custom colors, point size, and jitter width
-plot_auc(
-  auc_data,
-  colors = c("Control" = "blue", "Treatment" = "red"),
-  point_size = 3.5,
-  jitter_width = 0.3,
-  show_mean = TRUE,
-  error_bar_type = "SD"
-)
-
-# Specifying multiple plotting options
-group_colors <- c("Control" = "#1f77b4", "Treatment" = "#ff7f0e")
-plot_auc(
-  auc_data,
-  group_column = "Group",
-  colors = group_colors,
-  show_mean = TRUE,
-  error_bar_type = "CI",
-  extrapolated_column = "Extrapolated",
-  point_size = 3,
-  jitter_width = 0.15,
-  caption = "Custom visualization with color-coding and extrapolation markers"
-)
-}
-
+plot_auc(auc_data, error_bar_type = "SEM")
 }

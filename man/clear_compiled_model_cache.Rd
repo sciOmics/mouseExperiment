@@ -15,3 +15,6 @@ same Stan code was compiled earlier in the R session, which saves about
 20 s per fit. This empties that cache; set
 \code{options(mouseExperiment.cache_compiled_models = FALSE)} to turn it off.
 }
+\examples{
+clear_compiled_model_cache()
+}

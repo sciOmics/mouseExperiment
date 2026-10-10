@@ -59,22 +59,20 @@
 #'     constrained to be at least 0, and the 5-parameter curve is considered
 #'     only with at least 6 dose levels (CODE_REVIEW.md R20.18).}
 #'
-#' @import drc ggplot2 dplyr stats
+#' @import ggplot2 dplyr
+#' @importFrom drc drm LL.4 LL.5 ED modelFit
+#' @rawNamespace import(stats, except = c(filter, lag))
 #' @importFrom stats coef
 #' @importFrom stats lm
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # Load and prepare data
-#' data <- read.csv("dose_levels_synthetic_data.csv")
-#' data <- calculate_volume(data)
-#' data <- calculate_dates(data, start_date = "24-Mar", 
-#'                        date_format = "%d-%b", year = 2023)
-#'                        
-#' # Test for dose-response relationship
-#' results <- dose_response_statistics(data, dose_column = "Dose")
-#' }
+#' # One agent's dose series against its control
+#' dr <- dose_response_statistics(master_synthetic_data,
+#'   treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High"),
+#'   control_group_name = "Vehicle", cage_column = "Cage", verbose = FALSE)
+#' dr$summary_table
+#' dr$trend_test
 dose_response_statistics <- function(df, 
                                    dose_column = "Dose", 
                                    treatment_column = "Treatment",
@@ -765,7 +763,7 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
                                colour = "steelblue", formula = y ~ x) +
           ggplot2::theme_classic() +
           ggplot2::labs(title = "Dose-response residuals",
-                        subtitle = "Systematic curvature → wrong functional form",
+                        subtitle = "Systematic curvature \u2192 wrong functional form",
                         x = "Dose", y = "Residual")
       }, error = function(e) NULL)
 

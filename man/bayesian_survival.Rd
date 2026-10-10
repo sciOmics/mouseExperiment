@@ -205,6 +205,16 @@ heterogeneity (e.g., microbiome, handling, cohort). The frailty variance is
 reported in the \code{posterior_summary} random-effects block.
 }
 
+\examples{
+\donttest{
+# One row per animal: its last record carries the event indicator.
+m <- master_synthetic_data[order(master_synthetic_data$ID, master_synthetic_data$Day), ]
+per_animal <- m[!duplicated(m$ID, fromLast = TRUE), ]
+fit <- bayesian_survival(per_animal, reference_group = "Vehicle", n_chains = 2,
+                         n_warmup = 500, n_iter = 250, plots = FALSE)
+fit$summary
+}
+}
 \references{
 Bürkner, P.-C. (2017). brms: An R package for Bayesian multilevel models
 using Stan. \emph{Journal of Statistical Software}, 80(1), 1–28.

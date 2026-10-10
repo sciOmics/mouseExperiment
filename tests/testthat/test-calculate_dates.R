@@ -78,27 +78,13 @@ test_that("missing date column raises an error", {
   expect_error(calculate_dates(df, start_date = "2025-03-24"), "Date")
 })
 
-test_that("demo CSV dates round-trip correctly (combo dataset)", {
-  # R8.7: this test looked for the CSV under inst/sample_data/, where nothing has
-  # ever been shipped — the demo CSVs live in data/. system.file() returned "",
-  # the guard read that as "demo data not installed", and the test skipped on
-  # every run since it was written. Both guards below are now hard failures: the
-  # file is in the repository, so its absence is a packaging regression, and a
-  # missing Date column in a fixture whose whole purpose is dates is a defect.
-  demo_path <- system.file("data", "combo_treatment_synthetic_data.csv",
-                           package = "mouseExperiment")
-  if (!nzchar(demo_path) || !file.exists(demo_path)) {
-    # devtools::load_all() does not always route system.file() to the source
-    # tree; fall back to the repo layout rather than giving up.
-    demo_path <- testthat::test_path("..", "..", "data",
-                                     "combo_treatment_synthetic_data.csv")
-  }
-  expect_true(file.exists(demo_path),
-              info = "combo demo CSV must ship in data/")
-
-  raw <- utils::read.csv(demo_path, stringsAsFactors = FALSE)
+test_that("the combo dataset's dates round-trip correctly", {
+  # R8.7 found this test skipping on every run; it then read the demo CSV from
+  # data/. Since v0.29.0 (R20.52) the dataset itself is that CSV, so the
+  # Date-format fixture is simply the package's own data.
+  raw <- combo_treatment_synthetic_data
   expect_true("Date" %in% colnames(raw),
-              info = "the combo demo CSV is the Date-format fixture")
+              info = "the combo dataset is the Date-format fixture")
 
   out <- suppressMessages(
     calculate_dates(raw, start_date = "03/24/2025", date_format = "%m/%d/%Y")

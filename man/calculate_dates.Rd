@@ -34,19 +34,14 @@ returns a new data frame; if in_place=TRUE, modifies the input data frame and re
 Calculate the number of days for measurements
 }
 \examples{
-\dontrun{
-# Return a new data frame with days
-df_with_days <- calculate_dates(synthetic_data, start_date = "2022-02-24")
+# "MM/DD/YYYY" dates; the format is detected
+d <- calculate_dates(combo_treatment_synthetic_data, start_date = "03/24/2025")
+range(d$Day)
 
-# Modify the original data frame in place
-synthetic_data <- calculate_dates(synthetic_data, start_date = "2022-02-24", in_place = TRUE)
+# "DD-Mon" dates carry no year, so supply it
+d <- calculate_dates(dose_levels_synthetic_data, start_date = "24-Mar", year = 2025)
 
-# With "DD-Mon" format dates
-dose_data <- calculate_dates(dose_data, start_date = "24-Mar", 
-                             date_format = "\%d-\%b", year = 2023)
-                             
-# With "MM/DD/YYYY" format dates
-combo_data <- calculate_dates(combo_data, start_date = "03/24/2025", 
-                             date_format = "\%m/\%d/\%Y")
-}
+# An explicit format skips the detection
+d <- calculate_dates(combo_treatment_synthetic_data, start_date = "03/24/2025",
+                     date_format = "\%m/\%d/\%Y")
 }

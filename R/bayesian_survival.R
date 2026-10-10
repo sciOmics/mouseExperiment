@@ -158,6 +158,15 @@
 #'   scale_fill_manual scale_colour_manual scale_y_continuous
 #'   facet_wrap labs theme theme_classic
 #' @importFrom survival Surv survfit
+#' @examples
+#' \donttest{
+#' # One row per animal: its last record carries the event indicator.
+#' m <- master_synthetic_data[order(master_synthetic_data$ID, master_synthetic_data$Day), ]
+#' per_animal <- m[!duplicated(m$ID, fromLast = TRUE), ]
+#' fit <- bayesian_survival(per_animal, reference_group = "Vehicle", n_chains = 2,
+#'                          n_warmup = 500, n_iter = 250, plots = FALSE)
+#' fit$treatment_effects
+#' }
 #' @export
 bayesian_survival <- function(
   df,
@@ -376,7 +385,7 @@ bayesian_survival <- function(
   if (isTRUE(verbose)) {
     message("Fitting Bayesian parametric survival model (",
             family, ") via brms (",
-            n_chains, " chains × ", n_iter, " post-warmup draws, ",
+            n_chains, " chains \u00d7 ", n_iter, " post-warmup draws, ",
             n_warmup, " warmup)...")
   }
 
@@ -489,7 +498,7 @@ bayesian_survival <- function(
       prior_strength = prior_strength
     ),
     methods = list(
-      engine          = paste0("brms (", n_chains, " chains × ",
+      engine          = paste0("brms (", n_chains, " chains \u00d7 ",
                                n_iter, " draws + ", n_warmup,
                                " warmup, seed = ", seed, ")"),
       effect_type     = "Time_Ratio (AFT parameterisation)",
@@ -805,8 +814,8 @@ bs_survival_curves_plot_from <- function(curves_df, km_df, family, time_label,
       title    = "Bayesian Parametric Survival Curves",
       subtitle = paste0(
         tools::toTitleCase(family),
-        " model — solid = posterior median, band = 95 % CrI,",
-        " dashed = Kaplan–Meier"
+        " model \u2014 solid = posterior median, band = 95\u202f% CrI,",
+        " dashed = Kaplan\u2013Meier"
       ),
       x      = time_label,
       y      = "Survival Probability",

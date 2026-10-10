@@ -69,19 +69,11 @@ Common volume estimation formulas in the literature include:
 }
 }
 \examples{
-\dontrun{
-# Return a new data frame with volume using default ellipsoid formula
-df_with_volume <- calculate_volume(synthetic_data)
+# Ellipsoid (pi * L * W^2 / 6) from length and width, the default
+d <- calculate_volume(combo_treatment_synthetic_data)
+summary(d$Volume)
 
-# Use a different formula (modified ellipsoid)
-df_with_volume <- calculate_volume(synthetic_data, formula = "modified_ellipsoid")
-
-# Modify the original data frame in place
-synthetic_data <- calculate_volume(synthetic_data, in_place = TRUE)
-
-# Use a 3D formula with height measurements
-df_with_volume <- calculate_volume(synthetic_data, 
-                                  height_column = "Height",
-                                  formula = "ellipsoid_3axis")
-}
+# Three-axis ellipsoid when a height was measured
+d <- calculate_volume(master_synthetic_data, height_column = "Height",
+                      formula = "ellipsoid_3axis")
 }

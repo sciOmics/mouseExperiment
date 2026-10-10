@@ -278,6 +278,15 @@ every plot reactively from the data frames so user UI changes (colour,
 group order, …) take effect without re-running the analysis.
 }
 
+\examples{
+\donttest{
+# Compiles a Stan model on first use (about 30 s), then samples.
+two_arms <- subset(master_synthetic_data, Treatment \%in\% c("Vehicle", "Drug_A High"))
+fit <- bayesian_tumor_growth(two_arms, cage_column = "Cage", n_chains = 2,
+                             n_warmup = 500, n_iter = 250, plots = FALSE)
+fit$summary
+}
+}
 \references{
 Bürkner, P.-C. (2017). brms: An R package for Bayesian multilevel models
 using Stan. \emph{Journal of Statistical Software}, 80(1), 1–28.

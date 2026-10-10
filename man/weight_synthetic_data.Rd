@@ -7,33 +7,29 @@
 \format{
 A data frame with 100 rows and 5 variables:
 \describe{
-\item{Date}{Measurement date, from which elapsed days are derived}
-\item{Ear Tag}{Animal identifier}
-\item{Treatment}{Treatment group (DMSO, Drug A, Drug B, Drug A+B)}
-\item{Tumor Volume}{Pre-calculated tumour volume}
-\item{Mouse Weight}{Body weight in grams}
+\item{Date}{Measurement date, "Month D" without a year (1 to 15 March).
+Convert with \code{\link[=calculate_dates]{calculate_dates()}}, start date "March 1", year 2025.}
+\item{Ear Tag}{Animal number 1 to 5, repeated in every arm, so an animal
+is identified by treatment and ear tag together.}
+\item{Treatment}{"DMSO", "Drug A", "Drug B" or "Drug A + B".}
+\item{Tumor Volume}{Tumour volume (mm³), already calculated.}
+\item{Mouse Weight}{Body weight (g).}
 }
 }
 \source{
-Synthetic data generated using random number generation
+Synthetic; \code{data-raw/weight_synthetic_data.csv}.
 }
 \usage{
 weight_synthetic_data
 }
 \description{
-Pre-calculated tumour volumes paired with body weights, used to exercise the
-toxicity path (\code{analyze_body_weight()}, \code{therapeutic_window_metric()}). Dates
-are supplied instead of a numeric study day, so it also exercises
-\code{calculate_dates()}.
-}
-\details{
-Shipped as CSV rather than \code{.rda}, for the same reason as
-\link{necrotic_synthetic_data} (R18.3).
+Tumour volumes with body weights, for the toxicity functions
+(\code{\link[=analyze_body_weight]{analyze_body_weight()}}, \code{\link[=therapeutic_window_metric]{therapeutic_window_metric()}}). The column names
+contain spaces, as exported spreadsheets often do. It is the dashboard's
+"Weight" demo.
 }
 \examples{
-\dontrun{
-d <- utils::read.csv(system.file("data", "weight_synthetic_data.csv",
-                                 package = "mouseExperiment"))
-}
+d <- calculate_dates(weight_synthetic_data, start_date = "March 1", year = 2025)
+head(d)
 }
 \keyword{datasets}

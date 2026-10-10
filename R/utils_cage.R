@@ -90,7 +90,7 @@ classify_cage_structure <- function(df, cage_column, id_column,
       "At least one treatment is housed in a single cage (",
       paste(names(cages_per_treatment)[cages_per_treatment < 2L],
             collapse = ", "),
-      "). Cage and treatment are completely confounded for those arms — any ",
+      "). Cage and treatment are completely confounded for those arms \u2014 any ",
       "cage effect is inseparable from the treatment effect and no model can ",
       "disentangle them.")
   )
@@ -139,7 +139,7 @@ resolve_cage_handling <- function(cage_info, handle_cage_effects,
           "Cage is nested within treatment with replication (min ",
           cage_info$min_cages_per_treatment,
           " cages per arm); included as a random intercept (1|cage). ",
-          "A fixed effect is not estimable here — it is aliased with ",
+          "A fixed effect is not estimable here \u2014 it is aliased with ",
           "treatment.")),
       nested_confounded = list(
         fixed = FALSE, random = FALSE,
