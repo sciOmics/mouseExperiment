@@ -142,12 +142,20 @@ tgs_path_auc <- function(auc_analysis,
                   "model_type = 'auc'. Use 'vs_reference' or 'all_pairs'.",
                   call. = FALSE)
   )
+  # R20.85: intervals at the level the p-value adjustment implies, so an
+  # interval that excludes no difference is never shown beside an adjusted
+  # p-value that is not significant. Bonferroni and Holm get Bonferroni-level
+  # intervals (Holm has no interval of its own); BH and none have no
+  # simultaneous interval, so theirs are the 95% intervals.
+  ci_adj <- me_auc_ci_adjustment(comparison_spec$padjust_method, length(pairs))
   pairwise_df <- do.call(rbind, lapply(pairs, function(pr) {
     lr_draw <- log(auc_draw[, pr[1]]) - log(auc_draw[, pr[2]])
     lr_hat  <- log(auc_hat[[pr[1]]]) - log(auc_hat[[pr[2]]])
     se      <- stats::sd(lr_draw)
     z       <- lr_hat / se
     diff_draw <- auc_draw[, pr[1]] - auc_draw[, pr[2]]
+    a2 <- (1 - ci_adj$level) / 2
+    zq <- stats::qnorm(1 - a2)
     data.frame(
       comparison  = paste(pr[1], "-", pr[2]),
       estimate    = auc_hat[[pr[1]]] - auc_hat[[pr[2]]],
@@ -158,6 +166,13 @@ tgs_path_auc <- function(auc_analysis,
       ratio_upper = exp(stats::quantile(lr_draw, 0.975, names = FALSE)),
       z_value     = z,
       p_value     = 2 * stats::pnorm(-abs(z)),
+      CI_Adjusted_Lower = stats::quantile(diff_draw, a2, names = FALSE),
+      CI_Adjusted_Upper = stats::quantile(diff_draw, 1 - a2, names = FALSE),
+      # On the scale of the test, so they agree exactly with p_adjusted
+      # under Bonferroni.
+      Ratio_CI_Adjusted_Lower = exp(lr_hat - zq * se),
+      Ratio_CI_Adjusted_Upper = exp(lr_hat + zq * se),
+      CI_Adjustment = ci_adj$label,
       stringsAsFactors = FALSE)
   }))
   pairwise_df$p_adjusted <- stats::p.adjust(pairwise_df$p_value,

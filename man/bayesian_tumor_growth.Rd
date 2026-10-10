@@ -213,7 +213,8 @@ the intercept-only path, falls back to log-linear OLS per
 animal and the credible-interval columns reflect OLS confidence
 intervals (Round 2 E.3).}
 \item{\code{data_summary}}{Descriptive statistics by treatment group and
-day.}
+day, on the volume scale: mean, SD, SEM and n (measured volumes only),
+plus the geometric mean with \code{transform = "log"}.}
 \item{\code{loo_diagnostics}}{PSIS-LOO summary with \code{k_threshold},
 \code{n_high_k}, the per-observation \code{pareto_k} and any
 \code{warnings}; kept when loo warns (R20.35).}

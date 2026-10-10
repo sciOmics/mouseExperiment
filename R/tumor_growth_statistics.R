@@ -108,7 +108,7 @@ tgs_compute_cage_effects <- function(analysis_df, cage_column, treatment_column,
           Treatment = unique(group_data[[treatment_column]]),
           mean_volume = mean(group_data[[volume_column]], na.rm = TRUE),
           sd_volume = stats::sd(group_data[[volume_column]], na.rm = TRUE),
-          n = nrow(group_data)
+          n = sum(is.finite(as.numeric(group_data[[volume_column]])))  # R20.57
         )
       } else {
         # Skip empty groups
@@ -132,21 +132,6 @@ tgs_compute_cage_effects <- function(analysis_df, cage_column, treatment_column,
   cage_analysis
 }
 
-#' Fit lme4 mixed-effects model using caller-specified structure
-#'
-#' @param analysis_df Transformed analysis data frame
-#' @param volume_column Column name for tumor volume
-#' @param time_column Column name for time points
-#' @param treatment_column Column name for treatment groups
-#' @param id_column Column name for subject IDs
-#' @param cage_column Column name for cage identifiers
-#' @param random_effects_specification One of "intercept_only", "slope", "none"
-#' @param cage_handling Output of \code{resolve_cage_handling()}: a list with
-#'   \code{fixed} / \code{random} logicals and a \code{reason} string.
-#' @param verbose Print progress messages
-#' @return List with model, model_selection, and best_model
-#' @noRd
-#' @keywords internal
 #' The tumour-growth ANOVA, growth rate first -- CODE_REVIEW.md R20.31
 #'
 #' With `Volume ~ Day * Treatment`, treatment coding and an uncentred Day, the
@@ -234,6 +219,21 @@ tgs_growth_first_anova <- function(model, time_column, treatment_column, centre_
   out
 }
 
+#' Fit lme4 mixed-effects model using caller-specified structure
+#'
+#' @param analysis_df Transformed analysis data frame
+#' @param volume_column Column name for tumor volume
+#' @param time_column Column name for time points
+#' @param treatment_column Column name for treatment groups
+#' @param id_column Column name for subject IDs
+#' @param cage_column Column name for cage identifiers
+#' @param random_effects_specification One of "intercept_only", "slope", "none"
+#' @param cage_handling Output of \code{resolve_cage_handling()}: a list with
+#'   \code{fixed} / \code{random} logicals and a \code{reason} string.
+#' @param verbose Print progress messages
+#' @return List with model, model_selection, and best_model
+#' @noRd
+#' @keywords internal
 tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
                                 treatment_column, id_column, cage_column,
                                 random_effects_specification,
@@ -387,42 +387,45 @@ tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
 
 #' Compute descriptive summary statistics by treatment and time
 #'
-#' @param analysis_df Transformed analysis data frame
+#' @param analysis_df The data before any transform (R20.57)
 #' @param treatment_column Column name for treatment groups
 #' @param time_column Column name for time points
 #' @param volume_column Column name for tumor volume
+#' @param zero_floor With a log transform, the zero floor; adds the geometric
+#'   mean. `NULL` otherwise.
 #' @return Data frame of summary statistics or NULL on error
 #' @noRd
 #' @keywords internal
 tgs_compute_summary <- function(analysis_df, treatment_column, time_column,
-                                volume_column) {
-  # Create a basic summary of the data
+                                volume_column, zero_floor = NULL) {
+  # CODE_REVIEW.md R20.57: callers pass the data before any transform, so the
+  # summary is on the volume scale. It was the log scale labelled as volume
+  # (6.97 shown for 1,456 mm3), and n counted rows with no volume, which
+  # shrank the SEM. With a log transform the geometric mean, the model's
+  # scale back-transformed, is added, zeros taken at the floor.
   tryCatch({
-    # Split data by treatment and time
-    split_data <- split(analysis_df, list(analysis_df[[treatment_column]], analysis_df[[time_column]]))
-    
-    # Calculate summary statistics for each group
+    split_data <- split(analysis_df, list(analysis_df[[treatment_column]],
+                                          analysis_df[[time_column]]), drop = TRUE)
     summary_list <- lapply(split_data, function(group_data) {
-      if (nrow(group_data) > 0) {
-        # Only create entries for non-empty groups
-        data.frame(
-          Treatment = unique(group_data[[treatment_column]]),
-          Day = unique(group_data[[time_column]]),
-          mean_volume = mean(group_data[[volume_column]], na.rm = TRUE),
-          sd_volume = stats::sd(group_data[[volume_column]], na.rm = TRUE),
-          n = nrow(group_data)
-        )
-      } else {
-        # Skip empty groups
-        NULL
+      v <- as.numeric(group_data[[volume_column]])
+      v <- v[is.finite(v)]
+      if (!length(v)) return(NULL)
+      out <- data.frame(
+        Treatment   = unique(group_data[[treatment_column]]),
+        Day         = unique(group_data[[time_column]]),
+        mean_volume = mean(v),
+        sd_volume   = if (length(v) > 1L) stats::sd(v) else NA_real_,
+        n           = length(v)
+      )
+      if (!is.null(zero_floor)) {
+        out$geometric_mean_volume <- exp(mean(log(pmax(v, zero_floor))))
       }
+      out
     })
-    
-    # Filter out NULL results and combine
-    summary_list <- summary_list[!sapply(summary_list, is.null)]
+    summary_list <- summary_list[!vapply(summary_list, is.null, logical(1))]
     if (length(summary_list) > 0) {
-      # Combine results and calculate standard error
       summary_df <- do.call(rbind, summary_list)
+      rownames(summary_df) <- NULL
       summary_df$sem_volume <- summary_df$sd_volume / sqrt(summary_df$n)
       summary_df
     } else {
@@ -816,7 +819,7 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'   \item{diagnostics}{Model diagnostic information including residuals, random effects, and variance components}
 #'   \item{auc_data}{Area under the curve data and statistics (when model_type="auc")}
 #'   \item{plots}{List of standard plots for visualizing results}
-#'   \item{data_summary}{Descriptive statistics of the processed data by treatment and time point, including mean, SD, and SEM of volumes}
+#'   \item{data_summary}{Descriptive statistics by treatment and time point, on the volume scale whatever the transform: mean, SD, SEM and n (measured volumes only), plus the geometric mean (zeros at the floor) with `transform = "log"`}
 #' }
 #'
 #' @details
@@ -1041,7 +1044,8 @@ tumor_growth_statistics <- function(df,
     as.character(analysis_df[[cage_column]]))
 
   # Cage effect analysis
-  cage_analysis <- tgs_compute_cage_effects(analysis_df, cage_column, treatment_column, volume_column)
+  # R20.57: the cage means are descriptive, so on the volume scale.
+  cage_analysis <- tgs_compute_cage_effects(auc_df, cage_column, treatment_column, volume_column)
   cage_effects <- cage_analysis$effects
 
   # Model fitting and selection.
@@ -1097,7 +1101,9 @@ tumor_growth_statistics <- function(df,
   }
 
   # Create a basic summary of the data
-  data_summary <- tgs_compute_summary(analysis_df, treatment_column, time_column, volume_column)
+  # R20.57: from the untransformed rows the model used.
+  data_summary <- tgs_compute_summary(auc_df, treatment_column, time_column, volume_column,
+                                      zero_floor = if (transform == "log") floor_value)
 
   # Only for auc model type or when additional AUC analysis is requested
   if (model_type == "auc" || (model_type == "lme4" && include_diagnostics)) {
