@@ -139,12 +139,111 @@ register_bayes_resume <- function(kind,
       session  = app_session,
       inputId  = "main_nav",
       selected = tab_name)
-    if (job$status %in% c("queued", "running")) {
+    # No window for a job that runs while its results are on screen (R20.D6).
+    if (job$status %in% c("queued", "running") && !is.null(modal_title)) {
       show_analysis_modal(
         modal_title,
-        paste("Reconnected to a fit started in a previous session.",
+        paste("Reconnected to an analysis started in a previous session.",
               modal_detail),
         cancel_id = if (!is.null(cancel_input)) session$ns(cancel_input))
     }
   })
+}
+
+# ---- Long frequentist analyses on the worker (CODE_REVIEW.md R20.D6) --------
+#
+# The Bayesian fits already ran on the background worker (R20.D62). The power
+# simulation (121 s with its defaults, and reachable before any upload), the
+# randomisation test (22 s at 999 permutations, 145 s at 9,999) and the
+# body-weight model (15 s) ran in the Shiny process, and every session on the
+# server froze until they finished. They now use the same queue: one job per
+# browser, a progress window with Cancel, and the module's finalizers.
+
+#' Run a call on the worker, bringing its warnings back with the value
+#'
+#' The registry collects a future's value with its warnings suppressed, and
+#' the dashboard shows backend warnings (R20.D34), so they travel in the
+#' result as `analysis_warnings`, the field `safe_analysis()` uses.
+#' @keywords internal
+.run_capturing <- function(fun, args) {
+  w <- character()
+  value <- withCallingHandlers(do.call(fun, args),
+    warning = function(x) {
+      w <<- c(w, conditionMessage(x))
+      invokeRestart("muffleWarning")
+    },
+    message = function(m) invokeRestart("muffleMessage"))
+  if (length(w) && (is.list(value) || is.null(value))) {
+    if (is.null(value)) value <- list()   # a NULL result keeps its reason
+    value$analysis_warnings <- unique(w)
+  }
+  value
+}
+
+#' A registry task that runs `fun(args)` on the worker
+#'
+#' @param fun A function the worker can call: a package function such as
+#'   `mouseExperiment::apriori_power_simulation`, or one whose environment is
+#'   the base environment.
+#' @param args Named list of arguments.
+#' @param packages Packages the worker attaches.
+#' @return `list(fun, args, packages)` for [launch_job()].
+#' @keywords internal
+background_task <- function(fun, args, packages = "mouseExperiment") {
+  run <- .run_capturing
+  environment(run) <- baseenv()
+  list(fun = run, args = list(fun = fun, args = args), packages = packages)
+}
+
+#' Launch a long analysis on the worker
+#'
+#' [launch_tg_bayes_job()], made general. One job per browser (R20.D7): with
+#' one already queued or running, it says so and returns NULL.
+#'
+#' @param kind Registry kind, labelled by `.kind_to_label()`.
+#' @param task From [background_task()].
+#' @param context Passed to the finalizers.
+#' @param modal_title,modal_detail The progress window, or `modal_title = NULL`
+#'   for none (the randomisation test runs while its results are on screen).
+#' @param cancel_input Unnamespaced id of the window's Cancel button.
+#' @inheritParams attach_bayes_poller
+#' @return The job id, or NULL when this browser already has a job.
+#' @keywords internal
+launch_background_job <- function(kind, task, context = NULL,
+                                  input, output, session, rv, job_id_field,
+                                  modal_title = NULL, modal_detail = NULL,
+                                  cancel_input = NULL,
+                                  finalize_success, finalize_failure,
+                                  finalize_cancellation, finalize_lost = NULL) {
+  sid <- rv$session_id
+  if (is.null(sid) || identical(sid, SID_NONE)) {
+    sid <- make_local_sid()
+    rv$session_id <- sid
+  }
+  if (!is.null(busy <- active_job(sid))) {
+    shiny::showNotification(sprintf(paste0(
+      "%s from this browser is already %s. Wait for it, or cancel it from the ",
+      "banner at the top of the page."),
+      .kind_to_label(busy$kind),
+      if (identical(busy$status, "queued")) "waiting" else "running"),
+      type = "warning", duration = 8)
+    return(invisible(NULL))
+  }
+  if (!is.null(modal_title)) {
+    show_analysis_modal(modal_title, modal_detail,
+                        cancel_id = if (!is.null(cancel_input)) session$ns(cancel_input))
+  }
+  job_id <- launch_job(sid, kind, task = task, context = context)
+  rv[[job_id_field]] <- job_id
+  attach_bayes_poller(input, output, session, rv, job_id_field,
+                      finalize_success, finalize_failure,
+                      finalize_cancellation, finalize_lost)
+  invisible(job_id)
+}
+
+#' A failed background job as `safe_analysis()` reports a failure
+#' @keywords internal
+background_failure <- function(err_msg, module) {
+  log_error(sprintf("analysis_failed | module=%s | error=%s", module, err_msg))
+  list(error = TRUE, message = translate_error(err_msg %||% "unknown error"))
 }

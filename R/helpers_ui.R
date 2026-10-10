@@ -26,7 +26,7 @@ show_analysis_modal <- function(
     # R20.D7: a Bayesian fit can be cancelled from here; the banner only
     # lists fits when the page loads.
     footer    = if (!is.null(cancel_id))
-                  shiny::actionButton(cancel_id, "Cancel fit", class = "btn-default btn-sm"),
+                  shiny::actionButton(cancel_id, "Cancel", class = "btn-default btn-sm"),
     easyClose = FALSE,
     size      = "s",
     shiny::tags$div(

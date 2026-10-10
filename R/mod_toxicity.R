@@ -553,6 +553,19 @@ toxicityUI <- function(id) {
 toxicity_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
 
+  # R20.D6: the body-weight model's Cancel button, and Resume from the banner.
+  register_bayes_resume(
+    kind = "bw_model", tab_name = "Toxicity",
+    modal_title  = "Fitting the body-weight model…",
+    modal_detail = "Results will appear automatically when complete.",
+    input = input, output = output, session = session, rv = rv,
+    job_id_field = "tox_job_id",
+    finalize_success      = .finalize_bw_success,
+    finalize_failure      = .finalize_bw_failure,
+    finalize_cancellation = .finalize_bw_cancellation,
+    finalize_lost         = .finalize_bw_lost,
+    cancel_input          = "tox_cancel_job")
+
 
   # D.7: this was an unconditional `rv$tox_results <- NULL`. `rv` is created empty
   # in app.R and each module mounts once, so the assignment never cleared anything
@@ -766,9 +779,6 @@ toxicity_server <- function(id, rv) {
 
     output$tox_status_msg <- renderUI({ status_alert("Running analysis...", "info") })
 
-    show_analysis_modal("Running toxicity analysis…", "Results will appear automatically when complete.")
-    on.exit(shiny::removeModal(), add = TRUE)
-
     results            <- list()
     results$model_type <- model_type
 
@@ -779,25 +789,19 @@ toxicity_server <- function(id, rv) {
       baseline_raw <- input$tox_baseline_day %||% "first"
       baseline_day <- if (baseline_raw == "first") NULL else as.numeric(baseline_raw)
 
-      results$mixed_model <- safe_analysis(module = "tox_mixed_model", {
-        mouseExperiment::analyze_body_weight(
-          df = data, weight_column = wt_col, time_column = time_col,
-          treatment_column = tx_col, id_column = id_col,
-          volume_column = if (has_vol) vol_col else NULL,
-          sex_column = sex_col, cage_column = cage_col,
-          adjust_tumor_weight = adjust, tumor_density = density,
-          volume_units = units,
-          covariates = covs, estimation = est_method, reference_group = ref_group
-        )
-      })
-
       # R20-D.H / package R20.23: with a removal-reason column, weight-loss
       # removals are events, planned ends censoring, and other removals
       # competing risks. Without one, an early end is censoring.
       rr <- removal_reason_spec(rv)
       if (!is.null(rr) && !has_col(data, rr$column)) rr <- NULL
-      results$weight_loss <- safe_analysis(module = "tox_threshold", {
-        mouseExperiment::weight_loss_threshold(
+
+      # R20.D6: the body-weight model (about 15 s) runs on the background
+      # worker; the rest of this analysis follows in .finalize_bw_success().
+      rv$tox_pending <- list(
+        results = results, data = data, model_type = model_type,
+        cols = list(tx = tx_col, id = id_col, cage = cage_col, time = time_col,
+                    wt = wt_col),
+        wl_args = list(
           df = data, weight_column = wt_col, time_column = time_col,
           treatment_column = tx_col, id_column = id_col,
           # Backend R3.25: cage is part of the mouse key, so reused IDs across
@@ -809,44 +813,34 @@ toxicity_server <- function(id, rv) {
           threshold = threshold, baseline_day = baseline_day, reference_group = ref_group,
           removal_reason_column = if (!is.null(rr)) rr$column,
           weight_loss_reasons   = reasons_in(rr, "weight"),
-          planned_end_reasons   = reasons_in(rr, "planned")
-        )
-      })
-
-      # R20.D34 / R20.D31: plot the body-weight model's own net weight rather
-      # than re-deriving it here with a hard-coded mm3 conversion. Lines are
-      # drawn per animal (the backend's treatment + ID + cage key).
-      mm <- results$mixed_model
-      results$trajectory_data <- if (!isTRUE(mm$error) && !is.null(mm$weight_data)) {
-        wd <- mm$weight_data
-        td <- data.frame(ID = as.character(wd$.MouseKey),
-                         Treatment = as.character(wd$Treatment),
-                         Day = as.numeric(wd$Day), Weight = as.numeric(wd$Net_Weight),
-                         stringsAsFactors = FALSE)
-        td <- td[!is.na(td$Weight) & !is.na(td$Day), ]
-        attr(td, "weight_label") <- if (isTRUE(mm$model_info$adjust_tumor))
-          "Net body weight (g, tumour mass removed)" else "Body weight (g)"
-        td
-      } else tryCatch({
-        # The model failed: show gross weight, labelled as such.
-        td <- data.frame(
-          ID        = animal_key(data[[tx_col]], data[[id_col]],
-                                 if (has_col(data, cage_col)) data[[cage_col]]),
-          Treatment = as.character(data[[tx_col]]),
-          Day       = as.numeric(data[[time_col]]),
-          Weight    = as.numeric(data[[wt_col]]),
-          stringsAsFactors = FALSE
-        )
-        td <- td[!is.na(td$Weight) & !is.na(td$Day), ]
-        attr(td, "weight_label") <- "Gross body weight (g)"
-        td
-      }, error = function(e) NULL)
-
-      n_err   <- sum(vapply(results[c("mixed_model", "weight_loss")],
-                             function(x) isTRUE(x$error), logical(1)))
-      n_total <- 2L
+          planned_end_reasons   = reasons_in(rr, "planned")))
+      bw_args <- list(
+        df = data, weight_column = wt_col, time_column = time_col,
+        treatment_column = tx_col, id_column = id_col,
+        volume_column = if (has_vol) vol_col else NULL,
+        sex_column = sex_col, cage_column = cage_col,
+        adjust_tumor_weight = adjust, tumor_density = density,
+        volume_units = units,
+        covariates = covs, estimation = est_method, reference_group = ref_group)
+      launch_background_job(
+        kind = "bw_model",
+        task = background_task(mouseExperiment::analyze_body_weight, bw_args),
+        context = list(pending = rv$tox_pending),   # survives a page reload
+        input = input, output = output, session = session, rv = rv,
+        job_id_field = "tox_job_id",
+        modal_title  = "Fitting the body-weight model…",
+        modal_detail = "It runs on the background worker, so other users are not held up.",
+        cancel_input = "tox_cancel_job",
+        finalize_success      = .finalize_bw_success,
+        finalize_failure      = .finalize_bw_failure,
+        finalize_cancellation = .finalize_bw_cancellation,
+        finalize_lost         = .finalize_bw_lost)
+      return()
 
     } else {
+      show_analysis_modal("Running toxicity analysis…", "Results will appear automatically when complete.")
+      on.exit(shiny::removeModal(), add = TRUE)
+
       # Backend v0.8.0+ / v0.7.0+: the endpoint estimand and the mouse-level
       # bootstrap. Defaults are the statistically correct ones; "survivors"
       # exists only to reproduce pre-0.8.0 figures. CODE_REVIEW.md R3.D9.
@@ -877,46 +871,7 @@ toxicity_server <- function(id, rv) {
       n_total <- 1L
     }
 
-    rv$tox_results <- results
-    updateTabsetPanel(session, "tox_results_tabs", selected = "Summary")
-
-    # Store treatment groups for colour/order pickers
-    rv$tox_plot_groups <- if (!is.null(results$trajectory_data) && nrow(results$trajectory_data) > 0)
-      unique(as.character(results$trajectory_data$Treatment))
-    else if (!is.null(tx_col) && has_col(data, tx_col))
-      unique(as.character(data[[tx_col]]))
-    else NULL
-
-    # Data order (so colours match the other tabs), limited to the arms the
-    # therapeutic-window table reports.
-    rv$tox_et_plot_groups <- if (model_type == "et" && !is.null(tx_col) &&
-                                 has_col(data, tx_col)) {
-      grps    <- unique(as.character(data[[tx_col]]))
-      twm_tbl <- results$twm$window_table
-      if (!isTRUE(results$twm$error) && !is.null(twm_tbl))
-        grps <- grps[grps %in% twm_tbl$Treatment]
-      grps
-    } else NULL
-
-    # R20.D34: the backend's warnings are shown, not dropped; a failed
-    # analysis is reported as a failure with its message.
-    analyses <- if (model_type == "bw") results[c("mixed_model", "weight_loss")] else list(results$twm)
-    failed   <- Filter(function(x) isTRUE(x$error), analyses)
-    if (n_err == n_total) {
-      msgs <- unique(vapply(failed, function(x) x$message %||% "", character(1L)))
-      output$tox_status_msg <- renderUI({
-        status_alert(paste("Analysis failed:", paste(msgs, collapse = "; ")), "danger")
-      })
-    } else if (n_err > 0) {
-      msgs <- unique(vapply(failed, function(x) x$message %||% "", character(1L)))
-      output$tox_status_msg <- renderUI(tagList(
-        status_alert(sprintf("%d of %d analyses failed: %s", n_err, n_total,
-                             paste(msgs, collapse = "; ")), "warning"),
-        completion_status(Filter(function(x) !isTRUE(x$error), analyses),
-                          "The other analysis completed successfully!")))
-    } else {
-      output$tox_status_msg <- renderUI(completion_status(analyses))
-    }
+    .tox_finish(results, model_type, data, tx_col, n_err, n_total, output, session, rv)
   })
 
   # ---- Summary ----

@@ -479,10 +479,63 @@ lmm_power_note <- function(st) {
   )
 }
 
+# ---- R20.D6: the simulation's finalizers (worker -> this session) ------------
+
+.finalize_power_success <- function(result, context, input, output, session, rv) {
+  shiny::removeModal()
+  log_info(sprintf("analysis_complete | module=power_lmm | elapsed_s=%.2f",
+                   round(result$elapsed_seconds %||% NA_real_, 2)))
+  rv$ap_results <- list(
+    scenario_table    = result$power_table,
+    power_curve_data  = result$power_curve_data,
+    sensitivity_table = NULL,
+    mode              = "apriori_lmm",
+    ap_submode        = "find_power",
+    lmm_params        = result$params,
+    lmm_attrition     = result$attrition
+  )
+  shinyjs::runjs("window.trackAnalysisComplete('power', true);")
+  output$pw_status_msg <- shiny::renderUI(
+    completion_status(list(result), "LMM simulation completed."))
+  shiny::updateTabsetPanel(session, "pw_ap_results_tabs", selected = "Summary")
+}
+
+.finalize_power_failure <- function(err_msg, input, output, session, rv) {
+  shiny::removeModal()
+  res <- background_failure(err_msg, "power_lmm")
+  shinyjs::runjs("window.trackAnalysisComplete('power', false, 'error');")
+  output$pw_status_msg <- shiny::renderUI(status_alert(paste("Error:", res$message), "danger"))
+}
+
+.finalize_power_cancellation <- function(input, output, session, rv) {
+  shiny::removeModal()
+  output$pw_status_msg <- shiny::renderUI(status_alert("The simulation was cancelled.", "warning"))
+}
+
+.finalize_power_lost <- function(input, output, session, rv) {
+  shiny::removeModal()
+  output$pw_status_msg <- shiny::renderUI(status_alert(paste(
+    "This simulation was dismissed or expired before its result was shown.",
+    "Run it again."), "warning"))
+}
+
 power_server <- function(id, rv) {
   moduleServer(id, function(input, output, session) {
 
   current_ap_plot    <- reactiveVal(NULL)
+
+  # R20.D6: Cancel in the progress window, and Resume from the banner.
+  register_bayes_resume(
+    kind = "power_sim", tab_name = "Power Analysis",
+    modal_title  = "Running LMM power simulation…",
+    modal_detail = "Results will appear automatically when complete.",
+    input = input, output = output, session = session, rv = rv,
+    job_id_field = "pw_job_id",
+    finalize_success      = .finalize_power_success,
+    finalize_failure      = .finalize_power_failure,
+    finalize_cancellation = .finalize_power_cancellation,
+    finalize_lost         = .finalize_power_lost,
+    cancel_input          = "pw_cancel_job")
 
   # D.7: this was an unconditional `rv$ap_results <- NULL`. `rv` is created empty
   # in app.R and each module mounts once, so the assignment never cleared anything
@@ -705,59 +758,46 @@ power_server <- function(id, rv) {
       n_tp        <- input$pw_lmm_n_timepoints %||% 15
       timepoints  <- seq(tp_start, by = tp_interval, length.out = n_tp)
 
-      show_analysis_modal("Running LMM power simulation…", "This may take several minutes depending on simulation count.")
-      on.exit(shiny::removeModal(), add = TRUE)
-
-      result_lmm <- safe_analysis(module = "power_lmm", {
-        mouseExperiment::apriori_power_simulation(
-          n_per_group         = n_per_grp_lmm,
-          n_groups            = as.integer(input$pw_lmm_n_groups %||% 2),
-          baseline_volume     = input$pw_lmm_baseline_mean %||% 100,
-          baseline_sd         = input$pw_lmm_baseline_sd   %||% 20,
-          # These fallbacks must stay on the log scale. They previously read
-          # 15 / 10 / 3 / 10 / 10 -- values from the percent-scale parameterisation
-          # the backend abandoned when the data-generating model moved to the log
-          # scale. Had one fired, control_growth_rate = 15/day would have made
-          # exp(15 * t) overflow to Inf and the fit fail with an opaque error.
-          control_growth_rate = input$pw_lmm_ctrl_rate     %||% 0.15,
-          treatment_effect    = input$pw_lmm_tx_effect     %||% 0.10,
-          random_slope_sd     = input$pw_lmm_rand_slope_sd %||% 0.05,
-          random_intercept_sd = input$pw_lmm_rand_int_sd   %||% 0.20,
-          residual_sd         = input$pw_lmm_resid_sd      %||% 0.10,
-          timepoints          = timepoints,
-          dropout_limit       = {
-            dl <- suppressWarnings(as.numeric(input$pw_lmm_dropout_limit))
-            if (length(dl) != 1L || is.na(dl) || dl <= 0) Inf else dl
-          },
-          alpha               = alpha_vals,
-          n_simulations       = as.integer(input$pw_lmm_n_sims %||% 500)
-        )
-      })
-
-      if (isTRUE(result_lmm$error)) {
-        shinyjs::runjs(sprintf("window.trackAnalysisComplete('power', false, %s);",
-                               js_string(result_lmm$message)))
-        output$pw_status_msg <- renderUI({
-          status_alert(paste("Error:", result_lmm$message), "danger")
-        })
-        return()
-      }
-
-      rv$ap_results <- list(
-        scenario_table    = result_lmm$power_table,
-        power_curve_data  = result_lmm$power_curve_data,
-        sensitivity_table = NULL,
-        mode              = "apriori_lmm",
-        ap_submode        = "find_power",
-        lmm_params        = result_lmm$params,
-        lmm_attrition     = result_lmm$attrition
+      # R20.D6: on the background worker. Run in the Shiny process it froze
+      # every session on the server for about two minutes with the defaults,
+      # and the Power tab is open before any upload.
+      sim_args <- list(
+        n_per_group         = n_per_grp_lmm,
+        n_groups            = as.integer(input$pw_lmm_n_groups %||% 2),
+        baseline_volume     = input$pw_lmm_baseline_mean %||% 100,
+        baseline_sd         = input$pw_lmm_baseline_sd   %||% 20,
+        # These fallbacks must stay on the log scale. They previously read
+        # 15 / 10 / 3 / 10 / 10 -- values from the percent-scale parameterisation
+        # the backend abandoned when the data-generating model moved to the log
+        # scale. Had one fired, control_growth_rate = 15/day would have made
+        # exp(15 * t) overflow to Inf and the fit fail with an opaque error.
+        control_growth_rate = input$pw_lmm_ctrl_rate     %||% 0.15,
+        treatment_effect    = input$pw_lmm_tx_effect     %||% 0.10,
+        random_slope_sd     = input$pw_lmm_rand_slope_sd %||% 0.05,
+        random_intercept_sd = input$pw_lmm_rand_int_sd   %||% 0.20,
+        residual_sd         = input$pw_lmm_resid_sd      %||% 0.10,
+        timepoints          = timepoints,
+        dropout_limit       = {
+          dl <- suppressWarnings(as.numeric(input$pw_lmm_dropout_limit))
+          if (length(dl) != 1L || is.na(dl) || dl <= 0) Inf else dl
+        },
+        alpha               = alpha_vals,
+        n_simulations       = as.integer(input$pw_lmm_n_sims %||% 500)
       )
-
-      shinyjs::runjs("window.trackAnalysisComplete('power', true);")
-      output$pw_status_msg <- renderUI({
-        status_alert("LMM simulation completed.", "success")
-      })
-      updateTabsetPanel(session, "pw_ap_results_tabs", selected = "Summary")
+      launch_background_job(
+        kind = "power_sim",
+        task = background_task(mouseExperiment::apriori_power_simulation, sim_args),
+        input = input, output = output, session = session, rv = rv,
+        job_id_field = "pw_job_id",
+        modal_title  = "Running LMM power simulation…",
+        modal_detail = paste("It runs on the background worker, so other analyses",
+                             "and other users are not held up. Several minutes at",
+                             "high simulation counts."),
+        cancel_input = "pw_cancel_job",
+        finalize_success      = .finalize_power_success,
+        finalize_failure      = .finalize_power_failure,
+        finalize_cancellation = .finalize_power_cancellation,
+        finalize_lost         = .finalize_power_lost)
     }
   })
 

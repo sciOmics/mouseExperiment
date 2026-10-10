@@ -261,8 +261,18 @@ tumor_growth_server <- function(id, rv) {
     show_analysis_modal("Fitting tumor growth model…", "Results will appear automatically when complete.")
     on.exit(shiny::removeModal(), add = TRUE)
 
-    result <- safe_analysis(module = "tumor_growth", {
-      res <- mouseExperiment::tumor_growth_statistics(
+    # R20.D6: the arguments are built once. The fit shown now runs without
+    # the randomisation test; when the test is requested, the same call with
+    # it runs on the background worker (22 s at 999 permutations, 145 s at
+    # 9,999, during which every session on the server used to freeze), and
+    # its result joins this run's when it arrives.
+    perm <- if (isTRUE(input$tg_run_perm)) {
+      mouseExperiment::perm_spec(
+        unit   = rv$settings$randomisation_unit %||% "mouse",
+        n_perm = as.integer(input$tg_perm_n %||% 999L),
+        seed   = 20260730L)
+    } else NULL
+    tg_args <- list(
         df = data,
         time_column = col_names$time_column,
         volume_column = col_names$volume_column,
@@ -300,14 +310,8 @@ tumor_growth_server <- function(id, rv) {
         # extrapolation_points is deprecated in backend v0.8.0 — the model-based
         # endpoint means extrapolate inside the model and carry the uncertainty.
         # Plot-side extrapolation is unaffected.
-        # Backend H.3 -- only construct a perm_spec when the user opted in and
-        # declared the unit.
-        permutation_test = if (isTRUE(input$tg_run_perm)) {
-          mouseExperiment::perm_spec(
-            unit   = rv$settings$randomisation_unit %||% "mouse",
-            n_perm = as.integer(input$tg_perm_n %||% 999L),
-            seed   = 20260730L)
-        } else NULL,
+        # Backend H.3 -- a perm_spec only when the user opted in and declared
+        # the unit; it is added for the background run (R20.D6).
         necrotic_column   = rv$necrotic_col,
         necrotic_handling = input$tg_necrotic_handling %||% "none",
         volume_units      = backend_volume_units(rv),   # backend R20.32 zero floor
@@ -315,8 +319,8 @@ tumor_growth_server <- function(id, rv) {
         include_diagnostics = TRUE,
         plots = FALSE
       )
-      res
-    })
+    result <- safe_analysis(module = "tumor_growth",
+                            do.call(mouseExperiment::tumor_growth_statistics, tg_args))
     
     # Generate plots from the results
     if (!isTRUE(result$error)) {
@@ -824,9 +828,30 @@ tumor_growth_server <- function(id, rv) {
         !identical(rv$tg_results$model_type_used %||% "", result$model_type_used)) {
       rv$tg_results_prev <- isolate(rv$tg_results)
     }
+    run_token <- paste0(format(Sys.time(), "%H%M%OS6"), sample.int(1e6, 1))
+    result$run_token <- run_token
     rv$tg_results <- result
     updateTabsetPanel(session, "tg_results_tabs", selected = "Summary")
     rv$tg_running <- FALSE
+
+    # R20.D6: the randomisation test, on the background worker.
+    rv$tg_perm_status <- NULL
+    if (!is.null(perm) && !isTRUE(result$error)) {
+      perm_args <- tg_args
+      perm_args[c("permutation_test", "return_model", "include_diagnostics")] <-
+        list(perm, FALSE, FALSE)
+      launched <- launch_background_job(
+        kind = "tg_perm",
+        task = background_task(.tg_perm_only, perm_args),
+        context = list(run_token = run_token),
+        input = input, output = output, session = session, rv = rv,
+        job_id_field = "tg_perm_job_id",
+        finalize_success      = .finalize_perm_success,
+        finalize_failure      = .finalize_perm_failure,
+        finalize_cancellation = .finalize_perm_cancellation,
+        finalize_lost         = .finalize_perm_lost)
+      rv$tg_perm_status <- if (is.null(launched)) "busy" else "running"
+    }
 
     # Track analysis completion with Umami
     if (isTRUE(result$error)) {
@@ -1352,6 +1377,26 @@ tumor_growth_server <- function(id, rv) {
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
     pt <- rv$tg_results$permutation_test
+    # R20.D6: the test runs on the background worker after the fit.
+    st <- rv$tg_perm_status
+    if (is.null(pt) && !is.null(st)) {
+      return(tagList(
+        tags$hr(),
+        h4("Randomisation test"),
+        switch(st,
+          running = tagList(
+            p(class = "text-muted", icon("spinner", class = "fa-spin"),
+              " Running on the background worker; the result appears here when ",
+              "it finishes. The rest of this analysis, and other users, are not held up."),
+            actionButton(session$ns("tg_cancel_perm"), "Cancel the randomisation test",
+                         class = "btn-default btn-sm")),
+          busy = p(class = "text-muted",
+            "Not run: another analysis from this browser was already running. ",
+            "Run the analysis again when it has finished."),
+          cancelled = p(class = "text-muted", "Cancelled."),
+          p(class = "text-danger", st))
+      ))
+    }
     if (is.null(pt)) {
       return(tagList(
         tags$hr(),
@@ -1914,6 +1959,17 @@ tumor_growth_server <- function(id, rv) {
   # this when the user clicks Resume on a bayes_tg job. Captures the
   # module's input / output / session / rv via closure.
   register_tg_resume(input, output, session, rv)
+  # R20.D6: the randomisation test's Cancel button, and Resume from the banner.
+  register_bayes_resume(
+    kind = "tg_perm", tab_name = "Tumor Growth",
+    modal_title = NULL, modal_detail = NULL,
+    input = input, output = output, session = session, rv = rv,
+    job_id_field = "tg_perm_job_id",
+    finalize_success      = .finalize_perm_success,
+    finalize_failure      = .finalize_perm_failure,
+    finalize_cancellation = .finalize_perm_cancellation,
+    finalize_lost         = .finalize_perm_lost,
+    cancel_input          = "tg_cancel_perm")
 
   })
 }
