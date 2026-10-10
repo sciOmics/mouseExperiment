@@ -108,6 +108,12 @@ register_tg_resume <- function(input, output, session, rv) {
                                  input, output, session, rv) {
   bayes_params <- context$bayes_params
   result$model_type_used <- "bayes"
+  # R20.D46: what this run was asked for, for the report.
+  result$run_settings <- list(
+    model_type      = "bayes",
+    random_effects  = bayes_params$random_effects %||% "",
+    reference_group = bayes_params$reference_group %||% "",
+    n_rows          = if (!is.null(bayes_params$data)) nrow(bayes_params$data) else NA)
   result$model <- NULL   # not requested (R20.D18); a no-op kept for safety
   if (!is.null(rv$tg_results) &&
       !identical(rv$tg_results$model_type_used %||% "",

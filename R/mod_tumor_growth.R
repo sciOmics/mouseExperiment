@@ -113,8 +113,8 @@ tumor_growth_server <- function(id, rv) {
         output$tg_status_msg <- renderUI({
           status_alert(paste0("Column not found in data: '", missing_col, "'"), "danger")
         })
-        shinyjs::runjs(sprintf("window.trackError('validation', 'Column not found: %s', 'tumor_growth');",
-                               missing_col))
+        # R20.D12: no column names to analytics (and none pasted into JS).
+        shinyjs::runjs("window.trackError('validation', 'Column not found', 'tumor_growth');")
         rv$tg_running <- FALSE
         return()
       }
@@ -171,8 +171,7 @@ tumor_growth_server <- function(id, rv) {
       output$tg_status_msg <- renderUI({
         status_alert(error_msg, "danger")
       })
-      shinyjs::runjs(sprintf("window.trackError('validation', '%s', 'tumor_growth');",
-                             gsub("'", "\\\\'", error_msg)))
+      shinyjs::runjs("window.trackError('validation', 'Mapped columns missing', 'tumor_growth');")  # R20.D12
       rv$tg_running <- FALSE
       return()
     }
@@ -555,37 +554,9 @@ tumor_growth_server <- function(id, rv) {
         # Diagnostics are inherently on the model scale; the axis labels are
         # tagged so users don't read raw-volume meaning into them.
         diag_scale_tag <- scale_suffix(input$tg_transform %||% "none")
-        if (!is.null(result$diagnostics) && !is.null(result$diagnostics$residuals)) {
-          resid_vec <- result$diagnostics$residuals$residuals
-          # QQ plot
-          qq_data <- qqnorm(resid_vec, plot.it = FALSE)
-          qq_df <- data.frame(theoretical = qq_data$x, sample = qq_data$y)
-          qq_p <- ggplot2::ggplot(qq_df, ggplot2::aes(x = theoretical, y = sample)) +
-            ggplot2::geom_point(alpha = 0.6) +
-            ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed", colour = "red") +
-            ggplot2::theme_classic() +
-            ggplot2::labs(title = "Q-Q Plot of Residuals",
-                         x = "Theoretical Quantiles",
-                         y = paste0("Sample Quantiles", diag_scale_tag))
-          result$diag_qq_plot     <- qq_p
-        } else if (!is.null(result$model)) {
-          tryCatch({
-            resid_vec <- stats::residuals(result$model)
-            qq_data   <- qqnorm(resid_vec, plot.it = FALSE)
-            qq_df     <- data.frame(theoretical = qq_data$x, sample = qq_data$y)
-            qq_p <- ggplot2::ggplot(qq_df, ggplot2::aes(x = theoretical, y = sample)) +
-              ggplot2::geom_point(alpha = 0.6) +
-              ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed", colour = "red") +
-              ggplot2::theme_classic() +
-              ggplot2::labs(title = "Q-Q Plot of Residuals",
-                           x = "Theoretical Quantiles",
-                           y = paste0("Sample Quantiles", diag_scale_tag))
-            result$diag_qq_plot     <- qq_p
-          }, error = function(e) {
-            log_caught_error("tumor_growth", "QQ plot from model", e)
-            NULL
-          })
-        }
+        # R20.D42: the Q-Q plot is the backend's (0.31.0, R20.84), on
+        # standardised residuals. This copy drew y = x over raw residuals, so
+        # every model looked non-normal (4 % of points near the line).
         # Residuals vs Fitted
         if (!is.null(result$model)) {
           tryCatch({
@@ -628,16 +599,20 @@ tumor_growth_server <- function(id, rv) {
           # volume x day alongside, intervals and Wald p-values from model draws.
           pw <- result$posthoc$pairwise
           # Reformat to emmeans-compatible column names for downstream display/plot code
+          # R20.D43: the intervals are adjusted like p_adjusted (backend
+          # 0.31.0, R20.85); the unadjusted 95 % ones sat beside adjusted
+          # p-values, so an interval could clear zero next to "not significant".
           pw_df <- data.frame(
             contrast    = pw$comparison,
             estimate    = pw$estimate,
-            lower.CL    = pw$ci_lower,
-            upper.CL    = pw$ci_upper,
+            lower.CL    = pw$CI_Adjusted_Lower %||% pw$ci_lower,
+            upper.CL    = pw$CI_Adjusted_Upper %||% pw$ci_upper,
             ratio       = pw$ratio,
-            ratio.lower = pw$ratio_lower,
-            ratio.upper = pw$ratio_upper,
+            ratio.lower = pw$Ratio_CI_Adjusted_Lower %||% pw$ratio_lower,
+            ratio.upper = pw$Ratio_CI_Adjusted_Upper %||% pw$ratio_upper,
             z.ratio     = pw$z_value,
             p.value     = pw$p_adjusted,
+            CI_Adjustment = pw$CI_Adjustment %||% NA_character_,
             stringsAsFactors = FALSE
           )
           result$all_pairwise_comparisons <- pw_df
@@ -736,8 +711,9 @@ tumor_growth_server <- function(id, rv) {
             label_col   <- intersect(c("contrast", "Contrast", "comparison", "pair"), colnames(pc_df))[1]
             est_col     <- intersect(c("estimate", "Estimate"), colnames(pc_df))[1]
             se_col      <- intersect(c("SE"), colnames(pc_df))[1]
-            lower_col   <- intersect(c("lower.CL", "Lower", "lower_CL", "lower"), colnames(pc_df))[1]
-            upper_col   <- intersect(c("upper.CL", "Upper", "upper_CL", "upper"), colnames(pc_df))[1]
+            # R20.D43: the backend's adjusted intervals first (0.31.0).
+            lower_col   <- intersect(c("CI_Adjusted_Lower", "lower.CL", "Lower", "lower_CL", "lower"), colnames(pc_df))[1]
+            upper_col   <- intersect(c("CI_Adjusted_Upper", "upper.CL", "Upper", "upper_CL", "upper"), colnames(pc_df))[1]
             p_col       <- intersect(c("p.value", "p_value", "p.adj", "adj.p.value", "P_Value"), colnames(pc_df))[1]
             if (!is.na(label_col) && !is.na(est_col)) {
               if (is.na(lower_col) && !is.na(se_col)) {
@@ -801,7 +777,8 @@ tumor_growth_server <- function(id, rv) {
                 ggplot2::labs(
                   title = "Effect Size Forest Plot",
                   x = if (isTRUE(using_dunnett)) "Mean Difference (treatment \u2212 reference)" else "Mean Difference",
-                  y = NULL
+                  y = NULL,
+                  caption = forest_ci_note(pc_df, lower_col)   # R20.D43
                 ) +
                 ggplot2::theme_classic() +
                 ggplot2::theme(axis.text.y = ggplot2::element_text(size = 10))
@@ -831,6 +808,15 @@ tumor_growth_server <- function(id, rv) {
     result$model_type_used <- result$meta$model_type_used %||%
                               result$model_type_used      %||%
                               input$tg_model_type         %||% "lme4"
+
+    # R20.D46: what this run was asked for, for the report.
+    result$run_settings <- list(
+      model_type      = input$tg_model_type     %||% "",
+      transform       = input$tg_transform      %||% "",
+      random_effects  = input$tg_random_effects %||% "",
+      reference_group = ref,
+      cage_effect     = input$tg_cage_effect    %||% "",
+      n_rows          = nrow(data))
 
     # CODE_REVIEW.md Round 2 F.3 — preserve previous result for compare tab
     # when the model_type just changed.
@@ -1221,16 +1207,19 @@ tumor_growth_server <- function(id, rv) {
   })
 
   output$tg_comparisons_tab_info <- renderUI({
-    model_type <- input$tg_model_type %||% "lme4"
+    # R20.D44: describe the run on screen, not the sidebar's current values.
+    res <- if (!isTRUE(rv$tg_results$error)) rv$tg_results else NULL
+    model_type <- res$model_type_used %||% input$tg_model_type %||% "lme4"
     if (model_type == "auc") {
       tab_info(
         strong("Comparisons of the model-based AUCs "), "(the area under each arm's fitted curve over the common evaluable window), with the correction selected in the sidebar.",
         tags$ul(
           tags$li(strong("contrast"), " \u2014 the two groups being compared (\u2018Group A \u2212 Group B\u2019)."),
-          tags$li(strong("ratio"), " \u2014 AUC of the first group divided by the second's. Below 1 means less total tumour burden; ratio.lower / ratio.upper are its 95% interval."),
-          tags$li(strong("estimate"), " \u2014 the difference in AUC (volume \u00d7 days); lower.CL / upper.CL are its 95% interval."),
+          tags$li(strong("ratio"), " \u2014 AUC of the first group divided by the second's. Below 1 means less total tumour burden; ratio.lower / ratio.upper are its interval."),
+          tags$li(strong("estimate"), " \u2014 the difference in AUC (volume \u00d7 days); lower.CL / upper.CL are its interval."),
           tags$li(strong("z.ratio"), " \u2014 Wald statistic for the log ratio."),
-          tags$li(strong("p.value"), " \u2014 p-value for the ratio, corrected for the number of comparisons.")
+          tags$li(strong("p.value"), " \u2014 ", p_value_help(res), " It tests the ratio."),
+          tags$li("The intervals are adjusted like the p-values where the correction has an interval (", em("CI_Adjustment"), " says which); the table's caption names the correction.")
         ),
         em("Intervals and p-values come from draws of the fitted model's coefficients.")
       )
@@ -1247,11 +1236,11 @@ tumor_growth_server <- function(id, rv) {
           tags$li(strong("contrast"), " \u2014 the two groups being compared (\u2018Treatment \u2212 Reference\u2019 for Dunnett, \u2018A \u2212 B\u2019 for Tukey)."),
           tags$li(strong("df"), " \u2014 Satterthwaite or Kenward\u2013Roger approximate degrees of freedom used for the t-test."),
           tags$li(strong("estimate"), " \u2014 mean difference in tumor volume between the two groups on the analysis scale (log or sqrt if a transformation was applied). Negative values mean the first group has lower volume."),
-          tags$li(strong("lower.CL / upper.CL"), " (if shown) \u2014 95% confidence interval bounds for the mean difference on the analysis scale."),
+          tags$li(strong("lower.CL / upper.CL"), " \u2014 confidence interval for the mean difference on the analysis scale, adjusted like the p-values (", em("CI_Adjustment"), " says how; Holm and FDR have no interval of their own, so theirs are Bonferroni-level)."),
           tags$li(strong("SE"), " \u2014 standard error of the estimated difference."),
           tags$li(strong("Fold_Change"), " (if shown; log-transform models only) \u2014 exp(estimate): the multiplicative ratio of group geometric means on the original volume scale. Values below 1.0 indicate the treatment group has lower volume than reference. Fold_Change_Lower / Fold_Change_Upper give the back-transformed CI bounds."),
           tags$li(strong("t.ratio"), " \u2014 t-statistic (estimate \u00f7 SE). Large absolute values indicate a larger difference relative to its uncertainty."),
-          tags$li(strong("p.value"), " \u2014 adjusted p-value (Dunnett correction for \u2018vs Reference\u2019; Tukey HSD for \u2018All Comparisons\u2019). Values below 0.05 indicate a significant difference."),
+          tags$li(strong("p.value"), " \u2014 ", p_value_help(res)),
           tags$li(strong("Lower_CrI / Upper_CrI"), " (Bayesian path only) \u2014 2.5\u202f% and 97.5\u202f% bounds of the posterior distribution of the contrast on the model scale."),
           tags$li(strong("P_direction"), " (Bayesian path only) \u2014 posterior probability that the contrast is in its dominant direction, > 0.5 by construction. P_direction = 0.97 means 97\u202f% of posterior mass agrees on the sign of the effect; equivalent to a one-sided posterior probability and replaces the frequentist \u2018does the CrI exclude zero?\u2019 dichotomy.")
         )
@@ -1435,23 +1424,6 @@ tumor_growth_server <- function(id, rv) {
   })
   
   # Comparisons title (reactive based on selection)
-  output$tg_comparisons_title <- renderUI({
-    comp_type <- input$tg_comparison_type
-    
-    title_text <- switch(comp_type,
-      "reference" = h4("Pairwise Comparisons vs Reference Group"),
-      "pairwise" = h4("All Pairwise Comparisons (Unadjusted)"),
-      "tukey" = h4("All Pairwise Comparisons (Tukey HSD Adjusted)"),
-      h4("Pairwise Comparisons")
-    )
-    
-    tagList(
-      title_text,
-      p(class = "text-muted", style = "margin-bottom: 15px;",
-        em("Change comparison type in the 'Post-hoc Comparisons' dropdown in Analysis Parameters"))
-    )
-  })
-  
   # Comparisons table
   output$tg_comparisons_table <- renderDT({
     req(rv$tg_results)
@@ -1459,30 +1431,27 @@ tumor_growth_server <- function(id, rv) {
       return(datatable(data.frame(Message = "Comparisons not available")))
     }
     
-    # Select comparison type based on user input
-    comp_type <- input$tg_comparison_type
-    
-    comp_df <- NULL
-    table_title <- NULL
-    
-    if (comp_type == "reference") {
-      # vs Reference with Dunnett correction (preferred), fallback to unadjusted
-      if (!is.null(rv$tg_results$reference_comparisons_dunnett)) {
-        comp_df <- as.data.frame(rv$tg_results$reference_comparisons_dunnett)
-        table_title <- comparisons_title(rv$tg_results, "vs Reference Group")
-      } else if (!is.null(rv$tg_results$pairwise_comparisons)) {
-        comp_df <- as.data.frame(rv$tg_results$pairwise_comparisons)
-        table_title <- comparisons_title(rv$tg_results, "vs Reference Group")
-      }
-    } else if (comp_type == "tukey") {
-      if (!is.null(rv$tg_results$all_pairwise_comparisons)) {
-        comp_df <- as.data.frame(rv$tg_results$all_pairwise_comparisons)
-        table_title <- comparisons_title(rv$tg_results, "All Pairwise")
-      }
+    # R20.D44: the family is the run's, not the dropdown's current value. A
+    # dropdown changed after the run showed the other family's rows, or
+    # "Comparisons not available for tukey", with no hint to re-run.
+    fam <- rv$tg_results$comparison_family %||% "vs_reference"
+    all_pairs <- identical(fam, "all_pairs")
+    comp_df <- if (all_pairs) {
+      rv$tg_results$all_pairwise_comparisons
+    } else {
+      rv$tg_results$reference_comparisons_dunnett %||% rv$tg_results$pairwise_comparisons
     }
-    
     if (is.null(comp_df)) {
-      return(datatable(data.frame(Message = paste("Comparisons not available for", comp_type))))
+      return(datatable(data.frame(Message = "Comparisons not available for this run")))
+    }
+    comp_df <- as.data.frame(comp_df)
+    table_title <- comparisons_title(rv$tg_results,
+                                     if (all_pairs) "All Pairwise" else "vs Reference Group")
+    shown <- if (all_pairs) "tukey" else "reference"
+    if (!identical(input$tg_comparison_type %||% shown, shown)) {
+      table_title <- paste0(table_title, ". The Post-hoc Comparisons setting has ",
+                            "changed since this run; run the analysis again to see ",
+                            "those comparisons.")
     }
 
     # Add fold-change back-transform for LME4 log-scale models
@@ -1520,7 +1489,11 @@ tumor_growth_server <- function(id, rv) {
     comp_df      <- comp_df[, c(ordered_cols, rest_cols), drop = FALSE]
 
     comp_df <- format_df_for_display(comp_df)
-    datatable(comp_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+    # R20.D44: comparisons_title() was computed and never shown.
+    datatable(comp_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+              caption = tags$caption(
+                style = "caption-side: top; text-align: left; font-weight: bold;",
+                table_title))
   })
   
   # Treatment effects table
@@ -1694,18 +1667,11 @@ tumor_growth_server <- function(id, rv) {
     },
     content = function(file) {
       req(rv$tg_results)
-      settings <- list(
-        model_type      = input$tg_model_type     %||% "",
-        transform       = input$tg_transform      %||% "",
-        random_effects  = input$tg_random_effects %||% "",
-        reference_group = rv$tg_reference_used    %||% "",
-        cage_effect     = input$tg_cage_effect    %||% "",
-        n_rows          = if (!is.null(rv$tg_plot_data)) nrow(rv$tg_plot_data) else NA
-      )
+      # R20.D46: the run's settings, not the sidebar's current values.
       build_html_report(
         result   = rv$tg_results,
         title    = "Tumor Growth Analysis Report",
-        settings = settings,
+        settings = tg_report_settings(rv$tg_results),
         file     = file
       )
       shinyjs::runjs("window.trackDownload('tumor_growth', 'report', 'html');")
@@ -1794,9 +1760,13 @@ tumor_growth_server <- function(id, rv) {
       return(datatable(data.frame(Message = "Data summary not available")))
     }
     
-    data_sum_df <- as.data.frame(rv$tg_results$data_summary)
+    # R20.D45: the backend's summary is on the volume scale since 0.31.0
+    # (R20.57); before, log-scale means were shown under "mm³" (4.31 for a
+    # mean of 75.9). The headers carry the declared unit.
+    data_sum_df <- data_summary_display(rv$tg_results$data_summary, volume_unit_label(rv))
     data_sum_df <- format_df_for_display(data_sum_df)
-    datatable(data_sum_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+    datatable(data_sum_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+              rownames = FALSE)
   })
   
   # Plot reactives + plot renderers + diagnostics live in

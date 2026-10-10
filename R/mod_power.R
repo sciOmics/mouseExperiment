@@ -48,6 +48,10 @@ powerAnalysisUI <- function(id) {
               numericInput(ns("pw_ap_pooled_sd"),
                            "Pooled within-group SD",
                            value = 50, min = 0.1, step = 0.1),
+              # R20.D51: the SD is taken on one endpoint day.
+              numericInput(ns("pw_seed_day"),
+                           "Endpoint day for the SD (blank: the last day every arm has 3+ animals)",
+                           value = NA, min = 0, step = 1),
               actionButton(ns("pw_seed_sd"),
                            label = tagList(icon("database"), "Seed SD from loaded data"),
                            class = "btn btn-sm btn-default btn-block")
@@ -269,7 +273,7 @@ powerAnalysisUI <- function(id) {
                       tags$dt("Cohen's d"),
                       tags$dd("Enter one or more d values directly (comma-separated). Conventional benchmarks: small ≈ 0.2, medium ≈ 0.5, large ≈ 0.8."),
                       tags$dt("Mean difference + SD"),
-                      tags$dd("Enter the expected mean difference (Δ) and pooled within-group SD. Cohen's d is computed internally. Use 'Seed SD from loaded data' to populate the SD from your uploaded dataset.")
+                      tags$dd("Enter the expected mean difference (Δ) and pooled within-group SD. Cohen's d is computed internally. 'Seed SD from loaded data' fills in the pooled SD of your uploaded data at one endpoint day, from each animal's last volume up to that day. Choose the day your study's comparison is planned at; Δ should be a difference at that day.")
                     ),
 
                     hr(),
@@ -414,6 +418,50 @@ powerAnalysisUI <- function(id) {
 #' @param st The simulation's `power_table`.
 #' @return A `tags$p`, or NULL.
 #' @keywords internal
+#' Pooled within-arm SD at an endpoint day -- R20.D51
+#'
+#' Each animal contributes its last volume on or before `day`. Without a day,
+#' the last day on which every arm still has at least 3 animals measured.
+#'
+#' @param df Preprocessed data.
+#' @param tx_col,time_col,vol_col Column names.
+#' @param id_col,cage_col Optional ID and cage columns (animal key).
+#' @param day Endpoint day, or NA/NULL for the default.
+#' @return `list(sd, day, n_animals)`, or NULL.
+#' @keywords internal
+seed_sd_at_day <- function(df, tx_col, time_col, vol_col, id_col = NULL,
+                           cage_col = NULL, day = NULL) {
+  d <- data.frame(tx = as.character(df[[tx_col]]),
+                  t  = suppressWarnings(as.numeric(df[[time_col]])),
+                  v  = suppressWarnings(as.numeric(df[[vol_col]])),
+                  stringsAsFactors = FALSE)
+  key_parts <- list(d$tx)
+  if (!is.null(id_col) && id_col %in% names(df))     key_parts <- c(key_parts, list(as.character(df[[id_col]])))
+  if (!is.null(cage_col) && cage_col %in% names(df)) key_parts <- c(key_parts, list(as.character(df[[cage_col]])))
+  d$key <- do.call(paste, c(key_parts, sep = "\r"))
+  d <- d[is.finite(d$t) & is.finite(d$v) & !is.na(d$tx), , drop = FALSE]
+  if (!nrow(d)) return(NULL)
+  arms <- unique(d$tx)
+  if (is.null(day) || length(day) != 1L || !is.finite(day)) {
+    days <- sort(unique(d$t), decreasing = TRUE)
+    ok <- vapply(days, function(t0) all(vapply(arms, function(a)
+      length(unique(d$key[d$tx == a & d$t == t0])) >= 3L, logical(1))), logical(1))
+    if (!any(ok)) return(NULL)
+    day <- days[ok][1]
+  }
+  d <- d[d$t <= day, , drop = FALSE]
+  if (!nrow(d)) return(NULL)
+  d <- d[order(d$key, d$t), , drop = FALSE]
+  last <- d[!duplicated(d$key, fromLast = TRUE), , drop = FALSE]
+  sds <- tapply(last$v, last$tx, stats::sd)
+  ns  <- tapply(last$v, last$tx, length)
+  use <- is.finite(sds) & ns >= 2L
+  if (!any(use)) return(NULL)
+  pooled <- sqrt(sum((ns[use] - 1) * sds[use]^2) / sum(ns[use] - 1))
+  if (!is.finite(pooled) || pooled <= 0) return(NULL)
+  list(sd = unname(pooled), day = day, n_animals = nrow(last))
+}
+
 lmm_power_note <- function(st) {
   if (is.null(st) || !nrow(st) || is.null(st$Alpha_Per_Comparison)) return(NULL)
   k <- st$N_Groups[1]
@@ -466,19 +514,23 @@ power_server <- function(id, rv) {
                        type = "warning", duration = 4)
       return()
     }
-    group_sds  <- tapply(df[[vol_col]], df[[tx_col]], stats::sd,  na.rm = TRUE)
-    group_ns   <- tapply(df[[vol_col]], df[[tx_col]], function(x) sum(!is.na(x)))
-    wvar_sum   <- sum((group_ns - 1) * group_sds^2, na.rm = TRUE)
-    df_total   <- sum(group_ns - 1, na.rm = TRUE)
-    pooled_sd_val <- if (df_total > 0) sqrt(wvar_sum / df_total) else mean(group_sds, na.rm = TRUE)
-    if (is.na(pooled_sd_val) || pooled_sd_val <= 0) {
-      showNotification("Could not compute a valid pooled SD from the data.", type = "warning", duration = 4)
+    # R20.D51: one SD per arm over every observation counted the growth
+    # trend and the repeated measures as noise: 617.8 on the master demo,
+    # against 265.0 on day 14, so the required N was 68 per group instead
+    # of 14. The SD is now taken at one endpoint day.
+    seed <- seed_sd_at_day(df, tx_col, prep$time_col, vol_col,
+                           id_col = rv$id_col, cage_col = rv$cage_col,
+                           day = input$pw_seed_day)
+    if (is.null(seed)) {
+      showNotification("Could not compute a pooled SD at an endpoint day from the data.",
+                       type = "warning", duration = 4)
       return()
     }
-    updateNumericInput(session, "pw_ap_pooled_sd", value = round(pooled_sd_val, 2))
+    updateNumericInput(session, "pw_ap_pooled_sd", value = round(seed$sd, 2))
     showNotification(
-      paste0("Pooled SD seeded from data: ", round(pooled_sd_val, 2)),
-      type = "message", duration = 3
+      sprintf("Pooled SD at day %s (each animal's last volume up to that day, %d animals): %s",
+              format(seed$day), seed$n_animals, round(seed$sd, 2)),
+      type = "message", duration = 6
     )
   })
 

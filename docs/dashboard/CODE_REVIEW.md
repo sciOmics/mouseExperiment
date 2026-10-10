@@ -2164,7 +2164,7 @@ Executed.
 | R20.D9 | `.rda` upload dead, and loads into the shared global env | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
 | R20.D10 | Session restore deserialises and copies unvalidated keys | Major (hardening) | ✅ Closed by removal v26.09.001 (R20-D.I) |
 | R20.D11 | `test-shiny_app.R` has never executed | Major (process) | ✅ Fixed v26.09.002 — the tests run and pass; CI is package R20.53 (R20-D.J) |
-| R20.D12 | Study strings sent to analytics | Major (confidentiality) | Open — the Tumour Growth and Survival reference names no longer sent (R20-D.K) |
+| R20.D12 | Study strings sent to analytics | Major (confidentiality) | ✅ Fixed v26.10.003 (R20-D.Q): no event carries a study string; staging is not counted; About states what is counted |
 | R20.D13 | "Natural death as event" checkbox never read | Major | ✅ Fixed: removed v26.09.003 (R20-D.K); a working option with the removal-reason column v26.09.005 (R20-D.M) |
 | R20.D14 | Survival/over-time synergy need an ID column named `ID` | Major | ✅ Fixed v26.09.003 (R20-D.K) |
 | R20.D15 | HTML report headers merged into one cell | Major | ✅ Fixed v26.09.002 (9d5f674) |
@@ -2180,16 +2180,16 @@ Executed.
 | R20.D39 | AUC fails on first click with the default correction | Major | ✅ Fixed v26.09.002 (R20-D.J) |
 | R20.D40 | GAMM forest plot crashes; download fails; ZIP omits it | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
 | R20.D41 | Dashboard overwrites the backend's GAMM residual plot with a broken one | Major | ✅ Closed by removal v26.09.001 (R20-D.I) |
-| R20.D42 | Q-Q plots against y = x on unstandardised values | Major | Open |
-| R20.D43 | Forest plots: unadjusted CI with adjusted p | Major | Open |
-| R20.D44 | Comparisons tab: mislabelled correction, discarded title, live family | Major | Open |
-| R20.D45 | Data Summary log-scale means labelled mm³ | Major | Open |
-| R20.D46 | HTML report records widget state, not run settings | Major | Open |
+| R20.D42 | Q-Q plots against y = x on unstandardised values | Major | ✅ Fixed v26.10.003 (R20-D.Q) |
+| R20.D43 | Forest plots: unadjusted CI with adjusted p | Major | ✅ Fixed v26.10.003 (R20-D.Q) |
+| R20.D44 | Comparisons tab: mislabelled correction, discarded title, live family | Major | ✅ Fixed v26.10.003 (R20-D.Q) |
+| R20.D45 | Data Summary log-scale means labelled mm³ | Major | ✅ Fixed v26.10.003 (R20-D.Q) |
+| R20.D46 | HTML report records widget state, not run settings | Major | ✅ Fixed v26.10.003 (R20-D.Q) |
 | R20.D47 | Dose-Response pools drugs by dose value | Major | ✅ Fixed v26.09.005 (R20-D.M; package R20.16) |
 | R20.D48 | DR "All dates" = own last observation; TGI plot contradicts Toxicity | Major | ✅ Fixed v26.09.004 (R20-D.L; package R20.17) |
 | R20.D49 | JT test and EC50 CI returned but never shown | Major | ✅ Fixed v26.09.005 (R20-D.M; package R20.18, R20.20) |
 | R20.D50 | Toxicity plot downloads never produce a file | Major | Open. The therapeutic-window download ✅ fixed v26.09.005 (R20-D.M); trajectory and KM remain |
-| R20.D51 | Power "seed SD" pools all days (N inflated 5–40×) | Major | Open |
+| R20.D51 | Power "seed SD" pools all days (N inflated 5–40×) | Major | ✅ Fixed v26.10.003 (R20-D.Q) |
 | R20.D52 | Download-All ZIP can include another session's files | Major (confidentiality) | ✅ Fixed v26.09.002 (9d5f674) |
 | R20.D20 | Synergy bar plot all grey | Minor | Open |
 | R20.D21–R20.D33, R20.D54–R20.D61 | Minor | Minor | Open. Fixed: R20.D21, R20.D33 (R20-D.J); R20.D31 (R20-D.K); R20.D27, R20.D28 (R20-D.O). In part: R20.D29, R20.D54, R20.D57 (R20-D.K); R20.D29, R20.D30 (R20-D.L) |
@@ -2573,3 +2573,37 @@ Backend 0.30.0 (package CODE_REVIEW.md R20-T) closed its last nine Majors, and f
 **Verification (executed):** against backend 0.30.0, the full suite runs 27 files and 270 tests with no failures or skips.
 
 **Not changed here:** the cage structure `nested_partial` (backend R20.25) is shown as the code, like the other structures, beside the backend's reason, which names the single-cage arms.
+
+## R20-D.Q Implementation log — v26.10.003: plots and tables that mislabelled results, and analytics (2026-10-09)
+
+This step covers the Majors whose output misstated what it showed (R20.D42–R20.D46 and R20.D51), plus the rest of R20.D12. Three of them needed a backend fix first: backend 0.31.0 (package R20-U) standardises the Q-Q plots, adds adjusted intervals to contrasts, and puts the data summary on the volume scale. This version requires it.
+
+| ID | Fix |
+|---|---|
+| R20.D42 Q-Q plots | The dashboard's own residual Q-Q, y = x over raw residuals, is deleted. The backend's plot shows instead: standardised since 0.31.0, with 81 % of points within 0.05 of the line where 4 % were. The body-weight and random-effect Q-Q plots were already the backend's, so the backend fix covers them. The help says the values are standardised. |
+| R20.D43 forest intervals | Both forest-plot builders take `CI_Adjusted_Lower`/`CI_Adjusted_Upper` first. The AUC path's comparison table takes the adjusted difference and ratio intervals. A caption from `forest_ci_note()` says which adjustment the intervals carry: 95 % unadjusted, adjusted like the p-values, or for FDR, that no matching interval exists. On the interim demo with Dunnett, Drug_A Mid's interval [−0.825, −0.245] is now [−0.938, −0.131], beside p = 0.013. The toxicity forest plot that the review also cited was removed in step 1. |
+| R20.D44 Comparisons tab | The table follows the run's `comparison_family`, not the dropdown, and says when the dropdown has changed since the run. Before, a changed dropdown showed the other family's rows or "not available for tukey". `comparisons_title()` is the table's caption; it was computed and never shown. The help describes the run on screen: its model type, and a p-value line generated from `p_adjust_method_used` (`p_value_help()`). It used to say Dunnett/Tukey even with no correction. The interval help says how the intervals are adjusted. The unused `tg_comparisons_title` renderer is deleted. |
+| R20.D45 Data Summary | The backend's summary is on the volume scale (0.31.0). `data_summary_display()` labels it with the declared unit ("Mean (mm³)", "Geometric mean (mm³)"), and the tab text explains the geometric mean. The CSV and the report carry the backend's columns, now on the volume scale. |
+| R20.D46 report settings | Each run stores `result$run_settings` (model, transform, random effects, reference, cage handling, rows), in `.finalize_tg_success()` too. `tg_report_settings()` builds the report's settings from what the backend reports about the run: model and transform used, random effects used and requested, the reference, cage placement, the comparison family and correction, and the zero floor. The snapshot fills the gaps. The sidebar is no longer read at download time. |
+| R20.D51 seed SD | `seed_sd_at_day()` takes each animal's last volume on or before one endpoint day, and pools the within-arm SDs. The day is a new input, defaulting to the last day on which every arm has at least 3 animals measured. The notification states the day and the number of animals. |
+| R20.D12 analytics | `umami-events.js`, which every event passes through, drops column names, reference-arm and treatment names, and error messages, whatever the caller passes. `analysis_complete` carries `error: true`, and the column-mapping event says only whether time came from dates and whether volume was calculated. The R callers no longer pass such strings; one pasted a column name unescaped into JavaScript. The Umami tag gains `data-domains`, so staging and local runs are no longer counted under the production website id. The About page says what is counted and what is not. |
+
+**Executed (all-features demo):**
+- **Seed SD (R20.D51).** For Δ = 300 mm³ at 80 % power:
+
+  | Seed | SD | Required N per group |
+  |---|---|---|
+  | Every observation pooled (old) | 617.8 | 68 |
+  | Day 14 | 265.0 | 14 |
+  | Default day (18, the last with 3+ animals in every arm) | 442.8 | 36 |
+
+- **Report (R20.D46):** after an LME4/log run and a change of the sidebar to AUC/sqrt, the report still says `model_type: lme4`, `transform: log`, `reference_group: Vehicle`.
+
+**Tests:** `test-round21-labels.R`, 7 tests, one per item. The ones that drive the module run the all-features demo through `testServer()`.
+
+**Verification (executed):** against backend 0.31.0, the full suite runs 28 files and 277 tests with no failures or skips.
+
+**Not changed here:**
+- **Consent.** R20.D12 suggested "consent or a notice". This step adds the notice; Umami sets no cookies.
+- **A separate staging website id.** It would need a second Umami site. Staging is simply not counted.
+

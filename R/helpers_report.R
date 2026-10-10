@@ -112,3 +112,37 @@ build_html_report <- function(result, title, settings, file) {
   writeLines(html, file)
   invisible(file)
 }
+
+#' The settings that produced a tumour-growth result -- R20.D46
+#'
+#' The report read the sidebar when it was downloaded, so a dropdown changed
+#' after the run put "model_type: auc, transform: sqrt, reference_group:
+#' Drug_B" above LME4 / log / Vehicle tables. The settings now come from what
+#' the backend reports about the run, then from the snapshot taken when the
+#' run started (`result$run_settings`).
+#'
+#' @param res A tumour-growth result as stored in `rv$tg_results`.
+#' @return A named list for [build_html_report()].
+#' @keywords internal
+tg_report_settings <- function(res) {
+  rs <- res$run_settings %||% list()
+  re <- res$random_effects
+  list(
+    model_type      = res$model_type_used %||% rs$model_type %||% "",
+    transform       = res$transform_used %||% rs$transform %||% "",
+    random_effects  = if (!is.null(re$used)) {
+      if (identical(re$used, re$requested)) re$used
+      else paste0(re$used, " (requested: ", re$requested, ")")
+    } else rs$random_effects %||% "",
+    reference_group = res$summary$data_description$reference_group %||%
+                      rs$reference_group %||% "",
+    cage_effect     = res$summary$model_specification$cage_placement %||%
+                      rs$cage_effect %||% "",
+    comparisons     = if (!is.null(res$comparison_family)) {
+      paste0(res$comparison_family, ", ", pretty_adjust(res$p_adjust_method_used))
+    } else "",
+    zero_floor      = trimws(paste(zero_floor_line(res), collapse = "")),
+    n_rows          = rs$n_rows %||% NA
+  )
+}
+

@@ -104,8 +104,7 @@ data_upload_server <- function(id, rv) {
       output$demo_load_msg <- renderUI({
         status_alert(result$message, "danger")
       })
-      shinyjs::runjs(sprintf("window.trackError('validation', %s, 'demo_data_load');",
-                             js_string(result$message)))
+      shinyjs::runjs("window.trackError('validation', 'Demo file invalid', 'demo_data_load');")  # R20.D12
       return()
     }
 
@@ -174,8 +173,7 @@ data_upload_server <- function(id, rv) {
         status_alert(result$message, "danger")
       })
       # Track file upload error
-      shinyjs::runjs(sprintf("window.trackError('validation', %s, 'data_upload');",
-                             js_string(result$message)))
+      shinyjs::runjs("window.trackError('validation', 'Upload invalid', 'data_upload');")  # R20.D12
     }
   })
   
@@ -699,11 +697,11 @@ data_upload_server <- function(id, rv) {
         (nzchar(rv$settings$col_volume) ||
          (nzchar(rv$settings$col_length) && nzchar(rv$settings$col_width)))) {
 
+      # R20.D12: which options were used, not the user's column names.
       shinyjs::runjs(sprintf(
-        "window.trackColumnMapping('%s', '%s', '%s', %s);",
-        rv$settings$col_treatment,
-        rv$settings$col_day %||% rv$settings$col_date_for_day,
-        rv$settings$col_volume %||% paste0(rv$settings$col_length, "+", rv$settings$col_width),
+        "window.trackColumnMapping('mapped', '%s', '%s', %s);",
+        if (identical(rv$settings$time_method, "from_date")) "date" else "day",
+        if (identical(rv$settings$volume_method, "calculate")) "calculated" else "column",
         tolower(as.character(!is.null(rv$settings$col_survival_event) &&
                 nzchar(rv$settings$col_survival_event)))
       ))

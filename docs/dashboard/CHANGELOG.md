@@ -4,6 +4,37 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.10.003] - 2026-10-09
+
+Requires mouseExperiment ≥ 0.31.0. Plots and tables that mislabelled their
+results, and the rest of the analytics leak (`CODE_REVIEW.md` R20-D.Q).
+
+### Fixed
+
+- **Q-Q plots always looked non-normal (R20.D42).** The Tumor Growth
+  residual Q-Q drew y = x over raw residuals. It now shows the backend's
+  standardised plot (backend R20.84), as the other Q-Q plots already did.
+- **Forest plots paired unadjusted intervals with adjusted p-values
+  (R20.D43).** They now use the backend's adjusted intervals (R20.85). A
+  caption says how the intervals are adjusted.
+- **The Comparisons tab (R20.D44)** showed the dropdown's family rather than
+  the run's, described Dunnett or Tukey whatever correction was used, and
+  never showed its title. The table now follows the run, says when the
+  dropdown has changed since, and has its title as a caption. The help
+  describes the correction actually used.
+- **The Data Summary showed log-scale means labelled mm³ (R20.D45).** It is
+  now on the volume scale (backend R20.57), with the unit in the headers and
+  a geometric mean for log-scale runs.
+- **The HTML report recorded the sidebar, not the run (R20.D46).** Its
+  settings now come from the run.
+- **Power's "Seed SD from loaded data" pooled every day (R20.D51),** which
+  inflated the required N up to 5-fold on the demo (68 instead of 14 per
+  group). It now takes each animal's last volume up to one endpoint day,
+  which you can set.
+- **Analytics (R20.D12).** No event carries a column name, a treatment or
+  reference name, or an error message. Staging is not counted under the
+  production site. The About page says what is counted.
+
 ## [26.10.002] - 2026-10-09
 
 Requires mouseExperiment ≥ 0.30.0. The dashboard side of backend 0.30.0
