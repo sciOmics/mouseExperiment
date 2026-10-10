@@ -2191,9 +2191,9 @@ Executed.
 | R20.D50 | Toxicity plot downloads never produce a file | Major | Open. The therapeutic-window download ✅ fixed v26.09.005 (R20-D.M); trajectory and KM remain |
 | R20.D51 | Power "seed SD" pools all days (N inflated 5–40×) | Major | ✅ Fixed v26.10.003 (R20-D.Q) |
 | R20.D52 | Download-All ZIP can include another session's files | Major (confidentiality) | ✅ Fixed v26.09.002 (9d5f674) |
-| R20.D20 | Synergy bar plot all grey | Minor | Open |
-| R20.D21–R20.D33, R20.D54–R20.D61 | Minor | Minor | Open. Fixed: R20.D21, R20.D33 (R20-D.J); R20.D31 (R20-D.K); R20.D27, R20.D28 (R20-D.O). In part: R20.D29, R20.D54, R20.D57 (R20-D.K); R20.D29, R20.D30 (R20-D.L) |
-| R20.D53 | Plot-label keystrokes rebuild the growth plot | Efficiency | Open |
+| R20.D20 | Synergy bar plot all grey | Minor | ✅ Fixed v26.10.005 (R20-D.S) |
+| R20.D21–R20.D33, R20.D54–R20.D61 | Minor | Minor | ✅ Closed. Fixed v26.10.005 (R20-D.S): R20.D22, D23, D24, D25, D29, D30, D32, D54, D55, D57, D58, D59, D60, D61; R20.D56 closed by the removal of GAMM and Bayesian synergy. R20.D26 in part (R20-D.S). Earlier: R20.D21, R20.D33 (R20-D.J); R20.D31 (R20-D.K); R20.D27, R20.D28 (R20-D.O) |
+| R20.D53 | Plot-label keystrokes rebuild the growth plot | Efficiency | ✅ Fixed v26.10.005 (R20-D.S) |
 | R20.D62 | One-worker multisession plan is sequential: every Bayesian fit froze every session | **Critical** | ✅ Fixed v26.09.006 (R20-D.N) |
 | R20.D63 | Resume retired the job before its poller delivered it; the result was lost | Major | ✅ Fixed v26.09.006 (R20-D.N) |
 | R20.D64 | Resume handlers were process-global; the newest browser session owned them all | Major | ✅ Fixed v26.09.006 (R20-D.N) |
@@ -2636,4 +2636,33 @@ R20.D6: the Bayesian fits already ran on the background worker (R20.D62). The th
 **Not changed:**
 - **One worker.** Jobs from different browsers queue behind each other, so a power simulation can wait behind another user's Bayesian fit. A second worker under a global cap is a memory decision for the VPS (V3.12).
 - **Short analyses.** AUC, survival, synergy, the therapeutic window and dose-response take under 1.5 s and still run inline.
+
+## R20-D.S Implementation log — v26.10.005: the Round 21 Minors, R20.D20 and R20.D53 (2026-10-10)
+
+After this step every Round 21 Minor is closed; R20.D26 is closed in part, as noted below. This version requires backend 0.33.0. It passes the declared volume unit to synergy and dose-response, which take it for their zero floor, and the therapeutic window gets the floor in the declared unit.
+
+| ID | Fix |
+|---|---|
+| R20.D20 | The synergy bars are filled by Type (Observed / Expected), and the palette was named by arm, so every bar was grey. The palette is now Observed = the combination's colour and Expected = the control's. |
+| R20.D22 | Six `runjs(sprintf("…'%s'…"))` calls now pass values through `js_string()`: tab navigation, demo and upload tracking, the dose-response failure (now a fixed code), and two TG events. So does the column-mapping event. |
+| R20.D23 | `read_study_csv()` replaces `read.csv()` for uploads. It detects the encoding (UTF-16 and UTF-8 byte-order marks, else UTF-8 or Latin-1), the delimiter (comma, semicolon or tab, whichever splits the first lines consistently) and the decimal mark (a comma when the delimiter is not one). A row whose field count differs from the header's stops with the line number and the likely cause, an unquoted delimiter in a value. `runDashboard()` sets `shiny.maxRequestSize` to 30 MB; the 5 MB default applied without anyone having chosen it. DATA_FORMAT and DEPLOYMENT say so. |
+| R20.D24 | `global.R` (sourcing two files that do not exist) and `app_standalone.R` (not an entry point `runApp()` recognises) are deleted. `shiny-server-app.R` and its template are kept, for a Shiny Server deployment, and build-ignored. |
+| R20.D25 | The 500-line in-process log buffer and its appender are gone; logging goes to stdout (`setup_logging()`). Their two tests went with them. |
+| R20.D26 (in part) | `Depends: R (>= 4.1.0)` (the code uses `\|>`). The stale `Date` field is removed, and the About page shows each package's build date instead of a fixed 2026-04-03. `.Rbuildignore` gains `.waylog`, `.claude`, `CODE_REVIEW.md`, `CHANGELOG.md`, `CONTRIBUTING.md` and `docs`. The Imports were corrected in #32. **Left as accepted:** `runDashboard()` has no Rd (man/ is not tracked); non-ASCII UI text; the "no visible global" NOTEs. |
+| R20.D29 | The KM plots, in Survival and the Toxicity weight-loss KM, label their p as "Log-rank, all arms (unadjusted)" (`km_pval_label()`). Before, a bare p sat beside adjusted Cox p-values. |
+| R20.D30 | The crossed-cage help says "fixed effect", as the backend's auto mode does. A partly replicated design is described. The Random Effects help names random slopes as the default; it called intercept-only the default. The GAM text went with GAMM. The Welch variance panel is removed: the backend's model-based AUC returns no variance test, so the panel never rendered. |
+| R20.D32 | The sampler warning no longer advises raising `adapt_delta`, which nothing exposes. It names what the dashboard can change: warmup, the prior preset, simpler random effects. |
+| R20.D53 | The growth plot is two layers: `tg_growth_base()` (`plot_tumor_growth()`, colours, shapes) and the cosmetic layer (labels, legend, scales). The title, subtitle and axis-label boxes are debounced (600 ms). Typing a title no longer rebuilds the data layer: a test counts zero further `plot_tumor_growth()` calls over four keystrokes, where there was one per keystroke. |
+| R20.D54 | The survival help no longer says an interval excluding 1 means significance; the intervals are unadjusted and the p-values adjusted. It describes the plot's log-rank test as all-arms and unadjusted, and the per-arm comparisons as Cox or Firth with log-rank fallbacks. The censor-column "auto-detection", which never existed, is replaced by how to derive events from a volume threshold. |
+| R20.D55 | The displayed growth plot passes `necrotic_column` (the × markers were only in the fallback plot) and `volume_units`. The x axis keeps pre-treatment days. The extrapolation caption is added to the package's captions instead of replacing them. A note under "Extrapolation Points" says nothing is extrapolated without a mapped Event/Censor column. |
+| R20.D56 | Closed by removal: GAMM and Bayesian synergy, whose hidden inputs were the problem, are gone. |
+| R20.D57 | The growth-rate "geometric mean" bar is the mean of the slopes, which already is the geometric mean of the daily growth factor; the clamp showed −0.044 as 0.000. An all-pairs forest plot has no reference row. The `log1p` wording had already gone. |
+| R20.D58 | A note under the covariates explains that Tumor Volume is not used while tumour mass is subtracted, and how to use it instead. The BW AUC adjustment mismatch went with the BW AUC. |
+| R20.D59 | The NUTS banner reads the backend's `clean` flag. NA diagnostics show "unavailable", not a green "clean: NA divergences". The posterior summary has a place in the Posterior Check tab. Bayesian runs get a forest plot from their posterior contrasts against the reference, captioned as credible intervals. The GAM parts went with GAMM. |
+| R20.D60 | The Power summary uses the run's own target power, stored with the result. It read a nonexistent input and always said 80 %. The single-day Bliss difference is in percentage points (backend 0.33.0). The "analytic (analytic)" label no longer occurs now that the submode is stored. |
+| R20.D61 | Removed: Info text promising EMMs at five quantile days; nine unused functions (`extract_summary_table`, `safe_plot`, `plot_export_ui`, `group_color_pickers_ui`, `homeUI` and four `log_*` wrappers); and two plots built on every TG run and never read (a growth-rate plot and a second forest plot). `translate_error()` matches "NA" and "NaN" as whole words; it matched any "na". The demo that `detect_columns` misread, and the ragg hang (backend R20.84), are gone. |
+
+**Tests:** `test-round21-minors.R`, 11 tests and 48 expectations. Each fails on v26.10.004, checked by running the file against a worktree of that version. One test of R20.D43 now reads the displayed forest plot, since the copy it read was removed.
+
+**Verification (executed):** against backend 0.33.0, the full suite runs 30 files and 291 tests with no failures or skips.
 

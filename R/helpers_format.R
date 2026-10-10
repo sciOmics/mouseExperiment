@@ -127,6 +127,9 @@ data_summary_display <- function(ds, unit) {
 #' @return One caption line.
 #' @keywords internal
 forest_ci_note <- function(pc_df, lower_col) {
+  if (identical(lower_col, "Lower_CrI")) {           # Bayesian runs (R20.D59)
+    return("Intervals: 95% posterior credible intervals")
+  }
   adj <- if ("CI_Adjustment" %in% names(pc_df)) as.character(pc_df$CI_Adjustment[1]) else NA_character_
   if (is.na(lower_col) || !lower_col %in% c("CI_Adjusted_Lower", "lower.CL") || is.na(adj)) {
     return("Intervals: 95%, not adjusted for multiple comparisons")
@@ -175,25 +178,6 @@ scale_suffix <- function(transform) {
   )
 }
 
-#' Create a summary table from analysis results
-#'
-#' @param result Analysis result object
-#'
-#' @return Data frame with summary
-#' @keywords internal
-extract_summary_table <- function(result) {
-  if (is.null(result) || isTRUE(result$error)) {
-    return(NULL)
-  }
-  
-  # Extract relevant summary information
-  # This will be customized based on analysis type
-  if (!is.null(result$summary)) {
-    return(as.data.frame(result$summary))
-  }
-  
-  NULL
-}
 
 #' Build a comparisons-table title that states what was actually applied
 #'

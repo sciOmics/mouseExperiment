@@ -198,7 +198,7 @@ as it does in the container). Everything else is fixed in code:
 | Setting | Value | Where |
 |---|---|---|
 | Host / port | `0.0.0.0:3838` in the container | the image's `CMD` |
-| Upload limit | Shiny's default, 5 MB | not set |
+| Upload limit | 30 MB, set by `runDashboard()` (`shiny.maxRequestSize`) | not set |
 | Bayesian fits | one background R worker, one fit at a time, queued | `use_background_worker()` |
 | Log format | JSON lines on stdout (`logger`) | `R/logging.R` |
 | Asset cache-busting | `?v=<DESCRIPTION Version>` | `dashboard_app()` |
@@ -276,7 +276,7 @@ See `sciOmicsVPS/docs/backup-restore.md` for the full procedure.
 | HTTPS | No (plain HTTP) | Yes (Let's Encrypt via NPM) |
 | F.7 cookie `Secure` flag | Can't be set (the cookie won't transmit) | Set; cookie works normally |
 | F.7 resume behavior | Usually full (browsers treat localhost as a secure context); without the cookie, a local registry key: fits run, no resume | Full resume support |
-| Max upload | 5 MB (Shiny default) | Same |
+| Max upload | 30 MB (`runDashboard()`) | Same |
 | Bayesian fits | one background worker | Same |
 | Opens a browser | yes, in an interactive session | no |
 | Logging | stdout | stdout → `docker logs` |

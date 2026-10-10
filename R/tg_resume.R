@@ -115,6 +115,11 @@ register_tg_resume <- function(input, output, session, rv) {
     reference_group = bayes_params$reference_group %||% "",
     n_rows          = if (!is.null(bayes_params$data)) nrow(bayes_params$data) else NA)
   result$model <- NULL   # not requested (R20.D18); a no-op kept for safety
+  # R20.D59: the posterior contrasts vs the reference feed the forest plot,
+  # which Bayesian runs never had.
+  if (is.data.frame(result$pairwise_comparisons) && nrow(result$pairwise_comparisons)) {
+    result$reference_comparisons_dunnett <- result$pairwise_comparisons
+  }
   if (!is.null(rv$tg_results) &&
       !identical(rv$tg_results$model_type_used %||% "",
                  result$model_type_used)) {

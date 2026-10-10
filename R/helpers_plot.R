@@ -9,57 +9,7 @@
 #' feeds the reference-group choice, which is a statistical input, not a display
 #' one.
 
-#' Safely generate a plot, returning an error placeholder on failure
-#'
-#' Wraps a plot expression in tryCatch. On success returns the plot object.
-#' On failure logs via structured logger and returns a simple ggplot with the
-#' error text, so users see a message instead of a blank panel.
-#'
-#' @param expr    Expression that produces a ggplot / base plot grob.
-#' @param label   Short label for the plot (used in the error message).
-#' @return A plot object.
-#' @keywords internal
-safe_plot <- function(expr, label = "Plot") {
-  tryCatch(
-    expr,
-    error = function(e) {
-      msg <- paste0(label, " generation failed: ", conditionMessage(e))
-      log_caught_error("plot", label, e)
-      ggplot2::ggplot() +
-        ggplot2::annotate("text", x = 0.5, y = 0.5, label = msg,
-                          size = 5, hjust = 0.5) +
-        ggplot2::theme_void()
-    }
-  )
-}
 
-#' Plot export dimension controls
-#'
-#' Generates Width (px), Height (px), and Resolution (DPI) numeric inputs that
-#' are placed at the bottom of each analysis sidebar. Download handlers read
-#' these with \code{input[[paste0(prefix, "_plot_width")]]} etc.
-#'
-#' @param prefix Input ID prefix, e.g. \code{"tg"}, \code{"surv"}.
-#' @keywords internal
-plot_export_ui <- function(prefix) {
-  tagList(
-    hr(style = "margin-top: 14px; margin-bottom: 8px;"),
-    p(style = "font-weight: 600; margin-bottom: 4px; font-size: 0.88em;",
-      "\U0001F4BE  Plot Export Settings"),
-    fluidRow(
-      column(6,
-        numericInput(paste0(prefix, "_plot_width"),  "Width (px)",
-                     value = 800, min = 200, max = 5000, step = 50)
-      ),
-      column(6,
-        numericInput(paste0(prefix, "_plot_height"), "Height (px)",
-                     value = 600, min = 200, max = 5000, step = 50)
-      )
-    ),
-    numericInput(paste0(prefix, "_plot_dpi"), "Resolution (DPI)",
-                 value = 100, min = 72, max = 600, step = 10)
-  )
-}
 
 #' Apply custom title, subtitle, text size, and alignment to a ggplot
 #'
@@ -244,31 +194,6 @@ observe_palette_preset <- function(input, session, prefix, groups_rv) {
   }, ignoreInit = TRUE)
 }
 
-#' Render colourInput widgets for a set of treatment groups
-#'
-#' Returns a \code{tagList} of \code{colourpicker::colourInput} widgets,
-#' one per group, with auto-assigned ggplot2-style default colours.
-#'
-#' @param prefix    Input-ID prefix (e.g. \code{"tg_color"}).
-#' @param groups    Character vector of group names.
-#' @param header    Optional header string. Default \code{"Group Colors"}.
-#' @return A \code{tagList}, or \code{NULL} when \code{groups} is empty.
-#' @keywords internal
-group_color_pickers_ui <- function(prefix, groups, header = "Group Colors") {
-  if (is.null(groups) || length(groups) == 0L) return(NULL)
-  defaults <- default_group_colors(length(groups))
-  shiny::tagList(
-    shiny::tags$h6(style = "font-size: 14px; font-weight: 700; text-decoration: underline; margin-top: 10px; margin-bottom: 4px;",
-                   shiny::icon("palette"), " ", header),
-    lapply(seq_along(groups), function(i) {
-      colourpicker::colourInput(
-        inputId = paste0(prefix, "_", make.names(groups[i])),
-        label   = groups[i],
-        value   = defaults[i]
-      )
-    })
-  )
-}
 
 #' Render a drag-and-drop rank list for reordering treatment groups
 #'
@@ -622,3 +547,25 @@ syn_tgi_long <- function(ss, grps) {
   out$Treatment <- factor(out$Treatment, levels = c(grps$drug_a, grps$drug_b, grps$combo))
   out
 }
+
+#' The KM plot's p-value, labelled -- R20.D29
+#'
+#' survminer prints the omnibus log-rank p as a bare "p = ...", next to Cox
+#' p-values that are adjusted for multiple comparisons. It now says what it is.
+#'
+#' @param data Data with `Time`, `Event` and `Treatment`.
+#' @return A label for `ggsurvplot(pval = )`, or TRUE when it cannot be computed.
+#' @keywords internal
+km_pval_label <- function(data) {
+  sd <- tryCatch(survival::survdiff(survival::Surv(Time, Event) ~ Treatment, data = data),
+                 error = function(e) NULL)
+  if (is.null(sd)) return(TRUE)
+  p <- stats::pchisq(sd$chisq, length(sd$n) - 1L, lower.tail = FALSE)
+  paste0("Log-rank, all arms (unadjusted): p ", format_pval_label(p))
+}
+
+format_pval_label <- function(p) {
+  if (!is.finite(p)) return("= NA")
+  if (p < 1e-4) "< 0.0001" else paste("=", formatC(p, digits = 2, format = "g"))
+}
+

@@ -701,7 +701,7 @@ validate_uploaded_file <- function(file_path, file_ext) {
     # (CODE_REVIEW.md R20.D9): the path never worked, and it loaded uploaded
     # objects into the process-wide global environment.
     if (tolower(file_ext) == "csv") {
-      data <- read.csv(file_path, stringsAsFactors = FALSE)
+      data <- read_study_csv(file_path)   # R20.D23
     } else {
       return(list(
         valid = FALSE,
@@ -740,6 +740,62 @@ validate_uploaded_file <- function(file_path, file_ext) {
       data = NULL
     )
   })
+}
+
+#' Read an uploaded study CSV, whatever its delimiter and encoding -- R20.D23
+#'
+#' `read.csv()` alone rejected semicolon-separated files with decimal commas
+#' (what Excel writes in much of Europe) with a raw error, rejected Latin-1
+#' and UTF-16 files, loaded a tab-separated `.csv` silently as one column, and
+#' shifted every later column when a value held an unquoted comma. This sniffs
+#' the encoding (byte-order marks, else UTF-8 or Latin-1), the delimiter
+#' (comma, semicolon or tab) and the decimal mark, and stops with a message
+#' naming the line when rows and header disagree.
+#'
+#' @param path File path.
+#' @return A data frame (headers sanitised as by `read.csv()`).
+#' @keywords internal
+read_study_csv <- function(path) {
+  raw <- readBin(path, "raw", n = min(file.size(path), 262144L))
+  enc <- if (length(raw) >= 2L && raw[1] == as.raw(0xFF) && raw[2] == as.raw(0xFE)) {
+    "UTF-16LE"
+  } else if (length(raw) >= 2L && raw[1] == as.raw(0xFE) && raw[2] == as.raw(0xFF)) {
+    "UTF-16BE"
+  } else if (length(raw) >= 3L && all(raw[1:3] == as.raw(c(0xEF, 0xBB, 0xBF)))) {
+    "UTF-8-BOM"
+  } else if (validUTF8(rawToChar(raw[raw != as.raw(0)]))) {
+    "UTF-8"
+  } else {
+    "latin1"
+  }
+  con <- file(path, encoding = enc)
+  head_lines <- tryCatch(readLines(con, n = 50L, warn = FALSE), finally = close(con))
+  head_lines <- head_lines[nzchar(trimws(head_lines))]
+  if (!length(head_lines)) stop("The file is empty.", call. = FALSE)
+  # Fields outside quotes, per line, for each candidate delimiter.
+  unquoted <- gsub('"[^"]*"', "", head_lines)
+  counts <- vapply(c(",", ";", "\t"), function(d) {
+    n <- lengths(regmatches(unquoted, gregexpr(d, unquoted, fixed = TRUE)))
+    if (all(n == n[1]) && n[1] > 0) n[1] else 0L
+  }, integer(1))
+  sep <- if (any(counts > 0)) names(counts)[which.max(counts)] else ","
+  dec <- if (sep != "," && any(grepl("[0-9],[0-9]", unquoted))) "," else "."
+  # Every row must have the header's number of fields.
+  con <- file(path, encoding = enc)
+  nf <- tryCatch(utils::count.fields(con, sep = sep, quote = "\"", blank.lines.skip = TRUE,
+                                     comment.char = ""), finally = close(con))
+  if (length(nf) > 1L && any(nf != nf[1], na.rm = TRUE)) {
+    bad <- which(nf != nf[1])[1]
+    stop(sprintf(paste0(
+      "Line %d has %d fields but the header has %d. A value probably contains ",
+      "an unquoted '%s'; put that value in quotes, or remove the '%s'."),
+      bad, nf[bad], nf[1], if (sep == "\t") "tab" else sep, if (sep == "\t") "tab" else sep),
+      call. = FALSE)
+  }
+  utils::read.table(path, sep = sep, dec = dec, header = TRUE, quote = "\"",
+                    comment.char = "", fill = FALSE, stringsAsFactors = FALSE,
+                    check.names = TRUE, strip.white = TRUE, fileEncoding = enc,
+                    na.strings = c("NA", ""))
 }
 
 #' Detect column names matching common patterns

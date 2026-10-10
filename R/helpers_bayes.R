@@ -74,7 +74,17 @@ bayes_diagnostics_panel <- function(result) {
     if (isTRUE(is.finite(ebfmi) && ebfmi < 0.3)) {
       issues <- c(issues, sprintf("E-BFMI low (%.2f)", ebfmi))
     }
-    if (length(issues) > 0L) {
+    # R20.D59: when the diagnostics could not be computed the backend returns
+    # NA counts and clean = NA, which read as a green "clean: NA divergences".
+    unknown <- is.null(nuts$clean) || is.na(nuts$clean[1]) || is.na(n_div)
+    if (unknown) {
+      parts$nuts <- shiny::div(
+        class = "alert alert-warning",
+        shiny::icon("circle-question"),
+        shiny::strong(" Sampler diagnostics unavailable: "),
+        "the divergence and E-BFMI checks could not be computed for this fit, ",
+        "so it has not been shown to be clean. Check the trace plots before reporting.")
+    } else if (length(issues) > 0L || !isTRUE(nuts$clean[1])) {
       parts$nuts <- shiny::div(
         class = "alert alert-warning",
         shiny::icon("triangle-exclamation"),
@@ -83,8 +93,11 @@ bayes_diagnostics_panel <- function(result) {
         shiny::br(),
         shiny::tags$small(
           "Posterior estimates may be unreliable for affected parameters. ",
-          "Investigate (e.g. reparameterise, raise adapt_delta, ",
-          "or increase max_treedepth) before reporting."
+          # R20.D32: adapt_delta and max_treedepth cannot be set from the
+          # dashboard; point at what can.
+          "Before reporting, try more warmup iterations, a stronger prior ",
+          "preset, or simpler random effects (uncorrelated slopes or an ",
+          "intercept only), and check the trace plots."
         )
       )
     } else {

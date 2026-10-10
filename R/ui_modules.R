@@ -46,44 +46,6 @@ ctrl_section <- function(id, icon_nm, title, ...) {
     hr(style = "margin:5px 0;")
   )
 }
-#' Home Page UI
-#' @keywords internal
-homeUI <- function() {
-  fluidPage(
-    HTML("<div style='padding: 40px;'>"),
-    h1("Welcome to mouseExperimentDashboard"),
-    p("Analyze mouse tumor growth experiments without writing R code."),
-    
-    fluidRow(
-      column(6,
-        h3("Getting Started"),
-        p("1. Navigate to", strong("Data Upload"), "and load your tumor growth data"),
-        p("2. Configure column mappings if needed"),
-        p("3. Select", strong("Tumor Growth Analysis"), " to run statistical models"),
-        p("4. Download plots and tables from your analysis")
-      ),
-      column(6,
-        h3("Quick Links"),
-        p(actionButton("goto_upload", "Upload Data", icon("upload"), class = "btn-lg btn-primary"), 
-          style = "margin-bottom: 20px;"),
-        p(actionButton("goto_analysis", "Run Analysis", icon("calculator"), class = "btn-lg btn-success"))
-      )
-    ),
-    
-    hr(),
-    h4("Features"),
-    tags$ul(
-      tags$li("Upload CSV or RDA files"),
-      tags$li("Automatic column detection"),
-      tags$li("Multiple statistical models (LME4, AUC)"),
-      tags$li("Interactive visualizations"),
-      tags$li("Download results in multiple formats")
-    ),
-    
-    hr(),
-    HTML("</div>")
-  )
-}
 
 #' Data Upload UI
 #' @keywords internal
@@ -547,6 +509,7 @@ tumorGrowthUI <- function(id) {
                    "standard errors and p-values ignore the imputation. The ",
                    "endpoint metrics now extrapolate inside the model, which ",
                    "propagates that uncertainty (CODE_REVIEW.md R3.9 / G.4)."),
+          uiOutput(ns("tg_extrap_note")),
 
           # 6. Cage Effect Handling (LME4 only)
           conditionalPanel(ns = ns,
@@ -762,12 +725,13 @@ tumorGrowthUI <- function(id) {
                     p("The Treatment × Day interaction captures whether treatment groups differ in their growth ", em("trajectories"), " over time, not just at a single endpoint."),
                     tags$dl(class = "dl-horizontal",
                       tags$dt("Transformation"), tags$dd("Log (default) stabilises variance and linearises exponential growth. Square root suits moderate heteroscedasticity. Use 'None' only for already-linear data."),
-                      tags$dt("Random Effects"), tags$dd("'Intercept only' (default) allows each animal its own baseline volume. 'Intercept + Slope' additionally allows individual growth rates \u2014 more flexible but may fail to converge with small groups. 'None' drops the animal-level term entirely and is appropriate only when each animal contributes a single observation, since it otherwise treats repeated measures as independent."),
+                      tags$dt("Random Effects"), tags$dd("'Random slopes' (default) gives each animal its own baseline volume and its own growth rate. If that model cannot be fitted, the analysis falls back to uncorrelated slopes and then to an intercept only, and the Summary says so. 'Intercept only' assumes every animal in an arm grows at the same rate, which makes the treatment \u00d7 time test find differences that are not there. 'None' drops the animal-level term entirely and is appropriate only when each animal contributes a single observation."),
                       tags$dt("Cage Effect"),
                       tags$dd(strong("Auto (default)"), " classifies the housing design and applies the matching treatment, because the correct handling depends on the design rather than on preference:",
                               tags$ul(
-                                tags$li(em("Crossed"), " \u2014 a cage holds more than one treatment. Cage is separable from treatment and enters as a random intercept."),
+                                tags$li(em("Crossed"), " \u2014 a cage holds more than one treatment. Cage is separable from treatment and enters as a fixed effect."),
                                 tags$li(em("Nested, replicated"), " \u2014 one treatment per cage, several cages per arm. Cage nests within treatment as a random effect; ignoring it treats cagemates as independent and understates standard errors."),
+                                tags$li(em("Nested, partly replicated"), " \u2014 some arms have several cages and others one. Cage stays in the model as a random effect, estimated from the replicated arms, and the Summary names the single-cage arms."),
                                 tags$li(em("Nested, confounded"), " \u2014 one cage per treatment. Cage and treatment are the same variable and no model can separate them. The result reports the effect as inseparable rather than silently crediting it to treatment.")
                               ),
                               "The remaining options force a specific handling. ", em("Include if not collinear (legacy)"),
@@ -825,7 +789,7 @@ tumorGrowthUI <- function(id) {
 
                     hr(),
                     h5(strong("Treatment Effects Tab")),
-                    p("Estimated marginal means (EMMs) of transformed volume per treatment group. EMMs are shown at the mean observation day and at five quantile days (min, Q1, median, Q3, max), capturing the Treatment × Day interaction that a single mean-day estimate would miss."),
+                    p("Estimated marginal means (EMMs) of transformed volume per treatment group, at the mean observation day: the day the treatment row of the ANOVA compares the arms at. How the arms diverge over time is in the growth-rate test (ANOVA) and the Growth Rates tab."),
 
                     hr(),
                     h5(strong("Growth Rates Tab")),
@@ -1046,11 +1010,8 @@ tumorGrowthUI <- function(id) {
             ),
             downloadButton(ns("download_tg_anova"), "Download ANOVA"),
 
-            # Backend R3.22 -- the variance check that accompanied the Welch
-            # omnibus. The model-based AUC (backend v0.26.0, R20.4) has no
-            # variance_test, so these render nothing for it.
-            uiOutput(ns("tg_variance_test_ui")),
-            DTOutput(ns("tg_variance_test_table")),
+            # R20.D30 / R20.D61: the Welch variance panel is gone; the
+            # model-based AUC (backend 0.26.0) has no variance test.
 
             # Backend H.3 -- randomisation test of the interaction. Reported here
             # because it answers the same question as the ANOVA row above but
@@ -1735,14 +1696,15 @@ helpUI <- function() {
 citationUI <- function() {
   pkg_version   <- tryCatch(as.character(utils::packageVersion("mouseExperiment")),      error = function(e) "(not installed)")
   dash_version  <- tryCatch(as.character(utils::packageVersion("mouseExperimentDashboard")), error = function(e) "(not installed)")
-  pkg_date      <- tryCatch({
-    d <- utils::packageDescription("mouseExperiment")$Date
-    if (is.null(d) || is.na(d)) "2026-04-03" else d
-  }, error = function(e) "2026-04-03")
-  dash_date     <- tryCatch({
-    d <- utils::packageDescription("mouseExperimentDashboard")$Date
-    if (is.null(d) || is.na(d)) "2026-04-03" else d
-  }, error = function(e) "2026-04-03")
+  # Neither package has a Date field any more (it went stale; R20.D26), and
+  # the fallback here was a fixed 2026-04-03. The build date is always there.
+  built_date <- function(pkg) tryCatch({
+    b <- utils::packageDescription(pkg)$Built
+    d <- if (is.null(b)) NA_character_ else regmatches(b, regexpr("[0-9]{4}-[0-9]{2}-[0-9]{2}", b))
+    if (length(d) && !is.na(d)) d else "unknown"
+  }, error = function(e) "unknown")
+  pkg_date  <- built_date("mouseExperiment")
+  dash_date <- built_date("mouseExperimentDashboard")
 
   fluidPage(
     h2("About"),
@@ -1760,7 +1722,7 @@ citationUI <- function() {
                 tags$td(pkg_version)
               ),
               tags$tr(
-                tags$td(strong("Last Updated")),
+                tags$td(strong("Built")),
                 tags$td(pkg_date)
               ),
               tags$tr(
@@ -1785,7 +1747,7 @@ citationUI <- function() {
                 tags$td(dash_version)
               ),
               tags$tr(
-                tags$td(strong("Last Updated")),
+                tags$td(strong("Built")),
                 tags$td(dash_date)
               )
             )

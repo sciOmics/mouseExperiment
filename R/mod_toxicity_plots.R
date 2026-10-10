@@ -187,7 +187,7 @@ add_tox_plots <- function(input, output, session, rv,
     km_plot <- tryCatch(
       survminer::ggsurvplot(km_fit, data = event_df,
         palette    = pal,
-        risk.table = TRUE, pval = TRUE, conf.int = TRUE,
+        risk.table = TRUE, pval = km_pval_label(event_df), conf.int = TRUE,  # R20.D29
         title = paste0("Time to ", round(wl$threshold * 100), "% Body Weight Loss"),
         xlab = "Day", ylab = "Proportion Without Threshold Weight Loss",
         ggtheme = ggplot2::theme_classic(base_size = text_sz)),

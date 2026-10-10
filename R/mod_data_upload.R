@@ -117,8 +117,8 @@ data_upload_server <- function(id, rv) {
     log_upload(session, chosen$label, nrow(result$data), ncol(result$data))
 
     # Track demo data loading with Umami
-    shinyjs::runjs(sprintf("window.trackDemoDataLoaded('%s'); window.trackDataUpload('csv', %d, %d);",
-                           chosen$label, nrow(result$data), ncol(result$data)))
+    shinyjs::runjs(sprintf("window.trackDemoDataLoaded(%s); window.trackDataUpload('csv', %d, %d);",
+                           js_string(chosen$label), nrow(result$data), ncol(result$data)))  # R20.D22
 
     # Set reference date for this dataset
     updateTextInput(session, "reference_date", value = chosen$ref_date)
@@ -158,8 +158,8 @@ data_upload_server <- function(id, rv) {
       log_upload(session, file_info$name, nrow(result$data), ncol(result$data))
 
       # Track file upload with Umami
-      shinyjs::runjs(sprintf("window.trackDataUpload('%s', %d, %d);",
-                             file_ext, nrow(result$data), ncol(result$data)))
+      shinyjs::runjs(sprintf("window.trackDataUpload(%s, %d, %d);",
+                             js_string(file_ext), nrow(result$data), ncol(result$data)))  # R20.D22
 
       # Display validation message
       output$file_validation_msg <- renderUI({
@@ -699,9 +699,9 @@ data_upload_server <- function(id, rv) {
 
       # R20.D12: which options were used, not the user's column names.
       shinyjs::runjs(sprintf(
-        "window.trackColumnMapping('mapped', '%s', '%s', %s);",
-        if (identical(rv$settings$time_method, "from_date")) "date" else "day",
-        if (identical(rv$settings$volume_method, "calculate")) "calculated" else "column",
+        "window.trackColumnMapping('mapped', %s, %s, %s);",
+        js_string(if (identical(rv$settings$time_method, "from_date")) "date" else "day"),
+        js_string(if (identical(rv$settings$volume_method, "calculate")) "calculated" else "column"),
         tolower(as.character(!is.null(rv$settings$col_survival_event) &&
                 nzchar(rv$settings$col_survival_event)))
       ))
