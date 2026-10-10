@@ -161,8 +161,10 @@ plot_auc <- function(auc_data,
                         },
                         "CI" = function(x) {
                           m <- mean(x, na.rm = TRUE)
-                          sem <- stats::sd(x, na.rm = TRUE) / sqrt(sum(!is.na(x)))
-                          ci <- 1.96 * sem
+                          n_x <- sum(!is.na(x))
+                          sem <- stats::sd(x, na.rm = TRUE) / sqrt(n_x)
+                          # R20.61: t, not 1.96 (31 % too narrow at n = 6).
+                          ci <- stats::qt(0.975, df = max(1, n_x - 1)) * sem
                           return(c(y = m, ymin = m - ci, ymax = m + ci))
                         })
     

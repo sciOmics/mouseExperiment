@@ -17,7 +17,8 @@ plot_tumor_growth(
   extrapolation_points = "all",
   group_summary_line = TRUE,
   necrotic_column = NULL,
-  point_size = 2
+  point_size = 2,
+  volume_units = "mm3"
 )
 }
 \arguments{
@@ -49,6 +50,9 @@ When supplied, an × marker is overlaid on each necrotic observation and a
 caption note is added. Defaults to \code{NULL} (no necrotic marking).}
 
 \item{point_size}{Size of the individual-observation points. Default 2.}
+
+\item{volume_units}{Units for the y-axis label: "mm3" (default), "cm3", or
+\code{NULL} for no unit.}
 }
 \value{
 A ggplot of tumor growth curves colored by treatment group

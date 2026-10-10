@@ -193,6 +193,12 @@ apriori_power_analysis <- function(effect_size   = NULL,
     )
   }
 
+  # R20.71: one definition of n. Enrolment from an analysable n rounds before
+  # ceiling(): 21 / (1 - 0.3) is 30.000000000000004 in floating point, which
+  # ceiling() made 31. Analysable from enrolled: floor(n * (1 - dropout)).
+  enroll_n     <- function(n_a) ceiling(round(n_a / (1 - dropout_rate), 8))
+  analysable_n <- function(n_e) pmax(2L, floor(round(n_e * (1 - dropout_rate), 8)))
+
   if (mode == "find_n") {
     rows <- lapply(seq_along(alpha), function(i) {
       a_req <- alpha_requested[i]
@@ -207,7 +213,7 @@ apriori_power_analysis <- function(effect_size   = NULL,
                    # The number that must be analysable to hit the target...
                    Required_N = n_analysable,
                    # ...and the number to actually enrol to end up with it.
-                   Enroll_N = ceiling(n_analysable / (1 - dropout_rate)),
+                   Enroll_N = enroll_n(n_analysable),
                    Dropout_Rate = dropout_rate,
                    stringsAsFactors = FALSE)
       })
@@ -220,7 +226,7 @@ apriori_power_analysis <- function(effect_size   = NULL,
       lapply(seq_along(alpha), function(i) {
         a <- alpha_effective[i]; a_req <- alpha_requested[i]
         # n is what the user has; attrition reduces it to n_analysable.
-        n_analysable <- max(2L, floor(n * (1 - dropout_rate)))
+        n_analysable <- analysable_n(n)
         data.frame(Effect_Size = effect_size, N_Groups = n_groups,
                    Alpha = a_req,
                    Alpha_Per_Comparison = a,
@@ -236,13 +242,17 @@ apriori_power_analysis <- function(effect_size   = NULL,
   }
 
   # ---- Power curve data ------------------------------------------------------
+  # R20.71: N_Per_Group is the number enrolled, as in the find_power table;
+  # the curve plotted power at that many analysable animals (0.562 where the
+  # table gave 0.406 at 30 % dropout).
   n_seq <- seq(2L, 80L, by = 1L)
   curve_rows <- lapply(seq_along(alpha), function(i) {
     a_eff <- alpha_effective[i]
     data.frame(
       Effect_Size = effect_size,
       N_Per_Group = n_seq,
-      Power       = vapply(n_seq, function(n) power_fn(n, a_eff), numeric(1)),
+      N_Analysable = analysable_n(n_seq),
+      Power       = vapply(analysable_n(n_seq), function(n) power_fn(n, a_eff), numeric(1)),
       Alpha       = alpha_requested[i],
       Alpha_Per_Comparison = a_eff,
       stringsAsFactors = FALSE
@@ -269,8 +279,10 @@ apriori_power_analysis <- function(effect_size   = NULL,
       sd_i  <- stored_pooled_sd * sd_factors[i]
       d_i   <- raw_delta / sd_i
       n_i   <- n_fn(ref_a_eff, ref_tp, d = d_i)
+      # R20.71: with the enrolment that dropout implies, like the scenario table.
       data.frame(SD_Change = sd_labels[i], Assumed_SD = round(sd_i, 3),
                  Cohens_d = round(d_i, 3), Required_N = n_i,
+                 Enroll_N = enroll_n(n_i), Dropout_Rate = dropout_rate,
                  Alpha = ref_a, Alpha_Per_Comparison = ref_a_eff,
                  Target_Power = ref_tp,
                  stringsAsFactors = FALSE)

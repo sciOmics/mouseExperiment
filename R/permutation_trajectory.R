@@ -81,6 +81,35 @@ print.perm_spec <- function(x, ...) {
 #' @return A list of character vectors, each a distinct permutation.
 #' @noRd
 #' @keywords internal
+#' One assignment per partition of the units -- CODE_REVIEW.md R20.82
+#'
+#' The interaction statistic does not change when the labels of two arms of
+#' equal size are swapped: the model sees the same partition of units. Among
+#' arms of equal size, keep only assignments whose labels first appear in
+#' sorted order, one representative per partition. Each partition stands for
+#' the same number of assignments, so the exact p-value is unchanged, and the
+#' refits drop from the assignments to the distinct statistics (90 to 15 for
+#' six cages in three arms of two).
+#'
+#' @param assignments List of label vectors from [enumerate_label_perms()].
+#' @return The subset that represents each partition once.
+#' @noRd
+#' @keywords internal
+me_partition_representatives <- function(assignments) {
+  if (!length(assignments)) return(assignments)
+  sizes <- table(assignments[[1]])
+  classes <- split(names(sizes), as.integer(sizes))
+  classes <- classes[lengths(classes) > 1L]
+  if (!length(classes)) return(assignments)
+  keep <- vapply(assignments, function(a) {
+    all(vapply(classes, function(lv) {
+      first <- match(lv, a)
+      !is.unsorted(first[order(lv)])
+    }, logical(1)))
+  }, logical(1))
+  assignments[keep]
+}
+
 enumerate_label_perms <- function(labels) {
   out <- list()
   rec <- function(remaining, acc) {
@@ -351,7 +380,7 @@ trajectory_permutation_test <- function(df,
   exhaustive <- n_assign <= max(ENUM_LIMIT, spec$n_perm)
 
   assignments <- if (exhaustive) {
-    enumerate_label_perms(base_labels)
+    me_partition_representatives(enumerate_label_perms(base_labels))   # R20.82
   } else {
     lapply(seq_len(spec$n_perm), function(b) sample(base_labels))
   }
@@ -374,7 +403,9 @@ trajectory_permutation_test <- function(df,
 
   ok <- is.finite(perm_stats)
   n_ok <- sum(ok)
-  if (n_ok < 2L) {
+  # R20.82: an exhaustive run over a single partition (one unit per arm) is
+  # exact, p = 1; the resolution warning above says why.
+  if (n_ok < 2L && !(exhaustive && n_ok == n_draw)) {
     stop("Almost no permutation refits converged (", n_ok, " of ", n_draw,
          "), so no null distribution could be built.", call. = FALSE)
   }
@@ -413,7 +444,8 @@ trajectory_permutation_test <- function(df,
       "Randomisation test of the treatment x time interaction; ML ",
       "likelihood-ratio statistic, ",
       if (exhaustive) paste0("exhaustive enumeration of all ", n_draw,
-                             " distinct assignments")
+                             " distinct partitions of the units (relabelling ",
+                             "arms of equal size gives the same statistic)")
       else paste0(n_draw, " sampled permutations"),
       " of treatment labels at the ", spec$unit, " level")
   )

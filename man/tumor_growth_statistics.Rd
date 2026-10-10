@@ -228,7 +228,9 @@ and why any fallback happened.}
 \describe{
 \item{aic}{AIC values for each model specification}
 \item{bic}{BIC values for each model specification}
-\item{selected_model}{Name of the model with lowest BIC (most parsimonious)}
+\item{selected_model}{The random-effects structure used: the one requested,
+or the fallback when it could not be fitted (see \code{random_effects}).
+Nothing is selected by BIC.}
 }
 }
 \item{diagnostics}{Model diagnostic information including residuals, random effects, and variance components}
@@ -269,7 +271,7 @@ The function automatically handles:
 \item Diagnostic checks of model assumptions
 \item Growth rate analysis for each treatment group
 \item Cage effect analysis and collinearity testing
-\item Model selection based on AIC/BIC criteria
+\item A fallback to simpler random effects when the requested structure cannot be fitted
 \item Treatment effect estimation with proper reference group handling
 }
 }

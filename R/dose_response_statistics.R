@@ -388,7 +388,8 @@ generate_summary_statistics <- function(analysis_data, dose_column = "Dose", vol
       mean_volume = mean(.data[[volume_column]], na.rm = TRUE),
       median_volume = median(.data[[volume_column]], na.rm = TRUE),
       sd_volume = sd(.data[[volume_column]], na.rm = TRUE),
-      n = dplyr::n(),
+      # R20.66: measured volumes; n() counted NA rows (SEM 35.4 for 50).
+      n = sum(!is.na(.data[[volume_column]])),
       sem_volume = sd_volume / sqrt(n),
       ci95_lower = mean_volume - qt(0.975, n-1) * sem_volume,
       ci95_upper = mean_volume + qt(0.975, n-1) * sem_volume,

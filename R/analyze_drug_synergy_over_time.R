@@ -230,6 +230,12 @@ analyze_drug_synergy_over_time <- function(df,
   # Order the summary by time point
   synergy_summary <- synergy_summary[order(synergy_summary$Time_Point), ]
 
+  # R20.67: a p-value per day is one test per day, and scanning the days for
+  # a significant one inflates the error rate. Holm-adjusted columns, over
+  # the days analysed, sit beside the per-day ones.
+  synergy_summary$P_Value_vs_Drug_A_Holm <- stats::p.adjust(synergy_summary$P_Value_vs_Drug_A, "holm")
+  synergy_summary$P_Value_vs_Drug_B_Holm <- stats::p.adjust(synergy_summary$P_Value_vs_Drug_B, "holm")
+
   # One warning for all the days on which Bliss does not apply (R14.2, R20.8).
   not_bliss <- synergy_summary$Time_Point[!synergy_summary$Bliss_Applies]
   if (length(not_bliss)) {

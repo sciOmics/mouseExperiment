@@ -56,9 +56,15 @@ plot_caterpillar <- function(model, title = "Fixed Effects with 95% Confidence I
   # Extract degrees of freedom based on model type
   if (inherits(model, "lm") && !inherits(model, c("lmerMod", "glmerMod"))) {
     df_resid <- stats::df.residual(model)
+  } else if (inherits(model, "lmerMod")) {
+    # R20.61: each coefficient's Satterthwaite df. nobs - p treated every
+    # observation as independent ([-0.73, 1.07] where Kenward-Roger gives
+    # [-1.25, 1.59]).
+    ct <- tryCatch(stats::coef(summary(lmerTest::as_lmerModLmerTest(model))),
+                   error = function(e) NULL)
+    df_resid <- if (!is.null(ct) && "df" %in% colnames(ct)) unname(ct[coef_names, "df"]) else Inf
   } else {
-    # For mixed models, approximate df as n - p
-    df_resid <- stats::nobs(model) - length(estimates)
+    df_resid <- Inf   # glmer: Wald z
   }
   t_value <- stats::qt(1 - (1 - ci_level) / 2, df = df_resid)
   ci_lower <- estimates - t_value * std_errors
