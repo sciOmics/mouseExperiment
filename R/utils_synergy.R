@@ -44,14 +44,12 @@ synergy_bliss_expected <- function(fe_a, fe_b) {
 #'   (`control`, `drug_a`, `drug_b`, `combo`).
 #' @param n_boot Number of resamples.
 #' @param seed Optional RNG seed; the caller's RNG state is restored on exit.
-#' @param ci_floor_frac Relative floor applied to the combination fractional
 #' @return A data frame with one row per metric and columns `Metric`,
 #'   `Estimate`, `CI_Lower`, `CI_Upper`, `n_boot`, or `NULL` when any arm has
 #'   fewer than two mice.
 #' @noRd
 #' @keywords internal
-synergy_bootstrap <- function(vols, n_boot = 2000L, seed = NULL,
-                              ci_floor_frac = 1e-4) {
+synergy_bootstrap <- function(vols, n_boot = 2000L, seed = NULL) {  # R20.67: ci_floor_frac was unused
   need <- c("control", "drug_a", "drug_b", "combo")
   if (!all(need %in% names(vols))) return(NULL)
   vols <- lapply(vols[need], function(v) v[is.finite(v)])

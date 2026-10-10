@@ -151,6 +151,39 @@ build_requested_contrasts <- function(emm, spec, reference_group = NULL,
   )
 }
 
+#' Contrast summaries under a fixed seed -- CODE_REVIEW.md R20.59
+#'
+#' Dunnett, the dashboard's default, is emmeans' "mvt" adjustment, which
+#' integrates the multivariate t by Monte Carlo (mvtnorm). Every summary() gave
+#' slightly different p-values (0.000413, 0.000402, 0.000337 on three calls of
+#' the same contrast), an adjusted p could fall below the raw one, and each
+#' call advanced the caller's random number stream. Summaries now run under a
+#' fixed seed, and the caller's stream is restored afterwards.
+#'
+#' @param x An emmGrid of contrasts.
+#' @param ... Passed to `summary()`.
+#' @noRd
+#' @keywords internal
+me_contrast_summary <- function(x, ...) me_with_seed(20260930L, summary(x, ...))
+
+#' Evaluate `expr` under `seed`, leaving the caller's RNG state as it was
+#' @noRd
+#' @keywords internal
+me_with_seed <- function(seed, expr) {
+  genv <- globalenv()
+  had  <- exists(".Random.seed", envir = genv, inherits = FALSE)
+  old  <- if (had) get(".Random.seed", envir = genv, inherits = FALSE)
+  on.exit({
+    if (had) {
+      assign(".Random.seed", old, envir = genv)
+    } else if (exists(".Random.seed", envir = genv, inherits = FALSE)) {
+      rm(".Random.seed", envir = genv)
+    }
+  }, add = TRUE)
+  set.seed(seed)
+  expr
+}
+
 #' Pairwise contrast table for the body-weight models
 #'
 #' CODE_REVIEW.md R3.12 — `analyze_body_weight()` returned group marginal means
@@ -171,8 +204,8 @@ bw_pairwise_table <- function(emm_obj, spec, reference_group = NULL,
                                   custom_contrasts = custom_contrasts)
   if (is.null(pc)) return(NULL)
 
-  df <- tryCatch(as.data.frame(summary(pc, infer = c(TRUE, TRUE))),
-                 error = function(e) as.data.frame(summary(pc)))
+  df <- tryCatch(as.data.frame(me_contrast_summary(pc, infer = c(TRUE, TRUE))),
+                 error = function(e) as.data.frame(me_contrast_summary(pc)))
   if ("p.value" %in% names(df)) names(df)[names(df) == "p.value"] <- "p_value"
   df$P_Adjust_Method   <- spec$p_adjust_method
   df$Comparison_Family <- spec$family
@@ -223,9 +256,19 @@ me_pairwise_frame <- function(x, comparison_spec = NULL,
     } else {
       # R20.85: with intervals, which emmeans adjusts to match the p-values
       # (Dunnett/mvt, Tukey, Bonferroni; Bonferroni-level for Holm and BH).
-      s <- tryCatch(summary(x, infer = c(TRUE, TRUE)), error = function(e) summary(x))
+      s <- tryCatch(me_contrast_summary(x, infer = c(TRUE, TRUE)),
+                    error = function(e) me_contrast_summary(x))
       ci_msg <- attr(s, "mesg")
-      as.data.frame(s)
+      out <- as.data.frame(s)
+      # R20.59: the unadjusted p alongside, and an adjusted p never below it
+      # (Monte Carlo error in the mvt integration could put it there).
+      raw <- tryCatch(as.data.frame(me_contrast_summary(x, adjust = "none"))$p.value,
+                      error = function(e) NULL)
+      if (length(raw) == nrow(out) && "p.value" %in% names(out)) {
+        out$P_Value_Raw <- raw
+        out$p.value <- pmax(out$p.value, raw)
+      }
+      out
     },
     error = function(e) NULL)
   if (is.null(df) || !nrow(df)) return(df)

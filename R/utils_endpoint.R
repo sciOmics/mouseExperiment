@@ -119,7 +119,8 @@ endpoint_volumes <- function(df,
   if (endpoint_method == "survivors" &&
       any(attrition$N_At_Endpoint < attrition$N_Enrolled)) {
     lost <- attrition[attrition$N_At_Endpoint < attrition$N_Enrolled, ]
-    msg <- paste(sprintf("%s: %d/%d", lost$Treatment,
+    # R20.75: "Control: 1/4" read as one animal lost; it was 1 of 4 left.
+    msg <- paste(sprintf("%s: %d of %d still on study", lost$Treatment,
                          lost$N_At_Endpoint, lost$N_Enrolled), collapse = "; ")
     warning("endpoint_method = 'survivors' conditions on being observed at ",
             "day ", ep_day, ", but animals were lost before then (", msg,

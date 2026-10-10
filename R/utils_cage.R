@@ -236,33 +236,47 @@ resolve_cage_handling <- function(cage_info, handle_cage_effects,
 
 #' Cage-level intraclass correlation from a fitted mixed model
 #'
-#' ICC_cage = var(cage) / (var(cage) + var(id) + var(residual)). Reported so a
-#' user can see how much the clustering mattered: the design effect on the
-#' effective sample size is 1 + (mice_per_cage - 1) * ICC.
+#' ICC_cage = var(cage) / (var(cage) + var(animal at day t) + var(residual)).
+#' Reported so a user can see how much the clustering mattered: the design
+#' effect on the effective sample size is 1 + (mice_per_cage - 1) * ICC.
+#'
+#' CODE_REVIEW.md R20.68: with random slopes the animal variance depends on
+#' the day, Var(b0 + b1 t) = s0^2 + 2 t s01 + t^2 s1^2. Adding the slope
+#' variance (per day^2) to the total made the ICC depend on the time units
+#' (0.513 in days, 0.395 in weeks). It is now evaluated at a stated day, the
+#' mean study day the Treatment test uses, which no change of units moves.
 #'
 #' @param model A fitted `merMod`.
 #' @param cage_column Name of the cage grouping factor.
+#' @param time_column Name of the time variable in the random slopes.
+#' @param at Day at which the animal variance is evaluated.
 #' @return One-row data frame, or NULL when not computable.
 #' @noRd
 #' @keywords internal
-cage_icc <- function(model, cage_column) {
+cage_icc <- function(model, cage_column, time_column = NULL, at = 0) {
   if (!inherits(model, "merMod")) return(NULL)
-  vc <- tryCatch(as.data.frame(lme4::VarCorr(model)), error = function(e) NULL)
-  if (is.null(vc)) return(NULL)
-
-  rows <- vc[is.na(vc$var2), , drop = FALSE]
-  cage_var <- rows$vcov[rows$grp == cage_column]
-  if (length(cage_var) != 1L) return(NULL)
-
-  total <- sum(rows$vcov, na.rm = TRUE)
+  vcl <- tryCatch(lme4::VarCorr(model), error = function(e) NULL)
+  if (is.null(vcl)) return(NULL)
+  grp_of <- function(nm) sub("\\.[0-9]+$", "", nm)   # "ID.1" from (Day || ID)
+  var_at <- function(S) {
+    S <- as.matrix(S)
+    terms <- rownames(S)
+    z <- ifelse(terms == "(Intercept)", 1,
+                ifelse(!is.null(time_column) & terms == time_column, at, 0))
+    as.numeric(t(z) %*% S %*% z)
+  }
+  parts <- vapply(vcl, var_at, numeric(1))
+  is_cage <- grp_of(names(vcl)) == cage_column
+  if (sum(is_cage) != 1L) return(NULL)
+  cage_var <- parts[is_cage]
+  total <- sum(parts) + stats::sigma(model)^2
   if (!is.finite(total) || total <= 0) return(NULL)
-
-  icc <- cage_var / total
   data.frame(
     Grouping        = cage_column,
-    Variance        = cage_var,
+    Variance        = unname(cage_var),
     Total_Variance  = total,
-    ICC             = icc,
+    ICC             = unname(cage_var / total),
+    At_Day          = at,
     stringsAsFactors = FALSE
   )
 }

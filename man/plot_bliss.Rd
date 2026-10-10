@@ -12,15 +12,16 @@ plot_bliss(
   x_label = "Days",
   y_label = "Percent Tumor Growth Inhibition",
   y_limits = NULL,
-  drug_a_label = "Drug A",
-  drug_b_label = "Drug B",
-  combo_label = "Combination",
+  drug_a_label = NULL,
+  drug_b_label = NULL,
+  combo_label = NULL,
   expected_label = "Bliss Value"
 )
 }
 \arguments{
-\item{synergy_summary}{A data frame from the synergy_stats function containing TGI values
-over time for treatment groups and Bliss expected values.}
+\item{synergy_summary}{The result of \code{\link[=analyze_drug_synergy_over_time]{analyze_drug_synergy_over_time()}}, or its
+\code{synergy_summary} data frame. Given the whole result, the lines are
+labelled with the arms analysed.}
 
 \item{colors}{Optional named vector of colors for the lines. If NULL, default colors are used.}
 
@@ -34,8 +35,9 @@ over time for treatment groups and Bliss expected values.}
 
 \item{y_limits}{Optional numeric vector of length 2 specifying y-axis limits.}
 
-\item{drug_a_label, drug_b_label, combo_label, expected_label}{Axis labels for
-the four bars. Default to the group names supplied to the analysis.}
+\item{drug_a_label, drug_b_label, combo_label, expected_label}{Labels for the
+four lines. \code{NULL} (the default) takes the arm names from the result, or
+"Drug A", "Drug B" and "Combination" when given only the data frame.}
 }
 \value{
 A ggplot2 object representing the Bliss synergy plot.
@@ -50,7 +52,5 @@ trend <- analyze_drug_synergy_over_time(master_synthetic_data,
   combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
   min_time_point = 2,  # day 0 has no growth to inhibit
   n_boot = 200, boot_seed = 1, verbose = FALSE)
-plot_bliss(trend$synergy_summary,
-           drug_a_label = "Drug_A Mid", drug_b_label = "Drug_B",
-           combo_label = "Drug_A Mid + Drug_B")
+plot_bliss(trend)   # lines labelled with the arms analysed
 }

@@ -3,8 +3,9 @@
 #' Creates a line plot showing tumor growth inhibition percentages over time
 #' for individual drugs and their combination, along with the calculated Bliss value.
 #'
-#' @param synergy_summary A data frame from the synergy_stats function containing TGI values
-#'        over time for treatment groups and Bliss expected values.
+#' @param synergy_summary The result of [analyze_drug_synergy_over_time()], or its
+#'        `synergy_summary` data frame. Given the whole result, the lines are
+#'        labelled with the arms analysed.
 #' @param colors Optional named vector of colors for the lines. If NULL, default colors are used.
 #' @param title Optional custom title for the plot. If NULL, a default title is used.
 #' @param add_legend Logical indicating whether to display the legend. Default is TRUE.
@@ -12,8 +13,9 @@
 #' @param y_label Label for y-axis. Default is "Percent Tumor Growth Inhibition".
 #' @param y_limits Optional numeric vector of length 2 specifying y-axis limits.
 #'
-#' @param drug_a_label,drug_b_label,combo_label,expected_label Axis labels for
-#'   the four bars. Default to the group names supplied to the analysis.
+#' @param drug_a_label,drug_b_label,combo_label,expected_label Labels for the
+#'   four lines. `NULL` (the default) takes the arm names from the result, or
+#'   "Drug A", "Drug B" and "Combination" when given only the data frame.
 #' @return A ggplot2 object representing the Bliss synergy plot.
 #'
 #' @importFrom ggplot2 ggplot aes geom_line scale_color_manual labs theme_minimal theme
@@ -25,9 +27,7 @@
 #'   combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
 #'   min_time_point = 2,  # day 0 has no growth to inhibit
 #'   n_boot = 200, boot_seed = 1, verbose = FALSE)
-#' plot_bliss(trend$synergy_summary,
-#'            drug_a_label = "Drug_A Mid", drug_b_label = "Drug_B",
-#'            combo_label = "Drug_A Mid + Drug_B")
+#' plot_bliss(trend)   # lines labelled with the arms analysed
 #' @export
 plot_bliss <- function(synergy_summary, 
                       colors = NULL,
@@ -36,11 +36,23 @@ plot_bliss <- function(synergy_summary,
                       x_label = "Days",
                       y_label = "Percent Tumor Growth Inhibition",
                       y_limits = NULL,
-                      drug_a_label = "Drug A",
-                      drug_b_label = "Drug B",
-                      combo_label = "Combination",
+                      drug_a_label = NULL,
+                      drug_b_label = NULL,
+                      combo_label = NULL,
                       expected_label = "Bliss Value") {
-  
+  # R20.67: the lines were labelled "Drug A", "Drug B" and "Combination"
+  # whatever was analysed. Given the whole result, the arm names are used.
+  if (is.list(synergy_summary) && !is.data.frame(synergy_summary) &&
+      is.data.frame(synergy_summary$synergy_summary)) {
+    if (is.null(drug_a_label)) drug_a_label <- synergy_summary$drug_a_name
+    if (is.null(drug_b_label)) drug_b_label <- synergy_summary$drug_b_name
+    if (is.null(combo_label))  combo_label  <- synergy_summary$combo_name
+    synergy_summary <- synergy_summary$synergy_summary
+  }
+  if (is.null(drug_a_label)) drug_a_label <- "Drug A"
+  if (is.null(drug_b_label)) drug_b_label <- "Drug B"
+  if (is.null(combo_label))  combo_label  <- "Combination"
+
   # Input validation
   if (!is.data.frame(synergy_summary)) {
     stop("synergy_summary must be a data frame")

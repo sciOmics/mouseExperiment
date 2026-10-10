@@ -5,6 +5,42 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.0] - 2026-10-10
+
+The remaining Round 20 Minors and two efficiency items (`CODE_REVIEW.md`
+R20-V). Every Round 20 Minor is now closed.
+
+### Fixed
+
+- **Dunnett p-values changed on every call (R20.59).** The Monte Carlo
+  multivariate-t integration now runs under a fixed seed, leaves your random
+  number stream alone, and never gives an adjusted p below the raw one, which
+  is now reported too.
+- **Weight-loss events before the baseline (R20.65).** A low acclimatisation
+  weight counted as an event before the study began. The cumulative-incidence
+  strata are now ordered like the Kaplan–Meier ones.
+- **The cage ICC depended on the time units (R20.68).** With random slopes it
+  is now evaluated at the mean study day.
+- **Analytic power (R20.71).** The power curve and the find_power table use
+  the same n (enrolled), the sensitivity table shows enrolment, and enrolment
+  no longer rounds 30 up to 31.
+- **Plots (R20.61).** Mean growth lines stop when most of an arm has left
+  the study. Pre-treatment days are no longer dropped. `plot_tumor_growth()`
+  gains `volume_units`. `plot_auc()` intervals use t, and caterpillar
+  intervals use Satterthwaite df.
+- **Synergy (R20.67).** `plot_bliss()` labels lines with the arms analysed.
+  Per-day p-values gain Holm-adjusted columns across days.
+- **Metadata and checks (R20.58, R20.66, R20.69, R20.75).** The random-effects
+  description includes cage, and subject counts are the model's. Dropped
+  rows, and duplicate animal-day rows, draw a warning. The dose-response `n`
+  counts measured volumes, and the attrition message is clearer.
+
+### Performance
+
+- **Exact randomisation tests (R20.82)** refit each partition of the units
+  once instead of every relabelling: 15 refits instead of 90 for six cages in
+  three arms, with the same p-value.
+
 ## [0.31.0] - 2026-10-09
 
 The Round 20 addendum: the findings of the dashboard audit that live in this

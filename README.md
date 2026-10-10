@@ -100,7 +100,7 @@ fit$mcmc_diagnostics       # Rhat, ESS, convergence flag
 fit$loo_diagnostics        # elpd_loo, Pareto-k
 ```
 
-Every analysis function takes `plots = FALSE` to return only data frames.
+Every analysis function takes `plots = FALSE` to skip its figures. The model diagnostics (residual and Q-Q plots, influence) come with `include_diagnostics = TRUE` where a function has it.
 
 ### Survival
 

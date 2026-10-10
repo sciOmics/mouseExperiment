@@ -813,7 +813,9 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'     \describe{
 #'       \item{aic}{AIC values for each model specification}
 #'       \item{bic}{BIC values for each model specification}
-#'       \item{selected_model}{Name of the model with lowest BIC (most parsimonious)}
+#'       \item{selected_model}{The random-effects structure used: the one requested,
+#'         or the fallback when it could not be fitted (see \code{random_effects}).
+#'         Nothing is selected by BIC.}
 #'     }
 #'   }
 #'   \item{diagnostics}{Model diagnostic information including residuals, random effects, and variance components}
@@ -848,7 +850,7 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #' - Diagnostic checks of model assumptions
 #' - Growth rate analysis for each treatment group
 #' - Cage effect analysis and collinearity testing
-#' - Model selection based on AIC/BIC criteria
+#' - A fallback to simpler random effects when the requested structure cannot be fitted
 #' - Treatment effect estimation with proper reference group handling
 #'
 #' @examples
@@ -1043,6 +1045,17 @@ tumor_growth_statistics <- function(df,
     as.character(analysis_df[[id_column]]),
     as.character(analysis_df[[cage_column]]))
 
+  # R20.69: two volumes for one animal on one day were analysed as two
+  # independent observations, without a word.
+  dup <- duplicated(paste(analysis_df[[id_column]], analysis_df[[time_column]], sep = "\r")) &
+    !is.na(analysis_df[[volume_column]])
+  if (any(dup)) {
+    warning("tumor_growth_statistics(): ", sum(dup), " row(s) repeat an animal ",
+            "and day already in the data (same treatment, ID and cage). They are ",
+            "analysed as separate measurements; average or remove them if they ",
+            "are duplicates.", call. = FALSE)
+  }
+
   # Cage effect analysis
   # R20.57: the cage means are descriptive, so on the volume scale.
   cage_analysis <- tgs_compute_cage_effects(auc_df, cage_column, treatment_column, volume_column)
@@ -1073,6 +1086,16 @@ tumor_growth_statistics <- function(df,
   model <- lme4_result$model
   model_selection <- lme4_result$model_selection
   best_model <- lme4_result$best_model
+
+  # R20.58: rows the model dropped for a missing cage, day or covariate were
+  # left out without a word.
+  n_usable <- sum(is.finite(analysis_df[[volume_column]]))
+  n_used   <- tryCatch(stats::nobs(model), error = function(e) n_usable)
+  if (n_used < n_usable) {
+    warning("tumor_growth_statistics(): ", n_usable - n_used, " of ", n_usable,
+            " measurements were left out of the model because another column it ",
+            "uses (cage, day or a covariate) is missing on those rows.", call. = FALSE)
+  }
 
   # Diagnostic plots
   diagnostics <- list()
@@ -1105,10 +1128,19 @@ tumor_growth_statistics <- function(df,
   data_summary <- tgs_compute_summary(auc_df, treatment_column, time_column, volume_column,
                                       zero_floor = if (transform == "log") floor_value)
 
-  # Only for auc model type or when additional AUC analysis is requested
-  if (model_type == "auc" || (model_type == "lme4" && include_diagnostics)) {
-    auc_analysis <- tgs_compute_auc(auc_df, id_column, treatment_column, cage_column,
-                                    time_column, volume_column, verbose)
+  # R20.69: the per-animal AUC table is the AUC path's (descriptive). The lme4
+  # path computed it with diagnostics on and discarded it, and it failed ("no
+  # rows to aggregate") when every animal had a single time point.
+  auc_analysis <- NULL
+  if (model_type == "auc") {
+    auc_analysis <- tryCatch(
+      tgs_compute_auc(auc_df, id_column, treatment_column, cage_column,
+                      time_column, volume_column, verbose),
+      error = function(e) {
+        warning("Per-animal AUCs could not be computed: ", conditionMessage(e),
+                call. = FALSE)
+        NULL
+      })
   }
 
   # Return the results for AUC model
@@ -1293,20 +1325,25 @@ tumor_growth_statistics <- function(df,
     analysis_summary <- list(
       analysis_type = "Linear Mixed Effects Model Analysis",
       data_description = list(
-        subjects = length(unique(make_mouse_key(
-          analysis_df[[id_column]], analysis_df[[treatment_column]], analysis_df[[cage_column]]
-        ))),
+        # R20.58: the animals in the fitted model. Rows with no cage were
+        # dropped by lmer while this still counted their animals (24 for 3).
+        subjects = if (inherits(model, "merMod")) {
+          as.integer(lme4::ngrps(model)[[id_column]])
+        } else length(unique(analysis_df[[id_column]])),
         treatment_groups = length(unique(analysis_df[[treatment_column]])),
         time_points = length(unique(analysis_df[[time_column]])),
         reference_group = reference_group
       ),
       model_specification = list(
         fixed_effects = paste(volume_column, "~", time_column, "*", treatment_column),
-        random_effects = switch(best_model,
-                               "intercept_only" = paste("(1|", id_column, ")"),
-                               "slope" = paste("(", time_column, "|", id_column, ")"),
-                               "slope_uncorrelated" = paste("(", time_column, "||", id_column, ")"),
-                               "none" = "None"),
+        # R20.58: the whole random part, cage included when it is in the model.
+        random_effects = paste0(
+          switch(best_model,
+                 "intercept_only" = paste0("(1 | ", id_column, ")"),
+                 "slope" = paste0("(", time_column, " | ", id_column, ")"),
+                 "slope_uncorrelated" = paste0("(", time_column, " || ", id_column, ")"),
+                 "none" = "None"),
+          if (isTRUE(cage_handling$random)) paste0(" + (1 | ", cage_column, ")") else ""),
         cage_effects   = handle_cage_effects,
         cage_structure = cage_structure$structure,
         cage_placement = if (isTRUE(cage_handling$fixed)) "fixed effect"
@@ -1366,7 +1403,8 @@ tumor_growth_statistics <- function(df,
     # so the reader can see how much the clustering mattered. The design effect
     # on the effective sample size is 1 + (mice_per_cage - 1) * ICC.
     cage_analysis$icc <- if (isTRUE(cage_handling$random)) {
-      cage_icc(model, cage_column)
+      # R20.68: at the mean study day, like the Treatment test.
+      cage_icc(model, cage_column, time_column, at = mean(analysis_df[[time_column]]))
     } else NULL
 
     # CODE_REVIEW.md H.3 — randomisation test of the interaction, run only when
@@ -1436,7 +1474,9 @@ tumor_growth_statistics <- function(df,
         adjust_scope = posthoc_method),
       posthoc = list(
         method = posthoc_method,
-        pairwise = if (!is.null(pairwise_comp)) as.data.frame(summary(pairwise_comp)) else NULL
+        # R20.59: the same seeded summary as pairwise_comparisons, so the
+        # two tables agree.
+        pairwise = if (!is.null(pairwise_comp)) as.data.frame(me_contrast_summary(pairwise_comp)) else NULL
       ),
       treatment_effects          = treatment_effects,
       treatment_effects_over_time = emm_time_df,
