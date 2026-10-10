@@ -110,21 +110,19 @@ test_that("plot_auc returns a ggplot", {
   expect_s3_class(p, "gg")
 })
 
-test_that("plot_auc works with tumor_auc_analysis result", {
+test_that("plot_auc works with the tumour-growth AUC path result", {
+  # The dashboard plots result$auc_analysis$individual from
+  # tumor_growth_statistics(model_type = "auc"); exercise the same input.
   df <- make_tg_simple()
-  auc_res <- suppressWarnings(suppressMessages(
-    tumor_auc_analysis(df, time_column = "Day", volume_column = "Volume",
-                       treatment_column = "Treatment", id_column = "ID",
-                       cage_column = "Cage")
+  res <- suppressWarnings(suppressMessages(
+    tumor_growth_statistics(df, model_type = "auc", plots = FALSE,
+                            verbose = FALSE, p_adjust_method = "holm")
   ))
-  # tumor_auc_analysis returns $auc_data with AUC and Treatment columns
-  if (!is.null(auc_res$auc_data)) {
-    auc_df <- auc_res$auc_data
-    # Determine correct column names
-    group_col <- if ("Group" %in% colnames(auc_df)) "Group" else "Treatment"
-    p <- plot_auc(auc_df, group_column = group_col)
-    expect_s3_class(p, "gg")
-  }
+  auc_df <- res$auc_analysis$individual
+  expect_true(is.data.frame(auc_df) && nrow(auc_df) > 0)
+  group_col <- if ("Group" %in% colnames(auc_df)) "Group" else "Treatment"
+  p <- plot_auc(auc_df, group_column = group_col)
+  expect_s3_class(p, "gg")
 })
 
 # ===========================================================================

@@ -11,8 +11,10 @@ dose_response_statistics(
   volume_column = "Volume",
   day_column = "Day",
   id_column = "ID",
+  cage_column = NULL,
   time_point = NULL,
-  control_group_name = "Control",
+  control_group_name = NULL,
+  treatments = NULL,
   verbose = TRUE
 )
 }
@@ -29,20 +31,55 @@ dose_response_statistics(
 
 \item{id_column}{Column with individual mouse identifiers. Default: "ID".}
 
-\item{time_point}{Optional specific time point (day) to analyze. Default: NULL (uses last time point).}
+\item{cage_column}{Optional cage column, part of the animal key (treatment +
+ID + cage), so an ID reused across cages or arms is not one animal
+(CODE_REVIEW.md T1). NULL or absent means no cage information.}
 
-\item{control_group_name}{Name of the control group. Default: "Control".}
+\item{time_point}{Day to analyse. Default \code{NULL}: the last day on which
+every dose group is evaluable (see \code{\link{evaluable_days}}). A day that
+is not evaluable is an error. Before v0.26.0 the default was each animal's
+own last observation (CODE_REVIEW.md R20.17).}
+
+\item{control_group_name}{Name of the control arm in \code{treatment_column}.
+It must exist, and its dose must be 0 or missing (a missing dose is read
+as 0). \code{NULL} (default): the rows with dose 0 are the control. Before
+v0.27.0 a name that did not exist was ignored (CODE_REVIEW.md R20.16).}
+
+\item{treatments}{The arms that form the dose series, besides the control:
+one agent at several doses. \code{NULL} (default) takes every other arm,
+and is an error when there is more than one, because the analysis would
+then put different agents on one dose axis (R20.16). A dose level held by
+more than one of the chosen arms is also an error.}
 
 \item{verbose}{Logical; if TRUE, prints model summaries and statistics to the console. Default: TRUE.}
 }
 \value{
 A list containing:
 \item{dose_effect_test}{Statistical test results for dose-dependency}
-\item{trend_test}{Results of trend tests}
+\item{trend_test}{Results of trend tests. \code{jonckheere_test} is
+two-sided since v0.27.0; its \code{direction} field describes the
+trend of the dose-group means without having chosen the test
+(CODE_REVIEW.md R20.20).}
 \item{linear_model}{Linear regression model}
 \item{anova_model}{ANOVA model comparing dose groups}
 \item{plots}{List of data visualizations}
 \item{summary_table}{Data frame summarizing results for each dose level}
+\item{endpoint_day}{The day analysed.}
+\item{evaluability}{The evaluable-day record: rule, days, and the days and
+dose groups it excluded.}
+\item{tgi_table}{TGI per dose group at \code{endpoint_day}, from the
+endpoint model shared with \code{analyze_drug_synergy()} and
+\code{therapeutic_window_metric()}, with 95 \% intervals from draws of
+its fixed effects. \code{NULL} when the model cannot be fitted.}
+\item{series}{The arms analysed: \code{control} and \code{treatments}.}
+\item{statistics}{Among others, the EC50 of the fitted log-logistic curve:
+\code{ec50} is the dose giving half of the fitted response range
+(\code{drc::ED(model, 50)}), with \code{ec50_ci}, a 95 \% interval
+computed on log dose so it stays positive. \code{ec50_in_range} is
+FALSE when the EC50 lies outside the tested doses, and \code{ec50_note}
+gives any reason to read it as descriptive. The lower asymptote is
+constrained to be at least 0, and the 5-parameter curve is considered
+only with at least 6 dose levels (CODE_REVIEW.md R20.18).}
 }
 \description{
 Performs statistical tests to determine if there is a significant dose-response

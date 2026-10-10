@@ -4,6 +4,8 @@ What the package's analyses check, what the dashboard renders, what's appropriat
 
 This document is part audit, part reference. Sections 1-5 inventory the diagnostics per analysis; sections 6 and 7 cover what's missing and the known bugs / gaps in the current surfacing.
 
+> **Scope note (v0.23.0).** This audit predates the removals recorded in `CODE_REVIEW.md` R20-K. The GAM/GAMM path, `repeated_measures_anova()`, and the Bayesian body-weight, synergy, dose-response and therapeutic-window models it discusses no longer exist; their sections are kept as the historical record.
+
 ---
 
 ## TL;DR

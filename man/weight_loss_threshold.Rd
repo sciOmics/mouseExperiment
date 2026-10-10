@@ -17,7 +17,10 @@ weight_loss_threshold(
   volume_units = NULL,
   threshold = 0.2,
   baseline_day = NULL,
-  reference_group = NULL
+  reference_group = NULL,
+  removal_reason_column = NULL,
+  weight_loss_reasons = character(0),
+  planned_end_reasons = character(0)
 )
 }
 \arguments{
@@ -40,35 +43,59 @@ composite mouse key so reused IDs across cages are not collapsed.}
 
 \item{tumor_density}{Density in g/cm³ (default 1.0).}
 
-\item{volume_units}{Units of \code{volume_column}: "mm3", "cm3", or NULL
-(default) to auto-detect from the data and report the inference.}
+\item{volume_units}{Units of the volume column, \code{"mm3"} or \code{"cm3"}.
+Required when \code{adjust_tumor_weight = TRUE} and a volume column is used,
+because volume is converted to mass and subtracted from body weight: the
+wrong unit scales that correction by 1000. Units were inferred from the data
+before v0.25.0, which read small-tumour mm3 studies as cm3 (CODE_REVIEW.md
+R20.83); the data are now only checked against the declared unit, with a
+warning on disagreement and an error when the implied tumour mass exceeds
+half the body weight.}
 
 \item{threshold}{Fractional weight loss threshold (default 0.20 = 20\%).}
 
 \item{baseline_day}{Day to use as baseline for initial weight. NULL = first observation per mouse.}
 
 \item{reference_group}{Name of the control/reference group.}
+
+\item{removal_reason_column}{Optional column recording why each animal left
+the study (read from its last row with a non-empty value). Without it,
+an animal whose record ends before the threshold is censored at its last
+day, whatever the cause (see "Removals"). CODE_REVIEW.md R20.23.}
+
+\item{weight_loss_reasons}{Values of \code{removal_reason_column} meaning
+the animal was removed for weight loss or body condition. Such an animal
+counts as a weight-loss event at its last day even if its recorded weight
+stayed above the threshold.}
+
+\item{planned_end_reasons}{Values meaning a planned end: the end of the
+study, a scheduled sacrifice or a data cut. These are ordinary
+(administrative) censoring. Every other non-empty reason, such as tumour
+burden or death, is a competing removal.}
 }
 \value{
 A list with: event_data (per animal, including \code{Censor_Type} —
-"event" / "administrative" / "early_removal" — and \code{Status_CR}),
+"event", "administrative" or "competing_removal" — and \code{Status_CR}),
 km_fit, km_summary, log_rank, cox_model, cox_summary, cox_method, ph_test,
-\code{cuminc} (Aalen-Johansen cumulative incidence treating removal before
-study end as a competing risk), \code{censoring_summary}, and
-\code{n_competing_risk}.
+\code{cuminc} (Aalen-Johansen cumulative incidence with competing
+removals, when a removal-reason column identifies any),
+\code{censoring_summary}, \code{n_competing_risk} and \code{assumption}
+(how early ends were treated, in words).
 }
 \description{
 Performs Kaplan-Meier and optional Cox PH analysis for time to a specified
 percentage body weight loss threshold.
 }
-\section{Competing risks}{
+\section{Removals}{
 
-Animals removed for tumour burden before reaching the weight-loss threshold
-are not independently censored — removal and weight loss share a cause. The
-Kaplan-Meier estimator assumes a censored animal remains at risk, so
-\code{1 - km_fit} overstates the cumulative incidence of weight loss
-whenever such removals occur. Prefer \code{cuminc} for incidence statements
-and use \code{censoring_summary} to see how much of the censoring is
-informative.
+Without a removal-reason column an animal whose record ends before it
+reaches the threshold is censored at its last day. That assumes its later
+weight-loss risk was like that of the animals still on study. Before
+v0.27.0 every such record was a competing "removal", so staggered enrolment
+or a data cut halved the Aalen-Johansen incidence (R20.23). With a
+removal-reason column, removals for weight loss are events, planned ends
+are censoring, and other removals (tumour burden, death) are competing
+risks: \code{cuminc} then gives the cumulative incidence of weight loss
+allowing for them, which \code{1 - km_fit} overstates.
 }
 

@@ -52,7 +52,7 @@ and combination groups have near-zero event rates}
 \item{Body weight}{Drug_A High causes ~10 \% weight loss (significant vs
 Vehicle); Drug_B causes ~3 \% loss (non-significant)}
 \item{Drug synergy}{The combination "Drug_A Mid + Drug_B" exceeds Bliss
-Independence (excess ~+8 \%) and has Loewe CI < 1 (synergistic);
+Independence (excess ~+8 \%), i.e. synergistic;
 evaluate at \code{eval_time_point = 10} where all mice are present}
 \item{Dose-response}{Drug_A at doses 0/5/15/30 mg/kg exhibits a
 Hill-shaped dose-response; EC50 approximately 10–15 mg/kg}

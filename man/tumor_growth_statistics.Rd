@@ -13,8 +13,9 @@ tumor_growth_statistics(
   id_column = "ID",
   dose_column = NULL,
   transform = c("log", "sqrt", "none"),
-  model_type = c("lme4", "gam", "auc"),
-  random_effects_specification = c("intercept_only", "slope", "none"),
+  model_type = c("lme4", "auc"),
+  random_effects_specification = c("slope", "slope_uncorrelated", "intercept_only",
+    "none"),
   handle_cage_effects = c("auto", "include_if_not_collinear", "always_include",
     "never_include", "as_random_effect"),
   comparison_family = c("vs_reference", "all_pairs", "custom"),
@@ -61,16 +62,27 @@ This allows for dose-response analysis. Default is NULL.}
 Options are "log", "sqrt", "none". Default is "log", which is recommended for exponential growth.}
 
 \item{model_type}{A character string specifying the type of model to fit. Options are:
-"lme4" (standard linear mixed effects model using lme4 package — linear time × treatment),
-"gam"  (generalized additive mixed model via gamm4 — group-specific smooth time terms;
-use this in place of fitting a high-order polynomial in time),
-"auc"  (area under the curve analysis).
-Default is "lme4".}
+"lme4" (linear mixed-effects model using lme4 — linear time × treatment),
+"auc"  (area under each arm's fitted curve over the window in which
+every arm is evaluable; see Details).
+Default is "lme4". The GAMM option was removed in v0.23.0
+(CODE_REVIEW.md R20-K).}
 
-\item{random_effects_specification}{A character string specifying the random effects structure.
-"intercept_only" (default): (1|ID) - random intercepts by subject
-"slope": (Day|ID) - random intercepts and slopes by subject
-"none": No random effects}
+\item{random_effects_specification}{The per-animal random effects:
+\describe{
+\item{"slope"}{(default since v0.26.0) correlated random intercepts and
+slopes, \code{(Day | animal)}.}
+\item{"slope_uncorrelated"}{uncorrelated intercepts and slopes,
+\code{(Day || animal)}.}
+\item{"intercept_only"}{\code{(1 | animal)}. Assumes all animals in an
+arm grow at the same rate; when they do not, the Treatment x Day test
+rejects a true null far too often: in 73 of every 100 simulated
+null studies (CODE_REVIEW.md R20.5).}
+\item{"none"}{no random effects (\code{lm}).}
+}
+A model that errors or fails to converge falls back along
+slope -> slope_uncorrelated -> intercept_only, with a warning; the structure
+used is returned in \code{random_effects}.}
 
 \item{handle_cage_effects}{How cage enters the model. Default \code{"auto"}
 picks the correct treatment for the detected design structure:
@@ -168,23 +180,25 @@ denominator-df approximation nor normal random effects — but it is only valid
 if \code{unit} matches how the study actually randomised, so the unit is an
 explicit choice rather than a default. See \code{\link{perm_spec}}.
 CODE_REVIEW.md H.3.}
-
-\item{auc_method}{Removed in v0.4.5. The AUC path now always uses the
-trapezoidal rule. For last-observation-carried-forward (LOCF) AUC, use
-\code{\link{tumor_auc_analysis}(method = "last_observation")} directly.}
 }
 \value{
 A list containing the following components:
 \describe{
 \item{model}{The fitted statistical model (lme4 or auc object)}
-\item{anova}{ANOVA table for fixed effects with Type III tests}
+\item{anova}{Type III tests of the fixed effects: F-tests with
+Satterthwaite degrees of freedom (lmerTest) on the lme4 path (method in
+\code{anova_method}); on the AUC path, a Wald test that every arm has
+the same model-based AUC.}
+\item{random_effects}{The random-effects structure requested and used,
+and why any fallback happened.}
 \item{summary}{Detailed model summary with parameter estimates}
 \item{pairwise_comparisons}{Results of pairwise comparisons between treatment groups, showing treatment differences, p-values, and confidence intervals}
 \item{treatment_effects}{Estimated treatment effects on tumor growth, showing adjusted means for each treatment group}
 \item{growth_rates}{Data frame containing growth rates for each subject, calculated as the slope of log-volume over time. Higher values indicate faster tumor growth.}
 \item{cage_analysis}{Analysis of cage effects, including:
 \itemize{
-\item{collinearity_test}{Chi-squared test result for collinearity between cage and treatment}
+\item{structure}{The cage design structure from \code{classify_cage_structure()}, which decides how cage enters the model}
+\item{handling}{The cage handling applied}
 \item{effects}{Data frame of cage-level statistics (mean and SD of volume by cage and treatment)}
 }
 }
@@ -212,9 +226,16 @@ depends on the experimental design, growth patterns, and research questions:
 \enumerate{
 \item Linear mixed-effects models (model_type="lme4") are suitable for most tumor growth experiments and
 account for the correlation structure of repeated measurements on the same subjects.
-The default formula is log(Volume) ~ Day * Treatment + (1|ID).
-\item Area under the curve analysis (model_type="auc") reduces each subject's growth curve to a single
-summary metric (AUC), which is then compared between treatment groups.
+The default formula is log(Volume) ~ Day * Treatment + (Day | ID): per-animal random
+slopes, falling back to uncorrelated slopes and then to a random intercept only when a
+fit fails (CODE_REVIEW.md R20.5).
+\item Area under the curve analysis (model_type="auc") compares arms by the area under each arm's
+fitted curve (a mixed model of log volume with a natural spline in time per arm and random
+slopes) from the first study day to the last day on which every arm is evaluable. Arms are
+compared by the ratio of their AUCs, with 95\% intervals and Wald p-values from draws of the
+model. Each animal's own trapezoidal AUC is kept in auc_analysis$individual for description
+only: it covers that animal's follow-up, so it is not comparable across arms with different
+attrition (CODE_REVIEW.md R20.4).
 }
 
 The function automatically handles:
@@ -247,14 +268,5 @@ print(results$pairwise_comparisons)
 
 # Plot adjusted means for each treatment group
 print(results$plots$adjusted_means)
-
-# Analyze with a generalized additive mixed model (group-specific smooth
-# time terms via gamm4) — preferred over a high-order polynomial in time.
-results_gam <- tumor_growth_statistics(
-  tumor_data,
-  model_type = "gam",
-  transform = "log"
-)
-print(results_gam$treatment_effects_over_time)
 
 }

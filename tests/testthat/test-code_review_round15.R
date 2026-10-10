@@ -98,7 +98,7 @@ test_that("R15.2: late-enrolling animals are not dropped from weight loss", {
     stagger_df(), volume_column = "Volume", weight_column = "Weight",
     time_column = "Day", treatment_column = "Treatment", id_column = "ID",
     reference_group = "Control", adjust_tumor_weight = FALSE, n_boot = 0)))
-  got <- r$twm_table$Mean_Pct_Weight_Loss[r$twm_table$Treatment == "DrugA"]
+  got <- r$window_table$Worst_Loss[r$window_table$Treatment == "DrugA"]
   expect_gt(got, 13)          # the old, wrong answer was exactly 10.0
   expect_lt(got, 18)
 })

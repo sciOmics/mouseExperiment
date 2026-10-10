@@ -1,20 +1,25 @@
 #' A Priori Power Analysis (Analytical)
 #'
 #' Computes prospective power / required sample size from user-supplied effect
-#' size parameters, without needing experimental data. Supports two-sample
-#' t-test (two groups) and one-way ANOVA omnibus F-test (k ≥ 3 groups).
+#' size parameters, without needing experimental data. Power is for a
+#' two-sample t-test between a treated arm and the control arm. With two groups
+#' that is the one comparison the study makes. With \eqn{k \ge 3} groups the
+#' study is analysed as the \eqn{k - 1} treated-vs-control comparisons, so the
+#' power reported is for each of those comparisons at the per-comparison alpha
+#' (see \code{p_adjust_method}).
 #'
-#' @param effect_size Numeric scalar. Cohen's d (for two groups) or Cohen's f
-#'   (for ANOVA; f = sd_means / pooled_within_sd). If \code{delta} and
+#' @param effect_size Numeric scalar: Cohen's d, the standardised difference to
+#'   detect between a treated arm and the control arm. If \code{delta} and
 #'   \code{pooled_sd} are supplied instead, \code{effect_size} is computed as
-#'   \code{abs(delta) / pooled_sd} and the two-group t-test path is used.
-#'   \strong{When \code{n_groups >= 3}:} the supplied value is treated as
-#'   Cohen's d for the largest pairwise contrast and converted to Cohen's f
-#'   via \code{f = d / sqrt(2)}. This conversion assumes exactly two extreme
-#'   groups (one high, one low) with all others at the grand mean — a scenario
-#'   that overestimates f (and therefore power) when all treated groups are
-#'   uniformly reduced relative to control. Supply Cohen's f directly via this
-#'   argument if you have a more accurate estimate of between-group variability.
+#'   \code{abs(delta) / pooled_sd}.
+#'
+#'   \strong{Three or more groups} (CODE_REVIEW.md R20.7). Each treated arm
+#'   that differs from control by \code{d} is detected with the reported power;
+#'   the chance of detecting several such arms at once is lower. Versions before
+#'   0.24.0 powered an omnibus ANOVA with \eqn{f = d / \sqrt{2}} (the conversion
+#'   for its own two-extreme-groups configuration is \eqn{d / \sqrt{2k}}), which
+#'   returned sample sizes 2.6--4 times too small, and applied the Bonferroni
+#'   per-comparison alpha to that omnibus test.
 #'
 #'   \strong{Effect-size scale:} Cohen's d here is the standardised mean
 #'   difference on the \emph{modelling scale} (\code{log(Volume)} when the
@@ -68,12 +73,15 @@
 #'   analysis will make. Used with \code{p_adjust_method = "bonferroni"} to
 #'   derive the effective per-comparison alpha. Defaults to \code{n_groups - 1}
 #'   (the vs-control family these designs normally use).
-#' @param p_adjust_method \code{"none"} (default, backward compatible) or
-#'   \code{"bonferroni"}. When \code{"bonferroni"}, the sample size is computed
-#'   at \code{alpha / n_comparisons} rather than at \code{alpha}, so the
-#'   calculation matches the analysis that will actually be run. Powering at an
+#' @param p_adjust_method \code{"bonferroni"} (default) or \code{"none"}.
+#'   \code{"bonferroni"} computes power at \code{alpha / n_comparisons}, which
+#'   matches an analysis that adjusts over the \eqn{k - 1} vs-control
+#'   comparisons, as \code{tumor_growth_statistics()} does by default. With two
+#'   groups there is one comparison, so it changes nothing. Powering at an
 #'   unadjusted alpha and then analysing with an adjustment delivers materially
-#'   less power than the nominal target.
+#'   less power than the nominal target. Dunnett's exact correction is slightly
+#'   less conservative than Bonferroni, so for a Dunnett analysis the Bonferroni
+#'   N is a small overestimate. The default was \code{"none"} before 0.24.0.
 #' @param dropout_rate Numeric in [0, 1). Expected proportion of enrolled
 #'   animals that will not be analysable (euthanasia for tumour burden,
 #'   technical failure). \code{Required_N} is the number that must be
@@ -90,7 +98,7 @@ apriori_power_analysis <- function(effect_size   = NULL,
                                    n_per_group   = NULL,
                                    mode          = c("find_n", "find_power"),
                                    n_comparisons = NULL,
-                                   p_adjust_method = c("none", "bonferroni"),
+                                   p_adjust_method = c("bonferroni", "none"),
                                    dropout_rate  = 0,
                                    sd_sensitivity_range = 0.4) {
 
@@ -152,54 +160,27 @@ apriori_power_analysis <- function(effect_size   = NULL,
     alpha
   }
 
-  # ---- Build scenario table --------------------------------------------------
-  power_fn <- if (n_groups == 2L) {
-    # Two-sample t-test
-    function(n, a) {
-      tryCatch(
-        stats::power.t.test(n = n, delta = effect_size, sd = 1,
-                            sig.level = a, type = "two.sample")$power,
-        error = function(e) NA_real_
-      )
-    }
-  } else {
-    # One-way ANOVA: convert d → f = d / sqrt(2).
-    # This conversion is exact only when two groups have means ±d/2·σ and all
-    # others equal the grand mean. For oncology designs where all treated groups
-    # are uniformly reduced vs. control, the true f is smaller and this path
-    # will overestimate power. Users with a directional hypothesis should supply
-    # Cohen's f directly rather than Cohen's d.
-    f_val <- effect_size / sqrt(2)
-    function(n, a) {
-      # pwr is a hard Import as of v0.10.0. The former fallback here was a
-      # hand-rolled non-central F approximation that returned *different numbers*
-      # from pwr, so whether a user happened to have pwr installed silently
-      # changed the reported power. One numerical path now.
-      tryCatch(
-        pwr::pwr.anova.test(k = n_groups, n = n, f = f_val,
-                            sig.level = a)$power,
-        error = function(e) NA_real_
-      )
-    }
+  # ---- Power for one treated-vs-control comparison --------------------------
+  # CODE_REVIEW.md R20.7 -- k enters only through the per-comparison alpha: a
+  # k-arm study is analysed as k - 1 treated-vs-control comparisons, each a
+  # two-sample contrast. The former k >= 3 path powered an omnibus F-test with
+  # f = d / sqrt(2) (correct for its own configuration is d / sqrt(2k)) and
+  # returned N 2.6-4x too small; it also applied the per-comparison Bonferroni
+  # alpha to that omnibus test.
+  power_fn <- function(n, a) {
+    tryCatch(
+      stats::power.t.test(n = n, delta = effect_size, sd = 1,
+                          sig.level = a, type = "two.sample")$power,
+      error = function(e) NA_real_
+    )
   }
 
-  n_fn <- function(a, pwr) {
-    if (n_groups == 2L) {
-      tryCatch(
-        ceiling(stats::power.t.test(power = pwr, delta = effect_size, sd = 1,
-                                    sig.level = a, type = "two.sample")$n),
-        error = function(e) NA_integer_
-      )
-    } else {
-      f_val <- effect_size / sqrt(2)
-      # See above — pwr is required, so the binary-search-over-approximation
-      # fallback that used to live here is gone.
-      tryCatch(
-        ceiling(pwr::pwr.anova.test(k = n_groups, f = f_val,
-                                    sig.level = a, power = pwr)$n),
-        error = function(e) NA_integer_
-      )
-    }
+  n_fn <- function(a, pwr, d = effect_size) {
+    tryCatch(
+      ceiling(stats::power.t.test(power = pwr, delta = d, sd = 1,
+                                  sig.level = a, type = "two.sample")$n),
+      error = function(e) NA_integer_
+    )
   }
 
   if (mode == "find_n") {
@@ -269,27 +250,19 @@ apriori_power_analysis <- function(effect_size   = NULL,
                     1 + sd_sensitivity_range / 2,
                     1 + sd_sensitivity_range)
     sd_labels  <- paste0(round((sd_factors - 1) * 100), "%")
-    ref_a  <- min(alpha)
+    # The same per-comparison alpha as the scenario table (R20.7 / R20.71).
+    ref_i  <- which.min(alpha)
+    ref_a  <- alpha_requested[ref_i]
+    ref_a_eff <- alpha_effective[ref_i]
     ref_tp <- max(target_power)
     sens_rows <- lapply(seq_along(sd_factors), function(i) {
       sd_i  <- stored_pooled_sd * sd_factors[i]
       d_i   <- raw_delta / sd_i
-      n_i   <- if (n_groups == 2L) {
-        tryCatch(ceiling(stats::power.t.test(power = ref_tp, delta = d_i, sd = 1,
-                                             sig.level = ref_a, type = "two.sample")$n),
-                 error = function(e) NA_integer_)
-      } else {
-        n_fn_local <- function(a2, pwr2) {
-          f2 <- d_i / sqrt(2)
-          tryCatch(ceiling(pwr::pwr.anova.test(k = n_groups, f = f2,
-                                               sig.level = a2, power = pwr2)$n),
-                   error = function(e) NA_integer_)
-        }
-        n_fn_local(ref_a, ref_tp)
-      }
+      n_i   <- n_fn(ref_a_eff, ref_tp, d = d_i)
       data.frame(SD_Change = sd_labels[i], Assumed_SD = round(sd_i, 3),
                  Cohens_d = round(d_i, 3), Required_N = n_i,
-                 Alpha = ref_a, Target_Power = ref_tp,
+                 Alpha = ref_a, Alpha_Per_Comparison = ref_a_eff,
+                 Target_Power = ref_tp,
                  stringsAsFactors = FALSE)
     })
     sensitivity_table <- do.call(rbind, sens_rows)
@@ -297,9 +270,15 @@ apriori_power_analysis <- function(effect_size   = NULL,
 
   method_note <- if (n_groups >= 3L) {
     paste0(
-      "ANOVA power computed via f = d/sqrt(2) = ", round(effect_size / sqrt(2), 3),
-      ". This conversion assumes two extreme groups; power may be overestimated ",
-      "when all treated groups are uniformly reduced vs. control."
+      "Power is for one treated-vs-control comparison (two-sample t-test) at ",
+      "alpha ", paste(signif(alpha_effective, 3), collapse = " / "),
+      " per comparison",
+      if (p_adjust_method == "bonferroni") {
+        paste0(" (Bonferroni over ", n_comp_used, " comparisons)")
+      } else " (no multiplicity adjustment)",
+      ". Each treated arm that differs from control by d = ",
+      signif(effect_size, 3), " is detected with this power; the chance of ",
+      "detecting several such arms at once is lower."
     )
   } else NULL
 

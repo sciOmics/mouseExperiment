@@ -40,28 +40,32 @@ ME_ENDPOINT_METHODS <- c("model", "last_obs", "survivors")
 #' @param df Long data frame.
 #' @param id_column,treatment_column,time_column,volume_column Column names.
 #' @param cage_column Optional; used only for the composite mouse key.
-#' @param endpoint_day Day at which to evaluate. `NULL` uses the maximum
-#'   observed day.
+#' @param endpoint_day Day at which to evaluate. `NULL` uses the last day on
+#'   which every arm in `arms` is evaluable (see [evaluable_days()]); an
+#'   explicit day must be evaluable (R20.1, R20-K).
 #' @param endpoint_method One of:
 #'   \describe{
-#'     \item{`"model"`}{(default) group geometric means at `endpoint_day` from a
-#'       log-scale LMM fitted to every observation. Uses all animals.}
-#'     \item{`"last_obs"`}{each animal's own last observation, as
-#'       `bayesian_dose_response()` does since v0.4.14. Uses all animals but
-#'       evaluates them at *different days*, so it is not an estimate of volume
-#'       at `endpoint_day`: an animal removed on day 12 contributes its day-12
-#'       volume. On a simulated study with volume-triggered euthanasia this was
-#'       *more* biased than `"survivors"`, not less, because it understates the
-#'       control arm most. Retained as a fallback for when the model cannot be
+#'     \item{`"model"`}{(default) each arm's geometric mean at `endpoint_day`
+#'       from `me_endpoint_model()`, fitted to every observation of every
+#'       animal. Its intervals come from draws of that model's fixed effects.}
+#'     \item{`"last_obs"`}{each animal's own last observation at or before the
+#'       endpoint day. Animals are evaluated at *different days*; on a simulated
+#'       study with volume-triggered euthanasia this was *more* biased than
+#'       `"survivors"`. Retained as a fallback for when the model cannot be
 #'       fitted, not as an equal alternative.}
-#'     \item{`"survivors"`}{raw mean among animals observed at `endpoint_day` —
-#'       the pre-0.8.0 behaviour, retained for reproducibility. Warns.}
+#'     \item{`"survivors"`}{raw mean among animals observed at `endpoint_day`,
+#'       the pre-0.8.0 behaviour, retained for reproducibility. Warns when
+#'       animals were lost.}
 #'   }
+#' @param arms Arms that must be evaluable, and whose means are returned.
+#'   `NULL` means every arm in `df`.
+#' @param model A fitted `me_endpoint_model()` object to reuse, e.g. across
+#'   the days of an over-time analysis. `NULL` fits one.
 #' @return A list with `group_means` (data frame: Treatment, Mean_Volume, N,
-#'   plus SE / CI bounds under `"model"`), `per_mouse` (Treatment, MouseKey,
-#'   Volume, Day_Used) for the resampling-based methods, `n_at_risk` (animals
-#'   observed at `endpoint_day`, per arm), `endpoint_day`, `method`, and
-#'   `attrition` (a one-row summary of how many animals were lost).
+#'   N_On_Study, plus SE_log / CI bounds under `"model"`), `per_mouse`
+#'   (Treatment, MouseKey, Volume, Day_Used) for the resampling-based methods,
+#'   `attrition`, `endpoint_day`, `method`, `evaluability` (see
+#'   [evaluable_days()]) and, under `"model"`, `model`.
 #' @noRd
 #' @keywords internal
 endpoint_volumes <- function(df,
@@ -71,7 +75,9 @@ endpoint_volumes <- function(df,
                              volume_column = "Volume",
                              cage_column = NULL,
                              endpoint_day = NULL,
-                             endpoint_method = c("model", "last_obs", "survivors")) {
+                             endpoint_method = c("model", "last_obs", "survivors"),
+                             arms = NULL,
+                             model = NULL) {
   endpoint_method <- match.arg(endpoint_method)
 
   d <- data.frame(
@@ -91,56 +97,69 @@ endpoint_volumes <- function(df,
   d <- d[is.finite(d$Day) & is.finite(d$Volume), , drop = FALSE]
   if (nrow(d) == 0L) stop("No usable volume observations.", call. = FALSE)
 
-  ep_day <- if (is.null(endpoint_day)) max(d$Day) else as.numeric(endpoint_day)
+  # R20.1 / R20-K: evaluate only where every arm has enough animals on study.
+  ev     <- me_evaluability(d, arms)
+  ep_day <- me_resolve_eval_day(ev, endpoint_day)
+  arms   <- ev$arms
 
-  # Attrition bookkeeping — the numbers that make survivor selection visible.
-  all_mice   <- unique(d[, c("MouseKey", "Treatment")])
-  at_risk    <- unique(d[d$Day >= ep_day, c("MouseKey", "Treatment")])
-  n_total    <- table(all_mice$Treatment)
-  n_at_risk  <- table(factor(at_risk$Treatment, levels = names(n_total)))
+  # Attrition bookkeeping -- the numbers that make survivor selection visible.
+  da         <- d[d$Treatment %in% arms, , drop = FALSE]
+  all_mice   <- unique(da[, c("MouseKey", "Treatment")])
+  at_risk    <- unique(da[da$Day >= ep_day, c("MouseKey", "Treatment")])
+  n_total    <- table(factor(all_mice$Treatment, levels = arms))
+  n_at_risk  <- table(factor(at_risk$Treatment, levels = arms))
   attrition  <- data.frame(
-    Treatment    = names(n_total),
-    N_Enrolled   = as.integer(n_total),
+    Treatment     = arms,
+    N_Enrolled    = as.integer(n_total),
     N_At_Endpoint = as.integer(n_at_risk),
-    Pct_Lost     = round(100 * (1 - as.integer(n_at_risk) / as.integer(n_total)), 1),
+    Pct_Lost      = round(100 * (1 - as.integer(n_at_risk) / as.integer(n_total)), 1),
     stringsAsFactors = FALSE
   )
 
-  if (any(attrition$N_At_Endpoint < attrition$N_Enrolled)) {
+  if (endpoint_method == "survivors" &&
+      any(attrition$N_At_Endpoint < attrition$N_Enrolled)) {
     lost <- attrition[attrition$N_At_Endpoint < attrition$N_Enrolled, ]
     msg <- paste(sprintf("%s: %d/%d", lost$Treatment,
                          lost$N_At_Endpoint, lost$N_Enrolled), collapse = "; ")
-    if (endpoint_method == "survivors") {
-      warning("endpoint_method = 'survivors' conditions on being observed at ",
-              "day ", ep_day, ", but animals were lost before then (", msg,
-              "). Animals leave because their tumours grew, so this selects the ",
-              "slowest growers — most severely in the control arm — and biases ",
-              "TGI downward. Use endpoint_method = 'model' (default) or ",
-              "'last_obs'.", call. = FALSE)
-    } else {
-      message("Animals lost before day ", ep_day, " (", msg,
-              "); all of them still contribute under endpoint_method = '",
-              endpoint_method, "'.")
-    }
+    warning("endpoint_method = 'survivors' conditions on being observed at ",
+            "day ", ep_day, ", but animals were lost before then (", msg,
+            "). Animals leave because their tumours grew, so this selects the ",
+            "slowest growers -- most severely in the control arm -- and biases ",
+            "TGI downward. Use endpoint_method = 'model' (default) or ",
+            "'last_obs'.", call. = FALSE)
   }
 
   per_mouse <- NULL
   group_means <- NULL
 
   if (endpoint_method == "model") {
-    gm <- model_endpoint_means(d, ep_day)
-    if (is.null(gm)) {
+    em <- if (!is.null(model)) model else me_endpoint_model(d)
+    if (is.null(em)) {
       warning("Model-based endpoint means could not be fitted; falling back to ",
               "endpoint_method = 'last_obs'.", call. = FALSE)
       endpoint_method <- "last_obs"
     } else {
-      group_means <- gm
+      lm_ <- me_endpoint_logmeans(em, arms, ep_day)
+      z <- stats::qnorm(0.975)
+      group_means <- data.frame(
+        Treatment   = arms,
+        # exp() of a log-scale mean is a geometric mean -- the right centre
+        # for a log-normal quantity, and consistent with the modelling scale.
+        Mean_Volume = exp(lm_$log_mean),
+        SE_log      = lm_$se_log,
+        Lower_CL    = exp(lm_$log_mean - z * lm_$se_log),
+        Upper_CL    = exp(lm_$log_mean + z * lm_$se_log),
+        N           = attrition$N_Enrolled,
+        N_On_Study  = attrition$N_At_Endpoint,
+        stringsAsFactors = FALSE
+      )
     }
   }
 
   if (endpoint_method %in% c("last_obs", "survivors")) {
+    em <- NULL
     per_mouse <- if (endpoint_method == "last_obs") {
-      do.call(rbind, lapply(split(d, d$MouseKey, drop = TRUE), function(s) {
+      do.call(rbind, lapply(split(da, da$MouseKey, drop = TRUE), function(s) {
         s <- s[order(s$Day), ]
         # Each animal's last observation at or before the endpoint day.
         s <- s[s$Day <= ep_day, , drop = FALSE]
@@ -150,7 +169,7 @@ endpoint_volumes <- function(df,
                    stringsAsFactors = FALSE)
       }))
     } else {
-      sv <- d[d$Day == ep_day, , drop = FALSE]
+      sv <- da[da$Day == ep_day, , drop = FALSE]
       data.frame(MouseKey = sv$MouseKey, Treatment = sv$Treatment,
                  Volume = sv$Volume, Day_Used = sv$Day,
                  stringsAsFactors = FALSE)
@@ -164,69 +183,234 @@ endpoint_volumes <- function(df,
         stringsAsFactors = FALSE)
     ))
     rownames(group_means) <- NULL
+    group_means$N_On_Study <- attrition$N_At_Endpoint[
+      match(group_means$Treatment, attrition$Treatment)]
   }
 
   list(group_means = group_means, per_mouse = per_mouse,
        attrition = attrition, endpoint_day = ep_day,
-       method = endpoint_method)
+       method = endpoint_method, evaluability = ev,
+       model = if (endpoint_method == "model") em else NULL)
 }
 
-#' Group geometric mean volumes at a given day from a log-scale LMM
+#' The endpoint model: log volume on a per-arm spline in time, random slopes
 #'
-#' Fits `log(Volume) ~ Treatment * Day + (1 | MouseKey)` to every observation
-#' and returns each arm's marginal mean at `ep_day`, back-transformed. Because
-#' the model uses all data from all animals, an animal euthanised on day 20 still
-#' informs its arm's intercept and slope at day 35 — which is what makes this
-#' valid under the MAR dropout mechanism these studies have, and why it does not
-#' need the synthetic-row imputation removed in R3.9.
+#' CODE_REVIEW.md R20.1 / R20.29. The previous model,
+#' `log(V) ~ Treatment * Day + (1 | animal)`, forced log volume to be linear in
+#' time within each arm and gave every animal the arm's slope. Real xenograft
+#' growth decelerates on the log scale, so the straight line overshot wherever
+#' an arm's data thinned out; on the Combo demo it put the control at
+#' 28,544 mm3 on day 32 against about 3,000 observed. Leaving out per-animal
+#' slopes also biased TGI by about 6 points under informative dropout.
 #'
-#' @param d Data frame with `MouseKey`, `Treatment`, `Day`, `Volume`.
-#' @param ep_day Day at which to marginalise.
-#' @return Data frame with Treatment, Mean_Volume (geometric), SE_log,
-#'   Lower_CL, Upper_CL, N; or `NULL` if the model or emmeans step fails.
+#' This model:
+#' - gives each arm its own natural spline in time (3 degrees of freedom),
+#'   or a straight line when an arm has fewer than 4 measured days;
+#' - uses correlated per-animal random slopes, falling back to uncorrelated
+#'   slopes and then to a random intercept only when a fit fails (R20-K);
+#' - leaves out zero volumes measured before an animal's first positive
+#'   volume (pre-palpable tumours): flooring them at half the smallest volume
+#'   invented values far below the data (R20.1). A zero after a positive
+#'   measurement (a regression) is set to the smallest positive volume in
+#'   the study, the detection limit.
+#'
+#' It is evaluated only on evaluable days (see [evaluable_days()]).
+#'
+#' @param d Data frame with `MouseKey`, `Treatment`, `Day` and `Volume`.
+#' @return An `me_endpoint_model` list, or `NULL` when no model can be fitted.
 #' @noRd
 #' @keywords internal
-model_endpoint_means <- function(d, ep_day) {
-  pos <- d$Volume[is.finite(d$Volume) & d$Volume > 0]
-  if (length(pos) == 0L) return(NULL)
+me_endpoint_model <- function(d) {
+  d <- d[is.finite(d$Day) & is.finite(d$Volume), , drop = FALSE]
+  pos <- d$Volume > 0
+  if (!any(pos)) return(NULL)
+  det_limit <- min(d$Volume[pos])
+  first_pos <- stats::ave(ifelse(pos, d$Day, Inf), d$MouseKey, FUN = min)
+  prepalp   <- !pos & d$Day < first_pos
+  fd <- d[!prepalp, , drop = FALSE]
+  n_floored <- sum(fd$Volume <= 0)
+  fd$.logv <- log(pmax(fd$Volume, det_limit))
 
-  d$.logv <- log(pmax(d$Volume, min(pos) / 2))
-  d$Treatment <- factor(d$Treatment)
+  lev <- sort(unique(as.character(d$Treatment)))
+  fd$Treatment <- factor(as.character(fd$Treatment), levels = lev)
+  if (any(table(fd$Treatment) == 0L)) return(NULL)
+  if (length(unique(fd$Day)) < 2L || nrow(fd) < 6L) return(NULL)
 
-  # A random intercept per animal needs at least two animals per arm and more
-  # than one timepoint; fall back to NULL (caller uses last_obs) otherwise.
-  if (length(unique(d$Day)) < 2L || nrow(d) < 6L) return(NULL)
+  n_days <- tapply(fd$Day, fd$Treatment, function(x) length(unique(x)))
+  spline <- all(n_days >= 4L)
+  if (spline) {
+    basis <- splines::ns(fd$Day, df = 3L)
+    B <- matrix(as.numeric(basis), nrow = nrow(fd))
+  } else {
+    basis <- NULL
+    B <- matrix(fd$Day, ncol = 1L)
+  }
+  cols <- paste0(".tb", seq_len(ncol(B)))
+  colnames(B) <- cols
+  fd <- cbind(fd, as.data.frame(B))
+  day_mean <- mean(fd$Day)
+  fd$.day_c <- fd$Day - day_mean
 
-  fit <- tryCatch(
-    withCallingHandlers(
-      lme4::lmer(.logv ~ Treatment * Day + (1 | MouseKey), data = d,
-                 control = lme4::lmerControl(check.nobs.vs.nlev = "ignore",
-                                             check.nobs.vs.nRE  = "ignore")),
-      warning = function(w) invokeRestart("muffleWarning")
-    ),
-    error = function(e) NULL
-  )
+  rhs_fixed <- paste("Treatment * (", paste(cols, collapse = " + "), ")")
+  re_terms <- c(correlated   = "(.day_c | MouseKey)",
+                uncorrelated = "(.day_c || MouseKey)",
+                intercept    = "(1 | MouseKey)")
+  ctrl <- lme4::lmerControl(check.nobs.vs.nlev = "ignore",
+                            check.nobs.vs.nRE  = "ignore")
+  fit <- NULL; used <- NA_character_; fallback <- character(0)
+  for (nm in names(re_terms)) {
+    msgs <- character(0)
+    f <- tryCatch(
+      withCallingHandlers(
+        lme4::lmer(stats::as.formula(paste(".logv ~", rhs_fixed, "+", re_terms[[nm]])),
+                   data = fd, REML = TRUE, control = ctrl),
+        warning = function(w) {
+          msgs <<- c(msgs, conditionMessage(w))
+          invokeRestart("muffleWarning")
+        },
+        message = function(m) invokeRestart("muffleMessage")),
+      error = function(e) {
+        msgs <<- c(msgs, conditionMessage(e))
+        NULL
+      })
+    failed <- is.null(f) ||
+      any(grepl("failed to converge|unable to evaluate|unidentifiable|degenerate",
+                msgs, ignore.case = TRUE))
+    if (!failed) {
+      fit <- f; used <- nm
+      break
+    }
+    fallback <- c(fallback, sprintf("%s random effects: %s", nm,
+                                    if (length(msgs)) msgs[1L] else "failed"))
+  }
   if (is.null(fit)) return(NULL)
 
-  emm <- tryCatch(
-    summary(emmeans::emmeans(fit, specs = "Treatment",
-                             at = list(Day = ep_day))),
-    error = function(e) NULL
-  )
-  if (is.null(emm)) return(NULL)
+  beta <- lme4::fixef(fit)
+  structure(list(
+    fit       = fit,
+    rhs       = stats::as.formula(paste("~", rhs_fixed)),
+    basis     = basis,
+    spline    = spline,
+    cols      = cols,
+    levels    = lev,
+    beta      = beta,
+    V         = as.matrix(stats::vcov(fit))[names(beta), names(beta), drop = FALSE],
+    structure = used,
+    fallback  = fallback,
+    detection_limit = det_limit,
+    n_prepalpable   = sum(prepalp),
+    n_floored       = n_floored,
+    day_range       = range(fd$Day),
+    day_mean        = day_mean
+  ), class = "me_endpoint_model")
+}
 
-  n_by <- table(unique(d[, c("MouseKey", "Treatment")])$Treatment)
+#' Fixed-effect design rows for one arm at the given days
+#' @noRd
+#' @keywords internal
+me_endpoint_X <- function(em, arm, t) {
+  nd <- data.frame(Treatment = factor(rep(arm, length(t)), levels = em$levels))
+  B <- if (em$spline) {
+    matrix(as.numeric(stats::predict(em$basis, t)), nrow = length(t))
+  } else {
+    matrix(t, ncol = 1L)
+  }
+  colnames(B) <- em$cols
+  nd <- cbind(nd, as.data.frame(B))
+  X <- stats::model.matrix(em$rhs, nd)
+  X[, names(em$beta), drop = FALSE]
+}
 
+#' Each arm's log-scale mean and standard error at one day
+#' @noRd
+#' @keywords internal
+me_endpoint_logmeans <- function(em, arms, t) {
+  X <- do.call(rbind, lapply(arms, function(a) me_endpoint_X(em, a, t)))
   data.frame(
-    Treatment   = as.character(emm$Treatment),
-    # exp() of a log-scale marginal mean is a geometric mean — the right centre
-    # for a log-normal quantity, and consistent with the modelling scale.
-    Mean_Volume = exp(emm$emmean),
-    SE_log      = emm$SE,
-    Lower_CL    = exp(emm$lower.CL),
-    Upper_CL    = exp(emm$upper.CL),
-    N           = as.integer(n_by[as.character(emm$Treatment)]),
-    stringsAsFactors = FALSE
+    Treatment = arms,
+    log_mean  = as.numeric(X %*% em$beta),
+    se_log    = sqrt(pmax(rowSums((X %*% em$V) * X), 0)),
+    stringsAsFactors = FALSE)
+}
+
+#' Draws of the endpoint model's fixed effects
+#'
+#' Parametric draws from the estimated sampling distribution of the fixed
+#' effects, beta ~ N(beta-hat, V). Any function of the arms' means, such as
+#' TGI, the Bliss excess or an AUC, gets its interval by evaluating it on each
+#' draw. The interval then describes the reported estimate itself, which the
+#' previous bootstrap of last observations did not (R20.2), and needs no
+#' refits.
+#'
+#' @param em An `me_endpoint_model`.
+#' @param n Number of draws.
+#' @param seed Optional seed; the caller's RNG state is restored.
+#' @return An n x p matrix.
+#' @noRd
+#' @keywords internal
+me_beta_draws <- function(em, n, seed = NULL) {
+  me_with_seed(seed, {
+    p <- length(em$beta)
+    L <- tryCatch(chol(em$V), error = function(e) NULL)
+    if (is.null(L)) {
+      eg <- eigen(em$V, symmetric = TRUE)
+      L <- t(eg$vectors %*% diag(sqrt(pmax(eg$values, 0)), p))
+    }
+    Z <- matrix(stats::rnorm(n * p), n, p)
+    sweep(Z %*% L, 2L, em$beta, "+")
+  })
+}
+
+#' Evaluate an expression under a seed, restoring the caller's RNG state
+#' @noRd
+#' @keywords internal
+me_with_seed <- function(seed, expr) {
+  if (!is.null(seed)) {
+    old <- if (exists(".Random.seed", envir = .GlobalEnv)) {
+      get(".Random.seed", envir = .GlobalEnv)
+    } else NULL
+    on.exit({
+      if (!is.null(old)) assign(".Random.seed", old, envir = .GlobalEnv)
+      else if (exists(".Random.seed", envir = .GlobalEnv)) {
+        rm(".Random.seed", envir = .GlobalEnv)
+      }
+    }, add = TRUE)
+    set.seed(seed)
+  }
+  expr
+}
+
+#' Log-scale arm means on each draw
+#'
+#' @return A draws x arms matrix of log-scale means at day `t`.
+#' @noRd
+#' @keywords internal
+me_draw_logmeans <- function(em, draws, arms, t) {
+  X <- do.call(rbind, lapply(arms, function(a) me_endpoint_X(em, a, t)))
+  out <- draws %*% t(X)
+  colnames(out) <- arms
+  out
+}
+
+#' Summary of how the endpoint model was fitted, for results and displays
+#' @noRd
+#' @keywords internal
+me_endpoint_model_info <- function(em) {
+  if (is.null(em)) return(NULL)
+  list(
+    formula = paste0("log(volume) ~ Treatment x ",
+                     if (em$spline) "natural spline in day (3 df)" else "day",
+                     " + ",
+                     switch(em$structure,
+                            correlated   = "(day | animal)",
+                            uncorrelated = "(day || animal)",
+                            intercept    = "(1 | animal)")),
+    time_basis      = if (em$spline) "natural spline, 3 df" else "linear",
+    random_effects  = em$structure,
+    fallback        = em$fallback,
+    detection_limit = em$detection_limit,
+    n_prepalpable_excluded = em$n_prepalpable,
+    n_zero_after_positive  = em$n_floored
   )
 }
 

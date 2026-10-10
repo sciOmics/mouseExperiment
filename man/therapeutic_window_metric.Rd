@@ -2,7 +2,7 @@
 % Please edit documentation in R/therapeutic_window_metric.R
 \name{therapeutic_window_metric}
 \alias{therapeutic_window_metric}
-\title{Therapeutic Window Metric (TWM)}
+\title{Therapeutic window: efficacy and tolerability, side by side}
 \usage{
 therapeutic_window_metric(
   df,
@@ -16,7 +16,7 @@ therapeutic_window_metric(
   tumor_density = 1,
   volume_units = NULL,
   reference_group = NULL,
-  noise_floor = 1,
+  tolerability_threshold = 20,
   endpoint_day = NULL,
   endpoint_method = c("model", "last_obs", "survivors"),
   n_boot = 2000L,
@@ -43,60 +43,98 @@ composite mouse key so reused IDs across cages are not collapsed.}
 
 \item{tumor_density}{Density in g/cm³ (default 1.0).}
 
-\item{volume_units}{Units of \code{volume_column}: "mm3", "cm3", or NULL
-(default) to auto-detect from the data and report the inference.}
+\item{volume_units}{Units of the volume column, \code{"mm3"} or \code{"cm3"}.
+Required when \code{adjust_tumor_weight = TRUE} and a volume column is used,
+because volume is converted to mass and subtracted from body weight: the
+wrong unit scales that correction by 1000. Units were inferred from the data
+before v0.25.0, which read small-tumour mm3 studies as cm3 (CODE_REVIEW.md
+R20.83); the data are now only checked against the declared unit, with a
+warning on disagreement and an error when the implied tumour mass exceeds
+half the body weight.}
 
 \item{reference_group}{Name of the control/reference group.}
 
-\item{noise_floor}{Minimum group-mean per-mouse maximum weight loss (percent)
-used as a floor on the ratio's denominator, so
-\code{TWM = max(TGI, 0) / max(weight_loss\%, noise_floor)}. This keeps TWM
-continuous for any \code{noise_floor} (CODE_REVIEW.md R3.18) and reduces to
-\code{TWM = max(TGI, 0)} for well-tolerated arms. Default 1.0 — an
-experimentally pragmatic threshold that avoids dividing by near-zero weight
-loss. No formal clinical basis; users with experiment-specific noise
-estimates (e.g. scale precision) should tune accordingly.}
+\item{tolerability_threshold}{Weight loss, in percent of baseline weight,
+that the tolerability flag tests against. Default 20. A value of 1 or less
+is an error, because it looks like a fraction (0.2 for 20 percent).}
 
 \item{endpoint_day}{Day at which efficacy is evaluated. \code{NULL}
-(default) uses the maximum observed day.}
+(default): the last day on which every arm is evaluable (see
+\code{\link{evaluable_days}}); a requested day must be evaluable. Before
+v0.26.0 the default was the last observed day (CODE_REVIEW.md R20.1).}
 
 \item{endpoint_method}{How the endpoint volume per arm is obtained
 (CODE_REVIEW.md R3.5 / G.3):
 \code{"model"} (default) takes each arm's geometric mean at
-\code{endpoint_day} from a log-scale mixed model fitted to every
-observation, so animals euthanised earlier still contribute;
+\code{endpoint_day} from a mixed model of log volume fitted to every
+observation (natural spline in time per arm, per-animal random slopes),
+the same TGI as \code{\link{analyze_drug_synergy}}, so animals euthanised
+earlier still contribute;
 \code{"last_obs"} uses each animal's own last observation at or before the
 endpoint day; \code{"survivors"} reproduces the pre-0.8.0 raw mean among
 animals observed at the endpoint day, which conditions on survival and
 biases TGI downward — it warns when animals were lost.}
 
-\item{n_boot}{Integer >= 0. Mouse-level bootstrap resamples used to attach
-95\% percentile intervals to TGI, mean weight loss, and TWM. Mice are
-resampled within group including the control arm, so the interval
-propagates the TGI denominator's uncertainty (CODE_REVIEW.md R3.6 / R3.7).
-Default 2000; set 0 to skip.}
+\item{n_boot}{Integer >= 0. Draws behind the 95\% intervals. Under the model
+estimand the TGI intervals come from draws of the endpoint model's fixed
+effects; under the per-animal estimands, from a bootstrap of animals
+(control included). Weight-loss intervals always come from a bootstrap of
+animals within arm (CODE_REVIEW.md R3.6 / R3.7, R20.2). Default 2000; 0
+skips the intervals, and with them the tolerability flag.}
 
 \item{boot_seed}{Optional integer seed for reproducible resampling.}
 }
 \value{
-A list with: \code{twm_table} (point estimates plus bootstrap
-bounds), \code{twm_ci}, \code{tgi_data}, \code{weight_loss_data},
-\code{n_at_endpoint} (animals contributing at the endpoint day, per arm),
-and \code{endpoint_day}.
+A list:
+\describe{
+\item{window_table}{One row per arm, the reference arm first:
+\code{Treatment}, \code{N_Animals} (animals with weights),
+\code{TGI}, \code{TGI_Lower}, \code{TGI_Upper},
+\code{Worst_Loss} (the arm's mean of each animal's worst percent
+weight loss), \code{Worst_Loss_Lower}, \code{Worst_Loss_Upper},
+\code{N_Over_Threshold} (animals whose worst loss reached the
+threshold) and \code{Tolerability}.}
+\item{weight_loss_data}{One row per animal: \code{MouseKey},
+\code{Treatment}, \code{ID}, \code{Cage}, \code{Baseline_Weight},
+\code{Nadir_Weight}, \code{Nadir_Day}, \code{Pct_Loss} and
+\code{Over_Threshold}.}
+\item{tgi_data}{The endpoint means behind the TGI.}
+\item{tolerability_threshold, tolerability_rule}{The threshold, and
+the flag's rule in words.}
+\item{endpoint_day, endpoint_method, evaluability, endpoint_model,
+attrition, n_at_endpoint}{The evaluation day, the estimand, the
+evaluable-day record (the rule, the days used and the days and arms
+it excluded), the endpoint model, and the animals on study per arm.}
+\item{interval_note}{Where the intervals come from.}
+}
 }
 \description{
-Computes TWM = max(TGI, 0) / max(MeanWeightLoss\%, noise_floor) per treatment
-group, so a well-tolerated arm scores its TGI and the metric stays continuous
-at the floor.
-The denominator uses the group mean of per-mouse maximum weight loss, not the
-single worst-case mouse, to give a representative measure of typical toxicity.
+Reports two quantities per arm, each with a 95\% interval: tumour growth
+inhibition (TGI) at the evaluation day, and the worst body-weight loss,
+measured in each animal from its own baseline and averaged over the arm's
+animals. A tolerability flag compares the weight-loss interval with a
+declared threshold.
 }
-\section{Interpreting the ranking}{
+\details{
+Before v0.27.0 the function reported a single ratio, TWM = TGI / weight
+loss, and ranked the arms by it. The maintainer replaced it with this
+two-axis summary (CODE_REVIEW.md R20-K). The ratio needed an arbitrary
+floor for arms that lose no weight, and that floor sat below the scales'
+own noise (R20.70). Its parts came from different estimators, so it could
+not have a matching interval (R20.2). And one number cannot show both
+efficacy and toxicity.
+}
+\section{Reading the table}{
 
-\code{twm_table} is sorted by TWM, which reads as a ranking. Check
-\code{TWM_Lower} / \code{TWM_Upper} before acting on the order: with typical
-group sizes the intervals overlap heavily and the ordering of adjacent arms is
-often not resolvable. \code{n_at_endpoint} shows how many animals in each arm
-actually reached the endpoint day.
+The two axes are read separately; the table is not a ranking.
+\code{Tolerability} is "Tolerated" when the upper bound of the arm's mean
+worst loss is below the threshold, "Not tolerated" when the lower bound is
+at or above it, and "Unclear" when the interval contains it; it is
+\code{NA} when there is no interval (\code{n_boot = 0}, or fewer than two
+animals). The flag describes the arm's average animal:
+\code{N_Over_Threshold} counts the animals that crossed the threshold on
+their own, which can happen in a "Tolerated" arm. Worst loss is taken over
+each animal's whole record, not only up to the evaluation day, because
+toxicity after that day still counts.
 }
 

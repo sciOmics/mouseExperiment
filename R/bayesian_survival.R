@@ -9,9 +9,11 @@
 #' frailty, and survival-curve plots. Four parametric families cover the most
 #' common preclinical endpoint distributions.
 #'
-#' @param df Data frame containing one row per animal (or one row per event
-#'   time if the animal experienced the event; censored animals contribute one
-#'   row with their last observed day).
+#' @param df Data frame with one row per animal: its event or censoring
+#'   time and event indicator. A longitudinal frame (several rows per animal)
+#'   is an error, as in \code{\link{survival_statistics}}; it used to be
+#'   fitted with every measurement as a censored "animal" (CODE_REVIEW.md
+#'   R20.39).
 #' @param time_column Column name for time-to-event (days). Default
 #'   \code{"Day"}.
 #' @param event_column Column name for event indicator: \code{1} = event
@@ -32,18 +34,23 @@
 #'       ratio) and PH (hazard ratio).}
 #'     \item{\code{"lognormal"}}{Log-normal AFT. Hazard rises then falls —
 #'       biologically plausible for treated tumours.}
-#'     \item{\code{"exponential"}}{Constant hazard. Special case of Weibull
-#'       with shape = 1; use when a memoryless process is plausible.}
-#'     \item{\code{"gamma"}}{Gamma AFT. More flexible tail than Weibull; good
-#'       alternative when Weibull does not fit well.}
 #'   }
+#'   The exponential and gamma families were removed in v0.23.0
+#'   (CODE_REVIEW.md R20-K): exponential is Weibull with shape fixed at 1, and
+#'   gamma was the family most distorted by the shape prior (R20.38).
 #' @param include_cage_effect Logical. When \code{TRUE} (default) and
 #'   \code{cage_column} is supplied, a cage-level random intercept (frailty)
 #'   is added: \code{(1 | cage)}.
 #' @param reference_group Treatment group used as the reference level.
 #'   Auto-detected alphabetically if \code{NULL}.
-#' @param prior_strength Prior preset for fixed-effect coefficients (log time
-#'   ratios):
+#' @param prior_strength Prior preset for the treatment coefficients (log time
+#'   ratios) and the cage frailty SD. The Weibull shape and the log-normal
+#'   sigma get the same weakly informative prior under every preset,
+#'   \code{lognormal(1, 1)} and \code{exponential(1)}: they describe how
+#'   event times are spread, not the treatment effect. Before v0.28.0 the
+#'   ladder's \code{exponential(2)} shrank the shape toward 0.5 and pulled
+#'   the hazard ratio toward 1 (true shape 6, HR 0.088: shape 3.86, HR 0.246;
+#'   CODE_REVIEW.md R20.38).
 #'   \describe{
 #'     \item{\code{"skeptical"}}{(default) \eqn{b \sim N(0, 0.25)}.
 #'       Requires strong data to support large time-ratio differences.}
@@ -60,8 +67,8 @@
 #' @param prior_sd brms prior string for the frailty standard deviation (class
 #'   \code{"sd"}). Only used when \code{prior_strength = "manual"}.
 #' @param prior_aux brms prior string for the auxiliary parameter: \code{shape}
-#'   for Weibull and Gamma; \code{sigma} for log-normal; ignored for
-#'   exponential. Only used when \code{prior_strength = "manual"}.
+#'   for Weibull; \code{sigma} for log-normal. Only used when
+#'   \code{prior_strength = "manual"}.
 #' @param n_chains Number of MCMC chains. Default \code{4}.
 #' @param n_warmup Warm-up (burn-in) iterations per chain. Default \code{1000}.
 #' @param n_iter Post-warmup draws per chain. Default \code{500}.
@@ -75,12 +82,13 @@
 #' @param backend brms backend: \code{"rstan"} (default) or \code{"cmdstanr"}.
 #'   See \code{\link{bayesian_tumor_growth}} for details.
 #'
-#' @param priors Optional named list of `brms::prior()` objects applied
-#'   verbatim, bypassing `prior_strength`. For callers that need full
-#'   control of the prior specification.
-#' @param mcmc Optional named list of sampler settings
-#'   (`chains`, `warmup`, `iter`, `seed`, `backend`) overriding the
-#'   individual arguments. Resolved by `.resolve_mcmc()`.
+#' @param priors Optional \code{\link{tg_priors}()} object; its fields
+#'   override \code{prior_strength} and the \code{prior_*} arguments
+#'   (\code{sigma} sets \code{prior_aux}). It was documented as a list of
+#'   \code{brms::prior()} objects, which was never accepted (R20.74).
+#' @param mcmc Optional \code{\link{tg_mcmc}()} object overriding
+#'   \code{n_chains}, \code{n_warmup}, \code{n_iter}, \code{seed} and
+#'   \code{backend}.
 #' @return A named list:
 #' \describe{
 #'   \item{\code{model}}{\code{brmsfit} object, or \code{NULL} when
@@ -91,7 +99,7 @@
 #'   \item{\code{summary}}{Named list of analysis metadata.}
 #'   \item{\code{treatment_effects}}{Data frame with columns \code{Group},
 #'     \code{Time_Ratio}, \code{Lower_CrI}, \code{Upper_CrI}, \code{HR}
-#'     (hazard ratio; Weibull and exponential only, \code{NA} otherwise),
+#'     (hazard ratio; Weibull only, \code{NA} for log-normal),
 #'     \code{Median_Survival}, \code{Events}, \code{Total}, \code{Event_Rate},
 #'     \code{Note}. Output schema mirrors \code{\link{survival_statistics}}.}
 #'   \item{\code{posterior_summary}}{Data frame of fixed-effect posterior
@@ -113,6 +121,11 @@
 #'   \item{\code{survival_curve_plot}}{Parametric survival curves with 95 %
 #'     posterior credible bands overlaid on Kaplan-Meier step functions, or
 #'     \code{NULL} when \code{plots = FALSE}.}
+#'   \item{\code{posterior_draws}}{The headline posterior draws (fixed
+#'     effects, frailty SD, shape or sigma) as a \code{draws_array}, for trace
+#'     and rank plots without the model.}
+#'   \item{\code{model_reused}}{TRUE when a compiled model from an earlier
+#'     fit with the same structure was reused (no compilation).}
 #' }
 #'
 #' @section Effect interpretation:
@@ -120,11 +133,11 @@
 #' parameterisation via \pkg{brms}. Treatment coefficients are on the
 #' log(mean survival time)
 #' scale; exponentiating gives \strong{time ratios} (TR): TR > 1 means the
-#' treated group survives longer. For Weibull and exponential families, an
+#' treated group survives longer. For the Weibull family, an
 #' approximate \strong{hazard ratio} (HR = TR\eqn{^{-\hat{\kappa}}}, where
 #' \eqn{\hat{\kappa}} is the posterior-median Weibull shape) is also reported;
-#' HR < 1 indicates a protective treatment effect. Lognormal and gamma are
-#' not proportional-hazards models; their \code{HR} column is \code{NA}.
+#' HR < 1 indicates a protective treatment effect. Log-normal is not a
+#' proportional-hazards model, so its \code{HR} column is \code{NA}.
 #'
 #' @section Frailty:
 #' Cage-level frailty \code{(1 | cage)} models unobserved between-cage
@@ -139,7 +152,7 @@
 #' @seealso \code{\link{survival_statistics}},
 #'   \code{\link{bayesian_tumor_growth}}
 #'
-#' @importFrom stats as.formula relevel median quantile qgamma pgamma pnorm
+#' @importFrom stats as.formula relevel median quantile pnorm
 #'   setNames
 #' @importFrom ggplot2 ggplot aes geom_density geom_line geom_ribbon geom_step
 #'   scale_fill_manual scale_colour_manual scale_y_continuous
@@ -154,7 +167,7 @@ bayesian_survival <- function(
   id_column        = "ID",
   cage_column      = NULL,
   dose_column      = NULL,
-  family              = c("weibull", "lognormal", "exponential", "gamma"),
+  family              = c("weibull", "lognormal"),
   include_cage_effect = TRUE,
   reference_group  = NULL,
   prior_strength   = c("skeptical", "weakly_informative", "informative",
@@ -198,7 +211,8 @@ bayesian_survival <- function(
   n_warmup <- .m$warmup
   n_iter   <- .m$iter
   seed     <- .m$seed
-  backend  <- .m$backend
+  # R20.74: a backend from `mcmc` bypassed the check above.
+  backend  <- resolve_brms_backend(.m$backend)
 
   # ── Column validation ──────────────────────────────────────────────────────
   required_cols <- c(time_column, event_column, treatment_column, id_column)
@@ -206,10 +220,41 @@ bayesian_survival <- function(
   if (length(missing_cols) > 0) {
     stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
   }
-  if (!all(df[[event_column]] %in% c(0L, 1L, 0, 1, NA))) {
-    stop("'", event_column,
+
+  # ── Internal column names (CODE_REVIEW.md R20.43, dashboard R20.D8) ────────
+  # brms rejects non-syntactic names and double underscores, which is why every
+  # fit on the dashboard's volume-derived events (".__DerivedTime") failed.
+  # Copy the columns the model uses into fixed names once, here. The event is
+  # read through as.character() so a factor is coded by its labels, not its level
+  # codes: 1L - as.integer(factor(c("0", "1"))) turned events into -1 and
+  # censored animals into events (R20.62).
+  user_event_column <- event_column
+  work <- data.frame(
+    Time      = as.numeric(df[[time_column]]),
+    Event     = suppressWarnings(as.integer(as.character(df[[event_column]]))),
+    Treatment = as.character(df[[treatment_column]]),
+    ID        = as.character(df[[id_column]]),
+    stringsAsFactors = FALSE
+  )
+  if (!is.null(cage_column) && cage_column %in% names(df)) {
+    work$Cage <- as.character(df[[cage_column]])
+  }
+  if (!all(work$Event %in% c(0L, 1L, NA))) {
+    stop("'", user_event_column,
          "' must contain only 0 (censored) and 1 (event).")
   }
+  # CODE_REVIEW.md R20.39 -- one row per animal, as survival_statistics()
+  # requires (R3.14). On master_synthetic_data 619 rows for 48 animals went to
+  # brms, 600 of them as censored "animals".
+  validate_one_row_per_subject(work, "ID", "Treatment",
+                               if ("Cage" %in% names(work)) "Cage",
+                               caller = "bayesian_survival()")
+  df               <- work
+  time_column      <- "Time"
+  event_column     <- "Event"
+  treatment_column <- "Treatment"
+  id_column        <- "ID"
+  cage_column      <- if ("Cage" %in% names(df)) "Cage" else NULL
 
   # ── Cage setup ─────────────────────────────────────────────────────────────
   cage_setup   <- setup_cage_column(df, cage_column)
@@ -248,17 +293,20 @@ bayesian_survival <- function(
   # ── brms family object ─────────────────────────────────────────────────────
   brms_family <- switch(family,
     weibull     = brms::weibull(),
-    lognormal   = brms::lognormal(),
-    exponential = brms::exponential(),
-    # R18.1: `Gamma` lives in stats, not brms -- `brms::Gamma` throws.
-    gamma       = stats::Gamma(link = "log")
+    lognormal   = brms::lognormal()
   )
 
   # ── Prior specification ────────────────────────────────────────────────────
+  prior_stanvars <- NULL
+  aux_class <- if (family == "lognormal") "sigma" else "shape"
   if (prior_strength == "manual") {
-    if (any(is.null(c(prior_b, prior_intercept, prior_sd)))) {
-      stop("When prior_strength = 'manual', prior_b, prior_intercept, and ",
-           "prior_sd must be supplied.")
+    # R20.74: is.null(c(...)) was TRUE only when every argument was NULL.
+    missing_p <- c("prior_b", "prior_intercept", "prior_sd")[
+      vapply(list(prior_b, prior_intercept, prior_sd), is.null, logical(1L))]
+    if (length(missing_p)) {
+      stop("When prior_strength = 'manual', prior_b, prior_intercept and ",
+           "prior_sd must be supplied; missing: ",
+           paste(missing_p, collapse = ", "), ".", call. = FALSE)
     }
     # CODE_REVIEW.md R3.32 — only declare a class = "sd" prior when the model
     # actually HAS a random effect. brms rejects a prior that matches no model
@@ -275,7 +323,6 @@ bayesian_survival <- function(
                            brms::prior_string(prior_sd, class = "sd"))
     }
     if (!is.null(prior_aux)) {
-      aux_class <- if (family == "lognormal") "sigma" else "shape"
       selected_priors <- c(
         selected_priors,
         brms::prior_string(prior_aux, class = aux_class)
@@ -297,34 +344,32 @@ bayesian_survival <- function(
     log_t_mad <- if (length(t_obs)) stats::mad(log(t_obs)) else 1
     if (!is.finite(log_t_mad) || log_t_mad <= 0) log_t_mad <- 1
 
+    # R20.78: the values are Stan data, so fits of the same structure share
+    # one compiled model.
     selected_priors <- c(
-      brms::prior_string(paste0("normal(0, ", b_sd, ")"),
-                         class = "b"),
-      brms::prior_string(
-        paste0("normal(", round(log_t_med, 4), ", ",
-               round(2.5 * log_t_mad, 4), ")"),
-        class = "Intercept")
+      brms::prior_string("normal(0, me_b_sd)", class = "b"),
+      brms::prior_string("normal(me_int_mu, me_int_sd)", class = "Intercept")
     )
+    sv_values <- c(me_b_sd = b_sd, me_int_mu = log_t_med,
+                   me_int_sd = 2.5 * log_t_mad)
     # See R3.32 above — a "sd" prior with no random effect makes brms error.
     if (use_cage_re) {
       selected_priors <- c(selected_priors,
-                           brms::prior_string(paste0("exponential(", exp_rate, ")"),
-                                              class = "sd"))
+                           brms::prior_string("exponential(me_sd_rate)", class = "sd"))
+      sv_values <- c(sv_values, me_sd_rate = exp_rate)
     }
-    if (family == "lognormal") {
-      aux_class <- "sigma"
-    } else if (family != "exponential") {
-      aux_class <- "shape"
-    } else {
-      aux_class <- NULL
-    }
-    if (!is.null(aux_class)) {
-      selected_priors <- c(
-        selected_priors,
-        brms::prior_string(paste0("exponential(", exp_rate, ")"),
-                           class = aux_class)
-      )
-    }
+    # CODE_REVIEW.md R20.38 / open question 11 -- the shape (Weibull) and sigma
+    # (log-normal) describe how event times are spread, not the treatment
+    # effect, so the ladder does not apply to them. exponential(2), the
+    # "skeptical" rate, put the prior mean of the shape at 0.5 where
+    # time-to-endpoint data usually have shapes well above 1, and the hazard
+    # ratio, exp(-shape * b), was pulled toward 1 with it (true shape 6:
+    # posterior 3.86 [2.44, 5.89], HR 0.246 against 0.088). lognormal(1, 1)
+    # has median e and 95 % of its mass between 0.38 and 19.
+    selected_priors <- c(selected_priors, brms::prior_string(
+      if (family == "lognormal") "exponential(1)" else "lognormal(1, 1)",
+      class = aux_class))
+    prior_stanvars <- me_prior_stanvars(sv_values)
   }
 
   # ── Fit model ──────────────────────────────────────────────────────────────
@@ -335,21 +380,22 @@ bayesian_survival <- function(
             n_warmup, " warmup)...")
   }
 
-  model <- brms::brm(
-    formula      = brms_formula,
-    data         = analysis_df,
-    family       = brms_family,
-    prior        = selected_priors,
-    sample_prior = "yes",
-    chains       = as.integer(n_chains),
-    cores        = as.integer(n_chains),
-    iter         = as.integer(n_warmup + n_iter),
-    warmup       = as.integer(n_warmup),
-    seed         = as.integer(seed),
-    backend      = backend,
-    silent       = if (isTRUE(verbose)) 0L else 2L,
-    refresh      = if (isTRUE(verbose)) 100L else 0L
+  # R20.78: me_brm() reuses a compiled model with the same Stan code.
+  model <- me_brm(
+    formula  = brms_formula,
+    data     = analysis_df,
+    family   = brms_family,
+    prior    = selected_priors,
+    stanvars = prior_stanvars,
+    chains   = as.integer(n_chains),
+    iter     = as.integer(n_warmup + n_iter),
+    warmup   = as.integer(n_warmup),
+    seed     = as.integer(seed),
+    backend  = backend,
+    silent   = if (isTRUE(verbose)) 0L else 2L,
+    refresh  = if (isTRUE(verbose)) 100L else 0L
   )
+  model_reused <- isTRUE(attr(model, "me_model_reused"))
 
   # ── Posterior summary (fixed effects) ──────────────────────────────────────
   brms_smry <- summary(model)
@@ -367,7 +413,11 @@ bayesian_survival <- function(
   nuts_diagnostics <- make_nuts_diagnostics(model)
   loo_diagnostics  <- bayes_loo(model)
   bayes_r2         <- bayes_r2_summary(model)
-  ppc_coverage     <- bayes_ppc_coverage(model)
+  # R20.74: a censored time is a lower bound, not an observation to cover.
+  # model$data holds the rows brms used, in its order.
+  uncensored       <- tryCatch(model$data$.brms_cens == 0L,
+                               error = function(e) NULL)
+  ppc_coverage     <- bayes_ppc_coverage(model, seed = seed, observed = uncensored)
 
   # ── Treatment effects table ────────────────────────────────────────────────
   treatment_effects <- bs_build_treatment_table(
@@ -382,35 +432,22 @@ bayesian_survival <- function(
   mcmc_trace_plot      <- NULL
   survival_curve_plot  <- NULL
 
+  # The headline draws travel with the result (R20.80).
+  posterior_draws <- me_headline_draws(model)
+
   if (isTRUE(plots)) {
+    # R20.80: built from data, so no plot holds the model. The predictive
+    # check shows the uncensored times only, like the coverage above.
+    pp_check_plot <- me_ppc_plot(model, seed = seed, observed = uncensored)
 
-    pp_check_plot <- tryCatch(
-      brms::pp_check(model, type = "dens_overlay", ndraws = 50),
-      error = function(e) NULL
-    )
-
-    if (requireNamespace("bayesplot", quietly = TRUE)) {
-      draws_arr <- tryCatch(posterior::as_draws_array(model),
-                            error = function(e) NULL)
-      if (!is.null(draws_arr)) {
-        all_pars <- dimnames(draws_arr)$variable
-        safe_tx  <- gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1",
-                         treatment_column, perl = TRUE)
-        tx_pars  <- grep(paste0("^b_", safe_tx), all_pars, value = TRUE)
-        if (length(tx_pars) > 0) {
-          posterior_dist_plot <- tryCatch(
-            bayesplot::mcmc_areas(draws_arr, pars = tx_pars, prob = 0.95),
-            error = function(e) NULL
-          )
-          mcmc_trace_plot <- tryCatch(
-            bayesplot::mcmc_trace(draws_arr, pars = tx_pars),
-            error = function(e) NULL
-          )
-        }
-      }
+    tx_draws <- if (!is.null(posterior_draws)) {
+      v <- posterior::variables(posterior_draws)
+      v <- v[startsWith(v, paste0("b_", treatment_column))]
+      if (length(v)) posterior::subset_draws(posterior_draws, variable = v)
     }
+    posterior_dist_plot <- me_draws_area_plot(tx_draws)
+    mcmc_trace_plot     <- me_draws_trace_plot(tx_draws)
 
-    # Prior vs posterior overlay
     prior_posterior_plot <- tryCatch(
       bayes_prior_posterior_plot(model, treatment_column),
       error = function(e) NULL
@@ -419,7 +456,7 @@ bayesian_survival <- function(
     survival_curve_plot <- tryCatch(
       bs_survival_curves_plot(
         model, analysis_df, treatment_column, treatment_levels, reference_group,
-        time_column, event_column, family
+        time_column, event_column, family, seed = seed
       ),
       error = function(e) NULL
     )
@@ -428,14 +465,18 @@ bayesian_survival <- function(
   # ── Analysis summary metadata ──────────────────────────────────────────────
   frailty_term_str <- if (use_cage_re) paste0("(1 | ", cage_column, ")") else
     "none"
-  prior_b_label <- if (prior_strength == "manual") prior_b else
-    paste0("normal(0, ", b_sd, ")")
-  prior_int_label <- if (prior_strength == "manual") prior_intercept else
-    paste0("normal(0, ", round(b_sd * 2.5, 2), ")")
+  # R20.74: the priors handed to brms, not a reconstruction. The intercept was
+  # reported as normal(0, 2.5 * b_sd) while the model used a data-scaled one,
+  # and the shape prior was omitted.
+  .prior_desc <- describe_priors(selected_priors, prior_stanvars)
   analysis_summary <- list(
     analysis_type = paste0("Bayesian Parametric Survival (", family, ", brms)"),
     data_description = list(
-      subjects         = length(unique(df[[id_column]])),
+      # Count animals, not ID labels: an ID reused in several arms is several
+      # animals (T1).
+      subjects         = length(unique(make_mouse_key(
+        as.character(df[[treatment_column]]), df[[id_column]],
+        as.character(df[[cage_column]])))),
       treatment_groups = length(treatment_levels),
       total_events     = sum(df[[event_column]] == 1L, na.rm = TRUE),
       reference_group  = reference_group
@@ -452,8 +493,13 @@ bayesian_survival <- function(
                                n_iter, " draws + ", n_warmup,
                                " warmup, seed = ", seed, ")"),
       effect_type     = "Time_Ratio (AFT parameterisation)",
-      prior_b         = prior_b_label,
-      prior_intercept = prior_int_label
+      prior_b         = .prior_desc$prior_b,
+      prior_intercept = .prior_desc$prior_intercept,
+      prior_sd        = .prior_desc$prior_sd,
+      prior_aux       = if (family == "lognormal") .prior_desc$prior_sigma
+                        else .prior_desc$prior_shape,
+      prior_table     = .prior_desc$all,
+      compiled_model  = if (model_reused) "reused from an earlier fit" else "compiled for this fit"
     )
   )
 
@@ -491,7 +537,9 @@ bayesian_survival <- function(
     posterior_dist_plot  = posterior_dist_plot,
     prior_posterior_plot = prior_posterior_plot,
     mcmc_trace_plot      = mcmc_trace_plot,
-    survival_curve_plot  = survival_curve_plot
+    survival_curve_plot  = survival_curve_plot,
+    posterior_draws      = posterior_draws,
+    model_reused         = model_reused
   )
 }
 
@@ -577,9 +625,6 @@ bs_build_treatment_table <- function(
       if (family == "weibull" && !is.null(shape_draws)) {
         hr_draws <- exp(-shape_draws * coef_draws)
         results$HR[idx] <- round(stats::median(hr_draws), 4)
-      } else if (family == "exponential") {
-        # Exponential is Weibull(shape=1), so HR = 1/TR
-        results$HR[idx] <- round(1 / results$Time_Ratio[idx], 4)
       }
 
       if (!is.null(intercept_draws)) {
@@ -625,24 +670,12 @@ bs_median_from_draws <- function(linpred_draws, shape_draws,
         # Identity link: linpred = mu (log-scale mean); median = exp(mu)
         exp(linpred_draws)
       },
-      exponential = {
-        # Log link: linpred = log(mean); median = mean * log(2)
-        exp(linpred_draws) * log(2)
-      },
       weibull = {
         # log link: linpred = log(mean); convert via Weibull scale parameter
         if (is.null(shape_draws)) return(NA_real_)
         mu    <- exp(linpred_draws)
         scale <- mu / gamma(1 + 1 / shape_draws)
         scale * log(2)^(1 / shape_draws)
-      },
-      gamma = {
-        # log link: linpred = log(mean); rate = shape / mean
-        if (is.null(shape_draws)) return(NA_real_)
-        mu   <- exp(linpred_draws)
-        rate <- shape_draws / mu
-        mapply(function(sh, ra) stats::qgamma(0.5, shape = sh, rate = ra),
-               shape_draws, rate)
       }
     )
     round(stats::median(med_draws, na.rm = TRUE), 2)
@@ -654,7 +687,7 @@ bs_median_from_draws <- function(linpred_draws, shape_draws,
 #' @noRd
 bs_survival_curves_plot <- function(
   model, analysis_df, treatment_column, treatment_levels, reference_group,
-  time_column, event_column, family
+  time_column, event_column, family, seed = NULL
 ) {
   post <- tryCatch(brms::as_draws_df(model), error = function(e) NULL)
   if (is.null(post)) return(NULL)
@@ -663,7 +696,8 @@ bs_survival_curves_plot <- function(
   t_grid <- seq(0.01, t_max, length.out = 200)
 
   n_draws  <- min(200L, nrow(post))
-  draw_idx <- sample.int(nrow(post), n_draws)
+  # R20.74: drawn from `seed`, not the caller's RNG stream.
+  draw_idx <- me_with_seed(seed, sample.int(nrow(post), n_draws))
   post_sub <- post[draw_idx, ]
 
   intercept_d <- if ("b_Intercept" %in% names(post_sub))
@@ -733,7 +767,15 @@ bs_survival_curves_plot <- function(
     )
   }, error = function(e) NULL)
 
-  # Build plot
+  bs_survival_curves_plot_from(curves_df, km_df, family, time_column,
+                               treatment_column)
+}
+
+#' The survival-curve plot from its data (model-free; R20.80)
+#' @noRd
+#' @keywords internal
+bs_survival_curves_plot_from <- function(curves_df, km_df, family, time_label,
+                                         treatment_label) {
   p <- ggplot2::ggplot(
     curves_df,
     ggplot2::aes(colour = .data[["Treatment"]], fill = .data[["Treatment"]])
@@ -766,10 +808,10 @@ bs_survival_curves_plot <- function(
         " model — solid = posterior median, band = 95 % CrI,",
         " dashed = Kaplan–Meier"
       ),
-      x      = time_column,
+      x      = time_label,
       y      = "Survival Probability",
-      colour = treatment_column,
-      fill   = treatment_column
+      colour = treatment_label,
+      fill   = treatment_label
     ) +
     ggplot2::theme_classic(base_size = 14)
 }
@@ -791,26 +833,12 @@ bs_survival_matrix <- function(t_grid, linpred_draws, shape_draws,
         stats::pnorm((log(t_grid) - mu) / sig, lower.tail = FALSE)
       }, linpred_draws, sigma_draws))
     },
-    exponential = {
-      # Log link: linpred = log(mean); S(t) = exp(-t / mean)
-      t(sapply(linpred_draws, function(lp) {
-        exp(-t_grid / exp(lp))
-      }))
-    },
     weibull = {
       if (is.null(shape_draws)) shape_draws <- rep(1, n_draws)
       t(mapply(function(lp, sh) {
         mu    <- exp(lp)
         scale <- mu / gamma(1 + 1 / sh)
         exp(-(t_grid / scale)^sh)
-      }, linpred_draws, shape_draws))
-    },
-    gamma = {
-      if (is.null(shape_draws)) shape_draws <- rep(1, n_draws)
-      t(mapply(function(lp, sh) {
-        mu   <- exp(lp)
-        rate <- sh / mu
-        stats::pgamma(t_grid, shape = sh, rate = rate, lower.tail = FALSE)
       }, linpred_draws, shape_draws))
     }
   )

@@ -1,12 +1,9 @@
 # Copyright (c) 2026 mouseExperiment Contributors
 # Licensed under the MIT License - see LICENSE file
 
-# Shared synergy formulas used by analyze_drug_synergy() (scalar form on
-# point estimates) and bayesian_synergy() / bayesian_synergy_over_time()
-# (vectorised over posterior draws). Both functions previously had local
-# copies of the same algebra; this file consolidates them. The formulas
-# work elementwise on numeric vectors of any length, so the same
-# implementation serves both call sites.
+# Synergy formulas used by analyze_drug_synergy() and
+# analyze_drug_synergy_over_time(). They work elementwise on numeric vectors
+# of any length.
 
 #' Bliss-independence expected fraction-of-effect
 #'

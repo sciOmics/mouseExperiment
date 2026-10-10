@@ -5,6 +5,429 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] - 2026-09-30
+
+Sixth implementation step of the Round 20 review (`CODE_REVIEW.md` R20-Q):
+robustness of the Bayesian tumour-growth and survival models.
+
+### Added
+
+- **Compiled Stan models are reused (R20.78).** The prior values are passed to
+  Stan as data, so models with the same structure share their Stan code, and
+  a later fit in the same R session reuses the compiled model through
+  `update(recompile = FALSE)`. A fit that compiled for about 20 s now starts
+  sampling at once: 1.5 s against 22.6 s for a second tumour-growth fit with
+  different arm labels. Its draws are identical to a fresh fit's with the
+  same seed. Results carry `model_reused`; `clear_compiled_model_cache()`
+  empties the cache, and `options(mouseExperiment.cache_compiled_models =
+  FALSE)` turns it off.
+- **`posterior_draws` (R20.80):** the headline posterior draws (fixed effects,
+  SDs and correlations, sigma or shape), so trace and rank plots no longer
+  need the fitted model.
+
+### Fixed
+
+- **Every plot held the fitted model (R20.80).** Plots built inside the
+  fitting function kept its frame, so a result without `model` still weighed
+  31 MB and dropping the model freed nothing. Plots are now built from data
+  frames; a tumour-growth result without its model is 7.9 MB, the ggplot
+  objects themselves.
+- **LOO, Bayes R² and predictive coverage were discarded on any warning
+  (R20.35),** and loo warns precisely when an observation is influential, so
+  `n_high_k` could only be 0. Warnings are now recorded in
+  `loo_diagnostics$warnings`, and the Pareto-k threshold depends on the
+  number of draws, min(1 − 1/log10 S, 0.7), as in loo 2.6
+  (`k_threshold`).
+- **The Weibull shape prior followed the treatment-effect ladder (R20.38).**
+  The skeptical exponential(2) shrank the shape and, with it, pulled the
+  hazard ratio toward 1: on 8 animals per arm with true shape 6 and HR 0.088,
+  shape 3.2 [1.7, 5.5] and HR 0.242. The shape now has `lognormal(1, 1)` and
+  the log-normal sigma `exponential(1)` under every preset: shape 5.5
+  [3.0, 9.1], HR 0.071 on the same data.
+- **`bayesian_survival()` accepted longitudinal data (R20.39).** One row per
+  animal is now required, as in `survival_statistics()`.
+- **The prior-vs-posterior plot had no prior layer for tumour growth
+  (R20.40).** brms names per-coefficient prior draws `prior_b_<coef>`; each
+  coefficient now takes its own.
+- **On a raw or square-root scale the treatment prior was in log units
+  (R20.41).** Its width is multiplied by the response's MAD.
+- **Smaller items (R20.74):**
+  - A manual prior missing one argument now names it; it used to reach brms
+    as an opaque error.
+  - A backend from `tg_mcmc()` is checked like the `backend` argument.
+  - Survival metadata reports the priors used, including the shape prior
+    and the data-scaled intercept.
+  - The residuals plot survives a missing volume.
+  - Survival predictive coverage and its density overlay use uncensored
+    times only.
+  - Predictive draws and the survival-curve draw sample come from the fit's
+    seed, not the session's random-number stream.
+  - The documentation of `priors`, of `tg_mcmc(backend =)` (there is no
+    fallback to rstan) and of the preset priors is corrected, in the Rd files
+    and in `docs/BAYESIAN.md`.
+
+## [0.27.0] - 2026-09-30
+
+Fifth implementation step of the Round 20 review (`CODE_REVIEW.md` R20-P): the
+two-axis therapeutic window, an interval-based synergy verdict, dose-response
+for one agent's series, and removal reasons in the weight-loss threshold.
+
+### Changed
+
+- **Breaking: the therapeutic window is two axes, not a ratio (R20-K; closes
+  R20.2's TWM half and R20.70).** `therapeutic_window_metric()` returns
+  `window_table`: per arm, TGI at the last evaluable day and the mean of each
+  animal's worst weight loss, each with a 95 % interval, the number of animals
+  over the threshold, and a tolerability flag. The flag is "Tolerated" when
+  the weight-loss interval lies below `tolerability_threshold` (percent,
+  default 20), "Not tolerated" when it lies at or above it, and "Unclear"
+  otherwise. The TWM ratio, its ranking, `noise_floor`, `twm_table` and
+  `twm_ci` are removed. A threshold of 1 or less is refused, because it looks
+  like a fraction.
+- **Breaking: the synergy verdict comes from the interval (R20.19).**
+  "Synergy" when the 95 % interval for the Bliss excess lies above 0,
+  "Antagonism" when it lies below, otherwise "Additive (no departure from
+  Bliss detected)". Without an interval the verdict uses symmetric bands and
+  says it has none. `strong_synergy_delta` and the "Strong Synergy" label are
+  replaced by `additivity_margin`, used only without an interval, and the
+  result carries `verdict_rule`. When a single agent did not inhibit growth
+  the label is "Bliss does not apply (...)", not "Not evaluable (...)".
+- **Breaking: dose-response analyses one agent's dose series (R20.16).** The
+  new `treatments` argument names the agent's arms. Without it, more than one
+  arm besides the control is an error, and so is a dose held by two arms.
+  `control_group_name` now defaults to `NULL` (the dose-0 rows); a named
+  control must exist and have dose 0, and a missing dose is read as 0. The
+  result records the `series` analysed.
+- **The EC50 is `ED(model, 50)`, with an interval on log dose (R20.18).** The
+  lower asymptote is constrained to be at least 0, and the 5-parameter curve
+  is considered only with at least 6 dose levels. `ec50_in_range` and
+  `ec50_note` flag an EC50 outside the tested doses and a curve with as many
+  parameters as dose levels; its lack-of-fit test, which then has no degrees
+  of freedom, is not run.
+- **The Jonckheere–Terpstra test is two-sided (R20.20).** Its alternative was
+  chosen from the data, which doubled the false-positive rate (0.096). The
+  observed `direction` is still reported.
+
+### Added
+
+- **Removal reasons in `weight_loss_threshold()` (R20.23).**
+  `removal_reason_column`, `weight_loss_reasons` and `planned_end_reasons`: a
+  weight-loss removal is an event at the animal's last day, a planned end is
+  censoring, and any other removal is a competing risk for `cuminc`. The
+  result's `assumption` states how early ends were treated.
+
+### Fixed
+
+- **Weighings without a same-day calliper reading were dropped (R20.22).** For
+  the tumour-mass correction, each animal's volume is now interpolated between
+  its calliper days in `therapeutic_window_metric()`,
+  `weight_loss_threshold()` and `analyze_body_weight()`, and no weight row is
+  filtered on volume. With daily weights and twice-weekly callipers, dips
+  between calliper days were missed: 0 of 6 animals crossed the threshold, and
+  the body-weight model used 84 of 264 rows.
+- **An early end was a competing "removal" (R20.23).** Without a reason
+  column, an animal whose record ends before the last study day is now
+  censored. Before, staggered enrolment or a data cut halved the
+  Aalen-Johansen incidence.
+- **The Firth fallback never ran (R20.21).** The baseline weights were a named
+  vector, which gave the event data row names that `coxphf()` could not
+  parse. A zero-event arm now gets Firth's penalised Cox, and standard Cox is
+  not attempted first under separation, so its non-convergence warning is
+  gone.
+- **Dose-response growth rates imputed missing volumes (R20.14).** Missing and
+  zero volumes were set to half the animal's smallest, so the rows after a
+  death read as shrinkage, and an animal with no positive volume stopped the
+  analysis (the package's own dose-levels demo failed). Growth rates now use
+  positive measured volumes, an animal needs three such days, and
+  `growth_rate_animals_left_out` counts the rest. The growth-rate step can no
+  longer stop the whole analysis. Animals are keyed by treatment, dose, ID and
+  cage, and only measured volumes enter the endpoint analysis.
+
+## [0.26.0] - 2026-09-30
+
+Fourth implementation step of the Round 20 review (`CODE_REVIEW.md` R20-O): the
+evaluable-day rule, one endpoint model behind every TGI, a model-based AUC, and
+random slopes by default.
+
+### Added
+
+- **`evaluable_days()` (R20-K).** An arm is evaluable on a day when at least
+  50 % of its enrolled animals, and at least 3, are still on study. Synergy
+  (single day and over time), the therapeutic window, dose-response and the
+  AUC use only days on which every arm they compare is evaluable. By default
+  they evaluate the last such day, and a requested day that is not evaluable
+  is an error. Each returns an `evaluability` record: the rule, the day used,
+  and the days and arms it excluded.
+
+### Fixed — Critical
+
+- **Endpoint TGI extrapolated the removed control arm (R20.1, R20.29).**
+  - The endpoint model forced log volume to be linear in time, and synergy
+    evaluated the last study day by default. On the Combo demo that put the
+    control at 28,544 mm³ against about 3,000 observed.
+  - The model now gives each arm a natural spline in time (3 df) and each
+    animal a random slope, falling back as above. It leaves out zero volumes
+    measured before a tumour was palpable, instead of flooring them at half
+    the smallest volume.
+  - On simulated Gompertz studies, the default output's TGI errors were 35–53
+    points (R20.1). They are now about 3 points (mean over 30 studies), with a
+    Bliss-excess bias of +0.015.
+- **Intervals described a different estimator (R20.2, synergy half).**
+  - Under the model estimand, the synergy intervals now come from draws of the
+    endpoint model's fixed effects. The combination-versus-agent tests are
+    Wald tests of the log volume ratio, and the diagnostics are that model's
+    residuals and fitted curves.
+  - Coverage in the Gompertz simulation was 92–93 % for a nominal 95 %
+    (43–59 % before), and every estimate lies inside its own interval.
+  - The point estimate is reported, not the median of the draws, under every
+    estimand.
+  - The therapeutic window's TGI intervals come from the same draws. Its TWM
+    ratio has no interval under the model estimand until the two-axis summary
+    replaces it.
+- **The AUC integrated each animal over its own follow-up (R20.4; R3.3 was
+  never applied).**
+  - It is now the area under each arm's fitted curve, from the first study day
+    to the last day on which every arm is evaluable.
+  - Arms are compared by the ratio of their AUCs, with intervals and Wald
+    p-values from model draws. On the review's case, where the per-animal
+    trapezoids reversed the effect, the drug/control ratio is below 1 with
+    p < 0.05.
+  - `auc_bootstrap_n` and `auc_permutations` are ignored, with a warning.
+- **The default random effects gave 73 % false positives for Treatment × Day
+  (R20.5).**
+  - `tumor_growth_statistics()` now defaults to correlated random slopes. A fit
+    that errors or fails to converge falls back to uncorrelated slopes, then to
+    a random intercept, with a warning. The structure used is reported in
+    `random_effects`.
+  - The ANOVA reports Satterthwaite F-tests (lmerTest).
+  - `bayesian_tumor_growth()` also defaults to random slopes.
+
+### Fixed
+
+- **Dose-response used each animal's own last observation (R20.17).**
+  - It now analyses the last day on which every dose group is evaluable, and a
+    requested day on which the control has thinned out is refused.
+  - `tgi_table` reports TGI per dose group from the shared endpoint model.
+  - `control_group_name`, which changed nothing before, now chooses the
+    reference.
+- **Bayesian per-animal slopes used the control slope whenever brms renamed a
+  label (R20.37).** Labels with spaces or "+" are renamed by brms, and every
+  dose-mapped label has a space. Arms are now matched to coefficients by
+  position.
+- **The power simulation now names the analysis it powers (R20.34):** the
+  default random-slope model.
+- The "Bliss Expected" row of the synergy summary no longer carries the
+  control's row name (R20.86, first half).
+- `dose_response_statistics(verbose = FALSE)` no longer prints the growth-rate
+  model.
+- **Influence diagnostics refitted the model once per observation (R20.76).**
+  That was 97–99 % of a tumour-growth run, and the random-slope default made
+  it slower (12.8 s on the Master demo). Cook's distance and DFBETAS now leave
+  out one animal at a time: one row per animal, labelled by arm, ID and cage,
+  with the threshold 4 / n_animals. On the Master demo a random-slope run with
+  diagnostics takes 2.0 s. The same applies to `analyze_body_weight()`.
+
+### Changed
+
+- Over-time synergy fits one endpoint model and evaluates it on every
+  evaluable day, adding per-day interval columns to `synergy_summary`.
+- **Breaking:** the synergy flag for "a single agent did not inhibit growth,
+  so Bliss does not apply" is renamed `bliss_applies` (was `evaluable`), and
+  its over-time column `Bliss_Applies` (was `Evaluable`). "Evaluable" now
+  refers only to evaluable days.
+- `splines` joins Imports.
+
+## [0.25.2] - 2026-09-30
+
+### Fixed
+
+- **Two spurious warnings on every tumour-growth fit (R20.76 part, R20-N
+  follow-up).** The dashboard now shows backend warnings (its R20.D34), and
+  these two were raised on every run:
+  - "disregarded additional arguments": the influence diagnostics passed
+    `influence.merMod()` an `obs` argument it does not have. Removing it
+    changes no result. The per-animal influence and its speed-up remain R20.76.
+  - "Chi-squared approximation may be incorrect": `tumor_growth_statistics()`
+    ran a chi-square of cage against treatment on measurement rows. Its
+    p-value meant nothing, and nothing had read it since R3.17.
+
+### Removed
+
+- `cage_analysis$collinearity_test` from `tumor_growth_statistics()`. The cage
+  design is described by `cage_analysis$structure`.
+
+## [0.25.1] - 2026-09-30
+
+### Fixed
+
+- **`make_mouse_key()` refused a frame with no rows (R20-N follow-up).** v0.25.0
+  made it reject empty parts, which also caught a data frame with no rows. The
+  error then blamed missing ID, treatment or cage columns. An all-empty key is
+  now `character(0)`. A NULL part, or an empty part beside non-empty ones, is
+  still an error.
+
+## [0.25.0] - 2026-09-30
+
+Third implementation step of the Round 20 review (`CODE_REVIEW.md` R20-N): animal
+identity, column names, declared volume units, and survival by the declared unit
+of randomisation.
+
+### Fixed — Critical
+
+- **Reused IDs pooled different animals (R20.3, T1).** The random effects of
+  `tumor_growth_statistics()`, `analyze_body_weight()` and
+  `bayesian_tumor_growth()` grouped on the raw ID, so mouse "1" in every arm
+  was one animal.
+  - The tumour-growth SE fell from 0.097 to 0.030, and the null false-positive
+    rate per contrast rose to 0.52.
+  - Every entry point now groups by treatment + ID + cage, and on a fixture
+    whose IDs restart in each arm the fits match the unique-ID fits.
+  - `analyze_drug_synergy()` and `dose_response_statistics()` gain
+    `cage_column` for the key.
+- **Units were inferred, and wrongly (R20.83).** The median-volume heuristic read
+  small-tumour mm³ studies as cm³, which put the dashboard's default Toxicity
+  run at a net weight of −1,070 g.
+  - `volume_units` is now required whenever tumour mass is subtracted.
+  - The data are checked against the declared unit using the 90th percentile.
+  - A tumour mass above half the body weight is an error, not a warning.
+- **Survival with cages was anti-conservative (R20.6).** `cluster(cage)` from
+  4–10 clusters gave 28 % false positives. `survival_statistics()` gains
+  `randomisation_unit`:
+  - `"mouse"` uses ordinary standard errors, and reports a caveat when each cage
+    holds one arm.
+  - `"cage"` compares arms by a cage-level permutation log-rank and reports the
+    smallest attainable p-value.
+  - In 300 null simulations per design, the cage permutation never exceeded
+    α = 0.05 (0–1.3 % rejections).
+
+### Fixed — Major
+
+- **A column literally named "ID" was required (R20.15).**
+  `analyze_drug_synergy_over_time()` gains `id_column`, `cage_column`,
+  `endpoint_method`, `n_boot` and `boot_seed`. A missing ID column is now a
+  clear error instead of one "mouse" per arm, and `make_mouse_key()` rejects
+  empty parts.
+- **Column names with spaces broke formulas (R20.43).**
+  - Survival and both Bayesian functions copy their columns into fixed internal
+    names, and dose-response quotes names in its formulas.
+  - "Study Day", "Tumor Volume" and the like now work.
+  - So do the dashboard's `.__Derived*` columns, which brms rejected (dashboard
+    R20.D8).
+- `bayesian_survival()` read a factor event column by its level codes, which
+  inverted censoring (R20.62).
+
+### Changed — breaking
+
+- `volume_units` is required with `adjust_tumor_weight = TRUE` in
+  `analyze_body_weight()`, `weight_loss_threshold()` and
+  `therapeutic_window_metric()`.
+- `survival_statistics()` no longer adds `cluster(cage)`. `cage_cluster_used` is
+  always FALSE, and the results add `randomisation_unit`, `cage_permutation` and
+  `cage_caveat`.
+
+Suite: 272 tests / 728 expectations → 285 / 777, all passing. Every new test
+fails on 0.24.0.
+
+## [0.24.0] - 2026-09-30
+
+Second implementation step of the Round 20 review (`CODE_REVIEW.md` R20-M): the
+two near-one-line Criticals.
+
+### Fixed
+
+- **Analytic power for three or more groups (R20.7).** `apriori_power_analysis()`
+  now powers each treated-vs-control comparison: a two-sample t-test at the
+  per-comparison alpha. That is how these studies are analysed.
+  - The old path powered a one-way ANOVA with f = d/√2 (the conversion for its
+    own configuration is d/√(2k)) and applied the Bonferroni per-comparison
+    alpha to that omnibus test.
+  - Required N was 2.6–4× too small. For k = 3, d = 1 it recommended 8 per
+    group, where each comparison then has power 0.338 (confirmed by
+    simulation). The correct figure is 21.
+  - The SD sensitivity table now uses the same per-comparison alpha.
+- **A harmful agent was still reported as synergy (R20.8).** When a single agent
+  does not inhibit growth, `analyze_drug_synergy()` already labelled the result
+  "Not evaluable", but the synergy flag, Bliss expectation, difference and
+  excess interval still carried the harm-driven values.
+  - All four are now NA, and a new `evaluable` element records why.
+  - `analyze_drug_synergy_over_time()` gains an `Evaluable` column and takes its
+    peak over evaluable days only. When no day is evaluable there is no peak (a
+    0-row data frame).
+  - `plot_synergy_trend()` draws no synergy or antagonism ribbon on
+    non-evaluable days.
+
+### Changed — defaults
+
+- `apriori_power_analysis(p_adjust_method =)` defaults to `"bonferroni"` (was
+  `"none"`), with `n_comparisons` defaulting to k − 1. This matches the package's
+  own analysis default. With two groups there is one comparison, so nothing
+  changes.
+
+### Removed
+
+- `pwr` from Imports; it was used only by the omnibus path.
+
+### Decided
+
+- The evaluable-day rule for synergy and endpoint TGI is confirmed: an arm is
+  evaluable on a day when at least 50 % of its enrolled animals, and at least 3
+  animals, are still on study. It is implemented in a later step, together with
+  the record of excluded days that the dashboard will display.
+
+Suite: 267 tests / 703 expectations → 272 / 728, all passing. The five new
+tests are in `test-code_review_round20.R`, and on 0.23.0 the substantive ones
+fail.
+
+## [0.23.0] - 2026-09-29
+
+First implementation step of the Round 20 review (`CODE_REVIEW.md` R20-K): the
+package is narrowed to the models the maintainer decided to keep. The package
+has no external users, so these are removed outright rather than deprecated.
+
+### Removed — breaking
+
+- **Bayesian models other than tumour growth and survival:** `bayesian_synergy()`,
+  `bayesian_synergy_over_time()`, `bayesian_dose_response()`,
+  `bayesian_body_weight()`, `bayesian_therapeutic_window()`,
+  `bayesian_twm_from_data()`, `bayesian_power_analysis()`. Two of them carried
+  open Critical defects: the dose-response model failed on its default
+  `endpoint_day = NULL` (R20.12), and the therapeutic-window model scored weight
+  gain as toxicity (R20.13).
+- **Toxicity composites whose estimands were biased toward calling a toxic arm
+  safe or efficacious:** `body_weight_auc()` (R20.10), `total_benefit_area()`
+  (R20.11), `efficacy_toxicity_bivariate()` (R20.9), `weight_corrected_tgi()`
+  (R20.45).
+- **GAMM:** `model_type = "gam"` in `tumor_growth_statistics()`, the GAM option
+  of `analyze_body_weight()` (whose `model_type` argument is removed), and the
+  Bayesian GAMM (`bayesian_tumor_growth()` loses its `model_type` argument).
+  The GAM path's contrasts used residual degrees of freedom and were
+  anti-conservative (R20.28).
+- **`tumor_auc_analysis()`** — a second AUC implementation that always
+  extrapolated on the raw scale (R20.47). AUC remains available as
+  `tumor_growth_statistics(model_type = "auc")`.
+- **`repeated_measures_anova()`** (R20.26) and the `me_result` class it alone
+  produced: `new_me_result()`, its `print`/`summary`/`plot` methods, and
+  `export_diagnostics()`.
+- **Bayesian survival families `"exponential"` and `"gamma"`.** Exponential is
+  Weibull with shape fixed at 1; gamma was the family most distorted by the
+  shape prior (R20.38). Weibull and log-normal remain.
+- **Dependencies:** `gamm4` and `mgcv` are no longer imported.
+
+### Changed
+
+- `tumor_doubling_time()` moved to its own file, and its `cage_column` argument
+  is now documented.
+- Internal helpers used only by the removed code were deleted, as was the unused
+  `by` argument of the internal contrast builder.
+- The vignette's AUC section uses `tumor_growth_statistics(model_type = "auc")`
+  instead of `tumor_auc_analysis()`. The rest of the vignette is still broken
+  (R20.49).
+
+Suite: 391 tests / 986 expectations → 267 / 703, all passing (the difference is
+the removed functions' tests); the full run drops from 8.8 to 3.1 minutes. R CMD
+check status is unchanged from 0.22.0; the pre-existing examples error (R20.50)
+remains.
+
 ## [0.22.0] - 2026-08-05
 
 `R CMD check` had never been run during this review. It immediately found what

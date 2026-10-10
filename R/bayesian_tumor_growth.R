@@ -28,30 +28,38 @@
 #'   \code{"log"} (default, recommended for exponential growth),
 #'   \code{"sqrt"}, or \code{"none"}.
 #' @param random_effects_specification Random effects structure:
-#'   \code{"intercept_only"} (default, \code{(1 | ID)}) or
-#'   \code{"slope"} (\code{(Day | ID)}, adds per-animal random slopes).
+#'   \code{"slope"} (default since v0.26.0, \code{(Day | animal)}, as in
+#'   \code{\link{tumor_growth_statistics}}: per-animal random slopes, so the
+#'   Treatment x Day effect is not judged against a residual that holds the
+#'   animals' differing growth rates; CODE_REVIEW.md R20.5) or
+#'   \code{"intercept_only"} (\code{(1 | animal)}), which assumes every
+#'   animal in an arm grows at the same rate.
 #' @param reference_group Treatment group used as the reference (Intercept)
 #'   level. Auto-detected if \code{NULL}: checks for common control-group
 #'   names (\code{Control}, \code{Vehicle}, \code{control}, \code{vehicle},
 #'   \code{CTRL}, \code{ctrl}) before falling back to the first level
 #'   alphabetically.
-#' @param prior_strength Prior preset applied to all fixed effects:
+#' @param prior_strength Prior preset, scaled to the data (see
+#'   \code{docs/BAYESIAN.md}):
 #'   \describe{
-#'     \item{\code{"skeptical"}}{(default) \eqn{b \sim N(0, 0.25)};
-#'       \eqn{\text{sd}, \sigma \sim \text{Exponential}(2)}.
-#'       Expresses prior belief that treatment effects are small; requires
-#'       stronger data to support large estimated differences.}
-#'     \item{\code{"weakly_informative"}}{\eqn{b \sim N(0, 1)};
-#'       \eqn{\text{sd}, \sigma \sim \text{Exponential}(1)}.}
-#'     \item{\code{"informative"}}{\eqn{b \sim N(0, 0.5)};
-#'       \eqn{\text{sd}, \sigma \sim \text{Exponential}(2)}.}
-#'     \item{\code{"diffuse"}}{\eqn{b \sim N(0, 2.5)};
-#'       \eqn{\text{sd}, \sigma \sim \text{Exponential}(0.5)}.}
+#'     \item{\code{"skeptical"}}{(default) treatment main effects
+#'       \eqn{N(0, 0.25)} on log volume; slope and Treatment x Day terms
+#'       \eqn{N(0, \text{range}(y) / \text{span})}; SDs and \eqn{\sigma}
+#'       \eqn{\text{Exponential}(2 / \text{MAD}(y))}. Requires stronger
+#'       data to support large estimated differences.}
+#'     \item{\code{"informative"}}{main effects \eqn{N(0, 0.5)}, rate terms
+#'       1.5 times the range per span, SD rate 2 / MAD.}
+#'     \item{\code{"weakly_informative"}}{main effects \eqn{N(0, 1)}, rate
+#'       terms twice the range per span, SD rate 1 / MAD.}
+#'     \item{\code{"diffuse"}}{main effects \eqn{N(0, 2.5)}, rate terms five
+#'       times the range per span, SD rate 0.5 / MAD.}
 #'     \item{\code{"manual"}}{Use the \code{prior_b}, \code{prior_intercept},
 #'       \code{prior_sd}, and \code{prior_sigma} arguments to specify brms
-#'       prior strings directly.}
+#'       prior strings directly; all four are required.}
 #'   }
-#'   All presets use an intercept prior with SD = \eqn{2.5 \times \sigma_b}.
+#'   The intercept prior is \eqn{N(\text{median}(y), 2.5\,\text{MAD}(y))}.
+#'   With \code{transform = "sqrt"} or \code{"none"} the main-effect width is
+#'   multiplied by MAD(y) (v0.28.0, CODE_REVIEW.md R20.41).
 #' @param prior_b brms prior string for fixed-effect coefficients (class
 #'   \code{"b"}), e.g. \code{"normal(0, 0.25)"} or \code{"student_t(3, 0, 0.5)"}.
 #'   Only used when \code{prior_strength = "manual"}.
@@ -91,8 +99,6 @@
 #'   \code{n_warmup}, \code{n_iter}, \code{seed}, and \code{backend}
 #'   arguments.
 #'
-#' @param model_type Which Bayesian model to fit: `"bayes"` (linear) or
-#'   `"bayes_gam"` (smooth time x treatment).
 #' @param necrotic_column Optional column holding a 0/1 necrosis flag.
 #' @param necrotic_handling How flagged observations are treated:
 #'   `"exclude"`, `"covariate"`, or `"none"`.
@@ -132,19 +138,27 @@
 #'     or \code{NULL} when \code{plots = FALSE}.}
 #'   \item{\code{residuals_plot}}{Posterior mean residuals vs. study day,
 #'     faceted by treatment group with a loess smoother. Systematic curvature
-#'     indicates that the log-linear time assumption is violated and a GAM or
-#'     nonlinear model should be considered. \code{NULL} when
-#'     \code{plots = FALSE}.}
+#'     indicates that the log-linear time assumption is violated. \code{NULL}
+#'     when \code{plots = FALSE}.}
 #'   \item{\code{growth_rates}}{Per-animal exponential growth rates. When the
 #'     LMM was fit with \code{random_effects_specification = "slope"}, these
 #'     are derived directly from the brms posterior — each row carries
 #'     \code{growth_rate} (posterior median) plus \code{growth_rate_lower}
 #'     and \code{growth_rate_upper} (2.5% / 97.5% credible intervals). For
-#'     intercept-only and GAM paths, falls back to log-linear OLS per
+#'     the intercept-only path, falls back to log-linear OLS per
 #'     animal and the credible-interval columns reflect OLS confidence
 #'     intervals (Round 2 E.3).}
 #'   \item{\code{data_summary}}{Descriptive statistics by treatment group and
 #'     day.}
+#'   \item{\code{loo_diagnostics}}{PSIS-LOO summary with \code{k_threshold},
+#'     \code{n_high_k}, the per-observation \code{pareto_k} and any
+#'     \code{warnings}; kept when loo warns (R20.35).}
+#'   \item{\code{posterior_draws}}{The headline posterior draws (fixed
+#'     effects, SDs and correlations, sigma) as a \code{draws_array}, for trace
+#'     and rank plots without the model. No plot in the result holds the model
+#'     any more, so dropping \code{model} frees it (R20.80).}
+#'   \item{\code{model_reused}}{TRUE when a compiled model from an earlier fit
+#'     with the same structure was reused (R20.78).}
 #' }
 #'
 #' @section Model:
@@ -163,9 +177,11 @@
 #'
 #' @section Assumptions and Limitations:
 #' \itemize{
-#'   \item Computation typically takes 3–12 minutes on modern hardware. The
-#'     Stan model is compiled on the first call with a given formula and
-#'     cached; subsequent calls with the same formula start faster.
+#'   \item Compiling the Stan model takes about 20 s with rstan. The prior
+#'     values are passed to Stan as data, so a later fit in the same R session
+#'     whose model has the same structure (formula, number of arms, random
+#'     effects) reuses the compiled model and starts sampling at once
+#'     (CODE_REVIEW.md R20.78); see \code{\link{clear_compiled_model_cache}}.
 #'   \item Credible intervals have a direct probability interpretation
 #'     ("there is 95 % posterior probability the parameter lies in this
 #'     interval"), unlike frequentist confidence intervals.
@@ -210,8 +226,7 @@ bayesian_tumor_growth <- function(
   cage_column                  = NULL,
   dose_column                  = NULL,
   transform                    = c("log", "sqrt", "none"),
-  model_type                   = c("lmm", "gam"),
-  random_effects_specification = c("intercept_only", "slope"),
+  random_effects_specification = c("slope", "intercept_only"),
   reference_group              = NULL,
   prior_strength               = c("skeptical", "weakly_informative", "informative", "diffuse", "manual"),
   prior_b                      = NULL,
@@ -236,7 +251,6 @@ bayesian_tumor_growth <- function(
   # ── Dependency checks ──────────────────────────────────────────────────────
 
   transform                    <- match.arg(transform)
-  model_type                   <- match.arg(model_type)
   random_effects_specification <- match.arg(random_effects_specification)
   prior_strength               <- match.arg(prior_strength)
   necrotic_handling            <- match.arg(necrotic_handling)
@@ -257,7 +271,8 @@ bayesian_tumor_growth <- function(
   n_warmup <- .m$warmup
   n_iter   <- .m$iter
   seed     <- .m$seed
-  backend  <- .m$backend
+  # R20.74: a backend from `mcmc` bypassed the check above.
+  backend  <- resolve_brms_backend(.m$backend)
 
   # ── Column validation ──────────────────────────────────────────────────────
   required_cols <- c(time_column, volume_column, treatment_column, id_column)
@@ -266,11 +281,41 @@ bayesian_tumor_growth <- function(
     stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
   }
 
+  # ── Internal column names (CODE_REVIEW.md R20.43) ───────────────────────────
+  # brms needs syntactic variable names without double underscores, and the
+  # formula below is built by pasting names. Copy the columns the model uses into
+  # fixed names once, here, and work with those from now on.
+  work <- data.frame(
+    Day       = as.numeric(df[[time_column]]),
+    Volume    = as.numeric(df[[volume_column]]),
+    Treatment = as.character(df[[treatment_column]]),
+    ID        = as.character(df[[id_column]]),
+    stringsAsFactors = FALSE
+  )
+  if (!is.null(cage_column) && cage_column %in% names(df)) {
+    work$Cage <- as.character(df[[cage_column]])
+  }
+  if (!is.null(necrotic_column) && necrotic_column %in% names(df)) {
+    work$Necrotic <- df[[necrotic_column]]
+  }
+  df               <- work
+  time_column      <- "Day"
+  volume_column    <- "Volume"
+  treatment_column <- "Treatment"
+  id_column        <- "ID"
+  cage_column      <- if ("Cage" %in% names(df)) "Cage" else NULL
+  necrotic_column  <- if ("Necrotic" %in% names(df)) "Necrotic" else NULL
+
   # Cage placeholder — mirrors lme4 path so make_mouse_key() always works
   cage_setup   <- setup_cage_column(df, cage_column)
   df           <- cage_setup$df
   cage_column  <- cage_setup$cage_column
   no_cage_mode <- cage_setup$no_cage_mode
+
+  # CODE_REVIEW.md T1 / R20.3 -- the random effects grouped on the raw ID, so
+  # mouse "1" in every arm was one animal: credible intervals 0.18 wide against
+  # 0.64 with unique IDs. Group by the composite animal key instead.
+  df$Animal <- make_mouse_key(df$Treatment, df$ID, as.character(df[[cage_column]]))
 
   # ── Reference group resolution ─────────────────────────────────────────────
   treatment_groups <- unique(as.character(df[[treatment_column]]))
@@ -318,44 +363,42 @@ bayesian_tumor_growth <- function(
   # ── Formula ────────────────────────────────────────────────────────────────
   use_cage_re <- isTRUE(include_cage_effect) && !no_cage_mode
 
+  # The animal key already includes the cage, so a plain (1 | Cage) term plus a
+  # per-animal term is the nested structure the former (1 | cage/ID) aimed at,
+  # without merging animals that share an ID across arms.
   re_term <- if (use_cage_re) {
     if (random_effects_specification == "slope") {
-      # Random slopes per animal + random intercept per cage (crossed)
-      paste0("(", time_column, " | ", id_column, ") + (1 | ", cage_column, ")")
+      paste0("(", time_column, " | Animal) + (1 | ", cage_column, ")")
     } else {
-      # Animals nested within cages: (1|cage) + (1|cage:ID)
-      paste0("(1 | ", cage_column, "/", id_column, ")")
+      paste0("(1 | ", cage_column, ") + (1 | Animal)")
     }
   } else {
     if (random_effects_specification == "slope") {
-      paste0("(", time_column, " | ", id_column, ")")
+      paste0("(", time_column, " | Animal)")
     } else {
-      paste0("(1 | ", id_column, ")")
+      "(1 | Animal)"
     }
   }
 
-  # Linear interaction (LMM) vs group-specific smoother (GAM via brms s()).
-  # The smoother basis dimension is auto-chosen from observed time points.
-  if (model_type == "gam") {
-    n_days     <- length(unique(analysis_df[[time_column]]))
-    k_val      <- max(3L, min(10L, n_days - 1L))
-    fixed_part <- paste0(
-      volume_column, " ~ ", treatment_column,
-      " + s(", time_column, ", by = ", treatment_column,
-      ", k = ", k_val, ")"
-    )
-  } else {
-    fixed_part <- paste(volume_column, "~", treatment_column, "*", time_column)
-  }
+  # Linear treatment x time interaction on the transformed scale.
+  fixed_part <- paste(volume_column, "~", treatment_column, "*", time_column)
   if (isTRUE(include_necrotic_covariate)) {
     fixed_part <- paste(fixed_part, "+ necrotic_cov_flag")
   }
   brms_formula <- stats::as.formula(paste(fixed_part, "+", re_term))
 
   # ── Prior specification ────────────────────────────────────────────────────
+  prior_stanvars <- NULL
   if (prior_strength == "manual") {
-    if (any(is.null(c(prior_b, prior_intercept, prior_sd, prior_sigma)))) {
-      stop("When prior_strength = 'manual', all four prior_* arguments must be supplied.")
+    # R20.74: is.null(c(...)) is TRUE only when every argument is NULL, so one
+    # missing prior reached brms as an opaque set_prior() error.
+    missing_p <- c("prior_b", "prior_intercept", "prior_sd", "prior_sigma")[
+      vapply(list(prior_b, prior_intercept, prior_sd, prior_sigma), is.null,
+             logical(1L))]
+    if (length(missing_p)) {
+      stop("When prior_strength = 'manual', all four prior_* arguments must ",
+           "be supplied; missing: ", paste(missing_p, collapse = ", "), ".",
+           call. = FALSE)
     }
     selected_priors <- c(
       brms::prior_string(prior_b,         class = "b"),
@@ -371,8 +414,10 @@ bayesian_tumor_growth <- function(
     # Treatment:Day interaction effectively unconstrained.
     selected_priors <- bayes_scaled_priors(
       brms_formula, analysis_df, volume_column, prior_strength,
-      time_column = time_column, include_sd = TRUE
+      time_column = time_column, include_sd = TRUE,
+      log_scale = transform == "log"
     )
+    prior_stanvars <- attr(selected_priors, "me_stanvars")
   }
 
   # ── Fit model ──────────────────────────────────────────────────────────────
@@ -382,20 +427,21 @@ bayesian_tumor_growth <- function(
             n_warmup, " warmup)...")
   }
 
-  model <- brms::brm(
-    formula      = brms_formula,
-    data         = analysis_df,
-    prior        = selected_priors,
-    sample_prior = "yes",
-    chains       = as.integer(n_chains),
-    cores        = as.integer(n_chains),
-    iter         = as.integer(n_warmup + n_iter),
-    warmup       = as.integer(n_warmup),
-    seed         = as.integer(seed),
-    backend      = backend,
-    silent       = if (isTRUE(verbose)) 0L else 2L,
-    refresh      = if (isTRUE(verbose)) 100L else 0L
+  # R20.78: me_brm() reuses a compiled model with the same Stan code.
+  model <- me_brm(
+    formula  = brms_formula,
+    data     = analysis_df,
+    prior    = selected_priors,
+    stanvars = prior_stanvars,
+    chains   = as.integer(n_chains),
+    iter     = as.integer(n_warmup + n_iter),
+    warmup   = as.integer(n_warmup),
+    seed     = as.integer(seed),
+    backend  = backend,
+    silent   = if (isTRUE(verbose)) 0L else 2L,
+    refresh  = if (isTRUE(verbose)) 100L else 0L
   )
+  model_reused <- isTRUE(attr(model, "me_model_reused"))
 
   # ── Posterior summary (fixed effects) ──────────────────────────────────────
   brms_smry     <- summary(model)
@@ -414,7 +460,7 @@ bayesian_tumor_growth <- function(
   nuts_diagnostics <- make_nuts_diagnostics(model)
   loo_diagnostics  <- bayes_loo(model)
   bayes_r2         <- bayes_r2_summary(model)
-  ppc_coverage     <- bayes_ppc_coverage(model)
+  ppc_coverage     <- bayes_ppc_coverage(model, seed = seed)
 
   # ── Treatment effects and pairwise comparisons via emmeans ─────────────────
   treatment_effects    <- NULL
@@ -494,13 +540,12 @@ bayesian_tumor_growth <- function(
   # from the brms model itself (treatment fixed slope + per-animal random
   # slope draw) rather than falling back to OLS on log-volumes. The brms
   # version gives posterior credible intervals; the OLS version does not.
-  # Other paths (intercept_only, GAM) fall back to OLS.
+  # The intercept-only path falls back to OLS.
   brms_growth_rates <- NULL
-  if (model_type == "lmm" &&
-      random_effects_specification == "slope") {
+  if (random_effects_specification == "slope") {
     brms_growth_rates <- tryCatch(
       tg_brms_per_animal_growth_rates(model, treatment_column,
-                                       id_column, time_column,
+                                       "Animal", time_column,
                                        analysis_df),
       error = function(e) NULL
     )
@@ -527,123 +572,49 @@ bayesian_tumor_growth <- function(
   mcmc_trace_plot         <- NULL
   residuals_plot          <- NULL
 
+  # The headline draws (fixed effects, SDs, sigma) travel with the result, so
+  # a caller can draw trace and rank plots without keeping the model (R20.80).
+  posterior_draws <- me_headline_draws(model)
+
   if (isTRUE(plots)) {
+    # CODE_REVIEW.md R20.80 -- every plot is built by a helper that sees only
+    # the data it draws. Built here, each plot held this function's frame and
+    # with it the model, so a result without `model` still weighed 31 MB.
+    pp_check_plot <- me_ppc_plot(model, seed = seed)
 
-    # Posterior predictive check
-    pp_check_plot <- tryCatch(
-      brms::pp_check(model, type = "dens_overlay", ndraws = 50),
-      error = function(e) NULL
-    )
-
-    # Treatment-parameter posterior densities and trace plots
-    if (requireNamespace("bayesplot", quietly = TRUE)) {
-      draws_arr <- tryCatch(posterior::as_draws_array(model),
-                            error = function(e) NULL)
-
-      if (!is.null(draws_arr)) {
-        all_pars <- dimnames(draws_arr)$variable
-        tx_pars  <- grep(
-          paste0("^b_",
-                 gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1",
-                      treatment_column, perl = TRUE)),
-          all_pars, value = TRUE
-        )
-
-        if (length(tx_pars) > 0) {
-          posterior_dist_plot <- tryCatch(
-            bayesplot::mcmc_areas(draws_arr, pars = tx_pars, prob = 0.95),
-            error = function(e) NULL
-          )
-          mcmc_trace_plot <- tryCatch(
-            bayesplot::mcmc_trace(draws_arr, pars = tx_pars),
-            error = function(e) NULL
-          )
-        }
-      }
+    tx_draws <- if (!is.null(posterior_draws)) {
+      v <- posterior::variables(posterior_draws)
+      v <- v[startsWith(v, paste0("b_", treatment_column))]
+      if (length(v)) posterior::subset_draws(posterior_draws, variable = v)
     }
+    posterior_dist_plot <- me_draws_area_plot(tx_draws)
+    mcmc_trace_plot     <- me_draws_trace_plot(tx_draws)
 
-    # Prior vs posterior overlay
     prior_posterior_plot <- tryCatch(
       bayes_prior_posterior_plot(model, treatment_column),
       error = function(e) NULL
     )
 
-    # Credible intervals forest plot from treatment_effects
-    if (!is.null(treatment_effects) && nrow(treatment_effects) > 0) {
-      te      <- treatment_effects
-      te$Group <- factor(te$Group, levels = rev(te$Group))
-      ref_val  <- te$Adjusted_Mean[as.character(te$Group) == reference_group]
-      is_ref   <- as.character(te$Group) == reference_group
+    credible_intervals_plot <- tg_bayes_ci_plot(treatment_effects,
+                                                reference_group, transform)
 
-      credible_intervals_plot <- ggplot2::ggplot(
-          te,
-          ggplot2::aes(
-            x    = .data[["Adjusted_Mean"]],
-            y    = .data[["Group"]],
-            xmin = .data[["Lower_CrI"]],
-            xmax = .data[["Upper_CrI"]],
-            colour = is_ref
-          )
-        ) +
-        ggplot2::geom_pointrange(size = 0.8, linewidth = 0.8) +
-        ggplot2::geom_vline(
-          xintercept = if (length(ref_val) > 0) ref_val[1] else NA_real_,
-          linetype = "dashed", colour = "grey50", linewidth = 0.5
-        ) +
-        ggplot2::scale_colour_manual(
-          values = c("TRUE" = "grey40", "FALSE" = "steelblue"),
-          guide  = "none"
-        ) +
-        ggplot2::labs(
-          title    = "Treatment Effects — 95 % Credible Intervals",
-          subtitle = paste0("Posterior medians at mean study day (", transform, " scale)"),
-          x        = paste0("Estimated marginal mean (", transform, " volume)"),
-          y        = NULL
-        ) +
-        ggplot2::theme_classic(base_size = 14)
-    }
-
-    # Residuals vs Day — curvature diagnostic
+    # Residuals vs day, on the rows brms used: rows with a missing volume are
+    # dropped by brms, and pairing its residuals with the full data failed
+    # whenever one was (R20.74).
     residuals_plot <- tryCatch({
-      resids   <- residuals(model, type = "ordinary")[, "Estimate"]
-      resid_df <- data.frame(
-        study_day = analysis_df[[time_column]],
-        Residual  = resids,
-        Treatment = analysis_df[[treatment_column]]
-      )
-      ggplot2::ggplot(
-          resid_df,
-          ggplot2::aes(x = .data[["study_day"]], y = .data[["Residual"]])
-        ) +
-        ggplot2::geom_point(alpha = 0.35, size = 1.5) +
-        ggplot2::geom_smooth(
-          method   = "loess", se = TRUE, formula = y ~ x,
-          colour   = "steelblue", linewidth = 0.8,
-          fill     = "steelblue", alpha = 0.15
-        ) +
-        ggplot2::geom_hline(
-          yintercept = 0, linetype = "dashed",
-          colour = "grey50", linewidth = 0.5
-        ) +
-        ggplot2::facet_wrap(~ Treatment) +
-        ggplot2::labs(
-          title    = "Residuals vs. Study Day",
-          subtitle = "Curvature indicates non-linear growth — consider a GAM or nonlinear model",
-          x        = time_column,
-          y        = paste0("Residual (", transform, " scale)")
-        ) +
-        ggplot2::theme_classic(base_size = 14)
+      md <- model$data
+      tg_bayes_residuals_plot(
+        data.frame(study_day = md[[time_column]],
+                   Residual  = stats::residuals(model, type = "ordinary")[, "Estimate"],
+                   Treatment = md[[treatment_column]]),
+        transform, time_column)
     }, error = function(e) NULL)
   }
 
   # ── Analysis summary metadata ──────────────────────────────────────────────
   .prior_desc <- describe_priors(selected_priors)
   analysis_summary <- list(
-    analysis_type = if (model_type == "gam") {
-      "Bayesian Generalized Additive Mixed Model (brms, group-specific smooths)"
-    } else {
-      "Bayesian Linear Mixed-Effects Model (brms)"
-    },
+    analysis_type = "Bayesian Linear Mixed-Effects Model (brms)",
     data_description = list(
       subjects         = length(unique(make_mouse_key(
         auc_df[[id_column]],
@@ -675,6 +646,8 @@ bayesian_tumor_growth <- function(
       prior_sigma     = .prior_desc$prior_sigma,
       prior_table     = .prior_desc$all,
       prior_scaling   = .prior_desc$scaling,
+      # R20.78: whether a compiled model was reused (no ~20 s compile).
+      compiled_model  = if (model_reused) "reused from an earlier fit" else "compiled for this fit",
       treatment_effects_note = paste0(
         "Estimated marginal means and 95 % HPD credible intervals ",
         "at mean study day (day ", round(mean(analysis_df[[time_column]]), 1),
@@ -686,7 +659,7 @@ bayesian_tumor_growth <- function(
   # ── Return ─────────────────────────────────────────────────────────────────
   list(
     model                   = if (isTRUE(return_model)) model else NULL,
-    model_type_used         = if (model_type == "gam") "bayes_tg_gam" else "bayes_tg",
+    model_type_used         = "bayes_tg",
     transform_used          = transform,
     meta = me_result_meta(
       analysis_type   = "Bayesian linear mixed-effects model (brms)",
@@ -713,8 +686,75 @@ bayesian_tumor_growth <- function(
     residuals_plot          = residuals_plot,
     growth_rates            = growth_rates,
     data_summary            = data_summary,
-    necrosis_summary        = necrosis_summary
+    necrosis_summary        = necrosis_summary,
+    posterior_draws         = posterior_draws,
+    model_reused            = model_reused
   )
+}
+
+#' Forest plot of the Bayesian treatment effects (model-free; R20.80)
+#' @noRd
+#' @keywords internal
+tg_bayes_ci_plot <- function(treatment_effects, reference_group, transform) {
+  if (is.null(treatment_effects) || !nrow(treatment_effects)) return(NULL)
+  te        <- treatment_effects
+  te$is_ref <- as.character(te$Group) == reference_group
+  te$Group  <- factor(te$Group, levels = rev(te$Group))
+  ref_val   <- te$Adjusted_Mean[te$is_ref]
+  ggplot2::ggplot(
+      te,
+      ggplot2::aes(
+        x      = .data[["Adjusted_Mean"]],
+        y      = .data[["Group"]],
+        xmin   = .data[["Lower_CrI"]],
+        xmax   = .data[["Upper_CrI"]],
+        colour = .data[["is_ref"]]
+      )
+    ) +
+    ggplot2::geom_pointrange(size = 0.8, linewidth = 0.8) +
+    ggplot2::geom_vline(
+      xintercept = if (length(ref_val) > 0) ref_val[1] else NA_real_,
+      linetype = "dashed", colour = "grey50", linewidth = 0.5
+    ) +
+    ggplot2::scale_colour_manual(
+      values = c("TRUE" = "grey40", "FALSE" = "steelblue"),
+      guide  = "none"
+    ) +
+    ggplot2::labs(
+      title    = "Treatment Effects \u2014 95 % Credible Intervals",
+      subtitle = paste0("Posterior medians at mean study day (", transform, " scale)"),
+      x        = paste0("Estimated marginal mean (", transform, " volume)"),
+      y        = NULL
+    ) +
+    ggplot2::theme_classic(base_size = 14)
+}
+
+#' Residuals against study day, by arm (model-free; R20.80)
+#' @noRd
+#' @keywords internal
+tg_bayes_residuals_plot <- function(resid_df, transform, time_label) {
+  ggplot2::ggplot(
+      resid_df,
+      ggplot2::aes(x = .data[["study_day"]], y = .data[["Residual"]])
+    ) +
+    ggplot2::geom_point(alpha = 0.35, size = 1.5) +
+    ggplot2::geom_smooth(
+      method   = "loess", se = TRUE, formula = y ~ x,
+      colour   = "steelblue", linewidth = 0.8,
+      fill     = "steelblue", alpha = 0.15
+    ) +
+    ggplot2::geom_hline(
+      yintercept = 0, linetype = "dashed",
+      colour = "grey50", linewidth = 0.5
+    ) +
+    ggplot2::facet_wrap(~ Treatment) +
+    ggplot2::labs(
+      title    = "Residuals vs. Study Day",
+      subtitle = "Curvature indicates growth that is not log-linear",
+      x        = time_label,
+      y        = paste0("Residual (", transform, " scale)")
+    ) +
+    ggplot2::theme_classic(base_size = 14)
 }
 
 
@@ -751,6 +791,20 @@ tg_brms_per_animal_growth_rates <- function(model, treatment_column,
     fe_names, value = TRUE
   )
 
+  # CODE_REVIEW.md R20.37 -- the arm's column was found by pasting its label
+  # into a regular expression, but brms sanitises labels ("DrugA 10" becomes
+  # "DrugA10", "+" becomes "P"), so nothing matched and every arm silently got
+  # the reference slope. Map levels to columns by position instead: the
+  # columns follow the factor's level order, reference first (bs_build_
+  # treatment_table() does the same). Dose-mapped labels always contain a
+  # space, and random slopes are now the default (R20.5), so this was on the
+  # default path.
+  lev <- levels(analysis_df[[treatment_column]])
+  if (is.null(lev) || length(int_cols) != length(lev) - 1L) return(NULL)
+  slope_by_level <- c(list(ref_slope_draws),
+                      lapply(int_cols, function(cn) ref_slope_draws + fe[, cn]))
+  names(slope_by_level) <- lev
+
   # Per-animal random slope draws on Day. brms::ranef(summary = FALSE)
   # returns a list of 3D arrays (draws x animals x effects).
   re_all <- tryCatch(brms::ranef(model, summary = FALSE),
@@ -771,8 +825,11 @@ tg_brms_per_animal_growth_rates <- function(model, treatment_column,
 
   # Build per-animal lookup of Treatment (and Cage if present)
   cage_col_present <- "Cage" %in% colnames(analysis_df)
-  id_lookup <- unique(analysis_df[, c(treatment_column, id_column,
-                                       intersect("Cage", colnames(analysis_df))),
+  # id_column is the model's grouping column (the animal key); the table shows
+  # the original ID when the data carry one.
+  display_id <- if ("ID" %in% colnames(analysis_df)) "ID" else id_column
+  id_lookup <- unique(analysis_df[, unique(c(treatment_column, id_column, display_id,
+                                       intersect("Cage", colnames(analysis_df)))),
                                    drop = FALSE])
   id_lookup[[id_column]] <- as.character(id_lookup[[id_column]])
 
@@ -782,29 +839,16 @@ tg_brms_per_animal_growth_rates <- function(model, treatment_column,
     treat <- as.character(meta[[treatment_column]])[[1L]]
     cage  <- if (cage_col_present) as.character(meta[["Cage"]])[[1L]] else NA_character_
 
-    # Build treatment fixed slope = reference slope + interaction (if any)
-    # for this animal's treatment level. brms encodes interaction columns as
-    # "<treatment_column><level>:<time>" — drop the reference level.
-    int_for_treat <- grep(
-      paste0("^", treatment_column,
-             gsub("([.^$*+?()\\[\\]{}|])", "\\\\\\1", treat,
-                  perl = TRUE),
-             ":", time_column, "$"),
-      int_cols, value = TRUE
-    )
-    if (length(int_for_treat) == 1L) {
-      treat_slope_draws <- ref_slope_draws + fe[, int_for_treat]
-    } else {
-      # Treatment is the reference level (or naming differs) — use ref slope.
-      treat_slope_draws <- ref_slope_draws
-    }
+    # The arm's fixed slope: reference slope + its interaction (R20.37).
+    treat_slope_draws <- slope_by_level[[treat]]
+    if (is.null(treat_slope_draws)) return(NULL)
     animal_slope_draws <- treat_slope_draws + re_slope[, aid]
 
     qq <- stats::quantile(animal_slope_draws,
                           c(0.025, 0.5, 0.975), names = FALSE)
     data.frame(
       Treatment         = treat,
-      ID                = aid,
+      ID                = as.character(meta[[display_id]])[[1L]],
       Cage              = cage,
       growth_rate       = round(qq[[2L]], 4),
       growth_rate_lower = round(qq[[1L]], 4),

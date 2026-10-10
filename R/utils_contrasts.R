@@ -44,7 +44,7 @@ ME_P_ADJUST_METHODS <- c("bonferroni", "holm", "fdr", "dunnett", "tukey", "none"
 #' @param p_adjust_method One of `ME_P_ADJUST_METHODS`.
 #' @param custom_contrasts Named list of coefficient vectors, or NULL.
 #' @param supports_joint Logical. TRUE for paths where the comparisons come from
-#'   a single fitted model (lme4, gam) and so admit Tukey / Dunnett. FALSE for
+#'   a single fitted model (lme4) and so admit Tukey / Dunnett. FALSE for
 #'   the AUC path, whose comparisons are independent Welch t-tests with no
 #'   common error term or joint covariance — Tukey and Dunnett are undefined
 #'   there.
@@ -121,15 +121,11 @@ resolve_comparison_spec <- function(comparison_family,
 #' @param spec Output of `resolve_comparison_spec()`.
 #' @param reference_group Reference level name (used by `vs_reference`).
 #' @param custom_contrasts Named list of coefficient vectors (used by `custom`).
-#' @param by Optional character vector of variables to compare *within*
-#'   (the GAM path compares within study day). When supplied the adjustment
-#'   applies across every returned cell, not within each `by` stratum — see
-#'   `me_adjust_across_by()`.
 #' @return An emmeans contrast object, or NULL if it could not be built.
 #' @noRd
 #' @keywords internal
 build_requested_contrasts <- function(emm, spec, reference_group = NULL,
-                                      custom_contrasts = NULL, by = NULL) {
+                                      custom_contrasts = NULL) {
   lv <- tryCatch(levels(emm)[[1]], error = function(e) NULL)
 
   tryCatch(
@@ -140,11 +136,11 @@ build_requested_contrasts <- function(emm, spec, reference_group = NULL,
         } else 1L
         if (length(ref_idx) != 1L) ref_idx <- 1L
         emmeans::contrast(emm, method = "trt.vs.ctrl", ref = ref_idx,
-                          by = by, adjust = spec$emmeans_adjust)
+                          adjust = spec$emmeans_adjust)
       },
-      all_pairs = emmeans::contrast(emm, method = "pairwise", by = by,
+      all_pairs = emmeans::contrast(emm, method = "pairwise",
                                     adjust = spec$emmeans_adjust),
-      custom    = emmeans::contrast(emm, method = custom_contrasts, by = by,
+      custom    = emmeans::contrast(emm, method = custom_contrasts,
                                     adjust = spec$emmeans_adjust)
     ),
     error = function(e) {
@@ -153,46 +149,6 @@ build_requested_contrasts <- function(emm, spec, reference_group = NULL,
       NULL
     }
   )
-}
-
-#' Re-adjust p-values across all cells of a `by`-stratified contrast table
-#'
-#' CODE_REVIEW.md G.1 — when contrasts are computed `by` study day (the GAM
-#' path), emmeans adjusts *within* each stratum. The five quantile days are
-#' reported together and read together, so the family is every returned cell,
-#' not each day in isolation. Tukey / Dunnett cannot be re-derived across
-#' strata without the full joint covariance, so for those the within-stratum
-#' adjustment is kept and flagged; for the p-value family methods the
-#' adjustment is redone across all rows.
-#'
-#' @param df A contrast summary data frame with a p-value column.
-#' @param spec Output of `resolve_comparison_spec()`.
-#' @return `df` with the p-value column re-adjusted and an
-#'   `Adjust_Scope` column recording what the family actually was.
-#' @noRd
-#' @keywords internal
-me_adjust_across_by <- function(df, spec) {
-  if (is.null(df) || !is.data.frame(df) || nrow(df) == 0L) return(df)
-
-  p_col <- intersect(c("p_value", "p.value"), names(df))[1]
-  if (is.na(p_col)) return(df)
-
-  if (!is.na(spec$padjust_method)) {
-    if (spec$padjust_method != "none") {
-      # emmeans already adjusted within stratum; redo from the unadjusted
-      # values is not possible, so apply the family method across all cells
-      # starting from the within-stratum values only when no adjustment was
-      # requested at the emmeans level. Request "none" from emmeans and adjust
-      # here instead — that is what build_requested_contrasts() is given.
-      df[[p_col]] <- stats::p.adjust(df[[p_col]], method = spec$padjust_method)
-    }
-    df$Adjust_Scope <- "all returned cells (contrast x day)"
-  } else {
-    df$Adjust_Scope <- paste0(spec$p_adjust_method, ", within each day")
-  }
-  df$P_Adjust_Method <- spec$p_adjust_method
-  df$Comparison_Family <- spec$family
-  df
 }
 
 #' Pairwise contrast table for the body-weight models

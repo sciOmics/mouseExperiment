@@ -14,23 +14,24 @@ apriori_power_analysis(
   n_per_group = NULL,
   mode = c("find_n", "find_power"),
   n_comparisons = NULL,
-  p_adjust_method = c("none", "bonferroni"),
+  p_adjust_method = c("bonferroni", "none"),
   dropout_rate = 0,
   sd_sensitivity_range = 0.4
 )
 }
 \arguments{
-\item{effect_size}{Numeric scalar. Cohen's d (for two groups) or Cohen's f
-(for ANOVA; f = sd_means / pooled_within_sd). If \code{delta} and
+\item{effect_size}{Numeric scalar: Cohen's d, the standardised difference to
+detect between a treated arm and the control arm. If \code{delta} and
 \code{pooled_sd} are supplied instead, \code{effect_size} is computed as
-\code{abs(delta) / pooled_sd} and the two-group t-test path is used.
-\strong{When \code{n_groups >= 3}:} the supplied value is treated as
-Cohen's d for the largest pairwise contrast and converted to Cohen's f
-via \code{f = d / sqrt(2)}. This conversion assumes exactly two extreme
-groups (one high, one low) with all others at the grand mean — a scenario
-that overestimates f (and therefore power) when all treated groups are
-uniformly reduced relative to control. Supply Cohen's f directly via this
-argument if you have a more accurate estimate of between-group variability.
+\code{abs(delta) / pooled_sd}.
+
+\strong{Three or more groups} (CODE_REVIEW.md R20.7). Each treated arm
+that differs from control by \code{d} is detected with the reported power;
+the chance of detecting several such arms at once is lower. Versions before
+0.24.0 powered an omnibus ANOVA with \eqn{f = d / \sqrt{2}} (the conversion
+for its own two-extreme-groups configuration is \eqn{d / \sqrt{2k}}), which
+returned sample sizes 2.6--4 times too small, and applied the Bonferroni
+per-comparison alpha to that omnibus test.
 
 \strong{Effect-size scale:} Cohen's d here is the standardised mean
 difference on the \emph{modelling scale} (\code{log(Volume)} when the
@@ -72,12 +73,15 @@ analysis will make. Used with \code{p_adjust_method = "bonferroni"} to
 derive the effective per-comparison alpha. Defaults to \code{n_groups - 1}
 (the vs-control family these designs normally use).}
 
-\item{p_adjust_method}{\code{"none"} (default, backward compatible) or
-\code{"bonferroni"}. When \code{"bonferroni"}, the sample size is computed
-at \code{alpha / n_comparisons} rather than at \code{alpha}, so the
-calculation matches the analysis that will actually be run. Powering at an
+\item{p_adjust_method}{\code{"bonferroni"} (default) or \code{"none"}.
+\code{"bonferroni"} computes power at \code{alpha / n_comparisons}, which
+matches an analysis that adjusts over the \eqn{k - 1} vs-control
+comparisons, as \code{tumor_growth_statistics()} does by default. With two
+groups there is one comparison, so it changes nothing. Powering at an
 unadjusted alpha and then analysing with an adjustment delivers materially
-less power than the nominal target.}
+less power than the nominal target. Dunnett's exact correction is slightly
+less conservative than Bonferroni, so for a Dunnett analysis the Bonferroni
+N is a small overestimate. The default was \code{"none"} before 0.24.0.}
 
 \item{dropout_rate}{Numeric in [0, 1). Expected proportion of enrolled
 animals that will not be analysable (euthanasia for tumour burden,
@@ -110,6 +114,10 @@ perturbations (only when \code{sd_sensitivity_range > 0} and
 }
 \description{
 Computes prospective power / required sample size from user-supplied effect
-size parameters, without needing experimental data. Supports two-sample
-t-test (two groups) and one-way ANOVA omnibus F-test (k ≥ 3 groups).
+size parameters, without needing experimental data. Power is for a
+two-sample t-test between a treated arm and the control arm. With two groups
+that is the one comparison the study makes. With \eqn{k \ge 3} groups the
+study is analysed as the \eqn{k - 1} treated-vs-control comparisons, so the
+power reported is for each of those comparisons at the per-comparison alpha
+(see \code{p_adjust_method}).
 }

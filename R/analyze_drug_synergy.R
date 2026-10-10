@@ -14,16 +14,46 @@
 #' @param drug_b_name A character string specifying the name of the second single agent treatment group.
 #' @param combo_name A character string specifying the name of the combination treatment group.
 #' @param control_name A character string specifying the name of the control/vehicle group. Default is "Control".
-#' @param eval_time_point Optional. A numeric value specifying a specific time point to evaluate synergy.
-#'        If NULL (default), the function will use the last time point in the data.
+#' @param eval_time_point Day at which to evaluate synergy. \code{NULL}
+#'   (default): the last day on which all four arms are evaluable, i.e. at
+#'   least 50 % of each arm's enrolled animals, and at least 3, are still on
+#'   study (see \code{\link{evaluable_days}}). A requested day must be
+#'   evaluable; one that was not measured moves to the closest measured day.
+#'   Before v0.26.0 the default was the last day in the data, where the control
+#'   arm had usually left the study and its mean was an extrapolation
+#'   (CODE_REVIEW.md R20.1).
 #' @param verbose Logical. If TRUE, prints detailed results to the console.
 #'        Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.
 #'
 #' @return A list containing the following components:
 #' \describe{
 #'   \item{summary}{A data frame summarizing the tumor growth inhibition (TGI) for each treatment and synergy metrics.}
-#'   \item{bliss_independence}{Results of the Bliss independence model, including expected vs. observed effects.}
-#'   \item{statistical_test}{Results of statistical tests comparing observed vs. expected effects.}
+#'   \item{bliss_independence}{Results of the Bliss independence model, including expected vs. observed effects.
+#'     When \code{bliss_applies} is FALSE, \code{expected_effect}, \code{difference} and \code{synergy}
+#'     are NA.}
+#'   \item{bliss_applies}{FALSE when a single agent did not inhibit growth relative to control.
+#'     (Named \code{evaluable} before v0.26.0; renamed so that "evaluable" refers only to
+#'     evaluable days.)
+#'     Bliss independence is defined for inhibitory agents, so every Bliss quantity is then NA:
+#'     the expectation and difference, the \code{synergy} flag, the "Bliss Expected" row of
+#'     \code{summary} and the \code{Bliss_Excess_FE} interval in \code{synergy_ci}
+#'     (CODE_REVIEW.md R14.2, R20.8).}
+#'   \item{statistical_tests}{The combination against each single agent at the
+#'     evaluation day, on the same estimand as the point estimates: under
+#'     "model", a Wald test of the log volume ratio from the endpoint model;
+#'     otherwise Welch t-tests on the per-animal volumes.}
+#'   \item{synergy_ci, interval_method}{95 % intervals for the TGIs and the
+#'     Bliss excess, and how they were obtained.}
+#'   \item{overall_assessment, verdict_rule}{The verdict, from the interval
+#'     for the Bliss excess, and its rule in words (see Details).}
+#'   \item{evaluability}{The evaluable-day record: the rule, the day used, and
+#'     the days and arms it excluded (see \code{\link{evaluable_days}}).}
+#'   \item{endpoint_model}{How the endpoint model was fitted: time basis,
+#'     random effects (and any fallback), excluded pre-palpable zeros.}
+#'   \item{diag_group_qq_plot, diag_group_boxplot, diag_fit_plot}{Diagnostics
+#'     for the estimand used: under "model", the model's residual Q-Q by arm
+#'     and each arm's fitted curve over its data; otherwise per-animal Q-Q and
+#'     box plots.}
 #'   \item{plot_data}{Data prepared for plotting, to be used with plot_drug_synergy function.}
 #' }
 #'
@@ -58,12 +88,17 @@
 #' to demonstrate synergy by this criterion regardless of the true biological interaction.
 #' Interpret Bliss results cautiously when individual-agent TGIs exceed 50%.
 #'
-#' \strong{Point estimates and labels:} \code{synergy_label} is derived from
-#' fixed thresholds. They are descriptive summaries, not test results. Read them
-#' alongside \code{synergy_ci} (mouse-level bootstrap 95% intervals) and
-#' \code{group_n}: a "Strong Synergy" label whose \code{Bliss_Excess_FE}
-#' interval spans zero is not evidence of synergy. For a model-based posterior
-#' treatment of the same question, use \code{\link{bayesian_synergy}}.
+#' \strong{The verdict} (\code{overall_assessment}) comes from the 95%
+#' interval for the Bliss excess in \code{synergy_ci}: "Synergy" when the
+#' interval lies above zero, "Antagonism" when it lies below, and "Additive
+#' (no departure from Bliss detected)" when it contains zero. Without an
+#' interval (\code{n_boot = 0}) the verdict compares the point estimate with
+#' symmetric bands, plus or minus \code{additivity_margin}, and says that it
+#' has no interval. \code{verdict_rule} states the rule used. Before v0.27.0
+#' the bands were asymmetric: any positive excess was "Synergy" but negative
+#' excesses down to -0.1 were "Additivity", so a Bliss-additive combination
+#' was labelled synergistic in about half of simulated studies
+#' (CODE_REVIEW.md R20.19).
 #'
 #' @examples
 #' # Example with synthetic dataset
@@ -90,22 +125,30 @@
 #' @import ggplot2
 #' @param id_column Column identifying individual animals. Used to resample
 #'   mice for the bootstrap; also used to report per-group n.
+#' @param cage_column Optional cage column. Part of the animal key
+#'   (treatment + ID + cage), so an ID reused in different cages of one arm
+#'   is counted as different animals (CODE_REVIEW.md T1). NULL or absent means
+#'   no cage information.
 #' @param endpoint_method How each arm's volume at \code{eval_time_point} is
-#'   obtained: "model" (default, log-scale LMM marginal means using every
-#'   observation), "last_obs", or "survivors" (pre-0.8.0 behaviour; conditions
-#'   on survival and understates TGI). See CODE_REVIEW.md R3.5 / G.3.
-#' @param strong_synergy_delta Numeric. Bliss excess fractional effect above
-#'   which the label is "Strong Synergy". Default 0.1, a convention rather than
-#'   a derived quantity.
+#'   obtained: "model" (default: each arm's geometric mean from a mixed model
+#'   of log volume fitted to every observation, with a natural spline in time
+#'   per arm and per-animal random slopes), "last_obs", or "survivors"
+#'   (pre-0.8.0 behaviour; conditions on survival and understates TGI). See
+#'   CODE_REVIEW.md R3.5 / G.3 and R20.1.
+#' @param additivity_margin Numeric. Used only when there is no interval
+#'   (\code{n_boot = 0}): a Bliss excess within this distance of zero is
+#'   labelled additive. Default 0.1, a convention rather than a derived
+#'   quantity. It replaces \code{strong_synergy_delta} (v0.27.0), which set the
+#'   "Strong Synergy" label; that label was removed with the asymmetric bands.
 #' @param ci_thresholds Deprecated and ignored; retained so existing calls do
 #'   not error. It configured the removed Combination Index band.
-#' @param n_boot Integer >= 0. Number of bootstrap resamples used to attach
-#'   confidence intervals to the synergy metrics. Mice are resampled with
-#'   replacement *within* treatment group, including the control arm, and the
-#'   whole statistic is recomputed per resample — so the interval propagates
-#'   both the sampling error of each arm and the sampling error of the control
-#'   mean that forms the TGI denominator (CODE_REVIEW.md R3.6 / R3.7 / G.6).
-#'   Default 2000. Set 0 to skip.
+#' @param n_boot Integer >= 0. Number of draws behind the 95 % intervals in
+#'   \code{synergy_ci}. Under \code{endpoint_method = "model"} they are draws
+#'   of the endpoint model's fixed effects, so the intervals describe the
+#'   reported model-based estimates; under the per-animal estimands they are
+#'   bootstrap resamples of animals within arm, control included
+#'   (CODE_REVIEW.md R3.6 / R3.7 / G.6, R20.2). Either way the point estimate
+#'   is reported, not the median of the draws. Default 2000. Set 0 to skip.
 #' @param boot_seed Optional integer seed for reproducible resampling.
 #' @export
 analyze_drug_synergy <- function(df, 
@@ -118,74 +161,85 @@ analyze_drug_synergy <- function(df,
                                control_name = "Control",
                                eval_time_point = NULL,
                                id_column = "ID",
+                               cage_column = NULL,
                                endpoint_method = c("model", "last_obs", "survivors"),
                                ci_thresholds = c(0.85, 1.15),
-                               strong_synergy_delta = 0.1,
+                               additivity_margin = 0.1,
                                n_boot = 2000L,
                                boot_seed = NULL,
                                verbose = TRUE) {
 
   endpoint_method <- match.arg(endpoint_method)
-  
-  # Input validation
-  required_columns <- c(treatment_column, volume_column, time_column)
+
+  # Input validation. The ID column is required (R20.15): without it every
+  # animal in an arm shared one key and each arm became a single "mouse".
+  required_columns <- c(treatment_column, volume_column, time_column, id_column)
   missing_cols <- required_columns[!required_columns %in% colnames(df)]
-  
   if (length(missing_cols) > 0) {
     stop("Missing required columns in the data frame: ", paste(missing_cols, collapse = ", "))
   }
-  
+  if (!is.null(cage_column) && !cage_column %in% colnames(df)) cage_column <- NULL
+
   # Check that the specified groups exist in the data
   all_groups <- c(drug_a_name, drug_b_name, combo_name, control_name)
   missing_groups <- all_groups[!all_groups %in% unique(df[[treatment_column]])]
-  
   if (length(missing_groups) > 0) {
-    stop("The following specified groups do not exist in the treatment column: ", 
+    stop("The following specified groups do not exist in the treatment column: ",
          paste(missing_groups, collapse = ", "))
   }
-  
-  # If no specific time point is provided, use the last time point
-  if (is.null(eval_time_point)) {
-    eval_time_point <- max(df[[time_column]])
-    message(paste("No specific evaluation time point provided. Using the last time point:", eval_time_point))
-  } else {
-    # Check that the specified time point exists
-    if (!eval_time_point %in% df[[time_column]]) {
-      closest_time <- df[[time_column]][which.min(abs(df[[time_column]] - eval_time_point))]
-      warning(paste("Specified time point", eval_time_point, "not found in data.",
-                   "Using closest available time point:", closest_time))
-      eval_time_point <- closest_time
-    }
-  }
-  
-  # CODE_REVIEW.md R3.5 / G.3 — filtering to rows observed exactly at
-  # eval_time_point conditions on survival to that day. Animals leave because
-  # their tumours grew, so this selects the slowest growers, hardest in the
-  # control arm, and biases every TGI downward. Route through the shared
-  # endpoint helper: the default reads each arm's geometric mean at the
-  # evaluation day off a log-scale LMM fitted to every observation, and the
-  # per-mouse table it returns keeps all animals for the bootstrap.
+
+  # CODE_REVIEW.md R20.1 / R20-K -- the default evaluation day was the last day
+  # in the data, where the control arm (removed first, at the volume limit) was
+  # an extrapolation past its own animals. The default is now the last day on
+  # which all four arms are evaluable (>= 50 % and >= 3 animals on study), and
+  # a requested day must be evaluable. R3.5 / G.3: the default estimand uses
+  # every observation of every animal, not the survivors on that day.
   ep <- endpoint_volumes(
     df, id_column = id_column, treatment_column = treatment_column,
     time_column = time_column, volume_column = volume_column,
-    endpoint_day = eval_time_point, endpoint_method = endpoint_method
+    cage_column = cage_column,
+    endpoint_day = eval_time_point, endpoint_method = endpoint_method,
+    arms = c(control_name, drug_a_name, drug_b_name, combo_name)
   )
-  # Per-mouse endpoint volumes (all animals) for the group means and bootstrap.
-  analysis_data <- if (!is.null(ep$per_mouse)) {
-    data.frame(Treatment = ep$per_mouse$Treatment,
-               Volume    = ep$per_mouse$Volume,
-               stringsAsFactors = FALSE)
-  } else {
-    pm <- endpoint_volumes(
-      df, id_column = id_column, treatment_column = treatment_column,
-      time_column = time_column, volume_column = volume_column,
-      endpoint_day = eval_time_point, endpoint_method = "last_obs")$per_mouse
-    data.frame(Treatment = pm$Treatment, Volume = pm$Volume,
-               stringsAsFactors = FALSE)
+  if (is.null(eval_time_point) && isTRUE(verbose)) {
+    message("Evaluating at day ", ep$endpoint_day,
+            ", the last day on which all four arms are evaluable.")
   }
-  names(analysis_data) <- c(treatment_column, volume_column)
 
-  # CODE_REVIEW.md R3.7 — tapply()'s default na.rm = FALSE meant a single
+  me_synergy_from_endpoint(
+    ep, control_name = control_name, drug_a_name = drug_a_name,
+    drug_b_name = drug_b_name, combo_name = combo_name,
+    additivity_margin = additivity_margin,
+    n_boot = n_boot, boot_seed = boot_seed, verbose = verbose)
+}
+
+#' Synergy quantities from one endpoint evaluation
+#'
+#' The core of [analyze_drug_synergy()], shared with
+#' [analyze_drug_synergy_over_time()], which reuses one endpoint model across
+#' days.
+#'
+#' CODE_REVIEW.md R20.2: the intervals, the tests and the diagnostics describe
+#' the estimate that is reported. Under the model estimand they come from the
+#' endpoint model (draws of its fixed effects; log-ratio contrasts; its
+#' residuals); under the per-animal estimands from those animals (bootstrap;
+#' Welch t-tests; per-arm Q-Q). Before, the model-based point estimates were
+#' paired with a bootstrap and t-tests of each animal's last observation, so a
+#' point estimate could sit outside its own interval.
+#'
+#' @param ep Output of `endpoint_volumes()` for the four arms.
+#' @return The result list of [analyze_drug_synergy()].
+#' @noRd
+#' @keywords internal
+me_synergy_from_endpoint <- function(ep, control_name, drug_a_name, drug_b_name,
+                                     combo_name, additivity_margin = 0.1,
+                                     n_boot = 2000L, boot_seed = NULL,
+                                     verbose = FALSE, warn_not_evaluable = TRUE) {
+  eval_time_point <- ep$endpoint_day
+  arms <- c(control_name, drug_a_name, drug_b_name, combo_name)
+  model_based <- identical(ep$method, "model")
+
+  # CODE_REVIEW.md R3.7 -- tapply()'s default na.rm = FALSE meant a single
   # missing volume at the evaluation day silently NA'd that group's mean and
   # every quantity derived from it.
   group_means <- stats::setNames(ep$group_means$Mean_Volume,
@@ -193,266 +247,344 @@ analyze_drug_synergy <- function(df,
   group_n <- stats::setNames(ep$group_means$N, ep$group_means$Treatment)
 
   # Fail loudly rather than propagating NA when a named arm is absent.
-  for (nm in c(control_name, drug_a_name, drug_b_name, combo_name)) {
+  for (nm in arms) {
     if (!nm %in% names(group_means) || !is.finite(group_means[[nm]])) {
       stop("Treatment group '", nm, "' has no usable volume observations at ",
            "day ", eval_time_point, ".", call. = FALSE)
     }
   }
-  
-  # Extract mean volumes for each group
-  control_mean <- group_means[control_name]
-  drug_a_mean <- group_means[drug_a_name]
-  drug_b_mean <- group_means[drug_b_name]
-  combo_mean <- group_means[combo_name]
-  
-  # Calculate Tumor Growth Inhibition (TGI) for each treatment
-  tgi_a <- 100 * (1 - (drug_a_mean / control_mean))
-  tgi_b <- 100 * (1 - (drug_b_mean / control_mean))
-  tgi_combo <- 100 * (1 - (combo_mean / control_mean))
-  
-  # Convert TGI to fractional effect (FE)
+
+  control_mean <- group_means[[control_name]]
+  drug_a_mean  <- group_means[[drug_a_name]]
+  drug_b_mean  <- group_means[[drug_b_name]]
+  combo_mean   <- group_means[[combo_name]]
+
+  # Tumor Growth Inhibition (TGI) and fractional effect (FE) per arm
+  tgi_a     <- 100 * (1 - drug_a_mean / control_mean)
+  tgi_b     <- 100 * (1 - drug_b_mean / control_mean)
+  tgi_combo <- 100 * (1 - combo_mean  / control_mean)
   fe_a <- tgi_a / 100
   fe_b <- tgi_b / 100
   fe_combo <- tgi_combo / 100
-  
-  # CODE_REVIEW.md R3.6 / R3.7 / G.6 — attach mouse-level bootstrap intervals to
-  # every synergy metric. Resampling the control arm too propagates the TGI
-  # denominator's uncertainty, which was previously treated as a known constant.
-  per_mouse_vols <- list(
-    control = as.numeric(analysis_data[[volume_column]][
-      analysis_data[[treatment_column]] == control_name]),
-    drug_a  = as.numeric(analysis_data[[volume_column]][
-      analysis_data[[treatment_column]] == drug_a_name]),
-    drug_b  = as.numeric(analysis_data[[volume_column]][
-      analysis_data[[treatment_column]] == drug_b_name]),
-    combo   = as.numeric(analysis_data[[volume_column]][
-      analysis_data[[treatment_column]] == combo_name])
-  )
+
+  # Bliss independence (R/utils_synergy.R).
+  bliss_expected_fe  <- synergy_bliss_expected(fe_a, fe_b)
+  bliss_expected_tgi <- bliss_expected_fe * 100
+  bliss_difference   <- fe_combo - bliss_expected_fe
+  point <- c(TGI_A_pct = tgi_a, TGI_B_pct = tgi_b, TGI_Combo_pct = tgi_combo,
+             Bliss_Excess_FE = bliss_difference)
+
+  # Intervals for the reported estimate (R20.2). The point estimate is
+  # reported, not the median of the draws.
+  per_mouse_vols <- NULL
+  if (!model_based) {
+    pm <- ep$per_mouse
+    per_mouse_vols <- list(
+      control = pm$Volume[pm$Treatment == control_name],
+      drug_a  = pm$Volume[pm$Treatment == drug_a_name],
+      drug_b  = pm$Volume[pm$Treatment == drug_b_name],
+      combo   = pm$Volume[pm$Treatment == combo_name])
+  }
   synergy_ci <- if (n_boot > 0L) {
-    synergy_bootstrap(per_mouse_vols, n_boot = as.integer(n_boot),
-                      seed = boot_seed)
+    if (model_based) {
+      synergy_model_ci(ep$model, arms, eval_time_point, point,
+                       n_draws = as.integer(n_boot), seed = boot_seed)
+    } else {
+      ci <- synergy_bootstrap(per_mouse_vols, n_boot = as.integer(n_boot),
+                              seed = boot_seed)
+      if (!is.null(ci)) ci$Estimate <- unname(point[ci$Metric])
+      ci
+    }
   } else NULL
 
-  # Calculate expected effect using Bliss Independence model.
-  # Shared scalar/vector formula in R/utils_synergy.R.
-  bliss_expected_fe <- synergy_bliss_expected(fe_a, fe_b)
-  bliss_expected_tgi <- bliss_expected_fe * 100
-
-  # R17.2: the Loewe / Combination Index path was removed.
-  #
-  # What was implemented was not Loewe additivity. True Loewe is dose-equivalence
-  # -- CI = d_A/D_A + d_B/D_B, where D_A is the dose of A alone producing the
-  # combination's effect -- which needs a dose-response curve per agent that these
-  # single-dose designs do not collect. The stand-in, min(FE_A + FE_B, 1), is
-  # *response additivity*, a different and largely discredited null.
-  #
-  # Response additivity fails the sham-combination test: combine a drug with
-  # itself and it predicts 2 x FE, so an agent at FE = 0.5 should reach 100 %
-  # inhibition. It will not, so the method calls a drug antagonistic with itself.
-  # Measured consequence: across the (FE_A, FE_B) grid with the combination set to
-  # exactly Bliss-additive, 42 % of cells were labelled antagonistic and not one
-  # was labelled synergistic -- a one-directional bias covering most of the range
-  # where active single agents actually sit.
-  #
-  # Bliss independence is retained. It has a defensible probabilistic
-  # interpretation (independent action on surviving fraction), and its excess
-  # carries a bootstrap interval, so the verdict can be read against uncertainty
-  # rather than a threshold alone.
+  # R17.2: the Loewe / Combination Index path was removed. What it computed was
+  # response additivity, which fails the sham-combination test (a drug combined
+  # with itself looks antagonistic). Bliss independence is retained; its excess
+  # carries an interval, so the verdict can be read against uncertainty.
 
   # R14.2: an agent that ACCELERATES growth has a negative fractional effect.
-  # Bliss multiplies surviving fractions, so it is defined for inhibitory agents;
-  # at negative effect the expectation and the excess both stop meaning what the
-  # label claims, and the excess goes large and positive precisely *because* an
-  # agent did harm. The honest output is that the analysis does not apply.
-  # (This guard previously sat with the Loewe block removed in R17.2.)
+  # Bliss multiplies surviving fractions, so it is defined for inhibitory
+  # agents; at negative effect the excess goes large and positive precisely
+  # *because* an agent did harm. The honest output is that it does not apply.
   agents_inhibitory <- is.finite(fe_a) && is.finite(fe_b) && fe_a > 0 && fe_b > 0
-  if (!agents_inhibitory) {
+  if (!agents_inhibitory && warn_not_evaluable) {
     warning("Synergy not evaluated: a single-agent arm did not inhibit growth ",
             "relative to control (fractional effect <= 0). Bliss independence is ",
             "defined for inhibitory agents; a synergy verdict here would be ",
             "meaningless.", call. = FALSE)
   }
 
-  # Calculate the difference between observed and expected effects
-  bliss_difference <- fe_combo - bliss_expected_fe
-  
-  # Synergy label, now from Bliss alone (R17.2 removed the Loewe arm).
-  # CODE_REVIEW.md R3.28 — `strong_synergy_delta` replaces the hardcoded 0.1.
-  # NOTE this label is computed from three group means with no uncertainty
-  # attached; see the `synergy_ci` element and the Assumptions section for why a
-  # label alone should not drive a decision. The bootstrap interval on
-  # Bliss_Excess_FE is the quantity to read, not this string.
-  d <- strong_synergy_delta
+  # CODE_REVIEW.md R20.8 -- when Bliss does not apply, none of its quantities
+  # are reported.
   if (!agents_inhibitory) {
-    # The Bliss difference is large and positive here precisely *because* a
-    # single agent did harm, so the label logic would read the harm as synergy.
-    synergy_label <- "Not evaluable (a single agent did not inhibit growth)"
-  } else if (bliss_difference > d) {
-    synergy_label <- "Strong Synergy"
-  } else if (bliss_difference > 0) {
-    synergy_label <- "Synergy"
-  } else if (bliss_difference > -d) {
-    synergy_label <- "Additivity"
-  } else {
-    synergy_label <- "Antagonism"
+    bliss_expected_fe  <- NA_real_
+    bliss_expected_tgi <- NA_real_
+    bliss_difference   <- NA_real_
+    if (!is.null(synergy_ci)) {
+      bliss_rows <- grepl("^Bliss", synergy_ci$Metric)
+      synergy_ci[bliss_rows, c("Estimate", "CI_Lower", "CI_Upper")] <- NA_real_
+    }
   }
-  
-  # Statistical test for synergy
-  # Perform t-test to compare combo group vs. each single agent
-  t_test_a_combo <- t.test(
-    analysis_data[[volume_column]][analysis_data[[treatment_column]] == combo_name],
-    analysis_data[[volume_column]][analysis_data[[treatment_column]] == drug_a_name]
-  )
-  
-  t_test_b_combo <- t.test(
-    analysis_data[[volume_column]][analysis_data[[treatment_column]] == combo_name],
-    analysis_data[[volume_column]][analysis_data[[treatment_column]] == drug_b_name]
-  )
-  
-  # Create a data frame for summary results
+
+  # CODE_REVIEW.md R20.19 -- the verdict. The bands were asymmetric: any
+  # positive excess was "Synergy" while negatives down to -0.1 were
+  # "Additivity", so a Bliss-additive truth read as synergy in about half of
+  # studies. The verdict now comes from the interval for the Bliss excess,
+  # which describes the reported estimate since R20.2. Without an interval it
+  # uses symmetric bands around zero and says so. When Bliss does not apply
+  # the label says that, not "Not evaluable", which since v0.26.0 refers to
+  # evaluable days only.
+  m <- additivity_margin
+  bliss_row <- if (!is.null(synergy_ci)) synergy_ci[synergy_ci$Metric == "Bliss_Excess_FE", ]
+  lo <- if (!is.null(bliss_row) && nrow(bliss_row) == 1L) bliss_row$CI_Lower else NA_real_
+  hi <- if (!is.null(bliss_row) && nrow(bliss_row) == 1L) bliss_row$CI_Upper else NA_real_
+  has_interval <- agents_inhibitory && is.finite(lo) && is.finite(hi)
+  synergy_label <- if (!agents_inhibitory) {
+    "Bliss does not apply (a single agent did not inhibit growth)"
+  } else if (has_interval) {
+    if (lo > 0) "Synergy"
+    else if (hi < 0) "Antagonism"
+    else "Additive (no departure from Bliss detected)"
+  } else if (bliss_difference > m) {
+    paste0("Synergy (no interval; excess above +", format(m), ")")
+  } else if (bliss_difference < -m) {
+    paste0("Antagonism (no interval; excess below -", format(m), ")")
+  } else {
+    paste0("Additive (no interval; excess within ", format(m), " of zero)")
+  }
+  verdict_rule <- if (!agents_inhibitory) {
+    "Bliss independence applies only when both single agents inhibit growth."
+  } else if (has_interval) {
+    paste("Synergy when the 95% interval for the Bliss excess lies above zero,",
+          "antagonism when it lies below zero, otherwise additive.")
+  } else {
+    paste0("No interval: synergy when the Bliss excess is above +", format(m),
+           ", antagonism when it is below -", format(m), ", otherwise additive.")
+  }
+
+  # Combination vs each single agent, on the same estimand (R20.2).
+  stat_tests <- if (model_based) {
+    synergy_model_tests(ep$model, eval_time_point, combo_name,
+                        c(drug_a_name, drug_b_name))
+  } else {
+    do.call(rbind, lapply(c(drug_a_name, drug_b_name), function(g) {
+      tt <- stats::t.test(per_mouse_vols$combo,
+                          ep$per_mouse$Volume[ep$per_mouse$Treatment == g])
+      data.frame(Comparison = paste("Combo vs", g), P_Value = tt$p.value,
+                 Significant = tt$p.value < 0.05,
+                 Method = "Welch t-test on per-animal volumes",
+                 stringsAsFactors = FALSE)
+    }))
+  }
+
   summary_df <- data.frame(
     Treatment = c(drug_a_name, drug_b_name, combo_name, "Bliss Expected"),
     Mean_Volume = c(drug_a_mean, drug_b_mean, combo_mean,
-                   control_mean * (1 - bliss_expected_fe)),
+                    control_mean * (1 - bliss_expected_fe)),
     TGI_Percent = c(tgi_a, tgi_b, tgi_combo, bliss_expected_tgi),
     Fractional_Effect = c(fe_a, fe_b, fe_combo, bliss_expected_fe)
   )
-  
-  # Add synergy metrics to a separate data frame
+
   synergy_metrics <- data.frame(
     Metric = c("Bliss Difference", "Interpretation"),
     Value = c(bliss_difference, synergy_label)
   )
-  
-  # Create statistical test summary
-  stat_tests <- data.frame(
-    Comparison = c(paste("Combo vs", drug_a_name), paste("Combo vs", drug_b_name)),
-    P_Value = c(t_test_a_combo$p.value, t_test_b_combo$p.value),
-    Significant = c(t_test_a_combo$p.value < 0.05, t_test_b_combo$p.value < 0.05)
-  )
-  
-  # Prepare data for plotting (will be used by plot_drug_synergy function)
+
   plot_data <- data.frame(
     Treatment = factor(c(drug_a_name, drug_b_name, combo_name, "Bliss Expected"),
-                     levels = c(drug_a_name, drug_b_name, "Bliss Expected", combo_name)),
+                       levels = c(drug_a_name, drug_b_name, "Bliss Expected", combo_name)),
     TGI = c(tgi_a, tgi_b, tgi_combo, bliss_expected_tgi),
     Type = c("Observed", "Observed", "Observed", "Expected")
   )
-  
-  # Print results (only when verbose)
+
   if (isTRUE(verbose)) {
     message("\n=== Drug Combination Synergy Analysis ===")
-    message("Evaluation time point: ", eval_time_point, "\n")
-    
-    message("Treatment Mean Volumes:")
+    message("Evaluation day: ", eval_time_point, " (", ep$method, " estimand)\n")
     message("Control (", control_name, "): ", round(control_mean, 2))
     message(drug_a_name, ": ", round(drug_a_mean, 2), " (TGI: ", round(tgi_a, 1), "%)")
     message(drug_b_name, ": ", round(drug_b_mean, 2), " (TGI: ", round(tgi_b, 1), "%)")
     message(combo_name, ": ", round(combo_mean, 2), " (TGI: ", round(tgi_combo, 1), "%)\n")
-    
-    message("Expected Effects:")
-    message("Bliss Independence: TGI = ", round(bliss_expected_tgi, 1), "%")
-    
-    message("Synergy Assessment:")
-    message("Bliss Difference: ", round(bliss_difference * 100, 1), "% (", 
-               ifelse(bliss_difference > 0, "Synergy", "No Synergy"), ")")
+    message("Bliss Independence: TGI = ",
+            if (agents_inhibitory) paste0(round(bliss_expected_tgi, 1), "%") else "not evaluable")
+    message("Bliss Difference: ",
+            if (agents_inhibitory) paste0(round(bliss_difference * 100, 1), "%") else "not evaluable")
     message("Overall: ", synergy_label, "\n")
-    
-    message("Statistical Tests:")
-    message("Combo vs ", drug_a_name, ": p = ", round(t_test_a_combo$p.value, 4), 
-               ifelse(t_test_a_combo$p.value < 0.05, " (Significant)", " (Not Significant)"))
-    message("Combo vs ", drug_b_name, ": p = ", round(t_test_b_combo$p.value, 4), 
-               ifelse(t_test_b_combo$p.value < 0.05, " (Significant)", " (Not Significant)"), "\n")
-    
-    message("Overall Assessment: ", synergy_label, "\n")
-  }
-  
-  # CODE_REVIEW.md DIAGNOSTICS gap (6) — frequentist synergy had no
-  # checkable model-assumption diagnostics for the t-test path. Surface a
-  # per-group Q-Q plot of per-mouse volumes (Welch t robustness check)
-  # and a boxplot of per-mouse volumes (outlier check).
-  diag_group_qq_plot <- NULL
-  diag_group_boxplot <- NULL
-  if (requireNamespace("ggplot2", quietly = TRUE)) {
-    diag_group_qq_plot <- tryCatch({
-      ad <- analysis_data
-      # Build a Q-Q per group via stratified qqnorm computations.
-      grp_col <- treatment_column
-      val_col <- volume_column
-      groups <- unique(ad[[grp_col]])
-      long <- do.call(rbind, lapply(groups, function(g) {
-        v <- ad[[val_col]][ad[[grp_col]] == g]
-        v <- v[is.finite(v)]
-        if (length(v) < 3L) return(NULL)
-        qq <- stats::qqnorm(v, plot.it = FALSE)
-        data.frame(group = g, theoretical = qq$x, sample = qq$y,
-                   stringsAsFactors = FALSE)
-      }))
-      if (is.null(long) || nrow(long) == 0L) NULL
-      else ggplot2::ggplot(long, ggplot2::aes(x = .data[["theoretical"]],
-                                              y = .data[["sample"]])) +
-        ggplot2::geom_point(alpha = 0.7) +
-        ggplot2::geom_smooth(method = "lm", se = FALSE,
-                             colour = "red", linetype = "dashed",
-                             formula = y ~ x) +
-        ggplot2::facet_wrap(~ group, scales = "free") +
-        ggplot2::theme_classic() +
-        ggplot2::labs(
-          title = "Per-group Q-Q of tumor volumes",
-          subtitle = paste("At evaluation day", eval_time_point,
-                           "— heavy tails or curvature warn t-test assumptions"),
-          x = "Theoretical Quantiles", y = "Sample Quantiles")
-    }, error = function(e) NULL)
-
-    diag_group_boxplot <- tryCatch({
-      ggplot2::ggplot(analysis_data,
-                      ggplot2::aes(x = .data[[treatment_column]],
-                                   y = .data[[volume_column]])) +
-        ggplot2::geom_boxplot(outlier.colour = "red", outlier.alpha = 0.8) +
-        ggplot2::geom_jitter(width = 0.15, height = 0, alpha = 0.4) +
-        ggplot2::theme_classic() +
-        ggplot2::labs(
-          title = "Per-group tumor volumes at evaluation day",
-          subtitle = paste("Day", eval_time_point,
-                           "— outliers in red. Inspect before reporting synergy."),
-          x = "Treatment", y = "Tumor volume")
-    }, error = function(e) NULL)
+    for (i in seq_len(nrow(stat_tests))) {
+      message(stat_tests$Comparison[i], ": p = ", signif(stat_tests$P_Value[i], 3))
+    }
   }
 
-  # Return a list with all results
-  return(list(
+  diag <- if (model_based) {
+    synergy_model_diagnostics(ep$model, arms, eval_time_point)
+  } else {
+    synergy_permouse_diagnostics(ep$per_mouse, eval_time_point)
+  }
+
+  list(
     summary = summary_df,
     synergy_metrics = synergy_metrics,
-    # CODE_REVIEW.md R3.6 / R3.7 — bootstrap percentile CIs for every metric,
-    # plus per-group n so a reader can weigh the point estimates.
+    # Intervals for the reported estimate: model draws or an animal bootstrap,
+    # per `interval_method` (R20.2).
     synergy_ci  = synergy_ci,
+    interval_method = if (model_based) "draws from the endpoint model's fixed effects"
+                      else "bootstrap of animals within arm",
     group_n     = group_n,
     attrition   = ep$attrition,
     endpoint_method = ep$method,
     eval_time_point = eval_time_point,
-    thresholds  = list(
-                       strong_synergy_delta = strong_synergy_delta),
+    # The evaluable-day record: the rule, the day used, and the days and arms
+    # it excluded (R20-K).
+    evaluability = ep$evaluability,
+    endpoint_model = me_endpoint_model_info(ep$model),
+    thresholds  = list(additivity_margin = additivity_margin),
+    verdict_rule = verdict_rule,
     bliss_independence = list(
       expected_effect = bliss_expected_fe,
       observed_effect = fe_combo,
       difference = bliss_difference,
-      synergy = bliss_difference > 0
+      # NA, not FALSE, when Bliss does not apply (R20.8). TRUE only when the
+      # verdict is synergy (R20.19).
+      synergy = if (agents_inhibitory) startsWith(synergy_label, "Synergy") else NA
     ),
+    bliss_applies = agents_inhibitory,
     statistical_tests = stat_tests,
     overall_assessment = synergy_label,
     evaluation_time_point = eval_time_point,
-    plot_data = plot_data, # Keep the plot data for later plotting
-    # Per-group diagnostics (Welch t robustness check) — CODE_REVIEW.md
-    # DIAGNOSTICS gap (6).
-    diag_group_qq_plot = diag_group_qq_plot,
-    diag_group_boxplot = diag_group_boxplot,
-    # Additional data needed for plotting
+    plot_data = plot_data,
+    diag_group_qq_plot = diag$qq,
+    diag_group_boxplot = diag$box,
+    diag_fit_plot      = diag$fit,
     drug_a_name = drug_a_name,
     drug_b_name = drug_b_name,
     combo_name = combo_name,
     control_name = control_name
-  ))
+  )
+}
+
+#' Intervals for the synergy metrics from the endpoint model
+#' @noRd
+#' @keywords internal
+synergy_model_ci <- function(em, arms, t, point, n_draws = 2000L, seed = NULL) {
+  if (is.null(em) || n_draws < 2L) return(NULL)
+  lm_ <- me_draw_logmeans(em, me_beta_draws(em, n_draws, seed), arms, t)
+  ctrl <- lm_[, 1L]
+  fe <- 1 - exp(lm_[, 2:4, drop = FALSE] - ctrl)
+  bliss <- fe[, 3L] - synergy_bliss_expected(fe[, 1L], fe[, 2L])
+  draws <- cbind(fe * 100, bliss)
+  metrics <- c("TGI_A_pct", "TGI_B_pct", "TGI_Combo_pct", "Bliss_Excess_FE")
+  do.call(rbind, lapply(seq_along(metrics), function(i) {
+    q <- stats::quantile(draws[, i], c(0.025, 0.975), names = FALSE, na.rm = TRUE)
+    data.frame(Metric = metrics[i], Estimate = unname(point[[metrics[i]]]),
+               CI_Lower = q[1], CI_Upper = q[2], n_boot = nrow(draws),
+               stringsAsFactors = FALSE)
+  }))
+}
+
+#' Combination vs single agents on the endpoint model's log scale
+#' @noRd
+#' @keywords internal
+synergy_model_tests <- function(em, t, combo, others) {
+  xc <- me_endpoint_X(em, combo, t)
+  z <- stats::qnorm(0.975)
+  do.call(rbind, lapply(others, function(g) {
+    cv  <- xc - me_endpoint_X(em, g, t)
+    est <- as.numeric(cv %*% em$beta)
+    se  <- sqrt(as.numeric(cv %*% em$V %*% t(cv)))
+    p   <- 2 * stats::pnorm(-abs(est / se))
+    data.frame(Comparison = paste("Combo vs", g), P_Value = p,
+               Significant = p < 0.05,
+               Volume_Ratio = exp(est), CI_Lower = exp(est - z * se),
+               CI_Upper = exp(est + z * se),
+               Method = "Wald test of the log volume ratio, endpoint model",
+               stringsAsFactors = FALSE)
+  }))
+}
+
+#' Endpoint-model diagnostics: residual Q-Q by arm and the fitted curves
+#' @noRd
+#' @keywords internal
+synergy_model_diagnostics <- function(em, arms, t) {
+  if (is.null(em) || !requireNamespace("ggplot2", quietly = TRUE)) {
+    return(list(qq = NULL, box = NULL, fit = NULL))
+  }
+  fr <- em$fit@frame
+  res <- stats::residuals(em$fit)
+  dd <- data.frame(Treatment = as.character(fr$Treatment), resid = res,
+                   stringsAsFactors = FALSE)
+  dd <- dd[dd$Treatment %in% arms, , drop = FALSE]
+  qq <- tryCatch({
+    long <- do.call(rbind, lapply(split(dd, dd$Treatment), function(g) {
+      if (nrow(g) < 3L) return(NULL)
+      q <- stats::qqnorm(g$resid / stats::sd(res), plot.it = FALSE)
+      data.frame(group = g$Treatment[1], theoretical = q$x, sample = q$y)
+    }))
+    ggplot2::ggplot(long, ggplot2::aes(.data[["theoretical"]], .data[["sample"]])) +
+      ggplot2::geom_point(alpha = 0.6) +
+      ggplot2::geom_abline(intercept = 0, slope = 1, colour = "red", linetype = "dashed") +
+      ggplot2::facet_wrap(~ group) +
+      ggplot2::theme_classic() +
+      ggplot2::labs(title = "Endpoint model residuals by arm (standardised)",
+                    subtitle = "Points near the line: the log-normal model fits",
+                    x = "Theoretical quantiles", y = "Standardised residuals")
+  }, error = function(e) NULL)
+  fit <- tryCatch({
+    grid <- seq(em$day_range[1], t, length.out = 60L)
+    curves <- do.call(rbind, lapply(arms, function(a) data.frame(
+      Treatment = a, Day = grid,
+      logv = as.numeric(me_endpoint_X(em, a, grid) %*% em$beta))))
+    obs <- data.frame(Treatment = as.character(fr$Treatment),
+                      Day = fr$.day_c + em$day_mean, logv = fr$.logv,
+                      stringsAsFactors = FALSE)
+    obs <- obs[obs$Treatment %in% arms, , drop = FALSE]
+    ggplot2::ggplot(obs, ggplot2::aes(.data[["Day"]], .data[["logv"]])) +
+      ggplot2::geom_point(alpha = 0.35) +
+      ggplot2::geom_line(data = curves, colour = "steelblue", linewidth = 1) +
+      ggplot2::geom_vline(xintercept = t, linetype = "dashed") +
+      ggplot2::facet_wrap(~ Treatment) +
+      ggplot2::theme_classic() +
+      ggplot2::labs(title = "Endpoint model: each arm's fitted curve over its data",
+                    subtitle = paste0("Log volume. The dashed line is the evaluation day (",
+                                      t, "); the curve should follow the points up to it."),
+                    x = "Day", y = "log(volume)")
+  }, error = function(e) NULL)
+  list(qq = qq, box = NULL, fit = fit)
+}
+
+#' Per-animal diagnostics for the per-animal estimands
+#' @noRd
+#' @keywords internal
+synergy_permouse_diagnostics <- function(pm, t) {
+  if (is.null(pm) || !requireNamespace("ggplot2", quietly = TRUE)) {
+    return(list(qq = NULL, box = NULL, fit = NULL))
+  }
+  qq <- tryCatch({
+    long <- do.call(rbind, lapply(split(pm, pm$Treatment), function(g) {
+      v <- g$Volume[is.finite(g$Volume)]
+      if (length(v) < 3L) return(NULL)
+      q <- stats::qqnorm(v, plot.it = FALSE)
+      data.frame(group = g$Treatment[1], theoretical = q$x, sample = q$y)
+    }))
+    ggplot2::ggplot(long, ggplot2::aes(.data[["theoretical"]], .data[["sample"]])) +
+      ggplot2::geom_point(alpha = 0.7) +
+      ggplot2::geom_smooth(method = "lm", se = FALSE, colour = "red",
+                           linetype = "dashed", formula = y ~ x) +
+      ggplot2::facet_wrap(~ group, scales = "free") +
+      ggplot2::theme_classic() +
+      ggplot2::labs(title = "Per-group Q-Q of per-animal volumes",
+                    subtitle = paste("Evaluation day", t,
+                                     "- heavy tails or curvature weaken the t-tests"),
+                    x = "Theoretical Quantiles", y = "Sample Quantiles")
+  }, error = function(e) NULL)
+  box <- tryCatch({
+    ggplot2::ggplot(pm, ggplot2::aes(.data[["Treatment"]], .data[["Volume"]])) +
+      ggplot2::geom_boxplot(outlier.colour = "red", outlier.alpha = 0.8) +
+      ggplot2::geom_jitter(width = 0.15, height = 0, alpha = 0.4) +
+      ggplot2::theme_classic() +
+      ggplot2::labs(title = "Per-animal volumes used at the evaluation day",
+                    subtitle = paste("Day", t, "- outliers in red"),
+                    x = "Treatment", y = "Tumor volume")
+  }, error = function(e) NULL)
+  list(qq = qq, box = box, fit = NULL)
 }
 
 #' Plot Drug Combination Synergy Analysis

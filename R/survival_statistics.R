@@ -20,6 +20,22 @@
 #' @param treatment_column Name of column containing treatment groups. Default: "Treatment"
 #' @param cage_column Name of column containing cage identifiers. Default: "Cage"
 #' @param id_column Name of column containing individual mouse identifiers. Default: "ID"
+#' @param randomisation_unit What treatment was assigned to: \code{"mouse"}
+#'   (default, individual animals) or \code{"cage"} (whole cages). CODE_REVIEW.md
+#'   R20.6: the function used to add \code{cluster(cage)} whenever cages were
+#'   replicated, and a sandwich variance from 4-10 clusters gave a 28%
+#'   false-positive rate under the null.
+#'   \itemize{
+#'     \item \code{"mouse"}: Cox (or Firth) with ordinary model-based standard
+#'       errors; cage is not modelled.
+#'     \item \code{"cage"}: each arm is compared with the reference by a
+#'       cage-level permutation log-rank, which moves whole cages between the
+#'       two arms (exact when there are at most 5,000 assignments). Hazard
+#'       ratios are reported as point estimates without an interval, because
+#'       no valid cage-level interval is available. The smallest p-value such a
+#'       comparison can reach is reported: with 2 cages per arm it is 1/3, and
+#'       with 3 it is 0.1, so neither can reach p < 0.05.
+#'   }
 #' @param dose_column Optional name of column containing dose information. Default: NULL
 #' @param reference_group Treatment group to use as reference. Default: NULL (uses first alphabetically)
 #' @param firth_correction Whether to apply Firth's correction for separation issues. Default: TRUE
@@ -98,6 +114,7 @@ survival_statistics <- function(df,
                               treatment_column = "Treatment",
                               cage_column = "Cage",
                               id_column = "ID",
+                              randomisation_unit = c("mouse", "cage"),
                               dose_column = NULL,
                               reference_group = NULL,
                               firth_correction = TRUE,
@@ -106,6 +123,7 @@ survival_statistics <- function(df,
                               verbose = TRUE) {
 
   p_adjust_method <- match.arg(p_adjust_method)
+  randomisation_unit <- match.arg(randomisation_unit)
 
   # Validate inputs
   validate_inputs(df, time_column, censor_column, treatment_column)
@@ -120,6 +138,34 @@ survival_statistics <- function(df,
   #
   # Normalise here so everything below can assume NULL means "no cage information".
   if (!is.null(cage_column) && !cage_column %in% colnames(df)) cage_column <- NULL
+
+  # CODE_REVIEW.md R20.15 -- the ID column is required. The dashboard never
+  # passed id_column, so any upload whose ID column was not literally "ID" failed
+  # with "undefined columns selected".
+  if (is.null(id_column) || !id_column %in% colnames(df)) {
+    stop("ID column '", if (is.null(id_column)) "NULL" else id_column,
+         "' not found. Pass the column ",
+         "that identifies each animal as id_column.", call. = FALSE)
+  }
+
+  # CODE_REVIEW.md R20.43 -- formulas below are built by pasting column names,
+  # and some sites quoted them while others did not, so a column called
+  # "Study Day" failed with "unexpected symbol". Copy the columns into fixed
+  # internal names once, here.
+  work <- data.frame(
+    Time      = as.numeric(df[[time_column]]),
+    Event     = df[[censor_column]],
+    Treatment = df[[treatment_column]],
+    ID        = as.character(df[[id_column]]),
+    stringsAsFactors = FALSE
+  )
+  if (!is.null(cage_column)) work$Cage <- as.character(df[[cage_column]])
+  df               <- work
+  time_column      <- "Time"
+  censor_column    <- "Event"
+  treatment_column <- "Treatment"
+  id_column        <- "ID"
+  if (!is.null(cage_column)) cage_column <- "Cage"
 
   validate_one_row_per_subject(df, id_column, treatment_column, cage_column)
   
@@ -146,19 +192,31 @@ survival_statistics <- function(df,
   # since there is no replication to estimate from.
   cage_structure <- classify_cage_structure(df, cage_column, id_column,
                                             treatment_column)
-  use_cage_cluster <- cage_structure$structure %in%
-    c("crossed", "nested_replicated")
+  # CODE_REVIEW.md R20.6 -- this used cluster(cage) whenever cages were
+  # replicated or crossed. A sandwich variance from 4-10 clusters is badly
+  # downward-biased: 28 % false positives with 2 cages x 5 mice per arm. The
+  # declared unit of randomisation decides instead (see randomisation_unit).
+  use_cage_cluster <- FALSE
   if (cage_structure$structure == "nested_confounded") {
     warning("Cage and treatment are completely confounded: ",
             cage_structure$description,
             " Hazard ratios therefore include any cage effect.",
             call. = FALSE)
   }
+  if (randomisation_unit == "cage") {
+    if (is.null(cage_column)) {
+      stop("randomisation_unit = 'cage' needs a cage column.", call. = FALSE)
+    }
+    if (cage_structure$structure == "crossed") {
+      stop("randomisation_unit = 'cage', but some cages hold more than one ",
+           "treatment, so treatment cannot have been assigned to whole cages. ",
+           "Check the cage column, or declare randomisation_unit = 'mouse'.",
+           call. = FALSE)
+    }
+  }
   if (isTRUE(verbose)) {
-    message("Cage structure: ", cage_structure$structure, ". ",
-            if (use_cage_cluster) {
-              "Using cluster() for a robust (sandwich) variance."
-            } else "No cage term added.")
+    message("Cage structure: ", cage_structure$structure, ". Randomisation unit: ",
+            randomisation_unit, ".")
   }
   
   # Check for separation issues
@@ -181,7 +239,7 @@ survival_statistics <- function(df,
     firth_correction,
     verbose = verbose,
     p_adjust_method = p_adjust_method,
-    cage_column = if (use_cage_cluster) cage_column else NULL,
+    cage_column = NULL,   # no cluster() term (R20.6)
     permutation_logrank = permutation_logrank
   )
   
@@ -189,6 +247,38 @@ survival_statistics <- function(df,
   model <- model_results$model
   results <- model_results$results
   method_used <- model_results$method_used
+
+  # R20.6 -- under cage randomisation the p-values come from permuting whole
+  # cages, which is the design-faithful test. The Cox standard errors assume
+  # independent animals, so their intervals are withheld.
+  cage_permutation <- NULL
+  if (randomisation_unit == "cage" && nrow(results) > 0L) {
+    perm_rows <- list()
+    for (g in setdiff(as.character(treatment_groups), reference_group)) {
+      cp  <- cage_permutation_logrank(df, g, reference_group)
+      idx <- which(results$Group == g)
+      results$P_Value[idx]  <- cp$p_value
+      results$CI_Lower[idx] <- NA_real_
+      results$CI_Upper[idx] <- NA_real_
+      perm_rows[[g]] <- data.frame(
+        Group = g, Cages_Treated = cp$cages_trt, Cages_Reference = cp$cages_ref,
+        Assignments = cp$n_assignments, Exact = cp$exact, P_Value = cp$p_value,
+        Min_Attainable_P = cp$min_attainable_p, stringsAsFactors = FALSE)
+    }
+    cage_permutation <- do.call(rbind, perm_rows)
+    rownames(cage_permutation) <- NULL
+    results$P_Method <- ifelse(results$Group == reference_group, NA_character_,
+                               "cage-level permutation log-rank")
+    floor_hit <- cage_permutation$Min_Attainable_P > 0.05
+    if (any(floor_hit)) {
+      warning("With so few cages, ",
+              paste(sprintf("%s vs %s cannot reach p < %.3g", cage_permutation$Group[floor_hit],
+                            reference_group, cage_permutation$Min_Attainable_P[floor_hit]),
+                    collapse = "; "),
+              " at any effect size: a cage-randomised comparison has only as many ",
+              "distinct outcomes as ways to assign the cages.", call. = FALSE)
+    }
+  }
 
   # CODE_REVIEW.md R3.1 / G.1 — apply the multiplicity adjustment once, here,
   # rather than in each of the three model branches. The comparison family is
@@ -378,9 +468,24 @@ survival_statistics <- function(df,
                                                upper = "CI_Upper"))
   )
 
-  # Cage structure and whether a robust cage cluster was used (R3.13).
-  result_list$cage_structure <- cage_structure
-  result_list$cage_cluster_used <- use_cage_cluster && identical(method_used, "cox")
+  # Cage structure, the declared unit and, under cage randomisation, the
+  # permutation record (R20.6). cage_cluster_used stays for older readers; it is
+  # always FALSE now.
+  result_list$cage_structure     <- cage_structure
+  result_list$randomisation_unit <- randomisation_unit
+  result_list$cage_permutation   <- cage_permutation
+  result_list$cage_cluster_used  <- FALSE
+  # Animals randomised individually but housed by arm: the Cox standard errors
+  # treat cage-mates as independent. In simulation (2-4 cages per arm, cage
+  # frailty SD 0.8, HR = 1) that gave 16-19 % false positives at alpha 0.05, and
+  # 2-4 % with no cage effect. Say so; do not guess which applies.
+  result_list$cage_caveat <- if (randomisation_unit == "mouse" &&
+                                 cage_structure$structure == "nested_replicated") {
+    paste0("Each cage holds one treatment. These p-values treat cage-mates as ",
+           "independent animals; if cage-mates are more alike than other animals, ",
+           "the p-values are too small. If whole cages were assigned to ",
+           "treatments, declare the unit of randomisation as cage.")
+  } else NULL
 
   # Add concordance / C-index when available (cox path only)
   if (!is.null(model_results$c_index)) {
@@ -388,6 +493,74 @@ survival_statistics <- function(df,
   }
 
   return(result_list)
+}
+
+#' Cage-level permutation log-rank: one treated arm against the reference
+#'
+#' CODE_REVIEW.md R20.6. Whole cages are reassigned between the two arms and the
+#' log-rank chi-square recomputed for every assignment (exactly when there are at
+#' most \code{max_exact}, otherwise from \code{n_perm} random assignments). The
+#' p-value is the share of assignments at least as extreme as the one observed.
+#' With c cages per arm there are only choose(2c, c) assignments, so the smallest
+#' attainable p is reported alongside: 1/3 for 2 cages per arm, 0.1 for 3.
+#'
+#' @param df Internal survival frame with Time, Event, Treatment and Cage.
+#' @param group,reference_group Arms to compare.
+#' @return A list: p_value, min_attainable_p, n_assignments, exact, cages_trt,
+#'   cages_ref.
+#' @noRd
+#' @keywords internal
+cage_permutation_logrank <- function(df, group, reference_group,
+                                     max_exact = 5000L, n_perm = 4999L,
+                                     seed = 20260930L) {
+  pair  <- df[df$Treatment %in% c(reference_group, group), , drop = FALSE]
+  cages <- unique(pair[, c("Cage", "Treatment")])
+  trt_cages <- cages$Cage[cages$Treatment == group]
+  n_trt <- length(trt_cages)
+  n_ref <- sum(cages$Treatment == reference_group)
+  cage_ids <- cages$Cage
+
+  stat_for <- function(treated) {
+    arm <- ifelse(pair$Cage %in% treated, "T", "R")
+    if (length(unique(arm)) < 2L) return(NA_real_)
+    fit <- tryCatch(
+      survival::survdiff(survival::Surv(Time, Event) ~ arm,
+                         data = data.frame(Time = pair$Time, Event = pair$Event,
+                                           arm = arm)),
+      error = function(e) NULL)
+    if (is.null(fit)) NA_real_ else fit$chisq
+  }
+
+  observed <- stat_for(trt_cages)
+  n_assign <- choose(n_ref + n_trt, n_trt)
+  exact <- n_assign <= max_exact
+  stats <- if (exact) {
+    vapply(utils::combn(cage_ids, n_trt, simplify = FALSE), stat_for, numeric(1))
+  } else {
+    old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) {
+      get(".Random.seed", envir = .GlobalEnv)
+    } else NULL
+    on.exit(if (!is.null(old_seed)) assign(".Random.seed", old_seed, envir = .GlobalEnv),
+            add = TRUE)
+    set.seed(seed)
+    vapply(seq_len(n_perm), function(i) stat_for(sample(cage_ids, n_trt)), numeric(1))
+  }
+  stats <- stats[is.finite(stats)]
+  tol <- 1e-9
+  if (!is.finite(observed) || !length(stats)) {
+    return(list(p_value = NA_real_, min_attainable_p = NA_real_,
+                n_assignments = n_assign, exact = exact,
+                cages_trt = n_trt, cages_ref = n_ref))
+  }
+  if (exact) {
+    p_value <- mean(stats >= observed - tol)
+    min_p   <- mean(stats >= max(stats) - tol)
+  } else {
+    p_value <- (1 + sum(stats >= observed - tol)) / (length(stats) + 1)
+    min_p   <- 1 / (length(stats) + 1)
+  }
+  list(p_value = p_value, min_attainable_p = min_p, n_assignments = n_assign,
+       exact = exact, cages_trt = n_trt, cages_ref = n_ref)
 }
 
 #' Validate the one-row-per-subject precondition
@@ -403,7 +576,8 @@ survival_statistics <- function(df,
 #' @noRd
 #' @keywords internal
 validate_one_row_per_subject <- function(df, id_column, treatment_column,
-                                         cage_column) {
+                                         cage_column,
+                                         caller = "survival_statistics()") {
   if (is.null(id_column) || !id_column %in% colnames(df)) return(invisible(NULL))
 
   key_parts <- list(as.character(df[[id_column]]))
@@ -418,10 +592,10 @@ validate_one_row_per_subject <- function(df, id_column, treatment_column,
   dup_n <- sum(duplicated(keys))
   if (dup_n > 0L) {
     stop(
-      "survival_statistics() requires one row per animal, but ", dup_n,
+      caller, " requires one row per animal, but ", dup_n,
       " duplicate subject key(s) were found (", length(unique(keys)),
       " unique animals across ", nrow(df), " rows).\n",
-      "This looks like a longitudinal data frame. Fitting a Cox model to it ",
+      "This looks like a longitudinal data frame. Fitting a survival model to it ",
       "would treat every measurement occasion as an independent subject.\n",
       "Reduce to one row per animal first — e.g. each animal's last ",
       "observation, carrying its event indicator — then call this function.",

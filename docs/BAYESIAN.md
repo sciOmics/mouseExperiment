@@ -14,7 +14,7 @@ fit <- bayesian_tumor_growth(
 print(fit$mcmc_diagnostics)        # Rhat, ESS_Bulk, ESS_Tail, Converged
 print(fit$nuts_diagnostics)        # divergences, max_treedepth, E-BFMI
 print(fit$bayes_R2)                # Bayes R² with 95% CrI
-print(fit$loo_diagnostics)         # elpd_loo + n_high_k (Pareto-k > 0.7)
+print(fit$loo_diagnostics)         # elpd_loo + n_high_k (Pareto-k above k_threshold)
 fit$pp_check_plot                  # posterior predictive density overlay
 fit$prior_posterior_plot           # how much the data updated the prior
 
@@ -88,17 +88,17 @@ Run through this list every time. The package surfaces each piece via a result f
 
 **What it measures:** does the posterior predictive distribution actually cover the observed data at the nominal rate?
 
-**Found in:** `result$ppc_coverage` (single-row data frame: `cov_50`, `cov_80`, `cov_95`, `n_obs`).
+**Found in:** `result$ppc_coverage` (single-row data frame: `cov_50`, `cov_80`, `cov_95`, `n_obs`). For survival models only uncensored times count, because a censored time is a lower bound rather than an observation; the predictive draws come from the fit's seed, not the session's random-number stream (v0.28.0).
 
 **If it's off:** the model's predictive distribution is too narrow (under-coverage) or too wide (over-coverage). Check the residuals; consider a richer likelihood (e.g., Student-t instead of Normal if outliers are an issue).
 
 ### 6. PSIS-LOO + Pareto-k
 
-**Threshold:** all Pareto-k < 0.7. A handful of observations with 0.5 < k < 0.7 are acceptable but worth listing.
+**Threshold:** all Pareto-k below `k_threshold`, which depends on the number of posterior draws S: min(1 − 1/log10 S, 0.7), so 0.667 at S = 1,000 and 0.64 at S = 600 (the loo 2.6 rule). Before v0.28.0 the threshold was a fixed 0.7, and any loo warning, which is exactly what an influential observation raises, discarded the whole LOO result, so `n_high_k` could only ever read 0 (`CODE_REVIEW.md` R20.35).
 
 **What it measures:** leave-one-out cross-validation via Pareto-smoothed importance sampling. Pareto-k flags observations the LOO approximation can't reliably estimate — usually highly influential observations.
 
-**Found in:** `result$loo_diagnostics` (`elpd_loo`, `se_elpd`, `n_high_k`, plus the list-column `pareto_k` with the per-observation Pareto-k vector).
+**Found in:** `result$loo_diagnostics` (`elpd_loo`, `se_elpd`, `k_threshold`, `n_high_k`, `warnings`, plus the list-column `pareto_k` with the per-observation Pareto-k vector).
 
 `bayes_influential_obs(result)` (in `helpers_bayes.R`) filters for k > threshold and returns a small table for display. Used by the dashboard's MCMC Diagnostics tab.
 
@@ -120,27 +120,32 @@ Run through this list every time. The package surfaces each piece via a result f
 
 ## Prior strength presets
 
-`prior_strength` accepts five values. Each one sets a specific brms prior across fixed effects (`b`), intercept, and variance components (`sd`, `sigma`). The presets are calibrated for tumor-growth-scale data (log mm³), so they make sense as defaults; for other scales, set `prior_strength = "manual"` and supply your own.
+`prior_strength` accepts five values. The four presets scale their priors to the data, so the same preset means the same thing in mm³ or cm³, in days or weeks. The priors actually used, with their values, are in `fit$summary$methods` (`prior_b`, `prior_intercept`, `prior_sd`, `prior_sigma`; for survival also `prior_aux`).
 
-```r
-# Skeptical (default) — strong shrinkage toward zero effects
-b ~ N(0, 0.25)
-sd, sigma ~ Exponential(2)
+**Tumour growth** (`bayesian_tumor_growth()`), with y the modelled volume:
 
-# Weakly informative — moderate shrinkage
-b ~ N(0, 1)
-sd, sigma ~ Exponential(1)
+| Parameter | Prior | skeptical | informative | weakly_informative | diffuse |
+|---|---|---|---|---|---|
+| Intercept | normal(median y, 2.5 × MAD y) | | | | |
+| Treatment main effects | normal(0, w) | w = 0.25 | 0.5 | 1 | 2.5 |
+| Day slope and Treatment × Day | normal(0, m × range y / study span) | m = 1 | 1.5 | 2 | 5 |
+| Animal and cage SDs, sigma | exponential(r / MAD y) | r = 2 | 2 | 1 | 0.5 |
 
-# Informative — light shrinkage; assumes effects are moderate
-b ~ N(0, 0.5)
-sd, sigma ~ Exponential(2)
+w is a log-fold change; with `transform = "sqrt"` or `"none"` it is multiplied by MAD y (v0.28.0; before, a raw-mm³ treatment effect was pinned near 0, `CODE_REVIEW.md` R20.41).
 
-# Diffuse — minimal shrinkage; close to a flat prior on the log scale
-b ~ N(0, 2.5)
-sd, sigma ~ Exponential(0.5)
+**Survival** (`bayesian_survival()`), with t the event or censoring time:
 
-# Manual — supply prior_b, prior_intercept, prior_sd, prior_sigma directly
-```
+| Parameter | Prior | skeptical | informative | weakly_informative | diffuse |
+|---|---|---|---|---|---|
+| Intercept (log time) | normal(median log t, 2.5 × MAD log t) | | | | |
+| Treatment (log time ratio) | normal(0, w) | w = 0.25 | 0.5 | 1 | 2.5 |
+| Cage frailty SD | exponential(r) | r = 2 | 2 | 1 | 0.5 |
+| Weibull shape | lognormal(1, 1) under every preset | | | | |
+| Log-normal sigma | exponential(1) under every preset | | | | |
+
+The shape and sigma describe how event times are spread, not the treatment effect, so the ladder does not apply to them (v0.28.0). Under the ladder's exponential(2) the shape was shrunk toward 0.5, which pulls the Weibull hazard ratio, exp(−shape × b), toward 1: with a true shape of 6 and HR 0.088 the skeptical fit reported shape 3.86 and HR 0.246 (`CODE_REVIEW.md` R20.38).
+
+`"manual"` uses `prior_b`, `prior_intercept`, `prior_sd` and `prior_sigma` (survival: `prior_aux`) as given.
 
 ### When to use which preset
 
@@ -154,17 +159,15 @@ sd, sigma ~ Exponential(0.5)
 
 ### How the priors flow through
 
-The `priors` argument to `bayesian_tumor_growth()` (and friends) takes a `tg_priors()` object. Inside the function, `.resolve_priors()` unpacks it into the individual prior arguments. This is purely a signature-cleanup mechanism — the priors that hit brms are the same as if you'd passed `prior_strength = "weakly_informative", prior_b = NULL, ...`.
+The `priors` argument to `bayesian_tumor_growth()` and `bayesian_survival()` takes a `tg_priors()` object. Inside the function, `.resolve_priors()` unpacks it into the individual prior arguments. This is purely a signature-cleanup mechanism.
 
-To override only some priors:
+The individual priors (`b`, `intercept`, `sd`, `sigma`) apply only with `strength = "manual"`, and then all of them must be given; the error names any that are missing. Under a preset they are ignored. (An earlier version of this guide suggested overriding one prior of a preset, which never did anything.)
 
 ```r
-# Use the "weakly_informative" preset but tighten the intercept prior
-tg_priors(strength = "weakly_informative",
-          intercept = "normal(0, 0.5)")
+tg_priors(strength = "manual",
+          b = "normal(0, 0.5)", intercept = "normal(6, 2)",
+          sd = "exponential(1)", sigma = "exponential(1)")
 ```
-
-Any field you leave NULL takes its value from the strength preset.
 
 ---
 
@@ -184,12 +187,12 @@ tg_mcmc(
 
 ### Backend choice
 
-| Backend | Compile time | Run time | When to pick |
-|---|---|---|---|
-| `"rstan"` (default) | Slow (60-120 s first time, cached after) | Same | Default. Works out of the box. |
-| `"cmdstanr"` | Fast (10-30 s first time) | Same | Production. VPS. Anywhere you'll rerun the same formula often. Install via `cmdstanr::install_cmdstan()` |
+| Backend | When to pick |
+|---|---|
+| `"rstan"` (default) | Works out of the box. |
+| `"cmdstanr"` | Faster compilation. Needs the cmdstanr package and a CmdStan toolchain (`cmdstanr::install_cmdstan()`); without them the fit stops with installation instructions rather than falling back to rstan. |
 
-`resolve_brms_backend()` in `R/utils_bayes.R` falls back to rstan if cmdstanr is requested but unavailable — you don't need to feature-detect at the call site.
+**Compiled models are reused** (v0.28.0, `CODE_REVIEW.md` R20.78). Compiling the Stan model takes about 20 s, while sampling a study of this size takes a few seconds. The prior values are passed to Stan as data, so models with the same structure (formula, family, number of arms, random effects) share their Stan code, and a later fit in the same R session reuses the compiled model. Its draws are identical to a fresh fit's with the same seed. `fit$model_reused` says whether it happened. `clear_compiled_model_cache()` empties the cache, and `options(mouseExperiment.cache_compiled_models = FALSE)` turns it off.
 
 ### Chain count
 
@@ -276,11 +279,11 @@ fit2 <- bayesian_tumor_growth(
 ### Reporting checklist (for a publication / report)
 
 Always report:
-- **Prior:** "We used a weakly informative prior (b ~ N(0, 1); sd, sigma ~ Exponential(1))"
+- **Prior:** the priors in `fit$summary$methods`, with their values, e.g. "Treatment effects N(0, 0.25) on log volume; growth-rate terms N(0, 0.147); SDs Exponential(2.4)"
 - **MCMC:** "4 chains × 1500 iterations (1000 warmup, 500 post-warmup) via `brms` 2.21 / Stan 2.32 with `cmdstanr` backend"
 - **Convergence:** "All parameters had Rhat ≤ 1.01 and ESS ≥ 400. Zero divergent transitions."
 - **Predictive coverage:** "Posterior predictive 95% intervals covered 94% of held-out data (n = X)."
-- **LOO:** "PSIS-LOO elpd = X (SE Y); 2 observations had Pareto-k > 0.7 (inspected; not data-entry errors)."
+- **LOO:** "PSIS-LOO elpd = X (SE Y); 2 observations had Pareto-k above 0.667 (inspected; not data-entry errors)."
 - **Effect:** "Posterior median treatment effect = Z (95% CrI: A to B), P(effect > 0) = 0.98."
 
 ---

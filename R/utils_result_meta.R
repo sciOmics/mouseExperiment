@@ -37,7 +37,7 @@
 #' @param analysis_type Human-readable description, e.g. "Linear mixed-effects
 #'   model".
 #' @param model_type_used Machine-readable model identifier, e.g. `"lme4"`,
-#'   `"gam"`, `"auc"`, `"bayes_tg"`.
+#'   `"auc"`, `"bayes_tg"`, `"bayes_survival"`.
 #' @param inference `"frequentist"` or `"bayesian"`. Determines how the interval
 #'   columns should be read and reported.
 #' @param interval_type What the interval columns mean: `"confidence"` (columns

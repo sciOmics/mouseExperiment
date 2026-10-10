@@ -15,6 +15,11 @@ analyze_drug_synergy_over_time(
   control_name = "Control",
   min_time_point = NULL,
   max_time_point = NULL,
+  id_column = "ID",
+  cage_column = NULL,
+  endpoint_method = c("model", "last_obs", "survivors"),
+  n_boot = 2000L,
+  boot_seed = NULL,
   verbose = TRUE
 )
 }
@@ -39,6 +44,17 @@ analyze_drug_synergy_over_time(
 
 \item{max_time_point}{Optional. A numeric value specifying the maximum time point to include in analysis. Default is NULL.}
 
+\item{id_column}{Column identifying individual animals (required). Before
+v0.25.0 this function had no such argument: each day's analysis looked for a
+column literally named "ID", and without one every animal in an arm shared a
+key, so every day failed (CODE_REVIEW.md R20.15).}
+
+\item{cage_column}{Optional cage column, part of the animal key.}
+
+\item{endpoint_method, n_boot, boot_seed}{As in
+\code{\link{analyze_drug_synergy}}. Under the model estimand one endpoint
+model is fitted and evaluated on every day.}
+
 \item{verbose}{Logical. If TRUE, prints detailed results to the console.
 Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.}
 }
@@ -46,8 +62,18 @@ Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use
 A list containing the following components:
 \describe{
 \item{timepoint_results}{A list of results at each time point, each containing the outputs from analyze_drug_synergy}
-\item{synergy_summary}{A data frame summarizing synergy metrics across all time points}
-\item{peak_bliss_synergy}{Information about when Bliss synergy was strongest}
+\item{synergy_summary}{One row per evaluable day: TGIs, the Bliss
+expectation and difference, their 95 \% intervals (\code{*_Lower},
+\code{*_Upper}), p-values of the combination against each agent, and
+\code{Bliss_Applies} (FALSE when a single agent did not inhibit growth that
+day, so Bliss does not apply; named \code{Evaluable} before v0.26.0).}
+\item{evaluability}{The evaluable-day record: only days on which all four
+arms have at least 50 \% of their enrolled animals, and at least 3, on
+study are analysed; the others are listed in \code{excluded} with the
+arms that failed (CODE_REVIEW.md R20.1, R20-K).}
+\item{peak_bliss_synergy}{The row of \code{synergy_summary} with the largest
+Bliss difference among evaluable days; a 0-row data frame when no day is
+evaluable (a single agent never inhibited growth).}
 \item{drug_a_name, drug_b_name, combo_name}{Names of treatment groups for plotting}
 }
 }
@@ -63,7 +89,6 @@ allowing for the assessment of how synergy develops over time. It calculates key
 including:
 \enumerate{
 \item Bliss Independence effect differences at each time point
-\item Combination Index (CI) at each time point
 \item Statistical significance of combination advantage over monotherapies
 }
 

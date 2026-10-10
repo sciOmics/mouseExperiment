@@ -25,10 +25,13 @@
 detect_volume_units <- function(volume) {
   v <- volume[is.finite(volume) & volume > 0]
   if (length(v) == 0L) return(NA_character_)
-  # A median below 20 is implausible for mm3 (a 20 mm3 tumour is barely
-  # palpable and would not be a study endpoint); above it, cm3 would imply a
-  # tumour larger than the mouse.
-  if (stats::median(v) < 20) "cm3" else "mm3"
+  # CODE_REVIEW.md R20.83 -- this was the median over every observation, which
+  # read small-tumour mm3 studies (many early, non-palpable measurements) as
+  # cm3: the dashboard's weight demo, 0.1-1,092.6 mm3 with a median of 6.21,
+  # came out cm3 and every net weight went 1000x wrong. The large tumours late
+  # in a study set the scale, so use the 90th percentile. This is now only a
+  # cross-check on the units the caller declares (resolve_volume_units()).
+  if (stats::quantile(v, 0.9, names = FALSE) < 20) "cm3" else "mm3"
 }
 
 #' Convert tumour volume to estimated tumour mass in grams
@@ -59,29 +62,22 @@ volume_to_mass <- function(volume, tumor_density = 1.0,
 #' @noRd
 #' @keywords internal
 resolve_volume_units <- function(volume, volume_units = NULL) {
-  detected <- detect_volume_units(volume)
-
+  # CODE_REVIEW.md R20.83 -- units are declared, not inferred. The inference
+  # sent the dashboard's default Toxicity run to a net weight of -1,070 g.
   if (is.null(volume_units)) {
-    if (is.na(detected)) {
-      warning("Could not infer volume units from the data (no positive ",
-              "volumes). Assuming mm3.", call. = FALSE)
-      return("mm3")
-    }
-    message("Volume units inferred as ", detected,
-            " (median volume ", signif(stats::median(
-              volume[is.finite(volume) & volume > 0]), 3),
-            "). Pass volume_units explicitly to override.")
-    return(detected)
+    stop("volume_units is required when tumour mass is subtracted from body ",
+         "weight: pass volume_units = \"mm3\" or \"cm3\" (or set ",
+         "adjust_tumor_weight = FALSE).", call. = FALSE)
   }
-
   volume_units <- match.arg(volume_units, c("mm3", "cm3"))
+  detected <- detect_volume_units(volume)
   if (!is.na(detected) && detected != volume_units) {
     warning("volume_units was given as '", volume_units,
             "' but the data look like '", detected,
-            "' (median volume ", signif(stats::median(
-              volume[is.finite(volume) & volume > 0]), 3),
+            "' (90th percentile of volume ", signif(stats::quantile(
+              volume[is.finite(volume) & volume > 0], 0.9, names = FALSE), 3),
             "). Tumour-mass adjustment will be wrong by a factor of 1000 if ",
-            "the supplied unit is incorrect.", call. = FALSE)
+            "the declared unit is incorrect.", call. = FALSE)
   }
   volume_units
 }
@@ -102,12 +98,49 @@ check_tumor_mass_plausible <- function(tumor_mass, body_weight, volume_units) {
   if (!any(ok)) return(invisible(NULL))
   frac <- tumor_mass[ok] / body_weight[ok]
 
+  # R20.83 -- this was a warning, which the dashboard discarded, so a
+  # 1000x unit error ran to "Analysis completed successfully!". A tumour
+  # heavier than half the mouse is not a result; stop.
   if (max(frac, na.rm = TRUE) > 0.5) {
-    warning("Estimated tumour mass exceeds 50% of body weight for at least one ",
-            "animal (max ", round(100 * max(frac, na.rm = TRUE)), "%) with ",
-            "volume_units = '", volume_units, "'. Check the volume units — ",
-            "cm3 data treated as mm3 (or vice versa) is off by 1000x.",
-            call. = FALSE)
+    stop("Estimated tumour mass exceeds 50% of body weight for at least one ",
+         "animal (max ", round(100 * max(frac, na.rm = TRUE)), "%) with ",
+         "volume_units = '", volume_units, "'. The volume units are probably ",
+         "wrong: cm3 data treated as mm3 (or the reverse) is off by 1000x.",
+         call. = FALSE)
   }
   invisible(NULL)
+}
+
+#' Tumour volume on every weighing day, for the tumour-mass correction
+#'
+#' CODE_REVIEW.md R20.22. Animals are weighed more often than they are
+#' callipered. With the tumour-mass correction on, a weighing without a
+#' same-day volume had no net weight and was dropped, so a nadir between
+#' calliper days was missed: with daily weights and callipers twice a week, a
+#' mean worst loss of 22.6 % was reported as 12.4 %, always toward "safer".
+#' Each animal's volume is now interpolated linearly between its calliper
+#' days, and carried to weighing days before the first and after the last.
+#'
+#' @param key Animal key per row.
+#' @param day Day per row.
+#' @param volume Volume per row, NA where the animal was not callipered.
+#' @return Volume per row, filled wherever the animal has any volume.
+#' @noRd
+#' @keywords internal
+me_fill_volume <- function(key, day, volume) {
+  out <- volume
+  for (k in unique(key)) {
+    i    <- which(key == k)
+    ok   <- i[is.finite(volume[i]) & is.finite(day[i])]
+    miss <- i[!is.finite(volume[i]) & is.finite(day[i])]
+    if (!length(ok) || !length(miss)) next
+    if (length(unique(day[ok])) == 1L) {
+      out[miss] <- mean(volume[ok])
+      next
+    }
+    agg <- tapply(volume[ok], day[ok], mean)
+    out[miss] <- stats::approx(as.numeric(names(agg)), as.numeric(agg),
+                               xout = day[miss], rule = 2)$y
+  }
+  out
 }

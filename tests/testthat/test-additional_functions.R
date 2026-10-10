@@ -3,7 +3,6 @@
 #   - analyze_drug_synergy_over_time()
 #   - generate_summary_statistics()
 #   - prepare_dose_data()
-#   - repeated_measures_anova()
 # =============================================================================
 
 # ---------------------------------------------------------------------------
@@ -230,88 +229,3 @@ test_that("prepare_dose_data errors on non-existent time point", {
   )
 })
 
-# ===========================================================================
-# 4. repeated_measures_anova
-# ===========================================================================
-
-test_that("repeated_measures_anova returns an me_result", {
-
-  df  <- make_tg_simple()
-  res <- suppressWarnings(suppressMessages(
-    repeated_measures_anova(df, time_column = "Day", volume_column = "Volume",
-                            treatment_column = "Treatment", id_column = "ID",
-                            transform = "log")
-  ))
-
-  expect_s3_class(res, "me_result")
-
-  # CODE_REVIEW.md K.12 -- the class documents a seven-field contract, and until
-  # now nothing checked it was honoured. J.8 found the docs had over-claimed
-  # (every analysis function was said to return one; only this one does), so the
-  # contract that IS claimed should be enforced.
-  for (f in c("analysis_type", "data", "results", "plots", "summary",
-              "call", "timestamp")) {
-    expect_true(f %in% names(res), info = paste("me_result missing field:", f))
-  }
-  expect_type(res$analysis_type, "character")
-  expect_type(res$results, "list")
-  expect_s3_class(res$timestamp, "POSIXct")
-  # The print method is the reason the class exists; it must not error.
-  expect_output(print(res))
-})
-
-test_that("repeated_measures_anova results contain anova_table", {
-
-  df  <- make_tg_simple()
-  res <- suppressWarnings(suppressMessages(
-    repeated_measures_anova(df, time_column = "Day", volume_column = "Volume",
-                            treatment_column = "Treatment", id_column = "ID",
-                            transform = "log")
-  ))
-
-  expect_true("anova_table" %in% names(res$results))
-  expect_s3_class(res$results$anova_table, "data.frame")
-})
-
-test_that("repeated_measures_anova detects significant interaction (make_tg_simple)", {
-
-  df  <- make_tg_simple()
-  res <- suppressWarnings(suppressMessages(
-    repeated_measures_anova(df, time_column = "Day", volume_column = "Volume",
-                            treatment_column = "Treatment", id_column = "ID",
-                            transform = "log")
-  ))
-
-  anova_tbl <- res$results$anova_table
-  # The interaction row (Treatment:Day) should have a very small p-value
-  p_col <- grep("Pr|p.value|p\\.value", colnames(anova_tbl), value = TRUE, ignore.case = TRUE)
-  if (length(p_col) > 0) {
-    interaction_row <- grep(":", rownames(anova_tbl))
-    if (length(interaction_row) > 0) {
-      expect_true(anova_tbl[interaction_row[1], p_col[1]] < 0.05)
-    }
-  }
-})
-
-test_that("repeated_measures_anova respects transform argument", {
-
-  df <- make_tg_simple()
-  res_log <- suppressWarnings(suppressMessages(
-    repeated_measures_anova(df, transform = "log")
-  ))
-  res_sqrt <- suppressWarnings(suppressMessages(
-    repeated_measures_anova(df, transform = "sqrt")
-  ))
-
-  expect_equal(res_log$results$transform, "log")
-  expect_equal(res_sqrt$results$transform, "sqrt")
-})
-
-test_that("repeated_measures_anova errors on missing columns", {
-
-  df <- make_tg_simple()
-  expect_error(
-    repeated_measures_anova(df, volume_column = "NonExistent"),
-    "Missing columns"
-  )
-})

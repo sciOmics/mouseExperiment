@@ -11,6 +11,7 @@ survival_statistics(
   treatment_column = "Treatment",
   cage_column = "Cage",
   id_column = "ID",
+  randomisation_unit = c("mouse", "cage"),
   dose_column = NULL,
   reference_group = NULL,
   firth_correction = TRUE,
@@ -36,6 +37,23 @@ each animal's last observation, carrying its event indicator.}
 \item{cage_column}{Name of column containing cage identifiers. Default: "Cage"}
 
 \item{id_column}{Name of column containing individual mouse identifiers. Default: "ID"}
+
+\item{randomisation_unit}{What treatment was assigned to: \code{"mouse"}
+(default, individual animals) or \code{"cage"} (whole cages). CODE_REVIEW.md
+R20.6: the function used to add \code{cluster(cage)} whenever cages were
+replicated, and a sandwich variance from 4-10 clusters gave a 28\%
+false-positive rate under the null.
+\itemize{
+\item \code{"mouse"}: Cox (or Firth) with ordinary model-based standard
+errors; cage is not modelled.
+\item \code{"cage"}: each arm is compared with the reference by a
+cage-level permutation log-rank, which moves whole cages between the
+two arms (exact when there are at most 5,000 assignments). Hazard
+ratios are reported as point estimates without an interval, because
+no valid cage-level interval is available. The smallest p-value such a
+comparison can reach is reported: with 2 cages per arm it is 1/3, and
+with 3 it is 0.1, so neither can reach p < 0.05.
+}}
 
 \item{dose_column}{Optional name of column containing dose information. Default: NULL}
 
