@@ -4,6 +4,32 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.10.002] - 2026-10-09
+
+Requires mouseExperiment ≥ 0.30.0. The dashboard side of backend 0.30.0
+(package `CODE_REVIEW.md` R20-T), which changed what four results hold.
+
+### Changed
+
+- **Tumour growth passes the declared volume unit (backend R20.32).** On the
+  log scale a zero volume now takes a fixed floor, 2 mm³ or 0.002 cm³, instead
+  of half the smallest volume in the data. The Summary states the floor and
+  how many values it applied to. Undeclared units are treated as mm³.
+- **The ANOVA tab describes the new table (backend R20.31).** The table leads
+  with the test of whether growth rates differ, then the arms at the mean
+  study day, then average growth; a `Tests` column states each question. The
+  help no longer describes a Type III table, and the LME4 Info tab no longer
+  describes Wald chi-square tests, which the backend stopped using.
+- **Body weight shows rates of weight change (backend R20.44).** The table
+  that was "Estimated Marginal Means" is each arm's rate (g/day), and a new
+  table, with its own download, compares each arm's rate with the
+  reference's. The dashboard never showed the comparisons before.
+- **Power simulation (backend R20.33).** The Summary says that power is for one
+  treated arm against the control at α/(k−1), and names the new
+  `Power_Any`, `Power_All` and `Power_Omnibus` columns. The curve's band is
+  the Wilson interval, and the method text no longer describes a
+  likelihood-ratio test.
+
 ## [26.10.001] - 2026-10-09
 
 Requires mouseExperiment ≥ 0.28.0.

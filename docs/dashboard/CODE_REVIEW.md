@@ -2552,3 +2552,24 @@ Step 7 implemented the VPS repository's Round 3 review (its CODE_REVIEW.md, V3-H
 - **Full suite:** 26 files, 264 tests, 884 expectations. No failures or skips; the one warning is pre-existing.
 - **R CMD check** (`--no-manual --ignore-vignettes --no-tests`): 4 WARNINGs and 3 NOTEs. A check of v26.09.006 built the same way flags the same items with identical details; the two extra NOTEs come from the local, untracked `.waylog` folder that the working-tree build includes.
 
+
+## R20-D.P Implementation log — v26.10.002: the dashboard side of backend 0.30.0 (2026-10-09)
+
+Backend 0.30.0 (package CODE_REVIEW.md R20-T) closed its last nine Majors, and four of them change what a result holds. This step makes the dashboard pass what the backend now needs and show the results as they now are. Against backend 0.30.0, the v26.09.007 suite already passed (264 tests, 0 failed), so nothing crashed; the labels were wrong.
+
+| Backend item | Dashboard change |
+|---|---|
+| R20.32 fixed zero floor | `backend_volume_units(rv)` passes the declared unit to `tumor_growth_statistics()` and `bayesian_tumor_growth()` (undeclared: mm³, the backend default). The Summary states the floor and how many values it applied to (`zero_floor_line()`). |
+| R20.31 growth rate first | The ANOVA tab help describes the three rows by position, since their labels carry the user's column names. The LME4 Info tab described Wald chi-square tests, which the backend had stopped using before this release; it now describes the F-tests. The Summary tab's pointer names the first row. |
+| R20.44 rate of weight change | "Estimated Marginal Means by Treatment" becomes "Rate of Weight Change by Treatment (g/day)". A new table, "Difference in Rate vs the Reference (g/day)", shows `pairwise_comparisons`, which the dashboard never displayed, with its own CSV, and both go into the Download All archive. The help says what a negative difference means. |
+| R20.33 per-arm simulated power | `lmm_power_note()` states in the Summary that power is per treated arm at α/(k−1), names `Power_Any`, `Power_All` and `Power_Omnibus`, and reports failed fits. The curve's band is the Wilson interval; it was ±1.96 SE, which collapses to zero width at 0 % and 100 %. The method text no longer describes a likelihood-ratio test. |
+
+`DESCRIPTION` requires mouseExperiment ≥ 0.30.0: `volume_units` does not exist in 0.28.0, so this version cannot run against it.
+
+**Tests:** `test-backend-0-30.R`, 6 tests. They cover the unit mapping and the floor line, a tumour-growth run with cm³ declared (floor 0.002 cm³ in the result and the Summary), the ANOVA help after a run, the body-weight rate tables and the comparisons CSV, and the Power note and plot.
+
+`test-docs-current.R` asserted that the Info tab says "Wald chi-square"; it now asserts that it describes the Satterthwaite F-tests the backend reports.
+
+**Verification (executed):** against backend 0.30.0, the full suite runs 27 files and 270 tests with no failures or skips.
+
+**Not changed here:** the cage structure `nested_partial` (backend R20.25) is shown as the code, like the other structures, beside the backend's reason, which names the single-cage arms.

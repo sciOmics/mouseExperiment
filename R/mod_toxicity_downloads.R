@@ -61,11 +61,17 @@ add_tox_download_handlers <- function(input, output, session, rv) {
     if (isTRUE(rv$tox_results$mixed_model$error)) return()
     utils::write.csv(rv$tox_results$mixed_model$fixed_effects, file, row.names = FALSE)
   })
-  output$download_tox_emmeans_csv <- downloadHandler("body_weight_emmeans.csv", function(file) {
+  output$download_tox_emmeans_csv <- downloadHandler("body_weight_rates.csv", function(file) {
     req(rv$tox_results, rv$tox_results$mixed_model)
     mm <- rv$tox_results$mixed_model
     if (isTRUE(mm$error) || is.null(mm$emmeans_table)) return()
-    utils::write.csv(mm$emmeans_table, file, row.names = FALSE)
+    utils::write.csv(as.data.frame(mm$emmeans_table), file, row.names = FALSE)
+  })
+  output$download_tox_rate_comparisons_csv <- downloadHandler("body_weight_rate_comparisons.csv", function(file) {
+    req(rv$tox_results, rv$tox_results$mixed_model)
+    mm <- rv$tox_results$mixed_model
+    if (isTRUE(mm$error) || is.null(mm$pairwise_comparisons)) return()
+    utils::write.csv(as.data.frame(mm$pairwise_comparisons), file, row.names = FALSE)
   })
   output$download_tox_events <- downloadHandler("weight_loss_events.csv", function(file) {
     req(rv$tox_results, rv$tox_results$weight_loss)
@@ -97,7 +103,8 @@ add_tox_download_handlers <- function(input, output, session, rv) {
         mm <- res$mixed_model
         if (!isTRUE(mm$error)) {
           write_if(mm$fixed_effects,  "bw_fixed_effects.csv")
-          write_if(mm$emmeans_table,  "bw_emmeans.csv")
+          write_if(as.data.frame(mm$emmeans_table), "bw_weight_change_rates.csv")
+          write_if(as.data.frame(mm$pairwise_comparisons), "bw_rate_comparisons.csv")
         }
         wl <- res$weight_loss
         if (!isTRUE(wl$error)) write_if(wl$event_data, "bw_weight_loss_events.csv")

@@ -269,6 +269,19 @@ volume_unit_label <- function(rv) {
          mm3 = "mm³", cm3 = "cm³", "units not declared")
 }
 
+#' The declared volume unit, as the backend's `volume_units` argument
+#'
+#' Backend 0.30.0 (R20.32) floors zero volumes at 2 mm³ or 0.002 cm³ before
+#' the log, so tumour growth needs the unit. Undeclared units are treated as
+#' mm³, the backend's default; it warns when the volumes look like cm³.
+#'
+#' @param rv Shared reactiveValues.
+#' @return "mm3" or "cm3".
+#' @keywords internal
+backend_volume_units <- function(rv) {
+  if (identical(rv$settings$volume_units, "cm3")) "cm3" else "mm3"
+}
+
 #' The evaluable-day rule, as the backend states it
 #'
 #' Maintainer decision R20-K (confirmed 2026-09-30): synergy, the therapeutic
