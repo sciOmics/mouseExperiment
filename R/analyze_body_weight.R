@@ -351,7 +351,7 @@ analyze_body_weight <- function(df,
       fixed_formula    = fixed_terms,
       model_simplified = model_simplified,
       simplify_reason  = if (model_simplified) simplify_reason else NA_character_,
-      convergence_note = if (model_simplified) NULL else full$note,   # R20-T
+      convergence_note = full$note,   # R20-T: how a gradient warning was checked
       adjust_tumor     = adjust_tumor_weight && has_volume,
       tumor_density    = tumor_density,
       cage_in_model    = has_cage,
