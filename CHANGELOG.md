@@ -5,6 +5,13 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Tests
+- The compiled-model cache test no longer depends on the Bayesian fits before it. The VPS
+  staging gate now runs this suite with every Bayesian fit skipped (sciOmicsVPS
+  `CODE_REVIEW.md` V3-Q).
+
 ## [0.33.0] - 2026-10-10
 
 The two Round 20 follow-ups (`CODE_REVIEW.md` R20-W).

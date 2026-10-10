@@ -155,8 +155,13 @@ test_that("R20.74: a manual prior names what is missing, and a backend from tg_m
                "requires the cmdstanr package")
 })
 
-# Last in the file: it empties the cache the fits above filled.
+# Last in the file: it empties the cache the fits above filled. Where those fits
+# are skipped (the VPS staging gate skips every Bayesian fit), an entry is put
+# in by hand, so the test does not depend on them.
 test_that("R20.78: clear_compiled_model_cache() empties the cache", {
+  cache <- get(".me_model_cache", envir = asNamespace("mouseExperiment"))
+  if (!length(ls(cache, all.names = TRUE)))
+    assign("placeholder", list(template = NULL, cached_at = Sys.time()), envir = cache)
   expect_gte(clear_compiled_model_cache(), 1L)
   expect_identical(clear_compiled_model_cache(), 0L)
 })
