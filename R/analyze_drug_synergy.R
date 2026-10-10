@@ -23,6 +23,9 @@
 #'   arm had usually left the study and its mean was an extrapolation
 #'   (CODE_REVIEW.md R20.1).
 #' @param verbose Logical. If TRUE, prints detailed results to the console.
+#' @param volume_units,zero_floor The units of the volume column, \code{"mm3"}
+#'   (default) or \code{"cm3"}, and the volume a regression to zero takes on the
+#'   endpoint model's log scale: 2 mm3 or 0.002 cm3 unless set (R20.32, R20-W).
 #'        Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.
 #'
 #' @return A list containing the following components:
@@ -154,9 +157,12 @@ analyze_drug_synergy <- function(df,
                                additivity_margin = 0.1,
                                n_boot = 2000L,
                                boot_seed = NULL,
-                               verbose = TRUE) {
+                               verbose = TRUE,
+                               volume_units = c("mm3", "cm3"),
+                               zero_floor = NULL) {
 
   endpoint_method <- match.arg(endpoint_method)
+  volume_units <- match.arg(volume_units)
 
   # Input validation. The ID column is required (R20.15): without it every
   # animal in an arm shared one key and each arm became a single "mouse".
@@ -186,7 +192,8 @@ analyze_drug_synergy <- function(df,
     time_column = time_column, volume_column = volume_column,
     cage_column = cage_column,
     endpoint_day = eval_time_point, endpoint_method = endpoint_method,
-    arms = c(control_name, drug_a_name, drug_b_name, combo_name)
+    arms = c(control_name, drug_a_name, drug_b_name, combo_name),
+    zero_floor = me_zero_floor(volume_units, zero_floor), volume_units = volume_units
   )
   if (is.null(eval_time_point) && isTRUE(verbose)) {
     message("Evaluating at day ", ep$endpoint_day,

@@ -20,7 +20,9 @@ analyze_drug_synergy_over_time(
   endpoint_method = c("model", "last_obs", "survivors"),
   n_boot = 2000L,
   boot_seed = NULL,
-  verbose = TRUE
+  verbose = TRUE,
+  volume_units = c("mm3", "cm3"),
+  zero_floor = NULL
 )
 }
 \arguments{
@@ -55,7 +57,11 @@ key, so every day failed (CODE_REVIEW.md R20.15).}
 \code{\link{analyze_drug_synergy}}. Under the model estimand one endpoint
 model is fitted and evaluated on every day.}
 
-\item{verbose}{Logical. If TRUE, prints detailed results to the console.
+\item{verbose}{Logical. If TRUE, prints detailed results to the console.}
+
+\item{volume_units, zero_floor}{The units of the volume column, \code{"mm3"}
+(default) or \code{"cm3"}, and the volume a regression to zero takes on the
+endpoint model's log scale: 2 mm3 or 0.002 cm3 unless set (R20.32, R20-W).
 Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.}
 }
 \value{

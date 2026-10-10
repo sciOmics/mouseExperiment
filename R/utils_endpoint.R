@@ -61,6 +61,8 @@ ME_ENDPOINT_METHODS <- c("model", "last_obs", "survivors")
 #'   `NULL` means every arm in `df`.
 #' @param model A fitted `me_endpoint_model()` object to reuse, e.g. across
 #'   the days of an over-time analysis. `NULL` fits one.
+#' @param zero_floor,volume_units The fixed floor for regressions to zero
+#'   under `"model"` (R20-W); see [me_zero_floor()].
 #' @return A list with `group_means` (data frame: Treatment, Mean_Volume, N,
 #'   N_On_Study, plus SE_log / CI bounds under `"model"`), `per_mouse`
 #'   (Treatment, MouseKey, Volume, Day_Used) for the resampling-based methods,
@@ -77,7 +79,9 @@ endpoint_volumes <- function(df,
                              endpoint_day = NULL,
                              endpoint_method = c("model", "last_obs", "survivors"),
                              arms = NULL,
-                             model = NULL) {
+                             model = NULL,
+                             zero_floor = 2,
+                             volume_units = "mm3") {
   endpoint_method <- match.arg(endpoint_method)
 
   d <- data.frame(
@@ -134,7 +138,8 @@ endpoint_volumes <- function(df,
   group_means <- NULL
 
   if (endpoint_method == "model") {
-    em <- if (!is.null(model)) model else me_endpoint_model(d)
+    em <- if (!is.null(model)) model else
+      me_endpoint_model(d, zero_floor, volume_units, "endpoint_volumes")
     if (is.null(em)) {
       warning("Model-based endpoint means could not be fitted; falling back to ",
               "endpoint_method = 'last_obs'.", call. = FALSE)
@@ -212,25 +217,34 @@ endpoint_volumes <- function(df,
 #' - leaves out zero volumes measured before an animal's first positive
 #'   volume (pre-palpable tumours): flooring them at half the smallest volume
 #'   invented values far below the data (R20.1). A zero after a positive
-#'   measurement (a regression) is set to the smallest positive volume in
-#'   the study, the detection limit.
+#'   measurement (a regression) takes the fixed floor of R20.32: 2 mm3, half
+#'   a just-palpable 2 x 2 mm tumour (0.002 cm3). It was the smallest positive
+#'   volume in the study, so one small reading in any arm moved every arm's
+#'   regressions (CODE_REVIEW.md R20-W).
 #'
 #' It is evaluated only on evaluable days (see [evaluable_days()]).
 #'
 #' @param d Data frame with `MouseKey`, `Treatment`, `Day` and `Volume`.
+#' @param zero_floor The volume a regression to zero takes before the log,
+#'   from [me_zero_floor()].
+#' @param volume_units For the floor's warnings.
+#' @param fn Calling function, for messages.
 #' @return An `me_endpoint_model` list, or `NULL` when no model can be fitted.
 #' @noRd
 #' @keywords internal
-me_endpoint_model <- function(d) {
+me_endpoint_model <- function(d, zero_floor = 2, volume_units = "mm3",
+                              fn = "analysis") {
   d <- d[is.finite(d$Day) & is.finite(d$Volume), , drop = FALSE]
   pos <- d$Volume > 0
   if (!any(pos)) return(NULL)
-  det_limit <- min(d$Volume[pos])
   first_pos <- stats::ave(ifelse(pos, d$Day, Inf), d$MouseKey, FUN = min)
   prepalp   <- !pos & d$Day < first_pos
   fd <- d[!prepalp, , drop = FALSE]
-  n_floored <- sum(fd$Volume <= 0)
-  fd$.logv <- log(pmax(fd$Volume, det_limit))
+  # R20-W: the fixed floor, zeros only (pmax() would also raise measured
+  # volumes below it), with R20.32's checks on units and on many zeros.
+  v <- me_floor_zeros(fd$Volume, zero_floor, volume_units, fn)
+  n_floored <- attr(v, "n_floored")
+  fd$.logv <- log(as.numeric(v))
 
   lev <- sort(unique(as.character(d$Treatment)))
   fd$Treatment <- factor(as.character(fd$Treatment), levels = lev)
@@ -298,7 +312,7 @@ me_endpoint_model <- function(d) {
     V         = as.matrix(stats::vcov(fit))[names(beta), names(beta), drop = FALSE],
     structure = used,
     fallback  = fallback,
-    detection_limit = det_limit,
+    detection_limit = zero_floor,
     n_prepalpable   = sum(prepalp),
     n_floored       = n_floored,
     day_range       = range(fd$Day),

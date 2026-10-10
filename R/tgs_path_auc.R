@@ -92,7 +92,8 @@ tgs_path_auc <- function(auc_analysis,
          "evaluable (", t_end, ") is the first study day. ", evaluability$rule,
          call. = FALSE)
   }
-  em <- me_endpoint_model(d)
+  em <- me_endpoint_model(d, zero_floor_info$value, zero_floor_info$units,
+                          "tumor_growth_statistics")   # R20-W
   if (is.null(em)) {
     stop("The AUC model could not be fitted to these data.", call. = FALSE)
   }

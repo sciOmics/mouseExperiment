@@ -31,6 +31,9 @@
 #'   then put different agents on one dose axis (R20.16). A dose level held by
 #'   more than one of the chosen arms is also an error.
 #' @param verbose Logical; if TRUE, prints model summaries and statistics to the console. Default: TRUE.
+#' @param volume_units,zero_floor The units of the volume column, \code{"mm3"}
+#'   (default) or \code{"cm3"}, and the volume a regression to zero takes on the
+#'   endpoint model's log scale: 2 mm3 or 0.002 cm3 unless set (R20.32, R20-W).
 #'
 #' @return A list containing:
 #'   \item{dose_effect_test}{Statistical test results for dose-dependency}
@@ -83,7 +86,10 @@ dose_response_statistics <- function(df,
                                    time_point = NULL,
                                    control_group_name = NULL,
                                    treatments = NULL,
-                                   verbose = TRUE) {
+                                   verbose = TRUE,
+                                   volume_units = c("mm3", "cm3"),
+                                   zero_floor = NULL) {
+  volume_units <- match.arg(volume_units)
   
   # Validate input
   required_columns <- c(dose_column, treatment_column, volume_column, day_column, id_column)
@@ -144,7 +150,8 @@ dose_response_statistics <- function(df,
   # synergy and the therapeutic window (R20-K). The control is dose 0, by
   # construction of the series (R20.16).
   ctrl_dose <- "0"
-  endpoint_model <- me_endpoint_model(d_std)
+  endpoint_model <- me_endpoint_model(d_std, me_zero_floor(volume_units, zero_floor),
+                                      volume_units, "dose_response_statistics")
   tgi_table <- if (!is.na(ctrl_dose) && !is.null(endpoint_model)) {
     dr_tgi_table(endpoint_model, evaluability, eval_day, ctrl_dose)
   } else NULL

@@ -5,6 +5,31 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.0] - 2026-10-10
+
+The two Round 20 follow-ups (`CODE_REVIEW.md` R20-W).
+
+### Fixed
+
+- **The endpoint model's zero floor depended on the data.** A regression to
+  zero was set to the smallest positive volume anywhere in the study, so one
+  small reading in any arm moved every arm's regressions. It now takes the
+  fixed floor of tumour growth: 2 mm³, or 0.002 cm³. This affects the AUC
+  path, synergy (single day and over time), dose-response and the therapeutic
+  window. Measured volumes below the floor are kept as measured.
+  `analyze_drug_synergy()`, `analyze_drug_synergy_over_time()` and
+  `dose_response_statistics()` gain `volume_units` and `zero_floor`, and
+  `therapeutic_window_metric()` gains `zero_floor` (it already had
+  `volume_units`).
+- **Results depended on where time was counted from.** With correlated
+  random slopes, the optimizer could stop short of the optimum when time was
+  far from zero. Counting the same data from implantation instead of
+  randomisation gave log-likelihood 365.93 against 366.45, and moved the
+  Treatment row's F from 92.1 to 112.7. The model is now fitted first on time
+  centred at the mean day, and the original model starts from that optimum.
+  The model and what is reported from it are unchanged: both origins now give
+  366.4457 and F = 92.07.
+
 ## [0.32.0] - 2026-10-10
 
 The remaining Round 20 Minors and two efficiency items (`CODE_REVIEW.md`

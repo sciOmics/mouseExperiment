@@ -170,9 +170,12 @@ test_that("R20.3: tumour-growth and body-weight models give the same answer with
   a <- tg("UID"); b <- tg("RID_arm")
   expect_equal(lme4::fixef(b$model), lme4::fixef(a$model), tolerance = 1e-8)
   # Same partition of the data, so the fits agree up to optimiser noise (the
-  # grouping levels are ordered differently): ~1e-9 on this fixture.
+  # grouping levels are ordered differently). Since R20-W both start at the
+  # optimum found on centred time and stop within the optimiser's tolerance:
+  # log-likelihoods agree to 1e-9, the covariance to about 6e-6.
+  expect_equal(as.numeric(logLik(b$model)), as.numeric(logLik(a$model)), tolerance = 1e-8)
   expect_equal(as.matrix(stats::vcov(b$model)), as.matrix(stats::vcov(a$model)),
-               tolerance = 1e-6)
+               tolerance = 1e-4)
   expect_equal(lme4::ngrps(b$model)[["RID_arm"]], 32L)   # was 8
 
   bw <- function(id) quiet(analyze_body_weight(
