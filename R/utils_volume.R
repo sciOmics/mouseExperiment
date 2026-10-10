@@ -144,3 +144,59 @@ me_fill_volume <- function(key, day, volume) {
   }
   out
 }
+
+# ---- Zero volumes on the log scale (CODE_REVIEW.md R20.32) --------------------
+#
+# Decided 2026-10-09: a zero volume is replaced by a fixed, documented floor,
+# 2 mm3 (half a just-palpable 2 x 2 mm tumour, about 4 mm3), i.e. 0.002 cm3.
+# It used to be half the smallest positive volume anywhere in the data (per
+# animal, for growth rates), so one tiny reading in one arm moved another
+# arm's estimate: p went from 2e-5 to 2.4e-3 with that arm's data unchanged.
+
+#' The zero floor in the data's units
+#' @param volume_units "mm3" or "cm3".
+#' @param zero_floor A user-set floor in the data's units, or NULL for 2 mm3.
+#' @noRd
+#' @keywords internal
+me_zero_floor <- function(volume_units = c("mm3", "cm3"), zero_floor = NULL) {
+  volume_units <- match.arg(volume_units)
+  if (!is.null(zero_floor)) {
+    if (!is.numeric(zero_floor) || length(zero_floor) != 1L || !is.finite(zero_floor) ||
+        zero_floor <= 0) {
+      stop("zero_floor must be one positive number, in the volume column's units.",
+           call. = FALSE)
+    }
+    return(zero_floor)
+  }
+  if (volume_units == "mm3") 2 else 0.002
+}
+
+#' Replace zero and negative volumes with the floor, with two checks
+#'
+#' Warns when the positive volumes sit near or below the floor (the units are
+#' probably not the ones declared: a mismatch warning, not inference), and when
+#' zeros are common enough that the square-root scale may suit better.
+#' @return The volumes, with attribute `n_floored`.
+#' @noRd
+#' @keywords internal
+me_floor_zeros <- function(vol, floor, volume_units = "mm3", fn = "analysis") {
+  ok  <- is.finite(vol)
+  pos <- vol[ok & vol > 0]
+  if (!length(pos)) {
+    stop(fn, "(): no positive volumes, so the log scale cannot be used.", call. = FALSE)
+  }
+  if (stats::median(pos) < 10 * floor) {
+    warning(fn, "(): the median volume (", signif(stats::median(pos), 3), ") is close ",
+            "to the zero floor (", floor, " ", volume_units, "). Are the volumes in ",
+            volume_units, "? Set volume_units (or zero_floor) to match.", call. = FALSE)
+  }
+  zero <- ok & vol <= 0
+  if (mean(zero[ok]) > 0.2) {
+    warning(fn, "(): ", round(100 * mean(zero[ok])), "% of volumes are zero. On the ",
+            "log scale they all sit at the floor (", floor, " ", volume_units,
+            "); consider transform = \"sqrt\".", call. = FALSE)
+  }
+  vol[zero] <- floor
+  attr(vol, "n_floored") <- sum(zero)
+  vol
+}

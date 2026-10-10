@@ -60,7 +60,9 @@ classify_cage_structure <- function(df, cage_column, id_column,
 
   # One row per mouse — this is the unit the design structure lives at.
   mice <- unique(df[, c(id_column, treatment_column, cage_column), drop = FALSE])
-  ct   <- table(mice[[cage_column]], mice[[treatment_column]])
+  # R20.25: as labels, so an unused factor level is not counted as an arm with
+  # no cages (it classified the whole study as confounded and dropped (1|cage)).
+  ct   <- table(as.character(mice[[cage_column]]), as.character(mice[[treatment_column]]))
 
   treatments_per_cage <- rowSums(ct > 0)
   cages_per_treatment <- colSums(ct > 0)
@@ -70,6 +72,12 @@ classify_cage_structure <- function(df, cage_column, id_column,
     "crossed"
   } else if (all(cages_per_treatment >= 2L)) {
     "nested_replicated"
+  } else if (any(cages_per_treatment >= 2L)) {
+    # R20.25: one arm in a single cage (a satellite arm, say) used to make the
+    # whole study "confounded", and cage was dropped for every arm: the null
+    # false-positive rate went from 0.02-0.035 to 0.16-0.29. The replicated
+    # arms still estimate the cage variance.
+    "nested_partial"
   } else {
     "nested_confounded"
   }
@@ -86,6 +94,14 @@ classify_cage_structure <- function(df, cage_column, id_column,
       "effect (perfectly aliased with treatment) but IS estimable as a random ",
       "intercept, which is the correct way to account for cage-level ",
       "clustering."),
+    nested_partial = paste0(
+      "Each cage holds one treatment. ",
+      paste(names(cages_per_treatment)[cages_per_treatment < 2L], collapse = ", "),
+      if (sum(cages_per_treatment < 2L) == 1L) " is" else " are",
+      " housed in a single cage, so for ",
+      if (sum(cages_per_treatment < 2L) == 1L) "that arm" else "those arms",
+      " cage and treatment cannot be separated; the other arms have two or ",
+      "more cages, from which the cage variance is estimated."),
     nested_confounded = paste0(
       "At least one treatment is housed in a single cage (",
       paste(names(cages_per_treatment)[cages_per_treatment < 2L],
@@ -141,6 +157,12 @@ resolve_cage_handling <- function(cage_info, handle_cage_effects,
           " cages per arm); included as a random intercept (1|cage). ",
           "A fixed effect is not estimable here \u2014 it is aliased with ",
           "treatment.")),
+      nested_partial = list(
+        fixed = FALSE, random = TRUE,
+        reason = paste0(
+          "Cage is nested within treatment and replicated in some arms; ",
+          "included as a random intercept (1|cage). For the single-cage arms ",
+          "the treatment estimate includes any cage effect.")),
       nested_confounded = list(
         fixed = FALSE, random = FALSE,
         reason = paste0(
@@ -179,18 +201,28 @@ resolve_cage_handling <- function(cage_info, handle_cage_effects,
                          reason = "Cage omitted at the caller's request."),
 
     as_random_effect = if (st == "nested_confounded") {
+      # R20.25: one single-cage arm no longer counts as "confounded" (that is
+      # nested_partial, below), so this branch is reached only when EVERY arm
+      # is in a single cage. There the cage variance is not identifiable apart
+      # from treatment, and fitting (1|cage) fails outright, so the request
+      # cannot be honoured; say so rather than drop it quietly.
+      warning("handle_cage_effects = 'as_random_effect' cannot be honoured: ",
+              "every arm is housed in a single cage, so a cage variance cannot ",
+              "be estimated apart from treatment. Cage is omitted.", call. = FALSE)
       list(fixed = FALSE, random = FALSE,
            reason = paste0(
-             "Cage requested as a random effect but the design is completely ",
-             "confounded (", cage_info$description,
-             "). A single cage per arm provides no replication to estimate a ",
-             "cage variance from; cage omitted."))
+             "Cage requested as a random effect, but every arm is in a single ",
+             "cage (", cage_info$description, "); omitted."))
     } else {
       list(fixed = FALSE, random = TRUE,
            reason = "Cage included as a random intercept (1|cage).")
     }
   )
 
+  if (st == "nested_partial" && !identical(handle_cage_effects, "never_include")) {
+    warning("Some arms are housed in a single cage: ", cage_info$description,
+            call. = FALSE)
+  }
   if (st == "nested_confounded" && !identical(handle_cage_effects, "never_include")) {
     warning("Cage and treatment are completely confounded: ",
             cage_info$description,

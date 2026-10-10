@@ -164,12 +164,11 @@ therapeutic_window_metric <- function(df,
   wd <- wd[order(wd$MouseKey, wd$Day), ]
 
   groups <- unique(wd$Treatment)
-  if (is.null(reference_group)) {
-    # Pick first alphabetically or common control names
-    ctrl_patterns <- c("control", "vehicle", "dmso", "pbs", "saline", "placebo")
-    ref_match <- groups[tolower(groups) %in% ctrl_patterns]
-    reference_group <- if (length(ref_match) > 0) ref_match[1] else groups[1]
-  }
+  # R20.46: shared reference rule. Exact-name matching missed
+  # "Vehicle (10% DMSO)" and fell back to the first arm (a Vehicle TGI of
+  # -217 % was reported against an active arm).
+  reference_group <- me_resolve_reference(groups, reference_group,
+                                          "therapeutic_window_metric")
 
   # --- Efficacy axis: TGI per arm ---
   # CODE_REVIEW.md R3.5 / G.3 -- each arm's geometric mean at the endpoint day
@@ -263,6 +262,7 @@ therapeutic_window_metric <- function(df,
 
   thr <- format(tolerability_threshold)
   list(
+    reference_group  = reference_group,   # R20.46
     window_table     = win,
     weight_loss_data = mouse_wl,
     tgi_data         = tgi_data,

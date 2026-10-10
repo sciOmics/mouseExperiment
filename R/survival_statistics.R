@@ -36,7 +36,9 @@
 #'       comparison can reach is reported: with 2 cages per arm it is 1/3, and
 #'       with 3 it is 0.1, so neither can reach p < 0.05.
 #'   }
-#' @param dose_column Optional name of column containing dose information. Default: NULL
+#' @param dose_column Optional dose column. A treatment given at more than one
+#'   dose is analysed as one arm per dose, labelled "<treatment> <dose>"
+#'   (CODE_REVIEW.md R20.30). Default: NULL
 #' @param reference_group Treatment group to use as reference. Default: NULL (uses first alphabetically)
 #' @param firth_correction Whether to apply Firth's correction for separation issues. Default: TRUE
 #' @param p_adjust_method Multiplicity adjustment applied across the k-1
@@ -148,6 +150,13 @@ survival_statistics <- function(df,
          "that identifies each animal as id_column.", call. = FALSE)
   }
 
+  # R20.30: dose_column changed nothing. A treatment given at more than one
+  # dose is now analysed as one arm per dose.
+  if (!is.null(dose_column)) {
+    df[[treatment_column]] <- me_arms_with_dose(df[[treatment_column]], df, dose_column,
+                                                "survival_statistics")
+  }
+
   # CODE_REVIEW.md R20.43 -- formulas below are built by pasting column names,
   # and some sites quoted them while others did not, so a column called
   # "Study Day" failed with "unexpected symbol". Copy the columns into fixed
@@ -167,19 +176,55 @@ survival_statistics <- function(df,
   id_column        <- "ID"
   if (!is.null(cage_column)) cage_column <- "Cage"
 
+  # R20.24 / R20.63: the event indicator must be 0/1. An NA made the separation
+  # check report "Groups with no events: NA, NA" and forced the Firth path, whose
+  # failure then crashed the function; 1/2 coding summed codes into Events
+  # (event rate 1.8); "Dead"/"Alive" and factors errored opaquely.
+  ev <- df$Event
+  if (is.factor(ev)) ev <- as.character(ev)
+  if (is.logical(ev)) ev <- as.integer(ev)
+  if (is.character(ev)) {
+    num <- suppressWarnings(as.numeric(ev))
+    bad_txt <- unique(ev[is.na(num) & !is.na(ev)])
+    if (length(bad_txt)) {
+      stop("survival_statistics(): the event column must be 0 (censored) or 1 ",
+           "(event); found \"", paste(utils::head(bad_txt, 4), collapse = "\", \""),
+           "\".", call. = FALSE)
+    }
+    ev <- num
+  }
+  bad <- !is.na(ev) & !ev %in% c(0, 1)
+  if (any(bad)) {
+    stop("survival_statistics(): the event column must be 0 (censored) or 1 ",
+         "(event); found ", paste(sort(unique(ev[bad])), collapse = ", "),
+         ". For 1 = censored / 2 = event coding, pass the event column minus 1.",
+         call. = FALSE)
+  }
+  df$Event <- ev
+  missing_te <- is.na(df$Event) | is.na(df$Time)
+  if (any(missing_te)) {
+    warning("survival_statistics(): ", sum(missing_te), " row(s) with a missing ",
+            "time or event indicator were left out.", call. = FALSE)
+    df <- df[!missing_te, , drop = FALSE]
+  }
+  # R20.64: with no events anywhere, Firth reported HR 1, CI [1, 1], p = 1 as if
+  # it were an estimate.
+  if (sum(df$Event) == 0) {
+    stop("survival_statistics(): no animal has an event, so hazard ratios cannot ",
+         "be estimated.", call. = FALSE)
+  }
+
   validate_one_row_per_subject(df, id_column, treatment_column, cage_column)
   
   # Setup parameters
+  # R20.46: shared reference rule (see me_resolve_reference()).
+  df[[treatment_column]] <- as.character(df[[treatment_column]])
   treatment_groups <- unique(df[[treatment_column]])
-  if (is.null(reference_group)) {
-    reference_group <- sort(treatment_groups)[1]
-  } else if (!reference_group %in% treatment_groups) {
-    stop("Reference group '", reference_group, "' is not present in the data.")
-  }
-  message("Using ", reference_group, " as the reference group for hazard ratios.")
+  reference_group <- me_resolve_reference(treatment_groups, reference_group,
+                                          "survival_statistics")
   
   # Check cage distribution
-  check_cage_distribution(df, treatment_column, cage_column)
+  check_cage_distribution(df, treatment_column, cage_column, verbose = verbose)
 
   # CODE_REVIEW.md R3.13 / G.2 — cage was accepted, printed about, and then
   # never entered the model: the Cox fit was `Surv(...) ~ Treatment` with no
@@ -197,6 +242,10 @@ survival_statistics <- function(df,
   # downward-biased: 28 % false positives with 2 cages x 5 mice per arm. The
   # declared unit of randomisation decides instead (see randomisation_unit).
   use_cage_cluster <- FALSE
+  if (cage_structure$structure == "nested_partial") {
+    warning("Some arms are housed in a single cage: ", cage_structure$description,
+            " Their hazard ratios include any cage effect.", call. = FALSE)
+  }
   if (cage_structure$structure == "nested_confounded") {
     warning("Cage and treatment are completely confounded: ",
             cage_structure$description,
@@ -223,7 +272,7 @@ survival_statistics <- function(df,
   surv_obj <- survival::Surv(df[[time_column]], df[[censor_column]])
   surv_formula_str <- paste("surv_obj ~", treatment_column)
   cox_formula <- stats::as.formula(surv_formula_str)
-  separation_info <- check_separation(df, treatment_column, censor_column)
+  separation_info <- check_separation(df, treatment_column, censor_column, verbose = verbose)
   
   # Choose and fit appropriate model
   model_results <- fit_survival_model(
@@ -297,7 +346,6 @@ survival_statistics <- function(df,
   }
   
   # Create a separate survival fit for median survival calculation
-  message("\nCalculating median survival times...")
   surv_formula_str <- paste("Surv(", time_column, ",", censor_column, ") ~ ", 
                             treatment_column)
   surv_formula <- stats::as.formula(surv_formula_str)
@@ -329,15 +377,13 @@ survival_statistics <- function(df,
       # Add to results data frame
       results$Median_Survival <- median_survival[match(results$Group, names(median_survival))]
       
-      # Display the median survival times
-      message("\nMedian Survival Times:")
-      for (i in seq_along(median_survival)) {
-        group_name <- names(median_survival)[i]
-        med_surv_val <- median_survival[i]
-        if (!is.na(med_surv_val)) {
-          message(sprintf("%s: %.1f days", group_name, med_surv_val))
-        } else {
-          message(sprintf("%s: NA days", group_name))
+      # Display the median survival times (R20.64: only when verbose)
+      if (isTRUE(verbose)) {
+        message("\nMedian Survival Times:")
+        for (i in seq_along(median_survival)) {
+          med_surv_val <- median_survival[i]
+          message(sprintf("%s: %s days", names(median_survival)[i],
+                          if (is.na(med_surv_val)) "NA" else sprintf("%.1f", med_surv_val)))
         }
       }
     }
@@ -379,51 +425,10 @@ survival_statistics <- function(df,
   # Calculate event rates for each group
   results$Event_Rate <- results$Events / results$Total
   
-  # Verify median survival - if event rate > 0.5 but median is NA, there's likely an issue
-  if ("Median_Survival" %in% colnames(results)) {
-    # For each group, check if we have > 50% events but NA median
-    for (i in 1:nrow(results)) {
-      if (is.na(results$Median_Survival[i]) && results$Event_Rate[i] > 0.5) {
-        # We should be able to calculate median survival when >50% of subjects have events
-        message(sprintf("Group %s has > 50%% events (%.1f%%) but no median survival calculated. Attempting to calculate it now.", 
-                        results$Group[i], results$Event_Rate[i] * 100))
-        
-        # Try to calculate the median for this group
-        group_data <- df[df[[treatment_column]] == results$Group[i], ]
-        if (nrow(group_data) > 0) {
-          # Create a separate survfit object for just this group
-          group_surv_formula <- stats::as.formula(paste("Surv(", time_column, ",", censor_column, ") ~ 1"))
-          group_km_fit <- survival::survfit(group_surv_formula, data = group_data)
-          
-          # Extract median (at 0.5)
-          if (!is.null(group_km_fit$median)) {
-            med_surv <- group_km_fit$median
-            if (!is.na(med_surv) && med_surv > 0) {
-              results$Median_Survival[i] <- med_surv
-              message(sprintf("Successfully calculated median survival for group %s: %.1f days", 
-                              results$Group[i], results$Median_Survival[i]))
-            } else {
-              message(sprintf("Could not calculate valid median survival for group %s despite >50%% events.", 
-                              results$Group[i]))
-            }
-          } else {
-            # Try alternate approach using quantiles
-            group_quantiles <- summary(group_km_fit)$quantile
-            if (!is.null(group_quantiles) && "50%" %in% colnames(group_quantiles)) {
-              results$Median_Survival[i] <- group_quantiles["50%"]
-              message(sprintf("Calculated median survival using quantiles for group %s: %.1f days", 
-                              results$Group[i], results$Median_Survival[i]))
-            } else {
-              message(sprintf("Could not extract median or quantiles for group %s.", results$Group[i]))
-            }
-          }
-        } else {
-          message(sprintf("No data available for group %s to calculate median survival.", results$Group[i]))
-        }
-      }
-    }
-  }
-  
+  # (R20.24: a fallback that recomputed medians when more than half an arm had
+  # events was removed. Kaplan-Meier always gives a median in that case, so the
+  # branch never ran.)
+
   # Add reference group note
   results$Note <- ifelse(results$Group == reference_group, "Reference group", "")
   
@@ -617,13 +622,15 @@ validate_inputs <- function(df, time_column, censor_column, treatment_column) {
 
 #' Check Cage Distribution
 #' @noRd
-check_cage_distribution <- function(df, treatment_column, cage_column) {
+check_cage_distribution <- function(df, treatment_column, cage_column, verbose = TRUE) {
   # Only check if a cage column was supplied AND exists. `NULL %in% colnames(df)`
   # is logical(0), which makes a bare `if` error rather than skip (R15.1).
   if (!is.null(cage_column) && cage_column %in% colnames(df)) {
     cage_treatment_table <- table(df[[cage_column]], df[[treatment_column]])
-    message("Cage distribution across treatment groups:")
-    message(paste(utils::capture.output(print(cage_treatment_table)), collapse = "\n"))
+    if (isTRUE(verbose)) {
+      message("Cage distribution across treatment groups:")
+      message(paste(utils::capture.output(print(cage_treatment_table)), collapse = "\n"))
+    }
     
     # Check for collinearity between cage and treatment
     cage_treatment_df <- data.frame(
@@ -633,14 +640,14 @@ check_cage_distribution <- function(df, treatment_column, cage_column) {
     cage_treatment_counts <- table(cage_treatment_df$Cage, cage_treatment_df$Treatment)
     cage_has_multiple_treatments <- rowSums(cage_treatment_counts > 0) > 1
     if (!any(cage_has_multiple_treatments)) {
-      message("Detected collinearity between Cage and Treatment. Using Treatment only in the model.")
+      if (isTRUE(verbose)) message("Detected collinearity between Cage and Treatment. Using Treatment only in the model.")
     }
   }
 }
 
 #' Check for Separation Issues in Survival Data
 #' @noRd
-check_separation <- function(df, treatment_column, censor_column) {
+check_separation <- function(df, treatment_column, censor_column, verbose = TRUE) {
   # Check for complete separation (groups with all or no events)
   event_by_treatment <- tapply(df[[censor_column]], df[[treatment_column]], function(x) {
     c(sum(x), length(x), sum(x) / length(x))
@@ -656,7 +663,7 @@ check_separation <- function(df, treatment_column, censor_column) {
   # replaced an exact partial likelihood with a penalised approximation.
   has_separation <- length(groups_no_events) > 0
   
-  if (has_separation) {
+  if (has_separation && isTRUE(verbose)) {
     message("Warning: Some groups have perfect separation (no events). This may affect hazard ratio estimates.")
     if (length(groups_no_events) > 0) {
       message("Groups with no events: ", paste(groups_no_events, collapse = ", "))
@@ -683,8 +690,10 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
                               cage_column = NULL,
                               permutation_logrank = TRUE) {
   
-  # Try standard Cox model first
-  cox_model <- tryCatch({
+  # Try the standard Cox model first, unless an arm has no events: then its
+  # estimate for that arm diverges (coxph warns "Ran out of iterations") and
+  # Firth or log-rank is used anyway.
+  cox_model <- if (isTRUE(separation_info$has_separation)) NULL else tryCatch({
     # Create a factor version of the treatment column with the reference level set explicitly
     df$treatment_factor <- factor(df[[treatment_column]], levels = c(reference_group, setdiff(treatment_groups, reference_group)))
 
@@ -702,116 +711,20 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     # Fit model with explicit reference level
     survival::coxph(new_formula, data = df)
   }, error = function(e) {
-    message("Standard Cox model failed: ", e$message)
+    if (isTRUE(verbose)) message("Standard Cox model failed: ", e$message)
     NULL
   })
   
   # Check for potential issues
   has_issues <- is.null(cox_model) || separation_info$has_separation
-  
-  if (has_issues && firth_correction) {
-    # Use Firth's bias-reduced Cox model
-    method_used <- "coxphf"
-    message("Using Firth's bias-reduced Cox model: Surv(time, status) ~ group")
-    
-    results <- tryCatch({
-      # Create analysis data frame with safer group naming
-      analysis_df <- data.frame(
-        time = df[[time_column]],
-        status = df[[censor_column]],
-        group = factor(df[[treatment_column]], levels = c(reference_group, setdiff(treatment_groups, reference_group)))
-      )
-      
-      # Fit model using the simplified data frame
-      if (requireNamespace("coxphf", quietly = TRUE)) {
-        model <- coxphf::coxphf(
-          survival::Surv(time, status) ~ group, 
-          data = analysis_df
-        )
-        
-        # Extract results
-      coefs <- model$coefficients
-      hazard_ratios <- exp(coefs)
-      confidence_intervals <- exp(confint(model))
-      p_values <- model$prob
-      
-        # Create results data frame with all treatment groups
-        results <- data.frame(
-          Group = treatment_groups,
-          HR = NA,
-          CI_Lower = NA,
-          CI_Upper = NA,
-          P_Value = NA,
-          stringsAsFactors = FALSE
-        )
-        
-        # Set reference group values
-        ref_idx <- which(results$Group == reference_group)
-        results$HR[ref_idx] <- 1
-        results$CI_Lower[ref_idx] <- 1
-        results$CI_Upper[ref_idx] <- 1
-        
-        # Fill in values for non-reference groups
-        for (i in seq_along(coefs)) {
-          group_name <- levels(analysis_df$group)[i + 1]  # +1 because first level is reference
-          if(group_name %in% results$Group) {
-            idx <- which(results$Group == group_name)
-            results$HR[idx] <- hazard_ratios[i]
-            results$CI_Lower[idx] <- confidence_intervals[i, 1]
-            results$CI_Upper[idx] <- confidence_intervals[i, 2]
-            results$P_Value[idx] <- p_values[i]
-          }
-        }
 
-        # Fallback: for non-reference groups where coxphf failed to converge
-        # (p_value is NA), compute a pairwise log-rank p-value instead.
-        non_ref_na <- which(results$Group != reference_group & is.na(results$P_Value))
-        for (idx in non_ref_na) {
-          grp <- results$Group[idx]
-          pair_df <- df[df[[treatment_column]] %in% c(reference_group, grp), , drop = FALSE]
-          pair_df[[treatment_column]] <- factor(pair_df[[treatment_column]])
-          tryCatch({
-            pair_formula <- stats::as.formula(
-              paste0("survival::Surv(", time_column, ", ", censor_column, ") ~ ", treatment_column)
-            )
-            lr <- survival::survdiff(pair_formula, data = pair_df)
-            results$P_Value[idx] <- round(1 - stats::pchisq(lr$chisq, df = 1), 4)
-            message(sprintf("  Pairwise log-rank p-value used for %s (coxphf did not converge): %.4f",
-                            grp, results$P_Value[idx]))
-          }, error = function(e) {
-            message(sprintf("  Could not compute fallback p-value for %s: %s", grp, e$message))
-          })
-        }
-        
-        return(list(
-          model = model,
-          results = results,
-          method_used = "coxphf"
-        ))
-    } else {
-        stop("Package 'coxphf' is required but not available")
-      }
-    }, error = function(e) {
-      message("Firth model failed: ", e$message)
-      NULL
-    })
-    
-    if (is.null(results)) {
-      method_used <- "logrank"
-      model <- NULL
-      results <- data.frame()
-    } else {
-      method_used <- results$method_used
-      model <- results$model
-      results <- results$results
-    }
-    
-  } else if (has_issues) {
+  # Pairwise log-rank tests against the reference: used when a group has no
+  # events and Firth's correction is off, and when Firth's model fails (R20.24).
+  run_logrank <- function() {
     # Use pairwise log-rank tests as fallback (one per non-reference group).
     # An omnibus logrank p-value must not be assigned to all groups — it is a
     # single test for any difference and is not a valid per-comparison p-value.
-    method_used <- "logrank"
-    message("One or more groups have zero events. Using pairwise log-rank tests.")
+    if (isTRUE(verbose)) message("Using pairwise log-rank tests.")
 
     # Omnibus test (stored separately for reference; not used as per-group p-values)
     surv_diff <- survival::survdiff(cox_formula, data = df)
@@ -918,7 +831,121 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
     # is available without ever being mistaken for a per-group comparison.
     attr(results, "omnibus_logrank_p") <- omnibus_p
 
-    model <- surv_diff
+    list(model = surv_diff, results = results, method_used = "logrank")
+  }
+  
+  if (has_issues && firth_correction) {
+    # Use Firth's bias-reduced Cox model
+    method_used <- "coxphf"
+    if (isTRUE(verbose)) message("Using Firth's bias-reduced Cox model: Surv(time, status) ~ group")
+    
+    results <- tryCatch({
+      # Create analysis data frame with safer group naming
+      analysis_df <- data.frame(
+        time = df[[time_column]],
+        status = df[[censor_column]],
+        group = factor(df[[treatment_column]], levels = c(reference_group, setdiff(treatment_groups, reference_group)))
+      )
+      
+      # Fit model using the simplified data frame
+      if (requireNamespace("coxphf", quietly = TRUE)) {
+        model <- coxphf::coxphf(
+          survival::Surv(time, status) ~ group, 
+          data = analysis_df
+        )
+        
+        # Extract results
+      coefs <- model$coefficients
+      hazard_ratios <- exp(coefs)
+      # R20.24: coxphf has no confint() method, so confint.default gave a Wald
+      # interval beside coxphf's profile-likelihood p-value; the two disagreed
+      # (CI [0.071, 1.031] with p = 0.035). Use coxphf's own profile limits.
+      confidence_intervals <- cbind(model$ci.lower, model$ci.upper)
+      p_values <- model$prob
+      
+        # Create results data frame with all treatment groups
+        results <- data.frame(
+          Group = treatment_groups,
+          HR = NA,
+          CI_Lower = NA,
+          CI_Upper = NA,
+          P_Value = NA,
+          stringsAsFactors = FALSE
+        )
+        
+        # Set reference group values
+        ref_idx <- which(results$Group == reference_group)
+        results$HR[ref_idx] <- 1
+        results$CI_Lower[ref_idx] <- 1
+        results$CI_Upper[ref_idx] <- 1
+        
+        # Fill in values for non-reference groups
+        for (i in seq_along(coefs)) {
+          group_name <- levels(analysis_df$group)[i + 1]  # +1 because first level is reference
+          if(group_name %in% results$Group) {
+            idx <- which(results$Group == group_name)
+            results$HR[idx] <- hazard_ratios[i]
+            results$CI_Lower[idx] <- confidence_intervals[i, 1]
+            results$CI_Upper[idx] <- confidence_intervals[i, 2]
+            results$P_Value[idx] <- p_values[i]
+          }
+        }
+
+        # Fallback: for non-reference groups where coxphf failed to converge
+        # (p_value is NA), compute a pairwise log-rank p-value instead.
+        non_ref_na <- which(results$Group != reference_group & is.na(results$P_Value))
+        for (idx in non_ref_na) {
+          grp <- results$Group[idx]
+          pair_df <- df[df[[treatment_column]] %in% c(reference_group, grp), , drop = FALSE]
+          pair_df[[treatment_column]] <- factor(pair_df[[treatment_column]])
+          tryCatch({
+            pair_formula <- stats::as.formula(
+              paste0("survival::Surv(", time_column, ", ", censor_column, ") ~ ", treatment_column)
+            )
+            lr <- survival::survdiff(pair_formula, data = pair_df)
+            results$P_Value[idx] <- round(1 - stats::pchisq(lr$chisq, df = 1), 4)
+            if (isTRUE(verbose)) message(sprintf(
+              "  Pairwise log-rank p-value used for %s (coxphf did not converge): %.4f",
+              grp, results$P_Value[idx]))
+          }, error = function(e) {
+            warning(sprintf("Could not compute a fallback p-value for %s: %s", grp,
+                            e$message), call. = FALSE)
+          })
+        }
+        
+        return(list(
+          model = model,
+          results = results,
+          method_used = "coxphf"
+        ))
+    } else {
+        stop("Package 'coxphf' is required but not available")
+      }
+    }, error = function(e) {
+      warning("Firth's model failed (", conditionMessage(e), "); using pairwise ",
+              "log-rank tests instead.", call. = FALSE)
+      NULL
+    })
+    
+    if (is.null(results)) {
+      # R20.24: a Firth failure left an empty table, and the median step then
+      # crashed. Fall through to the pairwise log-rank tests, which is also the
+      # only way the permutation log-rank (H.4) is reached when Firth is on.
+      lr <- run_logrank()
+      method_used <- lr$method_used
+      model <- lr$model
+      results <- lr$results
+    } else {
+      method_used <- results$method_used
+      model <- results$model
+      results <- results$results
+    }
+    
+  } else if (has_issues) {
+    lr <- run_logrank()
+    method_used <- lr$method_used
+    model <- lr$model
+    results <- lr$results
     
   } else {
     # Use standard Cox model

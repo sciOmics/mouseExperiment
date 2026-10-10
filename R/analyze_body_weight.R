@@ -149,26 +149,31 @@ analyze_body_weight <- function(df,
   # SE ratio 0.30, n_subjects 8 for 24 mice). Group by the composite key.
   wd$Animal <- factor(wd$.MouseKey)
 
-  first_day <- stats::aggregate(Day ~ .MouseKey, data = wd, FUN = min)
-  names(first_day)[2] <- ".FirstDay"
-  bl_rows <- merge(wd[, c(".MouseKey", "Day", "Net_Weight")], first_day,
-                   by = ".MouseKey")
-  bl_rows <- bl_rows[bl_rows$Day == bl_rows$.FirstDay, , drop = FALSE]
-  baseline <- stats::aggregate(Net_Weight ~ .MouseKey, data = bl_rows,
-                               FUN = mean)
-  names(baseline)[2] <- "Initial_Mass"
-  wd <- merge(wd, baseline, by = ".MouseKey", all.x = TRUE)
 
   # Remove rows with missing response
   wd <- wd[!is.na(wd$Net_Weight) & !is.na(wd$Day), ]
   if (nrow(wd) == 0) stop("No valid weight observations after cleaning.")
 
-  # Set reference group
-  if (!is.null(reference_group) && reference_group %in% levels(wd$Treatment)) {
-    wd$Treatment <- stats::relevel(wd$Treatment, ref = reference_group)
+  # R20.44: the baseline was computed before this filter, from each animal's
+  # first row. Pre-implant weighings (no volume, so no net weight) made it fail
+  # with "no rows to aggregate", and a missing first weight gave the animal a
+  # missing baseline, so lmer silently dropped all of its rows. It is now each
+  # animal's first available weight, and only when it is a covariate.
+  if ("initial_mass" %in% covariates) {
+    baseline <- me_per_mouse_baseline(wd, ".MouseKey", "Net_Weight", "Day",
+                                      out_name = "Initial_Mass")
+    wd <- merge(wd, baseline, by = ".MouseKey", all.x = TRUE)
+    wd <- wd[order(wd$.MouseKey, wd$Day), ]
   }
+
+  # R20.46: shared reference rule. A reference_group that matched no arm used
+  # to be ignored silently, and the first level used instead.
+  reference_group <- me_resolve_reference(wd$Treatment, reference_group,
+                                          "analyze_body_weight")
+  wd$Treatment <- stats::relevel(factor(as.character(wd$Treatment)),
+                                 ref = reference_group)
   # The level the vs_reference contrasts are taken against.
-  ref_level <- levels(wd$Treatment)[1]
+  ref_level <- reference_group
 
   # --- Build formula ---
   # CODE_REVIEW.md R3.10 — `adjust_tumor_weight` and a "volume" covariate are
@@ -212,35 +217,42 @@ analyze_body_weight <- function(df,
   re_full   <- if (has_cage) "(1 + Day | Animal) + (1 | Cage)" else "(1 + Day | Animal)"
   re_simple <- if (has_cage) "(1 | Animal) + (1 | Cage)"        else "(1 | Animal)"
 
-  # Try random slope + intercept first
-  formula_full <- stats::as.formula(
-    paste(response_col, "~", fixed_terms, "+", re_full)
-  )
-  tryCatch({
-    model <- lme4::lmer(formula_full, data = wd, REML = (estimation == "REML"))
-    # Check for singular fit
-    if (lme4::isSingular(model)) {
-      model <- NULL
+  # R20.73: tryCatch() abandoned the full model on ANY warning, and the summary
+  # then said "simplified due to sample size" whatever the cause. Only a
+  # failure, a singular fit or non-convergence now leads to the simpler model;
+  # the reason is recorded, and other warnings are passed on.
+  fit_lmer <- function(f) {
+    w <- character()
+    m <- withCallingHandlers(
+      tryCatch(lme4::lmer(f, data = wd, REML = (estimation == "REML")),
+               error = function(e) { w <<- c(w, conditionMessage(e)); NULL }),
+      warning = function(x) { w <<- c(w, conditionMessage(x)); invokeRestart("muffleWarning") })
+    # R20-T: a failed gradient check is retried from the estimates before
+    # the random slope is given up; under lme4 2.0.6 the shipped data's
+    # model warned spuriously and lost its slopes.
+    rs <- me_lmer_restart(m, w)
+    list(model = rs$fit, warnings = rs$msgs, note = rs$note)
+  }
+  formula_full <- stats::as.formula(paste(response_col, "~", fixed_terms, "+", re_full))
+  full <- fit_lmer(formula_full)
+  simplify_reason <- if (is.null(full$model)) {
+    "the random-slope model could not be fitted"
+  } else if (lme4::isSingular(full$model)) {
+    "the random-slope model was singular (slope variance estimated at zero)"
+  } else if (any(grepl("converge", full$warnings, ignore.case = TRUE))) {
+    "the random-slope model did not converge"
+  } else NULL
+  if (is.null(simplify_reason)) {
+    model <- full$model
+    for (w in full$warnings) warning(w, call. = FALSE)
+  } else {
+    formula_simple <- stats::as.formula(paste(response_col, "~", fixed_terms, "+", re_simple))
+    simple <- fit_lmer(formula_simple)
+    if (is.null(simple$model)) {
+      stop("Mixed model failed to converge: ", paste(simple$warnings, collapse = "; "))
     }
-  }, error = function(e) {
-    model <<- NULL
-  }, warning = function(w) {
-    if (grepl("singular|converge", w$message, ignore.case = TRUE)) {
-      model <<- NULL
-    }
-  })
-
-  # Fallback to random intercept only (still preserves cage RE when present)
-  if (is.null(model)) {
-    formula_simple <- stats::as.formula(
-      paste(response_col, "~", fixed_terms, "+", re_simple)
-    )
-    tryCatch({
-      model <- lme4::lmer(formula_simple, data = wd, REML = (estimation == "REML"))
-      model_simplified <- TRUE
-    }, error = function(e) {
-      stop("Mixed model failed to converge: ", conditionMessage(e))
-    })
+    model <- simple$model
+    model_simplified <- TRUE
   }
 
   # --- Extract results ---
@@ -252,20 +264,35 @@ analyze_body_weight <- function(df,
 
   re <- as.data.frame(lme4::VarCorr(model))
 
-  # Marginal means per treatment.
-  # CODE_REVIEW.md R3.12 — marginalise explicitly at the mean study day so this
-  # matches how tumor_growth_statistics() defines a group's adjusted mean; the
-  # bare `~ Treatment` relied on emmeans' default reference grid, so the two
-  # functions documented the same quantity two different ways.
+  # R20.44 (decided 2026-10-09): the primary comparison is the rate of weight
+  # change (g/day), each arm against the reference, from the Treatment x Day
+  # term. It used to be the weight level at the mean study day, which carried
+  # any baseline imbalance (+1.5 g at baseline showed as a +1 g "effect") and
+  # had power 0.14 where the slope contrast has 0.84. The level comparison is
+  # kept as level_means / level_comparisons.
+  trend_obj <- tryCatch(emmeans::emtrends(model, ~ Treatment, var = "Day"),
+                        error = function(e) NULL)
+  emm <- if (!is.null(trend_obj)) {
+    t <- as.data.frame(trend_obj)
+    names(t)[names(t) == "Day.trend"] <- "Weight_Change_Per_Day"
+    t
+  } else NULL
+  pairwise <- if (!is.null(trend_obj)) {
+    bw_pairwise_table(trend_obj, comparison_spec, ref_level, custom_contrasts)
+  } else NULL
+
+  # Weight level at the mean study day (R3.12), secondary.
   emm_obj <- tryCatch(
     emmeans::emmeans(model, ~ Treatment, at = list(Day = mean(wd$Day))),
     error = function(e) NULL
   )
-  emm <- if (!is.null(emm_obj)) as.data.frame(emm_obj) else NULL
-
-  pairwise <- if (!is.null(emm_obj)) {
+  level_means <- if (!is.null(emm_obj)) as.data.frame(emm_obj) else NULL
+  level_pairwise <- if (!is.null(emm_obj)) {
     bw_pairwise_table(emm_obj, comparison_spec, ref_level, custom_contrasts)
   } else NULL
+
+  n_obs_model  <- stats::nobs(model)
+  n_subj_model <- as.integer(lme4::ngrps(model)[["Animal"]])
 
   # --- Summary text ---
   lines <- c(
@@ -276,13 +303,14 @@ analyze_body_weight <- function(df,
     sprintf("Random effects: %s", if (model_simplified) "(1 | Animal) [simplified]" else "(1 + Day | Animal)"),
     sprintf("Fixed effects: %s", fixed_terms),
     sprintf("Observations: %d  |  Subjects: %d  |  Groups: %d",
-            nrow(wd), length(unique(wd$Animal)), length(levels(wd$Treatment))),
+            n_obs_model, n_subj_model, length(levels(wd$Treatment))),
+    "Comparison: rate of weight change (g/day) vs the reference, from Treatment x Day",
     ""
   )
 
   if (model_simplified) {
     lines <- c(lines,
-      "NOTE: Model simplified due to sample size. Random slope removed; using random intercept only.",
+      paste0("NOTE: random intercept only, because ", simplify_reason, "."),
       "")
   }
 
@@ -306,11 +334,15 @@ analyze_body_weight <- function(df,
   lmm_infl <- build_lmm_influence(model, groups = "Animal")
 
   list(
+    reference_group = reference_group,   # R20.46
     model          = model,
     fixed_effects  = fe,
     random_effects = re,
-    emmeans_table  = emm,
-    pairwise_comparisons = pairwise,
+    estimand       = "difference in rate of weight change (g/day) vs the reference",
+    emmeans_table  = emm,               # weight change per day by arm (R20.44)
+    pairwise_comparisons = pairwise,    # slope differences vs the reference
+    level_means       = level_means,    # weight at the mean study day
+    level_comparisons = level_pairwise,
     comparison_family    = comparison_spec$family,
     p_adjust_method_used = comparison_spec$p_adjust_method,
     model_info     = list(
@@ -318,11 +350,13 @@ analyze_body_weight <- function(df,
       response         = response_col,
       fixed_formula    = fixed_terms,
       model_simplified = model_simplified,
+      simplify_reason  = if (model_simplified) simplify_reason else NA_character_,
+      convergence_note = full$note,   # R20-T: how a gradient warning was checked
       adjust_tumor     = adjust_tumor_weight && has_volume,
       tumor_density    = tumor_density,
       cage_in_model    = has_cage,
-      n_obs            = nrow(wd),
-      n_subjects       = length(unique(wd$Animal)),
+      n_obs            = n_obs_model,     # R20.44: what the model used
+      n_subjects       = n_subj_model,
       n_groups         = length(levels(wd$Treatment))
     ),
     diag_qq_plot             = diag_qq_plot,

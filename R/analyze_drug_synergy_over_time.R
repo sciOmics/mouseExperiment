@@ -361,7 +361,10 @@ plot_synergy_trend <- function(synergy_results, custom_title = NULL, custom_colo
     ggplot2::scale_color_manual(
       name = "Treatment",
       values = color_values,
-      labels = c(drug_a_name, drug_b_name, combo_name, "Bliss Expected")
+      # R20.48: an unnamed `labels` vector was applied to the breaks in
+      # alphabetical order, so the Drug A line could be labelled "Combo".
+      # The breaks are the colours' names; each line keeps its own label.
+      breaks = if (!is.null(names(color_values))) names(color_values) else ggplot2::waiver()
     ) +
     # Manual legend for ribbon areas
     ggplot2::annotate("rect",

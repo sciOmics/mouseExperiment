@@ -26,7 +26,8 @@
 #'   When supplied and \code{include_cage_effect = TRUE}, a cage-level
 #'   frailty (\code{(1 | cage)}) is added to account for between-cage
 #'   heterogeneity.
-#' @param dose_column Reserved for future use; currently ignored.
+#' @param dose_column Optional dose column. A treatment given at more than one
+#'   dose is analysed as one arm per dose (CODE_REVIEW.md R20.30).
 #' @param family Parametric distribution for event times:
 #'   \describe{
 #'     \item{\code{"weibull"}}{(default) Flexible — handles increasing,
@@ -230,6 +231,12 @@ bayesian_survival <- function(
     stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
   }
 
+  # R20.30: one arm per dose when a treatment has several (dose_column was ignored).
+  if (!is.null(dose_column)) {
+    df[[treatment_column]] <- me_arms_with_dose(df[[treatment_column]], df, dose_column,
+                                                "bayesian_survival")
+  }
+
   # ── Internal column names (CODE_REVIEW.md R20.43, dashboard R20.D8) ────────
   # brms rejects non-syntactic names and double underscores, which is why every
   # fit on the dashboard's volume-derived events (".__DerivedTime") failed.
@@ -273,13 +280,10 @@ bayesian_survival <- function(
   use_cage_re  <- isTRUE(include_cage_effect) && !no_cage_mode
 
   # ── Reference group ────────────────────────────────────────────────────────
+  # R20.46: shared reference rule (see me_resolve_reference()).
   treatment_groups <- unique(as.character(df[[treatment_column]]))
-  if (is.null(reference_group)) {
-    reference_group <- sort(treatment_groups)[1]
-  } else if (!reference_group %in% treatment_groups) {
-    stop("Reference group '", reference_group,
-         "' not found in treatment column.")
-  }
+  reference_group <- me_resolve_reference(treatment_groups, reference_group,
+                                          "bayesian_survival")
 
   df[[treatment_column]] <- stats::relevel(
     factor(df[[treatment_column]]), ref = reference_group

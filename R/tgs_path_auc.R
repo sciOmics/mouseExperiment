@@ -64,7 +64,8 @@ tgs_path_auc <- function(auc_analysis,
                          treatment_column,
                          cage_column,
                          time_column,
-                         volume_column) {
+                         volume_column,
+                         zero_floor_info) {
 
   if (isTRUE(auc_bootstrap_n > 0) || isTRUE(auc_permutations > 0)) {
     warning("auc_bootstrap_n and auc_permutations are ignored: since v0.26.0 ",
@@ -208,7 +209,8 @@ tgs_path_auc <- function(auc_analysis,
         "arms with different attrition."),
       growth_rate_calculation = paste0(
         "Growth rates are calculated by fitting a linear regression model to log-transformed volume data over time for each subject ",
-        "(non-positive volumes are replaced with half the smallest positive value before the log). ",
+        "(zero volumes take the fixed floor, ", zero_floor_info$value, " ",
+        zero_floor_info$units, ", before the log). ",
         "The slope coefficient from this model represents the exponential growth rate. ",
         "A value of 0.1 indicates approximately 10% tumor volume increase per day. ",
         "Only subjects with 3 or more time points are included in growth rate calculations."

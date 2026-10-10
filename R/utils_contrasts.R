@@ -248,3 +248,16 @@ me_pairwise_frame <- function(x, comparison_spec = NULL,
   }
   df
 }
+
+# emmeans names its interval columns lower.CL/upper.CL with finite degrees of
+# freedom, asymp.LCL/asymp.UCL once the data pass lmerTest.limit (3,000 rows)
+# and asymptotic df are used, and lower.HPD/upper.HPD for Bayesian fits.
+# Reading only lower.CL made the default path fail above 3,000 rows (R20.25).
+me_emm_limits <- function(s) {
+  s  <- as.data.frame(s)
+  lo <- intersect(c("lower.CL", "asymp.LCL", "lower.HPD"), names(s))[1]
+  hi <- intersect(c("upper.CL", "asymp.UCL", "upper.HPD"), names(s))[1]
+  na <- rep(NA_real_, nrow(s))
+  list(lower = if (is.na(lo)) na else s[[lo]], upper = if (is.na(hi)) na else s[[hi]],
+       columns = c(lo, hi))
+}

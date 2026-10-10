@@ -228,11 +228,12 @@ weight_loss_threshold <- function(df,
     survival::survfit(survival::Surv(Time, Status_MS) ~ Treatment, data = cr_df)
   }, error = function(e) NULL)
 
-  # Set reference group
-  event_df$Treatment <- as.factor(event_df$Treatment)
-  if (!is.null(reference_group) && reference_group %in% levels(event_df$Treatment)) {
-    event_df$Treatment <- stats::relevel(event_df$Treatment, ref = reference_group)
-  }
+  # R20.46: shared reference rule (a reference_group matching no arm used to
+  # be ignored silently).
+  reference_group <- me_resolve_reference(event_df$Treatment, reference_group,
+                                          "weight_loss_threshold")
+  event_df$Treatment <- stats::relevel(factor(as.character(event_df$Treatment)),
+                                       ref = reference_group)
 
   # --- Kaplan-Meier ---
   km_fit <- survival::survfit(
@@ -302,6 +303,7 @@ weight_loss_threshold <- function(df,
   }
 
   list(
+    reference_group = reference_group,   # R20.46
     event_data   = event_df,
     km_fit       = km_fit,
     cuminc            = cuminc,

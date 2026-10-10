@@ -32,7 +32,9 @@ tumor_growth_statistics(
   auc_bootstrap_n = 0L,
   auc_bootstrap_seed = NULL,
   auc_permutations = 0L,
-  permutation_test = NULL
+  permutation_test = NULL,
+  volume_units = c("mm3", "cm3"),
+  zero_floor = NULL
 )
 }
 \arguments{
@@ -189,6 +191,17 @@ denominator-df approximation nor normal random effects — but it is only valid
 if \code{unit} matches how the study actually randomised, so the unit is an
 explicit choice rather than a default. See \code{\link{perm_spec}}.
 CODE_REVIEW.md H.3.}
+
+\item{volume_units}{Units of the volume column, \code{"mm3"} (default) or
+\code{"cm3"}. Used for the zero floor, and to warn when the volumes do not
+look like the declared units.}
+
+\item{zero_floor}{On the log scale, the value that replaces a zero (or
+negative) volume, in the volume column's units. Default \code{NULL}: 2 mm3
+(half a just-palpable 2 x 2 mm tumour, about 4 mm3), i.e. 0.002 cm3. It is
+reported as \code{zero_floor} in the result. Until v0.30.0 zeros became
+half the smallest positive volume in the data, so one small reading in one
+arm changed another arm's estimate (CODE_REVIEW.md R20.32).}
 }
 \value{
 A list containing the following components:

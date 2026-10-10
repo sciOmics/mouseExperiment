@@ -5,6 +5,90 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.0] - 2026-10-09
+
+The last nine Round 20 Majors, with the maintainer's four decisions
+(`CODE_REVIEW.md` R20-T). Several outputs change shape; see **Breaking**.
+
+### Breaking
+
+- **The reference arm is the control, found by name (R20.46).** Tumour
+  growth, survival, body weight, both Bayesian functions, the therapeutic
+  window and the weight-loss threshold used to take the alphabetically first
+  arm, often a treated one ("aPD1" in the combination data). They now
+  recognise the control by name (control, vehicle, DMSO, PBS, saline,
+  untreated, placebo, isotype, IgG…), also inside longer names such as
+  "Vehicle (10% DMSO)", and say which arm they used. If no arm or several
+  arms look like a control, they stop and ask for `reference_group`. A
+  `reference_group` that is not an arm is an error; it used to be replaced
+  silently.
+- **Tumour-growth ANOVA table (R20.31).** The "Treatment" row tested the arms'
+  difference at day 0, so its p-value depended on where time was counted
+  from (0.86 from randomisation, 7e-26 from implantation, same data). The
+  table now leads with `Treatment:Day` (do growth rates differ?), then
+  "Treatment (at day X)" at the mean study day, then "Day" (the average growth
+  rate). A new `Tests` column says what each row tests in plain words.
+- **Body weight compares rates of weight change (R20.44).** `emmeans_table`
+  holds each arm's `Weight_Change_Per_Day`, and `pairwise_comparisons` the
+  slope differences against the reference. The old comparison, weight at the
+  mean day, moved with any baseline imbalance and had a power of 0.14 against
+  0.84. It is kept as `level_means` and `level_comparisons`.
+- **`apriori_power_simulation()` output (R20.33).** It used a likelihood-ratio
+  test that rejected 9% of the time under the null at n = 5 and, for three or
+  more arms, reported omnibus power. It now fits the default tumour-growth
+  model and tests each arm against the control at alpha/(k−1) (Satterthwaite),
+  holding its size (0.050 at n = 5). New columns: `Alpha_Per_Comparison`,
+  `Power_Lower`/`Power_Upper` (Wilson 95%), `Power_Any`, `Power_All`,
+  `Power_Omnibus` and `N_Failed`. New argument `p_adjust_method`.
+- **Survival events must be coded 0/1 (R20.63).** Coding 1/2 used to be
+  summed into the event counts (an event rate of 1.8), and text codes failed
+  obscurely. Rows with a missing time or event are dropped with a warning,
+  and data with no events stop.
+
+### Fixed
+
+- **Zero volumes on the log scale take a fixed floor (R20.32).** A zero was
+  set to half the smallest positive volume in the data, so one small
+  reading in one arm moved another arm's estimate. The floor is now 2 mm³
+  (half a just-palpable 2 × 2 mm tumour), or 0.002 cm³. New arguments
+  `volume_units` and `zero_floor` in `tumor_growth_statistics()` and
+  `bayesian_tumor_growth()`, and `zero_floor` in
+  `trajectory_permutation_test()`. The value used is in `$zero_floor`. A
+  warning appears when the volumes look like the wrong units, or when more
+  than 20% are zero.
+- **Arguments that changed nothing (R20.30).** `necrotic_handling = "exclude"`
+  now reaches the AUC, growth rates and the permutation test, not only the
+  mixed model. `dose_column` analyses a treatment given at several doses as
+  one arm per dose ("HDACi 10", "HDACi 50"); before, the doses were pooled.
+  `calculate_volume()` replaces an existing `Volume` column (it appended a
+  second one) and accepts tibbles. `apriori_power_analysis()` warns when
+  `n_comparisons` has no effect.
+- **Cage random effect (R20.25).** One arm housed in a single cage, or an
+  unused factor level, dropped `(1|Cage)` for the whole study, raising the
+  null false-positive rate from about 0.03 to 0.16–0.29. A new structure,
+  `nested_partial`, keeps the cage effect and names the single-cage arms.
+  Data with more than 3,000 rows no longer crash the default path.
+- **Survival (R20.24, R20.64).** Firth intervals are coxphf's profile-likelihood
+  limits; they were Wald intervals printed beside profile p-values. A Firth
+  failure falls through to the pairwise log-rank tests instead of an empty
+  table and a crash. `verbose = FALSE` prints nothing.
+- **Body-weight details (R20.44, R20.73).** A missing first weight no longer
+  drops the animal from the baseline-adjusted model. The simpler model is used
+  only after a failure, a singular fit or non-convergence, and the summary
+  gives the real reason instead of blaming sample size.
+- **`plot_synergy_trend()` legend (R20.48).** Labels were attached to the wrong
+  colours (Drug A was labelled "Drug_B").
+- **Power simulation fallback (R20.72).** It is replaced along with the test
+  (R20.33).
+- **A false convergence warning dropped the random slopes.** lme4's gradient
+  check fails spuriously on some data, versions and platforms. It sent the
+  shipped data's body-weight model to a random intercept: the Drug_B rate
+  difference was −0.0068 g/day instead of −0.0111. The fits had reached the
+  optimum (same log-likelihood). Tumour growth and body weight now check such
+  a warning before falling back. First they restart from the estimates. Then
+  they refit with another optimizer, and use that fit if it converges, or keep
+  the first fit when both reach the same optimum. Body weight reports the check in `model_info$convergence_note`.
+
 ## [0.29.0] - 2026-10-09
 
 The Round 20 process items (`CODE_REVIEW.md` R20-S): `R CMD check` passes,
