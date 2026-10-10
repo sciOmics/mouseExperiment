@@ -24,6 +24,9 @@
 #'   \code{\link{analyze_drug_synergy}}. Under the model estimand one endpoint
 #'   model is fitted and evaluated on every day.
 #' @param verbose Logical. If TRUE, prints detailed results to the console.
+#' @param volume_units,zero_floor The units of the volume column, \code{"mm3"}
+#'   (default) or \code{"cm3"}, and the volume a regression to zero takes on the
+#'   endpoint model's log scale: 2 mm3 or 0.002 cm3 unless set (R20.32, R20-W).
 #'        Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.
 #'
 #' @return A list containing the following components:
@@ -96,9 +99,13 @@ analyze_drug_synergy_over_time <- function(df,
                                       endpoint_method = c("model", "last_obs", "survivors"),
                                       n_boot = 2000L,
                                       boot_seed = NULL,
-                                      verbose = TRUE) {
+                                      verbose = TRUE,
+                                      volume_units = c("mm3", "cm3"),
+                                      zero_floor = NULL) {
 
   endpoint_method <- match.arg(endpoint_method)
+  volume_units <- match.arg(volume_units)
+  floor_value  <- me_zero_floor(volume_units, zero_floor)
 
   # Input validation
   required_columns <- c(treatment_column, volume_column, time_column, id_column)
@@ -155,7 +162,9 @@ analyze_drug_synergy_over_time <- function(df,
 
   # One endpoint model for every day, so the days are estimates from the same
   # fit rather than from a refit per day.
-  endpoint_model <- if (endpoint_method == "model") me_endpoint_model(d_std) else NULL
+  endpoint_model <- if (endpoint_method == "model") {
+    me_endpoint_model(d_std, floor_value, volume_units, "analyze_drug_synergy_over_time")
+  } else NULL
 
   if (isTRUE(verbose)) {
     message("Analyzing drug synergy across ", length(all_timepoints),
@@ -172,7 +181,7 @@ analyze_drug_synergy_over_time <- function(df,
         time_column = time_column, volume_column = volume_column,
         cage_column = cage_column, endpoint_day = tp,
         endpoint_method = endpoint_method, arms = arms,
-        model = endpoint_model)
+        model = endpoint_model, zero_floor = floor_value, volume_units = volume_units)
       synergy_results <- me_synergy_from_endpoint(
         ep, control_name = control_name, drug_a_name = drug_a_name,
         drug_b_name = drug_b_name, combo_name = combo_name,

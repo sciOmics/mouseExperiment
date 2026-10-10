@@ -5827,3 +5827,44 @@ After this step every Round 20 Minor (R20.56–R20.75) is closed. Two were alrea
 
 **Tests:** 12 in `test-code_review_round20_minors.R`. Each fails on v0.31.0, which was checked by running the file against a worktree of that version.
 
+## R20-W Implementation log — v0.33.0: the endpoint model's floor, and centred time (2026-10-10)
+
+The two follow-ups recorded in R20-T.
+
+**The endpoint model's zero floor.**
+- **The problem.** `me_endpoint_model()` set a regression to zero (a zero after a positive measurement) to the smallest positive volume in the study. That value moves with any small reading in any arm, which R20.32 had removed from tumour growth.
+- **The fix.** It now uses `me_floor_zeros()` with the fixed floor, so the regression takes 2 mm³ (0.002 cm³) and R20.32's warnings about units and many zeros apply. Only non-positive values are floored: a measured 0.5 mm³ is kept, where `pmax()` would have raised it.
+- **Where the floor comes from:**
+  - `endpoint_volumes()` takes `zero_floor` and `volume_units`;
+  - the tumour-growth AUC path passes its own floor;
+  - `analyze_drug_synergy()`, `analyze_drug_synergy_over_time()` and `dose_response_statistics()` gain `volume_units` (default mm³) and `zero_floor`;
+  - `therapeutic_window_metric()` gains `zero_floor` and uses its `volume_units`, mm³ when that is `NULL`.
+- **Metadata.** `endpoint_model$detection_limit` reports the floor.
+
+**Centred time in the tumour-growth fit.**
+- **The problem.** With correlated random slopes on uncentred time, the intercept and slope are strongly correlated and the optimizer could stop short.
+- **The fix.** For the default `slope` structure, `me_centred_start()` (`R/utils_lmer.R`):
+  1. fits the same model with time centred at the mean study day;
+  2. maps its random-effect covariance back to the original origin (b0 = b0' − c·b1, so Σ = AΣ'Aᵀ with A = [[1, −c], [0, 1]]);
+  3. passes the result as the starting theta to the model as written.
+- **What does not change.** The model, its coefficients, contrasts and ANOVA keep their meaning; only the optimizer's starting point changes. Uncorrelated slopes are not centred, because centring would change that model.
+
+**Executed (shipped data, counted from randomisation and from implantation, +14 days):**
+
+| | Log-likelihood | Treatment-row F | Max slope difference |
+|---|---|---|---|
+| v0.32.0 | 366.4457 / 365.9319 | 92.06 / 112.69 | 1.2e-5 |
+| v0.33.0 | 366.4457 / 366.4457 | 92.07 / 92.07 | 1.2e-8 |
+
+**Tests:**
+- **New:** 4 in `test-code_review_round20_followups.R`, each failing on v0.32.0:
+  - the default fit is the same counted from either origin;
+  - the starting theta reproduces the plain fit's optimum;
+  - a regression takes 2 mm³ while a measured 0.5 mm³ is kept;
+  - the floor reaches synergy's estimate, and the new arguments exist.
+- **Adapted:** the R20.3 reused-ID test compared two equivalent fits' covariance at 1e-6. Both fits now start at the optimum and stop within the optimizer's tolerance, so they differ by about 6e-6 while their log-likelihoods agree to 1e-9. The test now checks the log-likelihood at 1e-8 and the covariance at 1e-4.
+
+**Also (dashboard R20.D60):** `analyze_drug_synergy()$synergy_metrics` reported the Bliss difference as a raw fraction in a text column. The row is now "Bliss Difference (percentage points)", formatted to one decimal. A fifth test checks it.
+
+**Status:** both follow-ups from R20-T are closed. R20.77 stays in part (R20-V).
+

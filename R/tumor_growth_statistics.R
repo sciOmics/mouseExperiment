@@ -323,10 +323,17 @@ tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
   model <- NULL; used <- NA_character_; failures <- character(0)
   for (nm in tries) {
     msgs <- character(0)
+    f_nm <- stats::as.formula(paste(fixed_part, "+", re_terms[[nm]], cage_re))
+    # R20-W: correlated slopes start from a fit on time centred at the mean
+    # day, mapped back; the model and its estimates are those of f_nm.
+    start_theta <- if (nm == "slope") {
+      me_centred_start(f_nm, analysis_df, time_column, id_column,
+                       shift = mean(analysis_df[[time_column]], na.rm = TRUE), control = ctrl)
+    }
     fit <- tryCatch(
       withCallingHandlers(
-        lme4::lmer(stats::as.formula(paste(fixed_part, "+", re_terms[[nm]], cage_re)),
-                   data = analysis_df, control = ctrl),
+        lme4::lmer(f_nm, data = analysis_df, control = ctrl,
+                   start = if (!is.null(start_theta)) list(theta = start_theta)),
         warning = function(w) {
           msgs <<- c(msgs, conditionMessage(w))
           invokeRestart("muffleWarning")

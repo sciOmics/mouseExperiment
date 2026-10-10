@@ -93,3 +93,45 @@ me_lmer_restart <- function(fit, msgs, env = parent.frame()) {
     "lme4's gradient check failed and was upheld: a restart warned again, and ",
     "the ", ctrl$optimizer, " optimizer could not fit the model."))
 }
+
+# Starting values from a fit on centred time -- CODE_REVIEW.md R20-W
+#
+# With correlated random slopes on uncentred time the intercept and slope are
+# strongly correlated, and the optimiser could stop short: counting the same
+# data from implantation instead of randomisation (+14 days) gave
+# log-likelihood 366.45 against 365.93, which moved the standard errors. The
+# model is fitted first with time centred at `shift`, where it is well
+# conditioned. Its random-effect covariance is mapped back to the original
+# origin -- b0 = b0' - shift * b1, so Sigma = A Sigma' A' with
+# A = [[1, -shift], [0, 1]] -- and returned as the starting theta for the
+# model as written, which therefore starts at the optimum. The model and
+# everything reported from it are unchanged; only where the optimiser starts.
+
+#' Starting theta for a correlated random-slope model, from centred time
+#'
+#' @param formula The model formula (time enters as `time_column`).
+#' @param data The data.
+#' @param time_column,id_column The time variable and the animal grouping.
+#' @param shift Where time is centred (the mean study day).
+#' @param control An `lmerControl()`.
+#' @return A theta vector for `lmer(start = list(theta = ...))`, or NULL.
+#' @noRd
+#' @keywords internal
+me_centred_start <- function(formula, data, time_column, id_column, shift, control) {
+  if (!is.finite(shift) || shift == 0) return(NULL)
+  dc <- data
+  dc[[time_column]] <- dc[[time_column]] - shift
+  fc <- tryCatch(suppressWarnings(suppressMessages(
+    lme4::lmer(formula, data = dc, control = control))), error = function(e) NULL)
+  if (is.null(fc)) return(NULL)
+  th <- lme4::getME(fc, "theta")
+  S  <- tryCatch(as.matrix(lme4::VarCorr(fc)[[id_column]]), error = function(e) NULL)
+  if (is.null(S) || !identical(rownames(S), c("(Intercept)", time_column))) return(NULL)
+  A  <- matrix(c(1, 0, -shift, 1), 2L)
+  L  <- tryCatch(t(chol(A %*% S %*% t(A))) / stats::sigma(fc), error = function(e) NULL)
+  if (is.null(L)) return(NULL)
+  idx <- startsWith(names(th), paste0(id_column, "."))
+  if (sum(idx) != 3L) return(NULL)
+  th[idx] <- L[lower.tri(L, diag = TRUE)]
+  unname(th)
+}

@@ -21,7 +21,9 @@ analyze_drug_synergy(
   additivity_margin = 0.1,
   n_boot = 2000L,
   boot_seed = NULL,
-  verbose = TRUE
+  verbose = TRUE,
+  volume_units = c("mm3", "cm3"),
+  zero_floor = NULL
 )
 }
 \arguments{
@@ -84,7 +86,11 @@ is reported, not the median of the draws. Default 2000. Set 0 to skip.}
 
 \item{boot_seed}{Optional integer seed for reproducible resampling.}
 
-\item{verbose}{Logical. If TRUE, prints detailed results to the console.
+\item{verbose}{Logical. If TRUE, prints detailed results to the console.}
+
+\item{volume_units, zero_floor}{The units of the volume column, \code{"mm3"}
+(default) or \code{"cm3"}, and the volume a regression to zero takes on the
+endpoint model's log scale: 2 mm3 or 0.002 cm3 unless set (R20.32, R20-W).
 Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.}
 }
 \value{
