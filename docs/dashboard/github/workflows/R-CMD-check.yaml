@@ -9,12 +9,12 @@
 # man/ is not tracked here.
 name: R-CMD-check
 
+# Started by hand only. This repository is private, and GitHub Actions minutes
+# for it are not paid for (decided 2026-10-10): run on every push and pull
+# request, the job never started and marked each one failed. Run the suite
+# locally instead (CONTRIBUTING.md); this workflow is kept for when Actions is
+# available.
 on:
-  push:
-    branches: [staging, production]
-  pull_request:
-  schedule:
-    - cron: "23 5 * * 1"
   workflow_dispatch:
 
 permissions:

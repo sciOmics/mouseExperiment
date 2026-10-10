@@ -255,7 +255,10 @@ Keep these in sync with the code. When you change cookie attributes, update SECU
    - Title: matches the commit-message convention (`feat:`, `fix:`, etc.)
    - Body: same shape as the commit body (the *why*); for multi-commit PRs, summarize the sequence
    - Linked CODE_REVIEW.md item ID if applicable
-4. CI runs (test suite + R CMD check)
+4. Run the test suite locally against the backend of the target branch:
+   `devtools::test()`, with that branch of mouseExperiment installed. GitHub
+   Actions is not paid for on this private repository, so
+   `.github/workflows/R-CMD-check.yaml` runs only when started by hand.
 5. Self-review for:
    - Tests cover new behavior
    - No code or comments leak the F.7 sid
