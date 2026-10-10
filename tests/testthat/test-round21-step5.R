@@ -24,7 +24,7 @@ demo_csv <- function(f) {
 
 master_rv <- function(...) {
   shiny::reactiveValues(
-    uploaded_data = demo_csv("master_synthetic_data.csv"), data_valid = TRUE,
+    uploaded_data = demo_csv("all_features_synthetic_data.csv"), data_valid = TRUE,
     session_id = NULL,
     settings = utils::modifyList(list(
       col_id = "ID", col_day = "Day", time_method = "day", col_volume = "Volume",
@@ -150,7 +150,7 @@ test_that("R20.19: the Synergy verdict rests on the interval, and says so withou
 # ---- R20.D47 / R20.D49: dose-response ----------------------------------------------
 
 test_that("R20.D47: a dose series is suggested from the arm names, or left to the user", {
-  m <- demo_csv("master_synthetic_data.csv")
+  m <- demo_csv("all_features_synthetic_data.csv")
   arms <- setdiff(sort(unique(m$Treatment)), "Vehicle")
   expect_setequal(g("guess_dose_series")(m, "Treatment", "Dose", arms),
                   c("Drug_A Low", "Drug_A Mid", "Drug_A High"))

@@ -13,6 +13,11 @@
 #
 # These tests close the loop in both directions: every file that ships must be
 # reachable, and every loader entry must resolve to a file that actually parses.
+#
+# 2026-10-09: the "Simple" and "Necrotic" demos were removed, the others were
+# given short names, and "Master" became "All Features" (listed last), with a
+# removal-reason column so every module, including the reason-dependent
+# options, has data to show.
 # =============================================================================
 
 sample_dir <- function() {
@@ -64,34 +69,45 @@ test_that("D.12: every loader entry resolves to a file that parses", {
   }
 })
 
-test_that("D.12: the master demo exercises every optional column", {
-  # Its whole reason for being added: one dataset that reaches every module, so
-  # a new user can see the app work without supplying their own data. If a
-  # column is ever dropped from it, the demo quietly stops covering a module.
-  p <- file.path(sample_dir(), "master_synthetic_data.csv")
-  skip_if_not(file.exists(p), "master demo not present")
+test_that("D.12: the All Features demo exercises every optional column", {
+  # Its whole reason for being: one dataset that reaches every module, so a new
+  # user can see the app work without supplying their own data. If a column is
+  # ever dropped from it, the demo quietly stops covering a module.
+  p <- file.path(sample_dir(), "all_features_synthetic_data.csv")
+  skip_if_not(file.exists(p), "All Features demo not present")
   d <- validate_uploaded_file(p, "csv")$data
   dc <- detect_columns(colnames(d))
 
-  for (role in c("id", "day", "volume", "treatment", "cage", "weight",
-                 "dose", "necrotic", "survival_event", "length", "width")) {
-    expect_false(is.null(dc[[role]]), info = paste("master demo lost:", role))
+  for (role in c("id", "day", "volume", "treatment", "cage", "weight", "dose",
+                 "necrotic", "survival_event", "length", "width", "removal_reason")) {
+    expect_false(is.null(dc[[role]]), info = paste("All Features demo lost:", role))
   }
   # Height is what makes the 3-axis ellipsoid formula demonstrable; it has no
   # detect_columns role, so assert the column directly.
   expect_true("Height" %in% colnames(d))
   expect_gt(length(unique(d$Treatment)), 4L)
+
+  # Each reason-dependent option needs at least one animal to act on: deaths
+  # (Survival's "count deaths as events"), weight-loss removals (Toxicity), and
+  # the limit and planned-end removals they are told apart from.
+  reasons <- removal_reason_values(d, dc$removal_reason)
+  expect_setequal(unique(guess_removal_category(reasons)),
+                  c("limit", "death", "weight", "planned"))
 })
 
-test_that("D.12: the simple demo is genuinely minimal but sufficient", {
-  p <- file.path(sample_dir(), "synthetic_data.csv")
-  skip_if_not(file.exists(p), "simple demo not present")
-  d <- validate_uploaded_file(p, "csv")$data
-  dc <- detect_columns(colnames(d))
-  for (role in c("id", "day", "volume", "treatment")) {
-    expect_false(is.null(dc[[role]]), info = paste("simple demo lost:", role))
-  }
-  expect_gte(length(unique(d$Treatment)), 2L)
+test_that("Demo selector: four short names, All Features last", {
+  # 2026-10-09: "Simple" and "Necrotic" were removed, the parenthetical
+  # descriptions dropped, and "Master" renamed "All Features" and moved last.
+  src <- paste(readLines(testthat::test_path("..", "..", "R", "ui_modules.R"),
+                         warn = FALSE), collapse = "\n")
+  blk <- regmatches(src, regexpr('"-- Select a demo dataset --" = ""[\\s\\S]*?\\n                \\)',
+                                 src, perl = TRUE))
+  skip_if(length(blk) != 1L, "demo_dataset choices not locatable")
+  labels <- sub('^"([^"]+)".*', "\\1",
+                regmatches(blk, gregexpr('"[^"]+"\\s*=\\s*"[a-z_]+"', blk))[[1]])
+  expect_identical(labels, c("Combo Treatment", "Dose Levels", "Weight", "All Features"))
+  for (f in c("synthetic_data.csv", "necrotic_synthetic_data.csv", "master_synthetic_data.csv"))
+    expect_false(file.exists(file.path(sample_dir(), f)), info = paste("still shipped:", f))
 })
 
 test_that("D.12: the UI selector offers exactly what the loader knows", {

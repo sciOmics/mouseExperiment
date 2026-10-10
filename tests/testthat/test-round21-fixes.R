@@ -16,7 +16,7 @@ render_text <- function(x) {
 }
 
 master_rv <- function(...) {
-  path <- system.file("sample_data", "master_synthetic_data.csv",
+  path <- system.file("sample_data", "all_features_synthetic_data.csv",
                       package = "mouseExperimentDashboard")
   shiny::reactiveValues(
     uploaded_data = utils::read.csv(path, stringsAsFactors = FALSE),
@@ -117,7 +117,7 @@ test_that("R20.D4: Tumor Growth reports a bad reference date and stops running",
 
 test_that("R20.D19: the survival forest-plot download produces a PNG", {
   expect_true(exists("build_surv_forest_plot", envir = .pkg, inherits = FALSE))
-  # The master demo has arms with few events, so coxph warns about convergence.
+  # The All Features demo has arms with few events, so coxph warns about convergence.
   suppressWarnings(shiny::testServer(g("survival_server"), args = list(rv = master_rv()), {
     shiny::isolate(g("ensure_preprocessed")(rv))
     session$setInputs(run_surv_analysis = 1)

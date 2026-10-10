@@ -195,7 +195,7 @@ test_that("the full dashboard starts a working session", {
 
   # And the modules respond: loading a demo maps the weight column.
   app$run_js("$('.modal-footer button').click();")
-  app$set_inputs(`data-demo_dataset` = "master", wait_ = FALSE)
+  app$set_inputs(`data-demo_dataset` = "all_features", wait_ = FALSE)
   app$click("data-load_demo_data")
   app$wait_for_js("$('#data-col_weight').val() === 'Weight'", timeout = 30000)
   expect_true(isTRUE(app$get_js("Shiny.shinyapp.isConnected()")))

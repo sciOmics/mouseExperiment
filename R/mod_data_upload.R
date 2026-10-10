@@ -49,23 +49,11 @@ data_upload_server <- function(id, rv) {
   observeEvent(input$load_demo_data, {
     req(nzchar(input$demo_dataset))
 
-    # D.12: `master` and `simple` were shipped by the backend but had no CSV here
-    # and no entry in this list, so neither could ever be loaded. `master` is the
-    # most complete dataset in the package — 619 rows carrying Length/Width/Height,
-    # Weight, Dose, Cage, Necrotic and Survival_Censor across six arms — which
-    # makes it the only demo that exercises every module without the user having
-    # to supply their own data.
+    # `all_features` (formerly "Master", D.12) is the only demo that exercises
+    # every module without the user supplying data: 604 rows across six arms with
+    # Length/Width/Height, Weight, Dose, Cage, Necrotic, Survival_Censor and
+    # Removal_Reason. The "Simple" and "Necrotic" demos were removed 2026-10-09.
     demo_files <- list(
-      master = list(
-        data     = "master_synthetic_data.csv",
-        ref_date = "",
-        label    = "Master demo (all features)"
-      ),
-      simple = list(
-        data     = "synthetic_data.csv",
-        ref_date = "",
-        label    = "Simple demo (3 arms)"
-      ),
       combo = list(
         data     = "combo_treatment_synthetic_data.csv",
         ref_date = "2025-03-24",
@@ -76,15 +64,15 @@ data_upload_server <- function(id, rv) {
         ref_date = "2025-03-24",
         label    = "Dose Levels demo"
       ),
-      necrotic = list(
-        data     = "necrotic_synthetic_data.csv",
-        ref_date = "",
-        label    = "Necrotic Data demo"
-      ),
       weight = list(
         data     = "weight_synthetic_data.csv",
         ref_date = "2025-03-01",
-        label    = "Weight Data demo"
+        label    = "Weight demo"
+      ),
+      all_features = list(
+        data     = "all_features_synthetic_data.csv",
+        ref_date = "",
+        label    = "All Features demo"
       )
     )
 
