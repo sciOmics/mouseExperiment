@@ -5864,5 +5864,7 @@ The two follow-ups recorded in R20-T.
   - the floor reaches synergy's estimate, and the new arguments exist.
 - **Adapted:** the R20.3 reused-ID test compared two equivalent fits' covariance at 1e-6. Both fits now start at the optimum and stop within the optimizer's tolerance, so they differ by about 6e-6 while their log-likelihoods agree to 1e-9. The test now checks the log-likelihood at 1e-8 and the covariance at 1e-4.
 
+**Also (dashboard R20.D60):** `analyze_drug_synergy()$synergy_metrics` reported the Bliss difference as a raw fraction in a text column. The row is now "Bliss Difference (percentage points)", formatted to one decimal. A fifth test checks it.
+
 **Status:** both follow-ups from R20-T are closed. R20.77 stays in part (R20-V).
 

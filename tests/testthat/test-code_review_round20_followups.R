@@ -80,3 +80,15 @@ test_that("R20-W: synergy, dose-response and the therapeutic window take the flo
   expect_true(all(c("volume_units", "zero_floor") %in% names(formals(dose_response_statistics))))
   expect_true("zero_floor" %in% names(formals(therapeutic_window_metric)))
 })
+
+# ---- Dashboard R20.D60: the Bliss difference in percentage points ---------------
+
+test_that("R20.D60: the synergy metrics report the Bliss difference in percentage points", {
+  r <- quiet(analyze_drug_synergy(m, drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
+    combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle", cage_column = "Cage",
+    n_boot = 0, verbose = FALSE))
+  sm <- r$synergy_metrics
+  expect_identical(sm$Metric[1], "Bliss Difference (percentage points)")
+  # v0.32.0 put the raw fraction here ("0.0179841522745299").
+  expect_equal(as.numeric(sm$Value[1]), round(100 * r$bliss_independence$difference, 1))
+})

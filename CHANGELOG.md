@@ -29,6 +29,10 @@ The two Round 20 follow-ups (`CODE_REVIEW.md` R20-W).
   centred at the mean day, and the original model starts from that optimum.
   The model and what is reported from it are unchanged: both origins now give
   366.4457 and F = 92.07.
+- **The single-day synergy metrics showed the Bliss difference as a raw
+  fraction** ("0.0179841522745299"), where everything else uses percentage
+  points (dashboard R20.D60). It is now "Bliss Difference (percentage
+  points)", rounded to one decimal.
 
 ## [0.32.0] - 2026-10-10
 

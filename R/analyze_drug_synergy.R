@@ -379,9 +379,12 @@ me_synergy_from_endpoint <- function(ep, control_name, drug_a_name, drug_b_name,
     Fractional_Effect = c(fe_a, fe_b, fe_combo, bliss_expected_fe)
   )
 
+  # Dashboard R20.D60: the difference was a raw fraction in a text column
+  # ("0.0179841522745299") where everything else is in percentage points.
   synergy_metrics <- data.frame(
-    Metric = c("Bliss Difference", "Interpretation"),
-    Value = c(bliss_difference, synergy_label)
+    Metric = c("Bliss Difference (percentage points)", "Interpretation"),
+    Value = c(if (is.finite(bliss_difference)) sprintf("%.1f", 100 * bliss_difference) else "NA",
+              synergy_label)
   )
 
   plot_data <- data.frame(
