@@ -137,7 +137,9 @@ translate_error <- function(msg) {
     ))
   if (grepl("non-conformable", msg, fixed = TRUE))
     return("Matrix dimension mismatch — check that all treatment groups have sufficient observations.")
-  if (grepl("NaN|NA|missing values", msg, ignore.case = TRUE))
+  # R20.D61: whole words, case-sensitive; ignore.case matched any "na", as in
+  # "name" or "analysis".
+  if (grepl("\\bNaN\\b|\\bNA\\b|missing values", msg, perl = TRUE))
     return(paste0(
       "The model encountered missing or invalid values. ",
       "Check your data for NA values or zero-variance groups."

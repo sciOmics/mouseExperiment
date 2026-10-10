@@ -23,6 +23,10 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
 
   startup_proxy_reminder(host)
 
+  # R20.D23: uploads were capped at Shiny's default 5 MB without anyone having
+  # chosen it. A study CSV of 100,000 rows is about 8 MB.
+  options(shiny.maxRequestSize = 30 * 1024^2)
+
   app <- dashboard_app()
 
   # Bayesian fits run on one background worker (each fit runs its chains in
@@ -208,7 +212,7 @@ dashboard_app <- function() {
   server <- function(input, output, session) {
 
     # Initialise structured logging (JSON to stdout + in-process buffer)
-    setup_logging_with_buffer()
+    setup_logging()   # R20.D25: no in-process buffer
     log_session(session, "start")
     session$onSessionEnded(function() {
       log_session(session, "end")
@@ -271,7 +275,7 @@ dashboard_app <- function() {
     # Guard: redirect away from placeholder tabs if reached via keyboard
     observeEvent(input$main_nav, {
       log_navigation(session, input$main_nav)
-      shinyjs::runjs(sprintf("window.trackTabNavigation('%s');", input$main_nav))
+      shinyjs::runjs(sprintf("window.trackTabNavigation(%s);", js_string(input$main_nav)))  # R20.D22
     }, ignoreInit = TRUE)
 
     # Analysis tabs that require data to be uploaded first

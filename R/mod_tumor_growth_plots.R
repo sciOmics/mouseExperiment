@@ -29,8 +29,13 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
   # Apply colorblind-friendly palette presets when selector changes
   observe_palette_preset(input, session, "tg", reactive(rv$tg_plot_groups))
 
-  # Growth curves plot  — reactive: re-renders on colour/option changes
-  tg_growth_plot <- reactive({
+  # Growth curves plot.
+  # R20.D53: in two layers. The data layer -- plot_tumor_growth(), colours and
+  # shapes -- is rebuilt only when the data or those options change. The
+  # cosmetic layer (titles, axis labels, legend, scales) is applied on top,
+  # from debounced text inputs: typing a 33-character title used to rebuild
+  # the whole plot 35 times (19.5 s on the shared process).
+  tg_growth_base <- reactive({
     tryCatch({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) return(NULL)
@@ -81,7 +86,11 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
         extrapolate_volumes = do_extrapolate,
         extrapolation_points = if (extra_pts > 0L) extra_pts else "all",
         group_summary_line  = isTRUE(input$tg_opt_group_line),
-        point_size          = input$tg_opt_growth_pt_size %||% 2
+        point_size          = input$tg_opt_growth_pt_size %||% 2,
+        # R20.D55: the displayed plot dropped the necrotic x markers, which
+        # only the observer's (fallback) plot had.
+        necrotic_column     = rv$necrotic_col,
+        volume_units        = backend_volume_units(rv)
       ) + ggplot2::theme_classic()
     }, error = function(e) {
       if (!is.null(rv$tg_results$tumor_growth_plot)) return(rv$tg_results$tumor_growth_plot)
@@ -98,13 +107,41 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     if (!is.null(shapes)) {
       p <- p + ggplot2::scale_shape_manual(values = shapes)
     }
+    attr(p, "do_extrapolate") <- do_extrapolate
+    p
+    }, error = function(e) {
+      msg <- conditionMessage(e)
+      p <- ggplot2::ggplot() +
+        ggplot2::annotate("text", x = 0.5, y = 0.5,
+          label = paste0("Plot error:\n", msg),
+          hjust = 0.5, vjust = 0.5, size = 4, color = "red") +
+        ggplot2::theme_void()
+      attr(p, "plot_error") <- TRUE
+      p
+    })
+  })
+
+  tg_label_text <- debounce(reactive(list(
+    title    = input$tg_plot_title        %||% "",
+    subtitle = input$tg_plot_subtitle     %||% "",
+    xlab     = input$tg_plot_xaxis_label  %||% "",
+    ylab     = input$tg_plot_yaxis_label  %||% "",
+    legend   = input$tg_plot_legend_label %||% ""
+  )), 600)
+
+  tg_growth_plot <- reactive({
+    p <- tg_growth_base()
+    req(p)
+    if (isTRUE(attr(p, "plot_error"))) return(p)
+    do_extrapolate <- isTRUE(attr(p, "do_extrapolate"))
+    tryCatch({
     # Apply text size, title/subtitle, and legend position
     text_size  <- input$tg_opt_text_size %||% 16
     legend_pos <- input$tg_opt_legend_pos %||% "right"
-    p <- apply_plot_labels(p, input$tg_plot_title %||% "", input$tg_plot_subtitle %||% "",
+    lbl <- tg_label_text()
+    p <- apply_plot_labels(p, lbl$title, lbl$subtitle,
                            input$tg_plot_title_align %||% "center", text_size,
-                           input$tg_plot_xaxis_label %||% "", input$tg_plot_yaxis_label %||% "",
-                           input$tg_plot_legend_label %||% "")
+                           lbl$xlab, lbl$ylab, lbl$legend)
     p <- apply_legend_pos(p, legend_pos)
     # Apply y-axis scale
     yscale <- input$tg_opt_yscale %||% "linear"
@@ -112,9 +149,11 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     # Apply x-axis start and ensure 5% right padding.
     # coord_cartesian is always applied so the explicit x_upper value
     # (data max + 5%) is honoured regardless of scale expand settings.
+    # Pre-treatment (negative) days are kept unless a later start is chosen.
     x_start <- local({
       v <- input$tg_opt_xstart
-      if (is.numeric(v) && length(v) == 1L && !is.na(v) && v > 0) v else 0
+      first <- suppressWarnings(min(0, rv$tg_plot_data[[rv$tg_col_names$time_column]], na.rm = TRUE))
+      if (is.numeric(v) && length(v) == 1L && !is.na(v) && v > 0) v else first
     })
     x_upper <- tryCatch({
       time_col <- rv$tg_col_names$time_column
@@ -124,8 +163,12 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     if (!is.na(x_upper))
       p <- suppressMessages(p + ggplot2::coord_cartesian(xlim = c(x_start, x_upper)))
     # Annotate hollow circles = extrapolated when extrapolation is active
+    # Added to the package's captions (necrotic markers, mean lines), not
+    # in place of them.
     if (isTRUE(do_extrapolate))
-      p <- p + ggplot2::labs(caption = "Hollow circles / dashed lines = extrapolated data points after mouse death")
+      p <- p + ggplot2::labs(caption = paste(c(p$labels$caption,
+        "Hollow circles / dashed lines = extrapolated data points after mouse death"),
+        collapse = "\n"))
     p
     }, error = function(e) {
       msg <- conditionMessage(e)
@@ -135,6 +178,18 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
           hjust = 0.5, vjust = 0.5, size = 4, color = "red") +
         ggplot2::theme_void()
     })
+  })
+
+  # R20.D55: extrapolation needs a mapped Event/Censor column; without one the
+  # setting did nothing, silently.
+  output$tg_extrap_note <- renderUI({
+    ep <- input$tg_extrapolation_points
+    col <- rv$settings$col_survival_event
+    mapped <- is.character(col) && length(col) == 1L && nzchar(col) && col != "None"
+    if (!is.numeric(ep) || is.na(ep) || ep <= 0 || mapped) return(NULL)
+    helpText(icon("circle-info"), " No Event/Censor column is mapped on Data Upload, ",
+             "so no curve is extrapolated: the plot cannot tell an animal that ",
+             "died from one that was simply not measured.")
   })
 
   output$tg_plot_growth <- renderPlot({
@@ -177,7 +232,10 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
         n <- length(x)
         ctr <- switch(center_bar,
           mean = mean(x), median = median(x),
-          geometric_mean = exp(mean(log(pmax(x, 1e-9)))), mean(x))
+          # R20.D57: a growth rate is a slope on the log scale, so its mean is
+          # already the geometric mean of the daily growth factor; the old
+          # exp(mean(log(pmax(x, 1e-9)))) showed -0.044 as 0.000.
+          geometric_mean = mean(x), mean(x))
         half <- switch(err_type,
           SEM = sd(x) / sqrt(n), SD = sd(x),
           CI = qt(0.975, df = max(n - 1L, 1L)) * sd(x) / sqrt(n), 0)
@@ -525,8 +583,8 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     se_col    <- intersect(c("SE"), colnames(pc_df))[1]
     # R20.D43: the backend's adjusted intervals first (0.31.0, R20.85), so the
     # interval and the adjusted p-value beside it agree.
-    lower_col <- intersect(c("CI_Adjusted_Lower", "lower.CL", "Lower", "lower_CL", "lower"), colnames(pc_df))[1]
-    upper_col <- intersect(c("CI_Adjusted_Upper", "upper.CL", "Upper", "upper_CL", "upper"), colnames(pc_df))[1]
+    lower_col <- intersect(c("CI_Adjusted_Lower", "lower.CL", "Lower_CrI", "Lower", "lower_CL", "lower"), colnames(pc_df))[1]
+    upper_col <- intersect(c("CI_Adjusted_Upper", "upper.CL", "Upper_CrI", "Upper", "upper_CL", "upper"), colnames(pc_df))[1]
     # R14.6: "p_value" held the ADJUSTED p-value on the GAM path and the RAW
     # one on the AUC path, so this sniff marked significance from unadjusted
     # p-values on AUC while using adjusted ones on GAM. Backend R14.4 now
@@ -564,7 +622,8 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
       is_ref   = FALSE,
       stringsAsFactors = FALSE
     )
-    if (!is.null(ref_grp)) {
+    # R20.D57: all-pairs comparisons have no single reference row.
+    if (!is.null(ref_grp) && isTRUE(using_dunnett)) {
       forest_df <- rbind(forest_df, data.frame(
         Contrast = paste0(ref_grp, "\n(Reference)"),
         Estimate = 0, Lower = NA_real_, Upper = NA_real_,

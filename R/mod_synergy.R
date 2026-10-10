@@ -551,7 +551,8 @@ synergy_server <- function(id, rv) {
           endpoint_method  = input$syn_endpoint_method %||% "model",
           n_boot           = as.integer(input$syn_n_boot %||% 2000L),
           boot_seed        = 20260730L,
-          verbose          = FALSE
+          verbose          = FALSE,
+          volume_units     = backend_volume_units(rv)   # backend 0.33.0 zero floor
         )
       })
     } else {
@@ -577,7 +578,8 @@ synergy_server <- function(id, rv) {
           # interval instead of standing on a bare point estimate.
           n_boot           = as.integer(input$syn_n_boot %||% 2000L),
           boot_seed        = 20260730L,
-          verbose          = FALSE
+          verbose          = FALSE,
+          volume_units     = backend_volume_units(rv)   # backend 0.33.0 zero floor
         )
       })
     }
@@ -926,18 +928,11 @@ synergy_server <- function(id, rv) {
         values = c("Drug A" = col_A, "Drug B" = col_B,
                    "Combination" = col_combo, "Bliss Value" = col_ctrl))
     } else {
-      # Single timepoint - re-call plot_drug_synergy with custom_colors mapped to actual group names
-      grps <- rv$syn_plot_inputs
-      if (!is.null(grps)) {
-        custom_colors <- c(grps$drug_a, grps$drug_b, grps$combo, grps$control)
-        names(custom_colors) <- c(grps$drug_a, grps$drug_b, grps$combo, grps$control)
-        custom_colors[grps$drug_a]  <- col_A
-        custom_colors[grps$drug_b]  <- col_B
-        custom_colors[grps$combo]   <- col_combo
-        custom_colors[grps$control] <- col_ctrl
-      } else {
-        custom_colors <- NULL
-      }
+      # R20.D20: the bars are filled by Type (Observed / Expected), so a
+      # palette named by arm matched nothing and every bar was grey. The
+      # combination's colour is used for what was observed, and the control's
+      # for the Bliss expectation.
+      custom_colors <- c(Observed = col_combo, Expected = col_ctrl)
       tryCatch(
         mouseExperiment::plot_drug_synergy(rv$syn_results, custom_colors = custom_colors),
         error = function(e) {

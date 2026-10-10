@@ -723,6 +723,7 @@ power_server <- function(id, rv) {
         sensitivity_table = sens_df,
         mode              = "apriori_analytic",
         ap_submode        = input$pw_ap_submode,
+        target_power      = power_vals,   # R20.D60: the summary read a missing input
         method_note       = ap_runs[[1]]$method_note,
         p_adjust_method   = p_adj,
         n_comparisons     = n_comp,
@@ -823,7 +824,10 @@ power_server <- function(id, rv) {
     submode <- res$ap_submode %||% NA_character_
 
     # Recommended N: smallest N reaching the target power across scenarios.
-    target  <- isolate(input$pw_ap_target_power) %||% 0.80
+    # R20.D60: the target the run used. It read input$pw_ap_target_power,
+    # which does not exist, and always said 80 % (with 95 % selected). The
+    # LMM simulation has no target input; its recommendation is at 80 %.
+    target  <- min(res$target_power %||% 0.80)
     rec_n_html <- if (mode_ap == "apriori_lmm") {
       cd <- res$power_curve_data
       ok <- cd[!is.na(cd$Power) & cd$Power >= target, , drop = FALSE]

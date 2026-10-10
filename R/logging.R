@@ -77,36 +77,7 @@ log_upload <- function(session, filename, nrow, ncol) {
                    session$token, filename, nrow, ncol))
 }
 
-#' Log the start of an analysis run
-#'
-#' @param session Shiny session object.
-#' @param module  Module name (e.g. \code{"tumor_growth"}).
-#' @param params  Named list of key analysis parameters.
-#' @keywords internal
-log_analysis_start <- function(session, module, params = list()) {
-  p <- paste(names(params), "=", params, collapse = "; ")
-  log_info(sprintf("analysis_start | session=%s | module=%s | params=%s",
-                   session$token, module, p))
-}
 
-#' Log the completion of an analysis run
-#'
-#' @param session     Shiny session object.
-#' @param module      Module name.
-#' @param success     Logical — did the analysis succeed?
-#' @param elapsed_sec Wall-clock seconds.
-#' @param message     Optional error / status message.
-#' @keywords internal
-log_analysis_end <- function(session, module, success, elapsed_sec, message = NULL) {
-  secs <- round(elapsed_sec, 2)
-  if (isTRUE(success)) {
-    log_info(sprintf("analysis_complete | session=%s | module=%s | elapsed_s=%.2f",
-                     session$token, module, secs))
-  } else {
-    log_error(sprintf("analysis_failed | session=%s | module=%s | elapsed_s=%.2f | error=%s",
-                       session$token, module, secs, message %||% "unknown"))
-  }
-}
 
 #' Log an error caught by a tryCatch handler
 #'
@@ -120,27 +91,7 @@ log_caught_error <- function(module, context, error) {
                     module, context, err))
 }
 
-#' Log a plot render event
-#'
-#' @param session   Shiny session object.
-#' @param module    Module name.
-#' @param plot_type Which plot was rendered.
-#' @keywords internal
-log_plot_render <- function(session, module, plot_type) {
-  log_debug(sprintf("plot_render | session=%s | module=%s | plot=%s",
-                    session$token, module, plot_type))
-}
 
-#' Log a download event
-#'
-#' @param session  Shiny session object.
-#' @param module   Module name.
-#' @param what     Description of downloaded artifact.
-#' @keywords internal
-log_download <- function(session, module, what) {
-  log_info(sprintf("download | session=%s | module=%s | artifact=%s",
-                   session$token, module, what))
-}
 
 #' Log a tab navigation event
 #'
@@ -152,59 +103,7 @@ log_navigation <- function(session, tab) {
                     session$token, tab))
 }
 
-# ---------------------------------------------------------------------------
-# In-process log buffer for the Analysis Log UI panel
-# ---------------------------------------------------------------------------
+# R20.D25: every log line was also kept in a process-wide 500-line buffer for
+# the Analysis Log panel, which was removed (I.4). Nothing read it; logging
+# goes to stdout only (setup_logging()).
 
-# Private environment holding the circular buffer.
-# Shared across all Shiny sessions within a single R process
-# (suitable for single-user / Docker deployments).
-.log_buf <- new.env(parent = emptyenv())
-.log_buf$entries  <- character(0L)
-.log_buf$max_size <- 500L
-
-#' Custom logger appender that also writes to the in-process buffer
-#'
-#' Wraps \code{logger::appender_stdout} and additionally stores every
-#' formatted log line in \code{.log_buf$entries}.
-#' @param lines Character vector of log lines.
-#' @keywords internal
-appender_buffer <- function(lines) {
-  # Write to stdout (Docker log driver)
-  logger::appender_stdout(lines)
-  # Also store in ring buffer
-  .log_buf$entries <- c(.log_buf$entries, lines)
-  if (length(.log_buf$entries) > .log_buf$max_size) {
-    .log_buf$entries <- tail(.log_buf$entries, .log_buf$max_size)
-  }
-}
-
-#' Set up logging with the buffer appender
-#'
-#' Like \code{setup_logging()} but uses the tee-to-buffer appender so log
-#' messages are available for the Analysis Log UI panel.
-#'
-#' @param level Log threshold (default \code{logger::INFO}).
-#' @keywords internal
-setup_logging_with_buffer <- function(level = logger::INFO) {
-  logger::log_threshold(level, namespace = "dashboard")
-  logger::log_layout(logger::layout_json(), namespace = "dashboard")
-  logger::log_appender(appender_buffer, namespace = "dashboard")
-}
-
-#' Retrieve buffered log entries
-#'
-#' Returns the current contents of the in-process log buffer as a character
-#' vector (newest last).  Used by the Analysis Log panel.
-#'
-#' @return Character vector of log lines (may be empty).
-#' @keywords internal
-get_log_entries <- function() {
-  .log_buf$entries
-}
-
-#' Clear the in-process log buffer
-#' @keywords internal
-clear_log_buffer <- function() {
-  .log_buf$entries <- character(0L)
-}

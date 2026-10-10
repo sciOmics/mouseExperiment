@@ -18,7 +18,7 @@ If you're adding a new analysis module: read sections 4-5.
 | `.xlsx`, `.xls` | Not supported. Convert to CSV first |
 | `.tsv` | Not supported. Convert to CSV first |
 
-Max file size is configured at the Shiny server level (`shiny.maxRequestSize`). The default is 5 MB; the production VPS sets it to 100 MB.
+Files up to 30 MB are accepted (`runDashboard()` sets `shiny.maxRequestSize`). Comma-, semicolon- and tab-separated files are read, with a decimal comma when the delimiter is a semicolon or tab, in UTF-8, UTF-16 or Latin-1. A row whose number of fields differs from the header is reported with its line number; quote any value that contains the delimiter.
 
 ### Wide format
 

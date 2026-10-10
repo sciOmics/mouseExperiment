@@ -10,10 +10,7 @@ source_new_helpers <- function() {
     pkg_env <- getNamespace("mouseExperimentDashboard")
     list(
       palette_colors       = get("palette_colors",       envir = pkg_env),
-      default_group_colors = get("default_group_colors", envir = pkg_env),
-      get_log_entries      = get("get_log_entries",      envir = pkg_env),
-      clear_log_buffer     = get("clear_log_buffer",     envir = pkg_env),
-      appender_buffer      = get("appender_buffer",      envir = pkg_env)
+      default_group_colors = get("default_group_colors", envir = pkg_env)
     )
   }, error = function(e) NULL)
 }
@@ -92,33 +89,5 @@ test_that("default_group_colors returns empty vector for n <= 0", {
   expect_equal(length(dgc(-1)), 0)
 })
 
-# ===========================================================================
-# Log buffer
-# ===========================================================================
+# The log buffer (and its tests) went with R20.D25: nothing read it.
 
-test_that("log buffer starts empty and can be cleared", {
-  skip_if_no_new()
-  gle <- new_helpers$get_log_entries
-  clb <- new_helpers$clear_log_buffer
-
-  clb()
-  expect_equal(length(gle()), 0)
-})
-
-test_that("appender_buffer stores log lines", {
-  skip_if_no_new()
-  ab  <- new_helpers$appender_buffer
-  gle <- new_helpers$get_log_entries
-  clb <- new_helpers$clear_log_buffer
-
-  clb()
-  # Capture stdout to suppress console output
-  capture.output(ab("test log line 1"), type = "output")
-  capture.output(ab("test log line 2"), type = "output")
-
-  entries <- gle()
-  expect_equal(length(entries), 2)
-  expect_equal(entries[1], "test log line 1")
-  expect_equal(entries[2], "test log line 2")
-  clb()
-})

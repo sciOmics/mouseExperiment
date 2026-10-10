@@ -68,7 +68,8 @@ test_that("R20.D43: the forest plot uses the adjusted intervals and says so", {
     run_tg(session)
     rc <- rv$tg_results$reference_comparisons_dunnett
     expect_true(all(c("CI_Adjusted_Lower", "CI_Adjusted_Upper") %in% names(rc)))
-    p <- rv$tg_results$effect_forest_plot
+    # The displayed forest plot (R20.D61 removed an unused second copy).
+    p <- tg_forest_plot()
     expect_s3_class(p, "ggplot")
     expect_match(p$labels$caption, "adjusted")
   }))

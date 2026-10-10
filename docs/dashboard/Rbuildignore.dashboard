@@ -7,3 +7,11 @@
 ^README\.md$
 ^plan.*\.md$
 ^dev_notes\.md$
+^shiny-server-app\.R$
+^shiny-server-conf\.template$
+^\.waylog$
+^\.claude$
+^CODE_REVIEW\.md$
+^CHANGELOG\.md$
+^CONTRIBUTING\.md$
+^docs$

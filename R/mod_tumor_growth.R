@@ -378,14 +378,8 @@ tumor_growth_server <- function(id, rv) {
           ) + ggplot2::theme_classic()
         }
         
-        # Plot 2: Growth rate distribution
-        if (!is.null(result$growth_rates) && nrow(result$growth_rates) > 0) {
-          result$growth_rate_plot <- mouseExperiment::plot_growth_rate(
-            growth_data = result$growth_rates,
-            show_mean = TRUE,
-            error_bar_type = "SEM"
-          ) + ggplot2::theme_classic()
-        }
+        # R20.D61: the growth-rate plot built here was never read; the Growth
+        # Rates tab draws tg_rates_plot.
         
         # Plot 3: AUC / treatment effects plot
         # When model_type="auc" the result contains auc_analysis$individual with
@@ -705,92 +699,8 @@ tumor_growth_server <- function(id, rv) {
           }
         }
 
-        # Plot 5: Effect size forest plot — built here so reference_comparisons_dunnett exists
-        pc <- if (!is.null(result$reference_comparisons_dunnett)) result$reference_comparisons_dunnett
-              else if (!is.null(result$all_pairwise_comparisons)) result$all_pairwise_comparisons
-              else NULL
-        if (!is.null(pc)) {
-          tryCatch({
-            pc_df <- as.data.frame(pc)
-            label_col   <- intersect(c("contrast", "Contrast", "comparison", "pair"), colnames(pc_df))[1]
-            est_col     <- intersect(c("estimate", "Estimate"), colnames(pc_df))[1]
-            se_col      <- intersect(c("SE"), colnames(pc_df))[1]
-            # R20.D43: the backend's adjusted intervals first (0.31.0).
-            lower_col   <- intersect(c("CI_Adjusted_Lower", "lower.CL", "Lower", "lower_CL", "lower"), colnames(pc_df))[1]
-            upper_col   <- intersect(c("CI_Adjusted_Upper", "upper.CL", "Upper", "upper_CL", "upper"), colnames(pc_df))[1]
-            p_col       <- intersect(c("p.value", "p_value", "p.adj", "adj.p.value", "P_Value"), colnames(pc_df))[1]
-            if (!is.na(label_col) && !is.na(est_col)) {
-              if (is.na(lower_col) && !is.na(se_col)) {
-                df_col <- intersect(c("df", "DF"), colnames(pc_df))[1]
-                t_mult <- if (!is.na(df_col)) qt(0.975, pmax(as.numeric(pc_df[[df_col]]), 1)) else qnorm(0.975)
-                pc_df$lower.CL <- pc_df[[est_col]] - t_mult * pc_df[[se_col]]
-                pc_df$upper.CL <- pc_df[[est_col]] + t_mult * pc_df[[se_col]]
-                lower_col <- "lower.CL"; upper_col <- "upper.CL"
-              }
-              p_label <- if (!is.na(p_col)) vapply(pc_df[[p_col]], format_pval, character(1)) else NULL
-              using_dunnett <- !is.null(result$reference_comparisons_dunnett) &&
-                               identical(pc, result$reference_comparisons_dunnett)
-              ref_grp_ef <- if (!is.null(ref) && nzchar(ref)) ref else NULL
-              contrast_labels <- pc_df[[label_col]]
-              if (isTRUE(using_dunnett) && !is.null(ref_grp_ef)) {
-                suffix_pat <- paste0("\\s*[-\u2013]\\s*", gsub("([+()])", "\\\\\\1", ref_grp_ef), "$")
-                clean_labels <- sub(suffix_pat, "", contrast_labels)
-                if (all(clean_labels != contrast_labels)) contrast_labels <- clean_labels
-              }
-              forest_df <- data.frame(
-                Contrast = contrast_labels,
-                Estimate = pc_df[[est_col]],
-                Lower    = if (!is.na(lower_col)) pc_df[[lower_col]] else pc_df[[est_col]],
-                Upper    = if (!is.na(upper_col)) pc_df[[upper_col]] else pc_df[[est_col]],
-                P_Label  = if (is.null(p_label)) "" else paste0("p=", p_label),
-                stringsAsFactors = FALSE
-              )
-              if (!is.null(ref_grp_ef)) {
-                forest_df <- rbind(forest_df, data.frame(
-                  Contrast = paste0(ref_grp_ef, "\n(Reference)"),
-                  Estimate = 0, Lower = NA_real_, Upper = NA_real_,
-                  P_Label  = "", stringsAsFactors = FALSE
-                ))
-              }
-              forest_df$is_ref <- seq_len(nrow(forest_df)) == nrow(forest_df) & !is.null(ref_grp_ef)
-              all_vals <- c(forest_df$Estimate[!forest_df$is_ref],
-                            forest_df$Lower[!forest_df$is_ref],
-                            forest_df$Upper[!forest_df$is_ref])
-              max_abs  <- ceiling(max(abs(all_vals), na.rm = TRUE))
-              x_lim    <- c(-max_abs, max_abs * 1.20)
-              x_breaks <- pretty(c(-max_abs, max_abs), n = 6)
-              x_breaks <- x_breaks[x_breaks >= -max_abs & x_breaks <= max_abs]
-              result$effect_forest_plot <- ggplot2::ggplot(
-                forest_df,
-                ggplot2::aes(x = Estimate, y = stats::reorder(Contrast, -Estimate))
-              ) +
-                ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "red", linewidth = 0.6) +
-                ggplot2::geom_errorbarh(
-                  data = ~ subset(., !is_ref),
-                  ggplot2::aes(xmin = Lower, xmax = Upper),
-                  height = 0.25, colour = "steelblue"
-                ) +
-                ggplot2::geom_point(data = ~ subset(., !is_ref), size = 3, colour = "steelblue") +
-                ggplot2::geom_point(data = ~ subset(., is_ref),  size = 4, colour = "grey50", shape = 18) +
-                ggplot2::geom_text(
-                  data = ~ subset(., !is_ref & nzchar(P_Label) & !is.na(Upper)),
-                  ggplot2::aes(label = P_Label, x = Upper),
-                  hjust = -0.2, size = 3.2
-                ) +
-                ggplot2::scale_x_continuous(limits = x_lim, breaks = x_breaks) +
-                ggplot2::labs(
-                  title = "Effect Size Forest Plot",
-                  x = if (isTRUE(using_dunnett)) "Mean Difference (treatment \u2212 reference)" else "Mean Difference",
-                  y = NULL,
-                  caption = forest_ci_note(pc_df, lower_col)   # R20.D43
-                ) +
-                ggplot2::theme_classic() +
-                ggplot2::theme(axis.text.y = ggplot2::element_text(size = 10))
-            }
-          }, error = function(e) {
-            log_caught_error("tumor_growth", "forest plot generation", e)
-          })
-        }
+        # R20.D61: a second forest plot was built here on every run and never
+        # shown; the displayed one is tg_forest_plot (mod_tumor_growth_plots.R).
 
       }, error = function(e) {
         log_caught_error("tumor_growth", "comparison generation", e)
@@ -1030,8 +940,8 @@ tumor_growth_server <- function(id, rv) {
   # forest plot only in LME4 mode)
   observeEvent(input$tg_model_type, {
     req(input$tg_model_type)
-    shinyjs::runjs(sprintf("window.trackEvent('model_type_selected', {analysis_type: 'tumor_growth', method: '%s'});",
-                           input$tg_model_type))
+    shinyjs::runjs(sprintf("window.trackEvent('model_type_selected', {analysis_type: 'tumor_growth', method: %s});",
+                           js_string(input$tg_model_type)))  # R20.D22
   }, ignoreInit = TRUE)
 
   observeEvent(input$tg_model_type, {
@@ -1149,7 +1059,12 @@ tumor_growth_server <- function(id, rv) {
           shinycssloaders::withSpinner(
             plotOutput(session$ns("tg_pp_check_plot"), height = "450px")
           ),
-          downloadButton(session$ns("download_tg_pp_check"), "Download Plot")
+          downloadButton(session$ns("download_tg_pp_check"), "Download Plot"),
+          # R20.D59: rendered, but never placed anywhere.
+          tags$hr(),
+          h4("Posterior summary"),
+          p(class = "text-muted", "Posterior medians and 95% credible intervals of the model's parameters."),
+          DTOutput(session$ns("tg_posterior_summary"))
         ),
         select = FALSE
       )
@@ -1201,8 +1116,8 @@ tumor_growth_server <- function(id, rv) {
   # Track plot type switching
   observeEvent(input$tg_plot_selector, {
     req(input$tg_plot_selector)
-    shinyjs::runjs(sprintf("window.trackEvent('plot_type_selected', {analysis_type: 'tumor_growth', plot_type: '%s'});",
-                           input$tg_plot_selector))
+    shinyjs::runjs(sprintf("window.trackEvent('plot_type_selected', {analysis_type: 'tumor_growth', plot_type: %s});",
+                           js_string(input$tg_plot_selector)))  # R20.D22
   }, ignoreInit = TRUE)
 
   # ANOVA table
@@ -1337,41 +1252,9 @@ tumor_growth_server <- function(id, rv) {
     }
   })
 
-  # ── Welch ANOVA variance check + randomisation test (backend R3.22, H.3) ────
+  # R20.D30 / R20.D61: the Welch variance panel was removed; the backend's
+  # model-based AUC (0.26.0) returns no variance test, so it never rendered.
 
-  output$tg_variance_test_ui <- renderUI({
-    req(rv$tg_results)
-    if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$variance_test)) return(NULL)
-    vt <- rv$tg_results$variance_test
-    p_v <- suppressWarnings(as.numeric(vt$p_value[1]))
-    tagList(
-      tags$hr(),
-      h4("Variance homogeneity across groups"),
-      p(class = "text-muted",
-        "Brown-Forsythe (median-centred Levene) test. The AUC path uses Welch's ",
-        "ANOVA and Welch's pairwise t-tests, which do not assume equal variances, ",
-        "so this is reported rather than acted on \u2014 it tells you whether the ",
-        "unequal-variance choice was needed."),
-      if (is.finite(p_v)) {
-        status_alert(
-          if (p_v < 0.05) {
-            sprintf(paste0("Variances differ across groups (p = %.4g). Welch's ",
-                           "unequal-variance tests are the right choice here."), p_v)
-          } else {
-            sprintf(paste0("No evidence of unequal variances (p = %.3g). Welch's ",
-                           "tests remain valid and cost little power."), p_v)
-          },
-          "info")
-      }
-    )
-  })
-
-  output$tg_variance_test_table <- renderDT({
-    req(rv$tg_results)
-    if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$variance_test)) return(NULL)
-    datatable(format_df_for_display(as.data.frame(rv$tg_results$variance_test)),
-              options = list(paging = FALSE, searching = FALSE), rownames = FALSE)
-  })
 
   output$tg_perm_test_ui <- renderUI({
     req(rv$tg_results)

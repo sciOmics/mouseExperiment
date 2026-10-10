@@ -4,6 +4,50 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.10.005] - 2026-10-10
+
+Requires mouseExperiment ≥ 0.33.0. The Round 21 Minors, the grey synergy
+bars and the slow plot labels (`CODE_REVIEW.md` R20-D.S).
+
+### Fixed
+
+- **Uploads (R20.D23).** These now load:
+  - semicolon-separated files with decimal commas, as Excel writes in much of Europe;
+  - tab-separated files, which loaded silently as a single column;
+  - Latin-1 and UTF-16 files.
+
+  A row that does not match the header is reported with its line number,
+  where a stray comma used to shift the columns silently. Files up to 30 MB
+  are accepted.
+- **Typing a plot title froze the app (R20.D53).** Every keystroke rebuilt
+  the growth plot. Labels are now applied on top of it after a short pause.
+- **Synergy bars were all grey (R20.D20).**
+- **The growth plot dropped the necrotic markers,** and cut off pre-treatment
+  days (R20.D55). It now explains when extrapolation can't apply.
+- **Labels and help that misstated results.**
+  - Survival and toxicity KM plots label their log-rank p as unadjusted (R20.D29).
+  - The survival help no longer calls an interval that excludes 1 significant, and no longer promises features that do not exist (R20.D54).
+  - The cage and random-effects help match what the model does (R20.D30).
+  - The Power summary uses the target power you chose (R20.D60).
+  - A dropped covariate is explained (R20.D58).
+  - The growth-rate mean bar no longer shows negative rates as zero, and an all-pairs forest plot has no reference row (R20.D57).
+- **Bayesian results (R20.D59, R20.D32).**
+  - Missing sampler diagnostics show as unavailable, not as clean.
+  - The posterior summary is shown.
+  - Bayesian runs get a forest plot.
+  - The sampler advice names settings you can change.
+- **Synergy, dose-response and the therapeutic window** pass the declared
+  volume unit, for the backend's zero floor (0.33.0).
+
+### Removed
+
+- Dead code (R20.D24, R20.D25, R20.D61):
+  - two broken entry-point files;
+  - an unread log buffer;
+  - nine unused functions;
+  - two plots built on every run and never shown;
+  - a variance panel that never rendered.
+
 ## [26.10.004] - 2026-10-09
 
 Long analyses no longer freeze every user (`CODE_REVIEW.md` R20-D.R).

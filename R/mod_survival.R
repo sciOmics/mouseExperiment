@@ -137,7 +137,7 @@ survivalUI <- function(id) {
                     p("The Survival tab fits Kaplan–Meier (KM) survival curves and a Cox proportional hazards model to time-to-endpoint data. In mouse tumor experiments the 'endpoint' is typically the day a tumor exceeds the IACUC volume limit, not true animal death."),
                     p("Three outputs are produced:"),
                     tags$ul(
-                      tags$li(strong("Kaplan–Meier curves"), " with log-rank test p-values."),
+                      tags$li(strong("Kaplan–Meier curves"), ", with the log-rank test across all arms (not adjusted for multiple comparisons)."),
                       tags$li(strong("Cox proportional hazards model"), " reporting hazard ratios (HR) per group relative to the reference."),
                       tags$li(strong("Risk table"), " showing animals at risk, events, and KM estimates at each event time.")
                     )
@@ -152,15 +152,15 @@ survivalUI <- function(id) {
                     p("The KM estimator computes a non-parametric step-function survival probability S(t) = P(T > t) from event times. Each downward step corresponds to one or more events on that day."),
                     tags$dl(class = "dl-horizontal",
                       tags$dt("Log-rank test"),
-                      tags$dd("Tests whether the survival curves of two or more groups are statistically equivalent. The omnibus p-value tests all groups simultaneously; pairwise p-values are computed by restricting each comparison to the relevant two groups (df = 1)."),
+                      tags$dd("Tests whether the survival curves of two or more groups are the same. The plot shows the test across all arms at once, unadjusted. The comparisons of each arm with the reference are in Model Results: Cox (or Firth) p-values, adjusted for the number of comparisons; when the Cox model cannot be fitted, they come from pairwise log-rank tests."),
                       tags$dt("Median survival"),
                       tags$dd("Day by which 50 % of animals reached the endpoint. 'Not reached' if fewer than half had events before study end."),
                       tags$dt("Censoring"),
                       tags$dd("Animals that never reach the endpoint contribute their last observation day as a censored time. This correctly uses partial information rather than excluding them.")
                     ),
                     p(tags$small(class = "text-muted",
-                      "When all animals in a group are censored (zero events), a log-rank test is not meaningful. ",
-                      "The model falls back to pairwise comparisons using only groups with at least one event."
+                      "When an arm has no events, its hazard ratio is estimated with Firth's correction, which stays finite. ",
+                      "If that fit fails, the comparisons come from pairwise log-rank tests."
                     ))
                   )
                 ),
@@ -195,8 +195,8 @@ survivalUI <- function(id) {
                     tags$dl(class = "dl-horizontal",
                       tags$dt("Mapped censor column"),
                       tags$dd("When an Event/Censor column is mapped in Data Upload (0 = censored, 1 = event), it is used directly."),
-                      tags$dt("Auto-detection"),
-                      tags$dd("When no censor column is mapped, animals that disappear before the final study day are automatically treated as events; animals present at the final day are censored."),
+                      tags$dt("No censor column"),
+                      tags$dd("Without a mapped Event/Censor column, choose 'Derive from tumour volume threshold' as the event source. An animal's disappearance is not treated as an event by itself."),
                       tags$dt("Volume threshold"),
                       tags$dd("Optionally generate an event indicator by flagging animals whose tumor volume exceeds a specified threshold at any timepoint."),
                       tags$dt("Natural death"),
@@ -226,7 +226,7 @@ survivalUI <- function(id) {
               tags$ul(
                 tags$li(strong("Group"), " \u2014 treatment group name."),
                 tags$li(strong("HR"), " \u2014 Hazard Ratio: the instantaneous risk of the event in this group relative to the reference. HR\u202f<\u202f1 means lower hazard (better survival); HR\u202f>\u202f1 means higher hazard."),
-                tags$li(strong("CI_Lower / CI_Upper"), " \u2014 95\u202f% confidence interval for the HR. If this interval does not include 1.0, the difference is statistically significant at the 5\u202f% level."),
+                tags$li(strong("CI_Lower / CI_Upper"), " \u2014 95\u202f% confidence interval for the HR, not adjusted for multiple comparisons. It can exclude 1.0 while the adjusted P_Value is above 0.05; judge significance by P_Value."),
                 tags$li(strong("P_Value"), " \u2014 p-value for the comparison with the reference, adjusted for the number of comparisons (P_Adjust_Method; unadjusted in P_Value_Unadjusted)."),
                 tags$li(strong("P_Method"), " \u2014 shown when whole cages were randomised (Study Design on Data Upload): the p-value comes from a cage-level permutation log-rank, and the hazard ratio has no interval."),
                 tags$li(strong("Events"), " \u2014 number of animals that reached the endpoint (tumour volume exceeded the IACUC threshold, or died before reaching it if natural death is treated as an event)."),
@@ -835,7 +835,7 @@ survival_server <- function(id, rv) {
         km_plot_obj <- survminer::ggsurvplot(
           km_fit,
           data         = surv_df,
-          pval         = TRUE,
+          pval         = km_pval_label(surv_df),   # R20.D29
           conf.int     = TRUE,
           risk.table   = TRUE,
           palette      = if (!is.null(pal)) unname(pal) else NULL,

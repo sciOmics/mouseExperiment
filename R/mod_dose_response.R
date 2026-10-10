@@ -630,7 +630,8 @@ dose_response_server <- function(id, rv) {
         time_point         = time_point_val,
         control_group_name = si$control,
         treatments         = series,
-        verbose            = FALSE  # the report went to the server log
+        verbose            = FALSE,  # the report went to the server log
+        volume_units       = backend_volume_units(rv)   # backend 0.33.0 zero floor
       )
     })
     # The plots and tables use the control of the displayed run (R20.D48).
@@ -660,8 +661,7 @@ dose_response_server <- function(id, rv) {
 
     # Track analysis completion with Umami
     if (isTRUE(result$error)) {
-      shinyjs::runjs(sprintf("window.trackAnalysisComplete('dose_response', false, '%s');",
-                             gsub("'", "\\\\'", result$message)))
+      shinyjs::runjs("window.trackAnalysisComplete('dose_response', false, 'error');")  # R20.D12/D22
     } else {
       shinyjs::runjs("window.trackAnalysisComplete('dose_response', true);")
     }

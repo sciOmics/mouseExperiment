@@ -56,6 +56,7 @@ toxicityUI <- function(id) {
                             "Initial Mass" = "initial_mass"),
                 selected = "volume"
               ),
+              uiOutput(ns("tox_covariate_note")),
               radioButtons(ns("tox_estimation"), "Estimation method",
                 choices = c("REML" = "REML", "ML" = "ML"),
                 selected = "REML", inline = TRUE
@@ -729,6 +730,18 @@ toxicity_server <- function(id, rv) {
     updateCheckboxGroupInput(session, "tox_covariates", choices = choices, selected = selected)
   })
 
+  # R20.D58: with "Subtract estimated tumor weight" on (the default) the
+  # backend drops the Tumor Volume covariate (also ticked by default) and says
+  # so only in a message the dashboard did not show.
+  output$tox_covariate_note <- renderUI({
+    if (!isTRUE(input$tox_adjust_tumor) || !"volume" %in% (input$tox_covariates %||% character(0)))
+      return(NULL)
+    helpText(icon("circle-info"), " Tumour mass is already subtracted from body weight, so the ",
+             "Tumor Volume covariate is not used: adjusting for it as well would count ",
+             "tumour burden twice. To adjust for volume instead, untick 'Subtract ",
+             "estimated tumor weight'.")
+  })
+
   # ---- Run Analysis ----
   observeEvent(input$run_tox_analysis, {
     req(rv$processed_data, tox_weight_available())
@@ -861,6 +874,9 @@ toxicity_server <- function(id, rv) {
           cage_column = cage_col,  # R20.D31: cage is part of the animal key
           adjust_tumor_weight = adjust, tumor_density = density,
           volume_units = units, reference_group = ref_group,
+          # Backend 0.33.0: the endpoint model's zero floor, in the declared
+          # units even when the mass correction (and so `units`) is off.
+          zero_floor = if (identical(backend_volume_units(rv), "cm3")) 0.002 else NULL,
           tolerability_threshold = tol_thr,
           endpoint_method = ep_method, n_boot = n_boot_tw, boot_seed = 20260730L
         )

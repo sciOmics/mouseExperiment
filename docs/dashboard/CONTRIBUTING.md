@@ -12,7 +12,7 @@ setwd("/path/to/mouseExperimentDashboard")
 devtools::load_all()
 
 # The backend is a hard dependency; DESCRIPTION's Imports gives the minimum
-# version (mouseExperiment >= 0.31.0 as of 26.10.004)
+# version (mouseExperiment >= 0.33.0 as of 26.10.005)
 # If you're developing both, sync the local backend:
 devtools::install("/path/to/mouseExperiment", quiet = TRUE, upgrade = FALSE)
 
