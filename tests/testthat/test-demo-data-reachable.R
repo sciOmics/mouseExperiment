@@ -30,8 +30,7 @@ sample_dir <- function() {
 
 # The loader's table, read out of the source so the test cannot drift from it.
 loader_keys <- function() {
-  src <- paste(readLines(testthat::test_path("..", "..", "R", "mod_data_upload.R"),
-                         warn = FALSE), collapse = "\n")
+  src <- dash_source("R", "mod_data_upload.R")   # skips outside the source tree
   blk <- regmatches(src, regexpr("demo_files <- list\\([\\s\\S]*?\\n    \\)",
                                  src, perl = TRUE))
   skip_if(length(blk) != 1L, "demo_files block not locatable")
@@ -98,23 +97,21 @@ test_that("D.12: the All Features demo exercises every optional column", {
 test_that("Demo selector: four short names, All Features last", {
   # 2026-10-09: "Simple" and "Necrotic" were removed, the parenthetical
   # descriptions dropped, and "Master" renamed "All Features" and moved last.
-  src <- paste(readLines(testthat::test_path("..", "..", "R", "ui_modules.R"),
-                         warn = FALSE), collapse = "\n")
+  for (f in c("synthetic_data.csv", "necrotic_synthetic_data.csv", "master_synthetic_data.csv"))
+    expect_false(file.exists(file.path(sample_dir(), f)), info = paste("still shipped:", f))
+  src <- dash_source("R", "ui_modules.R")
   blk <- regmatches(src, regexpr('"-- Select a demo dataset --" = ""[\\s\\S]*?\\n                \\)',
                                  src, perl = TRUE))
   skip_if(length(blk) != 1L, "demo_dataset choices not locatable")
   labels <- sub('^"([^"]+)".*', "\\1",
                 regmatches(blk, gregexpr('"[^"]+"\\s*=\\s*"[a-z_]+"', blk))[[1]])
   expect_identical(labels, c("Combo Treatment", "Dose Levels", "Weight", "All Features"))
-  for (f in c("synthetic_data.csv", "necrotic_synthetic_data.csv", "master_synthetic_data.csv"))
-    expect_false(file.exists(file.path(sample_dir(), f)), info = paste("still shipped:", f))
 })
 
 test_that("D.12: the UI selector offers exactly what the loader knows", {
   # A choice in the dropdown with no matching loader entry silently does nothing
   # when clicked; a loader entry with no choice is unreachable. Both directions.
-  src <- paste(readLines(testthat::test_path("..", "..", "R", "ui_modules.R"),
-                         warn = FALSE), collapse = "\n")
+  src <- dash_source("R", "ui_modules.R")
   blk <- regmatches(src, regexpr('"-- Select a demo dataset --" = ""[\\s\\S]*?\\n                \\)',
                                  src, perl = TRUE))
   skip_if(length(blk) != 1L, "demo_dataset choices not locatable")
@@ -122,8 +119,7 @@ test_that("D.12: the UI selector offers exactly what the loader knows", {
                  regmatches(blk, gregexpr('=\\s*"[a-z_]+"', blk))[[1]])
   ui_keys <- setdiff(ui_keys, "")
 
-  src2 <- paste(readLines(testthat::test_path("..", "..", "R", "mod_data_upload.R"),
-                          warn = FALSE), collapse = "\n")
+  src2 <- dash_source("R", "mod_data_upload.R")
   blk2 <- regmatches(src2, regexpr("demo_files <- list\\([\\s\\S]*?\\n    \\)",
                                    src2, perl = TRUE))
   loader_names <- gsub("[^a-z_]", "",

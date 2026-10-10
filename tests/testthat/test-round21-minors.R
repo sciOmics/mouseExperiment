@@ -13,8 +13,7 @@ html_of <- function(x) {
   if (is.list(x) && !is.null(x$html)) return(paste(as.character(x$html), collapse = " "))
   paste(as.character(x), collapse = " ")
 }
-src_dir <- testthat::test_path("..", "..")
-read_src <- function(f) paste(readLines(file.path(src_dir, "R", f), warn = FALSE), collapse = "\n")
+read_src <- function(f) dash_source("R", f)   # skips outside the source tree
 demo <- function(f) utils::read.csv(system.file("sample_data", f, package = "mouseExperimentDashboard"),
                                     stringsAsFactors = FALSE)
 all_features_rv <- function(...) {
@@ -56,23 +55,24 @@ test_that("R20.D20: the synergy bars are coloured, not grey", {
 # ---- R20.D22 / R20.D24 / R20.D25 / R20.D26 / R20.D61: code hygiene ----------------------
 
 test_that("R20.D22/D24/D25/D26/D61: values reach JS escaped; dead code and files are gone", {
-  all_src <- paste(vapply(list.files(file.path(src_dir, "R")), read_src, ""), collapse = "\n")
-  expect_false(grepl("runjs\\(sprintf\\([^)]*'%s'", all_src))
-  expect_false(file.exists(file.path(src_dir, "global.R")))
-  expect_false(file.exists(file.path(src_dir, "app_standalone.R")))
   for (fn in c("appender_buffer", "get_log_entries", "safe_plot", "plot_export_ui",
                "extract_summary_table", "homeUI", "log_download")) {
     expect_false(has(fn), info = fn)
   }
-  desc <- read.dcf(file.path(src_dir, "DESCRIPTION"))
-  expect_match(desc[, "Depends"], "R \\(>= 4.1.0\\)")
-  expect_false("Date" %in% colnames(desc))
-  ign <- readLines(file.path(src_dir, ".Rbuildignore"))
-  expect_true(all(c("^\\.waylog$", "^CODE_REVIEW\\.md$", "^docs$") %in% ign))
   # R20.D61: "NA" as a word, not any "na".
   expect_identical(g("translate_error")("could not find the column name 'x'"),
                    "could not find the column name 'x'")
   expect_match(g("translate_error")("NA/NaN/Inf in 'y'"), "missing or invalid values")
+  desc <- utils::packageDescription("mouseExperimentDashboard")
+  expect_match(desc$Depends, "R \\(>= 4.1.0\\)")
+  expect_null(desc$Date)
+  # The rest needs the source tree.
+  src_dir <- dash_source_dir()
+  expect_false(grepl("runjs\\(sprintf\\([^)]*'%s'", dash_all_sources()))
+  expect_false(file.exists(file.path(src_dir, "global.R")))
+  expect_false(file.exists(file.path(src_dir, "app_standalone.R")))
+  ign <- readLines(file.path(src_dir, ".Rbuildignore"))
+  expect_true(all(c("^\\.waylog$", "^CODE_REVIEW\\.md$", "^docs$") %in% ign))
 })
 
 # ---- R20.D23: uploads ------------------------------------------------------------------
