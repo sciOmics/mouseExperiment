@@ -2681,3 +2681,33 @@ The VPS now runs both packages' test suites on every staging build, before a can
 **Verification (executed):**
 - From the source tree: 291 tests, no failures, no skips.
 - Installed with `--install-tests` and run as the gate runs it: 291 tests, no failures, 43 skipped. That is the 31 that skipped before (browser, cmdstanr and source-tree checks) plus these 12.
+
+## R20-D.U The help icons gave no tooltip on a click (user report, 2026-10-11)
+
+**Report.** The `?` icons in the Study Design panel "either open the menu or do nothing".
+
+**Cause.** `help_tip()` relied on the browser's `title` attribute:
+- **No tooltip.** That tooltip appears only after the pointer rests on the icon, never on a click or a tap.
+- **The menu.** The icon sits inside the input's `<label>`, and a click on a label is passed on to the input it labels. In a headless browser, a click on the Control group icon logged `click:I`, then `focusin:data-control_group-selectized` and `click:data-control_group-selectized`, which in a user's browser opens the menu. On the radio groups the label points at a container, so nothing happened.
+
+**Fix (26.10.006):**
+- **`help_tip()`.** The icon is focusable (`tabindex="0"`, `role="button"`) and has an `aria-label`.
+- **`www/js/help-tips.js`:**
+  - turns on Bootstrap 3 tooltips for `.help-tip`, delegated so icons rendered later are covered, shown on hover or focus;
+  - stops a click on an icon in the capture phase, before the label sees it, and focuses the icon, so a click or tap shows the tooltip.
+- **`custom.css`.** The tooltips are 340 px wide and left-aligned.
+
+The fix covers all 17 help icons.
+
+**Tests.** `test-shiny_app.R` has a new browser test that clicks the icon with real mouse events (Chrome DevTools Protocol, focus emulation on). It checks that:
+- the tooltip shows with the right text;
+- no click or focus reaches the select box;
+- the menu stays closed and the value is unchanged;
+- the tooltip goes once the pointer and focus leave, and returns on keyboard focus.
+
+On 26.10.005 it fails: no tooltip appears.
+
+**Verification (executed):**
+- The full suite, from source: 292 tests, 0 failed, 0 skipped.
+- Screenshots of the longest tooltip ("Treatment was assigned to"): it shows above the icon, and the radio choice does not change.
+

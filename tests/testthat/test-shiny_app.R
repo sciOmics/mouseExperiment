@@ -202,6 +202,57 @@ test_that("the full dashboard starts a working session", {
 })
 
 # ===========================================================================
+# Test: the help icons show their text on a click, and the click stays on the
+# icon (user report 2026-10-11)
+# ===========================================================================
+# help_tip() used the browser's title attribute: no tooltip on a click or a
+# tap, and the icon sits in the input's label, so a click opened the Control
+# group menu. Real mouse events, not $.click(): the label's handling of a click
+# is what went wrong.
+test_that("a help icon shows its tooltip on a click and does not open the menu", {
+  app <- shinytest2::AppDriver$new(
+    test_path("apps", "dashboard"),
+    name = "dashboard-help-tips", timeout = 30000, load_timeout = 90000, wait = TRUE)
+  on.exit(app$stop(), add = TRUE)
+  app$run_js("$('.modal-footer button').click();")
+  app$set_inputs(`data-demo_dataset` = "combo", wait_ = FALSE)
+  app$click("data-load_demo_data")
+  app$wait_for_js("$('#data-control_group').val() === 'Control'", timeout = 30000)
+
+  icon_js <- "$('#data-control_group-label').find('.fa-circle-question').closest('span')"
+  expect_true(isTRUE(app$get_js(paste0(icon_js, ".length === 1"))))
+  app$run_js(paste0(icon_js, "[0].scrollIntoView({block: 'center'});"))
+  r <- app$get_js(paste0("(function () { var b = ", icon_js,
+                         "[0].getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; })()"))
+  cdp <- app$get_chromote_session()
+  cdp$Emulation$setFocusEmulationEnabled(enabled = TRUE)
+  # Before the fix, the label passed the click on: the log read "mousedown:I
+  # click:I focusin:data-control_group-selectized click:data-control_group-selectized".
+  app$run_js(paste0("window.__ev = []; ['click', 'focusin'].forEach(function (t) {",
+                    " document.addEventListener(t, function (e) {",
+                    " window.__ev.push(t + ':' + (e.target.id || e.target.tagName)); }, true); });"))
+  for (type in c("mouseMoved", "mousePressed", "mouseReleased")) {
+    cdp$Input$dispatchMouseEvent(type = type, x = r[[1]], y = r[[2]],
+                                 button = if (type == "mouseMoved") "none" else "left",
+                                 clickCount = if (type == "mouseMoved") 0L else 1L)
+  }
+  app$wait_for_js("$('.tooltip.in').length === 1", timeout = 5000)
+  expect_match(app$get_text(".tooltip.in .tooltip-inner"), "reference arm for every comparison")
+  events <- unlist(app$get_js("window.__ev"))
+  expect_false(any(grepl("control_group", events)), info = paste(events, collapse = " "))
+  expect_false(isTRUE(app$get_js("$('#data-control_group')[0].selectize.isOpen")))
+  expect_identical(app$get_js("$('#data-control_group').val()"), "Control")
+
+  # It stays while the pointer rests on it, and goes once the pointer and the
+  # focus leave. Keyboard users reach it with Tab: focus alone shows it too.
+  cdp$Input$dispatchMouseEvent(type = "mouseMoved", x = 5, y = 5)
+  app$run_js("document.activeElement.blur();")
+  app$wait_for_js("$('.tooltip.in').length === 0", timeout = 5000)
+  app$run_js(paste0(icon_js, ".focus();"))
+  app$wait_for_js("$('.tooltip.in').length === 1", timeout = 5000)
+})
+
+# ===========================================================================
 # Test: end-to-end upload → run TG LME4 → verify results populate
 # (CODE_REVIEW.md Round 2 I.5)
 # ===========================================================================
