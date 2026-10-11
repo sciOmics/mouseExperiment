@@ -4,9 +4,21 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
-## [Unreleased]
+## [26.10.006] - 2026-10-11
+
+### Fixed
+- **The help icons (?) showed nothing on a click or a tap** (user report). They used the
+  browser's title attribute, which appears only after the pointer rests on the icon.
+  - **The fix:** they are Bootstrap tooltips now, shown on hover, on keyboard focus (Tab), and
+    on a click or tap. They are also wider, for their sentence or two.
+  - **The menu:** each icon sits inside its input's label, so a click on it was passed on to
+    the input: the Control group menu opened. Clicks on an icon now stay on the icon. This
+    covers all 17 help icons (Study Design, column mapping, Survival, Dose Response).
 
 ### Tests
+- A browser test clicks the Control group icon with real mouse events. It checks that the
+  tooltip shows, that no click or focus reaches the select box, and that the tooltip hides
+  once the pointer and focus leave. It fails on 26.10.005.
 - Tests that read the sources skip when run from an installed copy, as the VPS staging gate
   now runs them, instead of failing (`CODE_REVIEW.md` R20-D.T).
 

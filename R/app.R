@@ -160,6 +160,7 @@ dashboard_app <- function() {
         tags$script(src = v("js/sidebar.js")),
         tags$script(src = v("js/darkmode.js")),
         tags$script(src = v("js/overlay.js")),
+        tags$script(src = v("js/help-tips.js")),
         tags$script(HTML(
           "$(document).ready(function(){",
           "  if(window.innerWidth>768)return;",

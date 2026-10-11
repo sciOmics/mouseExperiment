@@ -9,11 +9,16 @@ tab_info <- function(...) {
   )
 }
 
-# Shared helper: inline help tooltip (question-circle icon with title hint)
+# Shared helper: inline help icon. It shows `text` in a tooltip on hover, on
+# keyboard focus, and on a click or tap (www/js/help-tips.js). A bare title
+# attribute showed nothing on a click or a tap. The icon sits inside input
+# labels, and that script also keeps its clicks from reaching the label, which
+# passed them on to the input: the Control group menu opened instead.
 help_tip <- function(text) {
   tags$span(
-    class = "text-muted",
+    class = "help-tip text-muted",
     style = "cursor:help; margin-left:4px;",
+    tabindex = "0", role = "button", `aria-label` = paste("Help:", text),
     title = text,
     icon("circle-question", class = "fa-sm")
   )
