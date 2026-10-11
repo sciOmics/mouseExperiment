@@ -2666,3 +2666,18 @@ After this step every Round 21 Minor is closed; R20.D26 is closed in part, as no
 
 **Verification (executed):** against backend 0.33.0, the full suite runs 30 files and 291 tests with no failures or skips.
 
+
+## R20-D.T The suite runs from an installed copy, for the VPS staging gate (2026-10-10)
+
+The VPS now runs both packages' test suites on every staging build, before a candidate image is deployed (sciOmicsVPS `CODE_REVIEW.md` V3-Q). The image installs the dashboard with `--install-tests`, and the gate runs the installed `tests/testthat` from a writable copy. The source tree is not there, so 12 tests that read `R/`, `DESCRIPTION` or `.Rbuildignore` failed with "cannot open the connection". R CMD check's copy of the tests has the same gap.
+
+**The change (tests only):**
+- **`helper-source.R`.** `dash_source_dir()`, `dash_source()` and `dash_all_sources()` read the sources and skip when `R/` is not beside `tests/`. This mirrors the package's `pkg_source_files()` (backend R20.55).
+- **Every source read goes through it.** This covers `test-backend-contract.R`, `test-demo-data-reachable.R`, `test-modal-and-cachebust.R`, `test-round21-labels.R` and `test-round21-minors.R`. The two `rprojroot` look-ups went too; rprojroot was not a declared dependency.
+- **Mixed tests keep their behavioural checks.** These now come before the source reads, so they still run in the gate:
+  - R20.D22 and R20.D61: the removed functions and `translate_error()`. The `DESCRIPTION` checks now read the installed description.
+  - The demo selector: no removed demo is shipped.
+
+**Verification (executed):**
+- From the source tree: 291 tests, no failures, no skips.
+- Installed with `--install-tests` and run as the gate runs it: 291 tests, no failures, 43 skipped. That is the 31 that skipped before (browser, cmdstanr and source-tree checks) plus these 12.

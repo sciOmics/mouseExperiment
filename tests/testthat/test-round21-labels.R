@@ -166,8 +166,7 @@ test_that("R20.D12: no study string reaches the analytics events", {
     expect_false(grepl(field, js, fixed = TRUE), info = field)
   }
   expect_match(js, "properties.error = true;", fixed = TRUE)
-  src <- paste(unlist(lapply(list.files(testthat::test_path("..", "..", "R"),
-                                        full.names = TRUE), readLines)), collapse = "\n")
+  src <- dash_all_sources()
   expect_false(grepl("trackError\\([^)]*%s", src))
   expect_false(grepl("trackColumnMapping\\('%s'", src))
   # Staging traffic is not recorded under the production website id.

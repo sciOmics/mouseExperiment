@@ -246,9 +246,7 @@ test_that("R3.D6: the AUC path reports the transform it actually applied", {
 test_that("R3.D6: the module prefers meta over the input when recording scale", {
   # Guards the resolution order in mod_tumor_growth.R. Reading the input would
   # tag AUC output "log" and mis-scale any consumer not gated on model_type.
-  src <- paste(readLines(testthat::test_path("..", "..", "R",
-                                             "mod_tumor_growth.R"),
-                         warn = FALSE), collapse = "\n")
+  src <- dash_source("R", "mod_tumor_growth.R")
   expect_match(src, "result\\$transform_used\\s*<-\\s*result\\$meta\\$transform_used")
   expect_match(src, "result\\$model_type_used\\s*<-\\s*result\\$meta\\$model_type_used")
 })

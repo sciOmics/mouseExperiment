@@ -4,6 +4,12 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [Unreleased]
+
+### Tests
+- Tests that read the sources skip when run from an installed copy, as the VPS staging gate
+  now runs them, instead of failing (`CODE_REVIEW.md` R20-D.T).
+
 ## [26.10.005] - 2026-10-10
 
 Requires mouseExperiment ≥ 0.33.0. The Round 21 Minors, the grey synergy

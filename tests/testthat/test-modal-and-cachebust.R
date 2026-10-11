@@ -55,19 +55,12 @@ test_that("updateTabsetPanel(... selected = 'Summary') is wired in every module"
     "R/mod_power.R"
   )
   for (f in module_files) {
-    p <- system.file(package = "mouseExperimentDashboard")
-    # When running with devtools::test() / load_all(), R/ is in the
-    # source dir; fall back to that.
-    src_path <- file.path(rprojroot::find_root(rprojroot::is_r_package), f)
-    if (!file.exists(src_path)) {
-      next   # skip on installed-package mode where R/ is not exposed
-    }
-    txt <- readLines(src_path, warn = FALSE)
+    txt <- strsplit(dash_source(f), "\n", fixed = TRUE)[[1]]   # skips outside the source tree
     # R20.D6: a run that finishes on the background worker switches the tab
     # from its finalizer, which lives beside the module.
     helper <- c("R/mod_toxicity.R" = "R/tox_background.R")[f]
     if (!is.na(helper)) {
-      txt <- c(txt, readLines(file.path(dirname(dirname(src_path)), helper), warn = FALSE))
+      txt <- c(txt, strsplit(dash_source(helper), "\n", fixed = TRUE)[[1]])
     }
     has_switch <- any(grepl(
       "updateTabsetPanel\\(session,.*selected\\s*=\\s*[\"']Summary[\"']", txt
@@ -86,14 +79,7 @@ test_that("static asset includes carry a ?v=<version> query string", {
   # <link>/<script> in the head so browsers fetch fresh assets after
   # every release. We grep the source for the pattern; the actual head
   # construction is too verbose to mock here.
-  src_root <- tryCatch(
-    rprojroot::find_root(rprojroot::is_r_package),
-    error = function(e) NULL
-  )
-  skip_if(is.null(src_root),
-          "running from installed package — cannot inspect source")
-
-  app_path <- file.path(src_root, "R", "app.R")
+  app_path <- file.path(dash_source_dir(), "R", "app.R")
   expect_true(file.exists(app_path), info = "R/app.R must exist")
   txt <- readLines(app_path, warn = FALSE)
 
