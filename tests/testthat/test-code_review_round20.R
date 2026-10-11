@@ -170,9 +170,12 @@ test_that("R20.3: tumour-growth and body-weight models give the same answer with
   a <- tg("UID"); b <- tg("RID_arm")
   expect_equal(lme4::fixef(b$model), lme4::fixef(a$model), tolerance = 1e-8)
   # Same partition of the data, so the fits agree up to optimiser noise (the
-  # grouping levels are ordered differently): ~1e-9 on this fixture.
+  # grouping levels are ordered differently). Since R20-W both start at the
+  # optimum found on centred time and stop within the optimiser's tolerance:
+  # log-likelihoods agree to 1e-9, the covariance to about 6e-6.
+  expect_equal(as.numeric(logLik(b$model)), as.numeric(logLik(a$model)), tolerance = 1e-8)
   expect_equal(as.matrix(stats::vcov(b$model)), as.matrix(stats::vcov(a$model)),
-               tolerance = 1e-6)
+               tolerance = 1e-4)
   expect_equal(lme4::ngrps(b$model)[["RID_arm"]], 32L)   # was 8
 
   bw <- function(id) quiet(analyze_body_weight(
@@ -813,10 +816,17 @@ test_that("R20.19: the synergy verdict is symmetric and rests on the interval", 
 })
 
 test_that("R20.14: an animal with no usable volume or a missing volume no longer derails dose-response", {
-  data(dose_levels_synthetic_data, package = "mouseExperiment", envir = environment())
-  # Four animals of the package's own demo never have a positive volume.
-  r <- quiet(dose_response_statistics(dose_levels_synthetic_data, cage_column = "Cage",
-                                      verbose = FALSE))           # was an error
+  # Four animals never have a positive volume. The package's old dose demo had
+  # exactly that (negative day-0 volumes, then NaN); the dataset was replaced
+  # in v0.29.0 (R20.52), so the case is built here.
+  set.seed(14)
+  dr <- do.call(rbind, lapply(c(0, 10, 50, 100), function(dose) do.call(rbind, lapply(1:5, function(i) {
+    days <- seq(0, 14, 2)
+    v <- 80 * exp((0.15 - 0.001 * dose) * days + stats::rnorm(length(days), 0, 0.05))
+    if (i == 1) v[] <- 0                                   # one never-measurable animal per dose
+    data.frame(Treatment = "HDACi", Dose = dose, Cage = dose, ID = i, Day = days, Volume = v)
+  }))))
+  r <- quiet(dose_response_statistics(dr, cage_column = "Cage", verbose = FALSE))  # was an error
   expect_equal(r$statistics$growth_rate_animals_left_out, 4L)
   expect_true(is.finite(r$statistics$growth_dose_p_value))
   # Missing volumes after an animal's death are not imputed as shrinkage.

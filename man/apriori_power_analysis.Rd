@@ -121,3 +121,7 @@ study is analysed as the \eqn{k - 1} treated-vs-control comparisons, so the
 power reported is for each of those comparisons at the per-comparison alpha
 (see \code{p_adjust_method}).
 }
+\examples{
+# Animals per group for a standardised effect of 1.2 with three groups
+apriori_power_analysis(effect_size = 1.2, n_groups = 3)
+}

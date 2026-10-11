@@ -54,6 +54,10 @@
 #' are censoring, and other removals (tumour burden, death) are competing
 #' risks: \code{cuminc} then gives the cumulative incidence of weight loss
 #' allowing for them, which \code{1 - km_fit} overstates.
+#' @examples
+#' wl <- weight_loss_threshold(master_synthetic_data, cage_column = "Cage",
+#'                             threshold = 0.1, reference_group = "Vehicle")
+#' names(wl)
 #' @export
 weight_loss_threshold <- function(df,
                                   weight_column    = "Weight",
@@ -138,6 +142,10 @@ weight_loss_threshold <- function(df,
     }))
   }
   baseline_weights <- stats::setNames(bl$Weight, bl$.MouseKey)
+  # R20.65: weighings before an animal's baseline are not at risk. A loss
+  # against the day-0 baseline during acclimatisation (day -7) used to count
+  # as a weight-loss event before the study started.
+  baseline_days <- stats::setNames(bl$Day, bl$.MouseKey)
 
   # --- Determine event time per mouse ---
   # CODE_REVIEW.md R20.21 -- `bw` is unnamed here: a named baseline turned the
@@ -145,6 +153,7 @@ weight_loss_threshold <- function(df,
   # failure left a non-converged coxph fit reported as "cox".
   event_list <- lapply(unique(wd$.MouseKey), function(key) {
     sub <- wd[wd$.MouseKey == key, ]
+    sub <- sub[sub$Day >= baseline_days[[key]], , drop = FALSE]    # R20.65
     bw <- unname(baseline_weights[key])
     threshold_weight <- bw * (1 - threshold)
     hit <- which(sub$Weight <= threshold_weight)
@@ -216,19 +225,23 @@ weight_loss_threshold <- function(df,
             "overstates weight-loss incidence.")
   }
 
-  # Aalen-Johansen cumulative incidence via survfit() on a multi-state factor.
+
+  # R20.46: shared reference rule (a reference_group matching no arm used to
+  # be ignored silently).
+  reference_group <- me_resolve_reference(event_df$Treatment, reference_group,
+                                          "weight_loss_threshold")
+  event_df$Treatment <- stats::relevel(factor(as.character(event_df$Treatment)),
+                                       ref = reference_group)
+
+  # Aalen-Johansen cumulative incidence via survfit() on a multi-state factor,
+  # with the reference arm first, as in the Kaplan-Meier fit (R20.65: the
+  # cuminc strata were alphabetical).
   cuminc <- tryCatch({
     cr_df <- event_df
     cr_df$Status_MS <- factor(cr_df$Status_CR, levels = c(0L, 1L, 2L),
                               labels = c("censored", "weight_loss", "removed"))
     survival::survfit(survival::Surv(Time, Status_MS) ~ Treatment, data = cr_df)
   }, error = function(e) NULL)
-
-  # Set reference group
-  event_df$Treatment <- as.factor(event_df$Treatment)
-  if (!is.null(reference_group) && reference_group %in% levels(event_df$Treatment)) {
-    event_df$Treatment <- stats::relevel(event_df$Treatment, ref = reference_group)
-  }
 
   # --- Kaplan-Meier ---
   km_fit <- survival::survfit(
@@ -298,6 +311,7 @@ weight_loss_threshold <- function(df,
   }
 
   list(
+    reference_group = reference_group,   # R20.46
     event_data   = event_df,
     km_fit       = km_fit,
     cuminc            = cuminc,

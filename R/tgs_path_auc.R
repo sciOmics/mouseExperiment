@@ -64,7 +64,8 @@ tgs_path_auc <- function(auc_analysis,
                          treatment_column,
                          cage_column,
                          time_column,
-                         volume_column) {
+                         volume_column,
+                         zero_floor_info) {
 
   if (isTRUE(auc_bootstrap_n > 0) || isTRUE(auc_permutations > 0)) {
     warning("auc_bootstrap_n and auc_permutations are ignored: since v0.26.0 ",
@@ -91,7 +92,8 @@ tgs_path_auc <- function(auc_analysis,
          "evaluable (", t_end, ") is the first study day. ", evaluability$rule,
          call. = FALSE)
   }
-  em <- me_endpoint_model(d)
+  em <- me_endpoint_model(d, zero_floor_info$value, zero_floor_info$units,
+                          "tumor_growth_statistics")   # R20-W
   if (is.null(em)) {
     stop("The AUC model could not be fitted to these data.", call. = FALSE)
   }
@@ -141,12 +143,20 @@ tgs_path_auc <- function(auc_analysis,
                   "model_type = 'auc'. Use 'vs_reference' or 'all_pairs'.",
                   call. = FALSE)
   )
+  # R20.85: intervals at the level the p-value adjustment implies, so an
+  # interval that excludes no difference is never shown beside an adjusted
+  # p-value that is not significant. Bonferroni and Holm get Bonferroni-level
+  # intervals (Holm has no interval of its own); BH and none have no
+  # simultaneous interval, so theirs are the 95% intervals.
+  ci_adj <- me_auc_ci_adjustment(comparison_spec$padjust_method, length(pairs))
   pairwise_df <- do.call(rbind, lapply(pairs, function(pr) {
     lr_draw <- log(auc_draw[, pr[1]]) - log(auc_draw[, pr[2]])
     lr_hat  <- log(auc_hat[[pr[1]]]) - log(auc_hat[[pr[2]]])
     se      <- stats::sd(lr_draw)
     z       <- lr_hat / se
     diff_draw <- auc_draw[, pr[1]] - auc_draw[, pr[2]]
+    a2 <- (1 - ci_adj$level) / 2
+    zq <- stats::qnorm(1 - a2)
     data.frame(
       comparison  = paste(pr[1], "-", pr[2]),
       estimate    = auc_hat[[pr[1]]] - auc_hat[[pr[2]]],
@@ -157,6 +167,13 @@ tgs_path_auc <- function(auc_analysis,
       ratio_upper = exp(stats::quantile(lr_draw, 0.975, names = FALSE)),
       z_value     = z,
       p_value     = 2 * stats::pnorm(-abs(z)),
+      CI_Adjusted_Lower = stats::quantile(diff_draw, a2, names = FALSE),
+      CI_Adjusted_Upper = stats::quantile(diff_draw, 1 - a2, names = FALSE),
+      # On the scale of the test, so they agree exactly with p_adjusted
+      # under Bonferroni.
+      Ratio_CI_Adjusted_Lower = exp(lr_hat - zq * se),
+      Ratio_CI_Adjusted_Upper = exp(lr_hat + zq * se),
+      CI_Adjustment = ci_adj$label,
       stringsAsFactors = FALSE)
   }))
   pairwise_df$p_adjusted <- stats::p.adjust(pairwise_df$p_value,
@@ -208,7 +225,8 @@ tgs_path_auc <- function(auc_analysis,
         "arms with different attrition."),
       growth_rate_calculation = paste0(
         "Growth rates are calculated by fitting a linear regression model to log-transformed volume data over time for each subject ",
-        "(non-positive volumes are replaced with half the smallest positive value before the log). ",
+        "(zero volumes take the fixed floor, ", zero_floor_info$value, " ",
+        zero_floor_info$units, ", before the log). ",
         "The slope coefficient from this model represents the exponential growth rate. ",
         "A value of 0.1 indicates approximately 10% tumor volume increase per day. ",
         "Only subjects with 3 or more time points are included in growth rate calculations."

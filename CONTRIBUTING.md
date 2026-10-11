@@ -160,12 +160,14 @@ When adding a new Bayesian function:
 Run the suite:
 
 ```r
-devtools::test()                                    # full suite, 644 tests
+devtools::test()                                    # full suite
 devtools::test(filter = "tumor_growth")             # TG-related only
 devtools::test(filter = "bayesian_tumor_growth")    # specific Bayesian path
 ```
 
-Bayesian tests skip when `brms` isn't installed. This is intentional — `R CMD check` should pass even on minimal R installs.
+`brms` is in Imports, so the Bayesian tests always run: nothing skips a package the
+package requires (see above). `NOT_CRAN=true` makes the `skip_on_cran()` tests run too;
+`devtools::test()` sets it, `testthat::test_dir()` does not.
 
 ### Test files
 
@@ -191,7 +193,7 @@ Add a `test-<function>.R` file with:
 
 For Bayesian functions, also:
 
-5. **`brms` skip:** wrap with `skip_if_not_installed("brms")` so the test is non-fatal without brms
+5. **No `brms` skip:** `brms` is in Imports, so the test always runs (CODE_REVIEW.md R20.53)
 6. **Diagnostics surface:** assert all expected diagnostic fields are populated
 7. **`plots = FALSE`** test: assert plot fields are `NULL` and the function still completes
 
@@ -202,7 +204,7 @@ Rscript coverage.R                    # per-file summary
 Rscript coverage.R --html             # HTML report
 ```
 
-Known caveat: pre-existing stale tests in `test-post_power_analysis.R` (function removed in v0.3.4) and `test-toxicity_functions.R` (`efficacy_metric = "log_cell_kill"` no longer valid) block `covr` from completing. These are tracked under CODE_REVIEW.md K.11 — fix them first to get a clean coverage baseline.
+The Bayesian entry points are left out by default: Stan compilation dominates the run.
 
 ---
 
@@ -215,26 +217,26 @@ Required for every exported function. Required content:
 - `@title`, `@description` (the first paragraph is the title; the rest is description)
 - `@param` for every argument, including defaults and accepted values
 - `@return` describing the list shape (or single object)
-- `@examples` for non-trivial functions (use `\dontrun{}` for examples that need brms / Stan)
+- `@examples` for every exported function, run against shipped data (usually `master_synthetic_data`). Wrap examples that compile Stan in `\donttest{}`; never use `\dontrun{}`, which `R CMD check` never runs: that is how broken examples went unnoticed for 18 months (CODE_REVIEW.md R20.50)
 - `@references` for published statistical methods (DOI when available)
 - `@seealso` linking to companions (e.g., the frequentist version)
 - `@section`s for substantive topics (Assumptions and Limitations, MCMC diagnostics, etc.)
 
 ### NAMESPACE
 
-Regenerate via `devtools::document()`. Don't edit `NAMESPACE` by hand. The legacy `build.R` script in the repo root is *not* the source of truth — it's a vestige and is bypassed by `devtools::document()`.
+Regenerate via `devtools::document()`. Don't edit `NAMESPACE` by hand. (A legacy `build.R` that rewrote `NAMESPACE` with functions that no longer exist was deleted in v0.29.0.)
 
 ### Vignettes
 
-Three vignettes are maintained in `vignettes/`:
+One vignette is maintained in `vignettes/`:
 
 | File | Topic |
 |---|---|
-| `mouseExperiment.Rmd` | Package overview |
-| `mouseExperiment_combo_demo.qmd` | Worked combination-treatment example |
-| `mouseExperiment_dose_demo.qmd` | Worked dose-response example |
+| `mouseExperiment.Rmd` | A complete analysis of `master_synthetic_data` |
 
-Build the Rmd with `devtools::build_vignettes()`. Build the qmd files with `quarto render`.
+It is built by `R CMD build` and in CI, so an example that breaks fails the build. Build it locally with `devtools::build_vignettes()`. The two personal Quarto demos now live in `dev/demos/`, which is not shipped (CODE_REVIEW.md R20.49).
+
+The README's Usage examples are run by `tests/testthat/test-readme.R`; keep them runnable.
 
 ### `docs/` directory
 
@@ -264,7 +266,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Every version 
    - Title: conventional-commits format
    - Body: explains the *why*; references CODE_REVIEW.md item ID if applicable
    - For multi-commit PRs, the body summarizes the sequence
-5. CI runs (test suite + `R CMD check`)
+5. CI runs (`.github/workflows/R-CMD-check.yaml`): `R CMD check` with the vignette and the full test suite, plus the README examples. Merge only when it is green
 6. Self-review:
    - Tests cover the new behavior
    - Roxygen `@param`, `@return`, `@examples` updated

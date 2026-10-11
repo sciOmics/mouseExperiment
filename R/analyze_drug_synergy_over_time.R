@@ -24,6 +24,9 @@
 #'   \code{\link{analyze_drug_synergy}}. Under the model estimand one endpoint
 #'   model is fitted and evaluated on every day.
 #' @param verbose Logical. If TRUE, prints detailed results to the console.
+#' @param volume_units,zero_floor The units of the volume column, \code{"mm3"}
+#'   (default) or \code{"cm3"}, and the volume a regression to zero takes on the
+#'   endpoint model's log scale: 2 mm3 or 0.002 cm3 unless set (R20.32, R20-W).
 #'        Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.
 #'
 #' @return A list containing the following components:
@@ -69,27 +72,14 @@
 #' where active single agents sit. See \code{\link{analyze_drug_synergy}}.
 #'
 #' @examples
-#' # Analyze synergy over all available time points
-#' data(combo_treatment_synthetic_data)
-#' data_processed <- calculate_volume(combo_treatment_synthetic_data)
-#' data_processed <- calculate_dates(data_processed, start_date = "03/24/2025")
-#' 
-#' synergy_results <- analyze_drug_synergy_over_time(
-#'   df = data_processed,
-#'   drug_a_name = "Drug A",
-#'   drug_b_name = "Drug B", 
-#'   combo_name = "Combo",
-#'   control_name = "Control"
-#' )
-#' 
-#' # Access synergy metrics at each time point
-#' print(head(synergy_results$synergy_summary))
-#' trend_plot <- plot_synergy_trend(synergy_results)
-#' print(trend_plot)
-#' 
-#' # Check when synergy was strongest
-#' print(synergy_results$peak_bliss_synergy)
-#'
+#' trend <- analyze_drug_synergy_over_time(master_synthetic_data,
+#'   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
+#'   combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
+#'   min_time_point = 2,  # day 0 has no growth to inhibit
+#'   cage_column = "Cage", n_boot = 200, boot_seed = 1, verbose = FALSE)
+#' head(trend$synergy_summary)
+#' trend$peak_bliss_synergy
+#' plot_synergy_trend(trend)
 #' @import dplyr
 #' @import ggplot2
 #' @importFrom ggpubr ggarrange
@@ -109,9 +99,13 @@ analyze_drug_synergy_over_time <- function(df,
                                       endpoint_method = c("model", "last_obs", "survivors"),
                                       n_boot = 2000L,
                                       boot_seed = NULL,
-                                      verbose = TRUE) {
+                                      verbose = TRUE,
+                                      volume_units = c("mm3", "cm3"),
+                                      zero_floor = NULL) {
 
   endpoint_method <- match.arg(endpoint_method)
+  volume_units <- match.arg(volume_units)
+  floor_value  <- me_zero_floor(volume_units, zero_floor)
 
   # Input validation
   required_columns <- c(treatment_column, volume_column, time_column, id_column)
@@ -168,7 +162,9 @@ analyze_drug_synergy_over_time <- function(df,
 
   # One endpoint model for every day, so the days are estimates from the same
   # fit rather than from a refit per day.
-  endpoint_model <- if (endpoint_method == "model") me_endpoint_model(d_std) else NULL
+  endpoint_model <- if (endpoint_method == "model") {
+    me_endpoint_model(d_std, floor_value, volume_units, "analyze_drug_synergy_over_time")
+  } else NULL
 
   if (isTRUE(verbose)) {
     message("Analyzing drug synergy across ", length(all_timepoints),
@@ -185,7 +181,7 @@ analyze_drug_synergy_over_time <- function(df,
         time_column = time_column, volume_column = volume_column,
         cage_column = cage_column, endpoint_day = tp,
         endpoint_method = endpoint_method, arms = arms,
-        model = endpoint_model)
+        model = endpoint_model, zero_floor = floor_value, volume_units = volume_units)
       synergy_results <- me_synergy_from_endpoint(
         ep, control_name = control_name, drug_a_name = drug_a_name,
         drug_b_name = drug_b_name, combo_name = combo_name,
@@ -242,6 +238,12 @@ analyze_drug_synergy_over_time <- function(df,
   
   # Order the summary by time point
   synergy_summary <- synergy_summary[order(synergy_summary$Time_Point), ]
+
+  # R20.67: a p-value per day is one test per day, and scanning the days for
+  # a significant one inflates the error rate. Holm-adjusted columns, over
+  # the days analysed, sit beside the per-day ones.
+  synergy_summary$P_Value_vs_Drug_A_Holm <- stats::p.adjust(synergy_summary$P_Value_vs_Drug_A, "holm")
+  synergy_summary$P_Value_vs_Drug_B_Holm <- stats::p.adjust(synergy_summary$P_Value_vs_Drug_B, "holm")
 
   # One warning for all the days on which Bliss does not apply (R14.2, R20.8).
   not_bliss <- synergy_summary$Time_Point[!synergy_summary$Bliss_Applies]
@@ -310,18 +312,12 @@ analyze_drug_synergy_over_time <- function(df,
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # First run the analysis
-#' results <- analyze_drug_synergy_over_time(
-#'   df = tumor_data,
-#'   drug_a_name = "Drug A",
-#'   drug_b_name = "Drug B", 
-#'   combo_name = "Drug A + Drug B"
-#' )
-#' 
-#' # Then create the trend plot
-#' plot_synergy_trend(results)
-#' }
+#' trend <- analyze_drug_synergy_over_time(master_synthetic_data,
+#'   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
+#'   combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
+#'   min_time_point = 2,  # day 0 has no growth to inhibit
+#'   n_boot = 200, boot_seed = 1, verbose = FALSE)
+#' plot_synergy_trend(trend)
 plot_synergy_trend <- function(synergy_results, custom_title = NULL, custom_colors = NULL) {
   # Validate input
   if (!is.list(synergy_results) || is.null(synergy_results$synergy_summary)) {
@@ -380,7 +376,10 @@ plot_synergy_trend <- function(synergy_results, custom_title = NULL, custom_colo
     ggplot2::scale_color_manual(
       name = "Treatment",
       values = color_values,
-      labels = c(drug_a_name, drug_b_name, combo_name, "Bliss Expected")
+      # R20.48: an unnamed `labels` vector was applied to the breaks in
+      # alphabetical order, so the Drug A line could be labelled "Combo".
+      # The breaks are the colours' names; each line keeps its own label.
+      breaks = if (!is.null(names(color_values))) names(color_values) else ggplot2::waiver()
     ) +
     # Manual legend for ribbon areas
     ggplot2::annotate("rect",

@@ -870,6 +870,8 @@ me_model_cache_put <- function(key, fit) {
 #' 20 s per fit. This empties that cache; set
 #' \code{options(mouseExperiment.cache_compiled_models = FALSE)} to turn it off.
 #' @return The number of cached models removed, invisibly.
+#' @examples
+#' clear_compiled_model_cache()
 #' @export
 clear_compiled_model_cache <- function() {
   keys <- ls(.me_model_cache, all.names = TRUE)

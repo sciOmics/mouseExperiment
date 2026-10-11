@@ -46,21 +46,13 @@
 #' }
 #'
 #' @examples
-#' \dontrun{
-#' # Return a new data frame with volume using default ellipsoid formula
-#' df_with_volume <- calculate_volume(synthetic_data)
-#' 
-#' # Use a different formula (modified ellipsoid)
-#' df_with_volume <- calculate_volume(synthetic_data, formula = "modified_ellipsoid")
-#' 
-#' # Modify the original data frame in place
-#' synthetic_data <- calculate_volume(synthetic_data, in_place = TRUE)
-#' 
-#' # Use a 3D formula with height measurements
-#' df_with_volume <- calculate_volume(synthetic_data, 
-#'                                   height_column = "Height",
-#'                                   formula = "ellipsoid_3axis")
-#' }
+#' # Ellipsoid (pi * L * W^2 / 6) from length and width, the default
+#' d <- calculate_volume(combo_treatment_synthetic_data)
+#' summary(d$Volume)
+#'
+#' # Three-axis ellipsoid when a height was measured
+#' d <- calculate_volume(master_synthetic_data, height_column = "Height",
+#'                       formula = "ellipsoid_3axis")
 calculate_volume <- function(df, length_column = "Length", width_column = "Width",
                             height_column = NULL,
                             formula = c("ellipsoid", "modified_ellipsoid",
@@ -101,14 +93,16 @@ calculate_volume <- function(df, length_column = "Length", width_column = "Width
   
   # Ensure longer dimension is always stored in length_column 
   # and shorter dimension in width_column
-  length_tmp <- ifelse(df[,length_column] > df[,width_column], 
-                       df[,length_column], df[,width_column])
-  width_tmp <- ifelse(df[,width_column] < df[,length_column], 
-                      df[,width_column], df[,length_column])
+  # [[ ]] rather than [, ]: on a tibble, [, ] returns a one-column tibble and
+  # the arithmetic below failed (R20.30).
+  len_in <- df[[length_column]]
+  wid_in <- df[[width_column]]
+  length_tmp <- ifelse(len_in > wid_in, len_in, wid_in)
+  width_tmp  <- ifelse(wid_in < len_in, wid_in, len_in)
   
   # Get height if needed, otherwise use width as approximation
   if(!is.null(height_column) && height_column %in% colnames(df)) {
-    height_tmp <- df[,height_column]
+    height_tmp <- df[[height_column]]
   } else {
     height_tmp <- width_tmp  # Common approximation when height not measured
   }
@@ -125,9 +119,12 @@ calculate_volume <- function(df, length_column = "Length", width_column = "Width
     "box" = length_tmp * width_tmp * height_tmp
   )
   
-  # Add volume to result dataframe
-  result <- cbind(df_result, Volume)
-  
-  # Return the result
-  return(result)
+  # R20.30: cbind() appended a second "Volume" column when one existed, and
+  # $Volume then returned the old values. Replace it, and say so.
+  if ("Volume" %in% names(df_result)) {
+    message("calculate_volume(): replacing the existing Volume column (",
+            formula, " formula).")
+  }
+  df_result[["Volume"]] <- Volume
+  df_result
 }

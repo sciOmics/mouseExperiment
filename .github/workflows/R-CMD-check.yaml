@@ -1,0 +1,71 @@
+# R CMD check, with the vignette and the full test suite (Bayesian tests
+# included), on every push and pull request, and nightly so that a change in a
+# CRAN dependency is caught before the next deploy (CODE_REVIEW.md R20.53).
+# Until this existed, a broken example lived for 18 months and the vignette
+# never built (R20.49, R20.50).
+name: R-CMD-check
+
+on:
+  push:
+    branches: [staging, production]
+  pull_request:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  R-CMD-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      # Run the skip_on_cran() tests too.
+      NOT_CRAN: true
+      # cmdstanr (Suggests, from r-universe) is deliberately not installed: its
+      # test checks the error a user gets without it.
+      _R_CHECK_FORCE_SUGGESTS_: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      # rstan comes as a binary, which skips its LinkingTo packages, but brms
+      # compiles each model at run time and needs their headers then. Of
+      # rstan's LinkingTo, Rcpp, RcppParallel and StanHeaders are installed
+      # anyway (Imports/Depends); BH and RcppEigen are not, and without them
+      # every Bayesian test fails ("Boost not found", "Eigen not found").
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: '"hard"'
+          extra-packages: |
+            any::BH
+            any::RcppEigen
+            any::rcmdcheck
+            any::devtools
+            any::testthat
+            any::knitr
+            any::rmarkdown
+            any::withr
+            any::survminer
+          needs: check
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          args: 'c("--no-manual")'
+          error-on: '"warning"'
+
+      # R CMD check runs the tests against the installed package, without the
+      # README or R/ sources, so the tests that read them skip there. Run them
+      # here, from the source tree (R20.51, R20.53).
+      - name: Source-tree tests (README examples, source checks)
+        run: |
+          Rscript -e 'devtools::test(filter = "readme|code_review_round16|code_review_round18", reporter = c("summary", "fail"), stop_on_failure = TRUE)'

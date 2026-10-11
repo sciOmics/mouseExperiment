@@ -41,19 +41,7 @@ linear mixed-effects models. The output is a caterpillar plot with the following
 }
 }
 \examples{
-\dontrun{
-# After running tumor growth statistics
-results <- tumor_growth_statistics(df)
-
-# Create caterpillar plot from the model
-cat_plot <- plot_caterpillar(results$model)
-print(cat_plot)
-
-# With customizations
-cat_plot2 <- plot_caterpillar(results$model, 
-                             title = "Treatment Effects on Tumor Growth",
-                             show_intercept = FALSE,
-                             ci_level = 0.9)
-}
-
+tg <- tumor_growth_statistics(master_synthetic_data, reference_group = "Vehicle",
+                              plots = FALSE)
+plot_caterpillar(tg$model, show_intercept = FALSE)
 }

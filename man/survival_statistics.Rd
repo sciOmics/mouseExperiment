@@ -55,7 +55,9 @@ comparison can reach is reported: with 2 cages per arm it is 1/3, and
 with 3 it is 0.1, so neither can reach p < 0.05.
 }}
 
-\item{dose_column}{Optional name of column containing dose information. Default: NULL}
+\item{dose_column}{Optional dose column. A treatment given at more than one
+dose is analysed as one arm per dose, labelled "\if{html}{\out{<treatment>}} \if{html}{\out{<dose>}}"
+(CODE_REVIEW.md R20.30). Default: NULL}
 
 \item{reference_group}{Treatment group to use as reference. Default: NULL (uses first alphabetically)}
 

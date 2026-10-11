@@ -1,6 +1,29 @@
 # Copyright (c) 2026 mouseExperiment Contributors
 # Licensed under the MIT License — see LICENSE file in the repo root.
 
+#' Standardised normal Q-Q coordinates -- CODE_REVIEW.md R20.84
+#'
+#' The Q-Q plots drew a y = x reference over raw residuals (SD 0.16 on the
+#' shipped data) and raw BLUPs, so the points followed a slope of about 0.16
+#' and every model looked non-normal. Standardising makes y = x the right
+#' reference. Values with (near) zero spread, such as the BLUPs of a singular
+#' fit, return `NULL`: there is nothing to check, and drawing them could hang
+#' the graphics device.
+#'
+#' @param vals Numeric values (residuals or BLUPs).
+#' @return A data frame with `theoretical` and `sample`, or `NULL`.
+#' @noRd
+#' @keywords internal
+me_qq_frame <- function(vals) {
+  vals <- as.numeric(vals)
+  vals <- vals[is.finite(vals)]
+  if (length(vals) < 3L) return(NULL)
+  s <- stats::sd(vals)
+  if (!is.finite(s) || s < 1e-10) return(NULL)
+  qq <- stats::qqnorm((vals - mean(vals)) / s, plot.it = FALSE)
+  data.frame(theoretical = qq$x, sample = qq$y)
+}
+
 #' Build a standard set of residual-diagnostic ggplots for an LMM / LM fit.
 #'
 #' Returns a list of three ggplot objects (Q-Q of residuals,
@@ -29,8 +52,7 @@ build_residual_diagnostic_plots <- function(model, title_prefix = "Model") {
   tryCatch({
     resid_vec <- stats::residuals(model)
     fit_vec   <- stats::fitted(model)
-    qq_data   <- stats::qqnorm(resid_vec, plot.it = FALSE)
-    qq_df     <- data.frame(theoretical = qq_data$x, sample = qq_data$y)
+    qq_df     <- me_qq_frame(resid_vec)                      # R20.84
 
     # Use a compact theme so the plot fits a constrained plotOutput
     # without the title eating most of the canvas. The dashboard's h4
@@ -42,17 +64,20 @@ build_residual_diagnostic_plots <- function(model, title_prefix = "Model") {
         plot.subtitle = ggplot2::element_text(size = 9),
         plot.margin = ggplot2::margin(4, 6, 4, 6))
 
-    out$diag_qq_plot <- ggplot2::ggplot(
-      qq_df, ggplot2::aes(x = .data[["theoretical"]],
-                          y = .data[["sample"]])
-    ) +
-      ggplot2::geom_point(alpha = 0.6) +
-      ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed",
-                           colour = "red") +
-      compact_theme +
-      ggplot2::labs(title = paste0(title_prefix, ": Q-Q of residuals"),
-                    x = "Theoretical Quantiles",
-                    y = "Sample Quantiles")
+    if (!is.null(qq_df)) {
+      out$diag_qq_plot <- ggplot2::ggplot(
+        qq_df, ggplot2::aes(x = .data[["theoretical"]],
+                            y = .data[["sample"]])
+      ) +
+        ggplot2::geom_point(alpha = 0.6) +
+        ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed",
+                             colour = "red") +
+        compact_theme +
+        ggplot2::labs(title = paste0(title_prefix, ": Q-Q of residuals"),
+                      subtitle = "Standardised; normal residuals follow the dashed line",
+                      x = "Theoretical Quantiles",
+                      y = "Standardised Residual Quantiles")
+    }
 
     rf_df <- data.frame(Fitted = fit_vec, Residuals = resid_vec)
     out$diag_resid_fitted_plot <- ggplot2::ggplot(
@@ -123,14 +148,14 @@ build_random_effects_qq_plot <- function(model,
     # Stack random-effects columns (intercept + slope when present) into
     # long form so we can facet by component.
     if (ncol(re_df) == 0L) return(NULL)
+    # R20.84: standardised; a component with no spread (singular fit) is
+    # left out, and with none left there is no plot.
     long <- do.call(rbind, lapply(colnames(re_df), function(cn) {
-      vals <- re_df[[cn]]
-      qq   <- stats::qqnorm(vals, plot.it = FALSE)
-      data.frame(component  = cn,
-                 theoretical = qq$x,
-                 sample      = qq$y,
-                 stringsAsFactors = FALSE)
+      qq <- me_qq_frame(re_df[[cn]])
+      if (is.null(qq)) return(NULL)
+      data.frame(component = cn, qq, stringsAsFactors = FALSE)
     }))
+    if (is.null(long) || !nrow(long)) return(NULL)
     p <- ggplot2::ggplot(long,
                         ggplot2::aes(x = .data[["theoretical"]],
                                      y = .data[["sample"]])) +
@@ -143,9 +168,9 @@ build_random_effects_qq_plot <- function(model,
         plot.subtitle = ggplot2::element_text(size = 9),
         plot.margin = ggplot2::margin(4, 6, 4, 6)) +
       ggplot2::labs(title = paste0(title_prefix, ": Q-Q of random effects"),
-                    subtitle = paste0("Grouping: ", grp),
+                    subtitle = paste0("Grouping: ", grp, "; standardised"),
                     x = "Theoretical Quantiles",
-                    y = "BLUP Sample Quantiles")
+                    y = "Standardised BLUP Quantiles")
     if (length(unique(long$component)) > 1L) {
       p <- p + ggplot2::facet_wrap(~ component, scales = "free")
     }

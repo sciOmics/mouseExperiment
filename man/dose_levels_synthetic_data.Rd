@@ -5,29 +5,34 @@
 \alias{dose_levels_synthetic_data}
 \title{Dose levels synthetic data}
 \format{
-A data frame with rows for each mouse at each timepoint and 7 variables:
+A data frame with 172 rows and 8 variables:
 \describe{
-\item{Mouse_ID}{Mouse identifier, with format M followed by a number}
-\item{Day}{Day of measurement, starting from day 0}
-\item{Treatment}{Treatment name (always "Drug X")}
-\item{Dose}{Dose level (0, 10, 25, 50, 100)}
-\item{Volume}{Tumor volume measurement}
-\item{ID}{Numeric identifier for the mouse, without the "M" prefix}
-\item{Cage}{Cage number where the mouse is housed}
+\item{Date}{Measurement date, "DD-Mon" without a year (24 March to
+18 April). Convert with \code{\link[=calculate_dates]{calculate_dates()}}, start date "24-Mar", year
+2025.}
+\item{Cage}{Cage number, 1 to 4; one cage per arm.}
+\item{ID}{Ear-punch code, repeated in every cage.}
+\item{Treatment}{"Control" or "HDACi".}
+\item{Dose}{0 for Control; 10, 50 or 100 for HDACi.}
+\item{Length, Width}{Caliper measurements (mm); 0 means no palpable
+tumour yet.}
+\item{Survival_Censor}{1 on the last row of an animal removed at the
+tumour endpoint, otherwise 0.}
 }
 }
 \source{
-Synthetic data generated using random number generation with dose-dependent effects
+Synthetic; \code{data-raw/dose_levels_synthetic_data.csv}.
 }
 \usage{
 dose_levels_synthetic_data
 }
 \description{
-A dataset containing synthetic tumor volume measurements over time
-for different dose levels of a single drug.
+Caliper measurements for one drug at three doses and a vehicle control. It
+is the dashboard's "Dose Levels" demo.
 }
 \examples{
-data(dose_levels_synthetic_data)
-head(dose_levels_synthetic_data)
+d <- calculate_dates(dose_levels_synthetic_data, start_date = "24-Mar", year = 2025)
+d <- calculate_volume(d)
+table(d$Treatment, d$Dose)
 }
 \keyword{datasets}

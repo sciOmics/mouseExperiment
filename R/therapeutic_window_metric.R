@@ -58,6 +58,9 @@
 #'   animals within arm (CODE_REVIEW.md R3.6 / R3.7, R20.2). Default 2000; 0
 #'   skips the intervals, and with them the tolerability flag.
 #' @param boot_seed Optional integer seed for reproducible resampling.
+#' @param zero_floor The volume a regression to zero takes on the endpoint
+#'   model's log scale: 2 mm3 or 0.002 cm3 (from \code{volume_units}, mm3 when
+#'   it is \code{NULL}) unless set (R20.32, R20-W).
 #' @return A list:
 #'   \describe{
 #'     \item{window_table}{One row per arm, the reference arm first:
@@ -92,6 +95,11 @@
 #' their own, which can happen in a "Tolerated" arm. Worst loss is taken over
 #' each animal's whole record, not only up to the evaluation day, because
 #' toxicity after that day still counts.
+#' @examples
+#' tw <- therapeutic_window_metric(master_synthetic_data, volume_units = "mm3",
+#'                                 cage_column = "Cage", reference_group = "Vehicle",
+#'                                 n_boot = 200, boot_seed = 1)
+#' tw$window_table
 #' @export
 therapeutic_window_metric <- function(df,
                                       weight_column    = "Weight",
@@ -108,7 +116,8 @@ therapeutic_window_metric <- function(df,
                                       endpoint_day     = NULL,
                                       endpoint_method  = c("model", "last_obs", "survivors"),
                                       n_boot           = 2000L,
-                                      boot_seed        = NULL) {
+                                      boot_seed        = NULL,
+                                      zero_floor       = NULL) {
 
   endpoint_method <- match.arg(endpoint_method)
   if (!is.numeric(tolerability_threshold) || length(tolerability_threshold) != 1L ||
@@ -159,12 +168,11 @@ therapeutic_window_metric <- function(df,
   wd <- wd[order(wd$MouseKey, wd$Day), ]
 
   groups <- unique(wd$Treatment)
-  if (is.null(reference_group)) {
-    # Pick first alphabetically or common control names
-    ctrl_patterns <- c("control", "vehicle", "dmso", "pbs", "saline", "placebo")
-    ref_match <- groups[tolower(groups) %in% ctrl_patterns]
-    reference_group <- if (length(ref_match) > 0) ref_match[1] else groups[1]
-  }
+  # R20.46: shared reference rule. Exact-name matching missed
+  # "Vehicle (10% DMSO)" and fell back to the first arm (a Vehicle TGI of
+  # -217 % was reported against an active arm).
+  reference_group <- me_resolve_reference(groups, reference_group,
+                                          "therapeutic_window_metric")
 
   # --- Efficacy axis: TGI per arm ---
   # CODE_REVIEW.md R3.5 / G.3 -- each arm's geometric mean at the endpoint day
@@ -185,7 +193,11 @@ therapeutic_window_metric <- function(df,
     vd, id_column = "MouseKey", treatment_column = "Treatment",
     time_column = "Day", volume_column = "Volume",
     endpoint_day = endpoint_day, endpoint_method = endpoint_method,
-    arms = sort(unique(vd$Treatment))
+    arms = sort(unique(vd$Treatment)),
+    # R20-W: the endpoint model's fixed floor, in the declared units (mm3
+    # when none are declared, as in tumor_growth_statistics()).
+    zero_floor = me_zero_floor(if (is.null(volume_units)) "mm3" else volume_units, zero_floor),
+    volume_units = if (is.null(volume_units)) "mm3" else volume_units
   )
   max_day  <- ep$endpoint_day
   tgi_data <- endpoint_tgi(ep$group_means, reference_group)
@@ -258,6 +270,7 @@ therapeutic_window_metric <- function(df,
 
   thr <- format(tolerability_threshold)
   list(
+    reference_group  = reference_group,   # R20.46
     window_table     = win,
     weight_loss_data = mouse_wl,
     tgi_data         = tgi_data,

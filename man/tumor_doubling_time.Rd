@@ -40,8 +40,6 @@ Doubling time = \eqn{\log(2) / \beta_1}.
 Subjects with fewer than 3 time points or non-positive growth rates are returned with NA.
 }
 \examples{
-\dontrun{
-dt <- tumor_doubling_time(master_synthetic_data)
-}
-
+dt <- tumor_doubling_time(master_synthetic_data, cage_column = "Cage")
+head(dt)
 }

@@ -20,7 +20,9 @@ analyze_drug_synergy_over_time(
   endpoint_method = c("model", "last_obs", "survivors"),
   n_boot = 2000L,
   boot_seed = NULL,
-  verbose = TRUE
+  verbose = TRUE,
+  volume_units = c("mm3", "cm3"),
+  zero_floor = NULL
 )
 }
 \arguments{
@@ -55,7 +57,11 @@ key, so every day failed (CODE_REVIEW.md R20.15).}
 \code{\link{analyze_drug_synergy}}. Under the model estimand one endpoint
 model is fitted and evaluated on every day.}
 
-\item{verbose}{Logical. If TRUE, prints detailed results to the console.
+\item{verbose}{Logical. If TRUE, prints detailed results to the console.}
+
+\item{volume_units, zero_floor}{The units of the volume column, \code{"mm3"}
+(default) or \code{"cm3"}, and the volume a regression to zero takes on the
+endpoint model's log scale: 2 mm3 or 0.002 cm3 unless set (R20.32, R20-W).
 Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.}
 }
 \value{
@@ -111,25 +117,12 @@ where active single agents sit. See \code{\link{analyze_drug_synergy}}.
 }
 
 \examples{
-# Analyze synergy over all available time points
-data(combo_treatment_synthetic_data)
-data_processed <- calculate_volume(combo_treatment_synthetic_data)
-data_processed <- calculate_dates(data_processed, start_date = "03/24/2025")
-
-synergy_results <- analyze_drug_synergy_over_time(
-  df = data_processed,
-  drug_a_name = "Drug A",
-  drug_b_name = "Drug B", 
-  combo_name = "Combo",
-  control_name = "Control"
-)
-
-# Access synergy metrics at each time point
-print(head(synergy_results$synergy_summary))
-trend_plot <- plot_synergy_trend(synergy_results)
-print(trend_plot)
-
-# Check when synergy was strongest
-print(synergy_results$peak_bliss_synergy)
-
+trend <- analyze_drug_synergy_over_time(master_synthetic_data,
+  drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
+  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
+  min_time_point = 2,  # day 0 has no growth to inhibit
+  cage_column = "Cage", n_boot = 200, boot_seed = 1, verbose = FALSE)
+head(trend$synergy_summary)
+trend$peak_bliss_synergy
+plot_synergy_trend(trend)
 }

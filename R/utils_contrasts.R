@@ -151,6 +151,39 @@ build_requested_contrasts <- function(emm, spec, reference_group = NULL,
   )
 }
 
+#' Contrast summaries under a fixed seed -- CODE_REVIEW.md R20.59
+#'
+#' Dunnett, the dashboard's default, is emmeans' "mvt" adjustment, which
+#' integrates the multivariate t by Monte Carlo (mvtnorm). Every summary() gave
+#' slightly different p-values (0.000413, 0.000402, 0.000337 on three calls of
+#' the same contrast), an adjusted p could fall below the raw one, and each
+#' call advanced the caller's random number stream. Summaries now run under a
+#' fixed seed, and the caller's stream is restored afterwards.
+#'
+#' @param x An emmGrid of contrasts.
+#' @param ... Passed to `summary()`.
+#' @noRd
+#' @keywords internal
+me_contrast_summary <- function(x, ...) me_with_seed(20260930L, summary(x, ...))
+
+#' Evaluate `expr` under `seed`, leaving the caller's RNG state as it was
+#' @noRd
+#' @keywords internal
+me_with_seed <- function(seed, expr) {
+  genv <- globalenv()
+  had  <- exists(".Random.seed", envir = genv, inherits = FALSE)
+  old  <- if (had) get(".Random.seed", envir = genv, inherits = FALSE)
+  on.exit({
+    if (had) {
+      assign(".Random.seed", old, envir = genv)
+    } else if (exists(".Random.seed", envir = genv, inherits = FALSE)) {
+      rm(".Random.seed", envir = genv)
+    }
+  }, add = TRUE)
+  set.seed(seed)
+  expr
+}
+
 #' Pairwise contrast table for the body-weight models
 #'
 #' CODE_REVIEW.md R3.12 — `analyze_body_weight()` returned group marginal means
@@ -171,8 +204,8 @@ bw_pairwise_table <- function(emm_obj, spec, reference_group = NULL,
                                   custom_contrasts = custom_contrasts)
   if (is.null(pc)) return(NULL)
 
-  df <- tryCatch(as.data.frame(summary(pc, infer = c(TRUE, TRUE))),
-                 error = function(e) as.data.frame(summary(pc)))
+  df <- tryCatch(as.data.frame(me_contrast_summary(pc, infer = c(TRUE, TRUE))),
+                 error = function(e) as.data.frame(me_contrast_summary(pc)))
   if ("p.value" %in% names(df)) names(df)[names(df) == "p.value"] <- "p_value"
   df$P_Adjust_Method   <- spec$p_adjust_method
   df$Comparison_Family <- spec$family
@@ -216,10 +249,41 @@ me_pairwise_frame <- function(x, comparison_spec = NULL,
                               adjusted_col = NULL, raw_col = NULL,
                               adjust_scope = NULL) {
   if (is.null(x)) return(NULL)
+  ci_msg <- NULL
   df <- tryCatch(
-    if (is.data.frame(x)) as.data.frame(x) else as.data.frame(summary(x)),
+    if (is.data.frame(x)) {
+      as.data.frame(x)
+    } else {
+      # R20.85: with intervals, which emmeans adjusts to match the p-values
+      # (Dunnett/mvt, Tukey, Bonferroni; Bonferroni-level for Holm and BH).
+      s <- tryCatch(me_contrast_summary(x, infer = c(TRUE, TRUE)),
+                    error = function(e) me_contrast_summary(x))
+      ci_msg <- attr(s, "mesg")
+      out <- as.data.frame(s)
+      # R20.59: the unadjusted p alongside, and an adjusted p never below it
+      # (Monte Carlo error in the mvt integration could put it there).
+      raw <- tryCatch(as.data.frame(me_contrast_summary(x, adjust = "none"))$p.value,
+                      error = function(e) NULL)
+      if (length(raw) == nrow(out) && "p.value" %in% names(out)) {
+        out$P_Value_Raw <- raw
+        out$p.value <- pmax(out$p.value, raw)
+      }
+      out
+    },
     error = function(e) NULL)
   if (is.null(df) || !nrow(df)) return(df)
+
+  if (!is.data.frame(x) && !"CI_Adjusted_Lower" %in% names(df)) {
+    lim <- me_emm_limits(df)
+    if (!all(is.na(lim$lower))) {
+      df$CI_Adjusted_Lower <- lim$lower
+      df$CI_Adjusted_Upper <- lim$upper
+      adj <- grep("^Conf-level adjustment: ", ci_msg, value = TRUE)
+      df$CI_Adjustment <- if (length(adj)) {
+        sub("^Conf-level adjustment: ", "", adj[1])
+      } else "none (95% per comparison)"
+    }
+  }
 
   # Canonical contrast label. The AUC path calls it `comparison`.
   if (!"contrast" %in% names(df)) {
@@ -247,4 +311,44 @@ me_pairwise_frame <- function(x, comparison_spec = NULL,
     df$Adjust_Scope <- adjust_scope
   }
   df
+}
+
+#' The interval level that matches a p-value adjustment -- CODE_REVIEW.md R20.85
+#'
+#' For the AUC path's draws-based comparisons. Bonferroni and Holm get
+#' Bonferroni-level intervals, as emmeans gives on the model paths; BH and
+#' none have no simultaneous interval.
+#'
+#' @param padjust_method A `stats::p.adjust` method.
+#' @param m Number of comparisons.
+#' @return `list(level, label)`.
+#' @noRd
+#' @keywords internal
+me_auc_ci_adjustment <- function(padjust_method, m) {
+  m <- max(1L, as.integer(m))
+  if (identical(padjust_method, "bonferroni") || identical(padjust_method, "holm")) {
+    list(level = 1 - 0.05 / m,
+         label = sprintf("bonferroni method for %d estimates", m))
+  } else {
+    list(level = 0.95,
+         label = if (identical(padjust_method, "none") || is.na(padjust_method)) {
+           "none (95% per comparison)"
+         } else {
+           sprintf("none: %s has no simultaneous interval (95%% per comparison)",
+                   padjust_method)
+         })
+  }
+}
+
+# emmeans names its interval columns lower.CL/upper.CL with finite degrees of
+# freedom, asymp.LCL/asymp.UCL once the data pass lmerTest.limit (3,000 rows)
+# and asymptotic df are used, and lower.HPD/upper.HPD for Bayesian fits.
+# Reading only lower.CL made the default path fail above 3,000 rows (R20.25).
+me_emm_limits <- function(s) {
+  s  <- as.data.frame(s)
+  lo <- intersect(c("lower.CL", "asymp.LCL", "lower.HPD"), names(s))[1]
+  hi <- intersect(c("upper.CL", "asymp.UCL", "upper.HPD"), names(s))[1]
+  na <- rep(NA_real_, nrow(s))
+  list(lower = if (is.na(lo)) na else s[[lo]], upper = if (is.na(hi)) na else s[[hi]],
+       columns = c(lo, hi))
 }

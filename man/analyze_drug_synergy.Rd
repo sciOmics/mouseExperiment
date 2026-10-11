@@ -21,7 +21,9 @@ analyze_drug_synergy(
   additivity_margin = 0.1,
   n_boot = 2000L,
   boot_seed = NULL,
-  verbose = TRUE
+  verbose = TRUE,
+  volume_units = c("mm3", "cm3"),
+  zero_floor = NULL
 )
 }
 \arguments{
@@ -84,7 +86,11 @@ is reported, not the median of the draws. Default 2000. Set 0 to skip.}
 
 \item{boot_seed}{Optional integer seed for reproducible resampling.}
 
-\item{verbose}{Logical. If TRUE, prints detailed results to the console.
+\item{verbose}{Logical. If TRUE, prints detailed results to the console.}
+
+\item{volume_units, zero_floor}{The units of the volume column, \code{"mm3"}
+(default) or \code{"cm3"}, and the volume a regression to zero takes on the
+endpoint model's log scale: 2 mm3 or 0.002 cm3 unless set (R20.32, R20-W).
 Default is TRUE for interactive use; set to FALSE for programmatic/dashboard use.}
 }
 \value{
@@ -174,24 +180,11 @@ was labelled synergistic in about half of simulated studies
 }
 
 \examples{
-# Example with synthetic dataset
-data(combo_treatment_synthetic_data)
-data_processed <- calculate_volume(combo_treatment_synthetic_data)
-data_processed <- calculate_dates(data_processed, start_date = "03/24/2025")
-
-synergy_results <- analyze_drug_synergy(
-  df = data_processed,
-  drug_a_name = "Drug A",
-  drug_b_name = "Drug B", 
-  combo_name = "Combo",
-  control_name = "Control"
-)
-
-# Print the summary
-print(synergy_results$summary)
-
-# Create and display the synergy visualization
-synergy_plot <- plot_drug_synergy(synergy_results)
-print(synergy_plot)
-
+m <- master_synthetic_data
+syn <- analyze_drug_synergy(m,
+  drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
+  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
+  cage_column = "Cage", n_boot = 200, boot_seed = 1, verbose = FALSE)
+syn$summary
+plot_drug_synergy(syn)
 }

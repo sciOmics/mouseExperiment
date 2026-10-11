@@ -13,7 +13,8 @@ trajectory_permutation_test(
   cage_column = "Cage",
   transform = c("log", "sqrt", "none"),
   spec = perm_spec(),
-  verbose = FALSE
+  verbose = FALSE,
+  zero_floor = 2
 )
 }
 \arguments{
@@ -29,6 +30,11 @@ trajectory_permutation_test(
 \item{spec}{A \code{\link[=perm_spec]{perm_spec()}} object.}
 
 \item{verbose}{Print progress.}
+
+\item{zero_floor}{With \code{transform = "log"}, the volume a zero takes before
+the log (CODE_REVIEW.md R20.32): 2 for mm3 (the default), 0.002 for cm3.
+\code{\link[=tumor_growth_statistics]{tumor_growth_statistics()}} passes its own floor, so both test the same
+response.}
 }
 \value{
 A list with:
@@ -97,13 +103,10 @@ point of the approach.
 }
 
 \examples{
-\dontrun{
-data(master_synthetic_data)
 trajectory_permutation_test(
   master_synthetic_data,
   spec = perm_spec(unit = "mouse", n_perm = 199, seed = 1)
 )
-}
 }
 \seealso{
 \code{\link[=perm_spec]{perm_spec()}}, \code{\link[=tumor_growth_statistics]{tumor_growth_statistics()}}

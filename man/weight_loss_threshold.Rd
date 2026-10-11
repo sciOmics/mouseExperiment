@@ -99,3 +99,8 @@ risks: \code{cuminc} then gives the cumulative incidence of weight loss
 allowing for them, which \code{1 - km_fit} overstates.
 }
 
+\examples{
+wl <- weight_loss_threshold(master_synthetic_data, cage_column = "Cage",
+                            threshold = 0.1, reference_group = "Vehicle")
+names(wl)
+}

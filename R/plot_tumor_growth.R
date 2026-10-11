@@ -17,33 +17,21 @@
 #'   necrotic flag values (Y/N, yes/no, 1/0, TRUE/FALSE, case-insensitive).
 #'   When supplied, an × marker is overlaid on each necrotic observation and a
 #'   caption note is added. Defaults to \code{NULL} (no necrotic marking).
+#' @param point_size Size of the individual-observation points. Default 2.
+#' @param volume_units Units for the y-axis label: "mm3" (default), "cm3", or
+#'   \code{NULL} for no unit.
 #'
 #' @return A ggplot of tumor growth curves colored by treatment group
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' data(synthetic_data)
-#' df <- calculate_volume(synthetic_data)
-#' df <- calculate_dates(df, start_date = "2022-02-24")
-#' 
-#' # Standard plot using Treatment column
-#' plot_tumor_growth(df, treatment_column = "Treatment")
-#' 
-#' # Plot with extrapolated volumes for deceased mice
-#' plot_tumor_growth(df, treatment_column = "Treatment", extrapolate_volumes = TRUE)
-#' 
-#' # For data with dose information
-#' dose_data <- calculate_volume(dose_data)
-#' dose_data <- calculate_dates(dose_data, start_date = "24-Mar", date_format = "%d-%b", year = 2023)
-#' plot_tumor_growth(dose_data, treatment_column = "Treatment", dose_column = "Dose")
-#' 
-#' # Combining multiple options: dose information and extrapolation
-#' plot_tumor_growth(dose_data, 
-#'                 treatment_column = "Treatment", 
-#'                 dose_column = "Dose",
-#'                 extrapolate_volumes = TRUE)
-#' }
+#' plot_tumor_growth(master_synthetic_data, necrotic_column = "Necrotic")
+#'
+#' # One agent's dose series, labelled by dose
+#' plot_tumor_growth(
+#'   subset(master_synthetic_data,
+#'          Treatment %in% c("Vehicle", "Drug_A Low", "Drug_A Mid", "Drug_A High")),
+#'   dose_column = "Dose")
 plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
                              treatment_column = "Treatment", cage_column = "Cage", ID_column = "ID",
                              dose_column = NULL,
@@ -52,7 +40,8 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
                              extrapolation_points = "all",
                              group_summary_line = TRUE,
                              necrotic_column = NULL,
-                             point_size = 2) {
+                             point_size = 2,
+                             volume_units = "mm3") {
   
   # Input validation — cage_column is optional
   req_cols <- c(volume_column, day_column, treatment_column, ID_column)
@@ -353,25 +342,53 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
         ggplot2::geom_point(
           data = necrotic_pts,
           ggplot2::aes(x = .data[[day_column]], y = .data[[volume_column]]),
-          shape  = 4,              # × symbol
+          shape  = 4,              # \u00d7 symbol
           color  = "black",
           size   = point_size * 1.8,
           stroke = 1.2,
           inherit.aes = FALSE
         )
-      captions <- c(captions, "× indicates necrotic observation")
+      captions <- c(captions, "\u00d7 indicates necrotic observation")
     }
   }
 
-  # Add group summary line if requested
+  # Add group summary line if requested.
+  # R20.61: the mean of the animals still measured falls as the largest
+  # tumours leave the study (control: 2,479 to 1,696 mm3 as n went 8 to 1,
+  # while the true mean rose to 4,949). Each arm's line now ends on the last
+  # day at least half its animals, and at least 3, are measured -- the
+  # evaluable-day rule of the analyses -- and the caption says so.
   if (group_summary_line) {
-    plot <- plot + ggplot2::stat_summary(
-      ggplot2::aes(group = Group, color = Group),
-      fun = function(x) { x <- x[is.finite(x)]; if (length(x) == 0L) NA_real_ else mean(x) },
-      na.rm = TRUE, geom = "line", linewidth = 1.4
-    )
+    meas <- plot_df[!plot_df$Extrapolated & is.finite(plot_df[[volume_column]]), , drop = FALSE]
+    enrolled <- tapply(meas$Mouse_ID, meas$Group, function(x) length(unique(x)))
+    mean_df <- do.call(rbind, lapply(split(meas, list(meas$Group, meas[[day_column]]), drop = TRUE),
+      function(g) data.frame(Group = g$Group[1], Day = g[[day_column]][1],
+                             Mean = mean(g[[volume_column]]),
+                             N = length(unique(g$Mouse_ID)), stringsAsFactors = FALSE)))
+    if (!is.null(mean_df) && nrow(mean_df)) {
+      need <- pmax(pmin(3, enrolled[as.character(mean_df$Group)]),
+                   ceiling(0.5 * enrolled[as.character(mean_df$Group)]))
+      ok <- mean_df$N >= need
+      # Only up to the first day an arm falls short: later days are survivors.
+      o <- order(mean_df$Group, mean_df$Day)
+      mean_df <- mean_df[o, ]
+      ok <- ok[o]
+      ok <- unlist(lapply(split(ok, mean_df$Group), cumprod), use.names = FALSE) == 1L
+      if (any(!ok)) {
+        captions <- c(captions, paste(
+          "Mean lines end once fewer than half of an arm's animals (or fewer than 3)",
+          "are still measured; after that the survivors' mean understates growth."))
+      }
+      mean_df <- mean_df[ok, , drop = FALSE]
+      if (is.factor(plot_df$Group)) mean_df$Group <- factor(mean_df$Group, levels = levels(plot_df$Group))
+      names(mean_df)[names(mean_df) == "Day"] <- day_column
+      plot <- plot + ggplot2::geom_line(
+        data = mean_df,
+        ggplot2::aes(x = .data[[day_column]], y = .data[["Mean"]], group = Group, color = Group),
+        linewidth = 1.4, inherit.aes = FALSE)
+    }
   }
-  
+
   # Create title based on whether we're using dose information
   if (!is.null(dose_column)) {
     title <- paste("Tumor Growth by Treatment and Dose")
@@ -381,10 +398,16 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
   
   # Add styling and labels
   plot <- plot +
-    ggplot2::ylab(bquote("Tumor Volume"(mm^3))) +
+    # R20.61: the unit as given (it was always mm3), and an axis that keeps
+    # pre-treatment days (limits = c(0, NA) dropped negative days silently).
+    ggplot2::ylab(switch(if (is.null(volume_units)) "" else volume_units,
+                         mm3 = bquote("Tumor Volume"(mm^3)),
+                         cm3 = bquote("Tumor Volume"(cm^3)),
+                         "Tumor Volume")) +
     ggplot2::xlab("Day") +
     ggplot2::ggtitle(title) +
-    ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0, 0.05)), limits = c(0, NA)) + # Start at 0, 5% right padding
+    ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0, 0.05)),
+                                limits = c(min(0, plot_df[[day_column]], na.rm = TRUE), NA)) +
     ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0.10)), limits = c(0, NA)) + # Start at 0, 10% top buffer
     ggplot2::theme_classic() +
     # Move legend to top-left with proper spacing from title

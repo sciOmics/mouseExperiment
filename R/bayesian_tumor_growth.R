@@ -23,7 +23,12 @@
 #'   \code{cage_column} is supplied, a cage random intercept is included in the
 #'   random-effects structure. Set \code{FALSE} to use cage only for key
 #'   construction without modelling it.
-#' @param dose_column Reserved for future use; currently ignored.
+#' @param dose_column Optional dose column. A treatment given at more than one
+#'   dose is analysed as one arm per dose, labelled "<treatment> <dose>"
+#'   (CODE_REVIEW.md R20.30).
+#' @param volume_units,zero_floor As in [tumor_growth_statistics()]: the units of
+#'   the volume column (\code{"mm3"} or \code{"cm3"}) and the value that replaces
+#'   a zero volume on the log scale (default 2 mm3).
 #' @param transform Volume transformation applied before modelling:
 #'   \code{"log"} (default, recommended for exponential growth),
 #'   \code{"sqrt"}, or \code{"none"}.
@@ -149,7 +154,8 @@
 #'     animal and the credible-interval columns reflect OLS confidence
 #'     intervals (Round 2 E.3).}
 #'   \item{\code{data_summary}}{Descriptive statistics by treatment group and
-#'     day.}
+#'     day, on the volume scale: mean, SD, SEM and n (measured volumes only),
+#'     plus the geometric mean with \code{transform = "log"}.}
 #'   \item{\code{loo_diagnostics}}{PSIS-LOO summary with \code{k_threshold},
 #'     \code{n_high_k}, the per-observation \code{pareto_k} and any
 #'     \code{warnings}; kept when loo warns (R20.35).}
@@ -216,6 +222,14 @@
 #' @importFrom ggplot2 ggplot aes geom_density geom_point geom_pointrange
 #'   geom_smooth geom_vline geom_hline scale_colour_manual scale_fill_manual
 #'   facet_wrap labs theme theme_classic
+#' @examples
+#' \donttest{
+#' # Compiles a Stan model on first use (about 30 s), then samples.
+#' two_arms <- subset(master_synthetic_data, Treatment %in% c("Vehicle", "Drug_A High"))
+#' fit <- bayesian_tumor_growth(two_arms, cage_column = "Cage", n_chains = 2,
+#'                              n_warmup = 500, n_iter = 250, plots = FALSE)
+#' fit$treatment_effects
+#' }
 #' @export
 bayesian_tumor_growth <- function(
   df,
@@ -245,12 +259,16 @@ bayesian_tumor_growth <- function(
   necrotic_handling            = c("exclude", "covariate", "none"),
   backend                      = c("rstan", "cmdstanr"),
   priors                       = NULL,
-  mcmc                         = NULL
+  mcmc                         = NULL,
+  volume_units                 = c("mm3", "cm3"),
+  zero_floor                   = NULL
 ) {
 
   # ── Dependency checks ──────────────────────────────────────────────────────
 
   transform                    <- match.arg(transform)
+  volume_units <- match.arg(volume_units)
+  floor_value  <- me_zero_floor(volume_units, zero_floor)     # R20.32
   random_effects_specification <- match.arg(random_effects_specification)
   prior_strength               <- match.arg(prior_strength)
   necrotic_handling            <- match.arg(necrotic_handling)
@@ -279,6 +297,13 @@ bayesian_tumor_growth <- function(
   missing_cols  <- required_cols[!required_cols %in% colnames(df)]
   if (length(missing_cols) > 0) {
     stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+
+  # R20.30: one arm per dose when a treatment has several (dose_column was
+  # ignored). Done on the caller's data, before the internal copy below.
+  if (!is.null(dose_column)) {
+    df[[treatment_column]] <- me_arms_with_dose(df[[treatment_column]], df, dose_column,
+                                                "bayesian_tumor_growth")
   }
 
   # ── Internal column names (CODE_REVIEW.md R20.43) ───────────────────────────
@@ -318,12 +343,10 @@ bayesian_tumor_growth <- function(
   df$Animal <- make_mouse_key(df$Treatment, df$ID, as.character(df[[cage_column]]))
 
   # ── Reference group resolution ─────────────────────────────────────────────
+  # R20.46: shared reference rule (see me_resolve_reference()).
   treatment_groups <- unique(as.character(df[[treatment_column]]))
-  if (is.null(reference_group)) {
-    reference_group <- sort(treatment_groups)[1]
-  } else if (!reference_group %in% treatment_groups) {
-    stop("Reference group '", reference_group, "' not found in treatment column.")
-  }
+  reference_group <- me_resolve_reference(treatment_groups, reference_group,
+                                          "bayesian_tumor_growth")
 
   # Relevel so reference group is first (controls contrast coding in brms)
   df[[treatment_column]] <- stats::relevel(
@@ -345,6 +368,7 @@ bayesian_tumor_growth <- function(
     include_necrotic_covariate <- necrotic_handling == "covariate"
   }
 
+  untransformed_df <- analysis_df   # for the volume-scale summary (R20.57)
   if (transform == "log") {
     vol           <- analysis_df[[volume_column]]
     positive_vals <- vol[is.finite(vol) & vol > 0]
@@ -354,8 +378,9 @@ bayesian_tumor_growth <- function(
         "' after filtering. Cannot apply log transform."
       )
     }
-    vol[vol <= 0] <- min(positive_vals, na.rm = TRUE) / 2
-    analysis_df[[volume_column]] <- log(vol)
+    # R20.32: the fixed zero floor (default 2 mm3), as in tumor_growth_statistics().
+    vol <- me_floor_zeros(vol, floor_value, volume_units, "bayesian_tumor_growth")
+    analysis_df[[volume_column]] <- log(as.numeric(vol))
   } else if (transform == "sqrt") {
     analysis_df[[volume_column]] <- sqrt(analysis_df[[volume_column]])
   }
@@ -423,7 +448,7 @@ bayesian_tumor_growth <- function(
   # ── Fit model ──────────────────────────────────────────────────────────────
   if (isTRUE(verbose)) {
     message("Fitting Bayesian LMM via brms (",
-            n_chains, " chains × ", n_iter, " post-warmup draws, ",
+            n_chains, " chains \u00d7 ", n_iter, " post-warmup draws, ",
             n_warmup, " warmup)...")
   }
 
@@ -555,13 +580,15 @@ bayesian_tumor_growth <- function(
   } else {
     tgs_compute_growth_rates(
       auc_df, treatment_column, id_column,
-      cage_column, time_column, volume_column
+      cage_column, time_column, volume_column,
+      zero_floor = floor_value
     )
   }
 
   # ── Data summary ───────────────────────────────────────────────────────────
   data_summary <- tgs_compute_summary(
-    analysis_df, treatment_column, time_column, volume_column
+    untransformed_df, treatment_column, time_column, volume_column,
+    zero_floor = if (transform == "log") floor_value
   )
 
   # ── Plots ──────────────────────────────────────────────────────────────────
@@ -634,7 +661,7 @@ bayesian_tumor_growth <- function(
       transform          = transform
     ),
     methods = list(
-      engine          = paste0("brms (", n_chains, " chains × ",
+      engine          = paste0("brms (", n_chains, " chains \u00d7 ",
                                n_iter, " draws + ", n_warmup,
                                " warmup, seed = ", seed, ")"),
       # CODE_REVIEW.md R3.8 — report the priors actually handed to brms rather

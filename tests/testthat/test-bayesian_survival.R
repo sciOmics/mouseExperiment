@@ -160,7 +160,7 @@ local({
         reference_group = "NonExistentGroup",
         n_chains = 2L, n_iter = 200L, plots = FALSE, verbose = FALSE
       )),
-      "not found"
+      "not one of the treatment arms"
     )
   })
 

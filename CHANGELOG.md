@@ -5,6 +5,245 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Tests
+- The compiled-model cache test no longer depends on the Bayesian fits before it. The VPS
+  staging gate now runs this suite with every Bayesian fit skipped (sciOmicsVPS
+  `CODE_REVIEW.md` V3-Q).
+
+## [0.33.0] - 2026-10-10
+
+The two Round 20 follow-ups (`CODE_REVIEW.md` R20-W).
+
+### Fixed
+
+- **The endpoint model's zero floor depended on the data.** A regression to
+  zero was set to the smallest positive volume anywhere in the study, so one
+  small reading in any arm moved every arm's regressions. It now takes the
+  fixed floor of tumour growth: 2 mm³, or 0.002 cm³. This affects the AUC
+  path, synergy (single day and over time), dose-response and the therapeutic
+  window. Measured volumes below the floor are kept as measured.
+  `analyze_drug_synergy()`, `analyze_drug_synergy_over_time()` and
+  `dose_response_statistics()` gain `volume_units` and `zero_floor`, and
+  `therapeutic_window_metric()` gains `zero_floor` (it already had
+  `volume_units`).
+- **Results depended on where time was counted from.** With correlated
+  random slopes, the optimizer could stop short of the optimum when time was
+  far from zero. Counting the same data from implantation instead of
+  randomisation gave log-likelihood 365.93 against 366.45, and moved the
+  Treatment row's F from 92.1 to 112.7. The model is now fitted first on time
+  centred at the mean day, and the original model starts from that optimum.
+  The model and what is reported from it are unchanged: both origins now give
+  366.4457 and F = 92.07.
+- **The single-day synergy metrics showed the Bliss difference as a raw
+  fraction** ("0.0179841522745299"), where everything else uses percentage
+  points (dashboard R20.D60). It is now "Bliss Difference (percentage
+  points)", rounded to one decimal.
+
+## [0.32.0] - 2026-10-10
+
+The remaining Round 20 Minors and two efficiency items (`CODE_REVIEW.md`
+R20-V). Every Round 20 Minor is now closed.
+
+### Fixed
+
+- **Dunnett p-values changed on every call (R20.59).** The Monte Carlo
+  multivariate-t integration now runs under a fixed seed, leaves your random
+  number stream alone, and never gives an adjusted p below the raw one, which
+  is now reported too.
+- **Weight-loss events before the baseline (R20.65).** A low acclimatisation
+  weight counted as an event before the study began. The cumulative-incidence
+  strata are now ordered like the Kaplan–Meier ones.
+- **The cage ICC depended on the time units (R20.68).** With random slopes it
+  is now evaluated at the mean study day.
+- **Analytic power (R20.71).** The power curve and the find_power table use
+  the same n (enrolled), the sensitivity table shows enrolment, and enrolment
+  no longer rounds 30 up to 31.
+- **Plots (R20.61).** Mean growth lines stop when most of an arm has left
+  the study. Pre-treatment days are no longer dropped. `plot_tumor_growth()`
+  gains `volume_units`. `plot_auc()` intervals use t, and caterpillar
+  intervals use Satterthwaite df.
+- **Synergy (R20.67).** `plot_bliss()` labels lines with the arms analysed.
+  Per-day p-values gain Holm-adjusted columns across days.
+- **Metadata and checks (R20.58, R20.66, R20.69, R20.75).** The random-effects
+  description includes cage, and subject counts are the model's. Dropped
+  rows, and duplicate animal-day rows, draw a warning. The dose-response `n`
+  counts measured volumes, and the attrition message is clearer.
+
+### Performance
+
+- **Exact randomisation tests (R20.82)** refit each partition of the units
+  once instead of every relabelling: 15 refits instead of 90 for six cages in
+  three arms, with the same p-value.
+
+## [0.31.0] - 2026-10-09
+
+The Round 20 addendum: the findings of the dashboard audit that live in this
+package (`CODE_REVIEW.md` R20-U).
+
+### Fixed
+
+- **Q-Q plots always looked non-normal (R20.84).** The residual and
+  random-effect Q-Q plots drew a y = x line over raw residuals (SD 0.09 on the
+  shipped data), so 4% of points lay near it for a well-specified model. The
+  values are now standardised: 81% lie within 0.05 of the line. A random
+  effect with no spread (a singular fit) is left out of its plot instead of
+  being drawn, which could hang the graphics device.
+- **Contrasts had no intervals to match their adjusted p-values (R20.85).**
+  Consumers built unadjusted 95% intervals and showed them beside
+  multiplicity-adjusted p-values, so an interval could exclude zero next to
+  "not significant". `pairwise_comparisons` now has `CI_Adjusted_Lower`,
+  `CI_Adjusted_Upper` and `CI_Adjustment`. On the mixed-model path they are
+  emmeans' intervals for the same correction: Dunnett, Tukey and Bonferroni
+  exactly, and Bonferroni-level for Holm and BH, as `CI_Adjustment` says.
+  The AUC path also gives `Ratio_CI_Adjusted_*` on the scale of its test,
+  which agree exactly with its Bonferroni p-values.
+- **The data summary was on the log scale, labelled as volume (R20.57).**
+  `data_summary` showed 8.29 for a mean of 3,991.6 mm³. It is now on the
+  volume scale whatever the transform. With `transform = "log"` it adds the
+  geometric mean, with zeros at the floor. `n` counts measured volumes rather
+  than rows, which had shrunk the SEM. The cage table's means are on the
+  volume scale too.
+
+## [0.30.0] - 2026-10-09
+
+The last nine Round 20 Majors, with the maintainer's four decisions
+(`CODE_REVIEW.md` R20-T). Several outputs change shape; see **Breaking**.
+
+### Breaking
+
+- **The reference arm is the control, found by name (R20.46).** Tumour
+  growth, survival, body weight, both Bayesian functions, the therapeutic
+  window and the weight-loss threshold used to take the alphabetically first
+  arm, often a treated one ("aPD1" in the combination data). They now
+  recognise the control by name (control, vehicle, DMSO, PBS, saline,
+  untreated, placebo, isotype, IgG…), also inside longer names such as
+  "Vehicle (10% DMSO)", and say which arm they used. If no arm or several
+  arms look like a control, they stop and ask for `reference_group`. A
+  `reference_group` that is not an arm is an error; it used to be replaced
+  silently.
+- **Tumour-growth ANOVA table (R20.31).** The "Treatment" row tested the arms'
+  difference at day 0, so its p-value depended on where time was counted
+  from (0.86 from randomisation, 7e-26 from implantation, same data). The
+  table now leads with `Treatment:Day` (do growth rates differ?), then
+  "Treatment (at day X)" at the mean study day, then "Day" (the average growth
+  rate). A new `Tests` column says what each row tests in plain words.
+- **Body weight compares rates of weight change (R20.44).** `emmeans_table`
+  holds each arm's `Weight_Change_Per_Day`, and `pairwise_comparisons` the
+  slope differences against the reference. The old comparison, weight at the
+  mean day, moved with any baseline imbalance and had a power of 0.14 against
+  0.84. It is kept as `level_means` and `level_comparisons`.
+- **`apriori_power_simulation()` output (R20.33).** It used a likelihood-ratio
+  test that rejected 9% of the time under the null at n = 5 and, for three or
+  more arms, reported omnibus power. It now fits the default tumour-growth
+  model and tests each arm against the control at alpha/(k−1) (Satterthwaite),
+  holding its size (0.050 at n = 5). New columns: `Alpha_Per_Comparison`,
+  `Power_Lower`/`Power_Upper` (Wilson 95%), `Power_Any`, `Power_All`,
+  `Power_Omnibus` and `N_Failed`. New argument `p_adjust_method`.
+- **Survival events must be coded 0/1 (R20.63).** Coding 1/2 used to be
+  summed into the event counts (an event rate of 1.8), and text codes failed
+  obscurely. Rows with a missing time or event are dropped with a warning,
+  and data with no events stop.
+
+### Fixed
+
+- **Zero volumes on the log scale take a fixed floor (R20.32).** A zero was
+  set to half the smallest positive volume in the data, so one small
+  reading in one arm moved another arm's estimate. The floor is now 2 mm³
+  (half a just-palpable 2 × 2 mm tumour), or 0.002 cm³. New arguments
+  `volume_units` and `zero_floor` in `tumor_growth_statistics()` and
+  `bayesian_tumor_growth()`, and `zero_floor` in
+  `trajectory_permutation_test()`. The value used is in `$zero_floor`. A
+  warning appears when the volumes look like the wrong units, or when more
+  than 20% are zero.
+- **Arguments that changed nothing (R20.30).** `necrotic_handling = "exclude"`
+  now reaches the AUC, growth rates and the permutation test, not only the
+  mixed model. `dose_column` analyses a treatment given at several doses as
+  one arm per dose ("HDACi 10", "HDACi 50"); before, the doses were pooled.
+  `calculate_volume()` replaces an existing `Volume` column (it appended a
+  second one) and accepts tibbles. `apriori_power_analysis()` warns when
+  `n_comparisons` has no effect.
+- **Cage random effect (R20.25).** One arm housed in a single cage, or an
+  unused factor level, dropped `(1|Cage)` for the whole study, raising the
+  null false-positive rate from about 0.03 to 0.16–0.29. A new structure,
+  `nested_partial`, keeps the cage effect and names the single-cage arms.
+  Data with more than 3,000 rows no longer crash the default path.
+- **Survival (R20.24, R20.64).** Firth intervals are coxphf's profile-likelihood
+  limits; they were Wald intervals printed beside profile p-values. A Firth
+  failure falls through to the pairwise log-rank tests instead of an empty
+  table and a crash. `verbose = FALSE` prints nothing.
+- **Body-weight details (R20.44, R20.73).** A missing first weight no longer
+  drops the animal from the baseline-adjusted model. The simpler model is used
+  only after a failure, a singular fit or non-convergence, and the summary
+  gives the real reason instead of blaming sample size.
+- **`plot_synergy_trend()` legend (R20.48).** Labels were attached to the wrong
+  colours (Drug A was labelled "Drug_B").
+- **Power simulation fallback (R20.72).** It is replaced along with the test
+  (R20.33).
+- **A false convergence warning dropped the random slopes.** lme4's gradient
+  check fails spuriously on some data, versions and platforms. It sent the
+  shipped data's body-weight model to a random intercept: the Drug_B rate
+  difference was −0.0068 g/day instead of −0.0111. The fits had reached the
+  optimum (same log-likelihood). Tumour growth and body weight now check such
+  a warning before falling back. First they restart from the estimates. Then
+  they refit with another optimizer, and use that fit if it converges, or keep
+  the first fit when both reach the same optimum. Body weight reports the check in `model_info$convergence_note`.
+
+## [0.29.0] - 2026-10-09
+
+The Round 20 process items (`CODE_REVIEW.md` R20-S): `R CMD check` passes,
+with examples and the vignette, and runs in CI.
+
+### Fixed
+
+- **Examples failed in `R CMD check` (R20.50).** The synergy and tumour-growth
+  examples called `calculate_volume()` on a dataset without `Length`, and
+  most of the rest were wrapped in `\dontrun{}`, so they never ran. Every
+  example now uses shipped data (mostly `master_synthetic_data`) and runs. The
+  Bayesian ones are in `\donttest{}`, since they compile Stan. Exported functions
+  that had no example now have one.
+- **The vignette never built (R20.49).** It is rewritten as a complete
+  analysis of `master_synthetic_data`. The stale `mouseExperiment_combo_demo.html`
+  is deleted. The two personal Quarto demos, which installed packages from
+  local paths, move to `dev/demos/` and are no longer shipped.
+- **The README examples did not run (R20.51).** Usage is rewritten against
+  `master_synthetic_data`, and `tests/testthat/test-readme.R` runs every
+  non-Bayesian block.
+- **Install warnings (R20.50).** `import(drc)` and `import(stats)` clashed
+  with dplyr and each other (five "replacing previous import" warnings, with
+  `stats::lag` shadowing `dplyr::lag`). drc is now imported by function, and
+  stats without `filter` and `lag`. No code called the shadowed functions.
+- **Other check findings (R20.50, R20.54):** non-ASCII characters in code
+  (now `\u` escapes); about 30 ggplot column names declared with
+  `utils::globalVariables()`; undocumented `necrotic_column`,
+  `necrotic_handling` and `point_size`; malformed nested lists in
+  `tumor_growth_statistics()`'s help; a LICENSE that was not the DCF stub
+  (the full text is now `LICENSE.md`); a stale `Date` field.
+
+### Changed
+
+- **Datasets (R20.52).** Each name is now one dataset. `combo_treatment_synthetic_data`
+  and `dose_levels_synthetic_data` are the clean CSV versions the dashboard
+  uses: dates, ear-punch IDs, caliper length and width, survival events. They
+  replace `.rda` files that had volumes on a 0–7 scale, negative day-0 volumes
+  and NaN. They are built by `data-raw/create_datasets.R`. `synthetic_data`
+  (random values, crossed cages) and `necrotic_synthetic_data` are removed;
+  `master_synthetic_data` covers both, necrosis included.
+- **Requires R ≥ 4.1.0** (the code uses `|>`). It declared 3.5.
+- **Build hygiene (R20.54).** `.Rbuildignore` now leaves out `.claude/`,
+  `.waylog/`, `docs/`, `data-raw/`, `dev/` and the development files. Before,
+  a locally built tarball included the AI session transcripts. `build.R`, which
+  rewrote `NAMESPACE` with functions that no longer exist, is deleted along with
+  `temp/` and the tracked `Rplots.pdf`.
+
+### Added
+
+- **CI (R20.53).** `.github/workflows/R-CMD-check.yaml` runs `R CMD check`
+  (vignette and full test suite, Bayesian tests included) on every push and pull
+  request and nightly, then the README examples. CONTRIBUTING no longer
+  describes a CI that did not exist, or a brms skip that the package forbids.
+
 ## [0.28.0] - 2026-09-30
 
 Sixth implementation step of the Round 20 review (`CODE_REVIEW.md` R20-Q):

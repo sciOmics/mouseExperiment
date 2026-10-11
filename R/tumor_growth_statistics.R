@@ -13,7 +13,8 @@
 #' @noRd
 #' @keywords internal
 tgs_compute_growth_rates <- function(auc_df, treatment_column, id_column,
-                                     cage_column, time_column, volume_column) {
+                                     cage_column, time_column, volume_column,
+                                     zero_floor = 2) {
   tryCatch({
     # Calculate growth rates for each subject
     # Use auc_df (untransformed volumes) so growth rates are not double-transformed
@@ -40,7 +41,8 @@ tgs_compute_growth_rates <- function(auc_df, treatment_column, id_column,
         raw_vol       <- subject_data[[volume_column]]
         positive_vals <- raw_vol[is.finite(raw_vol) & raw_vol > 0]
         if (length(positive_vals) == 0L) return(NULL)
-        raw_vol[raw_vol <= 0] <- min(positive_vals, na.rm = TRUE) / 2
+        # R20.32: the fixed zero floor, not half this animal's smallest volume.
+        raw_vol[is.finite(raw_vol) & raw_vol <= 0] <- zero_floor
         log_volume <- log(raw_vol)
         
         # Fit linear model
@@ -106,7 +108,7 @@ tgs_compute_cage_effects <- function(analysis_df, cage_column, treatment_column,
           Treatment = unique(group_data[[treatment_column]]),
           mean_volume = mean(group_data[[volume_column]], na.rm = TRUE),
           sd_volume = stats::sd(group_data[[volume_column]], na.rm = TRUE),
-          n = nrow(group_data)
+          n = sum(is.finite(as.numeric(group_data[[volume_column]])))  # R20.57
         )
       } else {
         # Skip empty groups
@@ -128,6 +130,93 @@ tgs_compute_cage_effects <- function(analysis_df, cage_column, treatment_column,
   
   cage_analysis$effects <- cage_effects
   cage_analysis
+}
+
+#' The tumour-growth ANOVA, growth rate first -- CODE_REVIEW.md R20.31
+#'
+#' With `Volume ~ Day * Treatment`, treatment coding and an uncentred Day, the
+#' Type III "Treatment" row tested the arms' difference at day 0, so its
+#' p-value depended on where time was counted from (0.970 from randomisation,
+#' 0.138 from implantation, same data). Decided 2026-10-09: the growth-rate
+#' test (Treatment x Day) is the headline; "Treatment" compares the arms at the
+#' mean study day, the day the adjusted means are reported at; "Day" is the
+#' average growth rate across arms. Each is a linear hypothesis on the fitted
+#' model, so the result does not depend on the parameterisation or on the
+#' random-effects structure. Other terms (cage, necrosis) keep their rows.
+#'
+#' @return A data frame with `NumDF`, `DenDF` (NA for Wald tests), `F value`
+#'   (or `Chisq`), `Pr(>F)` (or `Pr(>Chisq)`) and a `Tests` column, or NULL.
+#' @noRd
+#' @keywords internal
+tgs_growth_first_anova <- function(model, time_column, treatment_column, centre_day,
+                                   other_rows = NULL, satterthwaite = TRUE) {
+  beta <- if (inherits(model, "merMod")) lme4::fixef(model) else stats::coef(model)
+  mm <- stats::model.matrix(model)
+  labels <- attr(stats::terms(model), "term.labels")
+  asg <- attr(mm, "assign")
+  term_cols <- function(lab) which(asg == match(lab, labels))
+  tx_lab  <- labels[labels %in% c(treatment_column, paste0("`", treatment_column, "`"))]
+  int_lab <- labels[grepl(":", labels, fixed = TRUE) &
+                      vapply(strsplit(labels, ":", fixed = TRUE), function(p)
+                        setequal(gsub("`", "", p), c(time_column, treatment_column)), logical(1))]
+  day_lab <- labels[gsub("`", "", labels) == time_column]
+  if (length(tx_lab) != 1L || length(int_lab) != 1L || length(day_lab) != 1L) return(NULL)
+  tx  <- term_cols(tx_lab); int <- term_cols(int_lab); day <- term_cols(day_lab)
+  if (length(tx) != length(int) || !length(tx)) return(NULL)
+  k <- length(tx) + 1L
+  L_of <- function(rows) {
+    L <- matrix(0, nrow = length(rows), ncol = length(beta), dimnames = list(NULL, names(beta)))
+    for (i in seq_along(rows)) L[i, names(rows[[i]])] <- rows[[i]]
+    L
+  }
+  nm <- names(beta)
+  hyp <- list(
+    interaction = L_of(lapply(seq_along(int), function(j) stats::setNames(1, nm[int[j]]))),
+    treatment   = L_of(lapply(seq_along(tx), function(j)
+                    stats::setNames(c(1, centre_day), nm[c(tx[j], int[j])]))),
+    day         = L_of(list(stats::setNames(c(1, rep(1 / k, length(int))), nm[c(day, int)])))
+  )
+  test <- function(L) {
+    if (satterthwaite && inherits(model, "lmerMod")) {
+      r <- tryCatch(lmerTest::contest(lmerTest::as_lmerModLmerTest(model), L,
+                                      joint = TRUE, ddf = "Satterthwaite"),
+                    error = function(e) NULL)
+      if (!is.null(r)) return(data.frame(NumDF = r$NumDF, DenDF = r$DenDF,
+                                         `F value` = r$`F value`, `Pr(>F)` = r$`Pr(>F)`,
+                                         check.names = FALSE))
+    }
+    V <- as.matrix(stats::vcov(model)); b <- L %*% beta
+    chi <- as.numeric(t(b) %*% solve(L %*% V %*% t(L), b))
+    if (inherits(model, "lm") && !inherits(model, "merMod")) {
+      q <- nrow(L); dfr <- stats::df.residual(model)
+      return(data.frame(NumDF = q, DenDF = dfr, `F value` = chi / q,
+                        `Pr(>F)` = stats::pf(chi / q, q, dfr, lower.tail = FALSE),
+                        check.names = FALSE))
+    }
+    data.frame(NumDF = nrow(L), DenDF = NA_real_, `F value` = chi / nrow(L),
+               `Pr(>F)` = stats::pchisq(chi, nrow(L), lower.tail = FALSE), check.names = FALSE)
+  }
+  day_txt <- format(round(centre_day, 1), nsmall = 0)
+  out <- rbind(test(hyp$interaction), test(hyp$treatment), test(hyp$day))
+  rownames(out) <- c(paste0(treatment_column, ":", time_column),
+                     paste0(treatment_column, " (at day ", day_txt, ")"),
+                     paste0(time_column, " (average over arms)"))
+  out$Tests <- c("Do growth rates differ between arms?",
+                 paste0("Do the arms differ at the mean study day (day ", day_txt, ")?"),
+                 "Is there growth, on average across arms?")
+  if (!is.null(other_rows) && nrow(other_rows)) {
+    keep <- setdiff(rownames(other_rows),
+                    c(gsub("`", "", c(tx_lab, int_lab, day_lab)), tx_lab, int_lab, day_lab,
+                      paste0(time_column, ":", treatment_column), "(Intercept)"))
+    if (length(keep)) {
+      extra <- as.data.frame(other_rows)[keep, intersect(names(out), names(other_rows)), drop = FALSE]
+      for (cn in setdiff(names(out), names(extra))) extra[[cn]] <- NA
+      extra$Tests <- "Adjustment term"
+      out <- rbind(out, extra[, names(out)])
+    }
+  }
+  attr(out, "centre_day") <- centre_day
+  out
 }
 
 #' Fit lme4 mixed-effects model using caller-specified structure
@@ -234,10 +323,17 @@ tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
   model <- NULL; used <- NA_character_; failures <- character(0)
   for (nm in tries) {
     msgs <- character(0)
+    f_nm <- stats::as.formula(paste(fixed_part, "+", re_terms[[nm]], cage_re))
+    # R20-W: correlated slopes start from a fit on time centred at the mean
+    # day, mapped back; the model and its estimates are those of f_nm.
+    start_theta <- if (nm == "slope") {
+      me_centred_start(f_nm, analysis_df, time_column, id_column,
+                       shift = mean(analysis_df[[time_column]], na.rm = TRUE), control = ctrl)
+    }
     fit <- tryCatch(
       withCallingHandlers(
-        lme4::lmer(stats::as.formula(paste(fixed_part, "+", re_terms[[nm]], cage_re)),
-                   data = analysis_df, control = ctrl),
+        lme4::lmer(f_nm, data = analysis_df, control = ctrl,
+                   start = if (!is.null(start_theta)) list(theta = start_theta)),
         warning = function(w) {
           msgs <<- c(msgs, conditionMessage(w))
           invokeRestart("muffleWarning")
@@ -252,6 +348,11 @@ tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
         msgs <<- c(msgs, conditionMessage(e))
         NULL
       })
+    # R20-T: a failed gradient check is retried from the estimates before
+    # the structure is given up.
+    rs <- me_lmer_restart(fit, msgs)
+    fit <- rs$fit; msgs <- rs$msgs
+    if (!is.null(rs$note) && isTRUE(verbose)) message(rs$note)
     converged <- !is.null(fit) &&
       !any(grepl("failed to converge|unable to evaluate|unidentifiable|degenerate",
                  msgs, ignore.case = TRUE))
@@ -293,42 +394,45 @@ tgs_fit_lme4_models <- function(analysis_df, volume_column, time_column,
 
 #' Compute descriptive summary statistics by treatment and time
 #'
-#' @param analysis_df Transformed analysis data frame
+#' @param analysis_df The data before any transform (R20.57)
 #' @param treatment_column Column name for treatment groups
 #' @param time_column Column name for time points
 #' @param volume_column Column name for tumor volume
+#' @param zero_floor With a log transform, the zero floor; adds the geometric
+#'   mean. `NULL` otherwise.
 #' @return Data frame of summary statistics or NULL on error
 #' @noRd
 #' @keywords internal
 tgs_compute_summary <- function(analysis_df, treatment_column, time_column,
-                                volume_column) {
-  # Create a basic summary of the data
+                                volume_column, zero_floor = NULL) {
+  # CODE_REVIEW.md R20.57: callers pass the data before any transform, so the
+  # summary is on the volume scale. It was the log scale labelled as volume
+  # (6.97 shown for 1,456 mm3), and n counted rows with no volume, which
+  # shrank the SEM. With a log transform the geometric mean, the model's
+  # scale back-transformed, is added, zeros taken at the floor.
   tryCatch({
-    # Split data by treatment and time
-    split_data <- split(analysis_df, list(analysis_df[[treatment_column]], analysis_df[[time_column]]))
-    
-    # Calculate summary statistics for each group
+    split_data <- split(analysis_df, list(analysis_df[[treatment_column]],
+                                          analysis_df[[time_column]]), drop = TRUE)
     summary_list <- lapply(split_data, function(group_data) {
-      if (nrow(group_data) > 0) {
-        # Only create entries for non-empty groups
-        data.frame(
-          Treatment = unique(group_data[[treatment_column]]),
-          Day = unique(group_data[[time_column]]),
-          mean_volume = mean(group_data[[volume_column]], na.rm = TRUE),
-          sd_volume = stats::sd(group_data[[volume_column]], na.rm = TRUE),
-          n = nrow(group_data)
-        )
-      } else {
-        # Skip empty groups
-        NULL
+      v <- as.numeric(group_data[[volume_column]])
+      v <- v[is.finite(v)]
+      if (!length(v)) return(NULL)
+      out <- data.frame(
+        Treatment   = unique(group_data[[treatment_column]]),
+        Day         = unique(group_data[[time_column]]),
+        mean_volume = mean(v),
+        sd_volume   = if (length(v) > 1L) stats::sd(v) else NA_real_,
+        n           = length(v)
+      )
+      if (!is.null(zero_floor)) {
+        out$geometric_mean_volume <- exp(mean(log(pmax(v, zero_floor))))
       }
+      out
     })
-    
-    # Filter out NULL results and combine
-    summary_list <- summary_list[!sapply(summary_list, is.null)]
+    summary_list <- summary_list[!vapply(summary_list, is.null, logical(1))]
     if (length(summary_list) > 0) {
-      # Combine results and calculate standard error
       summary_df <- do.call(rbind, summary_list)
+      rownames(summary_df) <- NULL
       summary_df$sem_volume <- summary_df$sd_volume / sqrt(summary_df$n)
       summary_df
     } else {
@@ -641,6 +745,13 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #' @param include_diagnostics Boolean. Should model diagnostic information be included? Default is TRUE.
 #' @param plots Boolean. Should standard plots be generated and returned? Default is TRUE.
 #' @param verbose Boolean. Should detailed information be printed during analysis? Default is FALSE.
+#' @param necrotic_column Optional. Name of a column flagging necrotic
+#'   observations (Y/N, yes/no, 1/0, TRUE/FALSE, case-insensitive). Defaults
+#'   to \code{NULL}, in which case every observation is used.
+#' @param necrotic_handling How flagged observations enter the model when
+#'   \code{necrotic_column} is given: \code{"exclude"} (default) drops
+#'   them, \code{"covariate"} adds a 0/1 necrotic fixed effect, and
+#'   \code{"none"} uses them as they are.
 #' @param extrapolation_points \strong{Deprecated} and ignored as of v0.8.0.
 #'   It appended one synthetic final-day observation per animal and handed it to
 #'   the model as measured data, so the fit's uncertainty did not reflect the
@@ -659,6 +770,15 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'   \code{0} (skip; \code{boot_ci_*} columns are \code{NA}).
 #' @param auc_bootstrap_seed Optional integer seed for reproducible bootstrap
 #'   resampling. \code{NULL} (default) uses the caller's RNG state.
+#' @param volume_units Units of the volume column, \code{"mm3"} (default) or
+#'   \code{"cm3"}. Used for the zero floor, and to warn when the volumes do not
+#'   look like the declared units.
+#' @param zero_floor On the log scale, the value that replaces a zero (or
+#'   negative) volume, in the volume column's units. Default \code{NULL}: 2 mm3
+#'   (half a just-palpable 2 x 2 mm tumour, about 4 mm3), i.e. 0.002 cm3. It is
+#'   reported as \code{zero_floor} in the result. Until v0.30.0 zeros became
+#'   half the smallest positive volume in the data, so one small reading in one
+#'   arm changed another arm's estimate (CODE_REVIEW.md R20.32).
 #' @param permutation_test Optional \code{\link{perm_spec}} object. When supplied
 #'   (and \code{model_type = "lme4"}), a randomisation test of the treatment x
 #'   time interaction is run and returned as \code{permutation_test}. Unlike the
@@ -690,23 +810,25 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'   \item{treatment_effects}{Estimated treatment effects on tumor growth, showing adjusted means for each treatment group}
 #'   \item{growth_rates}{Data frame containing growth rates for each subject, calculated as the slope of log-volume over time. Higher values indicate faster tumor growth.}
 #'   \item{cage_analysis}{Analysis of cage effects, including:
-#'     \itemize{
+#'     \describe{
 #'       \item{structure}{The cage design structure from \code{classify_cage_structure()}, which decides how cage enters the model}
 #'       \item{handling}{The cage handling applied}
 #'       \item{effects}{Data frame of cage-level statistics (mean and SD of volume by cage and treatment)}
 #'     }
 #'   }
 #'   \item{model_selection}{Results of model selection process, including:
-#'     \itemize{
+#'     \describe{
 #'       \item{aic}{AIC values for each model specification}
 #'       \item{bic}{BIC values for each model specification}
-#'       \item{selected_model}{Name of the model with lowest BIC (most parsimonious)}
+#'       \item{selected_model}{The random-effects structure used: the one requested,
+#'         or the fallback when it could not be fitted (see \code{random_effects}).
+#'         Nothing is selected by BIC.}
 #'     }
 #'   }
 #'   \item{diagnostics}{Model diagnostic information including residuals, random effects, and variance components}
 #'   \item{auc_data}{Area under the curve data and statistics (when model_type="auc")}
 #'   \item{plots}{List of standard plots for visualizing results}
-#'   \item{data_summary}{Descriptive statistics of the processed data by treatment and time point, including mean, SD, and SEM of volumes}
+#'   \item{data_summary}{Descriptive statistics by treatment and time point, on the volume scale whatever the transform: mean, SD, SEM and n (measured volumes only), plus the geometric mean (zeros at the floor) with `transform = "log"`}
 #' }
 #'
 #' @details
@@ -735,27 +857,15 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #' - Diagnostic checks of model assumptions
 #' - Growth rate analysis for each treatment group
 #' - Cage effect analysis and collinearity testing
-#' - Model selection based on AIC/BIC criteria
+#' - A fallback to simpler random effects when the requested structure cannot be fitted
 #' - Treatment effect estimation with proper reference group handling
 #'
 #' @examples
-#' # Load example data
-#' data(combo_treatment_synthetic_data)
-#' tumor_data <- calculate_volume(combo_treatment_synthetic_data)
-#' tumor_data <- calculate_dates(tumor_data, start_date = "03/24/2025")
-#' 
-#' # Basic analysis with default settings
-#' results <- tumor_growth_statistics(tumor_data)
-#' 
-#' # View ANOVA table to assess treatment effects
-#' print(results$anova)
-#' 
-#' # View pairwise comparisons
-#' print(results$pairwise_comparisons)
-#' 
-#' # Plot adjusted means for each treatment group
-#' print(results$plots$adjusted_means)
-#'
+#' tg <- tumor_growth_statistics(master_synthetic_data, reference_group = "Vehicle",
+#'                               p_adjust_method = "holm")
+#' tg$anova
+#' tg$pairwise_comparisons
+#' tg$random_effects
 #' @export
 tumor_growth_statistics <- function(df,
                                   time_column = "Day",
@@ -786,7 +896,9 @@ tumor_growth_statistics <- function(df,
                                   auc_bootstrap_n = 0L,
                                   auc_bootstrap_seed = NULL,
                                   auc_permutations = 0L,
-                                  permutation_test = NULL) {
+                                  permutation_test = NULL,
+                                  volume_units = c("mm3", "cm3"),
+                                  zero_floor = NULL) {
   # Check for required packages
   
   # Match arguments
@@ -797,6 +909,8 @@ tumor_growth_statistics <- function(df,
   comparison_family <- match.arg(comparison_family)
   p_adjust_method <- match.arg(p_adjust_method)
   necrotic_handling <- match.arg(necrotic_handling)
+  volume_units <- match.arg(volume_units)
+  floor_value  <- me_zero_floor(volume_units, zero_floor)     # R20.32
 
   # CODE_REVIEW.md R3.1 / G.1 — resolve the comparison family and adjustment
   # once, up front, so both model paths use the same validated spec and
@@ -828,19 +942,23 @@ tumor_growth_statistics <- function(df,
   if (no_cage_mode) {
     cage_column <- ".cage_placeholder"
     df[[cage_column]] <- "1"
-    if (isTRUE(verbose)) message("No cage column provided 2014 cage effects will not be analysed.")
+    if (isTRUE(verbose)) message("No cage column provided: cage effects will not be analysed.")
   }
   
-  # Set reference group if not specified
-  treatment_groups <- unique(df[[treatment_column]])
-  if (is.null(reference_group)) {
-    reference_group <- sort(treatment_groups)[1]
-  } else if (!reference_group %in% treatment_groups) {
-    stop("Reference group '", reference_group, "' is not present in the data.")
+  # R20.30: dose_column changed nothing, and a treatment given at three doses
+  # was analysed as one pooled arm.
+  if (!is.null(dose_column)) {
+    df[[treatment_column]] <- me_arms_with_dose(df[[treatment_column]], df, dose_column,
+                                                "tumor_growth_statistics")
   }
-  if (isTRUE(verbose)) {
-    message("Using ", reference_group, " as reference group for statistical comparisons")
-  }
+
+  # R20.46: a named reference must be an arm; without one, the control is
+  # recognised by name, and the call stops if none is. (It used to be the
+  # alphabetically first arm, which depends on the locale.) Numeric arm codes
+  # crashed lme4, so arms are labels from here on.
+  df[[treatment_column]] <- as.character(df[[treatment_column]])
+  reference_group <- me_resolve_reference(df[[treatment_column]], reference_group,
+                                          "tumor_growth_statistics")
   
   # CODE_REVIEW.md R3.9 / G.4 — statistical extrapolation is deprecated.
   #
@@ -893,23 +1011,21 @@ tumor_growth_statistics <- function(df,
       if (is.null(n_excl)) n_excl <- 0L
       message("Necrosis handling: '", necrotic_handling, "'. Excluded: ", n_excl, " observations.")
     }
+    # R20.30: "exclude" changed only the mixed model; AUC, growth rates and
+    # the permutation statistic still used every row, while necrosis_summary
+    # reported the rows as handled.
+    if (necrotic_handling == "exclude") auc_df <- analysis_df
   }
 
   # Apply transformations if needed
+  n_zero_floored <- 0L
   if (transform == "log") {
-    # Replace zeros/negatives with half the smallest positive value.
-    # CODE_REVIEW.md R3.20 — guard the all-non-positive case. min(numeric(0))
-    # is Inf, so without this the fill silently becomes Inf and log(Inf) = Inf
-    # corrupts the fit. The Bayesian path was hardened against this in B3.3;
-    # the frequentist entry point was not.
-    vol           <- analysis_df[[volume_column]]
-    positive_vals <- vol[is.finite(vol) & vol > 0]
-    if (length(positive_vals) == 0L) {
-      stop("No positive values in '", volume_column,
-           "' after filtering. Cannot apply log transform.", call. = FALSE)
-    }
-    vol[vol <= 0] <- min(positive_vals, na.rm = TRUE) / 2
-    analysis_df[[volume_column]] <- log(vol)
+    # R20.32: zeros take the fixed floor (default 2 mm3), not half the
+    # smallest positive volume in the data.
+    vol <- me_floor_zeros(analysis_df[[volume_column]], floor_value, volume_units,
+                          "tumor_growth_statistics")
+    n_zero_floored <- attr(vol, "n_floored")
+    analysis_df[[volume_column]] <- log(as.numeric(vol))
     if (isTRUE(verbose)) message("Applied log transformation to volume data")
   } else if (transform == "sqrt") {
     analysis_df[[volume_column]] <- sqrt(analysis_df[[volume_column]])
@@ -917,8 +1033,11 @@ tumor_growth_statistics <- function(df,
   }
   
   # Growth rate analysis
+  zero_floor_info <- list(value = floor_value, units = volume_units,
+                          n_floored = n_zero_floored)
   growth_rates <- tgs_compute_growth_rates(auc_df, treatment_column, id_column,
-                                           cage_column, time_column, volume_column)
+                                           cage_column, time_column, volume_column,
+                                           zero_floor = floor_value)
 
   # CODE_REVIEW.md T1 / R20.3 -- the model's random effects grouped on the raw
   # ID, so mouse "1" in Control and mouse "1" in DrugA were one animal. With IDs
@@ -933,8 +1052,20 @@ tumor_growth_statistics <- function(df,
     as.character(analysis_df[[id_column]]),
     as.character(analysis_df[[cage_column]]))
 
+  # R20.69: two volumes for one animal on one day were analysed as two
+  # independent observations, without a word.
+  dup <- duplicated(paste(analysis_df[[id_column]], analysis_df[[time_column]], sep = "\r")) &
+    !is.na(analysis_df[[volume_column]])
+  if (any(dup)) {
+    warning("tumor_growth_statistics(): ", sum(dup), " row(s) repeat an animal ",
+            "and day already in the data (same treatment, ID and cage). They are ",
+            "analysed as separate measurements; average or remove them if they ",
+            "are duplicates.", call. = FALSE)
+  }
+
   # Cage effect analysis
-  cage_analysis <- tgs_compute_cage_effects(analysis_df, cage_column, treatment_column, volume_column)
+  # R20.57: the cage means are descriptive, so on the volume scale.
+  cage_analysis <- tgs_compute_cage_effects(auc_df, cage_column, treatment_column, volume_column)
   cage_effects <- cage_analysis$effects
 
   # Model fitting and selection.
@@ -963,6 +1094,16 @@ tumor_growth_statistics <- function(df,
   model_selection <- lme4_result$model_selection
   best_model <- lme4_result$best_model
 
+  # R20.58: rows the model dropped for a missing cage, day or covariate were
+  # left out without a word.
+  n_usable <- sum(is.finite(analysis_df[[volume_column]]))
+  n_used   <- tryCatch(stats::nobs(model), error = function(e) n_usable)
+  if (n_used < n_usable) {
+    warning("tumor_growth_statistics(): ", n_usable - n_used, " of ", n_usable,
+            " measurements were left out of the model because another column it ",
+            "uses (cage, day or a covariate) is missing on those rows.", call. = FALSE)
+  }
+
   # Diagnostic plots
   diagnostics <- list()
   
@@ -990,18 +1131,29 @@ tumor_growth_statistics <- function(df,
   }
 
   # Create a basic summary of the data
-  data_summary <- tgs_compute_summary(analysis_df, treatment_column, time_column, volume_column)
+  # R20.57: from the untransformed rows the model used.
+  data_summary <- tgs_compute_summary(auc_df, treatment_column, time_column, volume_column,
+                                      zero_floor = if (transform == "log") floor_value)
 
-  # Only for auc model type or when additional AUC analysis is requested
-  if (model_type == "auc" || (model_type == "lme4" && include_diagnostics)) {
-    auc_analysis <- tgs_compute_auc(auc_df, id_column, treatment_column, cage_column,
-                                    time_column, volume_column, verbose)
+  # R20.69: the per-animal AUC table is the AUC path's (descriptive). The lme4
+  # path computed it with diagnostics on and discarded it, and it failed ("no
+  # rows to aggregate") when every animal had a single time point.
+  auc_analysis <- NULL
+  if (model_type == "auc") {
+    auc_analysis <- tryCatch(
+      tgs_compute_auc(auc_df, id_column, treatment_column, cage_column,
+                      time_column, volume_column, verbose),
+      error = function(e) {
+        warning("Per-animal AUCs could not be computed: ", conditionMessage(e),
+                call. = FALSE)
+        NULL
+      })
   }
 
   # Return the results for AUC model
   if (model_type == "auc") {
     # CODE_REVIEW.md D.1 — the AUC path body lives in R/tgs_path_auc.R
-    return(tgs_path_auc(
+    auc_out <- tgs_path_auc(
       auc_analysis        = auc_analysis,
       growth_rates        = growth_rates,
       auc_df              = auc_df,
@@ -1020,8 +1172,11 @@ tumor_growth_statistics <- function(df,
       treatment_column    = treatment_column,
       cage_column         = cage_column,
       time_column         = time_column,
-      volume_column       = volume_column
-    ))
+      volume_column       = volume_column,
+      zero_floor_info     = zero_floor_info
+    )
+    auc_out$zero_floor <- zero_floor_info        # R20.32
+    return(auc_out)
   } else {
     # Create ANOVA table
     # car is a hard Import (and always was). The dead fallback ran
@@ -1047,6 +1202,18 @@ tumor_growth_statistics <- function(df,
       "Type III F-tests, Satterthwaite degrees of freedom (lmerTest)"
     } else "Type III Wald chi-square tests (car)"
     if (is.null(anova_table)) anova_table <- car::Anova(model, type = "III")
+    # R20.31: growth rate first, and "Treatment" at the mean study day (not day 0).
+    growth_first <- tgs_growth_first_anova(
+      model, time_column, treatment_column,
+      centre_day = mean(analysis_df[[time_column]]),
+      other_rows = anova_table,
+      satterthwaite = grepl("Satterthwaite", anova_type))
+    if (!is.null(growth_first)) {
+      anova_table <- growth_first
+      anova_type <- paste0(anova_type, "; Treatment x Day first; Treatment compares ",
+                           "the arms at the mean study day (day ",
+                           format(round(attr(growth_first, "centre_day"), 1)), ")")
+    }
     
     # Create pairwise comparisons
     if (requireNamespace("emmeans", quietly = TRUE)) {
@@ -1076,8 +1243,10 @@ tumor_growth_statistics <- function(df,
       )
       emm_time_df <- as.data.frame(summary(lsmeans_time))
       names(emm_time_df)[names(emm_time_df) == "emmean"]   <- "Adjusted_Mean"
-      names(emm_time_df)[names(emm_time_df) == "lower.CL"] <- "Lower_CL"
-      names(emm_time_df)[names(emm_time_df) == "upper.CL"] <- "Upper_CL"
+      lim_time <- me_emm_limits(emm_time_df)                     # R20.25
+      emm_time_df <- emm_time_df[, setdiff(names(emm_time_df), lim_time$columns), drop = FALSE]
+      emm_time_df$Lower_CL <- lim_time$lower
+      emm_time_df$Upper_CL <- lim_time$upper
 
       # Extract treatment effects
       emm_summary <- summary(lsmeans_obj)
@@ -1086,8 +1255,8 @@ tumor_growth_statistics <- function(df,
         Adjusted_Mean = emm_summary$emmean,
         SE = emm_summary$SE,
         DF = emm_summary$df,
-        Lower_CL = emm_summary$lower.CL,
-        Upper_CL = emm_summary$upper.CL
+        Lower_CL = me_emm_limits(emm_summary)$lower,               # R20.25
+        Upper_CL = me_emm_limits(emm_summary)$upper
       )
 
       # Add reference group note
@@ -1163,20 +1332,25 @@ tumor_growth_statistics <- function(df,
     analysis_summary <- list(
       analysis_type = "Linear Mixed Effects Model Analysis",
       data_description = list(
-        subjects = length(unique(make_mouse_key(
-          analysis_df[[id_column]], analysis_df[[treatment_column]], analysis_df[[cage_column]]
-        ))),
+        # R20.58: the animals in the fitted model. Rows with no cage were
+        # dropped by lmer while this still counted their animals (24 for 3).
+        subjects = if (inherits(model, "merMod")) {
+          as.integer(lme4::ngrps(model)[[id_column]])
+        } else length(unique(analysis_df[[id_column]])),
         treatment_groups = length(unique(analysis_df[[treatment_column]])),
         time_points = length(unique(analysis_df[[time_column]])),
         reference_group = reference_group
       ),
       model_specification = list(
         fixed_effects = paste(volume_column, "~", time_column, "*", treatment_column),
-        random_effects = switch(best_model,
-                               "intercept_only" = paste("(1|", id_column, ")"),
-                               "slope" = paste("(", time_column, "|", id_column, ")"),
-                               "slope_uncorrelated" = paste("(", time_column, "||", id_column, ")"),
-                               "none" = "None"),
+        # R20.58: the whole random part, cage included when it is in the model.
+        random_effects = paste0(
+          switch(best_model,
+                 "intercept_only" = paste0("(1 | ", id_column, ")"),
+                 "slope" = paste0("(", time_column, " | ", id_column, ")"),
+                 "slope_uncorrelated" = paste0("(", time_column, " || ", id_column, ")"),
+                 "none" = "None"),
+          if (isTRUE(cage_handling$random)) paste0(" + (1 | ", cage_column, ")") else ""),
         cage_effects   = handle_cage_effects,
         cage_structure = cage_structure$structure,
         cage_placement = if (isTRUE(cage_handling$fixed)) "fixed effect"
@@ -1197,7 +1371,7 @@ tumor_growth_statistics <- function(df,
         posthoc_method = posthoc_method,
         growth_rate_calculation = paste0(
           "Growth rates are calculated by fitting a linear regression model to log-transformed volume data over time for each subject ",
-          "(non-positive volumes are replaced with half the smallest positive value before the log). ",
+          "(zero volumes take the fixed floor, ", floor_value, " ", volume_units, ", before the log). ",
           "The slope coefficient from this model represents the exponential growth rate. ",
           "A value of 0.1 indicates approximately 10% tumor volume increase per day. ",
           "Only subjects with 3 or more time points are included in growth rate calculations."
@@ -1236,7 +1410,8 @@ tumor_growth_statistics <- function(df,
     # so the reader can see how much the clustering mattered. The design effect
     # on the effective sample size is 1 + (mice_per_cage - 1) * ICC.
     cage_analysis$icc <- if (isTRUE(cage_handling$random)) {
-      cage_icc(model, cage_column)
+      # R20.68: at the mean study day, like the Treatment test.
+      cage_icc(model, cage_column, time_column, at = mean(analysis_df[[time_column]]))
     } else NULL
 
     # CODE_REVIEW.md H.3 — randomisation test of the interaction, run only when
@@ -1245,7 +1420,7 @@ tumor_growth_statistics <- function(df,
     if (!is.null(permutation_test)) {
       perm_result <- tryCatch(
         trajectory_permutation_test(
-          df               = df,
+          df               = auc_df,   # after any necrotic exclusion (R20.30)
           time_column      = time_column,
           volume_column    = volume_column,
           treatment_column = treatment_column,
@@ -1253,7 +1428,8 @@ tumor_growth_statistics <- function(df,
           cage_column      = if (no_cage_mode) NULL else cage_column,
           transform        = transform,
           spec             = permutation_test,
-          verbose          = verbose
+          verbose          = verbose,
+          zero_floor       = floor_value
         ),
         error = function(e) {
           warning("Permutation test skipped: ", conditionMessage(e),
@@ -1271,6 +1447,7 @@ tumor_growth_statistics <- function(df,
       # what was requested.
       model_type_used = "lme4",
       transform_used  = transform,
+      zero_floor      = zero_floor_info,                # R20.32
       # CODE_REVIEW.md B7.1 / B7.2 -- canonical provenance so consumers can
       # interrogate the object instead of sniffing column names.
       meta = me_result_meta(
@@ -1304,7 +1481,9 @@ tumor_growth_statistics <- function(df,
         adjust_scope = posthoc_method),
       posthoc = list(
         method = posthoc_method,
-        pairwise = if (!is.null(pairwise_comp)) as.data.frame(summary(pairwise_comp)) else NULL
+        # R20.59: the same seeded summary as pairwise_comparisons, so the
+        # two tables agree.
+        pairwise = if (!is.null(pairwise_comp)) as.data.frame(me_contrast_summary(pairwise_comp)) else NULL
       ),
       treatment_effects          = treatment_effects,
       treatment_effects_over_time = emm_time_df,

@@ -21,16 +21,10 @@ Creates a line plot visualizing tumor growth inhibition (TGI) trends over time
 for different treatment groups, highlighting synergy and antagonism regions.
 }
 \examples{
-\dontrun{
-# First run the analysis
-results <- analyze_drug_synergy_over_time(
-  df = tumor_data,
-  drug_a_name = "Drug A",
-  drug_b_name = "Drug B", 
-  combo_name = "Drug A + Drug B"
-)
-
-# Then create the trend plot
-plot_synergy_trend(results)
-}
+trend <- analyze_drug_synergy_over_time(master_synthetic_data,
+  drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
+  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
+  min_time_point = 2,  # day 0 has no growth to inhibit
+  n_boot = 200, boot_seed = 1, verbose = FALSE)
+plot_synergy_trend(trend)
 }

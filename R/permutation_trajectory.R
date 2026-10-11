@@ -81,6 +81,35 @@ print.perm_spec <- function(x, ...) {
 #' @return A list of character vectors, each a distinct permutation.
 #' @noRd
 #' @keywords internal
+#' One assignment per partition of the units -- CODE_REVIEW.md R20.82
+#'
+#' The interaction statistic does not change when the labels of two arms of
+#' equal size are swapped: the model sees the same partition of units. Among
+#' arms of equal size, keep only assignments whose labels first appear in
+#' sorted order, one representative per partition. Each partition stands for
+#' the same number of assignments, so the exact p-value is unchanged, and the
+#' refits drop from the assignments to the distinct statistics (90 to 15 for
+#' six cages in three arms of two).
+#'
+#' @param assignments List of label vectors from [enumerate_label_perms()].
+#' @return The subset that represents each partition once.
+#' @noRd
+#' @keywords internal
+me_partition_representatives <- function(assignments) {
+  if (!length(assignments)) return(assignments)
+  sizes <- table(assignments[[1]])
+  classes <- split(names(sizes), as.integer(sizes))
+  classes <- classes[lengths(classes) > 1L]
+  if (!length(classes)) return(assignments)
+  keep <- vapply(assignments, function(a) {
+    all(vapply(classes, function(lv) {
+      first <- match(lv, a)
+      !is.unsorted(first[order(lv)])
+    }, logical(1)))
+  }, logical(1))
+  assignments[keep]
+}
+
 enumerate_label_perms <- function(labels) {
   out <- list()
   rec <- function(remaining, acc) {
@@ -141,6 +170,10 @@ enumerate_label_perms <- function(labels) {
 #'   `"sqrt"`, or `"none"`. Should match what the primary analysis used.
 #' @param spec A [perm_spec()] object.
 #' @param verbose Print progress.
+#' @param zero_floor With `transform = "log"`, the volume a zero takes before
+#'   the log (CODE_REVIEW.md R20.32): 2 for mm3 (the default), 0.002 for cm3.
+#'   [tumor_growth_statistics()] passes its own floor, so both test the same
+#'   response.
 #' @return A list with:
 #'   \item{p_value}{Two-sided permutation p-value, `(1 + #{T* >= T}) / (1 + n_perm)`
 #'     so it is never exactly zero.}
@@ -166,13 +199,10 @@ enumerate_label_perms <- function(labels) {
 #'     is not to be trusted on this dataset.}
 #' @seealso [perm_spec()], [tumor_growth_statistics()]
 #' @examples
-#' \dontrun{
-#' data(master_synthetic_data)
 #' trajectory_permutation_test(
 #'   master_synthetic_data,
 #'   spec = perm_spec(unit = "mouse", n_perm = 199, seed = 1)
 #' )
-#' }
 #' @export
 trajectory_permutation_test <- function(df,
                                         time_column      = "Day",
@@ -182,7 +212,8 @@ trajectory_permutation_test <- function(df,
                                         cage_column      = "Cage",
                                         transform        = c("log", "sqrt", "none"),
                                         spec             = perm_spec(),
-                                        verbose          = FALSE) {
+                                        verbose          = FALSE,
+                                        zero_floor       = 2) {
   transform <- match.arg(transform)
   if (!inherits(spec, "perm_spec")) {
     stop("`spec` must come from perm_spec(). ",
@@ -219,7 +250,9 @@ trajectory_permutation_test <- function(df,
     if (!length(pos)) {
       stop("No positive values; cannot apply the log transform.", call. = FALSE)
     }
-    d$.y[d$.y <= 0] <- min(pos) / 2
+    # R20.32: a fixed floor; half the smallest positive volume moved with the
+    # data.
+    d$.y[d$.y <= 0] <- zero_floor
     d$.y <- log(d$.y)
   } else if (transform == "sqrt") {
     d$.y <- sqrt(pmax(d$.y, 0))
@@ -241,7 +274,7 @@ trajectory_permutation_test <- function(df,
            cage_info$description,
            "\nA cage holding more than one treatment has no single label to ",
            "permute. If animals were randomised individually and then re-housed, ",
-           "the randomisation unit is the mouse — use perm_spec(unit = 'mouse').",
+           "the randomisation unit is the mouse \u2014 use perm_spec(unit = 'mouse').",
            call. = FALSE)
     }
     unit_of <- d$.cage
@@ -260,7 +293,7 @@ trajectory_permutation_test <- function(df,
   n_units <- length(unit_labels)
   if (n_units < 3L) {
     stop("Only ", n_units, " exchangeable ", spec$unit,
-         "(s) — too few to permute.", call. = FALSE)
+         "(s) \u2014 too few to permute.", call. = FALSE)
   }
 
   # Resolution ceiling. Two steps, and the second is easy to get wrong.
@@ -347,7 +380,7 @@ trajectory_permutation_test <- function(df,
   exhaustive <- n_assign <= max(ENUM_LIMIT, spec$n_perm)
 
   assignments <- if (exhaustive) {
-    enumerate_label_perms(base_labels)
+    me_partition_representatives(enumerate_label_perms(base_labels))   # R20.82
   } else {
     lapply(seq_len(spec$n_perm), function(b) sample(base_labels))
   }
@@ -370,7 +403,9 @@ trajectory_permutation_test <- function(df,
 
   ok <- is.finite(perm_stats)
   n_ok <- sum(ok)
-  if (n_ok < 2L) {
+  # R20.82: an exhaustive run over a single partition (one unit per arm) is
+  # exact, p = 1; the resolution warning above says why.
+  if (n_ok < 2L && !(exhaustive && n_ok == n_draw)) {
     stop("Almost no permutation refits converged (", n_ok, " of ", n_draw,
          "), so no null distribution could be built.", call. = FALSE)
   }
@@ -409,7 +444,8 @@ trajectory_permutation_test <- function(df,
       "Randomisation test of the treatment x time interaction; ML ",
       "likelihood-ratio statistic, ",
       if (exhaustive) paste0("exhaustive enumeration of all ", n_draw,
-                             " distinct assignments")
+                             " distinct partitions of the units (relabelling ",
+                             "arms of equal size gives the same statistic)")
       else paste0(n_draw, " sampled permutations"),
       " of treatment labels at the ", spec$unit, " level")
   )

@@ -20,21 +20,9 @@
 #' - Optional grouping by coefficient type
 #'
 #' @examples
-#' \dontrun{
-#' # After running tumor growth statistics
-#' results <- tumor_growth_statistics(df)
-#' 
-#' # Create caterpillar plot from the model
-#' cat_plot <- plot_caterpillar(results$model)
-#' print(cat_plot)
-#' 
-#' # With customizations
-#' cat_plot2 <- plot_caterpillar(results$model, 
-#'                              title = "Treatment Effects on Tumor Growth",
-#'                              show_intercept = FALSE,
-#'                              ci_level = 0.9)
-#' }
-#'
+#' tg <- tumor_growth_statistics(master_synthetic_data, reference_group = "Vehicle",
+#'                               plots = FALSE)
+#' plot_caterpillar(tg$model, show_intercept = FALSE)
 #' @import ggplot2
 #' @export
 plot_caterpillar <- function(model, title = "Fixed Effects with 95% Confidence Intervals", 
@@ -68,9 +56,15 @@ plot_caterpillar <- function(model, title = "Fixed Effects with 95% Confidence I
   # Extract degrees of freedom based on model type
   if (inherits(model, "lm") && !inherits(model, c("lmerMod", "glmerMod"))) {
     df_resid <- stats::df.residual(model)
+  } else if (inherits(model, "lmerMod")) {
+    # R20.61: each coefficient's Satterthwaite df. nobs - p treated every
+    # observation as independent ([-0.73, 1.07] where Kenward-Roger gives
+    # [-1.25, 1.59]).
+    ct <- tryCatch(stats::coef(summary(lmerTest::as_lmerModLmerTest(model))),
+                   error = function(e) NULL)
+    df_resid <- if (!is.null(ct) && "df" %in% colnames(ct)) unname(ct[coef_names, "df"]) else Inf
   } else {
-    # For mixed models, approximate df as n - p
-    df_resid <- stats::nobs(model) - length(estimates)
+    df_resid <- Inf   # glmer: Wald z
   }
   t_value <- stats::qt(1 - (1 - ci_level) / 2, df = df_resid)
   ci_lower <- estimates - t_value * std_errors

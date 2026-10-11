@@ -5,28 +5,38 @@
 \alias{combo_treatment_synthetic_data}
 \title{Combination treatment synthetic data}
 \format{
-A data frame with rows for each mouse at each timepoint and 6 variables:
+A data frame with 458 rows and 7 variables:
 \describe{
-\item{Mouse_ID}{Mouse identifier, with format M followed by a number}
-\item{Day}{Day of measurement, starting from day 0}
-\item{Treatment}{Treatment group (Control, aPD1, HDACi, HDACi + PD1)}
-\item{Volume}{Tumor volume measurement}
-\item{ID}{Numeric identifier for the mouse, without the "M" prefix}
-\item{Cage}{Cage number where the mouse is housed}
+\item{Date}{Measurement date, "MM/DD/YYYY" (24 March to 25 April 2025).
+Convert with \code{\link[=calculate_dates]{calculate_dates()}}, start date "03/24/2025".}
+\item{Cage}{Cage number, 1 to 8; two cages per arm.}
+\item{ID}{Ear-punch code ("L", "R", "LR", "N"). It repeats in every
+cage, so an animal is identified by treatment, cage and ID together.}
+\item{Treatment}{"Control", "aPD1", "HDACi" or "HDACi + PD1"; 8 animals each.}
+\item{Length, Width}{Caliper measurements (mm). 0 means no palpable
+tumour yet. Volume comes from \code{\link[=calculate_volume]{calculate_volume()}}.}
+\item{Survival_Censor}{1 on the last row of an animal removed at the
+tumour endpoint, otherwise 0.}
 }
 }
 \source{
-Synthetic data generated using random number generation with treatment-specific effects
+Synthetic; \code{data-raw/combo_treatment_synthetic_data.csv}.
 }
 \usage{
 combo_treatment_synthetic_data
 }
 \description{
-A dataset containing synthetic tumor volume measurements over time
-for different combination treatment groups.
+Caliper measurements for a two-drug combination study, laid out as a
+laboratory records them: calendar dates rather than study days, ear-punch
+codes rather than unique animal numbers, and length and width rather than
+volume. It is the dashboard's "Combo Treatment" demo.
 }
 \examples{
-data(combo_treatment_synthetic_data)
-head(combo_treatment_synthetic_data)
+d <- calculate_dates(combo_treatment_synthetic_data, start_date = "03/24/2025")
+d <- calculate_volume(d)
+head(d)
+}
+\seealso{
+\link{master_synthetic_data}, which has every column the package uses.
 }
 \keyword{datasets}

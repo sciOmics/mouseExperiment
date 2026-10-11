@@ -26,7 +26,8 @@
 #'   When supplied and \code{include_cage_effect = TRUE}, a cage-level
 #'   frailty (\code{(1 | cage)}) is added to account for between-cage
 #'   heterogeneity.
-#' @param dose_column Reserved for future use; currently ignored.
+#' @param dose_column Optional dose column. A treatment given at more than one
+#'   dose is analysed as one arm per dose (CODE_REVIEW.md R20.30).
 #' @param family Parametric distribution for event times:
 #'   \describe{
 #'     \item{\code{"weibull"}}{(default) Flexible — handles increasing,
@@ -158,6 +159,15 @@
 #'   scale_fill_manual scale_colour_manual scale_y_continuous
 #'   facet_wrap labs theme theme_classic
 #' @importFrom survival Surv survfit
+#' @examples
+#' \donttest{
+#' # One row per animal: its last record carries the event indicator.
+#' m <- master_synthetic_data[order(master_synthetic_data$ID, master_synthetic_data$Day), ]
+#' per_animal <- m[!duplicated(m$ID, fromLast = TRUE), ]
+#' fit <- bayesian_survival(per_animal, reference_group = "Vehicle", n_chains = 2,
+#'                          n_warmup = 500, n_iter = 250, plots = FALSE)
+#' fit$treatment_effects
+#' }
 #' @export
 bayesian_survival <- function(
   df,
@@ -221,6 +231,12 @@ bayesian_survival <- function(
     stop("Missing required columns: ", paste(missing_cols, collapse = ", "))
   }
 
+  # R20.30: one arm per dose when a treatment has several (dose_column was ignored).
+  if (!is.null(dose_column)) {
+    df[[treatment_column]] <- me_arms_with_dose(df[[treatment_column]], df, dose_column,
+                                                "bayesian_survival")
+  }
+
   # ── Internal column names (CODE_REVIEW.md R20.43, dashboard R20.D8) ────────
   # brms rejects non-syntactic names and double underscores, which is why every
   # fit on the dashboard's volume-derived events (".__DerivedTime") failed.
@@ -264,13 +280,10 @@ bayesian_survival <- function(
   use_cage_re  <- isTRUE(include_cage_effect) && !no_cage_mode
 
   # ── Reference group ────────────────────────────────────────────────────────
+  # R20.46: shared reference rule (see me_resolve_reference()).
   treatment_groups <- unique(as.character(df[[treatment_column]]))
-  if (is.null(reference_group)) {
-    reference_group <- sort(treatment_groups)[1]
-  } else if (!reference_group %in% treatment_groups) {
-    stop("Reference group '", reference_group,
-         "' not found in treatment column.")
-  }
+  reference_group <- me_resolve_reference(treatment_groups, reference_group,
+                                          "bayesian_survival")
 
   df[[treatment_column]] <- stats::relevel(
     factor(df[[treatment_column]]), ref = reference_group
@@ -376,7 +389,7 @@ bayesian_survival <- function(
   if (isTRUE(verbose)) {
     message("Fitting Bayesian parametric survival model (",
             family, ") via brms (",
-            n_chains, " chains × ", n_iter, " post-warmup draws, ",
+            n_chains, " chains \u00d7 ", n_iter, " post-warmup draws, ",
             n_warmup, " warmup)...")
   }
 
@@ -489,7 +502,7 @@ bayesian_survival <- function(
       prior_strength = prior_strength
     ),
     methods = list(
-      engine          = paste0("brms (", n_chains, " chains × ",
+      engine          = paste0("brms (", n_chains, " chains \u00d7 ",
                                n_iter, " draws + ", n_warmup,
                                " warmup, seed = ", seed, ")"),
       effect_type     = "Time_Ratio (AFT parameterisation)",
@@ -805,8 +818,8 @@ bs_survival_curves_plot_from <- function(curves_df, km_df, family, time_label,
       title    = "Bayesian Parametric Survival Curves",
       subtitle = paste0(
         tools::toTitleCase(family),
-        " model — solid = posterior median, band = 95 % CrI,",
-        " dashed = Kaplan–Meier"
+        " model \u2014 solid = posterior median, band = 95\u202f% CrI,",
+        " dashed = Kaplan\u2013Meier"
       ),
       x      = time_label,
       y      = "Survival Probability",

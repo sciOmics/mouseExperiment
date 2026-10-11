@@ -31,6 +31,9 @@
 #'   then put different agents on one dose axis (R20.16). A dose level held by
 #'   more than one of the chosen arms is also an error.
 #' @param verbose Logical; if TRUE, prints model summaries and statistics to the console. Default: TRUE.
+#' @param volume_units,zero_floor The units of the volume column, \code{"mm3"}
+#'   (default) or \code{"cm3"}, and the volume a regression to zero takes on the
+#'   endpoint model's log scale: 2 mm3 or 0.002 cm3 unless set (R20.32, R20-W).
 #'
 #' @return A list containing:
 #'   \item{dose_effect_test}{Statistical test results for dose-dependency}
@@ -59,22 +62,20 @@
 #'     constrained to be at least 0, and the 5-parameter curve is considered
 #'     only with at least 6 dose levels (CODE_REVIEW.md R20.18).}
 #'
-#' @import drc ggplot2 dplyr stats
+#' @import ggplot2 dplyr
+#' @importFrom drc drm LL.4 LL.5 ED modelFit
+#' @rawNamespace import(stats, except = c(filter, lag))
 #' @importFrom stats coef
 #' @importFrom stats lm
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # Load and prepare data
-#' data <- read.csv("dose_levels_synthetic_data.csv")
-#' data <- calculate_volume(data)
-#' data <- calculate_dates(data, start_date = "24-Mar", 
-#'                        date_format = "%d-%b", year = 2023)
-#'                        
-#' # Test for dose-response relationship
-#' results <- dose_response_statistics(data, dose_column = "Dose")
-#' }
+#' # One agent's dose series against its control
+#' dr <- dose_response_statistics(master_synthetic_data,
+#'   treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High"),
+#'   control_group_name = "Vehicle", cage_column = "Cage", verbose = FALSE)
+#' dr$summary_table
+#' dr$trend_test
 dose_response_statistics <- function(df, 
                                    dose_column = "Dose", 
                                    treatment_column = "Treatment",
@@ -85,7 +86,10 @@ dose_response_statistics <- function(df,
                                    time_point = NULL,
                                    control_group_name = NULL,
                                    treatments = NULL,
-                                   verbose = TRUE) {
+                                   verbose = TRUE,
+                                   volume_units = c("mm3", "cm3"),
+                                   zero_floor = NULL) {
+  volume_units <- match.arg(volume_units)
   
   # Validate input
   required_columns <- c(dose_column, treatment_column, volume_column, day_column, id_column)
@@ -146,7 +150,8 @@ dose_response_statistics <- function(df,
   # synergy and the therapeutic window (R20-K). The control is dose 0, by
   # construction of the series (R20.16).
   ctrl_dose <- "0"
-  endpoint_model <- me_endpoint_model(d_std)
+  endpoint_model <- me_endpoint_model(d_std, me_zero_floor(volume_units, zero_floor),
+                                      volume_units, "dose_response_statistics")
   tgi_table <- if (!is.na(ctrl_dose) && !is.null(endpoint_model)) {
     dr_tgi_table(endpoint_model, evaluability, eval_day, ctrl_dose)
   } else NULL
@@ -390,7 +395,8 @@ generate_summary_statistics <- function(analysis_data, dose_column = "Dose", vol
       mean_volume = mean(.data[[volume_column]], na.rm = TRUE),
       median_volume = median(.data[[volume_column]], na.rm = TRUE),
       sd_volume = sd(.data[[volume_column]], na.rm = TRUE),
-      n = dplyr::n(),
+      # R20.66: measured volumes; n() counted NA rows (SEM 35.4 for 50).
+      n = sum(!is.na(.data[[volume_column]])),
       sem_volume = sd_volume / sqrt(n),
       ci95_lower = mean_volume - qt(0.975, n-1) * sem_volume,
       ci95_upper = mean_volume + qt(0.975, n-1) * sem_volume,
@@ -765,7 +771,7 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
                                colour = "steelblue", formula = y ~ x) +
           ggplot2::theme_classic() +
           ggplot2::labs(title = "Dose-response residuals",
-                        subtitle = "Systematic curvature → wrong functional form",
+                        subtitle = "Systematic curvature \u2192 wrong functional form",
                         x = "Dose", y = "Residual")
       }, error = function(e) NULL)
 

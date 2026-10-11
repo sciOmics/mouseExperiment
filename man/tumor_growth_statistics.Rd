@@ -32,7 +32,9 @@ tumor_growth_statistics(
   auc_bootstrap_n = 0L,
   auc_bootstrap_seed = NULL,
   auc_permutations = 0L,
-  permutation_test = NULL
+  permutation_test = NULL,
+  volume_units = c("mm3", "cm3"),
+  zero_floor = NULL
 )
 }
 \arguments{
@@ -151,6 +153,15 @@ process downward. Use the model-based endpoint means instead
 propagate the uncertainty. Extrapolation for \emph{plotting} is unaffected
 — see \code{\link{plot_tumor_growth}}. CODE_REVIEW.md R3.9 / G.4.}
 
+\item{necrotic_column}{Optional. Name of a column flagging necrotic
+observations (Y/N, yes/no, 1/0, TRUE/FALSE, case-insensitive). Defaults
+to \code{NULL}, in which case every observation is used.}
+
+\item{necrotic_handling}{How flagged observations enter the model when
+\code{necrotic_column} is given: \code{"exclude"} (default) drops
+them, \code{"covariate"} adds a 0/1 necrotic fixed effect, and
+\code{"none"} uses them as they are.}
+
 \item{auc_bootstrap_n}{Integer >= 0. When > 0 and \code{model_type = "auc"},
 each pairwise Welch's t-test gains a non-parametric percentile-bootstrap
 95\% CI for the mean difference (\code{boot_ci_lower}, \code{boot_ci_upper}
@@ -180,6 +191,17 @@ denominator-df approximation nor normal random effects — but it is only valid
 if \code{unit} matches how the study actually randomised, so the unit is an
 explicit choice rather than a default. See \code{\link{perm_spec}}.
 CODE_REVIEW.md H.3.}
+
+\item{volume_units}{Units of the volume column, \code{"mm3"} (default) or
+\code{"cm3"}. Used for the zero floor, and to warn when the volumes do not
+look like the declared units.}
+
+\item{zero_floor}{On the log scale, the value that replaces a zero (or
+negative) volume, in the volume column's units. Default \code{NULL}: 2 mm3
+(half a just-palpable 2 x 2 mm tumour, about 4 mm3), i.e. 0.002 cm3. It is
+reported as \code{zero_floor} in the result. Until v0.30.0 zeros became
+half the smallest positive volume in the data, so one small reading in one
+arm changed another arm's estimate (CODE_REVIEW.md R20.32).}
 }
 \value{
 A list containing the following components:
@@ -196,23 +218,25 @@ and why any fallback happened.}
 \item{treatment_effects}{Estimated treatment effects on tumor growth, showing adjusted means for each treatment group}
 \item{growth_rates}{Data frame containing growth rates for each subject, calculated as the slope of log-volume over time. Higher values indicate faster tumor growth.}
 \item{cage_analysis}{Analysis of cage effects, including:
-\itemize{
+\describe{
 \item{structure}{The cage design structure from \code{classify_cage_structure()}, which decides how cage enters the model}
 \item{handling}{The cage handling applied}
 \item{effects}{Data frame of cage-level statistics (mean and SD of volume by cage and treatment)}
 }
 }
 \item{model_selection}{Results of model selection process, including:
-\itemize{
+\describe{
 \item{aic}{AIC values for each model specification}
 \item{bic}{BIC values for each model specification}
-\item{selected_model}{Name of the model with lowest BIC (most parsimonious)}
+\item{selected_model}{The random-effects structure used: the one requested,
+or the fallback when it could not be fitted (see \code{random_effects}).
+Nothing is selected by BIC.}
 }
 }
 \item{diagnostics}{Model diagnostic information including residuals, random effects, and variance components}
 \item{auc_data}{Area under the curve data and statistics (when model_type="auc")}
 \item{plots}{List of standard plots for visualizing results}
-\item{data_summary}{Descriptive statistics of the processed data by treatment and time point, including mean, SD, and SEM of volumes}
+\item{data_summary}{Descriptive statistics by treatment and time point, on the volume scale whatever the transform: mean, SD, SEM and n (measured volumes only), plus the geometric mean (zeros at the floor) with \code{transform = "log"}}
 }
 }
 \description{
@@ -247,26 +271,14 @@ The function automatically handles:
 \item Diagnostic checks of model assumptions
 \item Growth rate analysis for each treatment group
 \item Cage effect analysis and collinearity testing
-\item Model selection based on AIC/BIC criteria
+\item A fallback to simpler random effects when the requested structure cannot be fitted
 \item Treatment effect estimation with proper reference group handling
 }
 }
 \examples{
-# Load example data
-data(combo_treatment_synthetic_data)
-tumor_data <- calculate_volume(combo_treatment_synthetic_data)
-tumor_data <- calculate_dates(tumor_data, start_date = "03/24/2025")
-
-# Basic analysis with default settings
-results <- tumor_growth_statistics(tumor_data)
-
-# View ANOVA table to assess treatment effects
-print(results$anova)
-
-# View pairwise comparisons
-print(results$pairwise_comparisons)
-
-# Plot adjusted means for each treatment group
-print(results$plots$adjusted_means)
-
+tg <- tumor_growth_statistics(master_synthetic_data, reference_group = "Vehicle",
+                              p_adjust_method = "holm")
+tg$anova
+tg$pairwise_comparisons
+tg$random_effects
 }

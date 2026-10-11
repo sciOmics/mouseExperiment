@@ -84,3 +84,9 @@ Fits a linear mixed-effects model to longitudinal body weight data,
 optionally adjusting for estimated tumor weight, sex, initial mass,
 and tumor volume as covariates.
 }
+\examples{
+bw <- analyze_body_weight(master_synthetic_data, volume_column = "Volume",
+                          volume_units = "mm3", cage_column = "Cage",
+                          reference_group = "Vehicle")
+names(bw)
+}

@@ -15,7 +15,9 @@ dose_response_statistics(
   time_point = NULL,
   control_group_name = NULL,
   treatments = NULL,
-  verbose = TRUE
+  verbose = TRUE,
+  volume_units = c("mm3", "cm3"),
+  zero_floor = NULL
 )
 }
 \arguments{
@@ -52,6 +54,10 @@ then put different agents on one dose axis (R20.16). A dose level held by
 more than one of the chosen arms is also an error.}
 
 \item{verbose}{Logical; if TRUE, prints model summaries and statistics to the console. Default: TRUE.}
+
+\item{volume_units, zero_floor}{The units of the volume column, \code{"mm3"}
+(default) or \code{"cm3"}, and the volume a regression to zero takes on the
+endpoint model's log scale: 2 mm3 or 0.002 cm3 unless set (R20.32, R20-W).}
 }
 \value{
 A list containing:
@@ -87,14 +93,10 @@ relationship between drug dose levels and tumor volume, testing both linear and
 non-linear relationships.
 }
 \examples{
-\dontrun{
-# Load and prepare data
-data <- read.csv("dose_levels_synthetic_data.csv")
-data <- calculate_volume(data)
-data <- calculate_dates(data, start_date = "24-Mar", 
-                       date_format = "\%d-\%b", year = 2023)
-                       
-# Test for dose-response relationship
-results <- dose_response_statistics(data, dose_column = "Dose")
-}
+# One agent's dose series against its control
+dr <- dose_response_statistics(master_synthetic_data,
+  treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High"),
+  control_group_name = "Vehicle", cage_column = "Cage", verbose = FALSE)
+dr$summary_table
+dr$trend_test
 }

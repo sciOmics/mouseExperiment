@@ -5274,11 +5274,11 @@ Recorded in place here rather than by editing the earlier text, following the Ro
 | R20.11 | TBA survivor-conditioned toxicity; rank inverted | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
 | R20.12 | Bayesian dose-response fails on default `endpoint_day = NULL` | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
 | R20.13 | Bayesian TWM treats weight gain as toxicity | **Critical** | ✅ Closed by removal v0.23.0 (R20-L) |
-| R20.14–R20.48 | Dose-response, synergy, survival/weight-loss, tumour growth, power, Bayesian, toxicity, cross-cutting (35 items) | Major | Open. Fixed: R20.15 (R20-N); R20.17, R20.29, R20.34, R20.37 (R20-O); R20.14, R20.16, R20.18, R20.19, R20.20, R20.21, R20.22, R20.23 (R20-P); R20.35, R20.38, R20.39, R20.40, R20.41 (R20-Q) |
-| R20.49–R20.53, R20.55 | Vignette, examples, README, datasets, CI/process, test-suite gaps | Major | Open |
-| R20.54 | Build hygiene | Minor | Open |
-| R20.56–R20.75 | Minor (20 items) | Minor | Open. R20.70 ✅ closed v0.27.0 (R20-P): its TWM parts went with the ratio. R20.74 ✅ v0.28.0 (R20-Q) for the kept models; its synergy, TWM and power items went with them (R20-L) |
-| R20.76–R20.82 | Efficiency (7 items; R20.76 blocks the dashboard for 20–140 s) | Efficiency | R20.76 ✅ Fixed v0.26.0 (R20-O); R20.78, R20.80 ✅ Fixed v0.28.0 (R20-Q); R20.79 closed by removal (R20-L); the rest open |
+| R20.14–R20.48 | Dose-response, synergy, survival/weight-loss, tumour growth, power, Bayesian, toxicity, cross-cutting (35 items) | Major | ✅ All closed. R20.24, R20.25, R20.30, R20.31, R20.32, R20.33, R20.44, R20.46, R20.48 fixed v0.30.0 (R20-T). Earlier: R20.15 (R20-N); R20.17, R20.29, R20.34, R20.37 (R20-O); R20.14, R20.16, R20.18, R20.19, R20.20, R20.21, R20.22, R20.23 (R20-P); R20.35, R20.38, R20.39, R20.40, R20.41 (R20-Q); closed by removal v0.23.0 (R20-L) but not marked until R20-S: R20.26, R20.27, R20.28, R20.36, R20.42, R20.45, R20.47; R20.43 fixed v0.25.0 (R20-N) |
+| R20.49–R20.53, R20.55 | Vignette, examples, README, datasets, CI/process, test-suite gaps | Major | ✅ R20.49–R20.53 fixed v0.29.0 (R20-S). R20.55 in part: the source-reading tests skip under R CMD check instead of passing vacuously, and CI runs them from source; the suite's remaining warnings (the Firth survival path) go with R20.24/R20.64 |
+| R20.54 | Build hygiene | Minor | ✅ Fixed v0.29.0 (R20-S) |
+| R20.56–R20.75 | Minor (20 items) | Minor | ✅ All closed. R20.58, R20.59, R20.61, R20.65, R20.66, R20.67, R20.68, R20.69, R20.71, R20.75 fixed v0.32.0 (R20-V); R20.56 and R20.62 found already fixed (R20-V); R20.57 v0.31.0 (R20-U); R20.63, R20.64, R20.72, R20.73 v0.30.0 (R20-T); R20.74 v0.28.0 (R20-Q); R20.70 v0.27.0 (R20-P); R20.60 closed by removal v0.23.0 (R20-L) |
+| R20.76–R20.82 | Efficiency (7 items; R20.76 blocks the dashboard for 20–140 s) | Efficiency | R20.76 ✅ v0.26.0 (R20-O); R20.78, R20.80 ✅ v0.28.0 (R20-Q); R20.79 closed by removal (R20-L); R20.81 ✅ found fixed, R20.82 ✅ fixed v0.32.0 (R20-V); R20.77 in part (R20.33 halved it; see R20-V) |
 | R3.3, R3.6, R3.8, R3.14, R3.30, R14.2 | Earlier ✅ entries corrected (R20-H) | — | Reopened / partial |
 
 **Suggested order of work:**
@@ -5337,9 +5337,9 @@ The lme4 `pairwise_comparisons` table has no CI columns, so the dashboard builds
 | ID | Issue | Severity | Status |
 |---|---|---|---|
 | R20.83 | Unit heuristic classes mm³ data as cm³; 1000× mass correction | **Critical** | ✅ Fixed v0.25.0 (R20-N) |
-| R20.84 | Q-Q plots against a y = x line on unstandardised values | Major | Open |
-| R20.85 | No adjusted intervals on contrasts; unadjusted CIs shown with adjusted p | Major | Open |
-| R20.86 | Bliss row name; data_summary scale | Minor | Row name ✅ fixed v0.26.0 (R20-O); data_summary scale open |
+| R20.84 | Q-Q plots against a y = x line on unstandardised values | Major | ✅ Fixed v0.31.0 (R20-U) |
+| R20.85 | No adjusted intervals on contrasts; unadjusted CIs shown with adjusted p | Major | ✅ Fixed v0.31.0 (R20-U) |
+| R20.86 | Bliss row name; data_summary scale | Minor | Row name ✅ fixed v0.26.0 (R20-O); data_summary scale ✅ fixed v0.31.0 (R20-U) |
 
 Round 19 correction, added to R20-H: "`detect_volume_units()` — correct both ways" held only for well-separated magnitudes (R20.83).
 
@@ -5699,4 +5699,172 @@ Step 7 moved the VPS image to `rocker/r-ver:4.5.2`, whose CRAN is a frozen Posit
 **Executed:** the 54 differing versions that build on this Mac were installed ahead of the development library. The other eight are patch-level and failed only because of a local gfortran/clang mismatch. The full suite (`NOT_CRAN=true`) then ran 313 tests: 0 failed and 1 error.
 
 **The error was in a test, not the package.** `holds_brmsfit()`, the walker in the R20.80 test that proves no plot reaches a `brmsfit`, iterated with `for (el in o)`. ggplot2 4's S7 objects hold an empty symbol in a list, and binding it to `el` makes forcing it fail ("argument "el" is missing"). The walker now iterates by index. With ggplot2 4.0.2 and with 3.5.2, the step 6 file passes (8 tests, 32 expectations), so the property R20.80 checks holds under the image's ggplot2 too. No package code changed and the version stays 0.28.0.
+
+## R20-S Implementation log — v0.29.0: R CMD check passes, and CI (2026-10-09)
+
+The Round 20 process items, done together because they depend on each other: the examples need clean datasets, CI needs a passing check, and the check needs the vignette to build.
+
+**Starting point.** `R CMD build` failed at the vignette. Built without it, `R CMD check` gave 1 ERROR (examples), 3 WARNINGs and 3 NOTEs.
+
+| Item | Fix |
+|---|---|
+| R20.50 examples | Every `@examples` block was rewritten against shipped data, mostly `master_synthetic_data`, and runs. `\dontrun{}` is gone. The Bayesian examples are `\donttest{}` because they compile Stan. Exported functions without examples gained them (body weight, weight-loss threshold, therapeutic window, both power functions, both Bayesian entry points, `clear_compiled_model_cache()`). The 33 examples sections run in 14 s with no warnings; the synergy-over-time examples start at day 2, since day 0 has no growth to inhibit. |
+| R20.50 install warnings | `import(drc)` became `importFrom(drc, drm, LL.4, LL.5, ED, modelFit)`, and `import(stats)` became `import(stats, except = c(filter, lag))`. No package code calls `lag()`, `gaussian()` or `getInitial()` unqualified, and `filter()` already resolved to dplyr's, so no behaviour changes. |
+| R20.50 other findings | Non-ASCII characters in code strings (`×`, `—`, `–`, `→`) became `\u` escapes; they print the same. The ggplot/dplyr column names were declared with `utils::globalVariables()`. `necrotic_column`, `necrotic_handling` and `point_size` are documented, and the nested lists in `tumor_growth_statistics()`'s `@return` are `\describe`. LICENSE became the DCF stub, with the full text in `LICENSE.md`; the stale `Date` field was removed. |
+| R20.49 vignette | Rewritten as a complete analysis of `master_synthetic_data`. It renders in 4 s. Its one printed warning is `coxph` on two arms with no events, and the text explains that the Firth estimate reported stays finite. The 4.2 MB stale HTML was deleted. The two `.qmd` demos moved to `dev/demos/` (not built, with a README saying why they do not run). |
+| R20.51 README | Usage rewritten against `master_synthetic_data`. The status, install and dataset sections were corrected (brms is in Imports, there is one vignette, the coverage caveat is resolved). `tests/testthat/test-readme.R` runs all 8 non-Bayesian Usage blocks. |
+| R20.52 datasets | Each name is one dataset, built by `data-raw/create_datasets.R` from CSVs that are the dashboard's demos. `combo_treatment_synthetic_data` and `dose_levels_synthetic_data` replace `.rda` files that had volumes on a 0–7 scale, negative day-0 volumes and NaN. They contain dates, ear-punch IDs, caliper length and width, and survival events; no NA, nothing negative. `synthetic_data` (crossed cages, random values) and `necrotic_synthetic_data` were removed, in line with the maintainer's removal of those dashboard demos (2026-10-09); `master_synthetic_data` covers necrosis. `data.R` states formats, units and the reused-ID convention. The two tests that used the old files were adapted: the R20.14 test builds its own four never-measurable animals. |
+| R20.53 CI | `.github/workflows/R-CMD-check.yaml` runs on every push to staging/production, on every PR and nightly. It runs `R CMD check --no-manual` with the vignette and the full suite (Bayesian included), failing on warnings, then the source-tree tests. `build.R` and `temp/` were deleted. CONTRIBUTING was corrected: the CI it described now exists, its brms skip advice contradicted the no-skip rule, and the examples guidance now says `\donttest` and never `\dontrun`. |
+| R20.54 hygiene | `.Rbuildignore` gained `.claude`, `.waylog`, `docs`, `data-raw`, `dev`, `coverage.R`, `CONTRIBUTING.md` and `LICENSE.md`; a local tarball had included the AI session transcripts. `Depends: R (>= 4.1.0)`, since the code uses `\|>`. The tracked `Rplots.pdf` and the `R/data/` stubs were removed. |
+| R20.55 (in part) | Three tests read `R/` sources. Under R CMD check, which runs against the installed package, one failed to open its file and two passed on an empty file list without checking anything. They now skip there via `pkg_source_files()` (`helper-source.R`), and CI runs them from the source tree with the README test. |
+
+**Verification (executed):**
+- **Build:** `R CMD build` (vignette included) succeeds.
+- **Check:** `R CMD check --no-manual` has no warnings and no notes. The examples and the vignette re-build pass.
+- **Tests under check:** 891 passed and 4 skipped. The one failure was the source-reading test above, fixed here.
+- **Source-tree tests and README:** run separately; 8 README blocks pass.
+
+**Not done here:** R20.55's remaining warnings come from the Firth path of `weight_loss_threshold()` and `survival_statistics()` (R20.24, R20.64), and are left to that work.
+
+## R20-T Implementation log — v0.30.0: the last nine Majors (2026-10-09)
+
+This step closes every Major still open in R20.14–R20.48. Four of them needed an estimand chosen, and the maintainer decided them on 2026-10-09:
+
+| Item | Decision |
+|---|---|
+| R20.31 ANOVA | Growth rate first: `Treatment:Day` leads, and Treatment is tested at the mean study day |
+| R20.32 zero offset | A fixed floor of 2 mm³, settable (`zero_floor`), not a censored likelihood |
+| R20.44 body weight | The primary comparison is the rate of weight change (g/day) |
+| R20.46 reference arm | Detect the control by name; otherwise stop and ask |
+
+| Item | Fix |
+|---|---|
+| R20.46 reference | `me_resolve_reference()` (`R/utils_reference.R`) is the one rule for tumour growth, survival, body weight, both Bayesian entry points, `therapeutic_window_metric()` and `weight_loss_threshold()`. Control names (control, ctrl, vehicle, DMSO, PBS, saline, untreated, placebo, isotype, IgG…) match as whole words inside longer names. A combination ("Drug A + Vehicle") loses to a single arm. None or several matches stop with the arms listed, and an unknown `reference_group` is an error. The choice is messaged, and the two toxicity functions now return `reference_group`. Arms become labels before lme4 sees them (numeric codes crashed it). The dashboard passes an explicit reference, so it does not depend on detection. |
+| R20.24 Firth survival | The interval is `cbind(model$ci.lower, model$ci.upper)`, coxphf's profile limits. A Firth failure, or `firth_correction = FALSE`, runs the pairwise log-rank tests (`run_logrank()`), so the H.4 permutation log-rank is reachable again. The standard Cox fit is skipped when an arm has no events. The dead median fallback is removed. |
+| R20.63 events | The event column must be 0/1 (logical accepted). Coding 1/2 and text codes stop with a message that says what was found. Rows with a missing time or event are dropped with a warning; they used to force Firth through "Groups with no events: NA". |
+| R20.64 verbose, no events | `verbose = FALSE` prints nothing; `check_cage_distribution()` and `check_separation()` take `verbose`. Data with no events stop instead of reporting HR 1 [1, 1], p = 1. |
+| R20.25 cage | `classify_cage_structure()` counts arms as labels, so an unused factor level is not an arm. A new structure, `nested_partial` (some arms in two or more cages, others in one), keeps `(1\|Cage)` and warns with the single-cage arms named. An explicit `as_random_effect` that cannot be fitted (every arm in one cage) is refused with a warning that says so. `me_emm_limits()` reads emmeans' interval columns under either name (`lower.CL`, `asymp.LCL`, `lower.HPD`), so the default path runs above 3,000 rows. Survival warns for `nested_partial` too. |
+| R20.30 arguments | `necrotic_handling = "exclude"` sets `auc_df` after the exclusion, so AUC, growth rates and the permutation test see it. `dose_column` splits a treatment given at several doses into one arm per dose (`me_arms_with_dose()`), in tumour growth, survival and both Bayesian functions; a treatment at one dose keeps its label, so the dashboard's "HDACi 10" is unchanged. `calculate_volume()` replaces `Volume` and takes tibbles. `apriori_power_analysis()` warns when `n_comparisons` has no effect. `body_weight_auc` went in v0.23.0. |
+| R20.32 zero floor | `me_zero_floor()` and `me_floor_zeros()` (`R/utils_volume.R`): 2 mm³, half a just-palpable 2 × 2 mm tumour, or 0.002 cm³, from the new `volume_units` and `zero_floor` arguments. Used by the mixed model, growth rates, the Bayesian model and `trajectory_permutation_test()` (new `zero_floor`, which `tumor_growth_statistics()` passes). Reported as `$zero_floor` (value, units, number floored). It warns when the median volume is within 10× of the floor (wrong units) and when more than 20% of volumes are zero (suggesting `transform = "sqrt"`). The methods text states the floor. |
+| R20.31 ANOVA | `tgs_growth_first_anova()` builds the table from linear hypotheses on the fitted model (`lmerTest::contest`, Satterthwaite; Wald, or lm's F, as fallbacks). In order: `Treatment:Day`, "Treatment (at day X)" at the mean study day (the day the adjusted means use), and Day averaged over arms. Each row has a plain-language `Tests` column. Cage and necrosis rows are kept as adjustment terms. The rows no longer depend on the contrast coding, and Treatment no longer depends on the time origin. |
+| R20.33 simulation | `apriori_power_simulation()` fits `tumor_growth_statistics()`'s default model (REML; correlated slopes, then uncorrelated, then intercept-only) once per simulated study. It tests each arm against the control with a Satterthwaite t at α/(k−1) (`p_adjust_method = "none"` available). It reports `Power` with a Wilson interval, `Power_Any`, `Power_All`, `Power_Omnibus` (joint F) and `N_Failed`. The seed is restored on exit, and every α uses the same simulated studies. This also closes R20.72: the fallback's mismatched reduced model is gone with the LRT. |
+| R20.44 body weight | The primary comparison is `emtrends()` on Treatment × Day: `emmeans_table` holds `Weight_Change_Per_Day`, and `pairwise_comparisons` the slope differences. The level at the mean day is kept as `level_means` and `level_comparisons`, and `estimand` says which is which. `Initial_Mass` is computed after the NA filter and only when it is a covariate. `n_obs` and `n_subjects` come from `nobs()` and `ngrps()`. Pre-implant weighings with no volume already ran on v0.29.0 (volume filling, R20.22); checked again here. |
+| R20.73 fallback | Only a failure, a singular fit or non-convergence moves the body-weight model to a random intercept. The reason is recorded (`simplify_reason`) and other warnings pass through. |
+| R20.48 legend | `breaks = names(color_values)`, so each line carries its own label. |
+
+**Executed:**
+- **R20.31:** on the same data, counting time from randomisation or from implantation gave Treatment p = 0.86 and 7e-26 before. The new row is unchanged by the shift, and so is `Treatment:Day`.
+- **R20.32:** one 2.5 mm³ control reading moved the floor of a complete-regression arm to 1.25 mm³; it now stays at 2. On the shipped data with complete regressions in one arm, the permutation statistic was 322 with the old offset and 183 with the model's floor.
+- **R20.33:** null size at n = 5 is 0.050 (Wilson 0.033–0.076), against 0.090 for the LRT. A study takes about 20 ms.
+- **R20.44:** a +1.5 g baseline offset with identical weight change turned a 0.40 g level difference into 1.90 g; the slope difference does not move.
+- **R20.25:** the null false-positive rate with cage dropped was 0.16–0.29, against 0.02–0.035 with cage kept. Both triggers now keep it.
+
+**Tests:** 29 in `test-code_review_round20_majors.R`. Each fails on v0.29.0, which was checked by running the file against a copy of that version. The R20.32 tests read the floor from the fitted model, because `$zero_floor` does not exist on v0.29.0 and a comparison of it passed vacuously. Three existing tests were adapted to the new messages: the unknown Bayesian reference (R20.46), all-zero volumes (R20.32) and a `\%` in new roxygen text that R18.2's guard caught.
+
+**Found by CI (the first run on this branch).**
+- **The failure.** The R20.44 test fits body weight twice: on the shipped data, and with 1.5 g added to one arm. In CI (lme4 2.0-6), one fit kept its random slopes and the other fell back to a random intercept. The Drug_B rate difference was −0.0111 in one and −0.0068 g/day in the other.
+- **The cause.** lme4's gradient check warned "failed to converge", and R20.73 treats non-convergence as a reason to simplify. Every fit had reached the same optimum: log-likelihood −451.2811 and the same slopes, whether restarted or not. Locally, under lme4 2.0.1, both fits fell back, so the test passed with both at −0.0068.
+- **The fix.** `me_lmer_restart()` (`R/utils_lmer.R`) applies lme4's documented checks before the fallback, in tumour growth and body weight:
+  1. Restart from the estimates, and keep the restart if it is clean.
+  2. Otherwise refit with another optimizer (bobyqa for lme4's default nloptwrap). Use that fit if it converges cleanly. If it warns too but reaches practically the same optimum, keep the fit with the higher log-likelihood. "Practically the same" is lme4's `allFit()` sense: log-likelihoods within 0.01, fixed effects within 0.1 SE. Tighter limits (0.001 and 0.01 SE) still rejected the shipped data's fits on Linux.
+  - `model_info$convergence_note` says how the warning was checked, or why it was upheld.
+- **Result.** Both fits now keep their random slopes under both lme4 versions (−0.011120 and −0.011120, 4e-7 apart). The test tolerance is now the optimizer's (1e-3 relative), and the test asserts that neither fit simplified. The power simulation is unaffected: it fits with `calc.derivs = FALSE`, so the check never runs.
+
+**Follow-ups, not done here:**
+- **The endpoint model still floors at the smallest positive volume.** `me_endpoint_model()` (`R/utils_endpoint.R`) sets a regression to zero at the study's smallest positive volume. It serves the AUC path, endpoint estimates, synergy and dose-response, and the last two have no units argument. Moving it to the fixed floor needs `volume_units` there.
+- **Centre time inside the tumour-growth fit.** With correlated random slopes on uncentred time, the optimiser can stop short: after a 14-day shift the log-likelihood was 366.45 against 365.93, which moves standard errors slightly. The R20.31 time-origin test therefore uses intercept-only random effects.
+- **Dashboard.** It needs to show the ANOVA `Tests` column, label body-weight slopes as g/day, show the new simulation columns, pass `volume_units` to both tumour-growth functions, and show `nested_partial`.
+
+**Status:** every Major in R20.14–R20.48 is now closed. Of the Minors, R20.63, R20.64, R20.72 and R20.73 close here.
+
+## R20-U Implementation log — v0.31.0: the dashboard audit's package findings (2026-10-09)
+
+The dashboard audit traced four defects to this package (the Round 20 addendum). R20.83 was fixed in v0.25.0. This step fixes the other three, which dashboard R20.D42, R20.D43 and R20.D45 depend on.
+
+| Item | Fix |
+|---|---|
+| R20.84 Q-Q plots | `me_qq_frame()` (`R/utils_diagnostics.R`) standardises the values before `qqnorm()`, so the y = x reference fits. It is used for the residual Q-Q (tumour growth, AUC model, body weight) and for each random-effect component. Values with no spread (SD below 1e-10, a singular fit's BLUPs) return NULL: that component is left out, and with none left there is no plot. Before, they could hang the device under `ragg`. |
+| R20.85 adjusted intervals | `me_pairwise_frame()` asks emmeans for intervals (`infer = c(TRUE, TRUE)`) and adds `CI_Adjusted_Lower`, `CI_Adjusted_Upper` and `CI_Adjustment`, the latter from emmeans' own note. emmeans adjusts intervals exactly for Dunnett (mvt), Tukey and Bonferroni, and uses Bonferroni-level intervals for Holm and BH, since those have none of their own; the column says so. On the AUC path, `me_auc_ci_adjustment()` sets the level: 1 − 0.05/m for Bonferroni and Holm, 0.95 otherwise, with the label saying BH has no simultaneous interval. The difference gets percentile intervals from the model draws at that level. The ratio gets Wald intervals on the log scale of the test (`Ratio_CI_Adjusted_*`), which agree exactly with the Bonferroni p-values. |
+| R20.57 / R20.86 data summary | `tgs_compute_summary()` takes the untransformed rows the model used: `auc_df` in `tumor_growth_statistics()`, and a copy taken before the transform in `bayesian_tumor_growth()`. It reports the mean, SD, SEM and `n` over measured volumes; `n` counted rows, so NA rows shrank the SEM. With a log transform it adds `geometric_mean_volume` (zeros at the floor), which is the model's scale back-transformed. The cage table's means are taken from the untransformed rows too. |
+
+**Executed (shipped data; v0.30.0 → v0.31.0):**
+- **Residual Q-Q:** the SD of the plotted values went from 0.090 to 1. The share of points within 0.05 of y = x went from 4.4% to 81.4%; within 0.25, from 21.6% to 99.8%.
+- **Vehicle, last day (one animal left):** the summary's mean went from 8.29 (log scale) to 3,991.6 mm³.
+- **Interim data (days ≤ 10), Dunnett, Drug_A Mid vs Vehicle:** estimate −0.535, adjusted p 0.013. The unadjusted t interval is [−0.825, −0.245]. The new adjusted interval is [−0.938, −0.131]: wider, and it agrees with the p-value.
+
+**Tests:** 6 in `test-code_review_round20_addendum.R`. Each fails on v0.30.0, which was checked by running the file against a worktree of that version. They check:
+- the standardised residual and random-effect Q-Q, and the singular case;
+- that the lme4 intervals exclude zero exactly when the adjusted p is below 0.05, for Dunnett, Bonferroni and none;
+- that the AUC ratio intervals agree with the Bonferroni p-values and are wider than the unadjusted ones;
+- the volume-scale summary with its geometric mean;
+- `n` over measured volumes.
+
+**Also fixed:** the roxygen block of `tgs_fit_lme4_models()` had ended up above `tgs_growth_first_anova()` in v0.30.0; it is back above its function.
+
+**Status:** R20.84 and R20.85 are closed, and so are R20.57 and the data_summary part of R20.86. Every item in the Round 20 addendum is now closed.
+
+## R20-V Implementation log — v0.32.0: the remaining Minors and two efficiency items (2026-10-10)
+
+After this step every Round 20 Minor (R20.56–R20.75) is closed. Two were already fixed and are recorded here; the rest are fixed in this step.
+
+| Item | Fix |
+|---|---|
+| R20.56 single-observation AUC | Found fixed by the v0.26.0 rewrite (R20-O). The bootstrap is gone. An animal with one measurement has `AUC = NA` and drops out of the descriptive summary's mean and N. The model-based AUC does not use these values. |
+| R20.58 metadata | `summary$model_specification$random_effects` names the whole random part, `+ (1 \| Cage)` included. `subjects` counts the animals in the fitted model (`ngrps()`), so animals dropped for a missing cage no longer count. Rows the model drops for a missing cage, day or covariate draw a warning with the number. The documentation no longer promises a "lowest BIC" selection: `selected_model` is the structure used. The README says `plots = FALSE` skips the figures while diagnostics follow `include_diagnostics`. The AUC path's `meta$interval_columns` already named existing columns. |
+| R20.59 Dunnett | `me_contrast_summary()` runs every contrast summary under a fixed seed and restores the caller's RNG (`me_with_seed()`). Dunnett is emmeans' Monte Carlo `mvt` adjustment, and its p-values changed on every call (0.000413, 0.000402, 0.000337). The mixed-model table also reports `P_Value_Raw`, and the adjusted p is never below it. |
+| R20.61 plots | **`plot_tumor_growth()`:** each arm's mean line ends on the last day at least half its animals, and at least 3, are measured (the evaluable-day rule), with a caption; the survivors' mean fell as large tumours left. The x axis keeps pre-treatment days, and a new `volume_units` argument sets the label (it was always mm³). **`plot_auc()`:** "CI" uses t with n − 1 df instead of 1.96 (31 % too narrow at n = 6). **`plot_caterpillar()`:** each coefficient's Satterthwaite df instead of nobs − p, or z for glmer. |
+| R20.62 factor events (Bayesian survival) | Found fixed in v0.25.0 (R20-N): the event column is read through its labels and validated as 0/1. |
+| R20.65 weight-loss threshold | Weighings before an animal's baseline day are no longer at risk; a low acclimatisation weight was an event at day −7. The cumulative incidence is fitted after the reference arm is set, so its strata are ordered like the Kaplan–Meier fit's. |
+| R20.66 dose-response | The summary's `n` counts measured volumes (it counted rows, so SEM 35.4 where it is 50). The other two parts were fixed with R20.14: the `tryCatch` no longer discards the statistics, and the growth-rate model honours `verbose`. |
+| R20.67 synergy | `plot_bliss()` takes the whole `analyze_drug_synergy_over_time()` result and labels the lines with the arms analysed (they were "Drug A", "Drug B", "Combination"). Its documentation no longer points at a `synergy_stats()` that does not exist. The over-time summary adds Holm-adjusted `P_Value_vs_Drug_A_Holm`/`_B_Holm` across days. `synergy_bootstrap()` loses the unused `ci_floor_frac`. `bayesian_synergy_over_time()` went in v0.23.0. |
+| R20.68 cage ICC | With random slopes the animal variance is evaluated at the mean study day, z'Σz with z = (1, t), the day the Treatment test uses (`At_Day` in the result). Adding the per-day² slope variance made the ICC depend on the time units (0.513 in days, 0.395 in weeks). |
+| R20.69 tumour growth | The per-animal AUC table is computed only on the AUC path; it was computed and discarded with diagnostics on. A failure there is a warning, not a crash ("no rows to aggregate" with one time point per animal). Repeated animal-by-day rows draw a warning. |
+| R20.71 analytic power | One definition of n: `N_Per_Group` in the power curve is the number enrolled, as in the find_power table, with `N_Analysable` beside it. They disagreed (0.562 against 0.406 at 30 % dropout). The sensitivity table gains `Enroll_N`. Enrolment rounds before `ceiling()`: 21 / 0.7 is 30.000000000000004, which `ceiling()` made 31. |
+| R20.75 attrition message | It says "Vehicle: 7 of 8 still on study"; "7/8" read as a count lost. |
+| R20.81 synergy over time | Found fixed. The endpoint model is fitted once (R20-O) and the per-day intervals are kept (R20.2). On the shipped data the analysis takes 0.28 s with 2,000 resamples (3.2 s in the review). |
+| R20.82 exact randomisation test | `me_partition_representatives()` keeps one labelling per partition of the units: swapping the labels of equal-sized arms does not change the statistic. Six cages in three arms of two: 15 refits instead of 90, 0.2 s instead of 1.0 s, and the same p (1/15). |
+| R20.77 power simulation | In part. R20.33 fits once per simulated study and shares the studies across α, which halves the work. The review's prototype (vectorised generation and `refit()` on a fixed design) does not carry over: dropout gives each replicate its own design. The dashboard runs the simulation on its background worker (dashboard R20.D6). |
+
+**Tests:** 12 in `test-code_review_round20_minors.R`. Each fails on v0.31.0, which was checked by running the file against a worktree of that version.
+
+## R20-W Implementation log — v0.33.0: the endpoint model's floor, and centred time (2026-10-10)
+
+The two follow-ups recorded in R20-T.
+
+**The endpoint model's zero floor.**
+- **The problem.** `me_endpoint_model()` set a regression to zero (a zero after a positive measurement) to the smallest positive volume in the study. That value moves with any small reading in any arm, which R20.32 had removed from tumour growth.
+- **The fix.** It now uses `me_floor_zeros()` with the fixed floor, so the regression takes 2 mm³ (0.002 cm³) and R20.32's warnings about units and many zeros apply. Only non-positive values are floored: a measured 0.5 mm³ is kept, where `pmax()` would have raised it.
+- **Where the floor comes from:**
+  - `endpoint_volumes()` takes `zero_floor` and `volume_units`;
+  - the tumour-growth AUC path passes its own floor;
+  - `analyze_drug_synergy()`, `analyze_drug_synergy_over_time()` and `dose_response_statistics()` gain `volume_units` (default mm³) and `zero_floor`;
+  - `therapeutic_window_metric()` gains `zero_floor` and uses its `volume_units`, mm³ when that is `NULL`.
+- **Metadata.** `endpoint_model$detection_limit` reports the floor.
+
+**Centred time in the tumour-growth fit.**
+- **The problem.** With correlated random slopes on uncentred time, the intercept and slope are strongly correlated and the optimizer could stop short.
+- **The fix.** For the default `slope` structure, `me_centred_start()` (`R/utils_lmer.R`):
+  1. fits the same model with time centred at the mean study day;
+  2. maps its random-effect covariance back to the original origin (b0 = b0' − c·b1, so Σ = AΣ'Aᵀ with A = [[1, −c], [0, 1]]);
+  3. passes the result as the starting theta to the model as written.
+- **What does not change.** The model, its coefficients, contrasts and ANOVA keep their meaning; only the optimizer's starting point changes. Uncorrelated slopes are not centred, because centring would change that model.
+
+**Executed (shipped data, counted from randomisation and from implantation, +14 days):**
+
+| | Log-likelihood | Treatment-row F | Max slope difference |
+|---|---|---|---|
+| v0.32.0 | 366.4457 / 365.9319 | 92.06 / 112.69 | 1.2e-5 |
+| v0.33.0 | 366.4457 / 366.4457 | 92.07 / 92.07 | 1.2e-8 |
+
+**Tests:**
+- **New:** 4 in `test-code_review_round20_followups.R`, each failing on v0.32.0:
+  - the default fit is the same counted from either origin;
+  - the starting theta reproduces the plain fit's optimum;
+  - a regression takes 2 mm³ while a measured 0.5 mm³ is kept;
+  - the floor reaches synergy's estimate, and the new arguments exist.
+- **Adapted:** the R20.3 reused-ID test compared two equivalent fits' covariance at 1e-6. Both fits now start at the optimum and stop within the optimizer's tolerance, so they differ by about 6e-6 while their log-likelihoods agree to 1e-9. The test now checks the log-likelihood at 1e-8 and the covariance at 1e-4.
+
+**Also (dashboard R20.D60):** `analyze_drug_synergy()$synergy_metrics` reported the Bliss difference as a raw fraction in a text column. The row is now "Bliss Difference (percentage points)", formatted to one decimal. A fifth test checks it.
+
+**Status:** both follow-ups from R20-T are closed. R20.77 stays in part (R20-V).
 
