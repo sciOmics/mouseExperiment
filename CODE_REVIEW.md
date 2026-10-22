@@ -5894,3 +5894,22 @@ Both were reported from the dashboard while using the All Features demo.
 
 **Verification (executed).** The full suite with Bayesian fits skipped, as the staging gate runs it: 370 tests, 0 failed, 31 skipped. CI runs the Bayesian tests.
 
+**Addendum: how early deaths move the model-based AUC (simulation, 2026-10-22).**
+- **The question,** from the maintainer: "Wouldn't early deaths cause an underestimate of a group's AUC?"
+- **The script:** `dev/sim_auc_dropout.R`, built on `tumor_growth_statistics(model_type = "auc")`.
+  - **Design:** two arms of 10, log-linear growth with per-animal intercepts and slopes, measured every 3 days to day 30. Each of 200 studies was generated once.
+  - **Pairing:** every dropout mechanism was applied to the same treated animals, so each shift below is paired.
+  - **The truth:** the area under the treated arm's population geometric-mean curve over the reported window.
+
+| Treated-arm dropout | Animals lost | Model-based AUC, shift from the deaths | Survivors' daily geometric mean, shift |
+|---|---|---|---|
+| Random, unrelated to the tumour | 30 % | +0.2 % (SE 0.3) | +1.3 % (SE 0.8) |
+| Removed at 1,000 mm³ (after the measurement) | 31 % | −0.2 % (SE 0.2) | −13.0 % (SE 0.7) |
+| Die just before the measurement that would exceed 1,000 mm³ | 41 % | −2.8 % (SE 0.3) | −17.6 % (SE 0.8) |
+| The most aggressive 30 % die on days 9–18, whatever their volume | 30 % | −4.7 % (SE 0.5) | −21.1 % (SE 0.9) |
+
+- **Removal at the volume limit is handled.** Dropout that depends on measured values (missing at random) leaves the mixed model essentially unbiased. Each removed animal's measurements fix its growth rate, and its fitted curve carries on.
+- **Deaths that the measurements only partly foreshadow** (missing not at random) leave a small underestimate. That is the limit of any analysis of volume alone.
+- **Back-transformation bias.** With no dropout, both estimators read about 3 % high against the population curve: the back-transformed mean of log volume over 10 animals is biased upward. It is the same in every arm, so a ratio between arms is barely affected.
+- **In the dashboard.** The dashboard (26.10.007) now states this in the AUC help.
+
