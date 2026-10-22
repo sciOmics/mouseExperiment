@@ -5868,3 +5868,29 @@ The two follow-ups recorded in R20-T.
 
 **Status:** both follow-ups from R20-T are closed. R20.77 stays in part (R20-V).
 
+## R20-X Two warnings the dashboard showed users (v0.33.1, 2026-10-22)
+
+Both were reported from the dashboard while using the All Features demo.
+
+**1. Survival: "Convergence in estimating profile likelihood CI or p-values not attained for all variables."**
+- **When Firth is used.** Two of the demo's six arms have no events (0 of 8), so `survival_statistics()` uses Firth's model (`coxphf`).
+- **What went wrong.** With coxphf's defaults (`maxit = 50`, `maxstep = 0.5`), the profile-likelihood p-values of those two arms did not converge. coxphf warned and returned `NA`.
+- **What the fallback then did.**
+  - The fallback computed pairwise log-rank p-values instead, **rounded to 4 decimals**. Holm then multiplied them, so both arms read exactly 0.0005.
+  - Nothing in the table said a different test had produced them. Their confidence intervals had converged.
+- **The fix:**
+  - `coxphf(..., maxit = 1000, maxstep = 0.05)`. On the demo every p-value converges (3.1e-7 and 1.9e-7 unadjusted) and the warning is gone.
+  - Across six synthetic studies, hazard ratios agree with the defaults' to within 6e-8 wherever the defaults converged.
+  - The fallback, still there for harder data, keeps full precision and writes "p: pairwise log-rank (Firth's p-value did not converge)" in the arm's Note. The arms are carried in an attribute of the model results.
+
+**2. Dose-response: "method L-BFGS-B uses 'factr' (and 'pgtol') instead of 'reltol' and 'abstol'."**
+- **The cause.** R20.18 bounded the LL.4 lower asymptote at 0 (`lowerl`), which makes drc fit with L-BFGS-B. drc still passes its `relTol` to `optim()` as `reltol`, which only the unbounded method uses, so every fit warned.
+- **The fix.** `me_muffle_lbfgsb_tol()` muffles exactly that message around the bounded `drm()` call. The fit is unchanged, and any other warning passes through.
+
+**Tests.** `test-firth_drc_warnings.R`, 3 tests, all failing on v0.33.0:
+- a synthetic study shaped like the demo has no convergence warning, no `NA` p-values, and p-values equal to coxphf's with the new settings;
+- with coxphf mocked to fail one arm, the fallback p-value equals the exact log-rank p, unrounded, and the Note names the test;
+- a dose-response fit raises no L-BFGS-B warning, the muffler stops only that message, and another warning still passes.
+
+**Verification (executed).** The full suite with Bayesian fits skipped, as the staging gate runs it: 370 tests, 0 failed, 31 skipped. CI runs the Bayesian tests.
+

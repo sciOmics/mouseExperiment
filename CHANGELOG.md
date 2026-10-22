@@ -5,7 +5,27 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.33.1] - 2026-10-22
+
+Two warnings the dashboard showed users (`CODE_REVIEW.md` R20-X).
+
+### Fixed
+- **Firth's survival model warned "Convergence in estimating profile likelihood CI or p-values
+  not attained"** when an arm had no events, which is the case Firth is used for. The
+  p-values of those arms came back missing and were replaced by pairwise log-rank p-values.
+  - `coxphf()` now gets more, smaller steps (`maxit = 1000`, `maxstep = 0.05`), and the
+    p-values converge. On the dashboard's All Features demo the two event-free arms report
+    Firth's p-values (about 3e-7 and 2e-7) instead of 0.0005.
+  - Estimates and intervals do not change: they agree to within 1e-7 wherever the defaults
+    converged.
+- **When the log-rank fallback is still needed:**
+  - its p-value is kept at full precision (it was rounded to 4 decimals before the
+    multiplicity adjustment);
+  - the arm's Note says "p: pairwise log-rank (Firth's p-value did not converge)".
+- **Every dose-response fit warned "method L-BFGS-B uses 'factr' (and 'pgtol') instead of
+  'reltol' and 'abstol'".** The lower-asymptote bound (R20.18) makes drc use L-BFGS-B, but
+  drc still passes a tolerance that only the default optimiser uses. That one warning is
+  muffled; the fit is unchanged, and other warnings pass through.
 
 ### Tests
 - The compiled-model cache test no longer depends on the Bayesian fits before it. The VPS
