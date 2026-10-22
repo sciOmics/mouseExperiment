@@ -196,12 +196,14 @@ dashboard_app <- function() {
     ),
 
     tabPanel("Data",          dataUploadUI("data")),
-    tabPanel("Power Analysis",  powerAnalysisUI("pw")),
     tabPanel("Tumor Growth",  tumorGrowthUI("tg")),
     tabPanel("Survival",           survivalUI("surv")),
     tabPanel("Toxicity",            toxicityUI("tox")),
     tabPanel("Dose Response",       doseResponseUI("dr")),
     tabPanel("Drug Synergy",        synergyUI("syn")),
+    # Power Analysis last among the analyses (2026-10-22): it plans the next
+    # study, while the others analyse the loaded one.
+    tabPanel("Power Analysis",  powerAnalysisUI("pw")),
     tabPanel("Help",          helpUI()),
     tabPanel("About",          citationUI())
   )
