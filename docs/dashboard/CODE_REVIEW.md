@@ -2711,3 +2711,33 @@ On 26.10.005 it fails: no tooltip appears.
 - The full suite, from source: 292 tests, 0 failed, 0 skipped.
 - Screenshots of the longest tooltip ("Treatment was assigned to"): it shows above the icon, and the radio choice does not change.
 
+## R20-D.V Tumour Growth sidebar: tooltips, and the necrotic default on the first run (26.10.007, 2026-10-22)
+
+**Request.** The Analysis Parameters sidebar had a paragraph under nearly every option, and the Run button sat more than a screen down. The maintainer agreed to move the explanations into the `?` tooltips (which work on hover, click, tap and keyboard since 26.10.006), Tumour Growth first.
+
+**The rule applied:**
+- **Into tooltips:** what an option means or how a method works, cut to one to three sentences.
+- **Visible:** state or caveats that change what the user should do: the reference group, the unit permuted, and the no-extrapolation note.
+- **Removed:** internal history ("CODE_REVIEW.md R3.9 / G.4"), and rules the controls already enforce, such as which corrections AUC offers.
+
+The Info tab keeps the full descriptions.
+
+**Found on the way: the first run ignored the necrotic default.**
+- `necrotic_handling_ui` rendered only when `rv$necrotic_col` was set, which happens inside the Run handler. A first run therefore sent `input$tg_necrotic_handling %||% "none"`.
+- The selector then appeared showing "Exclude from analysis", and the next run excluded the observations although nothing had been changed. The backend's own default is "exclude".
+- **The fix:**
+  - the selector renders as soon as `rv$settings$col_necrotic` is mapped;
+  - `tg_necrotic_handling()` falls back to "exclude" when a necrotic column is in use, else "none";
+  - `run_settings` records it, on both the LME4/AUC path and the Bayesian resume path.
+
+**Tests.** `test-sidebar-tooltips.R`, 3 tests, all failing on 26.10.006:
+- every sidebar label carries a help tip, no `help-block` paragraph is left before Run, and no "CODE_REVIEW" appears in the UI;
+- with a necrotic column mapped, the selector exists before any run, showing Exclude. The first run records "exclude" and fits the same number of observations as an explicit Exclude run;
+- without a necrotic column there is no selector, and the run records "none".
+
+**Verification (executed):**
+- The full suite, from source: 295 tests, 0 failed, 0 skipped.
+- Screenshots of both versions after one run, with LME4 and the randomisation test on the All Features demo:
+  - sidebar height 2,445 px to 1,199 px;
+  - Run button top 2,274 px to 1,028 px.
+
