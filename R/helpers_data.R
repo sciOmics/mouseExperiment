@@ -831,8 +831,9 @@ detect_columns <- function(col_names) {
                          c("date", "measurement_date")),
     dose = detect_column(col_names, col_names_lower,
                          c("dose", "dose_level", "concentration", "conc")),
-    survival_time  = detect_column(col_names, col_names_lower,
-                                   c("survival_time", "time_to_event", "days_to_event")),
+    # (A survival_time role was detected here and never used: time to event is
+    # each animal's last measurement day, or the day it crosses the volume
+    # limit. Removed in 26.10.009 with its Help row.)
     survival_event = detect_column(col_names, col_names_lower,
                                     c("survival_event", "event", "survival_censor", "censor")),
     weight = detect_column(col_names, col_names_lower,

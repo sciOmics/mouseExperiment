@@ -833,9 +833,9 @@ tumorGrowthUI <- function(id) {
                       "the arm's curve as if the animal had continued. So the AUC is not pulled down when the ",
                       "largest tumours leave the study, as an average of the animals still on study would be. ",
                       "In simulations with 10 animals per arm and about a third of the treated arm lost, removal at ",
-                      "the volume limit moved the AUC by −0.2 % (the average of the survivors: −13 %). ",
+                      "the volume limit moved the AUC by \u22120.2 % (the average of the survivors: \u221213 %). ",
                       "Deaths that the earlier measurements only partly foreshadow left a small underestimate, ",
-                      "−3 % to −5 % (survivors: −18 % to −21 %). When many animals die for ",
+                      "\u22123 % to \u22125 % (survivors: \u221218 % to \u221221 %). When many animals die for ",
                       "reasons their growth does not show, read the Survival analysis alongside the AUC."
                     ),
                     div(class = "alert alert-warning", style = "font-size:0.9em; margin-bottom:0;",
@@ -1481,10 +1481,26 @@ helpUI <- function() {
     hr(),
 
     # \u2500\u2500 Workflow overview \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    # Quick start (26.10.009): the shortest path to a first result.
+    div(
+      class = "alert alert-info",
+      h4(icon("rocket"), " Quick start"),
+      tags$ol(style = "margin-bottom:0;",
+        tags$li("On the ", strong("Data"), " tab, under ", strong("Try Demo Data"), ", choose ",
+                strong("All Features"), " and click ", strong("Load Demo Data"), "."),
+        tags$li("Below the column mapping, check ", strong("Study Design"), ": volume units mm\u00b3 and the ",
+                "control group Vehicle."),
+        tags$li("Open ", strong("Tumor Growth"), " and click ", strong("Run Analysis"),
+                "; the results open on the Summary tab."),
+        tags$li("Look through the other result tabs (Plots, Comparisons, Diagnostics), then save what you ",
+                "need from ", strong("Download Results"), ". Every other analysis tab works the same way.")
+      )
+    ),
+
     h3(icon("arrows-turn-right"), " Basic Workflow"),
     tags$ol(
       tags$li(strong("Data tab"), " \u2014 upload a CSV file and map your columns (ID, time, volume, treatment). Optional columns: cage, dose, body weight, survival/censor indicator."),
-      tags$li(strong("Study Design"), " (on the Data tab) \u2014 declare the tumour volume units (mm\u00b3 or cm\u00b3), the control group, and, when a cage column is mapped, whether individual animals or whole cages were randomised. Every analysis tab uses these; none has its own reference selector."),
+      tags$li(strong("Study Design"), " (on the Data tab) \u2014 declare the tumour volume units (mm\u00b3 or cm\u00b3), the control group, and, when a cage column is mapped, whether individual animals or whole cages were randomised. With a removal-reason column mapped, say what each reason means (death, weight loss, the volume limit, a planned end); Survival and Toxicity use it. Every analysis tab uses these settings; none has its own reference selector."),
       tags$li(strong("Analysis tabs"), " \u2014 each tab activates once the required columns are mapped:"),
       tags$ul(
         tags$li(strong("Tumor Growth"), " \u2014 always available after upload"),
@@ -1494,16 +1510,18 @@ helpUI <- function() {
         tags$li(strong("Drug Synergy"), " \u2014 requires control, single-agent A, single-agent B, and combination groups"),
         tags$li(strong("Power Analysis"), " \u2014 always available; no data upload needed for a priori modes")
       ),
-      tags$li("Select the statistical ", strong("method"), " in the sidebar, configure parameters, and click ", strong("Run Analysis"), "."),
-      tags$li("Explore results across sub-tabs (summary, plots, pairwise comparisons, model output)."),
-      tags$li("Download plots (PNG) and tables (CSV) from the per-tab download buttons.")
+      tags$li("Select the statistical ", strong("method"), " in the sidebar, configure parameters, and click ", strong("Run Analysis"), ". The ", icon("circle-question"), " beside an option explains it: hover over it, or click or tap it."),
+      tags$li("Explore results across sub-tabs (summary, plots, pairwise comparisons, model output). Each Diagnostics tab has a ", strong("How to read this plot"), " note under every plot."),
+      tags$li("Download one table or plot from the button beside it, or choose any mix of tables, plots, diagnostics and data from a tab's ", strong("Download Results"), " tab: one ZIP, with plots in PNG, PDF or SVG and a README listing every file, the settings of the run and the package versions. Tumor Growth also offers an HTML report."),
+      tags$li("Long analyses (Bayesian fits, randomisation tests, the power simulation, the body-weight model) run on a background worker, so the app stays usable. You can close the browser and come back: a banner at the top lets you resume or cancel."),
+      tags$li("To reuse the column mapping and settings with another file of the same layout, save them with ", strong("Save Preset"), " at the bottom of the Data tab and load them next time.")
     ),
 
     hr(),
 
     # \u2500\u2500 Data format \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     h3(icon("table"), " Data Format"),
-    p("Upload data in ", strong("long format"), ": one row per measurement per animal. Accepted format: CSV (.csv)."),
+    p("Upload data in ", strong("long format"), ": one row per measurement per animal, as a CSV file (.csv) of up to 30 MB. Commas, semicolons or tabs can separate the columns (with a semicolon or tab, a decimal comma is read correctly), and the file can be UTF-8, Latin-1 or UTF-16."),
 
     h4("Demo data"),
     p("No data of your own? The Data tab ships four demo datasets:"),
@@ -1540,8 +1558,7 @@ helpUI <- function() {
         tags$tr(tags$td("Sex"),               tags$td("Sex, Gender, M/F"),                  tags$td("No")),
         tags$tr(tags$td("Necrotic flag"),     tags$td("Necrotic, Necrosis, Necr, Is_Necrotic, Necrotic_Flag"), tags$td("No")),
         tags$tr(tags$td("Removal reason"),    tags$td("Removal_Reason, Reason, Cause_Of_Death, Fate"), tags$td("No")),
-        tags$tr(tags$td("Survival / Censor"), tags$td("Survival_Censor, Censor, Event, Survival_Event"), tags$td("No")),
-        tags$tr(tags$td("Survival time"),     tags$td("Survival_Time, Time_To_Event, Days_To_Event"), tags$td("No"))
+        tags$tr(tags$td("Survival / Censor"), tags$td("Survival_Censor, Censor, Event, Survival_Event"), tags$td("No"))
       )
     ),
     p(tags$em("\u2020 Provide either a pre-calculated Volume column, or Length + Width columns."),
@@ -1552,11 +1569,65 @@ helpUI <- function() {
       "approximate height by width. Volumes may be supplied in mm\u00b3 or cm\u00b3."),
     p(tags$em("\u2021 Supply either a numeric Day column or a Date column; elapsed days are derived from the date and a reference start date.")),
     p("Survival/Censor must be numeric: ", strong("1 = endpoint reached"), " (e.g. tumour exceeded IACUC volume limit), ",
-      strong("0 = censored"), " (alive or study-end censored). If absent, use the volume-threshold derivation in the Survival tab sidebar."),
+      strong("0 = censored"), " (alive or study-end censored). If absent, use the volume-threshold derivation in the Survival tab sidebar. An animal's time to event is its last measurement day, or with the volume threshold, the first day its tumour reaches the limit; no separate time column is needed."),
 
     hr(),
 
     # \u2500\u2500 Analysis modules \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    h3(icon("book"), " Key Concepts"),
+
+    h4("Evaluable days"),
+    p(evaluable_rule_text()),
+    p("Comparisons on one day, or over a window, use only days on which every arm compared is ",
+      "evaluable. The AUC's window ends at the last such day. Dose Response and the therapeutic ",
+      "window use the last evaluable day unless you choose another, and Drug Synergy offers every ",
+      "evaluable day or one of them. Later than that, an arm is represented by too few animals, ",
+      "and by the ones whose tumours grew slowest, for a fair comparison."),
+
+    h4("Glossary"),
+    tags$dl(
+      tags$dt("Reference group"),
+      tags$dd("The control arm chosen under Study Design. Comparisons are made against it, or between ",
+              "all pairs of arms where a tab offers that."),
+      tags$dt("Geometric mean"),
+      tags$dd("The average taken on the log scale and converted back: the typical tumour volume. A few ",
+              "very large tumours move it far less than they move the ordinary (arithmetic) mean. ",
+              "Model-based estimates of tumour volume are geometric means."),
+      tags$dt("TGI (tumour growth inhibition)"),
+      tags$dd("(1 \u2212 treated volume / control volume) \u00d7 100 at the evaluation day, from each arm's ",
+              "mean volume: the geometric mean under the model-based estimand, the arithmetic mean under ",
+              "the observed ones. 100 % means no tumour left, 0 % the same as control, and a negative ",
+              "value a larger tumour than control."),
+      tags$dt("Estimand"),
+      tags$dd("What a number is meant to estimate, decided before looking at the data. For example, ",
+              "each arm's mean volume on day 21 had every animal stayed on study (model-based), or the ",
+              "mean of the animals still present on day 21 (survivors). They differ when animals leave ",
+              "early, and the Toxicity and Drug Synergy sidebars let you choose."),
+      tags$dt("Random effects (random slopes)"),
+      tags$dd("Each animal's own starting size and growth rate, around its arm's. They let a model use ",
+              "repeated measurements of the same animal correctly, instead of treating them as ",
+              "independent animals."),
+      tags$dt("Adjusted and unadjusted p-values"),
+      tags$dd("Comparing several arms with the control makes several tests, and some p-values will be ",
+              "small by chance. An adjusted p-value (Dunnett, Tukey, Holm, Bonferroni or FDR) accounts ",
+              "for the whole family of comparisons shown, and adjusted intervals do the same for ",
+              "intervals. Report adjusted values when several arms are compared; an unadjusted value ",
+              "suits only a single planned comparison."),
+      tags$dt("Confidence and credible intervals"),
+      tags$dd("A 95 % confidence interval (frequentist) comes from a procedure that covers the true ",
+              "value in 95 % of repeated studies. A 95 % credible interval (Bayesian) contains the ",
+              "value with 95 % probability, given the data, the model and its priors."),
+      tags$dt("Hazard ratio and time ratio"),
+      tags$dd("A hazard ratio below 1 means the endpoint is reached at a lower rate than in the ",
+              "reference arm. A time ratio above 1 (Bayesian survival) means it takes longer to reach."),
+      tags$dt("Bliss difference"),
+      tags$dd("The combination's observed effect minus the effect expected if the two drugs acted ",
+              "independently, in percentage points. Positive suggests synergy, negative antagonism; ",
+              "its 95 % interval decides the verdict.")
+    ),
+
+    hr(),
+
     h3(icon("flask"), " Analysis Modules"),
 
     h4("Tumor Growth"),
@@ -1566,7 +1637,7 @@ helpUI <- function() {
       tags$dt("AUC (area under the curve)"),
       tags$dd("The area under each arm's fitted growth curve over the window in which every arm is evaluable (at least 50 % of its enrolled animals, and at least 3, on study). Animals that die or are removed early count through all their measurements, so early deaths of large tumours do not pull the AUC down. Arms are compared by the ratio of their AUCs, with intervals and Wald p-values from the model and the selected correction. Each animal's own trapezoidal AUC is shown for description only: an animal removed early accumulates less area from being measured for less time."),
       tags$dt("Bayesian LMM (brms)"),
-      tags$dd("The LME4 model fitted via MCMC (Stan). Return posterior distributions for treatment effects with credible intervals, plus convergence diagnostics (Rhat, ESS, trace and rank plots) and PSIS-LOO influence measures. Requires the brms package."),
+      tags$dd("The LME4 model fitted via MCMC (Stan). Returns posterior distributions for treatment effects with credible intervals, plus convergence diagnostics (Rhat, ESS, trace and rank plots) and PSIS-LOO influence measures. Requires the brms package."),
       tags$dt("Randomisation test (optional, any frequentist mode)"),
       tags$dd("Permutes treatment labels and refits, giving an exact p-value for the Treatment \u00d7 Day interaction that assumes neither a denominator-df approximation nor normal random effects. The unit permuted, individual animals or whole cages, is the unit of randomisation declared under Study Design on the Data tab \u2014 the test is only valid if that matches how the experiment was actually run.")
     ),
@@ -1584,19 +1655,19 @@ helpUI <- function() {
     h4("Toxicity (Body Weight)"),
     tags$dl(
       tags$dt("LME4 body weight model"),
-      tags$dd("Linear mixed model on body weight over time. Treatment \u00d7 Day interaction identifies groups with significant weight-change trajectories."),
+      tags$dd("Linear mixed model of body weight over time, with each animal's own intercept and slope. Each arm's rate of weight change (per day) is compared with the reference arm's; weight at the mean study day is reported as well. Tumour mass can be subtracted from body weight first (on by default)."),
       tags$dt("Therapeutic window"),
       tags$dd("Sets each arm's tumor growth inhibition beside its mean worst weight loss (each animal's largest drop below its own first weighing), each with a 95% interval, and flags the weight loss as Tolerated, Not tolerated or Unclear against a threshold you set (default 20%). The two axes are read separately; a single efficacy-toxicity ratio was reported before version 26.09.005 and was withdrawn."),
       tags$dt("Weight-loss time-to-event"),
       tags$dd("Kaplan-Meier for time to crossing a weight-loss threshold. With a removal-reason column mapped on Data Upload, removals for weight loss count as events, planned ends as censoring, and other removals (such as tumour burden) as competing events, with an Aalen-Johansen cumulative incidence estimate. Without one, an animal whose record ends early is censored, and the tab says so. A per-arm breakdown of how animals left is reported."),
       tags$dt("Endpoint estimand"),
-      tags$dd("Shared by the Toxicity and Synergy tabs. \u2018Model\u2019 estimates endpoint means from the fitted model using every observation; \u2018Observed\u2019 uses only animals still present at the endpoint. They differ whenever animals leave early, and because the fastest-growing controls are the ones that leave, \u2018Observed\u2019 flatters the control arm.")
+      tags$dd("Shared by the therapeutic window and the Drug Synergy tab. ", strong("Model-based"), " (recommended) estimates each arm's geometric mean at the endpoint day from a mixed model of every observation, so animals removed earlier still count. ", strong("Each animal's last observation"), " uses every animal's final measurement, whatever day it was taken. ", strong("Survivors"), " uses only animals still present at the endpoint day; because the fastest-growing tumours leave first, it flatters the control arm and understates TGI, and is kept only to reproduce older figures.")
     ),
 
     h4("Drug Synergy"),
     tags$dl(
       tags$dt("Bliss Independence"),
-      tags$dd("Calculates the expected additive effect from two monotherapies at a chosen time point, then tests whether the observed combination effect exceeds it. Positive excess = synergy; negative excess = antagonism."),
+      tags$dd("The expected combined effect if the two drugs act independently: with FE = TGI / 100, Expected FE = FE_A + FE_B \u2212 FE_A \u00d7 FE_B. The observed combination is compared with it at one day or across every evaluable day, and the difference is reported in percentage points. Positive = synergy; negative = antagonism."),
       tags$dt("Why there is no Combination Index"),
       tags$dd("A Loewe-style CI was removed in v0.21.0. What it computed was not ",
               "Loewe additivity \u2014 true Loewe is dose-equivalence and needs a ",
@@ -1617,7 +1688,7 @@ helpUI <- function() {
       tags$dt("One agent's dose series"),
       tags$dd("A curve describes one agent at several doses against the study's control. Choose the agent's arms in the sidebar; other agents, combinations, and arms sharing a dose cannot join the same curve."),
       tags$dt("Hill / Emax"),
-      tags$dd("Fits a four-parameter log-logistic (4PL) dose-response curve via nonlinear least squares. Reports the EC50 (the dose giving half the fitted response range) with a 95% interval on log dose, the Hill slope, and the fitted curve; an EC50 outside the tested doses is flagged."),
+      tags$dd("Fits a four-parameter log-logistic (4PL) dose-response curve via nonlinear least squares; with six or more doses a five-parameter (asymmetric) curve is also tried and kept when AIC prefers it. The lower asymptote cannot fall below zero. Reports the EC50 (the dose giving half the fitted response range) with a 95% interval on log dose, the Hill slope, and the fitted curve; an EC50 outside the tested doses is flagged."),
       tags$dt("Trend tests"),
       tags$dd("Alongside the curve fit, the tab reports linear and quadratic trend p-values and a two-sided Jonckheere-Terpstra test. The last is the one that respects dose ordering: it asks whether response is monotone in dose, which is the question a dose-response study is usually posing, rather than merely whether the groups differ.")
     ),
@@ -1636,7 +1707,7 @@ helpUI <- function() {
     h3(icon("wrench"), " Troubleshooting"),
     tags$dl(
       tags$dt("File won't upload"),
-      tags$dd("Ensure the file is a CSV (.csv) file."),
+      tags$dd("Save it as CSV (.csv), up to 30 MB. If a row is reported with the wrong number of fields, a value probably contains the separator, such as a comma inside a treatment name: quote that value or remove the comma."),
       tags$dt("Columns not auto-detected"),
       tags$dd("Use the column mapping dropdowns in the Data tab to assign columns manually."),
       tags$dt("Analysis tab is greyed out"),
@@ -1644,9 +1715,9 @@ helpUI <- function() {
       tags$dt("Analysis fails or produces no output"),
       tags$dd("Verify that the selected columns contain valid, non-missing data. Tumor volumes must be positive. Time points must be numeric. At least two groups must be present for any comparison."),
       tags$dt("Bayesian model is slow to start"),
-      tags$dd("The first run compiles the Stan model (\u223c30\u201360 s). Subsequent runs with the same model family reuse the compiled binary and start faster. Bayesian fits run asynchronously \u2014 the app remains usable while MCMC sampling proceeds."),
+      tags$dd("The first fit of a model compiles it (about 20 s); later fits with the same structure reuse it and usually take under a minute. Fits run one at a time on a background worker, so other users and tabs stay responsive, and yours may wait for one ahead of it."),
       tags$dt("Plot download produces a blank file"),
-      tags$dd("Run the analysis first so the plot is rendered, then click the download button.")
+      tags$dd("Run the analysis first so the plot is rendered, then click the download button. In Download Results, the Drug Synergy, Dose Response and Power plots are exported as last shown, so open a plot once before downloading it; one that was never drawn is listed in the README as not available.")
     )
   )
 }

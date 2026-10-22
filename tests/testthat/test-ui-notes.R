@@ -26,10 +26,10 @@ test_that("Toxicity's estimation method explains REML and ML", {
 test_that("each group's colour and shape fit the sidebar: two lines, a symbol menu", {
   ui <- html(g("group_order_and_color_ui")("tg", c("Vehicle - Dose: 0", "Drug_A Mid + Drug_B - Dose: 15")))
   expect_match(ui, "group-style-controls", fixed = TRUE)
-  # The shape menu filled 125 px with "▲ Triangle ↑"; it is the symbol now.
+  # The shape menu filled 125 px with the shape names; it is the symbol now.
   expect_false(grepl("width: 125px", ui, fixed = TRUE))
   expect_false(grepl("Triangle", ui, fixed = TRUE))
-  expect_match(ui, ">▲</option>", fixed = TRUE)
+  expect_match(ui, ">\u25b2</option>", fixed = TRUE)
 })
 
 test_that("every 'How to read this plot' note sits above its plot, in the plot_help style", {
@@ -73,4 +73,43 @@ test_that("Power Analysis comes after Drug Synergy in the navbar", {
   # 26.10.006 put Power Analysis second, between Data and Tumor Growth.
   expect_identical(tabs, c("Data", "Tumor Growth", "Survival", "Toxicity", "Dose Response",
                            "Drug Synergy", "Power Analysis", "Help", "About"))
+})
+
+test_that("26.10.009: the Help tab matches the app", {
+  h <- html(g("helpUI")())
+  # Features it did not mention.
+  for (s in c("Download Results", "Save Preset", "resume or cancel", "How to read this plot",
+              "up to 30 MB")) expect_match(h, s, fixed = TRUE, info = s)
+  # The endpoint estimands by the names the sidebars use.
+  for (s in c("Each animal's last observation", "Survivors")) expect_match(h, s, fixed = TRUE)
+  expect_false(grepl("‘Observed’", h, fixed = TRUE))
+  # A survival-time column is detected by name but never used.
+  expect_false(grepl("Survival_Time, Time_To_Event", h, fixed = TRUE))
+  # Bliss is independent action, not additivity.
+  expect_false(grepl("expected additive effect", h, fixed = TRUE))
+  expect_match(h, "FE_A + FE_B", fixed = TRUE)
+  # The Synergy Info tab: one reference model, described correctly, and no
+  # need to run Tumor Growth first.
+  syn <- html(g("synergyUI")("syn"))
+  expect_false(grepl("sum of individual TGIs", syn, fixed = TRUE))
+  expect_false(grepl("Two reference models", syn, fixed = TRUE))
+  expect_false(grepl("must be run first", syn, fixed = TRUE))
+  # Power's analytic mode is a t-test per comparison (no ANOVA since 26.09.002).
+  expect_false(grepl("one-way ANOVA from an effect", html(g("powerAnalysisUI")("pw")), fixed = TRUE))
+})
+
+test_that("26.10.009: Help has a quick start, the evaluable-day rule and a glossary", {
+  h <- html(g("helpUI")())
+  expect_match(h, "Quick start", fixed = TRUE)
+  expect_match(h, "Load Demo Data", fixed = TRUE)
+  # The rule is the same text the Study Design panel shows.
+  expect_match(h, g("evaluable_rule_text")(), fixed = TRUE)
+  for (term in c("Reference group", "Geometric mean", "TGI (tumour growth inhibition)",
+                 "Estimand", "Random effects (random slopes)", "Adjusted and unadjusted p-values",
+                 "Confidence and credible intervals", "Hazard ratio and time ratio",
+                 "Bliss difference")) {
+    expect_match(h, paste0("<dt>", term, "</dt>"), fixed = TRUE, info = term)
+  }
+  # Release history is not user guidance.
+  expect_false(grepl("Versions before 26.09.002", html(g("powerAnalysisUI")("pw")), fixed = TRUE))
 })

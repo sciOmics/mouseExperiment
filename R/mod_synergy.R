@@ -53,14 +53,8 @@ synergyUI <- function(id) {
                 div(class = "panel panel-default",
                   div(class = "panel-heading", h4(class = "panel-title", "Overview")),
                   div(class = "panel-body",
-                    p("The Drug Synergy tab assesses whether a drug combination produces greater tumor suppression than predicted from the individual drugs acting independently. Two reference models are evaluated simultaneously:"),
-                    tags$ul(
-                      tags$li(strong("Bliss Independence"), " — treats the two drugs as probabilistically independent. The expected combined TGI is the sum of individual TGIs, capped at 100 %."),
-                    ),
-                    p("Four treatment groups must be assigned in the sidebar: Control, Drug A only, Drug B only, and the Combination (A + B). Analysis can be run at a single timepoint or tracked over the full study duration."),
-                    p(tags$small(class = "text-muted",
-                      "Tumor Growth Analysis must be run first — Drug Synergy uses preprocessed volume data from that tab."
-                    ))
+                    p("The Drug Synergy tab assesses whether a drug combination produces greater tumor suppression than predicted from the individual drugs acting independently. The reference model is ", strong("Bliss independence"), ": the drugs act independently on the fraction of tumour each one leaves, so the expected combined effect is FE_A + FE_B \u2212 FE_A \u00d7 FE_B (details below)."),
+                    p("Four treatment groups must be assigned in the sidebar: Control, Drug A only, Drug B only, and the Combination (A + B). Analysis can be run at a single timepoint or tracked over the full study duration.")
                   )
                 ),
 
@@ -313,6 +307,12 @@ synergyUI <- function(id) {
                   )
                 )
               )
+          ),
+          # R20-D.Y: choose which results go into one ZIP.
+          tabPanel(
+            title = tags$span(icon("file-zipper"), " Download Results"),
+            value = "__download_results__",
+            wellPanel(download_results_ui(ns, "syn"))
           )
         )
       )
@@ -395,28 +395,27 @@ synergy_server <- function(id, rv) {
       # CODE_REVIEW.md backend R3.5 / G.3 -- the estimand, exposed. The default
       # is the statistically correct one; "survivors" exists to reproduce
       # pre-0.8.0 figures.
-      selectInput(session$ns("syn_endpoint_method"), "Endpoint estimand",
+      # Explanations sit in help_tip() tooltips (26.10.009).
+      selectInput(session$ns("syn_endpoint_method"),
+                 tagList("Endpoint estimand", help_tip(paste(
+                   "Model-based reads each arm's geometric mean at the evaluation day from",
+                   "a log-scale mixed model of every observation, so animals removed",
+                   "earlier still count. Survivors uses only animals present that day,",
+                   "which biases TGI down because animals leave when their tumours grow:",
+                   "in a simulated study it understated TGI by about 23 points, where the",
+                   "model-based estimate was off by about 5."))),
                  choices = c(
                    "Model-based (recommended)" = "model",
                    "Each animal's last observation" = "last_obs",
                    "Survivors at the evaluation day (legacy)" = "survivors"),
                  selected = "model"),
-      helpText(
-        strong("Model-based"), " reads each arm's geometric mean at the ",
-        "evaluation day from a log-scale mixed model fitted to every ",
-        "observation, so animals removed earlier still contribute. ",
-        strong("Survivors"), " uses only animals present on that day \u2014 which ",
-        "conditions on survival and biases TGI downward, because animals leave ",
-        "when their tumours grow. On a simulated study with volume-triggered ",
-        "euthanasia the survivor estimand understated TGI by ~23 percentage ",
-        "points where the model-based one was off by ~5."),
 
       numericInput(session$ns("syn_n_boot"),
-                  "Interval draws (0 = skip)",
-                  value = 2000, min = 0, max = 20000, step = 500),
-      helpText("Draws behind the 95% intervals for every synergy metric: of ",
-               "the fitted model under the model estimand, of the animals ",
-               "otherwise. Set 0 for a point-estimate-only run.")
+                  tagList("Interval draws (0 = skip)", help_tip(paste(
+                    "Draws behind the 95% intervals for every synergy metric: of the",
+                    "fitted model under the model estimand, of the animals otherwise.",
+                    "0 gives point estimates only."))),
+                  value = 2000, min = 0, max = 20000, step = 500)
     )
   })
 
@@ -443,7 +442,10 @@ synergy_server <- function(id, rv) {
         "Day", days, ifelse(days == max(days), "(last evaluable day)", ""))))
     }
     selectInput(session$ns("syn_time_point"),
-                "Time Point for Analysis",
+                tagList("Time Point for Analysis", help_tip(paste(
+                  "Only days on which all four arms are evaluable are offered: at least",
+                  "50% of an arm's enrolled animals, and at least 3, still on study.",
+                  "All evaluable days tracks synergy over the study."))),
                 choices  = day_choices,
                 selected = isolate(input$syn_time_point) %||% "all")
   })
@@ -1102,6 +1104,26 @@ synergy_server <- function(id, rv) {
   add_syn_download_handlers(input, output, session, rv,
                             current_syn_main_plot, current_syn_trend_plot,
                             current_syn_tgi_plot)
+
+  # "Download Results" (CODE_REVIEW.md R20-D.Y).
+  add_download_results(
+    input, output, session, prefix = "syn", module = "synergy",
+    items = reactive(syn_dl_items(
+      rv$syn_results, over_time = isTRUE(rv$syn_over_time),
+      main_plot  = function() current_syn_main_plot(),
+      trend_plot = function() current_syn_trend_plot(),
+      tgi_plot   = function() current_syn_tgi_plot(),
+      diag = tryCatch({
+        r <- rv$syn_results
+        if (!is.null(r$timepoint_results) && length(r$timepoint_results))
+          r$timepoint_results[[length(r$timepoint_results)]] else r
+      }, error = function(e) NULL))),
+    readme_header = function() dl_readme_header("Drug Synergy", rv$syn_results, function(res) list(
+      drug_a = input$syn_drug_a, drug_b = input$syn_drug_b, combination = input$syn_combo,
+      endpoint_estimand = input$syn_endpoint_method, time_point = input$syn_time_point)),
+    plot_size = function() list(width  = input$syn_plot_width  %||% 800,
+                                height = input$syn_plot_height %||% 600,
+                                dpi    = input$syn_plot_dpi    %||% 100))
 
   # CODE_REVIEW.md DIAGNOSTICS gap (6) — frequentist synergy diagnostics.
   # The diagnostics of the displayed result; for an over-time run, those of

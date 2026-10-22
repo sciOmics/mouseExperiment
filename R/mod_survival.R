@@ -13,17 +13,21 @@ survivalUI <- function(id) {
         wellPanel(
           h4("Analysis Parameters"),
 
-          selectInput(ns("surv_model_type"), "Statistical Model",
+          # Explanations sit in help_tip() tooltips (26.10.009, as on Tumour
+          # Growth); state and caveats stay visible.
+          selectInput(ns("surv_model_type"),
+            tagList("Statistical Model", help_tip(paste(
+              "Cox Proportional Hazards compares each arm's hazard with the control's",
+              "(Firth's penalised version when an arm has no events). Bayesian",
+              "Weibull models the whole survival-time distribution and reports",
+              "credible intervals; it runs in the background and takes seconds to a",
+              "few minutes."))),
             choices = c(
               "Cox Proportional Hazards" = "frequentist",
               "Bayesian (Weibull/brms)" = "bayes"
             ),
             selected = "frequentist"
           ),
-          helpText("Cox PH fits a proportional-hazards model. Bayesian Weibull ",
-                   "models the full survival time distribution and reports posterior ",
-                   "credible intervals; it runs in the background and takes from ",
-                   "seconds to a few minutes."),
 
           # The reference is the study's control group (R20-D.H).
           uiOutput(ns("surv_reference_note")),
@@ -59,17 +63,18 @@ survivalUI <- function(id) {
                         selected = "rstan"),
             div(class = "alert alert-warning",
                 style = "font-size:0.85em; padding:8px; margin-top:6px;",
-              icon("clock"), " The first Bayesian fit of a model compiles it (about 20 s); ",
-              "a later fit with the same structure reuses it and usually takes under a minute. ",
-              "Fits run one at a time on a background worker, so other users and tabs stay ",
-              "responsive, and yours may wait for one ahead of it. You can close the browser ",
-              "and return later; the result waits for you, and the banner at the top lets ",
-              "you resume or cancel the fit."
+              icon("clock"), " The first fit of a model compiles it (about 20 s); later fits ",
+              "with the same structure reuse it. Fits run one at a time in the background: ",
+              "you can close the browser and resume or cancel from the banner when you return."
             )
           ),
 
           hr(),
-          h5(strong("Endpoint")),
+          h5(strong("Endpoint"), help_tip(paste(
+            "The Event/Censor column uses its codes: 1 = endpoint reached, 0 = censored.",
+            "Deriving from the volume limit makes the first day an animal's tumour",
+            "reaches the limit its event; animals that never reach it are censored at",
+            "their last measurement."))),
           uiOutput(ns("surv_endpoint_source_ui")),
 
           hr(),
@@ -444,6 +449,12 @@ survivalUI <- function(id) {
             shinycssloaders::withSpinner(
               DTOutput(ns("surv_risk_table"))
             )
+          ),
+          # R20-D.Y: choose which results go into one ZIP.
+          tabPanel(
+            title = tags$span(icon("file-zipper"), " Download Results"),
+            value = "__download_results__",
+            wellPanel(download_results_ui(ns, "surv"))
           )
         )
       )
@@ -493,9 +504,10 @@ survival_server <- function(id, rv) {
     unit <- rv$settings$randomisation_unit %||% "mouse"
     if (identical(unit, "cage")) {
       tags$p(style = "font-size:12px;", "Unit of randomisation: ", strong("whole cages"),
-             ". Each arm is compared with the reference by moving whole cages ",
-             "between them (a cage-level permutation log-rank). With 2 cages per ",
-             "arm no p-value can fall below 1/3, and with 3 below 0.1.")
+             " (Study Design on Data Upload).", help_tip(paste(
+               "Each arm is compared with the reference by moving whole cages between",
+               "them (a cage-level permutation log-rank). With 2 cages per arm no",
+               "p-value can fall below 1/3, and with 3 below 0.1.")))
     } else {
       tags$p(style = "font-size:12px;", "Unit of randomisation: ",
              strong("individual animals"), " (Study Design on Data Upload).")
@@ -559,12 +571,6 @@ survival_server <- function(id, rv) {
         ),
         selected = isolate(input$surv_event_source) %||% "column"
       ),
-      conditionalPanel(ns = session$ns, "input.surv_event_source == 'column'",
-        tags$p(tags$small(class = "text-muted",
-          "Using the Event/Censor column configured in Data Upload. ",
-          "Coding: 1\u202f=\u202fendpoint reached, 0\u202f=\u202fcensored."
-        ))
-      ),
       conditionalPanel(ns = session$ns, "input.surv_event_source == 'volume'",
         if (!has_vol)
           div(class = "alert alert-warning", style = "font-size:0.85em; padding:6px 10px; margin-bottom:6px;",
@@ -576,12 +582,7 @@ survival_server <- function(id, rv) {
                      paste0("IACUC volume limit (", volume_unit_label(rv), ")"),
                      value = isolate(input$surv_vol_threshold) %||%
                        if (identical(rv$settings$volume_units, "cm3")) 2 else 2000,
-                     min = 0, step = if (identical(rv$settings$volume_units, "cm3")) 0.05 else 50),
-        tags$p(tags$small(
-          "First day each mouse\u2019s tumour reaches or exceeds this volume = Event\u202f=\u202f1 ",
-          "(Time = that day). Mice that never exceed the limit are censored at their ",
-          "last observation (Event\u202f=\u202f0)."
-        ))
+                     min = 0, step = if (identical(rv$settings$volume_units, "cm3")) 0.05 else 50)
       )
     )
   })

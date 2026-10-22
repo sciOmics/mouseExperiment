@@ -2825,3 +2825,72 @@ The Info tab keeps the full descriptions.
 - **In a browser:** the All Features demo with the defaults (everything ticked) gave 20 files: README, 6 tables, 5 plots, 6 diagnostics, the analysed data and the report.
 - **Full suite, from source, against mouseExperiment 0.33.1:** 308 tests, 0 failed, 0 skipped.
 
+## R20-D.Y Tooltips and Download Results on the other analysis tabs; the Help tab reviewed (26.10.009, 2026-10-22)
+
+**Requests.** The maintainer approved the Tumor Growth tooltip style (R20-D.V) and asked for:
+- the same on the other analysis tabs;
+- "Download Results" on all of them;
+- a review of the Help tab for anything out of date.
+
+**Tooltips:**
+- **The rule:** explanations go into `help_tip()`; state and caveats stay visible.
+- **What converted:**
+  - **Survival:** the model and the endpoint; the cage-randomisation caveat moved behind the unit line.
+  - **Toxicity:** the model, the endpoint estimand, the interval draws and the tolerability threshold.
+  - **Synergy:** the estimand, the interval draws and the day.
+  - **Dose Response:** the comparison type and the day.
+  - **Power:** the mode, the Cohen's d benchmarks, multiplicity, attrition, the baseline SD, the log-scale rate, the volume limit and the number of simulations.
+- **What stays visible:**
+  - **Survival:** the unit of randomisation, the deaths list and the event-assumption box.
+  - **Toxicity:** the tumour-mass formula and the covariate note.
+
+**Download Results:**
+- **`R/download_items.R`** has one function per module (`surv_dl_items()`, `tox_dl_items()`, `syn_dl_items()`, `dr_dl_items()`, `pw_dl_items()`). Each turns a stored result into `dl_item()`s, with plots passed as functions.
+- **`dl_write()`** now also draws a function, for base-graphics plots such as cox.zph's Schoenfeld residuals.
+- **Exporting what is displayed:**
+  - Toxicity's trajectory and Kaplan-Meier plots became reactives, which `add_tox_plots()` returns.
+  - The survival risk table, the styled survival forest plot and the dose-response statistics table became functions shared by the single downloads and the ZIP: `surv_risk_table()`, `surv_forest_plot_styled()` and `dr_stats_table()`.
+- **Toxicity's "Download All" handler and tab are removed.**
+- **Synergy, Dose Response and Power** keep their plots in `reactiveVal`s set when a plot renders. Their items are always listed, and a plot never drawn is named in the README as not available.
+
+**The Help tab, checked against the code:**
+- **Out of date:**
+  - the download line, with no Download Results, formats or README;
+  - the endpoint-estimand names ("Model" / "Observed"; the sidebars say "Model-based", "Each animal's last observation", "Survivors");
+  - the body-weight model description, from before backend 0.30.0, which compares rates of weight change;
+  - "Bayesian model is slow to start (about 30-60 s), runs asynchronously", now about 20 s on a background worker;
+  - "Accepted format: CSV", which says nothing of delimiters, encodings or the 30 MB limit.
+- **Inaccurate:**
+  - Bliss called "the expected additive effect";
+  - a "Survival time" column role that `detect_columns()` matched and nothing used. The detection is removed too, and `test-docs-current.R`'s role list says why.
+- **Missing:** the `?` tooltips, the "How to read this plot" notes, the HTML report, background runs and the resume banner, presets, the removal-reason mapping, and the five-parameter dose-response curve.
+
+**The Synergy Info tab**, found while reading it:
+- Bliss was "the sum of individual TGIs, capped at 100 %", beside the correct formula.
+- It announced "two reference models" and listed one.
+- It said "Tumor Growth Analysis must be run first", although Synergy calls `ensure_preprocessed()` itself.
+
+**The Power tooltip:** this change's first draft said the analytic mode used "a t-test or one-way ANOVA". `apriori_power_analysis()` uses `power.t.test()` per comparison; the ANOVA went in 26.09.002. Corrected before the PR.
+
+**Escapes.**
+- **The cause:** text written through this session's tools turned `\uXXXX` escapes into literal characters. That left a "·" and minus signs in R strings, and a "▲" in a test.
+- **The fix:** they are escapes again. The edit scripts now find code by ASCII anchors and write escapes from a placeholder.
+
+**Tests (executed):**
+- **`test-sidebar-tooltips.R`:** the five sidebars carry their help tips and have no `help-block` before Run.
+- **`test-download-results.R`:** a run per module (Survival with the PH diagnostics, Toxicity, Synergy, Dose Response, Power) checks the checklist and the exact ZIP contents. Dose Response's ZIP statistics table equals the single download's.
+- **`test-ui-notes.R`:** the Help and Synergy Info corrections.
+- **`test-power-params.R`:** its UI-default window widened from 200 to 600 characters, because labels now carry a tooltip.
+- **Full suite, from source, against mouseExperiment 0.33.1:** 315 tests, 0 failed, 0 skipped.
+- **In a browser (1400 px):** the Power sidebar with its tips; Toxicity's Download Results after a body-weight run gave 15 files, both plots included.
+
+**Added to Help, at the maintainer's request:**
+- **A Quick start box.**
+- **A Key Concepts section:**
+  - **Evaluable days:** the rule, from the same `evaluable_rule_text()` the Study Design panel shows, and where it applies.
+  - **A glossary of nine terms.** Each was checked against the code:
+    - TGI is `(1 - Mean_Volume / control) * 100` in `endpoint_tgi()`. Means are geometric under the model estimand (`exp(log_mean)`) and arithmetic under the observed ones.
+    - Power's analytic mode is `power.t.test()` per comparison.
+- **Power's Info tab** loses its release-history sentence.
+- **Tests:** `test-ui-notes.R` checks the quick start, that the rule text is the Study Design's, all nine glossary terms, and the removed sentence. The full suite has 316 tests, 0 failed. The new sections were checked in a browser.
+
