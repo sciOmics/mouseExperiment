@@ -57,7 +57,13 @@ toxicityUI <- function(id) {
                 selected = "volume"
               ),
               uiOutput(ns("tox_covariate_note")),
-              radioButtons(ns("tox_estimation"), "Estimation method",
+              radioButtons(ns("tox_estimation"),
+                tagList("Estimation method", help_tip(paste(
+                  "REML (restricted maximum likelihood) estimates the variance components",
+                  "without the downward bias of ML, and is the usual choice for reporting",
+                  "a model. ML (maximum likelihood) is needed only to compare models that",
+                  "differ in their fixed effects, for example with and without a covariate,",
+                  "by a likelihood-ratio test or AIC."))),
                 choices = c("REML" = "REML", "ML" = "ML"),
                 selected = "REML", inline = TRUE
               ),
@@ -419,39 +425,31 @@ toxicityUI <- function(id) {
               fluidRow(
                 column(6,
                   h4("Q-Q Plot of Residuals"),
-                  div(style = "margin-bottom: 24px;",
-                    shinycssloaders::withSpinner(
-                      plotOutput(ns("tox_diag_qq"), height = "380px")
-                    )
-                  ),
-                  tags$details(
-                    tags$summary(tags$small("How to read this plot")),
-                    tags$small(
+                  plot_help(
                       "The residuals are standardised, so for a well-fitting model the ",
                       "points fall along the red reference line. ",
                       strong("S-shape: "), "heavy-tailed residuals — outliers or a ",
                       "transform issue. ",
                       strong("Bow: "), "skewed residuals — usually fixed by changing the ",
-                      "weight transform."
+                      "weight transform."),
+                  div(style = "margin-bottom: 24px;",
+                    shinycssloaders::withSpinner(
+                      plotOutput(ns("tox_diag_qq"), height = "380px")
                     )
                   )
                 ),
                 column(6,
                   h4("Residuals vs Fitted"),
-                  div(style = "margin-bottom: 24px;",
-                    shinycssloaders::withSpinner(
-                      plotOutput(ns("tox_diag_resid_fitted"), height = "380px")
-                    )
-                  ),
-                  tags$details(
-                    tags$summary(tags$small("How to read this plot")),
-                    tags$small(
+                  plot_help(
                       "Random scatter around zero = LMM assumptions met. ",
                       strong("Curved blue line: "), "weight does not change linearly ",
                       "with time, so the Day slope averages over a curved ",
                       "trajectory — read it alongside the trajectory plot. ",
                       strong("Fan shape: "), "heteroscedasticity — consider log-",
-                      "transforming or weighting the response."
+                      "transforming or weighting the response."),
+                  div(style = "margin-bottom: 24px;",
+                    shinycssloaders::withSpinner(
+                      plotOutput(ns("tox_diag_resid_fitted"), height = "380px")
                     )
                   )
                 )
@@ -460,33 +458,25 @@ toxicityUI <- function(id) {
               fluidRow(
                 column(6,
                   h4("Scale-Location"),
+                  plot_help(
+                      "sqrt(|residuals|) vs fitted — magnifies variance trends. ",
+                      "Flat blue line = constant variance. Upward slope = ",
+                      "heteroscedasticity."),
                   div(style = "margin-bottom: 24px;",
                     shinycssloaders::withSpinner(
                       plotOutput(ns("tox_diag_scale_location"), height = "380px")
-                    )
-                  ),
-                  tags$details(
-                    tags$summary(tags$small("How to read this plot")),
-                    tags$small(
-                      "sqrt(|residuals|) vs fitted — magnifies variance trends. ",
-                      "Flat blue line = constant variance. Upward slope = ",
-                      "heteroscedasticity."
                     )
                   )
                 ),
                 column(6,
                   h4("Random-effects Q-Q"),
+                  plot_help(
+                      "Per-animal random intercepts should be normally ",
+                      "distributed. Heavy tails are rare; safe to ignore at ",
+                      "typical preclinical N."),
                   div(style = "margin-bottom: 24px;",
                     shinycssloaders::withSpinner(
                       plotOutput(ns("tox_diag_re_qq"), height = "380px")
-                    )
-                  ),
-                  tags$details(
-                    tags$summary(tags$small("How to read this plot")),
-                    tags$small(
-                      "Per-animal random intercepts should be normally ",
-                      "distributed. Heavy tails are rare; safe to ignore at ",
-                      "typical preclinical N."
                     )
                   )
                 )

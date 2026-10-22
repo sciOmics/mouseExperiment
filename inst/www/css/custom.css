@@ -407,3 +407,24 @@ body {
   max-width: 340px;
   text-align: left;
 }
+
+/* "How to read this plot" notes (plot_help()), under each diagnostic plot's
+   title. */
+.plot-help {
+  margin: 2px 0 10px;
+}
+.plot-help > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-color, #0073B7);
+}
+.plot-help-body {
+  margin-top: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  border-left: 3px solid var(--primary-color, #0073B7);
+  background: rgba(0, 115, 183, 0.06);
+}
+

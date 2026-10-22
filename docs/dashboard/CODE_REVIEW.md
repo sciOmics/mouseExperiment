@@ -2741,3 +2741,28 @@ The Info tab keeps the full descriptions.
   - sidebar height 2,445 px to 1,199 px;
   - Run button top 2,274 px to 1,028 px.
 
+## R20-D.W The maintainer's notes from using the dashboard (26.10.007, 2026-10-22)
+
+**About.** A Contact panel gives david@sciomics.bio, as a `mailto:` link.
+
+**Survival.** The model menu says "Cox Proportional Hazards" instead of "Frequentist (Cox PH)". The value `frequentist` is unchanged, so saved presets still load.
+
+**Toxicity.** "Estimation method" has a `help_tip()` explaining when to use REML and when ML.
+
+**Group colour and shape controls.** These are `group_order_and_color_ui()`, used by Tumour Growth, Survival and Toxicity.
+- **The problem.** Each group was one flex row: drag handle, name, colour input, and a 125 px shape menu that could not shrink. At a 1400 px window the plot-options panel is 209 px wide. The row needed about 275 px, so the shape menus ran out of the panel by 66 px (measured in Chrome), and the names were cut to "Drug_...".
+- **Now:** two lines per group:
+  - the drag handle and the full name, which wraps;
+  - the colour swatch (44 px) and a shape menu that fills the rest and shows only the symbol (●, ■, ▲, ▼, ◆).
+- **Measured:** 0 px overflow at both 1400 and 1920 px.
+
+**Diagnostics.** The 19 "How to read this plot" notes were a collapsed `<details>` with a `<small>` grey summary. Eight of them (Tumour Growth and Toxicity residual plots) sat below plots 380 px tall.
+- **The conversion.** A script converted all 19 to `plot_help()`, a styled summary with an info icon and a tinted body, without changing any wording.
+- **Placement.** It moved the eight under their plot's title.
+- **New notes.** The MCMC trace plots in Tumour Growth and Survival had no note, and have one now.
+
+**Tests (executed):**
+- **`test-ui-notes.R`,** 5 tests; on 26.10.006 they fail with 1, 2, 1, 3 and 6 failed checks.
+- **A new browser test** in `test-shiny_app.R` loads the All Features demo at 1400 px, runs an analysis, opens the Groups section, and requires no element of the group rows to extend past the panel.
+- **Full suite, from source:** 301 tests, 0 failed, 0 skipped.
+

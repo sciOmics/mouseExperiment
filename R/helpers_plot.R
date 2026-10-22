@@ -307,16 +307,21 @@ group_order_and_color_ui <- function(prefix, groups, ns = NS(NULL)) {
 
   # Closed pch shapes available for per-group selection.
   # Open shapes (0, 1, 2, ...) are reserved for extrapolated points.
+  # The symbols alone: with their names ("Triangle \u2191") the menu needed
+  # 125 px and overflowed the sidebar.
   shape_choices <- c(
-    "\u25cf Circle"        = "16",
-    "\u25a0 Square"        = "15",
-    "\u25b2 Triangle \u2191" = "17",
-    "\u25bc Triangle \u2193" = "25",
-    "\u25c6 Diamond"       = "18"
+    "\u25cf" = "16",   # circle
+    "\u25a0" = "15",   # square
+    "\u25b2" = "17",   # triangle, point up
+    "\u25bc" = "25",   # triangle, point down
+    "\u25c6" = "18"    # diamond
   )
   default_shapes <- c(16L, 15L, 17L, 25L, 18L)
 
-  # Each row: drag handle + group label + colour picker + shape selector
+  # Each group is two lines: drag handle + full group name, then the colour
+  # swatch + shape menu. One line overflowed the sidebar: at a 1400 px window
+  # the panel is 209 px wide, the row needed 275 px, and the shape menus ran
+  # out of the box while the names were cut to "Drug_..." (2026-10-22).
   # data-value holds the exact group name string — read directly by JS,
   # no innerText parsing, no custom Shiny input type.
   items <- lapply(seq_along(groups), function(i) {
@@ -326,37 +331,48 @@ group_order_and_color_ui <- function(prefix, groups, ns = NS(NULL)) {
     def_shape <- as.character(default_shapes[((i - 1L) %% length(default_shapes)) + 1L])
     shiny::tags$li(
       `data-value` = g,
+      class = "group-style-row",
       style = paste0(
-        "display:flex; align-items:center; gap:6px;",
         "padding:5px 8px; margin-bottom:4px;",
         "background:#f8f9fa; border:1px solid #dee2e6;",
         "border-radius:4px; cursor:default;"
       ),
-      shiny::tags$span(
-        class = "drag-handle",
-        style = "cursor:grab; color:#adb5bd; font-size:14px; user-select:none; flex-shrink:0;",
-        "\u2630"   # grip / hamburger icon
-      ),
-      shiny::tags$span(
-        style = "flex:1; font-size:13px; min-width:55px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;",
-        g
-      ),
-      colourpicker::colourInput(
-        inputId          = color_id,
-        label            = NULL,
-        value            = defaults[i],
-        showColour       = "background",
-        palette          = "square",
-        allowTransparent = FALSE
+      shiny::tags$div(
+        style = "display:flex; align-items:baseline; gap:6px;",
+        shiny::tags$span(
+          class = "drag-handle",
+          style = "cursor:grab; color:#adb5bd; font-size:14px; user-select:none; flex-shrink:0;",
+          "\u2630"   # grip / hamburger icon
+        ),
+        shiny::tags$span(
+          style = "flex:1; min-width:0; font-size:13px; overflow-wrap:anywhere;",
+          g
+        )
       ),
       shiny::tags$div(
-        style = "flex-shrink:0;",
-        shiny::selectInput(
-          inputId  = shape_id,
-          label    = NULL,
-          choices  = shape_choices,
-          selected = def_shape,
-          width    = "125px"
+        class = "group-style-controls",
+        style = "display:flex; align-items:center; gap:6px; margin-top:4px; padding-left:20px;",
+        shiny::tags$div(
+          style = "flex:0 0 44px;",
+          colourpicker::colourInput(
+            inputId          = color_id,
+            label            = NULL,
+            value            = defaults[i],
+            showColour       = "background",
+            palette          = "square",
+            allowTransparent = FALSE,
+            width            = "44px"
+          )
+        ),
+        shiny::tags$div(
+          style = "flex:1; min-width:0;",
+          shiny::selectInput(
+            inputId  = shape_id,
+            label    = NULL,
+            choices  = shape_choices,
+            selected = def_shape,
+            width    = "100%"
+          )
         )
       )
     )
