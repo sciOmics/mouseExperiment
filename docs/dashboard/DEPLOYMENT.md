@@ -2,7 +2,7 @@
 
 How the dashboard is deployed to production. This document covers the dashboard-side concerns; the VPS infrastructure (NPM, Cloudflare, Docker base image, webhooks, monitoring) is detailed in the companion `sciOmicsVPS` repository.
 
-The production URL is `https://mouseexperiment.com`; the staging URL is `https://staging.mouseexperiment.com` (Basic Auth required). Both are R Shiny applications served from long-lived Docker containers behind Nginx Proxy Manager (NPM) on a self-hosted VPS.
+The production URL is `https://mouseexperiment.com`; the staging URL is `https://staging.mouseexperiment.com` (GitHub sign-in required). Both are R Shiny applications served from long-lived Docker containers behind Nginx Proxy Manager (NPM) on a self-hosted VPS.
 
 ---
 
@@ -29,7 +29,7 @@ The production URL is `https://mouseexperiment.com`; the staging URL is `https:/
    │ shiny-prod:3838     │                          │ shiny-staging:3838  │
    │ Docker container    │                          │ Docker container    │
    │ rocker/r-ver:4.5.2  │                          │ rocker/r-ver:4.5.2  │
-   │ runDashboard()      │                          │ runDashboard()      │
+   │ run_dashboard()     │                          │ run_dashboard()     │
    │ branch: production  │                          │ branch: staging     │
    └─────────────────────┘                          └─────────────────────┘
               ▲                                                 ▲
@@ -51,7 +51,7 @@ Key design decisions inherited from the VPS setup:
 
 - **No ShinyProxy** — each environment runs one shared Shiny process, not per-user containers. Lower overhead; the F.7 session-identity cookie still keeps users isolated.
 - **Direct WebSocket proxy** — NPM routes WebSocket traffic straight to the Shiny port (3838).
-- **Gated automated rebuilds** — a push to `production` or `staging` of this repository triggers a rebuild that must pass a gate before it replaces the running container. A push to the backend alone triggers nothing; it ships with the next dashboard push or a manual rebuild.
+- **Gated automated rebuilds** — a push to `production` or `staging` of this repository triggers a rebuild that must pass a gate before it replaces the running container. Since 0.34.0 the dashboard and the analysis functions are one package, so every push to those branches is a dashboard push.
 
 ---
 
@@ -103,19 +103,21 @@ FROM rocker/r-ver:4.5.2        R 4.5.2, CRAN pinned to rocker's frozen Posit bin
 
 Shared cached layers           (identical for prod and staging)
   apt-get: system libraries
-  install.packages(<every Import of both packages>)   options(warn = 2): a failure fails the build
+  install.packages(<every Import, and the dashboard's Suggests>)   options(warn = 2): a failure fails the build
   CmdStan 2.36.0 in /opt/cmdstan (cmdstanr v0.9.0), owned by the app user
 
-Per-build layers               keyed by commit SHA (ARG PKG_REF / ARG DASH_REF)
-  remotes::install_github('sciOmics/mouseExperiment@<sha>')
-  remotes::install_github('sciOmics/mouseExperimentDashboard@<sha>')
+Per-build layer                keyed by commit SHA (ARG PKG_REF)
+  remotes::install_github('sciOmics/mouseExperiment@<sha>', INSTALL_opts = '--install-tests')
 
-CMD R -e "mouseExperimentDashboard::runDashboard(host='0.0.0.0', port=3838)"
+CMD R -e "mouseExperiment::run_dashboard(host='0.0.0.0', port=3838)"
 ```
 
-The two `install_github` calls need `GITHUB_PAT`: a fine-grained token with *Contents:
-Read-only* on both private repos and *Commit statuses: Read and write* on this one. It reaches
-the build as a BuildKit secret and is never stored in a layer.
+`install_github()` does not install Suggests, so the cached layer installs the dashboard's
+packages (`dashboard_packages()`) itself. The build uses `GITHUB_PAT`, a fine-grained token
+limited to this repository with *Contents: Read-only* and *Commit statuses: Read and write*.
+It reaches the build as a BuildKit secret and is never stored in a layer. Production sets
+`MOUSEEXPERIMENT_ANALYTICS=true` in `docker-compose.yml`, so only production pages carry the
+Umami tracker.
 
 ### Base image
 
@@ -123,13 +125,13 @@ the build as a BuildKit secret and is never stored in a layer.
 build, cold or cached, prod or staging, resolves the same package versions. **Do not override
 `repos`:** against the live CRAN, a dependency that required a newer R was skipped with only a
 warning and the build still succeeded (VPS CODE_REVIEW.md V3.3). Moving to newer packages means
-moving to a newer `rocker/r-ver` tag, and running both test suites against it first.
+moving to a newer `rocker/r-ver` tag, and running the test suite against it first.
 
 ### What an image contains
 
-`/usr/local/share/mouseexperiment/build-info.txt` lists both packages' versions and commit SHAs,
-the CmdStan version and `sessionInfo()`; the label `org.opencontainers.image.revision` holds
-the dashboard commit.
+`/usr/local/share/mouseexperiment/build-info.txt` lists the package version and commit SHA, the
+CmdStan version and `sessionInfo()`; the label `org.opencontainers.image.revision` holds the
+commit.
 
 ---
 
@@ -145,9 +147,11 @@ GitHub webhook → POST https://deploy.sciomics.bio/hooks/rebuild-shiny-staging
 webhook container runs scripts/webhook-handlers/rebuild-shiny.sh staging <sha>
         │
         ├─ one rebuild at a time; a push superseded while waiting is skipped
-        ├─ build shiny-mouseexperiment-staging:<dash12>-<pkg12>
-        ├─ gate 1: docker/shiny-gate.R (every Import loads, rstan and cmdstanr compile
-        │          and sample, the UI builds, both packages from the expected commits)
+        ├─ build shiny-mouseexperiment-staging:<sha12>
+        ├─ gate 1: docker/shiny-gate.R (every Import and dashboard package loads, rstan
+        │          and cmdstanr compile and sample, the UI builds, the expected commit)
+        ├─ gate 1b, staging only: the test suite, Bayesian fits skipped, in 2 shards
+        │          side by side
         ├─ gate 2: the candidate serves the app over HTTP
         ├─ tag :latest, recreate shiny-staging, wait for its healthcheck
         │          (unhealthy → back to the previous image)
@@ -167,7 +171,7 @@ docker exec webhook /hooks/rebuild-shiny.sh staging     # or prod
 ### Rollback
 
 ```bash
-docker image ls shiny-mouseexperiment-prod      # :previous and the last 3 <dash12>-<pkg12> builds
+docker image ls shiny-mouseexperiment-prod      # :previous and the last 3 <sha12> builds
 docker tag shiny-mouseexperiment-prod:<tag> shiny-mouseexperiment-prod:latest
 cd /opt/vps && docker compose --profile shiny up -d --no-deps --no-build --force-recreate --wait shiny-prod
 ```
@@ -198,7 +202,7 @@ as it does in the container). Everything else is fixed in code:
 | Setting | Value | Where |
 |---|---|---|
 | Host / port | `0.0.0.0:3838` in the container | the image's `CMD` |
-| Upload limit | 30 MB, set by `runDashboard()` (`shiny.maxRequestSize`) | not set |
+| Upload limit | 30 MB, set by `run_dashboard()` (`shiny.maxRequestSize`) | not set |
 | Bayesian fits | one background R worker, one fit at a time, queued | `use_background_worker()` |
 | Log format | JSON lines on stdout (`logger`) | `R/logging.R` |
 | Asset cache-busting | `?v=<DESCRIPTION Version>` | `dashboard_app()` |
@@ -276,7 +280,7 @@ See `sciOmicsVPS/docs/backup-restore.md` for the full procedure.
 | HTTPS | No (plain HTTP) | Yes (Let's Encrypt via NPM) |
 | F.7 cookie `Secure` flag | Can't be set (the cookie won't transmit) | Set; cookie works normally |
 | F.7 resume behavior | Usually full (browsers treat localhost as a secure context); without the cookie, a local registry key: fits run, no resume | Full resume support |
-| Max upload | 30 MB (`runDashboard()`) | Same |
+| Max upload | 30 MB (`run_dashboard()`) | Same |
 | Bayesian fits | one background worker | Same |
 | Opens a browser | yes, in an interactive session | no |
 | Logging | stdout | stdout → `docker logs` |

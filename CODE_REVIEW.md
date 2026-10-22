@@ -5965,7 +5965,7 @@ Both were reported from the dashboard while using the All Features demo.
   - The README has a Dashboard section.
   - The dashboard's README, CONTRIBUTING, ARCHITECTURE and DATA_FORMAT describe one package. CONTRIBUTING's "install the sibling backend first" section is gone.
   - The unused Shiny Server files (`shiny-server-app.R`, `shiny-server-conf.template`) are deleted; deployment uses Docker.
-  - `docs/dashboard/DEPLOYMENT.md` still describes the two-package image. It changes with the VPS switch.
+  - `docs/dashboard/DEPLOYMENT.md` describes the one-package image of the VPS switch (sciOmicsVPS #20, V3-S), which deploys together with this release.
 - **CI.** `R-CMD-check.yaml` installs the dashboard's Suggests, plus shinytest2 and chromote, so the dashboard's tests run on every pull request.
 
 **Verification (executed):**
