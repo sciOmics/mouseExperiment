@@ -201,7 +201,8 @@ dl_write <- function(x, dir, fmt, size) {
     png = grDevices::png(path, width = w, height = h, units = "px", res = dpi),
     pdf = grDevices::pdf(path, width = w / dpi, height = h / dpi),
     svg = grDevices::svg(path, width = w / dpi, height = h / dpi))
-  tryCatch(print(v), finally = grDevices::dev.off())
+  # A plot object is printed; a function draws (base graphics, e.g. cox.zph).
+  tryCatch(if (is.function(v)) v() else print(v), finally = grDevices::dev.off())
   f
 }
 

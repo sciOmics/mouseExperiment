@@ -50,9 +50,10 @@ test_that("D.4: the fallbacks agree with the UI defaults next to them", {
   for (id in c("pw_lmm_ctrl_rate", "pw_lmm_tx_effect", "pw_lmm_rand_slope_sd",
                "pw_lmm_rand_int_sd", "pw_lmm_resid_sd")) {
     # Labels contain parentheses ("(/day, log-scale)"), so the span between the
-    # id and its value must be matched permissively but bounded.
+    # id and its value must be matched permissively but bounded. Since 26.10.009
+    # a label can carry a help_tip() sentence or two, hence 600 characters.
     ui <- regmatches(src, regexpr(
-      paste0('ns\\("', id, '"\\)[\\s\\S]{0,200}?value = [0-9.]+'),
+      paste0('ns\\("', id, '"\\)[\\s\\S]{0,600}?value = [0-9.]+'),
       src, perl = TRUE))
     fb <- regmatches(src, regexpr(
       paste0("input\\$", id, "\\s*%\\|\\|%\\s*[0-9.]+"), src))

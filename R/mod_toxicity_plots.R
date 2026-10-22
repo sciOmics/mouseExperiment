@@ -106,7 +106,8 @@ add_tox_plots <- function(input, output, session, rv,
   })
   observe_palette_preset(input, session, "tox_et", reactive(rv$tox_et_plot_groups))
 
-  output$tox_trajectory_plot <- renderPlot({
+  # The plots are reactives, so "Download Results" exports what is displayed.
+  tox_traj_plot <- reactive({
     req(rv$tox_results, rv$tox_results$trajectory_data)
     td <- rv$tox_results$trajectory_data
     req(nrow(td) > 0)
@@ -165,10 +166,12 @@ add_tox_plots <- function(input, output, session, rv,
                                      ggplot2::scale_fill_manual(values = colors)
       p
     }
-  }, width  = function() input$tox_plot_width  %||% 800,
-     height = function() input$tox_plot_height %||% 500)
+  })
+  output$tox_trajectory_plot <- renderPlot(tox_traj_plot(),
+    width  = function() input$tox_plot_width  %||% 800,
+    height = function() input$tox_plot_height %||% 500)
 
-  output$tox_km_plot <- renderPlot({
+  tox_km_plot <- reactive({
     req(rv$tox_results, rv$tox_results$weight_loss)
     wl <- rv$tox_results$weight_loss
     if (isTRUE(wl$error)) return(NULL)
@@ -193,9 +196,11 @@ add_tox_plots <- function(input, output, session, rv,
         ggtheme = ggplot2::theme_classic(base_size = text_sz)),
       error = function(e) NULL)
     req(!is.null(km_plot))
-    print(km_plot)
-  }, width  = function() input$tox_plot_width  %||% 800,
-     height = function() input$tox_plot_height %||% 500)
+    km_plot
+  })
+  output$tox_km_plot <- renderPlot(print(tox_km_plot()),
+    width  = function() input$tox_plot_width  %||% 800,
+    height = function() input$tox_plot_height %||% 500)
 
   # ---- ET Plots ----
   output$tox_et_twm_plot <- renderPlot({
@@ -206,6 +211,8 @@ add_tox_plots <- function(input, output, session, rv,
                     text_size = input$tox_plot_text_size %||% 14)
   }, width  = function() input$tox_plot_width  %||% 800,
      height = function() input$tox_plot_height %||% 500)
+
+  list(traj = tox_traj_plot, km = tox_km_plot)
 }
 
 

@@ -63,16 +63,7 @@ add_surv_download_handlers <- function(input, output, session, rv, km_plot_r) {
     content = function(file) {
       shinyjs::runjs("window.trackDownload('survival', 'table', 'csv');")
       req(rv$surv_results$km_fit)
-      km_sum <- summary(rv$surv_results$km_fit)
-      risk_df <- data.frame(
-        Group     = sub("^Treatment=", "", as.character(km_sum$strata)),
-        Time      = km_sum$time,
-        N_Risk    = km_sum$n.risk,
-        N_Events  = km_sum$n.event,
-        N_Censored = km_sum$n.censor,
-        Survival  = round(km_sum$surv, 4)
-      )
-      write.csv(risk_df, file, row.names = FALSE)
+      write.csv(surv_risk_table(rv$surv_results$km_fit), file, row.names = FALSE)
     }
   )
 
@@ -81,28 +72,75 @@ add_surv_download_handlers <- function(input, output, session, rv, km_plot_r) {
     content = function(file) {
       shinyjs::runjs("window.trackDownload('survival', 'plot', 'png');")
       req(rv$surv_results, !isTRUE(rv$surv_results$error), rv$surv_results$results)
-      p <- build_surv_forest_plot(
-        res      = rv$surv_results$results,
-        ref_grp  = rv$surv_results$reference_group,
-        pt_color = input$surv_forest_pt_color %||% "steelblue",
-        show_hr  = isTRUE(input$surv_forest_show_hr %||% TRUE),
-        show_ci  = isTRUE(input$surv_forest_show_ci %||% TRUE),
-        show_p   = isTRUE(input$surv_forest_show_p  %||% TRUE)
-      )
+      p <- surv_forest_plot_styled(rv$surv_results, input)
       req(!is.null(p))
-      p <- apply_plot_labels(p,
-                             input$surv_plot_title        %||% "",
-                             input$surv_plot_subtitle     %||% "",
-                             input$surv_plot_title_align  %||% "center",
-                             input$surv_opt_text_size     %||% 16,
-                             xlab       = input$surv_plot_xaxis_label  %||% "",
-                             ylab       = input$surv_plot_yaxis_label  %||% "",
-                             legend_lab = input$surv_plot_legend_label %||% "")
-      p <- apply_legend_pos(p, input$surv_opt_legend_pos %||% "right")
       png(file, width = input$surv_plot_width %||% 900,
                 height = input$surv_plot_height %||% 600,
                 units = "px", res = input$surv_plot_dpi %||% 100)
       print(p); dev.off()
     }
   )
+
+  # ---- "Download Results" (CODE_REVIEW.md R20-D.Y) ----
+  add_download_results(
+    input, output, session, prefix = "surv", module = "survival",
+    items = reactive(surv_dl_items(
+      rv$surv_results,
+      km_plot     = function() km_plot_r(),
+      forest_plot = function() surv_forest_plot_styled(rv$surv_results, input))),
+    readme_header = function() dl_readme_header("Survival", rv$surv_results, surv_run_settings),
+    plot_size = function() list(width  = input$surv_plot_width  %||% 800,
+                                height = input$surv_plot_height %||% 600,
+                                dpi    = input$surv_plot_dpi    %||% 100))
 }
+
+#' Risk table from a Kaplan-Meier fit: at risk, events and censored by arm and day
+#' @keywords internal
+surv_risk_table <- function(km_fit) {
+  km_sum <- summary(km_fit)
+  data.frame(
+    Group      = sub("^Treatment=", "", as.character(km_sum$strata)),
+    Time       = km_sum$time,
+    N_Risk     = km_sum$n.risk,
+    N_Events   = km_sum$n.event,
+    N_Censored = km_sum$n.censor,
+    Survival   = round(km_sum$surv, 4)
+  )
+}
+
+#' The forest plot as the Plots tab styles it (labels, legend position)
+#' @keywords internal
+surv_forest_plot_styled <- function(res, input) {
+  if (is.null(res) || isTRUE(res$error) || is.null(res$results)) return(NULL)
+  p <- build_surv_forest_plot(
+    res      = res$results,
+    ref_grp  = res$reference_group,
+    pt_color = input$surv_forest_pt_color %||% "steelblue",
+    show_hr  = isTRUE(input$surv_forest_show_hr %||% TRUE),
+    show_ci  = isTRUE(input$surv_forest_show_ci %||% TRUE),
+    show_p   = isTRUE(input$surv_forest_show_p  %||% TRUE)
+  )
+  if (is.null(p)) return(NULL)
+  p <- apply_plot_labels(p,
+                         input$surv_plot_title        %||% "",
+                         input$surv_plot_subtitle     %||% "",
+                         input$surv_plot_title_align  %||% "center",
+                         input$surv_opt_text_size     %||% 16,
+                         xlab       = input$surv_plot_xaxis_label  %||% "",
+                         ylab       = input$surv_plot_yaxis_label  %||% "",
+                         legend_lab = input$surv_plot_legend_label %||% "")
+  apply_legend_pos(p, input$surv_opt_legend_pos %||% "right")
+}
+
+#' The run's settings, for the README
+#' @keywords internal
+surv_run_settings <- function(res) {
+  list(model           = res$model_type_used %||% "frequentist",
+       method          = res$method_used,
+       reference_group = res$reference_group,
+       events_from     = res$event_src_used,
+       volume_limit    = res$vol_threshold_used,
+       deaths_as_events = res$death_events_added,
+       p_adjust        = if (is.data.frame(res$results)) unique(res$results$P_Adjust_Method))
+}
+

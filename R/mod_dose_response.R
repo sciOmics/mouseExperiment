@@ -405,6 +405,12 @@ doseResponseUI <- function(id) {
                 )
               )
             )
+          ),
+          # R20-D.Y: choose which results go into one ZIP.
+          tabPanel(
+            title = tags$span(icon("file-zipper"), " Download Results"),
+            value = "__download_results__",
+            wellPanel(download_results_ui(ns, "dr"))
           )
         )
       )
@@ -1026,38 +1032,59 @@ dose_response_server <- function(id, rv) {
     filename = function() paste0("dose_response_stats_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv"),
     content  = function(file) {
       req(rv$dr_results, !isTRUE(rv$dr_results$error))
-      stats <- rv$dr_results$statistics
-      out <- data.frame(
-        Metric = c("Linear Slope", "Linear R2", "Linear P-value",
-                   "ANOVA P-value",
-                   "Jonckheere-Terpstra P-value (two-sided)",
-                   "EC50", "EC50 95% Lower (log dose)", "EC50 95% Upper (log dose)",
-                   "EC50 Within Tested Doses",
-                   "Hill Slope", "Lower Limit", "Upper Limit",
-                   "Linear AIC", "Nonlinear AIC",
-                   "Growth Rate P-value", "Growth Rate R2"),
-        Value  = c(
-          stats$linear_slope %||% NA,
-          stats$linear_r_squared %||% NA,
-          stats$linear_p_value %||% NA,
-          stats$anova_p_value %||% NA,
-          rv$dr_results$trend_test$jonckheere_test$p.value %||% NA,
-          stats$ec50 %||% NA,
-          if (!is.null(stats$ec50_ci)) stats$ec50_ci[["lower"]] else NA,
-          if (!is.null(stats$ec50_ci)) stats$ec50_ci[["upper"]] else NA,
-          as.numeric(stats$ec50_in_range %||% NA),
-          stats$hill_slope %||% NA,
-          stats$lower_limit %||% NA,
-          stats$upper_limit %||% NA,
-          stats$linear_aic %||% NA,
-          stats$nonlinear_aic %||% NA,
-          stats$growth_dose_p_value %||% NA,
-          stats$growth_dose_r_squared %||% NA
-        )
-      )
+      out <- dr_stats_table(rv$dr_results)
       write.csv(out, file, row.names = FALSE)
     }
   )
 
+
+  # "Download Results" (CODE_REVIEW.md R20-D.Y).
+  add_download_results(
+    input, output, session, prefix = "dr", module = "dose_response",
+    items = reactive(dr_dl_items(rv$dr_results,
+                                 scatter_plot = function() current_dr_scatter(),
+                                 tgi_plot     = function() current_dr_tgi())),
+    readme_header = function() dl_readme_header("Dose Response", rv$dr_results, function(res) list(
+      dose_series = paste(input$dr_treatments, collapse = ", "),
+      evaluation_day = res$endpoint_day, comparisons = input$dr_comparison_type)),
+    plot_size = function() list(width  = input$dr_plot_width  %||% 800,
+                                height = input$dr_plot_height %||% 600,
+                                dpi    = input$dr_plot_dpi    %||% 100))
   })
 }
+
+#' The statistics table as downloaded: trend tests, EC50 and the curve
+#' @keywords internal
+dr_stats_table <- function(res) {
+  stats <- res$statistics
+  out <- data.frame(
+    Metric = c("Linear Slope", "Linear R2", "Linear P-value",
+               "ANOVA P-value",
+               "Jonckheere-Terpstra P-value (two-sided)",
+               "EC50", "EC50 95% Lower (log dose)", "EC50 95% Upper (log dose)",
+               "EC50 Within Tested Doses",
+               "Hill Slope", "Lower Limit", "Upper Limit",
+               "Linear AIC", "Nonlinear AIC",
+               "Growth Rate P-value", "Growth Rate R2"),
+    Value  = c(
+      stats$linear_slope %||% NA,
+      stats$linear_r_squared %||% NA,
+      stats$linear_p_value %||% NA,
+      stats$anova_p_value %||% NA,
+      res$trend_test$jonckheere_test$p.value %||% NA,
+      stats$ec50 %||% NA,
+      if (!is.null(stats$ec50_ci)) stats$ec50_ci[["lower"]] else NA,
+      if (!is.null(stats$ec50_ci)) stats$ec50_ci[["upper"]] else NA,
+      as.numeric(stats$ec50_in_range %||% NA),
+      stats$hill_slope %||% NA,
+      stats$lower_limit %||% NA,
+      stats$upper_limit %||% NA,
+      stats$linear_aic %||% NA,
+      stats$nonlinear_aic %||% NA,
+      stats$growth_dose_p_value %||% NA,
+      stats$growth_dose_r_squared %||% NA
+    )
+  )
+  out
+}
+

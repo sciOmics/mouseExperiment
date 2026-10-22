@@ -519,17 +519,11 @@ toxicityUI <- function(id) {
             )
           ),
 
+          # R20-D.Y: replaced "Download All"; choose what goes into the ZIP.
           tabPanel(
-            title = tags$span(icon("file-zipper"), " Download All"),
-            value = "__tox_download_all__",
-            wellPanel(
-              style = "text-align:center; padding:30px;",
-              h4("Export All Results"),
-              p("Download every available result table (CSV) as a single ZIP file."),
-              downloadButton(ns("download_tox_all"), "Download All Results",
-                             class = "btn-lg btn-primary",
-                             icon = icon("download"))
-            )
+            title = tags$span(icon("file-zipper"), " Download Results"),
+            value = "__download_results__",
+            wellPanel(download_results_ui(ns, "tox"))
           )
         )
       )
@@ -1088,11 +1082,11 @@ toxicity_server <- function(id, rv) {
 
   # Plot renderers + diagnostics + group-order UI live in
   # `mod_toxicity_plots.R` (CODE_REVIEW.md C.1/C.3).
-  add_tox_plots(input, output, session, rv, ordered_tox_grps, ordered_et_grps)
+  tox_plots <- add_tox_plots(input, output, session, rv, ordered_tox_grps, ordered_et_grps)
 
   # The six download handlers (CSV + active plot + ZIP) live in
   # `mod_toxicity_downloads.R` (CODE_REVIEW.md C.1/C.3).
-  add_tox_download_handlers(input, output, session, rv)
+  add_tox_download_handlers(input, output, session, rv, plots = tox_plots)
 
   }) # end moduleServer
 }

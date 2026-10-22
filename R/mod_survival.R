@@ -449,6 +449,12 @@ survivalUI <- function(id) {
             shinycssloaders::withSpinner(
               DTOutput(ns("surv_risk_table"))
             )
+          ),
+          # R20-D.Y: choose which results go into one ZIP.
+          tabPanel(
+            title = tags$span(icon("file-zipper"), " Download Results"),
+            value = "__download_results__",
+            wellPanel(download_results_ui(ns, "surv"))
           )
         )
       )

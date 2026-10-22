@@ -313,6 +313,12 @@ synergyUI <- function(id) {
                   )
                 )
               )
+          ),
+          # R20-D.Y: choose which results go into one ZIP.
+          tabPanel(
+            title = tags$span(icon("file-zipper"), " Download Results"),
+            value = "__download_results__",
+            wellPanel(download_results_ui(ns, "syn"))
           )
         )
       )
@@ -1104,6 +1110,26 @@ synergy_server <- function(id, rv) {
   add_syn_download_handlers(input, output, session, rv,
                             current_syn_main_plot, current_syn_trend_plot,
                             current_syn_tgi_plot)
+
+  # "Download Results" (CODE_REVIEW.md R20-D.Y).
+  add_download_results(
+    input, output, session, prefix = "syn", module = "synergy",
+    items = reactive(syn_dl_items(
+      rv$syn_results, over_time = isTRUE(rv$syn_over_time),
+      main_plot  = function() current_syn_main_plot(),
+      trend_plot = function() current_syn_trend_plot(),
+      tgi_plot   = function() current_syn_tgi_plot(),
+      diag = tryCatch({
+        r <- rv$syn_results
+        if (!is.null(r$timepoint_results) && length(r$timepoint_results))
+          r$timepoint_results[[length(r$timepoint_results)]] else r
+      }, error = function(e) NULL))),
+    readme_header = function() dl_readme_header("Drug Synergy", rv$syn_results, function(res) list(
+      drug_a = input$syn_drug_a, drug_b = input$syn_drug_b, combination = input$syn_combo,
+      endpoint_estimand = input$syn_endpoint_method, time_point = input$syn_time_point)),
+    plot_size = function() list(width  = input$syn_plot_width  %||% 800,
+                                height = input$syn_plot_height %||% 600,
+                                dpi    = input$syn_plot_dpi    %||% 100))
 
   # CODE_REVIEW.md DIAGNOSTICS gap (6) — frequentist synergy diagnostics.
   # The diagnostics of the displayed result; for an over-time run, those of

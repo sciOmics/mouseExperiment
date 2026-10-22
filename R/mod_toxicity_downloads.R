@@ -12,7 +12,7 @@
 #' @param input,output,session Standard moduleServer arguments.
 #' @param rv Shared reactiveValues.
 #' @keywords internal
-add_tox_download_handlers <- function(input, output, session, rv) {
+add_tox_download_handlers <- function(input, output, session, rv, plots = list()) {
 
   # ── Active plot PNG (trajectory / KM / TWM) ───────────────────────────
   output$download_tox_active_plot <- downloadHandler(
@@ -84,43 +84,29 @@ add_tox_download_handlers <- function(input, output, session, rv) {
     utils::write.csv(rv$tox_results$twm$window_table, file, row.names = FALSE)
   })
 
-  # ── Download All (ZIP) ────────────────────────────────────────────────
-  output$download_tox_all <- downloadHandler(
-    filename = "toxicity_results.zip",
-    content  = function(file) {
-      req(rv$tox_results)
-      res    <- rv$tox_results
-      tmpdir <- tempfile(pattern = "tox_export_")
-      dir.create(tmpdir, recursive = TRUE)
-      on.exit(unlink(tmpdir, recursive = TRUE), add = TRUE)
-
-      write_if <- function(df, fname) {
-        if (!is.null(df) && is.data.frame(df) && nrow(df) > 0)
-          utils::write.csv(df, file.path(tmpdir, fname), row.names = FALSE)
-      }
-
-      if (res$model_type == "bw") {
-        mm <- res$mixed_model
-        if (!isTRUE(mm$error)) {
-          write_if(mm$fixed_effects,  "bw_fixed_effects.csv")
-          write_if(as.data.frame(mm$emmeans_table), "bw_weight_change_rates.csv")
-          write_if(as.data.frame(mm$pairwise_comparisons), "bw_rate_comparisons.csv")
-        }
-        wl <- res$weight_loss
-        if (!isTRUE(wl$error)) write_if(wl$event_data, "bw_weight_loss_events.csv")
-      } else {
-        if (!isTRUE(res$twm$error)) {
-          write_if(res$twm$window_table,     "therapeutic_window.csv")
-          write_if(res$twm$weight_loss_data, "therapeutic_window_per_animal.csv")
-        }
-      }
-
-      old_wd <- getwd()
-      setwd(tmpdir)
-      on.exit(setwd(old_wd), add = TRUE)
-      csv_files <- list.files(".", pattern = "\\.csv$")
-      if (length(csv_files) == 0) return()
-      utils::zip(zipfile = file, files = csv_files)
-    }
-  )
+  # ---- "Download Results" (CODE_REVIEW.md R20-D.Y) ----
+  # Replaced "Download All", which zipped the CSV tables only.
+  add_download_results(
+    input, output, session, prefix = "tox", module = "toxicity",
+    items = reactive(tox_dl_items(
+      rv$tox_results,
+      traj_plot   = function() plots$traj(),
+      km_plot     = function() plots$km(),
+      window_plot = function() tox_window_plot(rv$tox_results$twm, input,
+                                               rv$tox_et_plot_groups,
+                                               text_size = input$tox_plot_text_size %||% 14))),
+    readme_header = function() dl_readme_header("Toxicity", rv$tox_results, tox_run_settings),
+    plot_size = function() list(width  = input$tox_plot_width  %||% 800,
+                                height = input$tox_plot_height %||% 500,
+                                dpi    = input$tox_plot_dpi    %||% 100))
 }
+
+#' The run's settings, for the README
+#' @keywords internal
+tox_run_settings <- function(res) {
+  list(analysis        = if (identical(res$model_type, "et")) "therapeutic window" else "body weight",
+       reference_group = res$reference_group,
+       estimation      = res$mixed_model$estimation_method %||% res$estimation_method,
+       threshold       = res$weight_loss$threshold)
+}
+

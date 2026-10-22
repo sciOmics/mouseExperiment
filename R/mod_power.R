@@ -404,6 +404,12 @@ powerAnalysisUI <- function(id) {
               DTOutput(ns("pw_ap_sensitivity_table"))
             ),
             downloadButton(ns("download_pw_ap_sensitivity"), "Download")
+          ),
+          # R20-D.Y: choose which results go into one ZIP.
+          tabPanel(
+            title = tags$span(icon("file-zipper"), " Download Results"),
+            value = "__download_results__",
+            wellPanel(download_results_ui(ns, "pw"))
           )
         )
       )
@@ -1062,5 +1068,13 @@ power_server <- function(id, rv) {
     }
   )
 
+
+  # "Download Results" (CODE_REVIEW.md R20-D.Y).
+  add_download_results(
+    input, output, session, prefix = "pw", module = "power",
+    items = reactive(pw_dl_items(rv$ap_results, curve_plot = function() current_ap_plot())),
+    readme_header = function() dl_readme_header("Power Analysis", rv$ap_results,
+                                                function(res) list(mode = res$mode)),
+    plot_size = function() list(width = 900, height = 600, dpi = 100))
   })
 }
