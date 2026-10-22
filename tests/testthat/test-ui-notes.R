@@ -26,10 +26,10 @@ test_that("Toxicity's estimation method explains REML and ML", {
 test_that("each group's colour and shape fit the sidebar: two lines, a symbol menu", {
   ui <- html(g("group_order_and_color_ui")("tg", c("Vehicle - Dose: 0", "Drug_A Mid + Drug_B - Dose: 15")))
   expect_match(ui, "group-style-controls", fixed = TRUE)
-  # The shape menu filled 125 px with "▲ Triangle ↑"; it is the symbol now.
+  # The shape menu filled 125 px with the shape names; it is the symbol now.
   expect_false(grepl("width: 125px", ui, fixed = TRUE))
   expect_false(grepl("Triangle", ui, fixed = TRUE))
-  expect_match(ui, ">▲</option>", fixed = TRUE)
+  expect_match(ui, ">\u25b2</option>", fixed = TRUE)
 })
 
 test_that("every 'How to read this plot' note sits above its plot, in the plot_help style", {

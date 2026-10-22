@@ -833,9 +833,9 @@ tumorGrowthUI <- function(id) {
                       "the arm's curve as if the animal had continued. So the AUC is not pulled down when the ",
                       "largest tumours leave the study, as an average of the animals still on study would be. ",
                       "In simulations with 10 animals per arm and about a third of the treated arm lost, removal at ",
-                      "the volume limit moved the AUC by −0.2 % (the average of the survivors: −13 %). ",
+                      "the volume limit moved the AUC by \u22120.2 % (the average of the survivors: \u221213 %). ",
                       "Deaths that the earlier measurements only partly foreshadow left a small underestimate, ",
-                      "−3 % to −5 % (survivors: −18 % to −21 %). When many animals die for ",
+                      "\u22123 % to \u22125 % (survivors: \u221218 % to \u221221 %). When many animals die for ",
                       "reasons their growth does not show, read the Survival analysis alongside the AUC."
                     ),
                     div(class = "alert alert-warning", style = "font-size:0.9em; margin-bottom:0;",

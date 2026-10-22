@@ -27,7 +27,9 @@ doseResponseUI <- function(id) {
             uiOutput(ns("dr_series_ui")),
 
             selectInput(ns("dr_comparison_type"),
-                       "Pairwise Comparison Type",
+                       tagList("Pairwise Comparison Type", help_tip(paste(
+                         "vs. Reference Group compares each dose with the control.",
+                         "All Pairwise compares every pair of doses (Tukey HSD)."))),
                        choices = c(
                          "vs. Reference Group" = "reference",
                          "All Pairwise (Tukey HSD)" = "all"
@@ -547,7 +549,10 @@ dose_response_server <- function(id, rv) {
       day_choices <- c(day_choices, setNames(as.character(days), paste("Day", days)))
     }
     selectInput(session$ns("dr_time_point"),
-                "Time Point for Analysis",
+                tagList("Time Point for Analysis", help_tip(paste(
+                  "Only days on which every dose of the series is evaluable are offered:",
+                  "at least 50% of a group's enrolled animals, and at least 3, still on",
+                  "study. The default is the last of them."))),
                 choices  = day_choices,
                 selected = "default")
   })

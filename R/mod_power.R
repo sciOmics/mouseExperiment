@@ -14,8 +14,13 @@ powerAnalysisUI <- function(id) {
         wellPanel(
 
           # ---- Mode selector -------------------------------------------------
+          # Explanations sit in help_tip() tooltips (26.10.009).
           radioButtons(ns("pw_mode"),
-                       label    = "Analysis Mode",
+                       label    = tagList("Analysis Mode", help_tip(paste(
+                         "Analytic: a closed-form t-test or one-way ANOVA from an effect",
+                         "size, in seconds. LMM Simulation: simulates whole growth studies",
+                         "and fits the Tumour Growth model to each, so it plans for the",
+                         "analysis you will run; it takes longer."))),
                        choices  = c("A priori — Analytic"      = "apriori_analytic",
                                     "A priori — LMM Simulation" = "apriori_lmm"),
                        selected = "apriori_analytic"),
@@ -35,10 +40,10 @@ powerAnalysisUI <- function(id) {
 
             conditionalPanel(ns = ns, condition = "input.pw_ap_es_mode == 'cohens_d'",
               textInput(ns("pw_ap_cohens_d"),
-                        "Cohen’s d values (comma-separated)",
+                        tagList("Cohen’s d values (comma-separated)", help_tip(
+                          "Benchmarks: small \u2248 0.2, medium \u2248 0.5, large \u2248 0.8.")),
                         value       = "0.5, 0.8, 1.0, 1.5",
-                        placeholder = "e.g. 0.5, 0.8, 1.0"),
-              p(tags$small("Benchmarks: small ≈ 0.2, medium ≈ 0.5, large ≈ 0.8"))
+                        placeholder = "e.g. 0.5, 0.8, 1.0")
             ),
 
             conditionalPanel(ns = ns, condition = "input.pw_ap_es_mode == 'delta_sd'",
@@ -66,20 +71,22 @@ powerAnalysisUI <- function(id) {
 
             # R20.D17 -- the analytic call passed none of these, so the backend's
             # multiplicity and attrition handling (R3.15, K.15) was unreachable.
-            radioButtons(ns("pw_ap_p_adjust"), "Multiplicity correction",
+            radioButtons(ns("pw_ap_p_adjust"),
+                         tagList("Multiplicity correction", help_tip(paste(
+                           "Power is for each treated-vs-control comparison. A study with k",
+                           "groups makes k \u2212 1 of them, and Bonferroni divides alpha among",
+                           "them. Dunnett, the Tumour Growth default, is slightly less",
+                           "conservative, so the N here is a small overestimate for it."))),
                          choices = c("Bonferroni over the comparisons (recommended)" = "bonferroni",
                                      "None (unadjusted)" = "none"),
                          selected = "bonferroni"),
             numericInput(ns("pw_ap_n_comparisons"), "Treated-vs-control comparisons",
                          value = 1, min = 1, max = 20, step = 1),
-            numericInput(ns("pw_ap_dropout"), "Expected attrition (%)",
+            numericInput(ns("pw_ap_dropout"),
+                         tagList("Expected attrition (%)", help_tip(paste(
+                           "The share of animals you expect to lose before the endpoint.",
+                           "Enroll_N in the results is the number to start with."))),
                          value = 0, min = 0, max = 90, step = 5),
-            helpText("Power is for each treated-vs-control comparison. A study with ",
-                     "k groups makes k \u2212 1 of them, and Bonferroni divides alpha ",
-                     "among them. Dunnett, the Tumor Growth default, is slightly less ",
-                     "conservative, so the N here is a small overestimate for it. ",
-                     "Attrition is the share of animals you expect to lose before the ",
-                     "endpoint; Enroll_N is the number to start with."),
 
             hr(),
 
@@ -108,21 +115,20 @@ powerAnalysisUI <- function(id) {
                          "Baseline tumor volume (mean)",
                          value = 100, min = 1, step = 1),
             numericInput(ns("pw_lmm_baseline_sd"),
-                         "Baseline tumor volume (SD)",
+                         tagList("Baseline tumor volume (SD)", help_tip(paste(
+                           "Does not change the estimated power: the test is on Treatment \u00d7",
+                           "Day, a contrast of growth rates, and each animal's random",
+                           "intercept absorbs baseline spread. It shapes the simulated",
+                           "volumes only."))),
                          value = 20, min = 0.1, step = 0.1),
-            p(tags$small(tags$em(
-              "Baseline SD does not change the estimated power. The test is on ",
-              "Treatment × Day — a contrast of growth ", tags$em("rates"), " — and ",
-              "the per-mouse random intercept absorbs baseline spread exactly. ",
-              "It is here because it shapes the simulated volumes, not the ",
-              "sample-size answer."))),
             numericInput(ns("pw_lmm_ctrl_rate"),
-                         "Control log-growth rate (/day)",
+                         tagList("Control log-growth rate (/day)", help_tip(paste(
+                           "Growth rates are on the log scale: 0.15 \u2248 16% daily volume",
+                           "increase."))),
                          value = 0.15, min = 0, step = 0.01),
             numericInput(ns("pw_lmm_tx_effect"),
                          "Treatment rate reduction (/day, log-scale)",
                          value = 0.10, min = 0, step = 0.01),
-            p(tags$small("All growth rates are on the log scale. Rate 0.15 ≈ 16% daily volume increase.")),
 
             hr(),
 
@@ -159,24 +165,22 @@ powerAnalysisUI <- function(id) {
                          "Interval between days",
                          value = 1, min = 1, step = 1),
             numericInput(ns("pw_lmm_dropout_limit"),
-                         "Euthanasia volume limit (blank = none)",
+                         tagList("Euthanasia volume limit (blank = none)", help_tip(paste(
+                           "Set your IACUC limit to plan against a study that loses",
+                           "animals. Blank assumes every animal is measured at every",
+                           "timepoint, which overstates power, by roughly 6 points at 30%",
+                           "attrition and 12 at 40%."))),
                          value = NA, min = 1, step = 50),
-            p(tags$small(tags$em(
-              "Set your IACUC limit to plan against a study that loses animals. ",
-              "Leaving it blank assumes every animal is measured at every ",
-              "timepoint, which overstates power — by roughly 6 points at 30% ",
-              "attrition and 12 at 40%."))),
 
             hr(),
 
             h4("Simulation"),
 
             numericInput(ns("pw_lmm_n_sims"),
-                         "Number of simulations",
+                         tagList("Number of simulations", help_tip(paste(
+                           "Each simulation fits a model, so this is the slow part: 500 or",
+                           "fewer gives a quick estimate."))),
                          value = 500, min = 50, max = 2000, step = 50),
-            p(tags$small(icon("exclamation-triangle"),
-                         tags$strong(" Computationally intensive."),
-                         " Use ≤500 simulations for quick estimates.")),
 
             hr()
           ),

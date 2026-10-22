@@ -61,7 +61,7 @@ download_results_ui <- function(ns, prefix) {
           choices = c(PNG = "png", PDF = "pdf", SVG = "svg"), selected = "png",
           inline = TRUE)),
       column(6, style = "padding-top:28px;",
-        actionLink(id("all"), "Select all"), " · ",
+        actionLink(id("all"), "Select all"), " \u00b7 ",
         actionLink(id("none"), "Select none"))
     ),
     downloadButton(id("zip"), "Download selected (ZIP)",

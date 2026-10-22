@@ -73,3 +73,28 @@ test_that("R20-D.V: without a necrotic column there is no selector and nothing t
     expect_identical(rv$tg_results$run_settings$necrotic_handling, "none")
   }))
 })
+
+test_that("26.10.009: the other analysis tabs explain their options in tooltips too", {
+  side_of <- function(ui_fn, id) {
+    html <- paste(as.character(g(ui_fn)(id)), collapse = "\n")
+    run  <- regexpr('id="[a-z]+-run_[a-z]+_analysis"', html)
+    substr(html, 1L, run)                              # the sidebar, up to Run
+  }
+  expect_tip <- function(side, lbl)
+    expect_match(side, paste0(lbl, "[^<]*(</strong>)?\\s*<span class=\"help-tip"), info = lbl)
+  sv <- side_of("survivalUI", "surv")
+  for (l in c("Statistical Model", "Endpoint")) expect_tip(sv, l)
+  tx <- side_of("toxicityUI", "tox")
+  for (l in c("Statistical Model", "Estimation method", "Endpoint estimand",
+              "Interval draws", "Tolerability threshold")) expect_tip(tx, l)
+  dr <- side_of("doseResponseUI", "dr")
+  expect_tip(dr, "Pairwise Comparison Type")
+  pw <- side_of("powerAnalysisUI", "pw")
+  for (l in c("Analysis Mode", "Multiplicity correction", "Expected attrition",
+              "Baseline tumor volume \\(SD\\)", "Control log-growth rate",
+              "Euthanasia volume limit", "Number of simulations")) expect_tip(pw, l)
+  # No helpText() paragraphs or small-print notes left between the controls.
+  for (side in list(sv, tx, dr, pw)) expect_false(grepl("help-block", side, fixed = TRUE))
+  expect_false(grepl("Benchmarks: small", pw, fixed = TRUE) &&
+               !grepl("help-tip[^>]*title=\"Benchmarks", pw))
+})

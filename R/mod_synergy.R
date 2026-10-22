@@ -395,28 +395,27 @@ synergy_server <- function(id, rv) {
       # CODE_REVIEW.md backend R3.5 / G.3 -- the estimand, exposed. The default
       # is the statistically correct one; "survivors" exists to reproduce
       # pre-0.8.0 figures.
-      selectInput(session$ns("syn_endpoint_method"), "Endpoint estimand",
+      # Explanations sit in help_tip() tooltips (26.10.009).
+      selectInput(session$ns("syn_endpoint_method"),
+                 tagList("Endpoint estimand", help_tip(paste(
+                   "Model-based reads each arm's geometric mean at the evaluation day from",
+                   "a log-scale mixed model of every observation, so animals removed",
+                   "earlier still count. Survivors uses only animals present that day,",
+                   "which biases TGI down because animals leave when their tumours grow:",
+                   "in a simulated study it understated TGI by about 23 points, where the",
+                   "model-based estimate was off by about 5."))),
                  choices = c(
                    "Model-based (recommended)" = "model",
                    "Each animal's last observation" = "last_obs",
                    "Survivors at the evaluation day (legacy)" = "survivors"),
                  selected = "model"),
-      helpText(
-        strong("Model-based"), " reads each arm's geometric mean at the ",
-        "evaluation day from a log-scale mixed model fitted to every ",
-        "observation, so animals removed earlier still contribute. ",
-        strong("Survivors"), " uses only animals present on that day \u2014 which ",
-        "conditions on survival and biases TGI downward, because animals leave ",
-        "when their tumours grow. On a simulated study with volume-triggered ",
-        "euthanasia the survivor estimand understated TGI by ~23 percentage ",
-        "points where the model-based one was off by ~5."),
 
       numericInput(session$ns("syn_n_boot"),
-                  "Interval draws (0 = skip)",
-                  value = 2000, min = 0, max = 20000, step = 500),
-      helpText("Draws behind the 95% intervals for every synergy metric: of ",
-               "the fitted model under the model estimand, of the animals ",
-               "otherwise. Set 0 for a point-estimate-only run.")
+                  tagList("Interval draws (0 = skip)", help_tip(paste(
+                    "Draws behind the 95% intervals for every synergy metric: of the",
+                    "fitted model under the model estimand, of the animals otherwise.",
+                    "0 gives point estimates only."))),
+                  value = 2000, min = 0, max = 20000, step = 500)
     )
   })
 
@@ -443,7 +442,10 @@ synergy_server <- function(id, rv) {
         "Day", days, ifelse(days == max(days), "(last evaluable day)", ""))))
     }
     selectInput(session$ns("syn_time_point"),
-                "Time Point for Analysis",
+                tagList("Time Point for Analysis", help_tip(paste(
+                  "Only days on which all four arms are evaluable are offered: at least",
+                  "50% of an arm's enrolled animals, and at least 3, still on study.",
+                  "All evaluable days tracks synergy over the study."))),
                 choices  = day_choices,
                 selected = isolate(input$syn_time_point) %||% "all")
   })

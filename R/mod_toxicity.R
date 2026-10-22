@@ -18,19 +18,18 @@ toxicityUI <- function(id) {
           conditionalPanel(ns = ns,
             condition = "output.tox_weight_available == true",
 
+            # Explanations sit in help_tip() tooltips (26.10.009).
             selectInput(ns("tox_model_type"),
-              "Statistical Model",
+              tagList("Statistical Model", help_tip(paste(
+                "Body Weight Analysis models weight trajectories with a mixed-effects",
+                "model and times each animal to a weight-loss threshold. Therapeutic",
+                "Window also needs a tumour volume column, and sets each arm's tumour",
+                "growth inhibition against its weight loss."))),
               choices = c(
                 "Body Weight Analysis" = "bw",
                 "Therapeutic Window"   = "et"
               ),
               selected = "bw"
-            ),
-            helpText(
-              "Body Weight Analysis models weight trajectories with a mixed-effects ",
-              "model and times each animal to a weight-loss threshold. ",
-              "Therapeutic Window also requires a tumor volume column and sets each ",
-              "arm's tumor growth inhibition against its weight loss."
             ),
 
             # The reference is the study's control group (R20-D.H).
@@ -79,33 +78,32 @@ toxicityUI <- function(id) {
               uiOutput(ns("tox_et_vol_status")),
               # CODE_REVIEW.md backend R3.5 / G.3 + R3.6 / R3.7.
               h5(strong("Endpoint & Uncertainty")),
-              selectInput(ns("tox_endpoint_method"), "Endpoint estimand",
+              selectInput(ns("tox_endpoint_method"),
+                tagList("Endpoint estimand", help_tip(paste(
+                  "Model-based reads each arm's geometric mean at the endpoint day from a",
+                  "log-scale mixed model of every observation, so nothing is discarded.",
+                  "Animals leave because their tumours grew, so using only the survivors",
+                  "selects slower growers, most in the control arm, and biases TGI down;",
+                  "use Survivors only to reproduce a pre-0.8.0 figure."))),
                 choices = c(
                   "Model-based (recommended)" = "model",
                   "Each animal's last observation" = "last_obs",
                   "Survivors at the endpoint day (legacy)" = "survivors"),
                 selected = "model"),
-              helpText(
-                "Animals leave these studies because their tumours grew, so ",
-                "restricting to survivors selects the slower growers \u2014 hardest ",
-                "in the control arm, which biases TGI downward. ",
-                strong("Model-based"), " instead reads each arm's geometric mean ",
-                "at the endpoint day from a log-scale mixed model fitted to every ",
-                "observation, so nothing is discarded. Use ", strong("Survivors"),
-                " only to reproduce a pre-0.8.0 figure."),
-              numericInput(ns("tox_n_boot"), "Interval draws (0 = skip)",
-                          value = 2000, min = 0, max = 20000, step = 500),
-              helpText("Draws behind the 95% intervals: of the fitted model for ",
-                       "TGI (model estimand), and of the animals for weight loss ",
-                       "and the observed estimands. Without intervals there is no ",
-                       "tolerability flag."),
+              numericInput(ns("tox_n_boot"),
+                tagList("Interval draws (0 = skip)", help_tip(paste(
+                  "Draws behind the 95% intervals: of the fitted model for TGI (model",
+                  "estimand), and of the animals for weight loss and the observed",
+                  "estimands. Without intervals there is no tolerability flag."))),
+                value = 2000, min = 0, max = 20000, step = 500),
               hr(),
               h5(strong("Tolerability")),
-              numericInput(ns("tox_tol_threshold"), "Tolerability threshold (% weight loss)",
-                          value = 20, min = 5, max = 50, step = 1),
-              helpText("An arm is flagged Tolerated when the 95% interval for its mean ",
-                       "worst weight loss lies below this threshold, Not tolerated when ",
-                       "it lies at or above it, and Unclear when it contains it.")
+              numericInput(ns("tox_tol_threshold"),
+                tagList("Tolerability threshold (% weight loss)", help_tip(paste(
+                  "An arm is Tolerated when the 95% interval for its mean worst weight",
+                  "loss lies below this threshold, Not tolerated when it lies at or above",
+                  "it, and Unclear when it contains it."))),
+                value = 20, min = 5, max = 50, step = 1)
             ),
 
             br(),
