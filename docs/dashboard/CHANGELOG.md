@@ -32,6 +32,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   "Drug_...".
   - Each group now takes two lines: the full name, then the colour and a shape menu that
     shows the symbol only.
+
+### Removed
+- **Tumour Growth's Compare tab.** It showed the previous and current runs' treatment effects
+  side by side, but only after a change of model type. So it compared LME4 growth-rate
+  differences with AUC ratios, and never two runs of the same model with different settings.
+  Each session also kept a full copy of the previous result just for this tab.
 - **The first Tumour Growth run ignored "Exclude" for necrotic observations** (R20-D.V). The
   Necrotic Observations selector appeared only after a run, and until then the run used "No
   adjustment". So the first analysis kept the necrotic observations (42 of 604 in the All

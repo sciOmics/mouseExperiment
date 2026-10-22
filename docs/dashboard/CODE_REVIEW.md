@@ -2766,3 +2766,10 @@ The Info tab keeps the full descriptions.
 - **A new browser test** in `test-shiny_app.R` loads the All Features demo at 1400 px, runs an analysis, opens the Groups section, and requires no element of the group rows to extend past the panel.
 - **Full suite, from source:** 301 tests, 0 failed, 0 skipped.
 
+**Removed, at the maintainer's request: the Compare tab (Round 2 F.3).**
+- **What it did.** It showed the previous and current runs' `treatment_effects` side by side, filled only when the model type changed.
+- **Why it went:** it set LME4 rate differences beside AUC ratios, it never compared two runs of the same model, and every session kept a full copy of the previous result (`rv$tg_results_prev`) for it.
+- **What was removed:** the tab, `output$tg_compare_panel`, and both places that stored the copy (`mod_tumor_growth.R`, `tg_resume.R`).
+- **Test.** `test-ui-notes.R` checks the tab is gone.
+- **Full suite:** 302 tests. 301 pass. The one failure is `R4.D2` ("the installed backend is not older than the sibling source"), because the sibling package checkout was on the v0.33.1 branch while the test library held 0.33.0. That is an environment check, not this change.
+

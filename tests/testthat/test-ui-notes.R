@@ -45,3 +45,11 @@ test_that("every 'How to read this plot' note sits above its plot, in the plot_h
     expect_match(ui, "MCMC trace plots</strong>[\\s\\S]*fuzzy", perl = TRUE)
   }
 })
+
+test_that("the Tumour Growth results have no Compare tab", {
+  # It showed the previous and current runs' tables side by side, only when the
+  # model type changed, and so put LME4 rate differences beside AUC ratios.
+  ui <- html(g("tumorGrowthUI")("tg"))
+  expect_false(grepl('data-value="Compare"', ui, fixed = TRUE))
+  expect_false(grepl("tg_compare_panel", ui, fixed = TRUE))
+})
