@@ -1,0 +1,52 @@
+# R CMD check with the full test suite (testServer modules and the shinytest2
+# browser test) on every push and pull request, and weekly (CODE_REVIEW.md
+# R20.53). The backend is installed from the matching branch of
+# sciOmics/mouseExperiment: production for production, staging otherwise.
+#
+# Fails on errors, which include any test failure. Two warnings are accepted:
+# non-ASCII characters in UI text (the app is not for CRAN, and escaping its
+# copy would make it unreadable), and runDashboard() having no Rd, because
+# man/ is not tracked here.
+name: R-CMD-check
+
+# Started by hand only. This repository is private, and GitHub Actions minutes
+# for it are not paid for (decided 2026-10-10): run on every push and pull
+# request, the job never started and marked each one failed. Run the suite
+# locally instead (CONTRIBUTING.md); this workflow is kept for when Actions is
+# available.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  R-CMD-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      NOT_CRAN: true
+      _R_CHECK_FORCE_SUGGESTS_: false
+      BACKEND_REF: ${{ (github.base_ref || github.ref_name) == 'production' && 'production' || 'staging' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: |
+            any::rcmdcheck
+            github::sciOmics/mouseExperiment@${{ env.BACKEND_REF }}
+          needs: check
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          args: 'c("--no-manual")'
+          error-on: '"error"'

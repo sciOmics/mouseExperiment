@@ -1,0 +1,430 @@
+/* Custom CSS for mouseExperimentDashboard */
+
+:root {
+  --primary-color: #0073B7;
+  --success-color: #00A65A;
+  --info-color: #00BCD4;
+  --warning-color: #FF9800;
+  --danger-color: #DD4B39;
+}
+
+/* General Styling */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: #f5f5f5;
+}
+
+/* Navbar customization — Bootstrap 5 compatible
+   .navbar-header only covers the brand in BS3; target .navbar for full width */
+.navbar {
+  background: #3a3a3a !important;
+  border-bottom: 2px solid #1f1f1f;
+}
+
+/* BS3 brand area */
+.navbar-header {
+  background: transparent;
+  color: white;
+}
+
+/* Mouse icon in navbar brand */
+#nav-brand-icon {
+  height: 2.6rem;
+  width: auto;
+  vertical-align: middle;
+  margin-left: 0.2rem;
+  margin-bottom: 0.15rem;
+  opacity: 0.92;
+  cursor: pointer;
+  transition: transform 0.2s, opacity 0.2s;
+}
+
+#nav-brand-icon:hover {
+  opacity: 0.7;
+  transform: rotate(-8deg) scale(1.1);
+}
+
+/* BS5: .navbar-brand */
+.navbar .navbar-brand,
+.navbar-brand {
+  color: white !important;
+  font-size: 1.9rem;
+}
+
+/* BS3 + BS5 nav links */
+.navbar-nav > li > a,
+.navbar-nav .nav-link {
+  color: white !important;
+  font-size: 1.4rem;
+  white-space: nowrap;
+}
+
+.navbar-nav > li > a:hover,
+.navbar-nav .nav-link:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: white !important;
+}
+
+.navbar-nav > li.active > a,
+.navbar-nav .nav-link.active {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+  color: white !important;
+  font-weight: bold;
+}
+
+/* Center the main navbar tabs */
+@media (min-width: 768px) {
+  .navbar-nav.navbar-center {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    float: none !important;
+  }
+}
+
+/* Disabled navbar tab styling */
+.navbar-nav > li.nav-tab-disabled > a,
+#nav-right > li.nav-tab-disabled > a {
+  opacity: 0.4 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+
+/* Well panel styling */
+.well {
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  background-color: #e0e0e0;
+  border: 1px solid #bdbdbd;
+}
+
+/* Alert customization */
+.alert {
+  border-radius: 4px;
+  border: none;
+  margin-bottom: 15px;
+}
+
+.alert-info {
+  background-color: #d1ecf1;
+  color: #0c5460;
+}
+
+.alert-success {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.alert-warning {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.alert-danger {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+/* Button styling */
+.btn-primary {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+  background-color: #005a87;
+  border-color: #005a87;
+}
+
+.btn-success {
+  background-color: var(--success-color);
+  border-color: var(--success-color);
+}
+
+.btn-success:hover {
+  background-color: #007a47;
+  border-color: #007a47;
+}
+
+/* Form control styling */
+.form-control:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 0.2rem rgba(0, 115, 183, 0.25);
+}
+
+/* Tab panel styling */
+.nav-tabs {
+  border-bottom: 2px solid #ddd;
+}
+
+.nav-tabs > li.active > a,
+.nav-tabs > li.active > a:focus,
+.nav-tabs > li.active > a:hover {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  font-size: 1.15em;
+  font-weight: 600;
+}
+
+.nav-tabs > li > a {
+  color: var(--primary-color);
+  transition: font-size 0.15s ease;
+}
+
+.tab-content {
+  background-color: white;
+  padding: 20px;
+  border-radius: 0 0 4px 4px;
+  min-height: calc(100vh - 56px); /* fill viewport so body background doesn't show */
+}
+
+/* DataTable customization */
+.dataTable {
+  font-size: 0.95em;
+}
+
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate {
+  padding: 10px;
+}
+
+/* Plots and outputs */
+.shiny-plot-output {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 10px;
+  background-color: white;
+}
+
+.shiny-text-output,
+.shiny-html-output {
+  padding: 10px;
+}
+
+/* Download buttons */
+.btn-sm {
+  padding: 4px 8px;
+  font-size: 0.875em;
+  margin-top: 5px;
+}
+
+/* Loading spinner */
+.spinner {
+  color: var(--primary-color);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .container-fluid {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  
+  .panel,
+  .well {
+    margin-bottom: 15px;
+  }
+}
+
+/* Status messages */
+.status-running {
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* ============================================================
+   Mouse outline background decorations
+   Fixed overlay (pointer-events: none) at very low opacity so
+   the images float over the layout without blocking anything.
+   Images are 1408 × 768 (RGBA), displayed at ~380 px wide.
+   ============================================================ */
+
+#mouse-bg-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;   /* all clicks pass straight through */
+  z-index: 100;           /* above normal content, below navbar/dropdowns/modals */
+  overflow: hidden;
+  opacity: 0.10;
+}
+
+.mouse-bg-img {
+  position: absolute;
+  width: 380px;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Bottom-right: mouse_outline1, mirrored so nose faces inward */
+#mouse-bg-img1 {
+  bottom: 10px;
+  right: 10px;
+  transform: scaleX(-1);
+}
+
+/* Bottom-left: mouse_outline2, mirrored so nose faces inward */
+#mouse-bg-img2 {
+  bottom: 10px;
+  left: 10px;
+  transform: scaleX(-1);
+}
+
+/* ============================================================ */
+
+/* Footer styling */
+footer {
+  border-top: 1px solid #ddd;
+  background-color: white;
+  margin-top: 40px;
+}
+
+/* Utility classes */
+.text-muted {
+  color: #6c757d;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.m-t-20 {
+  margin-top: 20px;
+}
+
+.p-20 {
+  padding: 20px;
+}
+
+.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* -------------------------------------------------------
+   Collapsible analysis sidebar panels
+   ------------------------------------------------------- */
+.collapsible-sidebar-row .sidebar-panel-col,
+.collapsible-sidebar-row .main-panel-col {
+  transition: width 0.25s ease, padding-left 0.25s ease, padding-right 0.25s ease;
+}
+
+.collapsible-sidebar-row.sb-collapsed .sidebar-panel-col {
+  width: 0 !important;
+  min-width: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  overflow: hidden;
+}
+
+.collapsible-sidebar-row.sb-collapsed .main-panel-col {
+  width: 100% !important;
+}
+
+/* Smaller description text in analysis sidebar panels */
+.sidebar-panel-col .help-block {
+  font-size: 0.78em;
+  line-height: 1.35;
+}
+
+.sidebar-toggle-btn {
+  display: inline-block;
+  margin-bottom: 8px;
+  font-size: 0.8em;
+  color: #666;
+  background: transparent;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  padding: 3px 8px;
+  cursor: pointer;
+  line-height: 1.5;
+}
+
+.sidebar-toggle-btn:hover {
+  background: #f5f5f5;
+  color: #333;
+  border-color: #bbb;
+}
+
+/* ---- Collapsible plot-control sections ---- */
+a[data-toggle="collapse"] {
+  display: block;
+  color: #333;
+  text-decoration: none !important;
+}
+a[data-toggle="collapse"]:hover {
+  color: #000;
+  background-color: rgba(0,0,0,0.04);
+  border-radius: 3px;
+}
+a[data-toggle="collapse"] .pull-right {
+  transition: transform 0.2s ease;
+}
+a[data-toggle="collapse"].collapsed .pull-right {
+  transform: rotate(-90deg);
+}
+
+/* Fixed-top navbar body offset */
+body {
+  padding-top: 70px;
+}
+
+/* Disabled nav tabs */
+.navbar-nav li a[data-value='__toxicity_disabled__'],
+.navbar-nav li a[data-value='__power_analysis_disabled__'] {
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+/* -------------------------------------------------------
+   Bayesian progress modal — Bootstrap striped animated bar
+   ------------------------------------------------------- */
+
+/* Hide the dark backdrop without removing it from the DOM — keeping Bootstrap's
+   lifecycle intact so it correctly removes modal-open from body on modal close. */
+.modal-backdrop,
+.modal-backdrop.fade,
+.modal-backdrop.in {
+  background-color: transparent !important;
+  opacity: 1 !important;
+  pointer-events: none !important;
+}
+
+.modal .progress-bar-striped.active {
+  background-color: var(--primary-color, #2d6a4f);
+}
+
+/* Help-icon tooltips (help_tip(), js/help-tips.js): a sentence or two, so
+   wider than Bootstrap's 200px and left-aligned. */
+.help-tip-tooltip .tooltip-inner {
+  max-width: 340px;
+  text-align: left;
+}
+
+/* "How to read this plot" notes (plot_help()), under each diagnostic plot's
+   title. */
+.plot-help {
+  margin: 2px 0 10px;
+}
+.plot-help > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-color, #0073B7);
+}
+.plot-help-body {
+  margin-top: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  border-left: 3px solid var(--primary-color, #0073B7);
+  background: rgba(0, 115, 183, 0.06);
+}
+
