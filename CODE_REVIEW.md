@@ -5868,3 +5868,48 @@ The two follow-ups recorded in R20-T.
 
 **Status:** both follow-ups from R20-T are closed. R20.77 stays in part (R20-V).
 
+## R20-X Two warnings the dashboard showed users (v0.33.1, 2026-10-22)
+
+Both were reported from the dashboard while using the All Features demo.
+
+**1. Survival: "Convergence in estimating profile likelihood CI or p-values not attained for all variables."**
+- **When Firth is used.** Two of the demo's six arms have no events (0 of 8), so `survival_statistics()` uses Firth's model (`coxphf`).
+- **What went wrong.** With coxphf's defaults (`maxit = 50`, `maxstep = 0.5`), the profile-likelihood p-values of those two arms did not converge. coxphf warned and returned `NA`.
+- **What the fallback then did.**
+  - The fallback computed pairwise log-rank p-values instead, **rounded to 4 decimals**. Holm then multiplied them, so both arms read exactly 0.0005.
+  - Nothing in the table said a different test had produced them. Their confidence intervals had converged.
+- **The fix:**
+  - `coxphf(..., maxit = 1000, maxstep = 0.05)`. On the demo every p-value converges (3.1e-7 and 1.9e-7 unadjusted) and the warning is gone.
+  - Across six synthetic studies, hazard ratios agree with the defaults' to within 6e-8 wherever the defaults converged.
+  - The fallback, still there for harder data, keeps full precision and writes "p: pairwise log-rank (Firth's p-value did not converge)" in the arm's Note. The arms are carried in an attribute of the model results.
+
+**2. Dose-response: "method L-BFGS-B uses 'factr' (and 'pgtol') instead of 'reltol' and 'abstol'."**
+- **The cause.** R20.18 bounded the LL.4 lower asymptote at 0 (`lowerl`), which makes drc fit with L-BFGS-B. drc still passes its `relTol` to `optim()` as `reltol`, which only the unbounded method uses, so every fit warned.
+- **The fix.** `me_muffle_lbfgsb_tol()` muffles exactly that message around the bounded `drm()` call. The fit is unchanged, and any other warning passes through.
+
+**Tests.** `test-firth_drc_warnings.R`, 3 tests, all failing on v0.33.0:
+- a synthetic study shaped like the demo has no convergence warning, no `NA` p-values, and p-values equal to coxphf's with the new settings;
+- with coxphf mocked to fail one arm, the fallback p-value equals the exact log-rank p, unrounded, and the Note names the test;
+- a dose-response fit raises no L-BFGS-B warning, the muffler stops only that message, and another warning still passes.
+
+**Verification (executed).** The full suite with Bayesian fits skipped, as the staging gate runs it: 370 tests, 0 failed, 31 skipped. CI runs the Bayesian tests.
+
+**Addendum: how early deaths move the model-based AUC (simulation, 2026-10-22).**
+- **The question,** from the maintainer: "Wouldn't early deaths cause an underestimate of a group's AUC?"
+- **The script:** `dev/sim_auc_dropout.R`, built on `tumor_growth_statistics(model_type = "auc")`.
+  - **Design:** two arms of 10, log-linear growth with per-animal intercepts and slopes, measured every 3 days to day 30. Each of 200 studies was generated once.
+  - **Pairing:** every dropout mechanism was applied to the same treated animals, so each shift below is paired.
+  - **The truth:** the area under the treated arm's population geometric-mean curve over the reported window.
+
+| Treated-arm dropout | Animals lost | Model-based AUC, shift from the deaths | Survivors' daily geometric mean, shift |
+|---|---|---|---|
+| Random, unrelated to the tumour | 30 % | +0.2 % (SE 0.3) | +1.3 % (SE 0.8) |
+| Removed at 1,000 mm³ (after the measurement) | 31 % | −0.2 % (SE 0.2) | −13.0 % (SE 0.7) |
+| Die just before the measurement that would exceed 1,000 mm³ | 41 % | −2.8 % (SE 0.3) | −17.6 % (SE 0.8) |
+| The most aggressive 30 % die on days 9–18, whatever their volume | 30 % | −4.7 % (SE 0.5) | −21.1 % (SE 0.9) |
+
+- **Removal at the volume limit is handled.** Dropout that depends on measured values (missing at random) leaves the mixed model essentially unbiased. Each removed animal's measurements fix its growth rate, and its fitted curve carries on.
+- **Deaths that the measurements only partly foreshadow** (missing not at random) leave a small underestimate. That is the limit of any analysis of volume alone.
+- **Back-transformation bias.** With no dropout, both estimators read about 3 % high against the population curve: the back-transformed mean of log volume over 10 animals is biased upward. It is the same in every arm, so a ratio between arms is barely affected.
+- **In the dashboard.** The dashboard (26.10.007) now states this in the AUC help.
+

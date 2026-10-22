@@ -429,8 +429,12 @@ survival_statistics <- function(df,
   # events was removed. Kaplan-Meier always gives a median in that case, so the
   # branch never ran.)
 
-  # Add reference group note
-  results$Note <- ifelse(results$Group == reference_group, "Reference group", "")
+  # Add reference group note, and say which arms' p-values are pairwise log-rank
+  # because Firth's did not converge.
+  fallback <- attr(model_results$results, "firth_p_fallback")
+  results$Note <- ifelse(results$Group == reference_group, "Reference group",
+                  ifelse(results$Group %in% fallback,
+                         "p: pairwise log-rank (Firth's p-value did not converge)", ""))
   
   # Print formatted results
   if (isTRUE(verbose)) print_results(results, df, treatment_column, time_column, censor_column)
@@ -849,9 +853,15 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
       
       # Fit model using the simplified data frame
       if (requireNamespace("coxphf", quietly = TRUE)) {
+        # coxphf's defaults (maxit = 50, maxstep = 0.5) often stop short of
+        # the profile-likelihood p-value when an arm has no events, the case
+        # Firth is used for: it warned and returned NA, and the p fell back to
+        # a log-rank test. More, smaller steps converge; the estimates and
+        # intervals are unchanged where the defaults converged.
         model <- coxphf::coxphf(
-          survival::Surv(time, status) ~ group, 
-          data = analysis_df
+          survival::Surv(time, status) ~ group,
+          data = analysis_df,
+          maxit = 1000, maxstep = 0.05
         )
         
         # Extract results
@@ -892,8 +902,11 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
         }
 
         # Fallback: for non-reference groups where coxphf failed to converge
-        # (p_value is NA), compute a pairwise log-rank p-value instead.
+        # (p_value is NA), compute a pairwise log-rank p-value instead. It is
+        # kept at full precision (it was rounded to 4 decimals, so a p of 3e-7
+        # read 1e-4 before adjustment) and the arm's Note says so.
         non_ref_na <- which(results$Group != reference_group & is.na(results$P_Value))
+        attr(results, "firth_p_fallback") <- results$Group[non_ref_na]
         for (idx in non_ref_na) {
           grp <- results$Group[idx]
           pair_df <- df[df[[treatment_column]] %in% c(reference_group, grp), , drop = FALSE]
@@ -903,7 +916,7 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
               paste0("survival::Surv(", time_column, ", ", censor_column, ") ~ ", treatment_column)
             )
             lr <- survival::survdiff(pair_formula, data = pair_df)
-            results$P_Value[idx] <- round(1 - stats::pchisq(lr$chisq, df = 1), 4)
+            results$P_Value[idx] <- stats::pchisq(lr$chisq, df = 1, lower.tail = FALSE)
             if (isTRUE(verbose)) message(sprintf(
               "  Pairwise log-rank p-value used for %s (coxphf did not converge): %.4f",
               grp, results$P_Value[idx]))
