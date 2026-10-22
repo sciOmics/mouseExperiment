@@ -1,0 +1,1092 @@
+#' Toxicity Analysis UI
+#' @keywords internal
+toxicityUI <- function(id) {
+  ns <- NS(id)
+  fluidPage(
+    h2("Toxicity Analysis"),
+
+    p("Analyze body weight toxicity, or combine with tumor efficacy to assess the therapeutic window. ",
+      "Requires a Weight/Mass column configured in the Data Upload tab."),
+
+    tags$div(class = "row collapsible-sidebar-row",
+      tags$div(class = "col-sm-3 sidebar-panel-col",
+        wellPanel(
+          h4("Analysis Parameters"),
+
+          uiOutput(ns("tox_weight_status")),
+
+          conditionalPanel(ns = ns,
+            condition = "output.tox_weight_available == true",
+
+            # Explanations sit in help_tip() tooltips (26.10.009).
+            selectInput(ns("tox_model_type"),
+              tagList("Statistical Model", help_tip(paste(
+                "Body Weight Analysis models weight trajectories with a mixed-effects",
+                "model and times each animal to a weight-loss threshold. Therapeutic",
+                "Window also needs a tumour volume column, and sets each arm's tumour",
+                "growth inhibition against its weight loss."))),
+              choices = c(
+                "Body Weight Analysis" = "bw",
+                "Therapeutic Window"   = "et"
+              ),
+              selected = "bw"
+            ),
+
+            # The reference is the study's control group (R20-D.H).
+            uiOutput(ns("tox_reference_note")),
+
+            hr(),
+            h5(strong("Tumor Weight Adjustment")),
+            checkboxInput(ns("tox_adjust_tumor"), "Subtract estimated tumor weight", value = TRUE),
+            conditionalPanel(ns = ns, "input.tox_adjust_tumor == true",
+              numericInput(ns("tox_tumor_density"), "Tumor density (g/cm\u00b3)",
+                           value = 1.0, min = 0.1, max = 3.0, step = 0.1),
+              uiOutput(ns("tox_mass_formula"))
+            ),
+
+            hr(),
+
+            # Body Weight-specific options
+            conditionalPanel(ns = ns, "input.tox_model_type == 'bw'",
+              h5(strong("Mixed Model Options")),
+              checkboxGroupInput(ns("tox_covariates"), "Covariates",
+                choices = c("Tumor Volume" = "volume",
+                            "Sex" = "sex",
+                            "Initial Mass" = "initial_mass"),
+                selected = "volume"
+              ),
+              uiOutput(ns("tox_covariate_note")),
+              radioButtons(ns("tox_estimation"),
+                tagList("Estimation method", help_tip(paste(
+                  "REML (restricted maximum likelihood) estimates the variance components",
+                  "without the downward bias of ML, and is the usual choice for reporting",
+                  "a model. ML (maximum likelihood) is needed only to compare models that",
+                  "differ in their fixed effects, for example with and without a covariate,",
+                  "by a likelihood-ratio test or AIC."))),
+                choices = c("REML" = "REML", "ML" = "ML"),
+                selected = "REML", inline = TRUE
+              ),
+              hr(),
+              h5(strong("Weight Loss Threshold")),
+              sliderInput(ns("tox_threshold"), "Threshold (%)",
+                          min = 5, max = 40, value = 20, step = 1),
+              uiOutput(ns("tox_baseline_day_ui"))
+            ),
+
+            # Therapeutic-window options
+            conditionalPanel(ns = ns, "input.tox_model_type == 'et'",
+              uiOutput(ns("tox_et_vol_status")),
+              # CODE_REVIEW.md backend R3.5 / G.3 + R3.6 / R3.7.
+              h5(strong("Endpoint & Uncertainty")),
+              selectInput(ns("tox_endpoint_method"),
+                tagList("Endpoint estimand", help_tip(paste(
+                  "Model-based reads each arm's geometric mean at the endpoint day from a",
+                  "log-scale mixed model of every observation, so nothing is discarded.",
+                  "Animals leave because their tumours grew, so using only the survivors",
+                  "selects slower growers, most in the control arm, and biases TGI down;",
+                  "use Survivors only to reproduce a pre-0.8.0 figure."))),
+                choices = c(
+                  "Model-based (recommended)" = "model",
+                  "Each animal's last observation" = "last_obs",
+                  "Survivors at the endpoint day (legacy)" = "survivors"),
+                selected = "model"),
+              numericInput(ns("tox_n_boot"),
+                tagList("Interval draws (0 = skip)", help_tip(paste(
+                  "Draws behind the 95% intervals: of the fitted model for TGI (model",
+                  "estimand), and of the animals for weight loss and the observed",
+                  "estimands. Without intervals there is no tolerability flag."))),
+                value = 2000, min = 0, max = 20000, step = 500),
+              hr(),
+              h5(strong("Tolerability")),
+              numericInput(ns("tox_tol_threshold"),
+                tagList("Tolerability threshold (% weight loss)", help_tip(paste(
+                  "An arm is Tolerated when the 95% interval for its mean worst weight",
+                  "loss lies below this threshold, Not tolerated when it lies at or above",
+                  "it, and Unclear when it contains it."))),
+                value = 20, min = 5, max = 50, step = 1)
+            ),
+
+            br(),
+            actionButton(ns("run_tox_analysis"),
+                        "Run Analysis",
+                        class = "btn-lg btn-primary btn-block")
+          ),
+
+          br(),
+          uiOutput(ns("tox_status_msg"))
+        )
+      ),
+
+      tags$div(class = "col-sm-9 main-panel-col",
+        tags$button(
+          class = "btn btn-default btn-xs sidebar-toggle-btn",
+          type  = "button",
+          title = "Toggle options panel",
+          tags$i(class = "fa fa-chevron-left fa-fw"), " Collapse"
+        ),
+
+        tabsetPanel(
+          id = ns("tox_results_tabs"),
+
+          tabPanel("Info",
+            fluidRow(
+              column(10, offset = 1,
+                br(),
+
+                # ── Overview ────────────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading", h4(class = "panel-title", "Overview")),
+                  div(class = "panel-body",
+                    p("The Toxicity tab provides two complementary analysis modes selectable from the ",
+                      strong("Statistical Model"), " dropdown:"),
+                    tags$ul(
+                      tags$li(strong("Body Weight Analysis"), " \u2014 models longitudinal weight trajectories using a linear mixed-effects model, and times each animal to a weight-loss threshold (Kaplan-Meier)."),
+                      tags$li(strong("Therapeutic Window"), " \u2014 sets each arm's tumor growth inhibition beside its worst body-weight loss, each with an interval, and flags whether the weight loss is tolerated. Requires a tumor volume column.")
+                    ),
+                    p(tags$small(class = "text-muted",
+                      "Body weight is used as the toxicity surrogate throughout. ",
+                      "When 'Subtract estimated tumor weight' is enabled, the gross weight is corrected by ",
+                      "subtracting the tumour mass, volume \u00d7 density (g/cm\u00b3), with the volume in the units ",
+                      "declared under Study Design on Data Upload (mm\u00b3 is divided by 1000), giving a net host weight."))
+                  )
+                ),
+
+                # ── Body Weight Analysis ────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-info", "Body Weight Analysis"), " \u2014 Analyses & Metrics")),
+                  div(class = "panel-body",
+
+                    h5(strong("Mixed-Effects Model")),
+                    p("Fits a linear mixed-effects model to all repeated weight measurements:"),
+                    tags$blockquote(
+                      tags$code("Weight ~ Treatment \u00d7 Day + [covariates] + (Day | Mouse)")
+                    ),
+                    p("Random slopes allow each mouse's weight trend to deviate from the group average. ",
+                      "Fixed effects test whether trajectories differ by treatment group over time."),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("REML"), tags$dd("Restricted Maximum Likelihood \u2014 preferred for final parameter estimates (default)."),
+                      tags$dt("ML"), tags$dd("Maximum Likelihood \u2014 use when comparing models with different fixed-effect structures.")
+                    ),
+                    tags$p(tags$b("Covariates (optional):")),
+                    tags$ul(
+                      tags$li(strong("Tumor Volume"), " \u2014 controls for tumor-driven weight changes independent of drug toxicity."),
+                      tags$li(strong("Sex"), " \u2014 adjusts for sex-specific baseline weight differences."),
+                      tags$li(strong("Initial Mass"), " \u2014 adjusts for pre-treatment weight variation across animals.")
+                    ),
+
+                    hr(),
+                    h5(strong("Weight Loss KM Curve")),
+                    p("Treats each mouse as an event-time observation where the event is crossing the weight-loss threshold (default 20%). ",
+                      "Mice that never reach the threshold are censored at their last observation. ",
+                      "A Kaplan-Meier curve is fitted per group; group differences are tested with the log-rank test. ",
+                      "When an arm has no events, Firth's penalised Cox model is used for the hazard ratios."),
+                    div(class = "alert alert-warning", style = "font-size:0.9em;",
+                      icon("triangle-exclamation"), " ",
+                      strong("Competing risks."), " A mouse euthanised for tumour burden can no longer experience a ",
+                      "weight-loss event, so treating it as an ordinary censoring overstates the weight-loss risk \u2014 ",
+                      "censoring assumes the animal remained at risk, and it did not. Which animals were removed, ",
+                      "and why, is known only from a ", strong("removal-reason column"), " (mapped on Data Upload). ",
+                      "With one, a removal for weight loss or body condition counts as a weight-loss event, a planned ",
+                      "end (end of study, scheduled sacrifice, data cut) as censoring, and any other removal as a ",
+                      "competing risk, with an Aalen-Johansen cumulative incidence reported. Without one, an animal ",
+                      "whose record ends early is censored at its last day, which assumes its later risk was like that ",
+                      "of the animals still on study; the panel states which assumption applied. The censoring summary ",
+                      "breaks down, per arm, how each animal left the study."),
+                    p(tags$b("Weight Loss Threshold:"),
+                      " The % body weight loss that constitutes a toxicity event. The default (20%) is a common IACUC endpoint; adjust to match study-specific welfare criteria.")
+                  )
+                ),
+
+                # ── Therapeutic Window ──────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading",
+                    h4(class = "panel-title", tags$span(class = "label label-warning", "Therapeutic Window"), " \u2014 Analyses & Metrics")),
+                  div(class = "panel-body",
+
+                    h5(strong("Efficacy")),
+                    p("Efficacy is tumor growth inhibition at the endpoint day, relative to the reference group: ",
+                      tags$code("TGI = (1 \u2212 V_treated / V_control) \u00d7 100"),
+                      ". Values > 0 indicate tumor suppression. ",
+                      "Each arm's endpoint volume comes from the endpoint estimand described below; ",
+                      "it is the same TGI as on the Drug Synergy and Dose Response tabs."),
+                    h5(strong("Evaluable days")),
+                    p(evaluable_rule_text(), " The endpoint day is the last day on which every arm is ",
+                      "evaluable; later days are not used, because an arm's mean there would rest on a ",
+                      "minority of its animals or be extrapolated past them. The results name the day and ",
+                      "list the days and arms the rule excluded."),
+
+                    hr(),
+                    h5(strong("Tolerability")),
+                    p("Each animal's worst weight loss is its largest drop below its own first weighing, in percent, ",
+                      "over its whole record (weight gain counts as no loss). The arm's ", strong("worst weight loss"),
+                      " is the mean over its animals, with a 95% interval from resampling animals. ",
+                      strong("Over threshold"), " counts the animals whose own worst loss reached the threshold."),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Tolerated"), tags$dd("the interval lies below the tolerability threshold"),
+                      tags$dt("Not tolerated"), tags$dd("the interval lies at or above it"),
+                      tags$dt("Unclear"), tags$dd("the interval contains it")
+                    ),
+                    p("The flag describes the arm's average animal, so a Tolerated arm can still have an animal over ",
+                      "the threshold; read the two columns together. Weighings between calliper days count: for the ",
+                      "tumour-mass correction, each animal's volume is interpolated between its calliper readings."),
+
+                    hr(),
+                    h5(strong("Reading the two axes")),
+                    p("The Therapeutic Window table and plot set each arm's TGI (efficacy) beside its worst weight ",
+                      "loss (tolerability). They are read separately: the table is not a ranking. A ratio of the two ",
+                      "was reported before version 26.09.005; it was withdrawn because an arm that loses no weight ",
+                      "needed an arbitrary floor, and one number cannot show both effects."),
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Intervals"),
+                      tags$dd("Under the model estimand, TGI intervals come from draws of the fitted model; under ",
+                              "the observed estimands, from resampling animals. Weight-loss intervals always come ",
+                              "from resampling animals."),
+                      tags$dt("Interval draws"),
+                      tags$dd("Number of draws or resamples behind those intervals. Set to 0 to skip, which returns ",
+                              "point estimates with no interval."),
+                      tags$dt("Endpoint estimand"),
+                      tags$dd(strong("Model"), " (default) estimates group means at the endpoint from the fitted ",
+                              "model, using every observation each animal contributed. ", strong("Observed"),
+                              " uses only animals still present at the endpoint. The two differ whenever animals are ",
+                              "removed early, and the difference is not small: because the fastest-growing controls ",
+                              "are the ones that leave, the observed estimand flatters the control arm and understates ",
+                              "TGI. Per-arm attrition is reported beneath the table so the size of the issue is visible.")
+                    ),
+
+                    br()
+                  )
+                ),
+
+                # ── Shared Parameters ────────────────────────────────────────
+                div(class = "panel panel-default",
+                  div(class = "panel-heading", h4(class = "panel-title", "Shared Parameters")),
+                  div(class = "panel-body",
+                    tags$dl(class = "dl-horizontal",
+                      tags$dt("Reference Group"),
+                      tags$dd("The study's control group, chosen under Study Design on Data Upload; it is the denominator for TGI and the reference for every comparison."),
+                      tags$dt("Subtract Tumor Weight"),
+                      tags$dd("Removes the estimated tumor mass (volume \u00d7 density, in the declared volume units) from gross body weight before all calculations, so that body weight reflects host tissue rather than tumor burden. It needs the volume units declared under Study Design on Data Upload."),
+                      tags$dt("Tumor Density"),
+                      tags$dd("Used only when tumor weight adjustment is enabled. Default 1.0 g/cm\u00b3 (water density). Typical soft-tissue tumor density is 0.9\u20131.1 g/cm\u00b3."),
+                      tags$dt("Baseline Day"),
+                      tags$dd("The study day used to compute % change from baseline. Defaults to the earliest available day.")
+                    )
+                  )
+                ),
+
+                br()
+              )
+            )
+          ),
+
+          tabPanel("Summary",
+            tab_info(
+              strong("Analysis summary. "),
+              "Body Weight Analysis: mixed-effects model output, fixed effects, and each arm's rate of weight change. ",
+              "Therapeutic Window: TGI and worst weight loss per arm, with the tolerability flag."
+            ),
+            shinycssloaders::withSpinner(verbatimTextOutput(ns("tox_summary")))
+          ),
+
+          tabPanel("Model Results",
+            uiOutput(ns("tox_bw_mixed_model_tab_info")),
+            h4("Fixed Effects"),
+            shinycssloaders::withSpinner(DT::DTOutput(ns("tox_fixed_effects"))),
+            downloadButton(ns("download_tox_model"), "Download Fixed Effects CSV"),
+            hr(),
+            h4("Rate of Weight Change by Treatment (g/day)"),
+            shinycssloaders::withSpinner(DT::DTOutput(ns("tox_emmeans"))),
+            downloadButton(ns("download_tox_emmeans_csv"), "Download Rates CSV"),
+            hr(),
+            h4("Difference in Rate vs the Reference (g/day)"),
+            shinycssloaders::withSpinner(DT::DTOutput(ns("tox_rate_comparisons"))),
+            downloadButton(ns("download_tox_rate_comparisons_csv"), "Download Comparisons CSV")
+          ),
+
+          tabPanel("Weight Loss KM",
+            tab_info(
+              strong("Time-to-threshold event data. "),
+              "Each row is one mouse. Event = 1 when the weight-loss threshold was crossed; ",
+              "Event = 0 (censored) when the mouse never reached the threshold. ",
+              "This table feeds the Kaplan-Meier plot in the Plots tab."
+            ),
+            h4("Time-to-Threshold Event Data"),
+            shinycssloaders::withSpinner(DT::DTOutput(ns("tox_event_table"))),
+            downloadButton(ns("download_tox_events"), "Download Events CSV")
+          ),
+
+          tabPanel("Plots",
+            fluidRow(
+              column(3,
+                wellPanel(
+                  conditionalPanel(ns = ns, "output.tox_model_type_val == 'bw'",
+                    selectInput(ns("tox_bw_plot_selector"), "Plot Type",
+                      choices = c(
+                        "Body Weight Trajectory"  = "trajectory",
+                        "Weight Loss KM Curve"    = "km"
+                      ),
+                      selected = "trajectory"
+                    )
+                  ),
+                  conditionalPanel(ns = ns, "output.tox_model_type_val == 'et'",
+                    selectInput(ns("tox_et_plot_selector"), "Plot Type",
+                      choices = c(
+                        "Therapeutic Window (TGI vs worst weight loss)" = "twm"
+                      ),
+                      selected = "twm"
+                    )
+                  ),
+                  conditionalPanel(ns = ns,
+                    "output.tox_model_type_val == 'bw' && input.tox_bw_plot_selector == 'trajectory'",
+                    hr(),
+                    radioButtons(ns("tox_traj_type"), "Display style",
+                      choices = c("Individual mice"            = "spaghetti",
+                                  "Individual + Group Mean"    = "mean_spaghetti",
+                                  "Mean \u00b1 SEM"            = "mean_sem",
+                                  "Mean \u00b1 SD"             = "mean_sd"),
+                      selected = "spaghetti"
+                    )
+                  ),
+                  conditionalPanel(ns = ns, "output.tox_model_type_val == 'bw'",
+                    ctrl_section("tox-groups", "sort", "Groups",
+                      uiOutput(ns("tox_group_order_color_ui"))
+                    )
+                  ),
+                  conditionalPanel(ns = ns, "output.tox_model_type_val == 'et'",
+                    ctrl_section("tox-et-groups", "sort", "Groups",
+                      uiOutput(ns("tox_et_group_order_color_ui"))
+                    )
+                  ),
+                  ctrl_section("tox-scaling", "expand", "Scaling",
+                    sliderInput(ns("tox_plot_text_size"), "Text size (pt)",
+                                min = 10, max = 24, value = 14, step = 1),
+                    conditionalPanel(ns = ns,
+                      "output.tox_model_type_val == 'bw' && input.tox_bw_plot_selector == 'trajectory'",
+                      sliderInput(ns("tox_traj_line_width"), "Line width",
+                                  min = 0.5, max = 3, value = 1, step = 0.25)
+                    )
+                  ),
+                  ctrl_section("tox-export", "arrows-alt", "Plot Size / Export",
+                    fluidRow(
+                      column(6, numericInput(ns("tox_plot_width"),  "Width (px)",  800, min = 200, max = 5000, step = 50)),
+                      column(6, numericInput(ns("tox_plot_height"), "Height (px)", 500, min = 200, max = 5000, step = 50))
+                    ),
+                    fluidRow(
+                      column(6, numericInput(ns("tox_plot_dpi"), "DPI", 100, min = 72, max = 600, step = 10)),
+                      column(6, tags$div(style = "margin-top: 25px;",
+                               downloadButton(ns("download_tox_active_plot"), "Download")))
+                    )
+                  )
+                )
+              ),
+              column(9,
+                conditionalPanel(ns = ns,
+                  "output.tox_model_type_val == 'bw' && input.tox_bw_plot_selector == 'trajectory'",
+                  h4("Body Weight Trajectory"),
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tox_trajectory_plot"), width = "auto", height = "auto")
+                  )
+                ),
+                conditionalPanel(ns = ns,
+                  "output.tox_model_type_val == 'bw' && input.tox_bw_plot_selector == 'km'",
+                  h4("Weight Loss Kaplan-Meier Curve"),
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tox_km_plot"), width = "auto", height = "auto")
+                  ),
+                  # CODE_REVIEW.md backend R3.26 -- censoring here is informative:
+                  # an animal whose record ends early usually ended because it was
+                  # euthanised for tumour burden, which shares a cause with weight
+                  # loss. KM assumes a censored animal remains at risk, so 1 - KM
+                  # overstates weight-loss incidence whenever that happens.
+                  uiOutput(ns("tox_km_competing_note")),
+                  DT::DTOutput(ns("tox_km_censoring_table"))
+                ),
+                conditionalPanel(ns = ns,
+                  "output.tox_model_type_val == 'et' && input.tox_et_plot_selector == 'twm'",
+                  h4("Therapeutic Window"),
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tox_et_twm_plot"), width = "auto", height = "auto")
+                  )
+                )
+              )
+            )
+          ),
+
+          tabPanel("Diagnostics",
+            conditionalPanel(ns = ns, "output.tox_model_type_val == 'bw'",
+              tab_info(
+                strong("Body-weight model diagnostics. "),
+                "Residual, random-effects and influence diagnostics for the ",
+                "body-weight mixed model."
+              ),
+              fluidRow(
+                column(6,
+                  h4("Q-Q Plot of Residuals"),
+                  plot_help(
+                      "The residuals are standardised, so for a well-fitting model the ",
+                      "points fall along the red reference line. ",
+                      strong("S-shape: "), "heavy-tailed residuals \u2014 outliers or a ",
+                      "transform issue. ",
+                      strong("Bow: "), "skewed residuals \u2014 usually fixed by changing the ",
+                      "weight transform."),
+                  div(style = "margin-bottom: 24px;",
+                    shinycssloaders::withSpinner(
+                      plotOutput(ns("tox_diag_qq"), height = "380px")
+                    )
+                  )
+                ),
+                column(6,
+                  h4("Residuals vs Fitted"),
+                  plot_help(
+                      "Random scatter around zero = LMM assumptions met. ",
+                      strong("Curved blue line: "), "weight does not change linearly ",
+                      "with time, so the Day slope averages over a curved ",
+                      "trajectory \u2014 read it alongside the trajectory plot. ",
+                      strong("Fan shape: "), "heteroscedasticity \u2014 consider log-",
+                      "transforming or weighting the response."),
+                  div(style = "margin-bottom: 24px;",
+                    shinycssloaders::withSpinner(
+                      plotOutput(ns("tox_diag_resid_fitted"), height = "380px")
+                    )
+                  )
+                )
+              ),
+              br(),
+              fluidRow(
+                column(6,
+                  h4("Scale-Location"),
+                  plot_help(
+                      "sqrt(|residuals|) vs fitted \u2014 magnifies variance trends. ",
+                      "Flat blue line = constant variance. Upward slope = ",
+                      "heteroscedasticity."),
+                  div(style = "margin-bottom: 24px;",
+                    shinycssloaders::withSpinner(
+                      plotOutput(ns("tox_diag_scale_location"), height = "380px")
+                    )
+                  )
+                ),
+                column(6,
+                  h4("Random-effects Q-Q"),
+                  plot_help(
+                      "Per-animal random intercepts should be normally ",
+                      "distributed. Heavy tails are rare; safe to ignore at ",
+                      "typical preclinical N."),
+                  div(style = "margin-bottom: 24px;",
+                    shinycssloaders::withSpinner(
+                      plotOutput(ns("tox_diag_re_qq"), height = "380px")
+                    )
+                  )
+                )
+              ),
+              # CODE_REVIEW.md DIAGNOSTICS gap (13) — LMM influence
+              # diagnostics for BW.
+              conditionalPanel(
+                ns = ns,
+                condition = "output.tox_show_influence === true",
+                hr(),
+                h4("Influence diagnostics (case-deletion)"),
+                tab_info(
+                  strong("Cook's distance"), " measures the overall ",
+                  "effect of leaving out each animal (one row per animal). ",
+                  "Above the threshold (4 / number of animals) = an animal ",
+                  "that moves the fit. ",
+                  strong("DFBETAS"), " shows per-coefficient influence; ",
+                  "values | > 1 | are flagged."
+                ),
+                fluidRow(
+                  column(6,
+                    h5("Cook's distance"),
+                    shinycssloaders::withSpinner(
+                      DT::DTOutput(ns("tox_cooks_distance"))
+                    )
+                  ),
+                  column(6,
+                    h5("DFBETAS"),
+                    shinycssloaders::withSpinner(
+                      DT::DTOutput(ns("tox_dfbetas"))
+                    )
+                  )
+                )
+              )
+            ),
+            conditionalPanel(ns = ns, "output.tox_model_type_val == 'et'",
+              tab_info(
+                "Model diagnostics are only available in ",
+                strong("Body Weight Analysis"), " mode. ",
+                "Switch the Statistical Model in the sidebar to access them."
+              )
+            )
+          ),
+
+          # R20-D.Y: replaced "Download All"; choose what goes into the ZIP.
+          tabPanel(
+            title = tags$span(icon("file-zipper"), " Download Results"),
+            value = "__download_results__",
+            wellPanel(download_results_ui(ns, "tox"))
+          )
+        )
+      )
+    )
+  )
+}
+
+#' Toxicity Analysis Server
+#' @keywords internal
+toxicity_server <- function(id, rv) {
+  moduleServer(id, function(input, output, session) {
+
+  # R20.D6: the body-weight model's Cancel button, and Resume from the banner.
+  register_bayes_resume(
+    kind = "bw_model", tab_name = "Toxicity",
+    modal_title  = "Fitting the body-weight model\u2026",
+    modal_detail = "Results will appear automatically when complete.",
+    input = input, output = output, session = session, rv = rv,
+    job_id_field = "tox_job_id",
+    finalize_success      = .finalize_bw_success,
+    finalize_failure      = .finalize_bw_failure,
+    finalize_cancellation = .finalize_bw_cancellation,
+    finalize_lost         = .finalize_bw_lost,
+    cancel_input          = "tox_cancel_job")
+
+
+  # D.7: this was an unconditional `rv$tox_results <- NULL`. `rv` is created empty
+  # in app.R and each module mounts once, so the assignment never cleared anything
+  # in production -- but it wiped the slot at module init, which made these five
+  # modules impossible to drive through testServer() with a pre-populated result.
+  # That is why I.2 stayed open across four rounds: every attempt to assert render
+  # behaviour got the "run an analysis first" placeholder back. Removed; the slot
+  # reads NULL until an analysis writes it either way.
+
+  ordered_tox_grps <- reactive(
+    get_ordered_groups(input, "tox", rv$tox_plot_groups)
+  )
+  ordered_et_grps <- reactive(
+    get_ordered_groups(input, "tox_et", rv$tox_et_plot_groups)
+  )
+
+  tox_weight_available <- reactive({
+    !is.null(rv$weight_col) && rv$weight_col != ""
+  })
+  output$tox_weight_available <- reactive({ tox_weight_available() })
+  outputOptions(output, "tox_weight_available", suspendWhenHidden = FALSE)
+
+  output$tox_model_type_val <- reactive({ input$tox_model_type %||% "bw" })
+  outputOptions(output, "tox_model_type_val", suspendWhenHidden = FALSE)
+
+  # ---- Dynamic tab insertion based on model type ----
+  bw_tabs_inserted <- reactiveVal(TRUE)   # BW tabs present in initial UI
+  et_tabs_inserted <- reactiveVal(FALSE)
+
+  observeEvent(input$tox_model_type, {
+    mt      <- input$tox_model_type %||% "bw"
+    tabs_id <- "tox_results_tabs"
+    ns      <- session$ns
+
+    if (mt == "et" && !isTRUE(et_tabs_inserted())) {
+      if (isTRUE(bw_tabs_inserted())) {
+        removeTab(inputId = tabs_id, target = "Model Results")
+        removeTab(inputId = tabs_id, target = "Weight Loss KM")
+        bw_tabs_inserted(FALSE)
+      }
+      insertTab(inputId = tabs_id, target = "Summary", position = "after",
+        tabPanel("Therapeutic Window",
+          tab_info(
+            strong("Therapeutic window. "),
+            "Each arm's TGI at the endpoint day beside its worst weight loss, each with a ",
+            "95% interval, and whether the weight loss is tolerated. Read the two axes ",
+            "separately; the table is not a ranking."
+          ),
+          # R20-K: the endpoint day and the days the rule excluded; then the
+          # tolerability rule and where the intervals come from.
+          uiOutput(ns("tox_twm_evaluability_note")),
+          uiOutput(ns("tox_twm_tolerability_note")),
+          shinycssloaders::withSpinner(DT::DTOutput(ns("tox_et_twm_table"))),
+          uiOutput(ns("tox_twm_attrition_ui")),
+          DT::DTOutput(ns("tox_twm_attrition_table")),
+          downloadButton(ns("download_et_twm_csv"), "Download CSV")
+        )
+      )
+      et_tabs_inserted(TRUE)
+
+    } else if (mt == "bw" && !isTRUE(bw_tabs_inserted())) {
+      if (isTRUE(et_tabs_inserted())) {
+        removeTab(inputId = tabs_id, target = "Therapeutic Window")
+        et_tabs_inserted(FALSE)
+      }
+      insertTab(inputId = tabs_id, target = "Summary", position = "after",
+        tabPanel("Model Results",
+          uiOutput(ns("tox_bw_mixed_model_tab_info")),
+          h4("Fixed Effects"),
+          shinycssloaders::withSpinner(DT::DTOutput(ns("tox_fixed_effects"))),
+          downloadButton(ns("download_tox_model"), "Download Fixed Effects CSV"),
+          hr(),
+          h4("Rate of Weight Change by Treatment (g/day)"),
+          shinycssloaders::withSpinner(DT::DTOutput(ns("tox_emmeans"))),
+          downloadButton(ns("download_tox_emmeans_csv"), "Download Rates CSV"),
+          hr(),
+          h4("Difference in Rate vs the Reference (g/day)"),
+          shinycssloaders::withSpinner(DT::DTOutput(ns("tox_rate_comparisons"))),
+          downloadButton(ns("download_tox_rate_comparisons_csv"), "Download Comparisons CSV")
+        )
+      )
+      insertTab(inputId = tabs_id, target = "Model Results", position = "after",
+        tabPanel("Weight Loss KM",
+          tab_info(
+            strong("Time-to-threshold event data. "),
+            "Each row is one mouse. Event = 1 when the weight-loss threshold was crossed; ",
+            "Event = 0 (censored) when the mouse never reached the threshold. ",
+            "This table feeds the Kaplan-Meier plot in the Plots tab."
+          ),
+          h4("Time-to-Threshold Event Data"),
+          shinycssloaders::withSpinner(DT::DTOutput(ns("tox_event_table"))),
+          downloadButton(ns("download_tox_events"), "Download Events CSV")
+        )
+      )
+      bw_tabs_inserted(TRUE)
+    }
+  }, ignoreNULL = FALSE)
+
+  output$tox_weight_status <- renderUI({
+    if (!rv$data_valid) {
+      return(status_alert("Please upload and configure data in the Data Upload tab first.", "warning"))
+    }
+    if (is.null(rv$processed_data)) {
+      tryCatch(ensure_preprocessed(rv), error = function(e) NULL)
+    }
+    if (!tox_weight_available()) {
+      return(status_alert(
+        "No Weight/Mass column selected. Configure it in Data Upload \u2192 Optional Columns.",
+        "warning"))
+    }
+    status_alert(paste("Weight column:", rv$weight_col), "success")
+  })
+
+  output$tox_et_vol_status <- renderUI({
+    has_vol <- !is.null(rv$vol_col) && rv$vol_col != ""
+    if (!has_vol)
+      return(status_alert("Therapeutic Window also requires a tumor volume column.", "warning"))
+    invisible(NULL)
+  })
+
+  # The study's control group, in the labels of the data this tab analyses
+  # ("Treatment Dose" after a Tumour Growth run with a dose column).
+  tox_ref <- reactive({
+    req(rv$processed_data, rv$tx_col)
+    study_reference(rv, rv$processed_data[[rv$tx_col]])
+  })
+
+  output$tox_reference_note <- renderUI({
+    reference_note(rv, tryCatch(tox_ref(), error = function(e) NULL))
+  })
+
+  # R20.D34: the conversion follows the declared units.
+  output$tox_mass_formula <- renderUI({
+    switch(rv$settings$volume_units %||% "",
+      mm3 = tags$p(tags$small("Tumor mass (g) = Volume (mm\u00b3) \u00d7 density / 1000")),
+      cm3 = tags$p(tags$small("Tumor mass (g) = Volume (cm\u00b3) \u00d7 density")),
+      tags$p(class = "text-danger", tags$small(icon("exclamation-circle"),
+        " Declare the tumour volume units under Study Design on Data Upload ",
+        "to use this correction.")))
+  })
+
+  output$tox_baseline_day_ui <- renderUI({
+    req(rv$processed_data, rv$time_col)
+    days <- sort(unique(na.omit(rv$processed_data[[rv$time_col]])))
+    day_choices <- c("First measurement" = "first",
+                     setNames(as.character(days), paste("Day", days)))
+    selectInput(session$ns("tox_baseline_day"), "Baseline day",
+                choices = day_choices, selected = "first")
+  })
+
+  observe({
+    req(rv$processed_data)
+    has_vol <- !is.null(rv$vol_col)  && rv$vol_col  != ""
+    has_sex <- !is.null(rv$sex_col) && rv$sex_col != ""
+    available <- "initial_mass"
+    if (has_vol) available <- c("volume", available)
+    if (has_sex) available <- c(available, "sex")
+    choices  <- c("Tumor Volume" = "volume", "Sex" = "sex", "Initial Mass" = "initial_mass")
+    choices  <- choices[choices %in% available]
+    selected <- intersect(input$tox_covariates %||% "volume", available)
+    updateCheckboxGroupInput(session, "tox_covariates", choices = choices, selected = selected)
+  })
+
+  # R20.D58: with "Subtract estimated tumor weight" on (the default) the
+  # backend drops the Tumor Volume covariate (also ticked by default) and says
+  # so only in a message the dashboard did not show.
+  output$tox_covariate_note <- renderUI({
+    if (!isTRUE(input$tox_adjust_tumor) || !"volume" %in% (input$tox_covariates %||% character(0)))
+      return(NULL)
+    helpText(icon("circle-info"), " Tumour mass is already subtracted from body weight, so the ",
+             "Tumor Volume covariate is not used: adjusting for it as well would count ",
+             "tumour burden twice. To adjust for volume instead, untick 'Subtract ",
+             "estimated tumor weight'.")
+  })
+
+  # ---- Run Analysis ----
+  observeEvent(input$run_tox_analysis, {
+    req(rv$processed_data, tox_weight_available())
+
+    model_type <- input$tox_model_type %||% "bw"
+
+    if (model_type == "et" && (is.null(rv$vol_col) || rv$vol_col == "")) {
+      output$tox_status_msg <- renderUI({
+        status_alert("Therapeutic Window requires a tumor volume column.", "danger")
+      })
+      return()
+    }
+
+    # The current subset filter applies (ensure_preprocessed() re-applies it
+    # to the cached frame); rv$processed_data alone carried the filter as it
+    # was when the cache was built.
+    pp <- tryCatch(ensure_preprocessed(rv), error = function(e) {
+      output$tox_status_msg <- renderUI(status_alert(
+        paste0("Preprocessing failed: ", conditionMessage(e)), "danger"))
+      NULL
+    })
+    if (is.null(pp)) return()
+
+    data      <- pp$data
+    wt_col    <- rv$weight_col
+    vol_col   <- pp$vol_col
+    time_col  <- pp$time_col
+    tx_col    <- pp$tx_col
+    id_col    <- rv$id_col
+    sex_col   <- rv$sex_col
+    cage_col  <- rv$cage_col
+    ref_group <- study_reference(rv, data[[tx_col]])
+    has_vol   <- !is.null(vol_col) && vol_col %in% names(data)
+    adjust    <- isTRUE(input$tox_adjust_tumor) && has_vol
+    density   <- input$tox_tumor_density %||% 1.0
+
+    # R20.D34: the tumour-mass correction converts volume to mass, so it needs
+    # the declared units. It used to guess them, 1000x wrong on the Weight demo.
+    units <- rv$settings$volume_units %||% ""
+    if (adjust && !units %in% c("mm3", "cm3")) {
+      output$tox_status_msg <- renderUI(status_alert(paste(
+        "Declare the tumour volume units (mm\u00b3 or cm\u00b3) under Study Design",
+        "on Data Upload: the tumour-mass correction depends on them. Or untick",
+        "'Subtract estimated tumor weight'."), "danger"))
+      return()
+    }
+    units <- if (adjust) units else NULL
+
+    output$tox_status_msg <- renderUI({ status_alert("Running analysis...", "info") })
+
+    results            <- list()
+    results$model_type <- model_type
+
+    if (model_type == "bw") {
+      covs         <- input$tox_covariates   %||% character(0)
+      est_method   <- input$tox_estimation   %||% "REML"
+      threshold    <- (input$tox_threshold   %||% 20) / 100
+      baseline_raw <- input$tox_baseline_day %||% "first"
+      baseline_day <- if (baseline_raw == "first") NULL else as.numeric(baseline_raw)
+
+      # R20-D.H / package R20.23: with a removal-reason column, weight-loss
+      # removals are events, planned ends censoring, and other removals
+      # competing risks. Without one, an early end is censoring.
+      rr <- removal_reason_spec(rv)
+      if (!is.null(rr) && !has_col(data, rr$column)) rr <- NULL
+
+      # R20.D6: the body-weight model (about 15 s) runs on the background
+      # worker; the rest of this analysis follows in .finalize_bw_success().
+      rv$tox_pending <- list(
+        results = results, data = data, model_type = model_type,
+        cols = list(tx = tx_col, id = id_col, cage = cage_col, time = time_col,
+                    wt = wt_col),
+        wl_args = list(
+          df = data, weight_column = wt_col, time_column = time_col,
+          treatment_column = tx_col, id_column = id_col,
+          # Backend R3.25: cage is part of the mouse key, so reused IDs across
+          # cages are not collapsed into one subject.
+          cage_column = cage_col,
+          volume_column = if (has_vol) vol_col else NULL,
+          adjust_tumor_weight = adjust, tumor_density = density,
+          volume_units = units,
+          threshold = threshold, baseline_day = baseline_day, reference_group = ref_group,
+          removal_reason_column = if (!is.null(rr)) rr$column,
+          weight_loss_reasons   = reasons_in(rr, "weight"),
+          planned_end_reasons   = reasons_in(rr, "planned")))
+      bw_args <- list(
+        df = data, weight_column = wt_col, time_column = time_col,
+        treatment_column = tx_col, id_column = id_col,
+        volume_column = if (has_vol) vol_col else NULL,
+        sex_column = sex_col, cage_column = cage_col,
+        adjust_tumor_weight = adjust, tumor_density = density,
+        volume_units = units,
+        covariates = covs, estimation = est_method, reference_group = ref_group)
+      launch_background_job(
+        kind = "bw_model",
+        task = background_task(mouseExperiment::analyze_body_weight, bw_args),
+        context = list(pending = rv$tox_pending),   # survives a page reload
+        input = input, output = output, session = session, rv = rv,
+        job_id_field = "tox_job_id",
+        modal_title  = "Fitting the body-weight model\u2026",
+        modal_detail = "It runs on the background worker, so other users are not held up.",
+        cancel_input = "tox_cancel_job",
+        finalize_success      = .finalize_bw_success,
+        finalize_failure      = .finalize_bw_failure,
+        finalize_cancellation = .finalize_bw_cancellation,
+        finalize_lost         = .finalize_bw_lost)
+      return()
+
+    } else {
+      show_analysis_modal("Running toxicity analysis\u2026", "Results will appear automatically when complete.")
+      on.exit(shiny::removeModal(), add = TRUE)
+
+      # Backend v0.8.0+ / v0.7.0+: the endpoint estimand and the mouse-level
+      # bootstrap. Defaults are the statistically correct ones; "survivors"
+      # exists only to reproduce pre-0.8.0 figures. CODE_REVIEW.md R3.D9.
+      ep_method <- input$tox_endpoint_method %||% "model"
+      n_boot_tw <- as.integer(input$tox_n_boot %||% 2000L)
+      tol_thr   <- as.numeric(input$tox_tol_threshold %||% 20)
+      if (length(tol_thr) != 1L || !is.finite(tol_thr) || tol_thr <= 1 || tol_thr >= 100) {
+        output$tox_status_msg <- renderUI(status_alert(
+          "The tolerability threshold is a weight loss in percent, above 1 and below 100.",
+          "danger"))
+        return()
+      }
+
+      results$twm <- safe_analysis(module = "et_twm", {
+        mouseExperiment::therapeutic_window_metric(
+          df = data, volume_column = vol_col, weight_column = wt_col,
+          time_column = time_col, treatment_column = tx_col, id_column = id_col,
+          cage_column = cage_col,  # R20.D31: cage is part of the animal key
+          adjust_tumor_weight = adjust, tumor_density = density,
+          volume_units = units, reference_group = ref_group,
+          # Backend 0.33.0: the endpoint model's zero floor, in the declared
+          # units even when the mass correction (and so `units`) is off.
+          zero_floor = if (identical(backend_volume_units(rv), "cm3")) 0.002 else NULL,
+          tolerability_threshold = tol_thr,
+          endpoint_method = ep_method, n_boot = n_boot_tw, boot_seed = 20260730L
+        )
+      })
+
+      results$twm_reference <- ref_group
+      n_err   <- as.integer(isTRUE(results$twm$error))
+      n_total <- 1L
+    }
+
+    .tox_finish(results, model_type, data, tx_col, n_err, n_total, output, session, rv)
+  })
+
+  # ---- Summary ----
+  output$tox_summary <- renderText({
+    req(rv$tox_results)
+    res <- rv$tox_results
+    if (res$model_type == "bw") {
+      mm <- res$mixed_model
+      if (!is.null(mm) && !isTRUE(mm$error)) return(mm$summary_text)
+      if (!is.null(mm) && isTRUE(mm$error))  return(paste("Mixed model error:", mm$message))
+      return("No results. Run the analysis first.")
+    }
+    lines <- c("=== THERAPEUTIC WINDOW SUMMARY ===", "")
+    if (!is.null(res$twm) && !isTRUE(res$twm$error)) {
+      tw    <- res$twm
+      tbl   <- tw$window_table
+      lines <- c(lines,
+        sprintf("Endpoint day: %s (%s estimand)", tw$endpoint_day, tw$endpoint_method),
+        sprintf("Tolerability threshold: %s%% weight loss", format(tw$tolerability_threshold)),
+        "", "TGI (efficacy) and mean worst weight loss (tolerability), with 95% intervals:", "")
+      for (i in seq_len(nrow(tbl))) {
+        r <- tbl[i, ]
+        tgi <- if (identical(r$Treatment, res$twm_reference)) "(reference)"
+               else sprintf("%.1f%% %s", r$TGI, fmt_interval(r$TGI_Lower, r$TGI_Upper))
+        lines <- c(lines, sprintf(
+          "  %s:  TGI %s  |  worst weight loss %.1f%% %s  |  %s  (%d of %d over the threshold)",
+          r$Treatment, tgi, r$Worst_Loss, fmt_interval(r$Worst_Loss_Lower, r$Worst_Loss_Upper),
+          if (is.na(r$Tolerability)) "no interval, no flag" else r$Tolerability,
+          r$N_Over_Threshold, r$N_Animals))
+      }
+      lines <- c(lines, "", tw$interval_note)
+    }
+    elapsed_str <- format_elapsed(res$elapsed_seconds)
+    if (!is.null(elapsed_str)) {
+      lines <- c(lines, "", paste("COMPUTATION TIME:", elapsed_str))
+    }
+    paste(lines, collapse = "\n")
+  })
+
+  # ---- BW: Tab info outputs ----
+
+  output$tox_bw_mixed_model_tab_info <- renderUI({
+    # Backend 0.30.0 (R20.44): the comparison is the rate of weight change.
+    # Weight at the mean day moved with any baseline imbalance and had much
+    # less power (0.14 against 0.84 in the review's simulation).
+    tab_info(
+      strong("Body Weight Mixed Model. "),
+      "The model fits each arm's weight trajectory over time. ",
+      strong("Rate of weight change"), " is each arm's average change in weight per day (g/day, ",
+      "negative when animals lose weight), adjusted for the covariates. ",
+      strong("Difference in rate"), " compares each arm with the reference arm: a negative ",
+      "estimate means the arm loses weight faster (or gains more slowly) than the reference. ",
+      "p-values are adjusted for the number of comparisons. ",
+      "Rates are not affected by differences in starting weight, which a comparison of ",
+      "weights at one day would be."
+    )
+  })
+
+  # ---- BW: Result tables ----
+  output$tox_fixed_effects <- DT::renderDT({
+    req(rv$tox_results, rv$tox_results$mixed_model)
+    mm <- rv$tox_results$mixed_model
+    if (isTRUE(mm$error)) return(DT::datatable(data.frame(Message = mm$message)))
+    DT::datatable(format_df_for_display(mm$fixed_effects),
+              options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
+  })
+
+  output$tox_emmeans <- DT::renderDT({
+    req(rv$tox_results, rv$tox_results$mixed_model)
+    mm <- rv$tox_results$mixed_model
+    if (isTRUE(mm$error) || is.null(mm$emmeans_table))
+      return(DT::datatable(data.frame(Message = "Not available")))
+    DT::datatable(format_df_for_display(mm$emmeans_table),
+              options = list(scrollX = TRUE), rownames = FALSE)
+  })
+
+  output$tox_rate_comparisons <- DT::renderDT({
+    req(rv$tox_results, rv$tox_results$mixed_model)
+    mm <- rv$tox_results$mixed_model
+    if (isTRUE(mm$error) || is.null(mm$pairwise_comparisons))
+      return(DT::datatable(data.frame(Message = "Not available")))
+    DT::datatable(format_df_for_display(as.data.frame(mm$pairwise_comparisons)),
+              options = list(scrollX = TRUE), rownames = FALSE)
+  })
+
+  output$tox_event_table <- DT::renderDT({
+    req(rv$tox_results, rv$tox_results$weight_loss)
+    wl <- rv$tox_results$weight_loss
+    if (isTRUE(wl$error)) return(DT::datatable(data.frame(Message = wl$message)))
+    DT::datatable(format_df_for_display(wl$event_data),
+              options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
+  })
+
+  # ---- ET: Result tables ----
+  # R20-K (package v0.27.0): two axes, each with its interval, and a
+  # tolerability flag; the TWM ratio and its ranking are gone.
+  output$tox_et_twm_table <- DT::renderDT({
+    req(rv$tox_results, rv$tox_results$twm)
+    twm <- rv$tox_results$twm
+    if (isTRUE(twm$error)) return(DT::datatable(data.frame(Message = twm$message)))
+    tw_tbl <- window_display_table(twm$window_table, rv$tox_results$twm_reference)
+    DT::formatStyle(
+      DT::datatable(tw_tbl, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+                rownames = FALSE),
+      "Tolerability", fontWeight = "bold",
+      color = DT::styleEqual(c("Tolerated", "Not tolerated", "Unclear"),
+                             c("#2e7d32", "#c62828", "#b26a00")))
+  })
+
+  output$tox_twm_tolerability_note <- renderUI({
+    req(rv$tox_results, rv$tox_results$twm)
+    twm <- rv$tox_results$twm
+    if (isTRUE(twm$error)) return(NULL)
+    w <- twm$window_table
+    crossed <- w[!is.na(w$Tolerability) & w$Tolerability == "Tolerated" &
+                   w$N_Over_Threshold > 0, , drop = FALSE]
+    tagList(
+      tags$p(class = "text-muted", style = "font-size:12px;",
+             icon("scale-balanced"), " ", strong("Tolerability. "),
+             twm$tolerability_rule, " ", twm$interval_note),
+      if (nrow(crossed))
+        status_alert(paste0(
+          paste(sprintf("%s (%d of %d)", crossed$Treatment, crossed$N_Over_Threshold,
+                        crossed$N_Animals), collapse = "; "),
+          ": tolerated on average, but some animals reached the threshold on their own."),
+          "warning"),
+      if (all(is.na(w$Tolerability)))
+        status_alert("No intervals were drawn (Interval draws = 0), so no arm is flagged.",
+                     "info")
+    )
+  })
+
+  output$tox_twm_evaluability_note <- renderUI({
+    req(rv$tox_results, rv$tox_results$twm)
+    twm <- rv$tox_results$twm
+    if (isTRUE(twm$error)) return(NULL)
+    evaluability_note(twm$evaluability, day = twm$endpoint_day)
+  })
+
+  output$tox_twm_attrition_ui <- renderUI({
+    req(rv$tox_results, rv$tox_results$twm)
+    twm <- rv$tox_results$twm
+    if (isTRUE(twm$error) || is.null(twm$attrition)) return(NULL)
+    a <- twm$attrition
+    lost <- if (!is.null(a$Pct_Lost)) suppressWarnings(max(a$Pct_Lost, na.rm = TRUE)) else 0
+    tagList(
+      tags$hr(),
+      h4("Animals contributing at the endpoint day"),
+      p(class = "text-muted",
+        "Endpoint day: ", strong(twm$endpoint_day %||% "\u2014"),
+        ". Estimand: ", strong(twm$endpoint_method %||% "model"), "."),
+      if (is.finite(lost) && lost > 0 &&
+          identical(twm$endpoint_method, "survivors")) {
+        status_alert(sprintf(paste0(
+          "Up to %.0f%% of animals in one arm did not reach the endpoint day, and ",
+          "the survivor estimand conditions on reaching it. Because animals leave ",
+          "when their tumours grow, this biases TGI downward -- most in the ",
+          "control arm. Switch to the model-based estimand unless you are ",
+          "reproducing a pre-0.8.0 figure."), lost), "warning")
+      }
+    )
+  })
+
+  output$tox_twm_attrition_table <- DT::renderDT({
+    req(rv$tox_results, rv$tox_results$twm)
+    twm <- rv$tox_results$twm
+    if (isTRUE(twm$error) || is.null(twm$attrition)) return(NULL)
+    DT::datatable(format_df_for_display(as.data.frame(twm$attrition)),
+              options = list(paging = FALSE, searching = FALSE), rownames = FALSE)
+  })
+
+  output$tox_km_competing_note <- renderUI({
+    req(rv$tox_results, rv$tox_results$weight_loss)
+    wl <- rv$tox_results$weight_loss
+    if (isTRUE(wl$error)) return(NULL)
+    n_cr <- wl$n_competing_risk %||% 0L
+    # R20.23: the backend states how early ends were treated; without a
+    # removal-reason column they are censoring, which is an assumption.
+    assumption <- p(class = "text-muted", icon("circle-info"), " ",
+                    wl$assumption %||% "")
+    if (!is.finite(n_cr) || n_cr == 0L) {
+      return(tagList(tags$hr(), assumption,
+        p(class = "text-muted", "Breakdown of how each animal left the study:")))
+    }
+    tagList(
+      tags$hr(),
+      h4("Competing risks"),
+      assumption,
+      status_alert(sprintf(paste0(
+        "%d animal(s) were removed for other reasons (such as tumour burden) ",
+        "before reaching the weight-loss threshold. They can no longer lose ",
+        "weight, but Kaplan-Meier treats them as still at risk, so the curve ",
+        "above OVERSTATES weight-loss incidence. Use the Aalen-Johansen ",
+        "cumulative incidence (`cuminc` in the result) for incidence statements."),
+        n_cr), "warning"),
+      p(class = "text-muted",
+        "Breakdown of how each animal left the study:")
+    )
+  })
+
+  output$tox_km_censoring_table <- DT::renderDT({
+    req(rv$tox_results, rv$tox_results$weight_loss)
+    wl <- rv$tox_results$weight_loss
+    if (isTRUE(wl$error) || is.null(wl$censoring_summary)) return(NULL)
+    cs <- as.data.frame(wl$censoring_summary)
+    if (!nrow(cs)) return(NULL)
+    DT::datatable(format_df_for_display(cs),
+              options = list(paging = FALSE, searching = FALSE), rownames = FALSE)
+  })
+
+  # Plot renderers + diagnostics + group-order UI live in
+  # `mod_toxicity_plots.R` (CODE_REVIEW.md C.1/C.3).
+  tox_plots <- add_tox_plots(input, output, session, rv, ordered_tox_grps, ordered_et_grps)
+
+  # The six download handlers (CSV + active plot + ZIP) live in
+  # `mod_toxicity_downloads.R` (CODE_REVIEW.md C.1/C.3).
+  add_tox_download_handlers(input, output, session, rv, plots = tox_plots)
+
+  }) # end moduleServer
+}

@@ -1,6 +1,6 @@
 Package: mouseExperiment
 Title: Analysis of Mouse Tumor Growth Experiments
-Version: 0.33.1
+Version: 0.34.0
 Authors@R: 
     person("David", "Woods", , "david@sciomics.bio", role = c("aut", "cre", "cph"))
 Author: David Woods [aut, cre, cph]
@@ -8,14 +8,30 @@ Maintainer: David Woods <david@sciomics.bio>
 Description: Provides tools for analyzing and visualizing mouse tumor growth experiments
     including calculating tumor volume, survival statistics, and tumor growth kinetics.
     The package offers functions for dose-response analysis, drug synergy evaluation,
-    and visualization of experimental results.
+    and visualization of experimental results, and an interactive 'shiny' dashboard
+    (run_dashboard()) that runs every analysis without code.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Suggests:
     covr (>= 3.6.0),
-    survminer,
+    survminer (>= 0.4.9),
+    DT (>= 0.28),
+    shinyjs (>= 2.1.0),
+    shinyFeedback (>= 0.4.0),
+    shinycssloaders (>= 1.0.0),
+    colourpicker (>= 1.1.1),
+    sortable (>= 0.4.4),
+    logger (>= 0.3.0),
+    future (>= 1.49.0),
+    promises (>= 1.2.0),
+    later,
+    scales (>= 1.2.0),
+    jsonlite (>= 1.8.0),
+    htmlwidgets (>= 1.6.0),
+    shinytest2 (>= 0.2.0),
+    chromote,
     knitr,
     rmarkdown,
     testthat (>= 3.0.0),
@@ -42,6 +58,7 @@ Imports:
     posterior (>= 1.0),
     rlang,
     rstan,
+    shiny (>= 1.7.0),
     splines,
     stats,
     survival,
