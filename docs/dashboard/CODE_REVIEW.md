@@ -2791,3 +2791,37 @@ The Info tab keeps the full descriptions.
 - **Test.** `test-ui-notes.R` reads the order from the built UI.
 - **Wrapping.** At a 1400 px window the last tab wraps to a second row, as "Drug Synergy" did before. At 1920 px all seven fit on one row.
 
+## R20-D.X "Download All" becomes "Download Results" (26.10.008, 2026-10-22)
+
+**Request.** The maintainer asked for a tab where users choose which results, plots, diagnostics, data and so on to download.
+
+**Before.** Tumour Growth's "Download All" zipped seven fixed tables (CSV) and five plots (PNG). It left out the diagnostics, the analysed data, the HTML report and any record of the settings. Toxicity has its own "Download All", which is not yet converted.
+
+**The change:**
+- **`R/download_results.R`, module-independent:**
+  - `dl_item()` describes one exportable file.
+  - `download_results_ui()` and `add_download_results()` build the tab and its handler.
+  - `write_results_zip()` writes the chosen items into folders, plus a `README.txt` that lists each file with one line about it, the run's settings and the package versions as written in DESCRIPTION.
+  - An item that cannot be made is named in the README, not silently dropped.
+- **The checklist is built from what the result holds, without drawing anything.** Plots are drawn only when the ZIP is written. So changing a colour on the Plots tab does not rebuild the checklist and reset the ticks.
+- **Plot formats:**
+  - PNG, PDF and SVG through grDevices, at the Plots tab's size and DPI.
+  - Not `ggsave()`: ggplot2 saves SVG only through svglite, which the image lacks. The image's R has Cairo (checked: `capabilities("cairo")` is TRUE in `shiny-staging`).
+- **Tumour Growth's list (`tg_dl_items`)** is model-aware:
+  - **LME4:** ANOVA, comparisons, treatment effects, growth rates, data summary and necrosis; five plots; residual, scale-location and random-effects Q-Q plots, Cook's distance and DFBETAS.
+  - **AUC:** "AUC by arm" and the per-animal AUC tables.
+  - **Bayesian:** the posterior summary, MCMC diagnostics, trace and rank plots, PPC coverage, Pareto-k and the posterior predictive check.
+  - **Every run:** the analysed data and the HTML report.
+- **Shared code.** `tg_growth_rates_table()` now builds the growth-rate table, with fold change, for both the single download and the ZIP.
+- **Session isolation kept.** R20.D52's test (no other session's files in the ZIP) now exercises the new handler. Each ZIP is still built in its own temporary directory.
+
+**Tests:**
+- **`test-download-results.R`,** 4 tests:
+  - the ZIP layout in each plot format, with an unavailable item named in the README;
+  - an LME4 run lists the right groups and items and exports only what is ticked, in PDF;
+  - an AUC run lists its AUC tables;
+  - the tab's name and formats.
+  - SVG is skipped where no SVG device opens: a Mac without XQuartz has no Cairo. The staging gate runs it in the image.
+- **In a browser:** the All Features demo with the defaults (everything ticked) gave 20 files: README, 6 tables, 5 plots, 6 diagnostics, the analysed data and the report.
+- **Full suite, from source, against mouseExperiment 0.33.1:** 308 tests, 0 failed, 0 skipped.
+

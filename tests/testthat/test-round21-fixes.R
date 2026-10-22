@@ -169,7 +169,7 @@ test_that("R20.D15: HTML report tables have one header cell per column", {
 
 # ---- R20.D52 ----------------------------------------------------------------
 
-test_that("R20.D52: the Download All ZIP holds only this session's files", {
+test_that("R20.D52: the results ZIP holds only this session's files", {
   # A file another session's failed export left in the old shared directory.
   shared <- file.path(tempdir(), "mouseExperiment_results")
   dir.create(shared, showWarnings = FALSE, recursive = TRUE)
@@ -179,7 +179,10 @@ test_that("R20.D52: the Download All ZIP holds only this session's files", {
 
   suppressWarnings(shiny::testServer(g("tumor_growth_server"), args = list(rv = master_rv()), {
     session$setInputs(tg_model_type = "lme4", run_tg_analysis = 1)
-    zip_path <- output$download_tg_all
+    # R20-D.X: "Download All" became "Download Results"; pick some of each.
+    session$setInputs(tg_dl_group_tables = c("anova", "rates"),
+                      tg_dl_group_plots = "plot_growth")
+    zip_path <- output$tg_dl_zip
     listed <- utils::unzip(zip_path, list = TRUE)$Name
     expect_true(length(listed) > 0L)
     expect_false(any(grepl("OTHER_SESSION", listed)))
