@@ -9,6 +9,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ### Changed
 - **The navbar puts Power Analysis after Drug Synergy,** last among the analyses: it plans the
   next study, while the others analyse the loaded one.
+- **Tumour Growth: "Download All" is now "Download Results",** where you choose what to
+  download. Before, it zipped a fixed set of tables and PNG plots and left out the
+  diagnostics, the analysed data and the report.
+  - **The choices:** tick boxes grouped as Tables, Plots, Diagnostics, Data and Report, with
+    only what the run produced listed (AUC and Bayesian runs offer their own tables and
+    diagnostics).
+  - **Plot format:** PNG, PDF or SVG, at the size set on the Plots tab.
+  - **The ZIP:** files in folders (`tables/`, `plots/`, `diagnostics/`, `data/`), plus the
+    HTML report and a `README.txt` that lists each file, the run's settings and the package
+    versions.
 
 ## [26.10.007] - 2026-10-22
 
