@@ -74,21 +74,21 @@ add_tox_plots <- function(input, output, session, rv,
   })
   shiny::outputOptions(output, "tox_show_influence", suspendWhenHidden = FALSE)
 
-  output$tox_cooks_distance <- renderDT({
+  output$tox_cooks_distance <- DT::renderDT({
     req(rv$tox_results, rv$tox_results$mixed_model)
     cd <- rv$tox_results$mixed_model$diag_cooks_distance
     if (is.null(cd) || nrow(cd) == 0L)
-      return(datatable(data.frame(Message = "Cook's distance not available")))
-    datatable(format_df_for_display(as.data.frame(cd)),
+      return(DT::datatable(data.frame(Message = "Cook's distance not available")))
+    DT::datatable(format_df_for_display(as.data.frame(cd)),
               options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
   })
 
-  output$tox_dfbetas <- renderDT({
+  output$tox_dfbetas <- DT::renderDT({
     req(rv$tox_results, rv$tox_results$mixed_model)
     db <- rv$tox_results$mixed_model$diag_dfbetas
     if (is.null(db) || nrow(db) == 0L)
-      return(datatable(data.frame(Message = "DFBETAS not available")))
-    datatable(format_df_for_display(as.data.frame(db)),
+      return(DT::datatable(data.frame(Message = "DFBETAS not available")))
+    DT::datatable(format_df_for_display(as.data.frame(db)),
               options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
   })
 
@@ -119,7 +119,7 @@ add_tox_plots <- function(input, output, session, rv,
     y_lab        <- attr(td, "weight_label") %||% "Weight (g)"
 
     if (traj_type %in% c("spaghetti", "mean_spaghetti")) {
-      td$.__LineGroup <- paste(td[["Treatment"]], td[["ID"]], sep = "·")
+      td$.__LineGroup <- paste(td[["Treatment"]], td[["ID"]], sep = "\u00b7")
       if (!is.null(ordered_grps))
         td$Treatment <- factor(td$Treatment, levels = ordered_grps)
       p <- ggplot2::ggplot(td, ggplot2::aes(.data[["Day"]], .data[["Weight"]],
@@ -159,7 +159,7 @@ add_tox_plots <- function(input, output, session, rv,
                              alpha = 0.2, color = NA) +
         ggplot2::geom_line(linewidth = line_w) +
         ggplot2::geom_point(size = 2) +
-        ggplot2::labs(title = paste0("Body Weight Over Time (Mean ± ", err_lbl, ")"),
+        ggplot2::labs(title = paste0("Body Weight Over Time (Mean \u00b1 ", err_lbl, ")"),
                      x = "Day", y = y_lab, color = "Treatment", fill = "Treatment") +
         ggplot2::theme_classic(base_size = text_sz)
       if (!is.null(colors)) p <- p + ggplot2::scale_color_manual(values = colors) +

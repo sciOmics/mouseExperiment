@@ -10,8 +10,8 @@ skip_if_not_installed("shiny")
 skip_if_not_installed("promises")
 skip_if_not_installed("future", minimum_version = "1.49.0")
 
-.pkg <- tryCatch(getNamespace("mouseExperimentDashboard"), error = function(e) NULL)
-skip_if(is.null(.pkg), "mouseExperimentDashboard namespace not loadable")
+.pkg <- tryCatch(getNamespace("mouseExperiment"), error = function(e) NULL)
+skip_if(is.null(.pkg), "mouseExperiment namespace not loadable")
 g <- function(nm) get(nm, envir = .pkg)
 
 # Every test drives the scheduler by hand: no `later` timer is left running.
@@ -39,7 +39,7 @@ sid_b <- strrep("b", 64L)
 test_that("R20.D62: Bayesian fits run in a background process, not the Shiny one", {
   skip_on_cran()
   local_registry()
-  # What runDashboard() used: future runs a one-worker multisession plan in
+  # What run_dashboard() used: future runs a one-worker multisession plan in
   # the calling process, so every fit froze every session.
   future::plan(future::multisession, workers = 1L)
   expect_identical(future::value(future::future(Sys.getpid())), Sys.getpid())
@@ -54,7 +54,7 @@ test_that("R20.D7: fits wait for the worker in arrival order, then run", {
   future::plan(future::sequential)
   free <- 0L
   testthat::local_mocked_bindings(.free_workers = function() free,
-                                  .package = "mouseExperimentDashboard")
+                                  .package = "mouseExperiment")
   j1 <- g("launch_job")(sid_a, "bayes_tg", task = task_of(function(x) x + 1, x = 1))
   j2 <- g("launch_job")(sid_b, "bayes_surv", task = task_of(function(x) x * 10, x = 4))
   expect_identical(g("get_job")(sid_a, j1)$status, "queued")
@@ -77,7 +77,7 @@ test_that("R20.D7: a cancelled queued fit never starts", {
   future::plan(future::sequential)
   free <- 0L
   testthat::local_mocked_bindings(.free_workers = function() free,
-                                  .package = "mouseExperimentDashboard")
+                                  .package = "mouseExperiment")
   j <- g("launch_job")(sid_a, "bayes_tg", task = task_of(function() "ran"))
   expect_true(g("cancel_job")(sid_a, j))
   free <- 1L
@@ -109,7 +109,7 @@ test_that("R20.D7: cancelling a running fit interrupts it and frees the worker",
 test_that("R20.D7: a second Run from the same browser does not queue a second fit", {
   local_registry()
   testthat::local_mocked_bindings(.free_workers = function() 0L,
-                                  .package = "mouseExperimentDashboard")
+                                  .package = "mouseExperiment")
   rv <- shiny::reactiveValues(session_id = sid_a, tg_running = TRUE, tg_job_id = NULL)
   params <- list(data = data.frame(), col_names = list(), n_chains = 2L,
                  n_warmup = 100L, n_iter = 100L, backend = "rstan")
@@ -228,7 +228,7 @@ test_that("R20.D18: the Bayesian diagnostics draw from the result, not a kept mo
 test_that("R20.D7: the progress window's Cancel stops this tab's fit", {
   local_registry()
   testthat::local_mocked_bindings(.free_workers = function() 0L,
-                                  .package = "mouseExperimentDashboard")
+                                  .package = "mouseExperiment")
   jid <- g("launch_job")(sid_a, "bayes_tg", task = task_of(function() "ran"))
   rv <- shiny::reactiveValues(session_id = sid_a, tg_job_id = jid, tg_running = TRUE)
   shiny::testServer(function(id, rv) {

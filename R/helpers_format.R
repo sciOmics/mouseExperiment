@@ -1,14 +1,14 @@
-#' Scale, formatting and result-provenance helpers
-#'
-#' Split out of the former `helpers.R` under CODE_REVIEW.md D.1.
-#'
-#' These decide how a number is presented, which is not a cosmetic question when
-#' the number lives on a transformed scale. `back_transform()` and
-#' `scale_suffix()` are the pair that turn a model estimate back into a volume; a
-#' disagreement between them mislabels every figure on screen. `comparisons_title()`
-#' and `resolve_interval_cols()` report multiplicity and interval provenance, and
-#' the latter exists because the previous column-name sniffing silently returned
-#' NA and blanked the panel (R4.D5).
+# Scale, formatting and result-provenance helpers
+#
+# Split out of the former `helpers.R` under CODE_REVIEW.md D.1.
+#
+# These decide how a number is presented, which is not a cosmetic question when
+# the number lives on a transformed scale. `back_transform()` and
+# `scale_suffix()` are the pair that turn a model estimate back into a volume; a
+# disagreement between them mislabels every figure on screen. `comparisons_title()`
+# and `resolve_interval_cols()` report multiplicity and interval provenance, and
+# the latter exists because the previous column-name sniffing silently returned
+# NA and blanked the panel (R4.D5).
 
 #' Format numeric values for display
 #'
@@ -96,7 +96,7 @@ format_df_for_display <- function(df, digits = 4) {
 zero_floor_line <- function(res) {
   zf <- res$zero_floor
   if (is.null(zf) || !identical(res$transform_used, "log")) return(character(0))
-  unit <- switch(zf$units %||% "mm3", cm3 = "cm³", "mm³")
+  unit <- switch(zf$units %||% "mm3", cm3 = "cm\u00b3", "mm\u00b3")
   sprintf("  Zero volumes: set to %s %s before the log (%d value%s)",
           format(zf$value), unit, as.integer(zf$n_floored %||% 0L),
           if (identical(as.integer(zf$n_floored), 1L)) "" else "s")
@@ -179,17 +179,6 @@ scale_suffix <- function(transform) {
 }
 
 
-#' Build a comparisons-table title that states what was actually applied
-#'
-#' CODE_REVIEW.md R3.D1 / R3.D2 — the headers used to assert "Dunnett-Adjusted"
-#' / "Tukey HSD Adjusted" regardless of what had been computed, and for the GAM
-#' path the table silently held per-day contrasts under a header that did not say
-#' so. Read the adjustment from the result instead of asserting it.
-#'
-#' @param res A tumour-growth result list.
-#' @param family_label Human-readable family name.
-#' @return A character title.
-#' @keywords internal
 #' A correction's display name
 #' @keywords internal
 pretty_adjust <- function(adj) {
@@ -218,6 +207,17 @@ p_value_help <- function(res) {
          "). Values below 0.05 indicate a significant difference.")
 }
 
+#' Build a comparisons-table title that states what was actually applied
+#'
+#' CODE_REVIEW.md R3.D1 / R3.D2 — the headers used to assert "Dunnett-Adjusted"
+#' / "Tukey HSD Adjusted" regardless of what had been computed, and for the GAM
+#' path the table silently held per-day contrasts under a header that did not say
+#' so. Read the adjustment from the result instead of asserting it.
+#'
+#' @param res A tumour-growth result list.
+#' @param family_label Human-readable family name.
+#' @return A character title.
+#' @keywords internal
 comparisons_title <- function(res, family_label) {
   adj   <- res$p_adjust_method_used %||% NULL
   scope <- if (!is.null(res$pairwise_comparisons) &&
@@ -227,7 +227,7 @@ comparisons_title <- function(res, family_label) {
   } else NULL
 
   adj_txt <- if (is.null(adj)) "" else paste0(" (", pretty_adjust(adj), ")")
-  scope_txt <- if (is.null(scope)) "" else paste0(" — ", scope)
+  scope_txt <- if (is.null(scope)) "" else paste0(" \u2014 ", scope)
   paste0("Comparisons: ", family_label, adj_txt, scope_txt)
 }
 
@@ -274,7 +274,7 @@ resolve_interval_cols <- function(df, result = NULL) {
 }
 
 
-#' A 95% interval as text, e.g. "[12.3, 18.9]"; a dash when there is none
+#' A 95% interval as text, e.g. `"[12.3, 18.9]"`; a dash when there is none
 #' @keywords internal
 fmt_interval <- function(lo, hi, digits = 1) {
   ifelse(is.finite(lo) & is.finite(hi),

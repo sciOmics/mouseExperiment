@@ -4,7 +4,7 @@ How the dashboard is organized and how a request flows through it.
 
 This document is the entry point for new contributors. After reading it, you should be able to (a) find the file that owns any given UI surface, (b) trace what happens when a user clicks "Run Analysis", and (c) understand why the F.7 session-resume layer exists and what files participate in it.
 
-For statistical method choices, see [`docs/METHODS.md`](METHODS.md) in the backend repo.
+For statistical method choices, see [`docs/METHODS.md`](../METHODS.md).
 For the data-format spec, see [`docs/DATA_FORMAT.md`](DATA_FORMAT.md).
 For the F.7 isolation guarantees and threat model, see [`docs/SECURITY.md`](SECURITY.md).
 
@@ -43,7 +43,7 @@ The dashboard is a Shiny `navbarPage` with one tab per analysis module. Every mo
 
 ```
 R/
-├── app.R                          # entry point: runDashboard()
+├── app.R                          # entry point: run_dashboard()
 ├── helpers.R                      # core utilities
 ├── helpers_bayes.R                # Bayesian diagnostics panel + LOO helpers
 ├── helpers_report.R               # standalone HTML report builder
@@ -252,13 +252,13 @@ The registry is multi-user-isolated via four independent layers; see [`SECURITY.
 | `R/resume_banner.R` | Banner UI + server. Reads `list_jobs(sid)`, renders rows, dispatches Resume/Cancel clicks via `register_resume_handler` / `dispatch_resume`. |
 | `R/bayes_job_runner.R` | Generic `attach_bayes_poller()` + `register_bayes_resume()`. Per-module files compose these. |
 | `R/tg_resume.R` etc. | Per-kind: `launch_<X>_bayes_job()`, `register_<X>_resume()`, the three finalizers. A session without the cookie gets a `make_local_sid()` key in `R/app.R` and uses the same registry path (R20.D3). |
-| `R/ttl_sweeper.R` | `start_ttl_sweeper()` — `later::later`-driven periodic eviction. Called once per R process from `runDashboard()`. |
+| `R/ttl_sweeper.R` | `start_ttl_sweeper()` — `later::later`-driven periodic eviction. Called once per R process from `run_dashboard()`. |
 
 ---
 
 ## How async actually works
 
-`runDashboard()` sets up the future plan once:
+`run_dashboard()` sets up the future plan once:
 
 ```r
 future::plan(future::multisession, workers = max(2L, future::availableCores() - 1L))
@@ -362,7 +362,7 @@ A few patterns intentionally aren't used; they came up during the C.1/C.3 / F.7 
 | Change the resume-banner UI | `R/resume_banner.R::.build_resume_banner_ui()` |
 | Fix a sid leak | Grep for `session_id` across `R/`, audit `test-session_isolation.R` |
 | Add a new Bayesian fit type | New `R/<new>_resume.R` + new `kind` tag + module integration (see section above) |
-| Change the future worker count | `R/app.R::runDashboard()` |
+| Change the future worker count | `R/app.R::run_dashboard()` |
 | Change the registry TTL | `R/ttl_sweeper.R::start_ttl_sweeper(max_done_age, max_run_age)` |
 
 ---
@@ -372,7 +372,7 @@ A few patterns intentionally aren't used; they came up during the C.1/C.3 / F.7 
 - [`docs/DATA_FORMAT.md`](DATA_FORMAT.md) — long-format CSV spec, column detection rules
 - [`docs/SECURITY.md`](SECURITY.md) — F.7 isolation guarantees, threat model
 - [`docs/DEPLOYMENT.md`](DEPLOYMENT.md) — Docker / NPM / Cloudflare deployment
-- [`CONTRIBUTING.md`](../CONTRIBUTING.md) — code-style + testing conventions
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — code-style + testing conventions
 - Backend `docs/METHODS.md` — statistical methods reference
 - Backend `docs/BAYESIAN.md` — Bayesian diagnostics interpretation guide
 - `CODE_REVIEW.md` (repo root) — the 25-item review tracking document; explains why a lot of the current structure exists

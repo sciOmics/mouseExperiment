@@ -1,10 +1,10 @@
-#' Toxicity: finishing a run, and the body-weight model on the worker
-#'
-#' CODE_REVIEW.md R20.D6. The body-weight model (about 15 s) ran in the Shiny
-#' process and froze every session. It now runs on the background worker;
-#' when it returns, the weight-loss threshold and the trajectory data (fast)
-#' are computed here, and `.tox_finish()` stores the run and reports it, as
-#' the therapeutic-window path does synchronously.
+# Toxicity: finishing a run, and the body-weight model on the worker
+#
+# CODE_REVIEW.md R20.D6. The body-weight model (about 15 s) ran in the Shiny
+# process and froze every session. It now runs on the background worker;
+# when it returns, the weight-loss threshold and the trajectory data (fast)
+# are computed here, and `.tox_finish()` stores the run and reports it, as
+# the therapeutic-window path does synchronously.
 
 #' Store a toxicity run and report its status
 #' @keywords internal

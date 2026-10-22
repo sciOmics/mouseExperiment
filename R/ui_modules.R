@@ -1,4 +1,4 @@
-#' UI Modules for mouseExperimentDashboard
+# UI modules for the mouseExperiment dashboard
 
 # Shared helper: creates a styled info box for tab descriptions
 tab_info <- function(...) {
@@ -100,7 +100,7 @@ dataUploadUI <- function(id) {
               tags$label("Choose file (csv)"),
               tags$p(tags$small(
                 icon("info-circle"), " Data must be in ",
-                tags$strong("long format"), " — one row per observation/measurement."
+                tags$strong("long format"), " \u2014 one row per observation/measurement."
               )),
               fileInput(ns("data_file"), NULL,
                        accept = ".csv"),
@@ -384,7 +384,7 @@ removal_reason_map_ui <- function(values, defaults = list(), col = "", ns = NS(N
   tagList(
     tags$hr(),
     h5(strong("Removal reasons"), tags$small(class = "text-muted",
-       " — what each value of ", tags$code(col), " means")),
+       " \u2014 what each value of ", tags$code(col), " means")),
     tags$p(class = "text-muted", style = "font-size:12px;",
       "Survival can count ", strong("deaths"), " as events. The Toxicity weight-loss threshold ",
       "counts ", strong("weight-loss"), " removals as events, censors ", strong("planned ends"),
@@ -411,7 +411,7 @@ data_preview_ui <- function(ns = NS(NULL)) {
     fluidRow(
       column(12,
         p(strong(textOutput(ns("preview_summary")))),
-        DTOutput(ns("data_table")),
+        DT::DTOutput(ns("data_table")),
         br(),
         downloadButton(ns("download_preview_data"), "Download Processed Data as CSV",
                       class = "btn-sm btn-default")
@@ -583,8 +583,8 @@ tumorGrowthUI <- function(id) {
                 column(6, selectInput(ns("tg_prior_b_dist"), NULL,
                   choices = c("normal" = "normal", "student_t" = "student_t"),
                   selected = "normal")),
-                column(3, numericInput(ns("tg_prior_b_mu"),  "μ",  value = 0,    step = 0.05)),
-                column(3, numericInput(ns("tg_prior_b_sd"),  "σ",  value = 0.25, step = 0.05, min = 0.01))
+                column(3, numericInput(ns("tg_prior_b_mu"),  "\u03bc",  value = 0,    step = 0.05)),
+                column(3, numericInput(ns("tg_prior_b_sd"),  "\u03c3",  value = 0.25, step = 0.05, min = 0.01))
               ),
               conditionalPanel(ns = ns,
                 condition = "input.tg_prior_b_dist == 'student_t'",
@@ -595,8 +595,8 @@ tumorGrowthUI <- function(id) {
                 column(6, selectInput(ns("tg_prior_int_dist"), NULL,
                   choices = c("normal" = "normal", "student_t" = "student_t"),
                   selected = "normal")),
-                column(3, numericInput(ns("tg_prior_int_mu"), "μ",  value = 0,    step = 0.1)),
-                column(3, numericInput(ns("tg_prior_int_sd"), "σ",  value = 0.625, step = 0.05, min = 0.01))
+                column(3, numericInput(ns("tg_prior_int_mu"), "\u03bc",  value = 0,    step = 0.1)),
+                column(3, numericInput(ns("tg_prior_int_sd"), "\u03c3",  value = 0.625, step = 0.05, min = 0.01))
               ),
               conditionalPanel(ns = ns,
                 condition = "input.tg_prior_int_dist == 'student_t'",
@@ -673,13 +673,13 @@ tumorGrowthUI <- function(id) {
                     p("The Tumor Growth tab provides three statistical modeling approaches selectable from the ",
                       strong("Statistical Model"), " dropdown:"),
                     tags$ul(
-                      tags$li(strong("Linear Mixed-Effects Model (LME4)"), " — fits a mixed-effects model to repeated tumor volume measurements. Accounts for inter-animal variability and unequal observation times. Recommended for most longitudinal datasets."),
-                      tags$li(strong("Area Under Curve (AUC)"), " — compares each arm’s total tumor burden as the area under its fitted growth curve, over the window in which every arm still has enough animals on study."),
-                      tags$li(strong("Bayesian LMM (brms)"), " — the LME4 model fitted by MCMC, returning full posterior distributions instead of point estimates and p-values.")
+                      tags$li(strong("Linear Mixed-Effects Model (LME4)"), " \u2014 fits a mixed-effects model to repeated tumor volume measurements. Accounts for inter-animal variability and unequal observation times. Recommended for most longitudinal datasets."),
+                      tags$li(strong("Area Under Curve (AUC)"), " \u2014 compares each arm\u2019s total tumor burden as the area under its fitted growth curve, over the window in which every arm still has enough animals on study."),
+                      tags$li(strong("Bayesian LMM (brms)"), " \u2014 the LME4 model fitted by MCMC, returning full posterior distributions instead of point estimates and p-values.")
                     ),
                     p(tags$small(class = "text-muted",
                       "R14.3: this tab does ", strong("not"), " report Tumor Growth Inhibition. ",
-                      "TGI is an endpoint summary — a ratio of two group means on one day — ",
+                      "TGI is an endpoint summary \u2014 a ratio of two group means on one day \u2014 ",
                       "while every model here estimates a growth ", em("trajectory"), ", and ",
                       "collapsing a trajectory to a single-day ratio discards most of what was ",
                       "measured. TGI is computed where it belongs to the question being asked: ",
@@ -691,8 +691,8 @@ tumorGrowthUI <- function(id) {
                     )),
                     div(class = "alert alert-info", style = "font-size:0.9em; margin-bottom:0;",
                       icon("circle-info"), " ",
-                      strong("Which endpoint?"), " Animals removed before study end make “the final timepoint” ",
-                      "ambiguous, and taking it literally computes TGI among survivors only — which flatters ",
+                      strong("Which endpoint?"), " Animals removed before study end make \u201cthe final timepoint\u201d ",
+                      "ambiguous, and taking it literally computes TGI among survivors only \u2014 which flatters ",
                       "the control arm, because the fastest-growing controls are exactly the ones that left. ",
                       "The Toxicity and Synergy tabs expose an ", strong("Endpoint estimand"), " selector for this; ",
                       "here TGI is derived from the fitted model, which uses every observation each animal ",
@@ -704,13 +704,13 @@ tumorGrowthUI <- function(id) {
                 # ── LME4 Mode ───────────────────────────────────────────────
                 div(class = "panel panel-default",
                   div(class = "panel-heading",
-                    h4(class = "panel-title", tags$span(class = "label label-info", "LME4 Mode"), " — Analyses & Outputs")),
+                    h4(class = "panel-title", tags$span(class = "label label-info", "LME4 Mode"), " \u2014 Analyses & Outputs")),
                   div(class = "panel-body",
 
                     h5(strong("Model")),
                     p("A linear mixed-effects model is fitted to transformed tumor volumes:"),
-                    tags$blockquote(tags$code("log(Volume) ~ Treatment × Day + (1 | ID)")),
-                    p("The Treatment × Day interaction captures whether treatment groups differ in their growth ", em("trajectories"), " over time, not just at a single endpoint."),
+                    tags$blockquote(tags$code("log(Volume) ~ Treatment \u00d7 Day + (1 | ID)")),
+                    p("The Treatment \u00d7 Day interaction captures whether treatment groups differ in their growth ", em("trajectories"), " over time, not just at a single endpoint."),
                     tags$dl(class = "dl-horizontal",
                       tags$dt("Transformation"), tags$dd("Log (default) stabilises variance and linearises exponential growth. Square root suits moderate heteroscedasticity. Use 'None' only for already-linear data."),
                       tags$dt("Random Effects"), tags$dd("'Random slopes' (default) gives each animal its own baseline volume and its own growth rate. If that model cannot be fitted, the analysis falls back to uncorrelated slopes and then to an intercept only, and the Summary says so. 'Intercept only' assumes every animal in an arm grows at the same rate, which makes the treatment \u00d7 time test find differences that are not there. 'None' drops the animal-level term entirely and is appropriate only when each animal contributes a single observation."),
@@ -781,20 +781,20 @@ tumorGrowthUI <- function(id) {
 
                     hr(),
                     h5(strong("Growth Rates Tab")),
-                    p("Per-animal exponential growth rates estimated by log-linear regression of each animal’s volume trajectory independently. Reported as growth rate (log-scale slope), fold change, and % change per day with 95 % CIs and R². These are descriptive; for group-level inference use the ANOVA and Comparisons tabs."),
+                    p("Per-animal exponential growth rates estimated by log-linear regression of each animal\u2019s volume trajectory independently. Reported as growth rate (log-scale slope), fold change, and % change per day with 95\u202f% CIs and R\u00b2. These are descriptive; for group-level inference use the ANOVA and Comparisons tabs."),
 
                     hr(),
                     h5(strong("Diagnostics Tab")),
                     p("Four residual plots, each answering a different question about whether the model's ",
-                      "assumptions hold — which is what makes the p-values above mean anything:"),
+                      "assumptions hold \u2014 which is what makes the p-values above mean anything:"),
                     tags$dl(class = "dl-horizontal",
-                      tags$dt("Q–Q plot"),
+                      tags$dt("Q\u2013Q plot"),
                       tags$dd("Are residuals normally distributed? Systematic curvature at the tails suggests the transformation choice should be revisited."),
                       tags$dt("Residuals vs fitted"),
-                      tags$dd("Is the mean structure right? Curvature means log-linear growth does not hold over the whole study — read growth-rate comparisons with care."),
-                      tags$dt("Scale–location"),
+                      tags$dd("Is the mean structure right? Curvature means log-linear growth does not hold over the whole study \u2014 read growth-rate comparisons with care."),
+                      tags$dt("Scale\u2013location"),
                       tags$dd("Is the variance constant on the modelling scale? A rising trend means heteroscedasticity survived the transformation."),
-                      tags$dt("Random-effects Q–Q"),
+                      tags$dt("Random-effects Q\u2013Q"),
                       tags$dd("Are the per-animal effects themselves normal? This is a separate assumption from residual normality and the one most often overlooked. If it fails, prefer the randomisation test, which assumes neither.")
                     ),
                     p(tags$small(class = "text-muted",
@@ -808,7 +808,7 @@ tumorGrowthUI <- function(id) {
                 # ── AUC Mode ─────────────────────────────────────────────────
                 div(class = "panel panel-default",
                   div(class = "panel-heading",
-                    h4(class = "panel-title", tags$span(class = "label label-warning", "AUC Mode"), " — Analyses & Outputs")),
+                    h4(class = "panel-title", tags$span(class = "label label-warning", "AUC Mode"), " \u2014 Analyses & Outputs")),
                   div(class = "panel-body",
                     p("Each arm's AUC is the area under its fitted growth curve, the geometric-mean curve of a ",
                       "mixed model of log volume with a smooth (natural spline) time course per arm and ",
@@ -851,7 +851,7 @@ tumorGrowthUI <- function(id) {
                 # ── Bayesian LMM Mode ─────────────────────────────────────────
                 div(class = "panel panel-default",
                   div(class = "panel-heading",
-                    h4(class = "panel-title", tags$span(class = "label label-success", "Bayesian Mode"), " — Method & Outputs")),
+                    h4(class = "panel-title", tags$span(class = "label label-success", "Bayesian Mode"), " \u2014 Method & Outputs")),
                   div(class = "panel-body",
 
                     h5(strong("Method")),
@@ -861,12 +861,12 @@ tumorGrowthUI <- function(id) {
                       strong("posterior distribution"), ": a probability distribution over plausible values ",
                       "given the data and priors."),
                     tags$blockquote(tags$code(
-                      "log(Volume) ~ Treatment × Day + (1 | ID)"
+                      "log(Volume) ~ Treatment \u00d7 Day + (1 | ID)"
                     )),
                     p("Results are summarised as ", strong("posterior means"),
                       " with 95 % credible intervals. A 95 % CrI has a direct probability ",
                       "interpretation: there is a 95 % posterior probability that the true ",
-                      "parameter lies within the interval — unlike a frequentist confidence ",
+                      "parameter lies within the interval \u2014 unlike a frequentist confidence ",
                       "interval, which is a statement about the procedure rather than the parameter."),
                     p(tags$small(class = "text-muted",
                       "R14.7: two different interval types appear under the same ",
@@ -876,7 +876,7 @@ tumorGrowthUI <- function(id) {
                       em("equal-tailed"), " interval, cutting 2.5 % from each tail. The ",
                       strong("Treatment Effects"), " and ", strong("Comparisons"),
                       " tabs come from emmeans, which returns a genuine ", em("highest-density"),
-                      " interval — the shortest interval containing 95 % of the posterior. ",
+                      " interval \u2014 the shortest interval containing 95 % of the posterior. ",
                       "The two coincide when a posterior is symmetric and diverge when it is ",
                       "skewed, which is exactly the case for variance components and for the ",
                       "back-transformed time ratios in the Bayesian survival model."
@@ -890,17 +890,17 @@ tumorGrowthUI <- function(id) {
                     tags$dl(class = "dl-horizontal",
                       tags$dt("Skeptical"),
                       tags$dd(tags$strong("Default."), " N(0, 0.25) on fixed effects; Exponential(2) on SDs. ",
-                              "Encodes the reasonable belief that treatment effects are small — effects > ±0.5 log-units per day ",
+                              "Encodes the reasonable belief that treatment effects are small \u2014 effects > \u00b10.5 log-units per day ",
                               "are considered very unlikely a priori. Recommended for exploratory preclinical studies where ",
                               "large effects have not been previously established."),
                       tags$dt("Weakly informative"),
                       tags$dd("N(0, 1) on fixed effects; Exponential(1) on SDs. ",
-                              "Broader than Skeptical — appropriate when prior work suggests the treatment ",
+                              "Broader than Skeptical \u2014 appropriate when prior work suggests the treatment ",
                               "category can produce moderate-to-large effects."),
                       tags$dt("Informative"),
                       tags$dd("N(0, 0.5) on fixed effects; Exponential(2) on SDs. ",
                               "Between Skeptical and Weakly informative. Useful when effect sizes in the ",
-                              "0.1–0.5 log-unit range are plausible based on prior data."),
+                              "0.1\u20130.5 log-unit range are plausible based on prior data."),
                       tags$dt("Diffuse"),
                       tags$dd("N(0, 2.5) on fixed effects; Exponential(0.5) on SDs. ",
                               "Near-flat priors; use with caution on small datasets as estimates can be ",
@@ -914,13 +914,13 @@ tumorGrowthUI <- function(id) {
                     hr(),
                     h5(strong("Result Tabs")),
                     tags$ul(
-                      tags$li(strong("Summary"), " — posterior median and 95 % CrI for every model parameter."),
-                      tags$li(strong("Treatment Effects"), " — group-level estimated marginal means (posterior) at the mean study day."),
-                      tags$li(strong("Comparisons"), " — posterior contrasts of each group vs the reference."),
-                      tags$li(strong("Posterior Check"), " — overlay of observed data density vs draws from the posterior predictive distribution. Systematic mismatch indicates model mis-specification. A coverage plot reports whether the stated credible intervals actually contain the observed values at the claimed rate."),
-                      tags$li(strong("Diagnostics"), " (Bayesian view) — Rhat and effective sample size (ESS) per parameter, with trace and rank plots. Rhat > 1.01 indicates the chains have not mixed; low ESS means the posterior summaries are themselves noisy. Rank plots detect the mixing failures that trace plots hide once chains overlap."),
-                      tags$li(strong("Influence"), " — Pareto-k values from PSIS leave-one-out. Values above the threshold (0.7 at most; lower with fewer posterior draws, e.g. 0.667 at 1,000) mean the importance sampling is unreliable for that observation, which usually flags an animal the model fits badly rather than a coding error."),
-                      tags$li(strong("Growth Rates"), " — per-animal log-linear regression rates (same as LME4, not MCMC-based).")
+                      tags$li(strong("Summary"), " \u2014 posterior median and 95 % CrI for every model parameter."),
+                      tags$li(strong("Treatment Effects"), " \u2014 group-level estimated marginal means (posterior) at the mean study day."),
+                      tags$li(strong("Comparisons"), " \u2014 posterior contrasts of each group vs the reference."),
+                      tags$li(strong("Posterior Check"), " \u2014 overlay of observed data density vs draws from the posterior predictive distribution. Systematic mismatch indicates model mis-specification. A coverage plot reports whether the stated credible intervals actually contain the observed values at the claimed rate."),
+                      tags$li(strong("Diagnostics"), " (Bayesian view) \u2014 Rhat and effective sample size (ESS) per parameter, with trace and rank plots. Rhat > 1.01 indicates the chains have not mixed; low ESS means the posterior summaries are themselves noisy. Rank plots detect the mixing failures that trace plots hide once chains overlap."),
+                      tags$li(strong("Influence"), " \u2014 Pareto-k values from PSIS leave-one-out. Values above the threshold (0.7 at most; lower with fewer posterior draws, e.g. 0.667 at 1,000) mean the importance sampling is unreliable for that observation, which usually flags an animal the model fits badly rather than a coding error."),
+                      tags$li(strong("Growth Rates"), " \u2014 per-animal log-linear regression rates (same as LME4, not MCMC-based).")
                     ),
 
                     div(class = "alert alert-info", style = "margin-top:10px;",
@@ -939,7 +939,7 @@ tumorGrowthUI <- function(id) {
                   div(class = "panel-heading",
                     h4(class = "panel-title",
                        tags$span(class = "label label-danger", "Necrotic Tumors"),
-                       " — Handling Options")),
+                       " \u2014 Handling Options")),
                   div(class = "panel-body",
                     p("When a ", strong("Necrotic Flag"), " column is mapped in Data Upload, a handling
                       selector appears in the sidebar. Necrotic tumors have a non-viable core that inflates
@@ -973,11 +973,11 @@ tumorGrowthUI <- function(id) {
                       tags$dt("Reference Group"),
                       tags$dd("The study's control group, chosen under Study Design on Data Upload. With a dose column mapped, arms are labelled 'Treatment Dose' and the control maps to its own dose label."),
                       tags$dt("Post-hoc Comparisons"),
-                      tags$dd("Which family of comparisons to make — vs Reference Group (default) or All Comparisons. Paired with the separate Correction setting."),
+                      tags$dd("Which family of comparisons to make \u2014 vs Reference Group (default) or All Comparisons. Paired with the separate Correction setting."),
                       tags$dt("Correction"),
                       tags$dd("How the chosen family is corrected: Dunnett (exact multivariate-t, default), Tukey HSD, Bonferroni, Holm, Benjamini-Hochberg FDR, or None."),
                       tags$dt("Extrapolation Points"),
-                      tags$dd(strong("Affects the growth-trajectory plots only."), " Number of recent timepoints used to estimate a slope when projecting the curve for animals that left the study early; projected segments are drawn dashed. Set to 0 to disable. This no longer feeds any statistical model — treating an imputed point as measured data made standard errors ignore the imputation."),
+                      tags$dd(strong("Affects the growth-trajectory plots only."), " Number of recent timepoints used to estimate a slope when projecting the curve for animals that left the study early; projected segments are drawn dashed. Set to 0 to disable. This no longer feeds any statistical model \u2014 treating an imputed point as measured data made standard errors ignore the imputation."),
                       tags$dt("Time Column"),
                       tags$dd("Numeric study day, or calculated from a date column mapped in Data Upload (days elapsed from first observation).")
                     )
@@ -1006,7 +1006,7 @@ tumorGrowthUI <- function(id) {
           tabPanel("ANOVA",
             uiOutput(ns("tg_anova_tab_info")),
             shinycssloaders::withSpinner(
-              DTOutput(ns("tg_anova_table"))
+              DT::DTOutput(ns("tg_anova_table"))
             ),
             downloadButton(ns("download_tg_anova"), "Download ANOVA"),
 
@@ -1022,7 +1022,7 @@ tumorGrowthUI <- function(id) {
           tabPanel("Comparisons",
             uiOutput(ns("tg_comparisons_tab_info")),
             shinycssloaders::withSpinner(
-              DTOutput(ns("tg_comparisons_table"))
+              DT::DTOutput(ns("tg_comparisons_table"))
             ),
             downloadButton(ns("download_tg_comparisons"), "Download Comparisons")
           ),
@@ -1030,7 +1030,7 @@ tumorGrowthUI <- function(id) {
           tabPanel("Treatment Effects",
             uiOutput(ns("tg_treatment_effects_tab_info")),
             shinycssloaders::withSpinner(
-              DTOutput(ns("tg_effects_table"))
+              DT::DTOutput(ns("tg_effects_table"))
             ),
             downloadButton(ns("download_tg_effects"), "Download Effects")
           ),
@@ -1054,7 +1054,7 @@ tumorGrowthUI <- function(id) {
               em("These are descriptive per-animal values used to visualise within-group spread and for sample size estimation. For group-level inference, use the Treatment Effects tab.")
             ),
             shinycssloaders::withSpinner(
-              DTOutput(ns("tg_growth_rates_table"))
+              DT::DTOutput(ns("tg_growth_rates_table"))
             ),
             downloadButton(ns("download_tg_rates"), "Download Growth Rates"),
             br(), br(),
@@ -1082,7 +1082,7 @@ tumorGrowthUI <- function(id) {
               em("Useful for inspecting raw descriptive trends across time and confirming data entry. Statistical comparisons should use the ANOVA, Comparisons, or AUC Summary tabs as appropriate.")
             ),
             shinycssloaders::withSpinner(
-              DTOutput(ns("tg_data_summary_table"))
+              DT::DTOutput(ns("tg_data_summary_table"))
             ),
             downloadButton(ns("download_tg_data_summary"), "Download Data Summary")
           ),
@@ -1266,9 +1266,9 @@ tumorGrowthUI <- function(id) {
                 plot_help(
                     "The residuals are standardised (centred and divided by their SD), so ",
                     "for a well-fitting model the points fall along the red dashed line. ",
-                    strong("S-shape: "), "residuals have heavier tails than normal — ",
+                    strong("S-shape: "), "residuals have heavier tails than normal \u2014 ",
                     "consider a robust likelihood or check for outliers. ",
-                    strong("Bow: "), "skewed residuals — check the volume transform ",
+                    strong("Bow: "), "skewed residuals \u2014 check the volume transform ",
                     "(log vs sqrt vs none). ",
                     strong("A few outliers at the ends: "), "common; not a problem ",
                     "unless they're clinically obvious errors."),
@@ -1283,10 +1283,10 @@ tumorGrowthUI <- function(id) {
                 plot_help(
                     "Points should scatter randomly around the red zero line. ",
                     strong("Curved blue trend: "), "the model misses non-linearity ",
-                    "— growth is not log-linear over the whole study; try a different volume ",
+                    "\u2014 growth is not log-linear over the whole study; try a different volume ",
                     "transform. ",
                     strong("Fan shape (wider on the right): "), "heteroscedasticity ",
-                    "— variance grows with the mean. Switch to log transform or a ",
+                    "\u2014 variance grows with the mean. Switch to log transform or a ",
                     "model with variance structure."),
                 div(style = "margin-bottom: 24px;",
                   shinycssloaders::withSpinner(
@@ -1302,9 +1302,9 @@ tumorGrowthUI <- function(id) {
                 plot_help(
                     "Plots sqrt(|residuals|) vs fitted to magnify variance ",
                     "trends. ",
-                    strong("Flat blue line: "), "constant variance — LMM assumption ",
+                    strong("Flat blue line: "), "constant variance \u2014 LMM assumption ",
                     "satisfied. ",
-                    strong("Upward slope: "), "heteroscedasticity — see ",
+                    strong("Upward slope: "), "heteroscedasticity \u2014 see ",
                     "Residuals vs Fitted notes above."),
                 div(style = "margin-bottom: 24px;",
                   shinycssloaders::withSpinner(
@@ -1320,7 +1320,7 @@ tumorGrowthUI <- function(id) {
                     "along the red line = assumption met. A component with no spread ",
                     "(estimated variance zero) is left out. Heavy tails / clear S-shape: the LMM ",
                     "may be giving a few animals too much / too little ",
-                    "shrinkage. Rare and usually safe to ignore at N ≤ 30."),
+                    "shrinkage. Rare and usually safe to ignore at N \u2264 30."),
                 div(style = "margin-bottom: 24px;",
                   shinycssloaders::withSpinner(
                     plotOutput(ns("tg_diag_re_qq"), height = "380px")
@@ -1351,13 +1351,13 @@ tumorGrowthUI <- function(id) {
                 column(6,
                   h5("Cook's distance"),
                   shinycssloaders::withSpinner(
-                    DTOutput(ns("tg_cooks_distance"))
+                    DT::DTOutput(ns("tg_cooks_distance"))
                   )
                 ),
                 column(6,
                   h5("DFBETAS"),
                   shinycssloaders::withSpinner(
-                    DTOutput(ns("tg_dfbetas"))
+                    DT::DTOutput(ns("tg_dfbetas"))
                   )
                 )
               )
@@ -1370,24 +1370,24 @@ tumorGrowthUI <- function(id) {
               tab_info(
                 strong("MCMC convergence diagnostics"),
                 " for all fixed-effect parameters. All chains should have ",
-                "converged (R̂ ≈ 1.00) and sufficient effective ",
+                "converged (R\u0302 \u2248 1.00) and sufficient effective ",
                 "samples before interpreting results.",
                 tags$ul(
-                  tags$li(strong("Parameter"), " — model parameter name."),
-                  tags$li(strong("Rhat"), " — potential scale-reduction factor; values > 1.01 indicate non-convergence."),
-                  tags$li(strong("Bulk_ESS"), " — bulk effective sample size; aim for > 400 per chain."),
-                  tags$li(strong("Tail_ESS"), " — tail effective sample size; important for credible interval accuracy."),
-                  tags$li(strong("Converged"), " — TRUE when R̂ ≤ 1.01.")
+                  tags$li(strong("Parameter"), " \u2014 model parameter name."),
+                  tags$li(strong("Rhat"), " \u2014 potential scale-reduction factor; values > 1.01 indicate non-convergence."),
+                  tags$li(strong("Bulk_ESS"), " \u2014 bulk effective sample size; aim for > 400 per chain."),
+                  tags$li(strong("Tail_ESS"), " \u2014 tail effective sample size; important for credible interval accuracy."),
+                  tags$li(strong("Converged"), " \u2014 TRUE when R\u0302 \u2264 1.01.")
                 ),
                 em("If Rhat > 1.01, try increasing iterations or chains before reporting results.")
               ),
               uiOutput(ns("tg_bayes_diagnostics")),
-              shinycssloaders::withSpinner(DTOutput(ns("tg_mcmc_diag_table"))),
+              shinycssloaders::withSpinner(DT::DTOutput(ns("tg_mcmc_diag_table"))),
               br(),
               h5(strong("Influential observations (Pareto-k > 0.7)")),
               em(class = "text-muted",
                  "Observations the LOO approximation can't reliably estimate. Investigate these mice individually."),
-              shinycssloaders::withSpinner(DTOutput(ns("tg_bayes_influential"))),
+              shinycssloaders::withSpinner(DT::DTOutput(ns("tg_bayes_influential"))),
               br(),
               fluidRow(
                 column(6,
@@ -1396,7 +1396,7 @@ tumorGrowthUI <- function(id) {
                       "Histogram of LOO Pareto-k values across all observations. ",
                       strong("All bars left of 0.5 (orange dotted): "), "LOO is reliable. ",
                       strong("Some bars between 0.5 and 0.7: "), "moderate influence; estimates usable but inspect. ",
-                      strong("Bars right of 0.7 (red dashed): "), "those observations are too influential for PSIS-LOO to estimate reliably — see the table above for which."),
+                      strong("Bars right of 0.7 (red dashed): "), "those observations are too influential for PSIS-LOO to estimate reliably \u2014 see the table above for which."),
                   shinycssloaders::withSpinner(plotOutput(ns("tg_pareto_k_plot"), height = "300px"))
                 ),
                 column(6,
@@ -1404,8 +1404,8 @@ tumorGrowthUI <- function(id) {
                   plot_help(
                       "Each bar = empirical coverage of the corresponding nominal posterior-predictive interval. ",
                       strong("Bars near red dashed line: "), "well-calibrated. ",
-                      strong("Bars below: "), "under-coverage — model intervals are too narrow. ",
-                      strong("Bars above: "), "over-coverage — too wide; model is being conservative."),
+                      strong("Bars below: "), "under-coverage \u2014 model intervals are too narrow. ",
+                      strong("Bars above: "), "over-coverage \u2014 too wide; model is being conservative."),
                   shinycssloaders::withSpinner(plotOutput(ns("tg_ppc_coverage_plot"), height = "300px"))
                 )
               ),
@@ -1470,7 +1470,7 @@ helpUI <- function() {
       p(
         strong("mouseExperiment"), " is provided \"as is\" for research purposes only,",
         " without warranty of any kind, express or implied. The authors and contributors",
-        " accept no liability for errors, inaccuracies, or any consequences — including",
+        " accept no liability for errors, inaccuracies, or any consequences \u2014 including",
         " but not limited to incorrect results, data loss, or decisions made on the basis",
         " of outputs from this software.",
         " All results must be independently validated before use in publications, reports,",
@@ -1726,7 +1726,6 @@ helpUI <- function() {
 #' @keywords internal
 citationUI <- function() {
   pkg_version   <- tryCatch(as.character(utils::packageVersion("mouseExperiment")),      error = function(e) "(not installed)")
-  dash_version  <- tryCatch(as.character(utils::packageVersion("mouseExperimentDashboard")), error = function(e) "(not installed)")
   # Neither package has a Date field any more (it went stale; R20.D26), and
   # the fallback here was a fixed 2026-04-03. The build date is always there.
   built_date <- function(pkg) tryCatch({
@@ -1735,51 +1734,31 @@ citationUI <- function() {
     if (length(d) && !is.na(d)) d else "unknown"
   }, error = function(e) "unknown")
   pkg_date  <- built_date("mouseExperiment")
-  dash_date <- built_date("mouseExperimentDashboard")
 
   fluidPage(
     h2("About"),
 
     fluidRow(
-      column(6,
+      column(12,
         wellPanel(
           h4(icon("box-open"), " mouseExperiment"),
           tags$table(
             class = "table table-condensed",
             style = "margin-bottom:0;",
             tags$tbody(
+              tags$tr(tags$td(strong("Version")), tags$td(pkg_version)),
+              tags$tr(tags$td(strong("Built")), tags$td(pkg_date)),
               tags$tr(
-                tags$td(strong("Version")),
-                tags$td(pkg_version)
-              ),
-              tags$tr(
-                tags$td(strong("Built")),
-                tags$td(pkg_date)
-              ),
-              tags$tr(
-                tags$td(strong("Repository")),
+                tags$td(strong("Source")),
                 tags$td(tags$a("github.com/sciOmics/mouseExperiment",
                                href = "https://github.com/sciOmics/mouseExperiment",
-                               target = "_blank"))
-              )
-            )
-          )
-        )
-      ),
-      column(6,
-        wellPanel(
-          h4(icon("gauge"), " mouseExperimentDashboard"),
-          tags$table(
-            class = "table table-condensed",
-            style = "margin-bottom:0;",
-            tags$tbody(
-              tags$tr(
-                tags$td(strong("Version")),
-                tags$td(dash_version)
+                               target = "_blank"), " (MIT licence)")
               ),
               tags$tr(
-                tags$td(strong("Built")),
-                tags$td(dash_date)
+                tags$td(strong("Run it yourself")),
+                tags$td(tags$code('remotes::install_github("sciOmics/mouseExperiment")'),
+                        ", then ", tags$code("mouseExperiment::run_dashboard()"),
+                        ". Your data then never leaves your computer.")
               )
             )
           )

@@ -21,8 +21,8 @@
 skip_if_not_installed("shiny", minimum_version = "1.5.0")
 skip_if_not_installed("mouseExperiment")
 
-.pkg <- tryCatch(getNamespace("mouseExperimentDashboard"), error = function(e) NULL)
-skip_if(is.null(.pkg), "mouseExperimentDashboard namespace not loadable")
+.pkg <- tryCatch(getNamespace("mouseExperiment"), error = function(e) NULL)
+skip_if(is.null(.pkg), "mouseExperiment namespace not loadable")
 
 # renderUI output comes back as a list carrying $html; renderPrint as a character
 # scalar. Flatten either to plain text so assertions read the same way.

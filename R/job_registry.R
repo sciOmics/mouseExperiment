@@ -1,40 +1,40 @@
-#' Process-level job registry for resumable Bayesian fits (CODE_REVIEW.md F.7).
-#'
-#' Holds the long-running fits *outside* the per-session reactive scope so a
-#' fit survives tab disconnect / NPM proxy timeout / browser sleep. The
-#' registry is a package-level environment keyed by a session-identity
-#' cookie sid; lookups are always sid-scoped so one user can't enumerate or
-#' read another's jobs.
-#'
-#' API:
-#'   launch_job(sid, kind, task = , context = )  queue a fit; returns job_id
-#'   launch_job(sid, kind, promise, context)     register a promise (tests)
-#'   get_job(sid, job_id)                        one job or NULL
-#'   list_jobs(sid)                              named list of jobs for that sid
-#'   active_job(sid)                             the sid's queued or running job
-#'   jobs_ahead(sid, job_id)                     fits that will run before it
-#'   cancel_job(sid, job_id)                     drop a queued job; interrupt a running one
-#'   evict_stale_jobs(max_done_age = 1800, max_run_age = 14400)
-#'
-#' Scheduling (CODE_REVIEW.md R20.D7, R20.D62). A fit is a `task`, a function
-#' and its arguments. It waits as "queued" until the future backend has a free
-#' worker, then runs as a future ("running") and ends "completed" or "failed".
-#' `.pump_jobs()` starts queued jobs in arrival order and collects finished
-#' ones; it runs on a `later` timer while any job is pending, and on every
-#' poller tick. Because the registry holds the Future object, cancelling a
-#' running fit interrupts its worker (`future::cancel()`); the dashboard used
-#' `promises::future_promise()`, which hides the future, so a cancelled fit
-#' kept the worker busy until it finished.
-#'
-#' Isolation guarantees (CODE_REVIEW.md F.7, layer 1):
-#'   * Every read API takes sid as the first argument. There is no
-#'     list_all_jobs / get_job(job_id_only).
-#'   * Job IDs are never access tokens — they're indices within an sid's
-#'     namespace. Two sids could hold the same job_id and still see
-#'     different jobs.
-#'   * The registry env is package-private (the dot-prefix). No exported
-#'     accessor returns the env itself. `jobs_ahead()` reveals only how many
-#'     other fits are waiting, not whose.
+# Process-level job registry for resumable Bayesian fits (CODE_REVIEW.md F.7).
+#
+# Holds the long-running fits *outside* the per-session reactive scope so a
+# fit survives tab disconnect / NPM proxy timeout / browser sleep. The
+# registry is a package-level environment keyed by a session-identity
+# cookie sid; lookups are always sid-scoped so one user can't enumerate or
+# read another's jobs.
+#
+# API:
+#   launch_job(sid, kind, task = , context = )  queue a fit; returns job_id
+#   launch_job(sid, kind, promise, context)     register a promise (tests)
+#   get_job(sid, job_id)                        one job or NULL
+#   list_jobs(sid)                              named list of jobs for that sid
+#   active_job(sid)                             the sid's queued or running job
+#   jobs_ahead(sid, job_id)                     fits that will run before it
+#   cancel_job(sid, job_id)                     drop a queued job; interrupt a running one
+#   evict_stale_jobs(max_done_age = 1800, max_run_age = 14400)
+#
+# Scheduling (CODE_REVIEW.md R20.D7, R20.D62). A fit is a `task`, a function
+# and its arguments. It waits as "queued" until the future backend has a free
+# worker, then runs as a future ("running") and ends "completed" or "failed".
+# `.pump_jobs()` starts queued jobs in arrival order and collects finished
+# ones; it runs on a `later` timer while any job is pending, and on every
+# poller tick. Because the registry holds the Future object, cancelling a
+# running fit interrupts its worker (`future::cancel()`); the dashboard used
+# `promises::future_promise()`, which hides the future, so a cancelled fit
+# kept the worker busy until it finished.
+#
+# Isolation guarantees (CODE_REVIEW.md F.7, layer 1):
+#   * Every read API takes sid as the first argument. There is no
+#     list_all_jobs / get_job(job_id_only).
+#   * Job IDs are never access tokens — they're indices within an sid's
+#     namespace. Two sids could hold the same job_id and still see
+#     different jobs.
+#   * The registry env is package-private (the dot-prefix). No exported
+#     accessor returns the env itself. `jobs_ahead()` reveals only how many
+#     other fits are waiting, not whose.
 
 # Package-private environment. Initialized empty; populated as users
 # launch jobs. Survives across Shiny sessions because it's in the R

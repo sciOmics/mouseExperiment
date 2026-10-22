@@ -1,12 +1,12 @@
-# mouseExperimentDashboard
+# The mouseExperiment dashboard
 
-An interactive Shiny web application for analyzing mouse tumor growth experiments. Provides a point-and-click interface to the `mouseExperiment` R package, covering the full analysis pipeline from raw data upload through publication-ready figures.
+The interactive Shiny dashboard in the `mouseExperiment` package, started with `run_dashboard()`. It is a point-and-click interface to the package's analysis functions, covering the full analysis pipeline from raw data upload through publication-ready figures.
 
-**Note**: This is a proprietary application for private use. See [LICENSE](LICENSE) for details.
+This folder is the dashboard's developer documentation. Until v0.34.0 the dashboard was a separate private package, `mouseExperimentDashboard`. Its history is now part of this repository, and its changelog and review log are kept here as [CHANGELOG.md](CHANGELOG.md) and [CODE_REVIEW.md](CODE_REVIEW.md).
 
 ## Overview
 
-`mouseExperimentDashboard` wraps the statistical and visualization capabilities of `mouseExperiment` in a Shiny web application. Users can:
+The dashboard wraps the statistical and visualization capabilities of `mouseExperiment` in a Shiny web application. Users can:
 
 - Upload tumor growth data (CSV) and map columns interactively
 - Analyze tumor growth with LME4 mixed-effects models, AUC, or Bayesian LMM (brms)
@@ -24,26 +24,26 @@ The Bayesian fits (tumor growth and survival) run asynchronously via `future` / 
 
 | Item | State |
 |---|---|
-| Version | 26.09.004 |
-| Backend (`mouseExperiment`) requirement | ≥ 0.26.0 (evaluable days, one endpoint model for TGI, model-based AUC, random slopes by default) |
-| `CODE_REVIEW.md` (Round 1 + Round 2) | 24/25 dashboard items closed — only **I.6** (VPS-side CI smoke test) remains |
-| Test suite | 238 testthat tests in 23 files (745 expectations), 9 of them in a headless browser (shinytest2) |
+| Version | the package's (see `DESCRIPTION`); the About tab shows it |
+| Tests | with the package's, in `tests/testthat/`; some run in a headless browser (shinytest2) |
 | Deployment | Docker + Nginx Proxy Manager (NPM) on a self-hosted VPS (see `sciOmicsVPS` repo) |
 
 ## Local installation & development
 
 ### Prerequisites
 
-- **R** ≥ 4.1
-- **mouseExperiment** ≥ 0.26.0 (see [mouseExperiment](https://github.com/sciOmics/mouseExperiment))
-- For Bayesian analysis: `brms` ≥ 2.19, `future` ≥ 1.33, `promises` ≥ 1.2, `bayesplot` ≥ 1.10
+- **R** >= 4.1
+- The dashboard's own packages (DT, shinyjs, future, promises and others) are Suggests of `mouseExperiment`, so installing the package for its analysis functions does not pull them in. `run_dashboard()` checks for them and, in an interactive session, offers to install any that are missing.
 
 ### Setup
 
 ```r
-setwd("/path/to/mouseExperimentDashboard")
+# Installed
+mouseExperiment::run_dashboard()
+
+# From a clone of the repository
 devtools::load_all()
-runDashboard()
+run_dashboard()
 ```
 
 The app opens at `http://localhost:3838`. Browsers treat `http://localhost` and `http://127.0.0.1` as secure contexts, so the `Secure` session-identity cookie is usually set even without HTTPS. Where it is not (cookies blocked, or another host over plain HTTP), the session gets a local registry key: Bayesian fits run through the job registry as usual but cannot be resumed after a disconnect. Before v26.09.002 that case took a legacy inline path that failed before the fit started (CODE_REVIEW.md R20.D3).
@@ -194,33 +194,16 @@ The dashboard is structured as a Shiny `navbarPage` with one tab per analysis mo
 | `R/helpers.R` | Core utilities: validation, error translation, formatting, plot helpers |
 | `R/helpers_bayes.R` | Bayesian diagnostics panel + LOO influential observations |
 | `R/helpers_report.R` | Standalone HTML report builder |
-| `R/logging.R` | Structured JSON logging to stdout + in-process buffer |
+| `R/logging.R` | Structured JSON logging to stdout |
 | `R/ui_modules.R` | Shared UI components / layout helpers |
 | `inst/www/css/` | Custom styles (light + dark modes) |
 | `inst/www/js/` | `session-id.js` (F.7 cookie), `navbar.js`, `darkmode.js`, `overlay.js`, `umami-events.js` |
 | `inst/sample_data/` | Example datasets |
-| `tests/testthat/` | 23 test files; 238 tests, 9 of them shinytest2 browser tests |
+| `tests/testthat/` | The package's tests, the dashboard's among them; the shinytest2 browser tests use the apps in `tests/testthat/apps/` |
 
 ## Dependencies
 
-| Package | Min version | Purpose |
-|---------|-------------|---------|
-| R | 4.0 | Language runtime |
-| shiny | 1.7.0 | Web framework |
-| mouseExperiment | 0.26.0 | Statistical backend |
-| ggplot2 | 3.4.0 | Visualization |
-| dplyr, tidyr | 1.1, 1.3 | Data manipulation |
-| emmeans | 1.8.0 | Estimated marginal means |
-| DT | 0.28 | Interactive tables |
-| shinyjs, shinycssloaders, shinyFeedback | recent | UI helpers |
-| logger | 0.3 | Structured logging |
-| jsonlite | 1.8 | Logger JSON serialization |
-| brms (Suggests) | 2.19 | Bayesian models |
-| future, promises (Suggests) | 1.33, 1.2 | Async execution |
-| bayesplot (Suggests) | 1.10 | MCMC diagnostic plots |
-| shinytest2, chromote (Suggests) | 0.2, recent | Headless-browser integration tests |
-
-See `DESCRIPTION` for the complete list.
+`shiny` is an Import of `mouseExperiment`. The dashboard's other packages are Suggests: `dashboard_packages()` in `R/app.R` lists them, and `run_dashboard()` checks them. The Bayesian fits use the package's own `brms` stack. See `DESCRIPTION` for versions.
 
 ## Deployment
 
@@ -231,13 +214,11 @@ Production deployment is handled by the companion [sciOmicsVPS](https://github.c
 
 ## License
 
-**Proprietary** — All Rights Reserved. See [LICENSE](LICENSE).
-
-`mouseExperiment` (the underlying R package) is licensed under the MIT License.
+MIT, as for the rest of `mouseExperiment`. See [LICENSE](../../LICENSE).
 
 ## Citation
 
-If you use the underlying `mouseExperiment` package in your research, please cite it from there. `mouseExperimentDashboard` is a proprietary private application and is not for citation or redistribution.
+If you use the dashboard in your research, please cite the package: `citation("mouseExperiment")`.
 
 ## Support
 

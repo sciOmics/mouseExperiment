@@ -1,19 +1,19 @@
-#' Data ingestion, detection, validation and preparation helpers
-#'
-#' Split out of the former `helpers.R` (1,227 LOC) under CODE_REVIEW.md D.1.
-#'
-#' The split is organised by *testability seam*, not by line count. These are the
-#' functions that decide what the data means before any model sees it: which
-#' column is the ID, what a date string is, which group is the reference, and --
-#' most consequentially -- which animals count as events. A defect here is
-#' invisible downstream because every number the user reads is already
-#' conditioned on it.
-#'
-#' D.1 originally read as "these files are too long". Length was not the problem:
-#' `mod_tumor_growth.R` had already been split once (2,659 -> 1,877 LOC) and D.7
-#' still sat at line 7 of the refactored file. The problem is that 29 of the 39
-#' functions in `helpers.R` had no test referencing them, and length made that
-#' easy not to notice.
+# Data ingestion, detection, validation and preparation helpers
+#
+# Split out of the former `helpers.R` (1,227 LOC) under CODE_REVIEW.md D.1.
+#
+# The split is organised by *testability seam*, not by line count. These are the
+# functions that decide what the data means before any model sees it: which
+# column is the ID, what a date string is, which group is the reference, and --
+# most consequentially -- which animals count as events. A defect here is
+# invisible downstream because every number the user reads is already
+# conditioned on it.
+#
+# D.1 originally read as "these files are too long". Length was not the problem:
+# `mod_tumor_growth.R` had already been split once (2,659 -> 1,877 LOC) and D.7
+# still sat at line 7 of the refactored file. The problem is that 29 of the 39
+# functions in `helpers.R` had no test referencing them, and length made that
+# easy not to notice.
 
 # ---- Subset filter (CODE_REVIEW.md Round 2 F.5) -----------------------------
 

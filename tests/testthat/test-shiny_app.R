@@ -6,7 +6,7 @@
 #   - shinytest2 >= 0.2.0
 #   - chromote / Chrome accessible on PATH  (skipped on CI if absent)
 #   - mouseExperiment installed
-#   - mouseExperimentDashboard package namespace loadable
+#   - mouseExperiment package namespace loadable
 #
 # If any requirement is missing the entire file skips gracefully.
 # =============================================================================

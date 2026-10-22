@@ -21,7 +21,7 @@
 # =============================================================================
 
 sample_dir <- function() {
-  p <- system.file("sample_data", package = "mouseExperimentDashboard")
+  p <- system.file("sample_data", package = "mouseExperiment")
   if (!nzchar(p) || !dir.exists(p)) p <- testthat::test_path("..", "..", "inst",
                                                              "sample_data")
   skip_if_not(dir.exists(p), "sample_data directory not locatable")

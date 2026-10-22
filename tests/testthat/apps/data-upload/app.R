@@ -1,6 +1,6 @@
 # The Data Upload module on its own, with two test hooks.
 source(file.path("..", "load-package.R"))
-ns <- asNamespace("mouseExperimentDashboard")
+ns <- asNamespace("mouseExperiment")
 
 shiny::shinyApp(
   ui = shiny::fluidPage(

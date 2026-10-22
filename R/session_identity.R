@@ -1,25 +1,25 @@
-#' Session-identity cookie helpers (CODE_REVIEW.md F.7, layer 2).
-#'
-#' The server-authoritative reader of the `mE_session` cookie. Reads
-#' the HTTP `Cookie` header directly from `session$request$HTTP_COOKIE`,
-#' never trusting any JS-side input value. This is the anti-spoofing
-#' boundary that prevents user B from claiming to be user A by sending
-#' a forged websocket message setting `input$mE_session_id`.
-#'
-#' The cookie is set client-side by `inst/www/js/session-id.js` on
-#' first connect, using `crypto.getRandomValues` (256 bits of CSPRNG
-#' output) and attributes `SameSite=Strict; Secure; Path=/;
-#' max-age=86400`. The server never sees the JS code or the client-side
-#' generation step — it only reads whatever the browser presents in the
-#' Cookie header.
-#'
-#' Cookie attributes:
-#'   * SameSite=Strict — no cross-site request can submit the cookie
-#'   * Secure          — HTTPS only; never transmits on plain HTTP
-#'   * Path=/          — scoped to this app
-#'   * max-age=86400   — 24-hour expiry
-#'   * Not HttpOnly    — JS must read it to set it the first time. XSS
-#'                       audit covers the residual risk.
+# Session-identity cookie helpers (CODE_REVIEW.md F.7, layer 2).
+#
+# The server-authoritative reader of the `mE_session` cookie. Reads
+# the HTTP `Cookie` header directly from `session$request$HTTP_COOKIE`,
+# never trusting any JS-side input value. This is the anti-spoofing
+# boundary that prevents user B from claiming to be user A by sending
+# a forged websocket message setting `input$mE_session_id`.
+#
+# The cookie is set client-side by `inst/www/js/session-id.js` on
+# first connect, using `crypto.getRandomValues` (256 bits of CSPRNG
+# output) and attributes `SameSite=Strict; Secure; Path=/;
+# max-age=86400`. The server never sees the JS code or the client-side
+# generation step — it only reads whatever the browser presents in the
+# Cookie header.
+#
+# Cookie attributes:
+#   * SameSite=Strict — no cross-site request can submit the cookie
+#   * Secure          — HTTPS only; never transmits on plain HTTP
+#   * Path=/          — scoped to this app
+#   * max-age=86400   — 24-hour expiry
+#   * Not HttpOnly    — JS must read it to set it the first time. XSS
+#                       audit covers the residual risk.
 
 # Regex matches "mE_session=<64 hex>" anywhere in a Cookie header. The
 # header is a semicolon-separated list of name=value pairs; we don't

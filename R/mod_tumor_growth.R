@@ -263,7 +263,7 @@ tumor_growth_server <- function(id, rv) {
       return(NULL)   # return immediately — Shiny knows this is non-blocking
     }
 
-    show_analysis_modal("Fitting tumor growth model…", "Results will appear automatically when complete.")
+    show_analysis_modal("Fitting tumor growth model\u2026", "Results will appear automatically when complete.")
     on.exit(shiny::removeModal(), add = TRUE)
 
     # R20.D6: the arguments are built once. The fit shown now runs without
@@ -797,10 +797,10 @@ tumor_growth_server <- function(id, rv) {
   
   # Dynamic labels for manual scale prior parameter inputs
   output$tg_prior_sd_param_label <- renderUI({
-    if (isTRUE(input$tg_prior_sd_dist == "half_normal")) "Scale σ" else "Rate"
+    if (isTRUE(input$tg_prior_sd_dist == "half_normal")) "Scale \u03c3" else "Rate"
   })
   output$tg_prior_sigma_param_label <- renderUI({
-    if (isTRUE(input$tg_prior_sigma_dist == "half_normal")) "Scale σ" else "Rate"
+    if (isTRUE(input$tg_prior_sigma_dist == "half_normal")) "Scale \u03c3" else "Rate"
   })
 
   # R20-D.V: how necrotic observations are handled. The selector used to appear
@@ -1016,7 +1016,7 @@ tumor_growth_server <- function(id, rv) {
             )
           ),
           shinycssloaders::withSpinner(
-            DTOutput(session$ns("tg_auc_individual_table"))
+            DT::DTOutput(session$ns("tg_auc_individual_table"))
           ),
           downloadButton(session$ns("download_tg_auc_individual"), "Download AUC Individual Data")
         )
@@ -1035,7 +1035,7 @@ tumor_growth_server <- function(id, rv) {
             em("Use these to check data and sample sizes, not to compare arms.")
           ),
           shinycssloaders::withSpinner(
-            DTOutput(session$ns("tg_auc_summary_table"))
+            DT::DTOutput(session$ns("tg_auc_summary_table"))
           ),
           downloadButton(session$ns("download_tg_auc_summary"), "Download AUC Summary")
         )
@@ -1057,10 +1057,10 @@ tumor_growth_server <- function(id, rv) {
       appendTab(inputId = tabs_id,
         tabPanel("Posterior Check",
           tab_info(
-            strong("Posterior predictive check (PPC)"), " — the model generates new datasets from the posterior and overlays their densities on the observed data. Good model fit means the simulated densities closely envelope the observed density.",
+            strong("Posterior predictive check (PPC)"), " \u2014 the model generates new datasets from the posterior and overlays their densities on the observed data. Good model fit means the simulated densities closely envelope the observed density.",
             tags$ul(
-              tags$li(strong("y"), " — observed (transformed) tumor volume values."),
-              tags$li(strong("y_rep"), " — 50 simulated datasets drawn from the posterior predictive distribution.")
+              tags$li(strong("y"), " \u2014 observed (transformed) tumor volume values."),
+              tags$li(strong("y_rep"), " \u2014 50 simulated datasets drawn from the posterior predictive distribution.")
             ),
             em("If the observed density falls well outside the simulated envelope, consider a different transformation or random-effects specification.")
           ),
@@ -1072,7 +1072,7 @@ tumor_growth_server <- function(id, rv) {
           tags$hr(),
           h4("Posterior summary"),
           p(class = "text-muted", "Posterior medians and 95% credible intervals of the model's parameters."),
-          DTOutput(session$ns("tg_posterior_summary"))
+          DT::DTOutput(session$ns("tg_posterior_summary"))
         ),
         select = FALSE
       )
@@ -1094,21 +1094,21 @@ tumor_growth_server <- function(id, rv) {
         target = "ANOVA", position = "before",
         tabPanel("Necrosis",
           tab_info(
-            strong("Per-group necrosis summary"), " — counts and percentages of necrotic
+            strong("Per-group necrosis summary"), " \u2014 counts and percentages of necrotic
             observations, number of affected mice, and the first day necrosis was observed.
             The summary always reflects the full uploaded dataset, regardless of which
             handling mode was selected.",
             tags$ul(
-              tags$li(strong("N_Observations"), " — total measurement rows for this group."),
-              tags$li(strong("N_Necrotic"), " — number flagged as necrotic."),
-              tags$li(strong("Pct_Necrotic"), " — percentage of observations that were necrotic."),
-              tags$li(strong("N_Mice_Total"), " — total animals in this group."),
-              tags$li(strong("N_Mice_With_Necrosis"), " — animals with at least one necrotic observation."),
-              tags$li(strong("First_Necrotic_Day"), " — earliest day a necrotic observation was recorded.")
+              tags$li(strong("N_Observations"), " \u2014 total measurement rows for this group."),
+              tags$li(strong("N_Necrotic"), " \u2014 number flagged as necrotic."),
+              tags$li(strong("Pct_Necrotic"), " \u2014 percentage of observations that were necrotic."),
+              tags$li(strong("N_Mice_Total"), " \u2014 total animals in this group."),
+              tags$li(strong("N_Mice_With_Necrosis"), " \u2014 animals with at least one necrotic observation."),
+              tags$li(strong("First_Necrotic_Day"), " \u2014 earliest day a necrotic observation was recorded.")
             )
           ),
           shinycssloaders::withSpinner(
-            DTOutput(session$ns("tg_necrosis_table"))
+            DT::DTOutput(session$ns("tg_necrosis_table"))
           ),
           downloadButton(session$ns("download_tg_necrosis"), "Download Necrosis Summary")
         ),
@@ -1149,7 +1149,7 @@ tumor_growth_server <- function(id, rv) {
       )
     } else {
       tab_info(
-        strong("Model summary: "), "Reports the fitted model — model type (LME4 / AUC / Bayesian), data transformation applied, random effects structure (subject and cage), number of subjects and treatment groups, reference group, and any convergence warnings or singular-fit notes."
+        strong("Model summary: "), "Reports the fitted model \u2014 model type (LME4 / AUC / Bayesian), data transformation applied, random effects structure (subject and cage), number of subjects and treatment groups, reference group, and any convergence warnings or singular-fit notes."
       )
     }
   })
@@ -1341,10 +1341,10 @@ tumor_growth_server <- function(id, rv) {
     )
   })
 
-  output$tg_anova_table <- renderDT({
+  output$tg_anova_table <- DT::renderDT({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$model_type_used == "bayes")) {
-      return(datatable(data.frame(
+      return(DT::datatable(data.frame(
         Message = paste(
           "ANOVA is not applicable for Bayesian models.",
           "See the Posterior Check tab for model fit validation",
@@ -1353,21 +1353,21 @@ tumor_growth_server <- function(id, rv) {
       ), options = list(paging = FALSE, searching = FALSE)))
     }
     if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$anova)) {
-      return(datatable(data.frame(Message = "ANOVA table not available")))
+      return(DT::datatable(data.frame(Message = "ANOVA table not available")))
     }
 
     anova_df <- as.data.frame(rv$tg_results$anova)
     anova_df <- format_df_for_display(anova_df)
 
-    datatable(anova_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+    DT::datatable(anova_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
   # Comparisons title (reactive based on selection)
   # Comparisons table
-  output$tg_comparisons_table <- renderDT({
+  output$tg_comparisons_table <- DT::renderDT({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) {
-      return(datatable(data.frame(Message = "Comparisons not available")))
+      return(DT::datatable(data.frame(Message = "Comparisons not available")))
     }
     
     # R20.D44: the family is the run's, not the dropdown's current value. A
@@ -1381,7 +1381,7 @@ tumor_growth_server <- function(id, rv) {
       rv$tg_results$reference_comparisons_dunnett %||% rv$tg_results$pairwise_comparisons
     }
     if (is.null(comp_df)) {
-      return(datatable(data.frame(Message = "Comparisons not available for this run")))
+      return(DT::datatable(data.frame(Message = "Comparisons not available for this run")))
     }
     comp_df <- as.data.frame(comp_df)
     table_title <- comparisons_title(rv$tg_results,
@@ -1429,17 +1429,17 @@ tumor_growth_server <- function(id, rv) {
 
     comp_df <- format_df_for_display(comp_df)
     # R20.D44: comparisons_title() was computed and never shown.
-    datatable(comp_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+    DT::datatable(comp_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
               caption = tags$caption(
                 style = "caption-side: top; text-align: left; font-weight: bold;",
                 table_title))
   })
   
   # Treatment effects table
-  output$tg_effects_table <- renderDT({
+  output$tg_effects_table <- DT::renderDT({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$treatment_effects)) {
-      return(datatable(data.frame(Message = "Treatment effects not available")))
+      return(DT::datatable(data.frame(Message = "Treatment effects not available")))
     }
 
     effects_df <- as.data.frame(rv$tg_results$treatment_effects)
@@ -1465,14 +1465,14 @@ tumor_growth_server <- function(id, rv) {
       effects_df <- format_df_for_display(effects_df)
     }
 
-    datatable(effects_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+    DT::datatable(effects_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
   # Growth rates table
-  output$tg_growth_rates_table <- renderDT({
+  output$tg_growth_rates_table <- DT::renderDT({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$growth_rates)) {
-      return(datatable(data.frame(Message = "Growth rates not available")))
+      return(DT::datatable(data.frame(Message = "Growth rates not available")))
     }
     
     rates_df <- as.data.frame(rv$tg_results$growth_rates)
@@ -1514,13 +1514,13 @@ tumor_growth_server <- function(id, rv) {
       pct_change_per_day = "Percent Change",
       pct_change_lower   = "PC 95% CI Lower Bound",
       pct_change_upper   = "PC 95% CI Upper Bound",
-      R_squared          = "R²"
+      R_squared          = "R\u00b2"
     )
     new_names <- colnames(rates_df)
     for (old in names(rename_map)) new_names[new_names == old] <- rename_map[[old]]
     # CODE_REVIEW.md Round 2 F.4 — single-row selection enables the
     # per-mouse drill-down plot rendered just below the table.
-    datatable(rates_df,
+    DT::datatable(rates_df,
       colnames = new_names,
       selection = list(mode = "single", target = "row"),
       options  = list(scrollX = TRUE, paging = FALSE, searching = FALSE, scrollY = "500px", scrollCollapse = TRUE)
@@ -1618,34 +1618,34 @@ tumor_growth_server <- function(id, rv) {
   )
 
   # AUC individual data table
-  output$tg_auc_individual_table <- renderDT({
+  output$tg_auc_individual_table <- DT::renderDT({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$auc_analysis$individual)) {
-      return(datatable(data.frame(Message = "AUC individual data not available")))
+      return(DT::datatable(data.frame(Message = "AUC individual data not available")))
     }
     
     auc_ind_df <- as.data.frame(rv$tg_results$auc_analysis$individual)
     auc_ind_df <- format_df_for_display(auc_ind_df)
-    datatable(auc_ind_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+    DT::datatable(auc_ind_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
   # AUC summary table
-  output$tg_auc_summary_table <- renderDT({
+  output$tg_auc_summary_table <- DT::renderDT({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$auc_analysis$summary)) {
-      return(datatable(data.frame(Message = "AUC summary not available")))
+      return(DT::datatable(data.frame(Message = "AUC summary not available")))
     }
     
     auc_sum_df <- as.data.frame(rv$tg_results$auc_analysis$summary)
     auc_sum_df <- format_df_for_display(auc_sum_df)
-    datatable(auc_sum_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+    DT::datatable(auc_sum_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
   # Data summary table
-  output$tg_data_summary_table <- renderDT({
+  output$tg_data_summary_table <- DT::renderDT({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$data_summary)) {
-      return(datatable(data.frame(Message = "Data summary not available")))
+      return(DT::datatable(data.frame(Message = "Data summary not available")))
     }
     
     # R20.D45: the backend's summary is on the volume scale since 0.31.0
@@ -1653,7 +1653,7 @@ tumor_growth_server <- function(id, rv) {
     # mean of 75.9). The headers carry the declared unit.
     data_sum_df <- data_summary_display(rv$tg_results$data_summary, volume_unit_label(rv))
     data_sum_df <- format_df_for_display(data_sum_df)
-    datatable(data_sum_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+    DT::datatable(data_sum_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
               rownames = FALSE)
   })
   
@@ -1669,13 +1669,13 @@ tumor_growth_server <- function(id, rv) {
 
   # --- Bayesian-specific output renderers ---
 
-  output$tg_posterior_summary <- renderDT({
+  output$tg_posterior_summary <- DT::renderDT({
     req(rv$tg_results)
     req(isTRUE(rv$tg_results$model_type_used == "bayes"))
     req(!isTRUE(rv$tg_results$error))
     ps <- rv$tg_results$posterior_summary
     req(!is.null(ps))
-    datatable(
+    DT::datatable(
       format_df_for_display(as.data.frame(ps)),
       options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)
     )
@@ -1690,13 +1690,13 @@ tumor_growth_server <- function(id, rv) {
     rv$tg_results$pp_check_plot
   })
 
-  output$tg_mcmc_diag_table <- renderDT({
+  output$tg_mcmc_diag_table <- DT::renderDT({
     req(rv$tg_results)
     req(isTRUE(rv$tg_results$model_type_used == "bayes"))
     req(!isTRUE(rv$tg_results$error))
     diag <- rv$tg_results$mcmc_diagnostics
     req(!is.null(diag))
-    datatable(
+    DT::datatable(
       format_df_for_display(as.data.frame(diag)),
       options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)
     )
@@ -1711,19 +1711,19 @@ tumor_growth_server <- function(id, rv) {
     bayes_diagnostics_panel(rv$tg_results)
   })
 
-  output$tg_bayes_influential <- renderDT({
+  output$tg_bayes_influential <- DT::renderDT({
     req(rv$tg_results)
     req(isTRUE(rv$tg_results$model_type_used == "bayes"))
     req(!isTRUE(rv$tg_results$error))
     inf_df <- bayes_influential_obs(rv$tg_results)
     if (nrow(inf_df) == 0L) {
-      return(datatable(
+      return(DT::datatable(
         data.frame(Note = sprintf("No observations exceed the Pareto-k threshold (%s).",
                                   format(rv$tg_results$loo_diagnostics$k_threshold %||% 0.7))),
         options = list(dom = "t", paging = FALSE, searching = FALSE), rownames = FALSE
       ))
     }
-    datatable(
+    DT::datatable(
       inf_df,
       options = list(scrollX = TRUE, paging = FALSE, searching = FALSE), rownames = FALSE
     )

@@ -1,8 +1,8 @@
-#' Bayesian-fit display helpers (CODE_REVIEW.md C.1/C.3).
-#'
-#' Split out of `helpers.R` (was 1,417 LOC) so the Bayesian-diagnostics
-#' surface — used by every Bayesian module — lives in its own file rather
-#' than buried among 38 unrelated utility functions.
+# Bayesian-fit display helpers (CODE_REVIEW.md C.1/C.3).
+#
+# Split out of `helpers.R` (was 1,417 LOC) so the Bayesian-diagnostics
+# surface — used by every Bayesian module — lives in its own file rather
+# than buried among 38 unrelated utility functions.
 
 # ---- Elapsed-time formatter -------------------------------------------------
 
@@ -38,8 +38,8 @@ format_elapsed <- function(seconds) {
 #'   \item NUTS sampler banner — divergent transitions, max-treedepth hits,
 #'     and minimum E-BFMI. Surfaces as a warning alert when any pathology
 #'     is detected, success alert otherwise.
-#'   \item Bayes R^2 — posterior median + 95\% credible interval.
-#'   \item PPC coverage — empirical 50 / 80 / 95 \% interval coverage.
+#'   \item Bayes R^2 — posterior median + 95% credible interval.
+#'   \item PPC coverage — empirical 50 / 80 / 95 % interval coverage.
 #'   \item PSIS-LOO — \code{elpd_loo} ± SE and the count of observations
 #'     with Pareto-k above the backend's threshold (influential / unreliable LOO).
 #' }
@@ -117,7 +117,7 @@ bayes_diagnostics_panel <- function(result) {
   rows <- list()
   if (!is.null(bayes_R2) && nrow(bayes_R2) > 0L) {
     rows$bayes_R2 <- sprintf(
-      "%.3f (95%% CrI: %.3f – %.3f)",
+      "%.3f (95%% CrI: %.3f \u2013 %.3f)",
       bayes_R2$Estimate[1], bayes_R2$Lower_95_CrI[1], bayes_R2$Upper_95_CrI[1]
     )
   }
@@ -140,7 +140,7 @@ bayes_diagnostics_panel <- function(result) {
     dl_items <- list()
     if (!is.null(rows$bayes_R2)) {
       dl_items <- c(dl_items,
-        list(shiny::tags$dt("Bayes R²"), shiny::tags$dd(rows$bayes_R2)))
+        list(shiny::tags$dt("Bayes R\u00b2"), shiny::tags$dd(rows$bayes_R2)))
     }
     if (!is.null(rows$ppc)) {
       dl_items <- c(dl_items,
@@ -300,11 +300,10 @@ pareto_k_threshold <- function(result) {
 #'
 #' Closes DIAGNOSTICS.md gap (12).
 #'
-#' @param brmsfit A fitted brms model (or any model that
-#'   `bayesplot::mcmc_rank_overlay` accepts).
-#' @param pars Optional character vector of parameter names to show.
-#'   Default uses brms's `pars = NA` which shows all non-`lp__`
-#'   parameters.
+#' @param draws Posterior draws, or a fitted brms model: anything
+#'   `posterior::as_draws_array()` accepts.
+#' @param pars `NULL` (the default) shows the first 12 parameters other than
+#'   `lp__`; anything else shows every parameter.
 #' @return ggplot, or NULL on failure.
 #' @keywords internal
 build_mcmc_rank_plot <- function(draws, pars = NULL) {

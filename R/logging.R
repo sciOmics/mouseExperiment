@@ -1,4 +1,4 @@
-#' Structured Logging for mouseExperimentDashboard
+#' Structured logging for the mouseExperiment dashboard
 #'
 #' Provides a lightweight logging layer using the \pkg{logger} package.
 #' In a Docker container, logs are emitted to \code{stdout} as JSON lines
@@ -6,6 +6,7 @@
 #'
 #' @name logging
 #' @keywords internal
+NULL
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -13,7 +14,7 @@
 
 #' Initialise the dashboard logger
 #'
-#' Called once from the server function (or \code{.onLoad()}) to configure
+#' Called once from the server function to configure
 #' the logger namespace, threshold, layout, and appender.
 #'
 #' @param level Log threshold (default \code{logger::INFO}).

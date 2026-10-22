@@ -32,12 +32,12 @@ add_tg_download_handlers <- function(input, output, session, rv,
 
   # --- Necrosis summary renderer and download ---
 
-  output$tg_necrosis_table <- renderDT({
+  output$tg_necrosis_table <- DT::renderDT({
     req(rv$tg_results)
     req(!isTRUE(rv$tg_results$error))
     ns_df <- rv$tg_results$necrosis_summary
     req(!is.null(ns_df))
-    datatable(
+    DT::datatable(
       format_df_for_display(as.data.frame(ns_df)),
       options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)
     )

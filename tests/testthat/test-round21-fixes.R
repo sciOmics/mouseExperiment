@@ -5,8 +5,8 @@
 skip_if_not_installed("shiny", minimum_version = "1.5.0")
 skip_if_not_installed("mouseExperiment", minimum_version = "0.25.2")
 
-.pkg <- tryCatch(getNamespace("mouseExperimentDashboard"), error = function(e) NULL)
-skip_if(is.null(.pkg), "mouseExperimentDashboard namespace not loadable")
+.pkg <- tryCatch(getNamespace("mouseExperiment"), error = function(e) NULL)
+skip_if(is.null(.pkg), "mouseExperiment namespace not loadable")
 g <- function(nm) get(nm, envir = .pkg)
 
 render_text <- function(x) {
@@ -17,7 +17,7 @@ render_text <- function(x) {
 
 master_rv <- function(...) {
   path <- system.file("sample_data", "all_features_synthetic_data.csv",
-                      package = "mouseExperimentDashboard")
+                      package = "mouseExperiment")
   shiny::reactiveValues(
     uploaded_data = utils::read.csv(path, stringsAsFactors = FALSE),
     data_valid = TRUE, session_id = NULL,
@@ -63,7 +63,7 @@ test_that("R20.D3: a Bayesian launch without a cookie runs through the registry"
   # Since v26.09.006 a fit is a queued task (R20.D7); with no free worker it
   # stays queued, so no fit runs here.
   testthat::local_mocked_bindings(.free_workers = function() 0L,
-                                  .package = "mouseExperimentDashboard")
+                                  .package = "mouseExperiment")
   srv <- function(id, rv) shiny::moduleServer(id, function(input, output, session) {
     g("launch_tg_bayes_job")(g("SID_NONE"), list(data = NULL), input, output, session, rv)
   })

@@ -70,9 +70,9 @@ doseResponseUI <- function(id) {
                   div(class = "panel-body",
                     p("The Dose-Response tab models how tumor volume (or TGI) varies across dose levels. Three complementary analyses are performed simultaneously:"),
                     tags$ul(
-                      tags$li(strong("Linear regression"), " — tests whether there is a significant linear trend in tumor volume with increasing dose."),
-                      tags$li(strong("One-way ANOVA"), " — tests whether any dose group differs from the others, followed by Tukey HSD post-hoc comparisons if significant."),
-                      tags$li(strong("Non-linear dose-response model (4PL)"), " — fits a four-parameter log-logistic (Hill) model to quantify ED50 and curve steepness.")
+                      tags$li(strong("Linear regression"), " \u2014 tests whether there is a significant linear trend in tumor volume with increasing dose."),
+                      tags$li(strong("One-way ANOVA"), " \u2014 tests whether any dose group differs from the others, followed by Tukey HSD post-hoc comparisons if significant."),
+                      tags$li(strong("Non-linear dose-response model (4PL)"), " \u2014 fits a four-parameter log-logistic (Hill) model to quantify ED50 and curve steepness.")
                     ),
                     p(strong("One agent at a time. "),
                       "A dose-response curve describes one agent at several doses, against the study's control. ",
@@ -112,10 +112,10 @@ doseResponseUI <- function(id) {
                     tags$dl(class = "dl-horizontal",
                       tags$dt("Slope"),
                       tags$dd("Change in volume per dose unit. A negative slope indicates dose-dependent tumor suppression."),
-                      tags$dt("R²"),
-                      tags$dd("Proportion of variance in volume explained by dose. Low R² with a significant slope can occur when individual variability is high relative to group differences."),
+                      tags$dt("R\u00b2"),
+                      tags$dd("Proportion of variance in volume explained by dose. Low R\u00b2 with a significant slope can occur when individual variability is high relative to group differences."),
                       tags$dt("p-value"),
-                      tags$dd("Significance of the slope. A non-significant p-value does not exclude a non-linear relationship — inspect the 4PL model output and plots as well.")
+                      tags$dd("Significance of the slope. A non-significant p-value does not exclude a non-linear relationship \u2014 inspect the 4PL model output and plots as well.")
                     )
                   )
                 ),
@@ -146,7 +146,7 @@ doseResponseUI <- function(id) {
                   div(class = "panel-body",
                     p("A four-parameter log-logistic (4PL / Hill) model is fitted via the ", tags$code("drc"), " package:"),
                     tags$blockquote(tags$code(
-                      "Volume = c + (d − c) / (1 + (Dose / ED50)^b)"
+                      "Volume = c + (d \u2212 c) / (1 + (Dose / ED50)^b)"
                     )),
                     tags$dl(class = "dl-horizontal",
                       tags$dt("b"), tags$dd("Hill coefficient: steepness of the dose-response curve. Larger absolute values indicate a sharper transition."),
@@ -163,7 +163,7 @@ doseResponseUI <- function(id) {
                       icon("circle-info"), " ",
                       strong("AIC / BIC note: "),
                       "AIC and BIC from the linear model (", tags$code("stats::lm"), ") and the non-linear model (",
-                      tags$code("drc::drm"), ") are ", strong("not directly comparable"), " for model selection — ",
+                      tags$code("drc::drm"), ") are ", strong("not directly comparable"), " for model selection \u2014 ",
                       "the two packages use different likelihood parameterisations. ",
                       "Prefer visual inspection of the fitted curve and residuals when choosing between linear and non-linear models."
                     )
@@ -229,13 +229,13 @@ doseResponseUI <- function(id) {
               downloadButton(ns("download_dr_table"), "Download CSV")
             ),
             shinycssloaders::withSpinner(
-              DTOutput(ns("dr_summary_table"))
+              DT::DTOutput(ns("dr_summary_table"))
             ),
             h4("TGI by dose"),
             p(class = "text-muted",
               "At the analysis day, from the endpoint model (the TGI the Drug Synergy and Toxicity tabs ",
               "report), with 95% intervals from draws of the model."),
-            DTOutput(ns("dr_tgi_table"))
+            DT::DTOutput(ns("dr_tgi_table"))
           ),
 
           tabPanel("Plots",
@@ -358,7 +358,7 @@ doseResponseUI <- function(id) {
               verbatimTextOutput(ns("dr_stat_tests"))
             ),
             shinycssloaders::withSpinner(
-              DTOutput(ns("dr_tukey_table"))
+              DT::DTOutput(ns("dr_tukey_table"))
             )
           ),
 
@@ -386,7 +386,7 @@ doseResponseUI <- function(id) {
                     "plot for clues.",
                     summary = "How to read this table"),
                 shinycssloaders::withSpinner(
-                  DTOutput(ns("dr_lack_of_fit_table"))
+                  DT::DTOutput(ns("dr_lack_of_fit_table"))
                 )
               ),
               column(6,
@@ -619,7 +619,7 @@ dose_response_server <- function(id, rv) {
     }
 
     # ── Frequentist path ───────────────────────────────────────────────────────
-    show_analysis_modal("Fitting dose-response model…", "Results will appear automatically when complete.")
+    show_analysis_modal("Fitting dose-response model\u2026", "Results will appear automatically when complete.")
     on.exit(shiny::removeModal(), add = TRUE)
 
     result <- safe_analysis(module = "dose_response", {
@@ -656,7 +656,7 @@ dose_response_server <- function(id, rv) {
       result$summary_stats <- result$summary_table
       if (is.null(result$analysis_data)) {
         result$dr_prep_error <-
-          "This backend version does not return analysis_data; plots unavailable."
+          "The dose-response result has no analysis data; plots unavailable."
       }
     }
 
@@ -750,12 +750,12 @@ dose_response_server <- function(id, rv) {
   })
 
   # ---- Dose-Response Table ----
-  output$dr_summary_table <- renderDT({
+  output$dr_summary_table <- DT::renderDT({
     req(rv$dr_results)
-    if (isTRUE(rv$dr_results$error)) return(datatable(data.frame(Message = "Results not available")))
+    if (isTRUE(rv$dr_results$error)) return(DT::datatable(data.frame(Message = "Results not available")))
     tbl <- as.data.frame(rv$dr_results$summary_table)
     tbl <- format_df_for_display(tbl)
-    datatable(tbl, options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE)
+    DT::datatable(tbl, options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE)
   })
 
   output$dr_download_plot_btn <- renderUI({
@@ -885,11 +885,11 @@ dose_response_server <- function(id, rv) {
   }, width = function() input$dr_plot_width %||% 800,
      height = function() input$dr_plot_height %||% 600)
 
-  output$dr_tgi_table <- renderDT({
+  output$dr_tgi_table <- DT::renderDT({
     req(rv$dr_results)
     tt <- rv$dr_results$tgi_table
     if (isTRUE(rv$dr_results$error) || is.null(tt)) return(NULL)
-    datatable(format_df_for_display(tt), rownames = FALSE,
+    DT::datatable(format_df_for_display(tt), rownames = FALSE,
               options = list(paging = FALSE, searching = FALSE, scrollX = TRUE))
   })
 
@@ -940,11 +940,11 @@ dose_response_server <- function(id, rv) {
     paste(lines, collapse = "\n")
   })
 
-  output$dr_tukey_table <- renderDT({
+  output$dr_tukey_table <- DT::renderDT({
     req(rv$dr_results)
-    if (isTRUE(rv$dr_results$error)) return(datatable(data.frame(Message = "No results")))
+    if (isTRUE(rv$dr_results$error)) return(DT::datatable(data.frame(Message = "No results")))
     tukey <- rv$dr_results$statistics$tukey_results
-    if (is.null(tukey)) return(datatable(data.frame(
+    if (is.null(tukey)) return(DT::datatable(data.frame(
       Message = "Tukey HSD not computed (ANOVA p \u2265 0.05 or not available)")))
     tbl <- as.data.frame(tukey[[1]])
 
@@ -968,18 +968,18 @@ dose_response_server <- function(id, rv) {
     tbl$Comparison <- rownames(tbl)
     tbl <- tbl[, c("Comparison", setdiff(names(tbl), "Comparison"))]
     tbl <- format_df_for_display(tbl)
-    datatable(tbl, options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
+    DT::datatable(tbl, options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
   })
 
   # CODE_REVIEW.md DIAGNOSTICS gap (5) — frequentist DR Diagnostics tab.
-  output$dr_lack_of_fit_table <- renderDT({
+  output$dr_lack_of_fit_table <- DT::renderDT({
     req(rv$dr_results)
-    if (isTRUE(rv$dr_results$error)) return(datatable(data.frame(Message = "No results")))
+    if (isTRUE(rv$dr_results$error)) return(DT::datatable(data.frame(Message = "No results")))
     lof <- rv$dr_results$statistics$dr_lack_of_fit
     if (is.null(lof) || nrow(lof) == 0L)
-      return(datatable(data.frame(
+      return(DT::datatable(data.frame(
         Message = "Lack-of-fit not available (Hill / Emax fit did not converge)")))
-    datatable(format_df_for_display(as.data.frame(lof)),
+    DT::datatable(format_df_for_display(as.data.frame(lof)),
               options = list(dom = "t", paging = FALSE, searching = FALSE))
   })
 

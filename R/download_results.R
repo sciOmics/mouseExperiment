@@ -220,8 +220,7 @@ dl_readme_header <- function(module_title, res, settings_fn = NULL) {
   s <- Filter(function(v) length(v) && !all(is.na(v)) && any(nzchar(as.character(v))), s %||% list())
   c(paste("mouseExperiment dashboard:", module_title, "results"),
     paste("Downloaded:", format(Sys.time(), "%Y-%m-%d %H:%M %Z")),
-    paste0("Versions: mouseExperimentDashboard ", ver("mouseExperimentDashboard"),
-           ", mouseExperiment ", ver("mouseExperiment"), ", R ", getRversion()),
+    paste0("Versions: mouseExperiment ", ver("mouseExperiment"), ", R ", getRversion()),
     if (length(s)) c("", "Settings of the run",
                      sprintf("  %s: %s", names(s),
                              vapply(s, function(v) paste(as.character(v), collapse = ", "), ""))))

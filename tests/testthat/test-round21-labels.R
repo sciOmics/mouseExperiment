@@ -6,8 +6,8 @@
 
 skip_if_not_installed("shiny", minimum_version = "1.5.0")
 
-.pkg <- tryCatch(getNamespace("mouseExperimentDashboard"), error = function(e) NULL)
-skip_if(is.null(.pkg), "mouseExperimentDashboard namespace not loadable")
+.pkg <- tryCatch(getNamespace("mouseExperiment"), error = function(e) NULL)
+skip_if(is.null(.pkg), "mouseExperiment namespace not loadable")
 g <- function(nm) get(nm, envir = .pkg)
 
 html_of <- function(x) {
@@ -19,7 +19,7 @@ html_of <- function(x) {
 all_features_path <- function() {
   system.file("sample_data", c("all_features_synthetic_data.csv",
                                "master_synthetic_data.csv"),
-              package = "mouseExperimentDashboard")[1]
+              package = "mouseExperiment")[1]
 }
 all_features_rv <- function() {
   shiny::reactiveValues(
@@ -160,7 +160,7 @@ test_that("R20.D51: the seed SD is taken at one endpoint day, not pooled over ev
 
 test_that("R20.D12: no study string reaches the analytics events", {
   js <- paste(readLines(system.file("www", "js", "umami-events.js",
-                                    package = "mouseExperimentDashboard")), collapse = "\n")
+                                    package = "mouseExperiment")), collapse = "\n")
   for (field in c("reference_group:", "error_message:", "treatment_col:",
                   "time_col:", "volume_col:")) {
     expect_false(grepl(field, js, fixed = TRUE), info = field)

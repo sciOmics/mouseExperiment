@@ -608,7 +608,7 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
 
     contrast_labels <- as.character(pc_df[[label_col]])
     if (isTRUE(using_dunnett) && !is.null(ref_grp)) {
-      suffix_pat <- paste0("\\s*[-–]\\s*", gsub("([+()])", "\\\\\\1", ref_grp), "$")
+      suffix_pat <- paste0("\\s*[-\u2013]\\s*", gsub("([+()])", "\\\\\\1", ref_grp), "$")
       clean_tmp  <- sub(suffix_pat, "", contrast_labels)
       if (all(clean_tmp != contrast_labels)) contrast_labels <- clean_tmp
     }
@@ -722,7 +722,7 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
       x_breaks  <- x_breaks[x_breaks >= -max_abs & x_breaks <= max_abs]
       scale_tag <- scale_suffix(transform_used)
       x_lab     <- if (isTRUE(using_dunnett))
-                     paste0("Mean Difference (treatment − reference)", scale_tag)
+                     paste0("Mean Difference (treatment \u2212 reference)", scale_tag)
                    else paste0("Mean Difference", scale_tag)
     }
 
@@ -849,22 +849,22 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
   })
   shiny::outputOptions(output, "tg_show_influence", suspendWhenHidden = FALSE)
 
-  output$tg_cooks_distance <- renderDT({
+  output$tg_cooks_distance <- DT::renderDT({
     req(rv$tg_results)
     cd <- rv$tg_results$diag_cooks_distance
     if (is.null(cd) || nrow(cd) == 0L)
-      return(datatable(data.frame(Message = "Cook's distance not available")))
-    datatable(format_df_for_display(as.data.frame(cd)),
+      return(DT::datatable(data.frame(Message = "Cook's distance not available")))
+    DT::datatable(format_df_for_display(as.data.frame(cd)),
               options = list(scrollX = TRUE, pageLength = 10),
               rownames = FALSE)
   })
 
-  output$tg_dfbetas <- renderDT({
+  output$tg_dfbetas <- DT::renderDT({
     req(rv$tg_results)
     db <- rv$tg_results$diag_dfbetas
     if (is.null(db) || nrow(db) == 0L)
-      return(datatable(data.frame(Message = "DFBETAS not available")))
-    datatable(format_df_for_display(as.data.frame(db)),
+      return(DT::datatable(data.frame(Message = "DFBETAS not available")))
+    DT::datatable(format_df_for_display(as.data.frame(db)),
               options = list(scrollX = TRUE, pageLength = 10),
               rownames = FALSE)
   })

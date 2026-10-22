@@ -1,25 +1,28 @@
-#' Run mouseExperimentDashboard
+#' Run the mouseExperiment dashboard
 #'
-#' Launch the interactive dashboard for analyzing mouse tumor growth experiments.
+#' Launch the interactive dashboard for mouse tumour-growth experiments: data
+#' upload, tumour growth, survival, toxicity, dose response, drug synergy and
+#' power analysis, with downloadable results. The dashboard's own packages are
+#' Suggests; an interactive session offers to install any that are missing.
 #'
 #' @param host The host IP address to listen on. Default: "127.0.0.1" (localhost)
 #' @param port The port number. Default: 3838
+#' @return Called for its side effect; runs until the app is stopped.
 #'
-#' @importFrom shiny shinyApp navbarPage tabPanel fluidPage tags observeEvent updateNavbarPage reactiveValues observe
+#' @import shiny
+#' @importFrom grDevices dev.off png
+#' @importFrom graphics plot.new title
+#' @importFrom utils capture.output write.csv
 #' @export
 #'
 #' @examples
 #' \dontrun{
-#' runDashboard()
-#' runDashboard(port = 8080)
+#' run_dashboard()
+#' run_dashboard(port = 8080)
 #' }
-runDashboard <- function(host = "127.0.0.1", port = 3838) {
+run_dashboard <- function(host = "127.0.0.1", port = 3838) {
 
-  if (!requireNamespace("shiny", quietly = TRUE)) {
-    stop("shiny package is required but not installed")
-  }
-
-  if (!exists("APP_VERSION")) APP_VERSION <- "0.1.0 (Development)"
+  rlang::check_installed(dashboard_packages(), reason = "to run the dashboard.")
 
   startup_proxy_reminder(host)
 
@@ -31,14 +34,34 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
 
   # Bayesian fits run on one background worker (each fit runs its chains in
   # parallel inside it). See use_background_worker().
-  if (requireNamespace("future", quietly = TRUE)) {
-    use_background_worker()
-    on.exit(future::plan(future::sequential), add = TRUE)
-  }
+  use_background_worker()
+  on.exit(future::plan(future::sequential), add = TRUE)
 
   # R20.D28: only an interactive session opens a browser; the container runs
   # `R -e`, where there is none to open.
   shiny::runApp(app, host = host, port = port, launch.browser = interactive())
+}
+
+#' The packages the dashboard needs beyond the analysis functions
+#'
+#' They are Suggests, so that installing mouseExperiment for its analysis
+#' functions does not pull in the Shiny stack; [run_dashboard()] checks them.
+#' @keywords internal
+dashboard_packages <- function() {
+  c("DT", "shinyjs", "shinyFeedback", "shinycssloaders", "colourpicker", "sortable",
+    "logger", "future", "promises", "later", "survminer", "scales", "jsonlite",
+    "htmlwidgets")
+}
+
+#' Whether this server records usage analytics
+#'
+#' Off unless the server asks for it (`MOUSEEXPERIMENT_ANALYTICS=true`, as on
+#' mouseexperiment.com, or `options(mouseExperiment.analytics = TRUE)`). A
+#' local run then loads nothing from the analytics server.
+#' @keywords internal
+dashboard_analytics <- function() {
+  isTRUE(getOption("mouseExperiment.analytics",
+                   identical(tolower(Sys.getenv("MOUSEEXPERIMENT_ANALYTICS")), "true")))
 }
 
 #' Remind the operator about the reverse proxy's timeouts
@@ -54,7 +77,7 @@ runDashboard <- function(host = "127.0.0.1", port = 3838) {
 #' with neither, so it never fired where it matters. It now fires whenever the
 #' app binds a non-local address, which is what it does behind a proxy.
 #'
-#' @param host The address `runDashboard()` binds.
+#' @param host The address `run_dashboard()` binds.
 #' @return `TRUE` (invisibly) when the reminder was shown.
 #' @keywords internal
 startup_proxy_reminder <- function(host) {
@@ -88,7 +111,7 @@ use_background_worker <- function() {
 
 #' Build the dashboard app without running it
 #'
-#' Everything `runDashboard()` serves: static assets, the UI, the TTL sweeper
+#' Everything `run_dashboard()` serves: static assets, the UI, the TTL sweeper
 #' and the server function. Split out so a test can start a real session with
 #' `shiny::testServer(dashboard_app(), ...)`. The full server had no test, and
 #' a start-up error in it crashed every session while the page still loaded
@@ -100,12 +123,12 @@ dashboard_app <- function() {
   # Mount static assets from inst/www/ (bundled with package)
   # system.file() returns the installation path during normal use, and the
   # source directory root during devtools::load_all(), so inst/www resolves correctly in both cases.
-  www_dir <- system.file("www", package = "mouseExperimentDashboard")
+  www_dir <- system.file("www", package = "mouseExperiment")
   
   if (!nzchar(www_dir) || !dir.exists(www_dir)) {
     stop(
       "Static assets (www/) folder not found in package installation.\n",
-      "Expected location: ", system.file(package = "mouseExperimentDashboard"), "/www\n",
+      "Expected location: ", system.file(package = "mouseExperiment"), "/www\n",
       "To fix: Reinstall the package to ensure inst/www/ is included:\n",
       "  devtools::install() or R CMD INSTALL ."
     )
@@ -121,7 +144,7 @@ dashboard_app <- function() {
   # a deploy. Query strings are ignored by the file server but make the URL unique,
   # forcing a fresh fetch whenever the package version changes.
   asset_ver <- tryCatch(
-    as.character(utils::packageVersion("mouseExperimentDashboard")),
+    as.character(utils::packageVersion("mouseExperiment")),
     error = function(e) as.character(as.integer(Sys.time()))
   )
   v <- function(path) sprintf("%s?v=%s", path, asset_ver)
@@ -180,7 +203,8 @@ dashboard_app <- function() {
           "  o.on('click','#mobile-dismiss',function(){o.remove();});",
           "});"
         )),
-        tags$script(
+        # Usage analytics only where the server enables them (dashboard_analytics()).
+        if (dashboard_analytics()) tags$script(
           async = NA,
           src = "https://analytics.mouseexperiment.com/script.js",
           `data-website-id` = "f820d0f9-9d2b-4048-b34f-078aa2fea7da",
@@ -209,7 +233,7 @@ dashboard_app <- function() {
   )
 
   # F.7 — start the registry TTL sweeper once per R process. Idempotent
-  # so repeat `runDashboard()` calls (dev reloads) don't stack sweepers.
+  # so repeat `run_dashboard()` calls (dev reloads) don't stack sweepers.
   start_ttl_sweeper()
 
   server <- function(input, output, session) {
@@ -251,7 +275,7 @@ dashboard_app <- function() {
         shiny::p(
           shiny::strong("mouseExperiment"), " is provided \"as is\" for research purposes only,",
           " without warranty of any kind, express or implied. The authors and contributors",
-          " accept no liability for errors, inaccuracies, or any consequences — including",
+          " accept no liability for errors, inaccuracies, or any consequences \u2014 including",
           " but not limited to incorrect results, data loss, or decisions made on the basis",
           " of outputs from this software.",
           " All results must be independently validated before use in publications, reports,",

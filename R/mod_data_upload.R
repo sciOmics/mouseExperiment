@@ -1,4 +1,4 @@
-#' Server Modules for mouseExperimentDashboard
+# Server modules for the mouseExperiment dashboard
 
 #' Data Upload Server Logic
 #' @keywords internal
@@ -77,7 +77,7 @@ data_upload_server <- function(id, rv) {
     )
 
     chosen   <- demo_files[[input$demo_dataset]]
-    pkg_name <- "mouseExperimentDashboard"
+    pkg_name <- "mouseExperiment"
 
     # Locate files: installed package first, then development source tree
     find_demo <- function(filename) {
@@ -540,8 +540,8 @@ data_upload_server <- function(id, rv) {
                 tags$th(if (!is.null(id_col_disp))   id_col_disp   else "ID"),
                 tags$th(if (!is.null(time_col_disp)) time_col_disp else "Day"),
                 tags$th(style = "color:#c0392b;",
-                        paste0(wid_col_raw, " (was larger — swapped to width)")),
-                tags$th(paste0(len_col_raw, " (was smaller — swapped to length)")),
+                        paste0(wid_col_raw, " (was larger \u2014 swapped to width)")),
+                tags$th(paste0(len_col_raw, " (was smaller \u2014 swapped to length)")),
                 tags$th("Corrected: Length / Width")
               )
             ),
@@ -574,10 +574,10 @@ data_upload_server <- function(id, rv) {
   output$preview_summary <- renderText({
     if (!rv$data_valid) return("")
     data <- preview_data()
-    paste("Dataset:", nrow(data), "rows ×", ncol(data), "columns")
+    paste("Dataset:", nrow(data), "rows \u00d7", ncol(data), "columns")
   })
   
-  output$data_table <- renderDT({
+  output$data_table <- DT::renderDT({
     req(rv$data_valid)
     tr   <- transposed_rows()
     opts <- list(scrollX = TRUE, scrollY = "600px", paging = FALSE, dom = "ti")
@@ -592,7 +592,7 @@ data_upload_server <- function(id, rv) {
            }
          }", js_idx))
     }
-    datatable(preview_data(), options = opts)
+    DT::datatable(preview_data(), options = opts)
   })
   
   output$download_preview_data <- downloadHandler(

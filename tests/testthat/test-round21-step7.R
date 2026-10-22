@@ -5,12 +5,12 @@
 # (VPS V3.12). The first three tests fail on v26.09.006; the last checks that
 # a job still returns its value through the change.
 
-.pkg <- tryCatch(getNamespace("mouseExperimentDashboard"), error = function(e) NULL)
-skip_if(is.null(.pkg), "mouseExperimentDashboard namespace not loadable")
+.pkg <- tryCatch(getNamespace("mouseExperiment"), error = function(e) NULL)
+skip_if(is.null(.pkg), "mouseExperiment namespace not loadable")
 g <- function(nm) get(nm, envir = .pkg)
 
-test_that("R20.D28 / V3.22: in the container, runDashboard() reminds about the proxy and opens no browser", {
-  # What the production container runs: R -e "runDashboard(host = '0.0.0.0')",
+test_that("R20.D28 / V3.22: in the container, run_dashboard() reminds about the proxy and opens no browser", {
+  # What the production container runs: R -e "run_dashboard(host = '0.0.0.0')",
   # with neither SHINY_PORT nor SHINY_SERVER_VERSION set.
   withr::local_envvar(SHINY_PORT = NA, SHINY_SERVER_VERSION = NA)
   got <- NULL
@@ -20,8 +20,8 @@ test_that("R20.D28 / V3.22: in the container, runDashboard() reminds about the p
   testthat::local_mocked_bindings(
     dashboard_app = function() structure(list(), class = "shiny.appobj"),
     use_background_worker = function() invisible(),
-    .package = "mouseExperimentDashboard")
-  msgs <- testthat::capture_messages(g("runDashboard")(host = "0.0.0.0", port = 3838))
+    .package = "mouseExperiment")
+  msgs <- testthat::capture_messages(g("run_dashboard")(host = "0.0.0.0", port = 3838))
   expect_true(any(grepl("proxy_read_timeout >= 3600s", msgs, fixed = TRUE)))  # was silent
   expect_false(got$launch.browser)                                              # was TRUE
   expect_identical(got$host, "0.0.0.0")
@@ -53,7 +53,7 @@ test_that("V3.12: a job still runs, and returns its value, through the OOM prefe
   g(".reset_job_registry")()
   withr::defer({ g(".reset_job_registry")(); future::plan(old_plan); options(old_opt) })
   testthat::local_mocked_bindings(.free_workers = function() 1L,
-                                  .package = "mouseExperimentDashboard")
+                                  .package = "mouseExperiment")
   fun <- function(x) x * 2
   environment(fun) <- globalenv()
   sid <- strrep("a", 64L)

@@ -8,8 +8,8 @@
 skip_if_not_installed("shiny", minimum_version = "1.5.0")
 skip_if_not_installed("future", minimum_version = "1.49.0")
 
-.pkg <- tryCatch(getNamespace("mouseExperimentDashboard"), error = function(e) NULL)
-skip_if(is.null(.pkg), "mouseExperimentDashboard namespace not loadable")
+.pkg <- tryCatch(getNamespace("mouseExperiment"), error = function(e) NULL)
+skip_if(is.null(.pkg), "mouseExperiment namespace not loadable")
 g <- function(nm) get(nm, envir = .pkg)
 
 # The scheduler is driven by hand: no `later` timer is left running.
@@ -30,7 +30,7 @@ jobs_of <- function() unname(g("list_jobs")(sid))
 all_features_rv <- function() {
   path <- system.file("sample_data", c("all_features_synthetic_data.csv",
                                        "master_synthetic_data.csv"),
-                      package = "mouseExperimentDashboard")[1]
+                      package = "mouseExperiment")[1]
   shiny::reactiveValues(
     uploaded_data = utils::read.csv(path, stringsAsFactors = FALSE),
     data_valid = TRUE, session_id = sid,
@@ -60,7 +60,7 @@ test_that("R20.D6: the power simulation is queued on the worker, then delivered"
   future::plan(future::sequential)
   free <- 0L
   testthat::local_mocked_bindings(.free_workers = function() free,
-                                  .package = "mouseExperimentDashboard")
+                                  .package = "mouseExperiment")
   rv <- shiny::reactiveValues(uploaded_data = NULL, data_valid = FALSE,
                               settings = list(), session_id = sid)
   suppressWarnings(shiny::testServer(g("power_server"), args = list(rv = rv), {
@@ -86,7 +86,7 @@ test_that("R20.D6: the randomisation test runs on the worker after the fit is sh
   future::plan(future::sequential)
   free <- 0L
   testthat::local_mocked_bindings(.free_workers = function() free,
-                                  .package = "mouseExperimentDashboard")
+                                  .package = "mouseExperiment")
   rv <- all_features_rv()
   suppressWarnings(shiny::testServer(g("tumor_growth_server"), args = list(rv = rv), {
     session$setInputs(tg_model_type = "lme4", tg_transform = "log",
@@ -119,7 +119,7 @@ test_that("R20.D6: the body-weight model is queued on the worker, then delivered
   future::plan(future::sequential)
   free <- 0L
   testthat::local_mocked_bindings(.free_workers = function() free,
-                                  .package = "mouseExperimentDashboard")
+                                  .package = "mouseExperiment")
   rv <- all_features_rv()
   shiny::isolate(g("ensure_preprocessed")(rv))
   suppressWarnings(shiny::testServer(g("toxicity_server"), args = list(rv = rv), {

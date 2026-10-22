@@ -1,5 +1,5 @@
-#' Survival — F.7 resume helpers (CODE_REVIEW.md F.7).
-#' Same shape as `tg_resume.R`; see that file for the design notes.
+# Survival — F.7 resume helpers (CODE_REVIEW.md F.7).
+# Same shape as `tg_resume.R`; see that file for the design notes.
 
 #' @keywords internal
 launch_surv_bayes_job <- function(sid, bayes_params,
@@ -23,7 +23,7 @@ launch_surv_bayes_job <- function(sid, bayes_params,
     return(invisible(NULL))
   }
   show_analysis_modal(
-    "Bayesian survival fit running…",
+    "Bayesian survival fit running\u2026",
     paste("Fitting the Bayesian AFT model with brms. The first fit of a model",
           "compiles it (about 20 s); later fits of the same structure reuse it."),
     cancel_id = session$ns("surv_cancel_bayes"))
@@ -46,7 +46,7 @@ register_surv_resume <- function(input, output, session, rv) {
   register_bayes_resume(
     kind                  = "bayes_surv",
     tab_name              = "Survival",
-    modal_title           = "Bayesian survival fit running…",
+    modal_title           = "Bayesian survival fit running\u2026",
     modal_detail          = "Results will appear automatically when complete.",
     input = input, output = output, session = session, rv = rv,
     job_id_field          = "surv_job_id",

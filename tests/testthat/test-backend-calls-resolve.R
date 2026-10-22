@@ -101,41 +101,9 @@ test_that("R17.3: dose-response plots have the data they need", {
   expect_true(all(c("Dose", "Volume") %in% names(res$analysis_data)))
 })
 
-test_that("R19.6: every NAMESPACE import from the backend resolves", {
-  # THE OUTAGE. The R17.4 guard scanned `mouseExperiment::` CALL syntax and
-  # missed NAMESPACE imports entirely -- a different mechanism. After v0.21.0
-  # removed plot_combination_index() and plot_synergy_combined(), two stale
-  # importFrom() lines remained:
-  #
-  #   importFrom(mouseExperiment,plot_combination_index)
-  #   importFrom(mouseExperiment,plot_synergy_combined)
-  #
-  # Nothing in the test suite noticed, because devtools::load_all() does not
-  # resolve imports the way installation does. `R CMD INSTALL` fails at lazy-load
-  # with "object 'plot_combination_index' is not exported by
-  # 'namespace:mouseExperiment'", so the Docker build died at install_github and
-  # the site returned 503.
-  #
-  # This is the load_all()-vs-install gap: a suite can be entirely green against
-  # code that cannot be installed.
-  skip_if_not_installed("mouseExperiment")
-  ns <- testthat::test_path("..", "..", "NAMESPACE")
-  skip_if_not(file.exists(ns), "NAMESPACE not locatable")
-
-  lines <- readLines(ns, warn = FALSE)
-  hits <- grep("^importFrom\\(mouseExperiment,", lines, value = TRUE)
-  imported <- sub("^importFrom\\(mouseExperiment,\\s*([^)]+)\\)$", "\\1", hits)
-  imported <- trimws(gsub("[\"\']", "", imported))
-  expect_gt(length(imported), 0L)   # the scan must not silently find nothing
-
-  exported <- getNamespaceExports("mouseExperiment")
-  missing <- setdiff(imported, exported)
-  if (length(missing)) {
-    cat("\nNAMESPACE imports that no longer exist in the backend:\n  ",
-        paste(missing, collapse = "\n  "), "\n")
-  }
-  expect_length(missing, 0L)
-})
+# R19.6 ("every NAMESPACE import from the backend resolves") was removed in
+# 0.34.0: the dashboard and the analysis functions are one package, so there
+# is no NAMESPACE import from mouseExperiment left to go stale.
 
 test_that("R19.6: the import scan would catch a broken import", {
   # A guard that cannot fail is not a guard.

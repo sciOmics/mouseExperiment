@@ -1,11 +1,11 @@
-#' Shared helpers for routing Bayesian fits through the job registry
-#' (CODE_REVIEW.md F.7).
-#'
-#' Per-module helpers (`tg_resume.R`, `surv_resume.R`) compose
-#' these two primitives — the polling observer and the resume
-#' registration — so each module's resume file stays small and the
-#' shared "poll → terminal status → call finalizer → retire → stop
-#' polling" logic lives in one place.
+# Shared helpers for routing Bayesian fits through the job registry
+# (CODE_REVIEW.md F.7).
+#
+# Per-module helpers (`tg_resume.R`, `surv_resume.R`) compose
+# these two primitives — the polling observer and the resume
+# registration — so each module's resume file stays small and the
+# shared "poll → terminal status → call finalizer → retire → stop
+# polling" logic lives in one place.
 
 #' Attach the polling observer that consumes a single job.
 #'

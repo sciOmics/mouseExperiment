@@ -5,6 +5,47 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.0] - 2026-10-22
+
+The dashboard joins the package (`CODE_REVIEW.md` R20-Y).
+
+### Added
+- **`run_dashboard()`** starts the interactive dashboard, which until now was the separate,
+  private package `mouseExperimentDashboard` (its last version was 26.10.009). It is now
+  part of this package and MIT-licensed like the rest of it.
+  - It runs on your computer, so your data never leaves it.
+  - The About tab shows the package's version, its source and how to run it locally.
+  - The dashboard's changelog and review log, with its developer guides, are in
+    `docs/dashboard/`, and its commit history is part of this repository's.
+
+### Changed
+- **`shiny` is an Import.** The dashboard's other packages (DT, shinyjs, shinyFeedback,
+  shinycssloaders, colourpicker, sortable, logger, future, promises, later, survminer,
+  scales, jsonlite, htmlwidgets) are Suggests, so installing the package for its analysis
+  functions does not pull them in. `run_dashboard()` checks for them and, in an interactive
+  session, offers to install the missing ones.
+- **Usage analytics are off unless the server asks for them**, with
+  `MOUSEEXPERIMENT_ANALYTICS=true` or `options(mouseExperiment.analytics = TRUE)`. A local
+  run loads nothing from the analytics server.
+- A Download Results README lists one package version, mouseExperiment's.
+
+### Removed
+- `mouseExperimentDashboard::runDashboard()`; use `mouseExperiment::run_dashboard()`.
+- The tests that checked the dashboard against an installed backend: there is no separate
+  backend to fall out of step with.
+
+### Fixed
+- Many of the dashboard's internal help pages had the wrong title or description:
+  - a file's header comment, written as documentation, was read as part of the next
+    function's;
+  - some documentation blocks had become separated from their functions.
+  One page showed `\%` for `%`.
+- R CMD check passes with the dashboard included:
+  - non-ASCII characters in the dashboard's strings are written as `\u` escapes, and the
+    strings are unchanged;
+  - the dashboard's functions from grDevices, graphics and utils are imported;
+  - its plot column names are declared.
+
 ## [0.33.1] - 2026-10-22
 
 Two warnings the dashboard showed users (`CODE_REVIEW.md` R20-X).

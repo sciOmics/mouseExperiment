@@ -8,11 +8,11 @@
 # Helper: find demo files whether package is installed or being developed in-situ
 find_demo <- function(filename) {
   # 1. Installed package path
-  p <- system.file("sample_data", filename, package = "mouseExperimentDashboard")
+  p <- system.file("sample_data", filename, package = "mouseExperiment")
   if (nzchar(p) && file.exists(p)) return(p)
   # 2. Development / devtools::load_all() path
   local_p <- file.path(
-    system.file(package = "mouseExperimentDashboard"),
+    system.file(package = "mouseExperiment"),
     "sample_data", filename
   )
   if (file.exists(local_p)) return(local_p)
@@ -130,7 +130,7 @@ test_that("dose_levels data: Dose column is numeric with multiple levels", {
 # Round-trip through validate_uploaded_file + detect_columns
 # ======================================================
 test_that("combo data: validate_uploaded_file returns valid=TRUE", {
-  pkg_env <- tryCatch(getNamespace("mouseExperimentDashboard"), error = function(e) NULL)
+  pkg_env <- tryCatch(getNamespace("mouseExperiment"), error = function(e) NULL)
   skip_if(is.null(pkg_env), "Package namespace not available")
   vuf <- tryCatch(get("validate_uploaded_file", envir = pkg_env), error = function(e) NULL)
   skip_if(is.null(vuf), "validate_uploaded_file not accessible")
@@ -144,7 +144,7 @@ test_that("combo data: validate_uploaded_file returns valid=TRUE", {
 })
 
 test_that("dose_levels data: detect_columns finds Treatment, Date, Dose", {
-  pkg_env <- tryCatch(getNamespace("mouseExperimentDashboard"), error = function(e) NULL)
+  pkg_env <- tryCatch(getNamespace("mouseExperiment"), error = function(e) NULL)
   skip_if(is.null(pkg_env), "Package namespace not available")
   dc <- tryCatch(get("detect_columns", envir = pkg_env), error = function(e) NULL)
   skip_if(is.null(dc), "detect_columns not accessible")

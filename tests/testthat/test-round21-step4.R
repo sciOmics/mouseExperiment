@@ -6,8 +6,8 @@
 skip_if_not_installed("shiny", minimum_version = "1.5.0")
 skip_if_not_installed("mouseExperiment", minimum_version = "0.26.0")
 
-.pkg <- tryCatch(getNamespace("mouseExperimentDashboard"), error = function(e) NULL)
-skip_if(is.null(.pkg), "mouseExperimentDashboard namespace not loadable")
+.pkg <- tryCatch(getNamespace("mouseExperiment"), error = function(e) NULL)
+skip_if(is.null(.pkg), "mouseExperiment namespace not loadable")
 g <- function(nm) get(nm, envir = .pkg)
 
 html_of <- function(x) {
@@ -17,7 +17,7 @@ html_of <- function(x) {
 }
 
 demo_csv <- function(f) {
-  utils::read.csv(system.file("sample_data", f, package = "mouseExperimentDashboard"),
+  utils::read.csv(system.file("sample_data", f, package = "mouseExperiment"),
                   stringsAsFactors = FALSE)
 }
 

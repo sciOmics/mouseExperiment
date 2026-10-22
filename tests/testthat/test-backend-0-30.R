@@ -6,8 +6,8 @@
 
 skip_if_not_installed("shiny", minimum_version = "1.5.0")
 
-.pkg <- tryCatch(getNamespace("mouseExperimentDashboard"), error = function(e) NULL)
-skip_if(is.null(.pkg), "mouseExperimentDashboard namespace not loadable")
+.pkg <- tryCatch(getNamespace("mouseExperiment"), error = function(e) NULL)
+skip_if(is.null(.pkg), "mouseExperiment namespace not loadable")
 g <- function(nm) get(nm, envir = .pkg)
 
 html_of <- function(x) {
@@ -20,7 +20,7 @@ html_of <- function(x) {
 all_features_rv <- function(units = "mm3") {
   path <- system.file("sample_data", c("all_features_synthetic_data.csv",
                                        "master_synthetic_data.csv"),
-                      package = "mouseExperimentDashboard")[1]
+                      package = "mouseExperiment")[1]
   shiny::reactiveValues(
     uploaded_data = utils::read.csv(path, stringsAsFactors = FALSE),
     data_valid = TRUE, session_id = NULL,

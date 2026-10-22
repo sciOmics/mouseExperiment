@@ -9,6 +9,7 @@
 #'
 #' @name mod_log_session
 #' @keywords internal
+NULL
 
 # ---------------------------------------------------------------------------
 # Settings preset (CODE_REVIEW.md Round 2 F.2)
@@ -176,7 +177,7 @@ setup_settings_preset <- function(input, output, session, rv,
 
       saved_at <- preset$saved_at %||% "(unknown)"
       showNotification(
-        paste("Preset loaded — saved at", saved_at),
+        paste("Preset loaded \u2014 saved at", saved_at),
         type = "message", duration = 5
       )
       shinyjs::runjs("window.trackEvent('preset_loaded', {format: 'json'});")
@@ -337,7 +338,7 @@ setup_subset_filter <- function(input, output, session, rv) {
     if (n_ids + n_tx + n_cg == 0L) {
       return(tags$span(
         style = "color:#6c757d; margin-left: 14px; font-size: 12px;",
-        "No filter applied — full dataset is shown below."))
+        "No filter applied \u2014 full dataset is shown below."))
     }
     if (!is.null(rv$uploaded_data) && nrow(rv$uploaded_data) > 0L) {
       n_full <- nrow(rv$uploaded_data)
@@ -345,13 +346,13 @@ setup_subset_filter <- function(input, output, session, rv) {
       tags$span(
         style = "color: #155724; margin-left: 14px; font-size: 12px;",
         icon("check-circle"),
-        sprintf(" Active filter — %d of %d rows shown (%d excluded).",
+        sprintf(" Active filter \u2014 %d of %d rows shown (%d excluded).",
                 n_filt, n_full, n_full - n_filt))
     } else {
       tags$span(
         style = "color: #155724; margin-left: 14px; font-size: 12px;",
         icon("check-circle"),
-        sprintf(" Active filter — %d animal(s), %d treatment(s), %d cage(s) excluded.",
+        sprintf(" Active filter \u2014 %d animal(s), %d treatment(s), %d cage(s) excluded.",
                 n_ids, n_tx, n_cg))
     }
   })

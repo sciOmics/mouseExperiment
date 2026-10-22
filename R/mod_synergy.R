@@ -83,15 +83,15 @@ synergyUI <- function(id) {
                 # ── Uncertainty & estimand ───────────────────────────────────
                 div(class = "panel panel-default",
                   div(class = "panel-heading",
-                    h4(class = "panel-title", tags$span(class = "label label-danger", "Uncertainty"), " — how far to trust the verdict")),
+                    h4(class = "panel-title", tags$span(class = "label label-danger", "Uncertainty"), " \u2014 how far to trust the verdict")),
                   div(class = "panel-body",
-                    p("The synergy verdict comes from the 95% interval for the Bliss excess (backend v0.27.0): ",
+                    p("The synergy verdict comes from the 95% interval for the Bliss excess: ",
                       strong("Synergy"), " when the interval lies above zero, ", strong("Antagonism"),
                       " when it lies below, and ", strong("Additive (no departure from Bliss detected)"),
                       " when it contains zero. With Interval draws set to 0 there is no interval; the ",
                       "verdict then compares the point estimate with symmetric bands of \u00b10.1 and says it ",
-                      "has no interval. Earlier versions labelled any positive excess “Synergy” but negative ",
-                      "ones down to \u22120.1 “Additivity”, so a Bliss-additive combination was called ",
+                      "has no interval. Earlier versions labelled any positive excess \u201cSynergy\u201d but negative ",
+                      "ones down to \u22120.1 \u201cAdditivity\u201d, so a Bliss-additive combination was called ",
                       "synergistic in about half of simulated studies."),
                     tags$dl(class = "dl-horizontal",
                       tags$dt("Interval draws"),
@@ -110,7 +110,7 @@ synergyUI <- function(id) {
                               "animal, using every observation each animal contributed. ", strong("Observed"), " uses only ",
                               "animals still present at the endpoint. Because the fastest-growing controls are the ",
                               "ones removed early, the observed estimand shrinks the control mean and inflates every ",
-                              "fractional effect derived from it — which propagates directly into both Bliss and ",
+                              "fractional effect derived from it \u2014 which propagates directly into both Bliss and ",
                               "the Bliss expectation. Per-arm attrition is shown so the exposure is visible.")
                     )
                   )
@@ -179,7 +179,7 @@ synergyUI <- function(id) {
               downloadButton(ns("download_syn_metrics"), "Download Results")
             ),
             shinycssloaders::withSpinner(
-              DTOutput(ns("syn_metrics_table"))
+              DT::DTOutput(ns("syn_metrics_table"))
             ),
 
             # CODE_REVIEW.md R3.D9 / backend R3.6-R3.7 -- the verdict above is
@@ -195,13 +195,13 @@ synergyUI <- function(id) {
             uiOutput(ns("syn_consensus_note")),
             uiOutput(ns("syn_ci_heading")),
             uiOutput(ns("syn_ci_verdict_note")),
-            DTOutput(ns("syn_ci_table")),
+            DT::DTOutput(ns("syn_ci_table")),
 
             # Backend R3.5 -- animals leave these studies because their tumours
             # grew, so how many reached the evaluation day is part of reading
             # any TGI figure.
             uiOutput(ns("syn_attrition_heading")),
-            DTOutput(ns("syn_attrition_table"))
+            DT::DTOutput(ns("syn_attrition_table"))
           ),
           
           tabPanel("Plots",
@@ -532,7 +532,7 @@ synergy_server <- function(id, rv) {
     rv$syn_over_time <- is.null(eval_tp)
 
     # ── Frequentist path ───────────────────────────────────────────────────────
-    show_analysis_modal("Fitting synergy model…", "Results will appear automatically when complete.")
+    show_analysis_modal("Fitting synergy model\u2026", "Results will appear automatically when complete.")
     on.exit(shiny::removeModal(), add = TRUE)
 
     if (rv$syn_over_time) {
@@ -737,9 +737,9 @@ synergy_server <- function(id, rv) {
     }), collapse = "\n")
   })
   
-  output$syn_metrics_table <- renderDT({
+  output$syn_metrics_table <- DT::renderDT({
     req(rv$syn_results)
-    if (isTRUE(rv$syn_results$error)) return(datatable(data.frame(Message = "Results not available")))
+    if (isTRUE(rv$syn_results$error)) return(DT::datatable(data.frame(Message = "Results not available")))
     
     df <- if (isTRUE(rv$syn_over_time) && !is.null(rv$syn_results$synergy_summary)) {
       rv$syn_results$synergy_summary
@@ -749,7 +749,7 @@ synergy_server <- function(id, rv) {
       data.frame(Message = "No metrics available")
     }
     df <- format_df_for_display(df)
-    datatable(df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE), rownames = FALSE)
+    DT::datatable(df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE), rownames = FALSE)
   })
   
   # ── Bootstrap intervals + attrition (CODE_REVIEW.md R3.D9) ─────────────────
@@ -788,13 +788,13 @@ synergy_server <- function(id, rv) {
     )
   })
 
-  output$syn_ci_table <- renderDT({
+  output$syn_ci_table <- DT::renderDT({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error)) return(NULL)
     ci <- rv$syn_results$synergy_ci
     if (is.null(ci)) return(NULL)
     df <- format_df_for_display(as.data.frame(ci))
-    datatable(df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+    DT::datatable(df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
               rownames = FALSE)
   })
 
@@ -889,12 +889,12 @@ synergy_server <- function(id, rv) {
     )
   })
 
-  output$syn_attrition_table <- renderDT({
+  output$syn_attrition_table <- DT::renderDT({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error)) return(NULL)
     a <- rv$syn_results$attrition
     if (is.null(a)) return(NULL)
-    datatable(format_df_for_display(as.data.frame(a)),
+    DT::datatable(format_df_for_display(as.data.frame(a)),
               options = list(paging = FALSE, searching = FALSE), rownames = FALSE)
   })
 

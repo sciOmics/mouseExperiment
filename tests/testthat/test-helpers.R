@@ -11,7 +11,7 @@
 # ---------------------------------------------------------------------------
 source_helpers <- function() {
   tryCatch({
-    pkg_env <- getNamespace("mouseExperimentDashboard")
+    pkg_env <- getNamespace("mouseExperiment")
     list(
       validate_uploaded_file  = get("validate_uploaded_file",  envir = pkg_env),
       detect_columns          = get("detect_columns",          envir = pkg_env),

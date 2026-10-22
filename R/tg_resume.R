@@ -1,13 +1,13 @@
-#' Tumor Growth — F.7 resume helpers (CODE_REVIEW.md F.7).
-#'
-#' Routes the Bayesian TG fit through the package-level job registry
-#' so the fit survives tab disconnect / NPM proxy timeout / browser
-#' sleep. Both code paths share the same finalizers:
-#'   * Fresh "Run analysis" click → launch_tg_bayes_job() registers the
-#'     promise, sets rv$tg_job_id, attaches the polling observer.
-#'   * Resume from banner → register_tg_resume() handler fires, sets
-#'     rv$tg_job_id to the existing job, re-attaches the same poller.
-#' Each path ends in .finalize_tg_success / _failure / _cancellation.
+# Tumor Growth — F.7 resume helpers (CODE_REVIEW.md F.7).
+#
+# Routes the Bayesian TG fit through the package-level job registry
+# so the fit survives tab disconnect / NPM proxy timeout / browser
+# sleep. Both code paths share the same finalizers:
+#   * Fresh "Run analysis" click → launch_tg_bayes_job() registers the
+#     promise, sets rv$tg_job_id, attaches the polling observer.
+#   * Resume from banner → register_tg_resume() handler fires, sets
+#     rv$tg_job_id to the existing job, re-attaches the same poller.
+# Each path ends in .finalize_tg_success / _failure / _cancellation.
 
 #' Launch the Bayesian TG fit through the job registry.
 #' @keywords internal
@@ -33,7 +33,7 @@ launch_tg_bayes_job <- function(sid, bayes_params,
     return(invisible(NULL))
   }
   show_analysis_modal(
-    "Bayesian tumor growth fit running…",
+    "Bayesian tumor growth fit running\u2026",
     paste("Fitting the Bayesian LMM with brms. The first fit of a model",
           "compiles it (about 20 s); later fits of the same structure reuse it."),
     cancel_id = session$ns("tg_cancel_bayes"))
@@ -56,7 +56,7 @@ register_tg_resume <- function(input, output, session, rv) {
   register_bayes_resume(
     kind                  = "bayes_tg",
     tab_name              = "Tumor Growth",
-    modal_title           = "Bayesian tumor growth fit running…",
+    modal_title           = "Bayesian tumor growth fit running\u2026",
     modal_detail          = "Results will appear automatically when complete.",
     input = input, output = output, session = session, rv = rv,
     job_id_field          = "tg_job_id",

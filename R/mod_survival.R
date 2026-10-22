@@ -113,19 +113,19 @@ survivalUI <- function(id) {
                 div(class = "alert alert-warning",
                     style = "font-size:0.88em; margin-bottom:12px; padding:10px 14px;",
                   icon("triangle-exclamation"), " ",
-                  strong("Note on ‘survival’ in mouse tumour experiments: "),
+                  strong("Note on \u2018survival\u2019 in mouse tumour experiments: "),
                   "Most IACUC protocols require euthanasia once tumour volume exceeds a set limit ",
-                  "(e.g. 2000 mm³). The recorded endpoint is therefore ",
+                  "(e.g.\u202f2000\u202fmm\u00b3). The recorded endpoint is therefore ",
                   strong("time until tumour volume threshold"),
                   ", not true death. This is mathematically identical to survival analysis, but results ",
-                  "should be labelled as ‘Time-to-Endpoint’ or ‘Time-to-Tumour-Volume-Threshold’ ",
-                  "rather than ‘survival’ in publications.",
+                  "should be labelled as \u2018Time-to-Endpoint\u2019 or \u2018Time-to-Tumour-Volume-Threshold\u2019 ",
+                  "rather than \u2018survival\u2019 in publications.",
                   tags$br(),
                   tags$span(style = "color:#555; font-size:0.95em;",
                     "Occasionally a mouse dies before reaching the volume limit. ",
-                    "Competing-risks models (e.g. Fine–Gray) are the rigorous solution, but they require ",
+                    "Competing-risks models (e.g.\u202fFine\u2013Gray) are the rigorous solution, but they require ",
                     "large per-group sample sizes rarely achievable in mouse experiments. ",
-                    "The recommended pragmatic approach is to treat any death as an event (‘endpoint reached’), ",
+                    "The recommended pragmatic approach is to treat any death as an event (\u2018endpoint reached\u2019), ",
                     "because the animal did not survive the study regardless of cause. ",
                     "Map a removal-reason column on Data Upload and the sidebar offers exactly that. ",
                     "Without one, with an Event/Censor column events are exactly the rows coded 1, so code such ",
@@ -139,10 +139,10 @@ survivalUI <- function(id) {
                 div(class = "panel panel-default",
                   div(class = "panel-heading", h4(class = "panel-title", "Overview")),
                   div(class = "panel-body",
-                    p("The Survival tab fits Kaplan–Meier (KM) survival curves and a Cox proportional hazards model to time-to-endpoint data. In mouse tumor experiments the 'endpoint' is typically the day a tumor exceeds the IACUC volume limit, not true animal death."),
+                    p("The Survival tab fits Kaplan\u2013Meier (KM) survival curves and a Cox proportional hazards model to time-to-endpoint data. In mouse tumor experiments the 'endpoint' is typically the day a tumor exceeds the IACUC volume limit, not true animal death."),
                     p("Three outputs are produced:"),
                     tags$ul(
-                      tags$li(strong("Kaplan–Meier curves"), ", with the log-rank test across all arms (not adjusted for multiple comparisons)."),
+                      tags$li(strong("Kaplan\u2013Meier curves"), ", with the log-rank test across all arms (not adjusted for multiple comparisons)."),
                       tags$li(strong("Cox proportional hazards model"), " reporting hazard ratios (HR) per group relative to the reference."),
                       tags$li(strong("Risk table"), " showing animals at risk, events, and KM estimates at each event time.")
                     )
@@ -152,7 +152,7 @@ survivalUI <- function(id) {
                 # ── KM ───────────────────────────────────────────────────────
                 div(class = "panel panel-default",
                   div(class = "panel-heading",
-                    h4(class = "panel-title", tags$span(class = "label label-info", "Kaplan–Meier Estimator"))),
+                    h4(class = "panel-title", tags$span(class = "label label-info", "Kaplan\u2013Meier Estimator"))),
                   div(class = "panel-body",
                     p("The KM estimator computes a non-parametric step-function survival probability S(t) = P(T > t) from event times. Each downward step corresponds to one or more events on that day."),
                     tags$dl(class = "dl-horizontal",
@@ -176,19 +176,19 @@ survivalUI <- function(id) {
                     h4(class = "panel-title", tags$span(class = "label label-warning", "Cox Proportional Hazards Model"))),
                   div(class = "panel-body",
                     p("The Cox model estimates the hazard ratio (HR) for each treatment group relative to the reference:"),
-                    tags$blockquote(tags$code("h(t) = h₀(t) × exp(β₁ × Treatment)")),
+                    tags$blockquote(tags$code("h(t) = h\u2080(t) \u00d7 exp(\u03b2\u2081 \u00d7 Treatment)")),
                     tags$dl(class = "dl-horizontal",
                       tags$dt("HR < 1"),
-                      tags$dd("Lower hazard than reference — animals reach the endpoint more slowly (better outcome)."),
+                      tags$dd("Lower hazard than reference \u2014 animals reach the endpoint more slowly (better outcome)."),
                       tags$dt("HR = 1"),
                       tags$dd("Identical hazard to reference."),
                       tags$dt("HR > 1"),
-                      tags$dd("Higher hazard than reference — animals reach the endpoint faster (worse outcome).")
+                      tags$dd("Higher hazard than reference \u2014 animals reach the endpoint faster (worse outcome).")
                     ),
                     p(strong("Firth's bias-reduced estimation"), " is applied automatically when any group has zero events. Standard Cox partial likelihood produces infinite coefficient estimates in this case; Firth's penalisation regularises them."),
                     p(tags$small(class = "text-muted",
                       "The proportional hazards assumption requires that the HR is constant over time. ",
-                      "Crossing KM curves indicate a time-varying HR, which violates this assumption — interpret Cox results with caution in that case."
+                      "Crossing KM curves indicate a time-varying HR, which violates this assumption \u2014 interpret Cox results with caution in that case."
                     ))
                   )
                 ),
@@ -250,7 +250,7 @@ survivalUI <- function(id) {
               verbatimTextOutput(ns("surv_cox_summary"))
             ),
             shinycssloaders::withSpinner(
-              DTOutput(ns("surv_cox_table"))
+              DT::DTOutput(ns("surv_cox_table"))
             )
           ),
 
@@ -276,7 +276,7 @@ survivalUI <- function(id) {
             ),
             uiOutput(ns("surv_ph_test_banner")),
             shinycssloaders::withSpinner(
-              DTOutput(ns("surv_ph_test_table"))
+              DT::DTOutput(ns("surv_ph_test_table"))
             ),
             hr(),
             h4("Schoenfeld residuals plot"),
@@ -290,7 +290,7 @@ survivalUI <- function(id) {
               " = the hazard ratio drifts over time (treatment effect ",
               "strengthens or weakens). ",
               strong("Sinusoidal / non-monotonic shape"),
-              " = a more complex time-varying effect — usually means a ",
+              " = a more complex time-varying effect \u2014 usually means a ",
               "Cox model with a time-varying coefficient (or a parametric ",
               "AFT) fits better. The dashed line at zero is the null."
             ),
@@ -304,23 +304,23 @@ survivalUI <- function(id) {
               tab_info(
                 strong("MCMC convergence diagnostics"),
                 " for all fixed-effect parameters. All chains should have ",
-                "converged (R̂ ≈ 1.00) and have sufficient effective ",
+                "converged (R\u0302 \u2248 1.00) and have sufficient effective ",
                 "samples before interpreting results.",
                 tags$ul(
-                  tags$li(strong("Rhat"), " — potential scale-reduction factor; values > 1.01 indicate non-convergence."),
-                  tags$li(strong("Bulk_ESS"), " — bulk effective sample size; aim for > 400 per chain."),
-                  tags$li(strong("Tail_ESS"), " — tail ESS; important for credible interval accuracy."),
-                  tags$li(strong("Converged"), " — TRUE when R̂ ≤ 1.01.")
+                  tags$li(strong("Rhat"), " \u2014 potential scale-reduction factor; values > 1.01 indicate non-convergence."),
+                  tags$li(strong("Bulk_ESS"), " \u2014 bulk effective sample size; aim for > 400 per chain."),
+                  tags$li(strong("Tail_ESS"), " \u2014 tail ESS; important for credible interval accuracy."),
+                  tags$li(strong("Converged"), " \u2014 TRUE when R\u0302 \u2264 1.01.")
                 ),
                 em("If Rhat > 1.01, try increasing iterations or chains before reporting results.")
               ),
               uiOutput(ns("surv_bayes_diagnostics")),
-              shinycssloaders::withSpinner(DTOutput(ns("surv_mcmc_diag_table"))),
+              shinycssloaders::withSpinner(DT::DTOutput(ns("surv_mcmc_diag_table"))),
               br(),
               h5(strong("Influential observations (Pareto-k > 0.7)")),
               em(class = "text-muted",
                  "Observations the LOO approximation can't reliably estimate. Investigate these mice individually."),
-              shinycssloaders::withSpinner(DTOutput(ns("surv_bayes_influential"))),
+              shinycssloaders::withSpinner(DT::DTOutput(ns("surv_bayes_influential"))),
               br(),
               h5(strong("MCMC trace plots")),
               plot_help(
@@ -447,7 +447,7 @@ survivalUI <- function(id) {
               downloadButton(ns("download_surv_risk_table"), "Download Table")
             ),
             shinycssloaders::withSpinner(
-              DTOutput(ns("surv_risk_table"))
+              DT::DTOutput(ns("surv_risk_table"))
             )
           ),
           # R20-D.Y: choose which results go into one ZIP.
@@ -789,7 +789,7 @@ survival_server <- function(id, rv) {
     }
 
     # ── Frequentist (Cox) path ─────────────────────────────────────────────────
-    show_analysis_modal("Fitting survival model…", "Results will appear automatically when complete.")
+    show_analysis_modal("Fitting survival model\u2026", "Results will appear automatically when complete.")
     on.exit(shiny::removeModal(), add = TRUE)
 
     result <- safe_analysis(module = "survival", {
@@ -915,10 +915,10 @@ survival_server <- function(id, rv) {
       appendTab(inputId = tabs_id,
         tabPanel("Posterior Check",
           tab_info(
-            strong("Posterior predictive check (PPC)"), " — the model generates new datasets from the posterior and overlays their densities on the observed data.",
+            strong("Posterior predictive check (PPC)"), " \u2014 the model generates new datasets from the posterior and overlays their densities on the observed data.",
             tags$ul(
-              tags$li(strong("y"), " — observed survival times."),
-              tags$li(strong("y_rep"), " — simulated datasets from the posterior predictive distribution.")
+              tags$li(strong("y"), " \u2014 observed survival times."),
+              tags$li(strong("y_rep"), " \u2014 simulated datasets from the posterior predictive distribution.")
             ),
             em("Good model fit: simulated densities closely envelope the observed density.")
           ),
@@ -934,7 +934,7 @@ survival_server <- function(id, rv) {
       appendTab(inputId = tabs_id,
         tabPanel("Prior vs Posterior",
           tab_info(
-            strong("Prior vs Posterior density overlay"), " — shows how much the data have updated each parameter's prior distribution.",
+            strong("Prior vs Posterior density overlay"), " \u2014 shows how much the data have updated each parameter's prior distribution.",
             em("Parameters whose posterior is similar to the prior are not well identified by the data; consider collecting more data or using an informative prior.")
           ),
           div(class = "text-right", style = "margin-bottom: 6px;",
@@ -963,13 +963,13 @@ survival_server <- function(id, rv) {
     rv$surv_results$pp_check_plot
   })
 
-  output$surv_mcmc_diag_table <- renderDT({
+  output$surv_mcmc_diag_table <- DT::renderDT({
     req(rv$surv_results)
     req(isTRUE(rv$surv_results$model_type_used == "bayes"))
     req(!isTRUE(rv$surv_results$error))
     diag <- rv$surv_results$mcmc_diagnostics
     req(!is.null(diag))
-    datatable(
+    DT::datatable(
       format_df_for_display(as.data.frame(diag)),
       options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)
     )
@@ -983,19 +983,19 @@ survival_server <- function(id, rv) {
     bayes_diagnostics_panel(rv$surv_results)
   })
 
-  output$surv_bayes_influential <- renderDT({
+  output$surv_bayes_influential <- DT::renderDT({
     req(rv$surv_results)
     req(isTRUE(rv$surv_results$model_type_used == "bayes"))
     req(!isTRUE(rv$surv_results$error))
     inf_df <- bayes_influential_obs(rv$surv_results)
     if (nrow(inf_df) == 0L) {
-      return(datatable(
+      return(DT::datatable(
         data.frame(Note = sprintf("No observations exceed the Pareto-k threshold (%s).",
                                   format(rv$surv_results$loo_diagnostics$k_threshold %||% 0.7))),
         options = list(dom = "t", paging = FALSE, searching = FALSE), rownames = FALSE
       ))
     }
-    datatable(
+    DT::datatable(
       inf_df,
       options = list(scrollX = TRUE, paging = FALSE, searching = FALSE), rownames = FALSE
     )
@@ -1185,7 +1185,7 @@ survival_server <- function(id, rv) {
   # Cox model summary
   output$surv_cox_summary <- renderText({
     req(rv$surv_results)
-    if (isTRUE(rv$surv_results$error)) return("Analysis error — see Status.")
+    if (isTRUE(rv$surv_results$error)) return("Analysis error \u2014 see Status.")
     if (isTRUE(rv$surv_results$model_type_used == "bayes")) {
       ps <- rv$surv_results$posterior_summary
       if (is.null(ps)) return("Posterior summary not available.")
@@ -1216,7 +1216,7 @@ survival_server <- function(id, rv) {
       ci_lo <- if (is.finite(se)) val - 1.96 * se else NA_real_
       ci_hi <- if (is.finite(se)) val + 1.96 * se else NA_real_
       txt <- if (is.finite(se)) {
-        sprintf("Concordance (C-index): %.3f (95%% CI %.3f – %.3f). 0.5 = no discrimination, 1.0 = perfect.",
+        sprintf("Concordance (C-index): %.3f (95%% CI %.3f \u2013 %.3f). 0.5 = no discrimination, 1.0 = perfect.",
                 val, ci_lo, ci_hi)
       } else {
         sprintf("Concordance (C-index): %.3f. 0.5 = no discrimination, 1.0 = perfect.", val)
@@ -1240,7 +1240,7 @@ survival_server <- function(id, rv) {
           parts$ph <- shiny::div(class = "alert alert-success",
             shiny::icon("check-circle"),
             shiny::strong(" PH assumption OK: "),
-            sprintf("global cox.zph p = %.4f (≥ 0.05).", gp))
+            sprintf("global cox.zph p = %.4f (\u2265 0.05).", gp))
         }
       }
     }
@@ -1315,15 +1315,15 @@ survival_server <- function(id, rv) {
     })
   })
 
-  output$surv_ph_test_table <- renderDT({
+  output$surv_ph_test_table <- DT::renderDT({
     req(rv$surv_results)
     if (isTRUE(rv$surv_results$error)) {
-      return(datatable(data.frame(Message = "Results not available")))
+      return(DT::datatable(data.frame(Message = "Results not available")))
     }
     ph <- rv$surv_results$ph_test
     if (is.null(ph) || is.null(ph$table)) {
-      return(datatable(
-        data.frame(Note = "cox.zph not available — non-Cox method was used."),
+      return(DT::datatable(
+        data.frame(Note = "cox.zph not available \u2014 non-Cox method was used."),
         options = list(dom = "t", paging = FALSE, searching = FALSE), rownames = FALSE
       ))
     }
@@ -1331,35 +1331,35 @@ survival_server <- function(id, rv) {
     tab <- cbind(Covariate = rownames(tab), tab)
     rownames(tab) <- NULL
     tab <- format_df_for_display(tab)
-    datatable(tab,
+    DT::datatable(tab,
               options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
               rownames = FALSE)
   })
 
   # Results table — Cox HR table (frequentist) or treatment effects (Bayesian)
-  output$surv_cox_table <- renderDT({
+  output$surv_cox_table <- DT::renderDT({
     req(rv$surv_results)
     if (isTRUE(rv$surv_results$error)) {
-      return(datatable(data.frame(Message = "Results not available")))
+      return(DT::datatable(data.frame(Message = "Results not available")))
     }
     if (isTRUE(rv$surv_results$model_type_used == "bayes")) {
       te <- rv$surv_results$treatment_effects
-      if (is.null(te)) return(datatable(data.frame(Message = "Treatment effects not available")))
-      return(datatable(format_df_for_display(as.data.frame(te)),
+      if (is.null(te)) return(DT::datatable(data.frame(Message = "Treatment effects not available")))
+      return(DT::datatable(format_df_for_display(as.data.frame(te)),
                        options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)))
     }
     if (is.null(rv$surv_results$results)) {
-      return(datatable(data.frame(Message = "Results not available")))
+      return(DT::datatable(data.frame(Message = "Results not available")))
     }
     results_df <- format_df_for_display(rv$surv_results$results)
-    datatable(results_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+    DT::datatable(results_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
   # Risk table output - numbers at risk per time point per group
-  output$surv_risk_table <- renderDT({
+  output$surv_risk_table <- DT::renderDT({
     req(rv$surv_results)
     if (isTRUE(rv$surv_results$error) || is.null(rv$surv_results$km_fit)) {
-      return(datatable(data.frame(Message = "Risk table not available")))
+      return(DT::datatable(data.frame(Message = "Risk table not available")))
     }
     
     km_sum <- summary(rv$surv_results$km_fit)
@@ -1375,7 +1375,7 @@ survival_server <- function(id, rv) {
     risk_df <- risk_df[, c("Group", "Time", "N_Risk", "N_Events", "N_Censored", "Survival")]
     risk_df <- risk_df[order(risk_df$Group, risk_df$Time), ]
     
-    datatable(risk_df,
+    DT::datatable(risk_df,
               options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
               rownames = FALSE)
   })

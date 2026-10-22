@@ -3,8 +3,8 @@
 
 skip_if_not_installed("shiny", minimum_version = "1.5.0")
 
-.pkg <- tryCatch(getNamespace("mouseExperimentDashboard"), error = function(e) NULL)
-skip_if(is.null(.pkg), "mouseExperimentDashboard namespace not loadable")
+.pkg <- tryCatch(getNamespace("mouseExperiment"), error = function(e) NULL)
+skip_if(is.null(.pkg), "mouseExperiment namespace not loadable")
 g <- function(nm) get(nm, envir = .pkg)
 has <- function(nm) exists(nm, envir = .pkg, inherits = FALSE)
 
@@ -14,7 +14,7 @@ html_of <- function(x) {
   paste(as.character(x), collapse = " ")
 }
 read_src <- function(f) dash_source("R", f)   # skips outside the source tree
-demo <- function(f) utils::read.csv(system.file("sample_data", f, package = "mouseExperimentDashboard"),
+demo <- function(f) utils::read.csv(system.file("sample_data", f, package = "mouseExperiment"),
                                     stringsAsFactors = FALSE)
 all_features_rv <- function(...) {
   shiny::reactiveValues(
@@ -63,7 +63,7 @@ test_that("R20.D22/D24/D25/D26/D61: values reach JS escaped; dead code and files
   expect_identical(g("translate_error")("could not find the column name 'x'"),
                    "could not find the column name 'x'")
   expect_match(g("translate_error")("NA/NaN/Inf in 'y'"), "missing or invalid values")
-  desc <- utils::packageDescription("mouseExperimentDashboard")
+  desc <- utils::packageDescription("mouseExperiment")
   expect_match(desc$Depends, "R \\(>= 4.1.0\\)")
   expect_null(desc$Date)
   # The rest needs the source tree.
@@ -99,7 +99,7 @@ test_that("R20.D23: semicolon, tab, Latin-1 and UTF-16 files load; a shifted row
                "Line 3 has 4 fields but the header has 3")
   # The shipped demos read as before.
   f <- system.file("sample_data", "all_features_synthetic_data.csv",
-                   package = "mouseExperimentDashboard")
+                   package = "mouseExperiment")
   expect_equal(rd(f), utils::read.csv(f, stringsAsFactors = FALSE, na.strings = c("NA", "")))
   expect_match(read_src("app.R"), "shiny.maxRequestSize = 30 \\* 1024\\^2")
 })

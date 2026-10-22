@@ -7,8 +7,8 @@
 skip_if_not_installed("shiny", minimum_version = "1.5.0")
 skip_if_not_installed("mouseExperiment")
 
-pkg <- tryCatch(getNamespace("mouseExperimentDashboard"), error = function(e) NULL)
-skip_if(is.null(pkg), "mouseExperimentDashboard namespace not loadable")
+pkg <- tryCatch(getNamespace("mouseExperiment"), error = function(e) NULL)
+skip_if(is.null(pkg), "mouseExperiment namespace not loadable")
 get_fn <- function(nm) get(nm, envir = pkg)
 
 # ---------------------------------------------------------------------------

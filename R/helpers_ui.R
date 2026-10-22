@@ -1,11 +1,11 @@
-#' UI chrome: modals, alerts, error translation and JS escaping
-#'
-#' Split out of the former `helpers.R` under CODE_REVIEW.md D.1.
-#'
-#' Presentation and error handling. `safe_analysis()` and `translate_error()` are
-#' the ones that matter: they decide what a user is told when an analysis fails,
-#' and a translation that swallows the cause turns a diagnosable error into a
-#' shrug. `js_string()` escapes values interpolated into `runjs()` calls.
+# UI chrome: modals, alerts, error translation and JS escaping
+#
+# Split out of the former `helpers.R` under CODE_REVIEW.md D.1.
+#
+# Presentation and error handling. `safe_analysis()` and `translate_error()` are
+# the ones that matter: they decide what a user is told when an analysis fails,
+# and a translation that swallows the cause turns a diagnosable error into a
+# shrug. `js_string()` escapes values interpolated into `runjs()` calls.
 
 # ---- Bayesian progress modal ------------------------------------------------
 
@@ -18,7 +18,7 @@
 #' @param detail  Subtitle / detail line.
 #' @keywords internal
 show_analysis_modal <- function(
-    message = "Analysis running…",
+    message = "Analysis running\u2026",
     detail  = "Results will appear automatically when complete.",
     cancel_id = NULL) {
   shiny::showModal(shiny::modalDialog(
@@ -115,12 +115,11 @@ tg_p_adjust_choices <- function(model_type = "lme4") {
   if (identical(model_type, "auc")) family else c(joint, family)
 }
 
-#' Safely execute analysis function with error handling
+#' Translate an R error message into one a user can act on
 #'
-#' @param expr Expression to execute
-#' @param module Optional module name for structured logging.
-#'
-#' @return Result or error message
+#' @param msg The error message.
+#' @return A character string: the plain-language message, or `msg` itself
+#'   when no translation applies.
 #' @keywords internal
 translate_error <- function(msg) {
   if (grepl("not found in|not found$|object .* not found", msg, perl = TRUE))
@@ -136,7 +135,7 @@ translate_error <- function(msg) {
       "Check that your data is complete and all required columns are mapped."
     ))
   if (grepl("non-conformable", msg, fixed = TRUE))
-    return("Matrix dimension mismatch — check that all treatment groups have sufficient observations.")
+    return("Matrix dimension mismatch \u2014 check that all treatment groups have sufficient observations.")
   # R20.D61: whole words, case-sensitive; ignore.case matched any "na", as in
   # "name" or "analysis".
   if (grepl("\\bNaN\\b|\\bNA\\b|missing values", msg, perl = TRUE))
@@ -152,6 +151,13 @@ toggle_downloads <- function(session, ids, enabled) {
   invisible(lapply(ids, function(id) fn(session$ns(id))))
 }
 
+#' Safely execute analysis function with error handling
+#'
+#' @param expr Expression to execute
+#' @param module Optional module name for structured logging.
+#'
+#' @return Result or error message
+#' @keywords internal
 safe_analysis <- function(expr, module = "unknown") {
   t0 <- proc.time()[["elapsed"]]
   # CODE_REVIEW.md R20.D34 -- there was no warning handler, so every backend
@@ -268,7 +274,7 @@ reference_note <- function(rv, ref) {
 #' @keywords internal
 volume_unit_label <- function(rv) {
   switch(rv$settings$volume_units %||% "",
-         mm3 = "mm³", cm3 = "cm³", "units not declared")
+         mm3 = "mm\u00b3", cm3 = "cm\u00b3", "units not declared")
 }
 
 #' The declared volume unit, as the backend's `volume_units` argument
@@ -317,7 +323,7 @@ evaluability_note <- function(ev, day = NULL, arms_label = "all arms") {
            if (last) paste0(", the last day on which ", arms_label, " are evaluable.")
            else paste0(", an evaluable day (the last is day ", format(ev$last_day), ")."))
   } else if (length(ev$days)) {
-    paste0("Analysed on every evaluable day: days ", format(min(ev$days)), "–",
+    paste0("Analysed on every evaluable day: days ", format(min(ev$days)), "\u2013",
            format(max(ev$days)), ".")
   } else "No day is evaluable."
   excl <- ev$excluded

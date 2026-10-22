@@ -1,13 +1,13 @@
-#' Plot aesthetics: colours, shapes, group ordering and export
-#'
-#' Split out of the former `helpers.R` under CODE_REVIEW.md D.1.
-#'
-#' Lower stakes than the data and format helpers -- a wrong colour misleads
-#' nobody -- with one exception worth stating: `remap_colors_to_treatment()` and
-#' `remap_shapes_to_treatment()` re-key aesthetics onto treatment names, so a
-#' mismatch there mislabels which arm a curve belongs to. `get_ordered_groups()`
-#' feeds the reference-group choice, which is a statistical input, not a display
-#' one.
+# Plot aesthetics: colours, shapes, group ordering and export
+#
+# Split out of the former `helpers.R` under CODE_REVIEW.md D.1.
+#
+# Lower stakes than the data and format helpers -- a wrong colour misleads
+# nobody -- with one exception worth stating: `remap_colors_to_treatment()` and
+# `remap_shapes_to_treatment()` re-key aesthetics onto treatment names, so a
+# mismatch there mislabels which arm a curve belongs to. `get_ordered_groups()`
+# feeds the reference-group choice, which is a statistical input, not a display
+# one.
 
 
 

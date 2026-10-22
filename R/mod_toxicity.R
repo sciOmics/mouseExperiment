@@ -140,8 +140,8 @@ toxicityUI <- function(id) {
                     p("The Toxicity tab provides two complementary analysis modes selectable from the ",
                       strong("Statistical Model"), " dropdown:"),
                     tags$ul(
-                      tags$li(strong("Body Weight Analysis"), " — models longitudinal weight trajectories using a linear mixed-effects model, and times each animal to a weight-loss threshold (Kaplan-Meier)."),
-                      tags$li(strong("Therapeutic Window"), " — sets each arm's tumor growth inhibition beside its worst body-weight loss, each with an interval, and flags whether the weight loss is tolerated. Requires a tumor volume column.")
+                      tags$li(strong("Body Weight Analysis"), " \u2014 models longitudinal weight trajectories using a linear mixed-effects model, and times each animal to a weight-loss threshold (Kaplan-Meier)."),
+                      tags$li(strong("Therapeutic Window"), " \u2014 sets each arm's tumor growth inhibition beside its worst body-weight loss, each with an interval, and flags whether the weight loss is tolerated. Requires a tumor volume column.")
                     ),
                     p(tags$small(class = "text-muted",
                       "Body weight is used as the toxicity surrogate throughout. ",
@@ -165,14 +165,14 @@ toxicityUI <- function(id) {
                     p("Random slopes allow each mouse's weight trend to deviate from the group average. ",
                       "Fixed effects test whether trajectories differ by treatment group over time."),
                     tags$dl(class = "dl-horizontal",
-                      tags$dt("REML"), tags$dd("Restricted Maximum Likelihood — preferred for final parameter estimates (default)."),
-                      tags$dt("ML"), tags$dd("Maximum Likelihood — use when comparing models with different fixed-effect structures.")
+                      tags$dt("REML"), tags$dd("Restricted Maximum Likelihood \u2014 preferred for final parameter estimates (default)."),
+                      tags$dt("ML"), tags$dd("Maximum Likelihood \u2014 use when comparing models with different fixed-effect structures.")
                     ),
                     tags$p(tags$b("Covariates (optional):")),
                     tags$ul(
-                      tags$li(strong("Tumor Volume"), " — controls for tumor-driven weight changes independent of drug toxicity."),
-                      tags$li(strong("Sex"), " — adjusts for sex-specific baseline weight differences."),
-                      tags$li(strong("Initial Mass"), " — adjusts for pre-treatment weight variation across animals.")
+                      tags$li(strong("Tumor Volume"), " \u2014 controls for tumor-driven weight changes independent of drug toxicity."),
+                      tags$li(strong("Sex"), " \u2014 adjusts for sex-specific baseline weight differences."),
+                      tags$li(strong("Initial Mass"), " \u2014 adjusts for pre-treatment weight variation across animals.")
                     ),
 
                     hr(),
@@ -184,7 +184,7 @@ toxicityUI <- function(id) {
                     div(class = "alert alert-warning", style = "font-size:0.9em;",
                       icon("triangle-exclamation"), " ",
                       strong("Competing risks."), " A mouse euthanised for tumour burden can no longer experience a ",
-                      "weight-loss event, so treating it as an ordinary censoring overstates the weight-loss risk — ",
+                      "weight-loss event, so treating it as an ordinary censoring overstates the weight-loss risk \u2014 ",
                       "censoring assumes the animal remained at risk, and it did not. Which animals were removed, ",
                       "and why, is known only from a ", strong("removal-reason column"), " (mapped on Data Upload). ",
                       "With one, a removal for weight loss or body condition counts as a weight-loss event, a planned ",
@@ -292,15 +292,15 @@ toxicityUI <- function(id) {
           tabPanel("Model Results",
             uiOutput(ns("tox_bw_mixed_model_tab_info")),
             h4("Fixed Effects"),
-            shinycssloaders::withSpinner(DTOutput(ns("tox_fixed_effects"))),
+            shinycssloaders::withSpinner(DT::DTOutput(ns("tox_fixed_effects"))),
             downloadButton(ns("download_tox_model"), "Download Fixed Effects CSV"),
             hr(),
             h4("Rate of Weight Change by Treatment (g/day)"),
-            shinycssloaders::withSpinner(DTOutput(ns("tox_emmeans"))),
+            shinycssloaders::withSpinner(DT::DTOutput(ns("tox_emmeans"))),
             downloadButton(ns("download_tox_emmeans_csv"), "Download Rates CSV"),
             hr(),
             h4("Difference in Rate vs the Reference (g/day)"),
-            shinycssloaders::withSpinner(DTOutput(ns("tox_rate_comparisons"))),
+            shinycssloaders::withSpinner(DT::DTOutput(ns("tox_rate_comparisons"))),
             downloadButton(ns("download_tox_rate_comparisons_csv"), "Download Comparisons CSV")
           ),
 
@@ -312,7 +312,7 @@ toxicityUI <- function(id) {
               "This table feeds the Kaplan-Meier plot in the Plots tab."
             ),
             h4("Time-to-Threshold Event Data"),
-            shinycssloaders::withSpinner(DTOutput(ns("tox_event_table"))),
+            shinycssloaders::withSpinner(DT::DTOutput(ns("tox_event_table"))),
             downloadButton(ns("download_tox_events"), "Download Events CSV")
           ),
 
@@ -400,7 +400,7 @@ toxicityUI <- function(id) {
                   # loss. KM assumes a censored animal remains at risk, so 1 - KM
                   # overstates weight-loss incidence whenever that happens.
                   uiOutput(ns("tox_km_competing_note")),
-                  DTOutput(ns("tox_km_censoring_table"))
+                  DT::DTOutput(ns("tox_km_censoring_table"))
                 ),
                 conditionalPanel(ns = ns,
                   "output.tox_model_type_val == 'et' && input.tox_et_plot_selector == 'twm'",
@@ -426,9 +426,9 @@ toxicityUI <- function(id) {
                   plot_help(
                       "The residuals are standardised, so for a well-fitting model the ",
                       "points fall along the red reference line. ",
-                      strong("S-shape: "), "heavy-tailed residuals — outliers or a ",
+                      strong("S-shape: "), "heavy-tailed residuals \u2014 outliers or a ",
                       "transform issue. ",
-                      strong("Bow: "), "skewed residuals — usually fixed by changing the ",
+                      strong("Bow: "), "skewed residuals \u2014 usually fixed by changing the ",
                       "weight transform."),
                   div(style = "margin-bottom: 24px;",
                     shinycssloaders::withSpinner(
@@ -442,8 +442,8 @@ toxicityUI <- function(id) {
                       "Random scatter around zero = LMM assumptions met. ",
                       strong("Curved blue line: "), "weight does not change linearly ",
                       "with time, so the Day slope averages over a curved ",
-                      "trajectory — read it alongside the trajectory plot. ",
-                      strong("Fan shape: "), "heteroscedasticity — consider log-",
+                      "trajectory \u2014 read it alongside the trajectory plot. ",
+                      strong("Fan shape: "), "heteroscedasticity \u2014 consider log-",
                       "transforming or weighting the response."),
                   div(style = "margin-bottom: 24px;",
                     shinycssloaders::withSpinner(
@@ -457,7 +457,7 @@ toxicityUI <- function(id) {
                 column(6,
                   h4("Scale-Location"),
                   plot_help(
-                      "sqrt(|residuals|) vs fitted — magnifies variance trends. ",
+                      "sqrt(|residuals|) vs fitted \u2014 magnifies variance trends. ",
                       "Flat blue line = constant variance. Upward slope = ",
                       "heteroscedasticity."),
                   div(style = "margin-bottom: 24px;",
@@ -498,13 +498,13 @@ toxicityUI <- function(id) {
                   column(6,
                     h5("Cook's distance"),
                     shinycssloaders::withSpinner(
-                      DTOutput(ns("tox_cooks_distance"))
+                      DT::DTOutput(ns("tox_cooks_distance"))
                     )
                   ),
                   column(6,
                     h5("DFBETAS"),
                     shinycssloaders::withSpinner(
-                      DTOutput(ns("tox_dfbetas"))
+                      DT::DTOutput(ns("tox_dfbetas"))
                     )
                   )
                 )
@@ -539,7 +539,7 @@ toxicity_server <- function(id, rv) {
   # R20.D6: the body-weight model's Cancel button, and Resume from the banner.
   register_bayes_resume(
     kind = "bw_model", tab_name = "Toxicity",
-    modal_title  = "Fitting the body-weight model…",
+    modal_title  = "Fitting the body-weight model\u2026",
     modal_detail = "Results will appear automatically when complete.",
     input = input, output = output, session = session, rv = rv,
     job_id_field = "tox_job_id",
@@ -601,9 +601,9 @@ toxicity_server <- function(id, rv) {
           # tolerability rule and where the intervals come from.
           uiOutput(ns("tox_twm_evaluability_note")),
           uiOutput(ns("tox_twm_tolerability_note")),
-          shinycssloaders::withSpinner(DTOutput(ns("tox_et_twm_table"))),
+          shinycssloaders::withSpinner(DT::DTOutput(ns("tox_et_twm_table"))),
           uiOutput(ns("tox_twm_attrition_ui")),
-          DTOutput(ns("tox_twm_attrition_table")),
+          DT::DTOutput(ns("tox_twm_attrition_table")),
           downloadButton(ns("download_et_twm_csv"), "Download CSV")
         )
       )
@@ -618,15 +618,15 @@ toxicity_server <- function(id, rv) {
         tabPanel("Model Results",
           uiOutput(ns("tox_bw_mixed_model_tab_info")),
           h4("Fixed Effects"),
-          shinycssloaders::withSpinner(DTOutput(ns("tox_fixed_effects"))),
+          shinycssloaders::withSpinner(DT::DTOutput(ns("tox_fixed_effects"))),
           downloadButton(ns("download_tox_model"), "Download Fixed Effects CSV"),
           hr(),
           h4("Rate of Weight Change by Treatment (g/day)"),
-          shinycssloaders::withSpinner(DTOutput(ns("tox_emmeans"))),
+          shinycssloaders::withSpinner(DT::DTOutput(ns("tox_emmeans"))),
           downloadButton(ns("download_tox_emmeans_csv"), "Download Rates CSV"),
           hr(),
           h4("Difference in Rate vs the Reference (g/day)"),
-          shinycssloaders::withSpinner(DTOutput(ns("tox_rate_comparisons"))),
+          shinycssloaders::withSpinner(DT::DTOutput(ns("tox_rate_comparisons"))),
           downloadButton(ns("download_tox_rate_comparisons_csv"), "Download Comparisons CSV")
         )
       )
@@ -639,7 +639,7 @@ toxicity_server <- function(id, rv) {
             "This table feeds the Kaplan-Meier plot in the Plots tab."
           ),
           h4("Time-to-Threshold Event Data"),
-          shinycssloaders::withSpinner(DTOutput(ns("tox_event_table"))),
+          shinycssloaders::withSpinner(DT::DTOutput(ns("tox_event_table"))),
           downloadButton(ns("download_tox_events"), "Download Events CSV")
         )
       )
@@ -823,7 +823,7 @@ toxicity_server <- function(id, rv) {
         context = list(pending = rv$tox_pending),   # survives a page reload
         input = input, output = output, session = session, rv = rv,
         job_id_field = "tox_job_id",
-        modal_title  = "Fitting the body-weight model…",
+        modal_title  = "Fitting the body-weight model\u2026",
         modal_detail = "It runs on the background worker, so other users are not held up.",
         cancel_input = "tox_cancel_job",
         finalize_success      = .finalize_bw_success,
@@ -833,7 +833,7 @@ toxicity_server <- function(id, rv) {
       return()
 
     } else {
-      show_analysis_modal("Running toxicity analysis…", "Results will appear automatically when complete.")
+      show_analysis_modal("Running toxicity analysis\u2026", "Results will appear automatically when complete.")
       on.exit(shiny::removeModal(), add = TRUE)
 
       # Backend v0.8.0+ / v0.7.0+: the endpoint estimand and the mouse-level
@@ -929,50 +929,50 @@ toxicity_server <- function(id, rv) {
   })
 
   # ---- BW: Result tables ----
-  output$tox_fixed_effects <- renderDT({
+  output$tox_fixed_effects <- DT::renderDT({
     req(rv$tox_results, rv$tox_results$mixed_model)
     mm <- rv$tox_results$mixed_model
-    if (isTRUE(mm$error)) return(datatable(data.frame(Message = mm$message)))
-    datatable(format_df_for_display(mm$fixed_effects),
+    if (isTRUE(mm$error)) return(DT::datatable(data.frame(Message = mm$message)))
+    DT::datatable(format_df_for_display(mm$fixed_effects),
               options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
   })
 
-  output$tox_emmeans <- renderDT({
+  output$tox_emmeans <- DT::renderDT({
     req(rv$tox_results, rv$tox_results$mixed_model)
     mm <- rv$tox_results$mixed_model
     if (isTRUE(mm$error) || is.null(mm$emmeans_table))
-      return(datatable(data.frame(Message = "Not available")))
-    datatable(format_df_for_display(mm$emmeans_table),
+      return(DT::datatable(data.frame(Message = "Not available")))
+    DT::datatable(format_df_for_display(mm$emmeans_table),
               options = list(scrollX = TRUE), rownames = FALSE)
   })
 
-  output$tox_rate_comparisons <- renderDT({
+  output$tox_rate_comparisons <- DT::renderDT({
     req(rv$tox_results, rv$tox_results$mixed_model)
     mm <- rv$tox_results$mixed_model
     if (isTRUE(mm$error) || is.null(mm$pairwise_comparisons))
-      return(datatable(data.frame(Message = "Not available")))
-    datatable(format_df_for_display(as.data.frame(mm$pairwise_comparisons)),
+      return(DT::datatable(data.frame(Message = "Not available")))
+    DT::datatable(format_df_for_display(as.data.frame(mm$pairwise_comparisons)),
               options = list(scrollX = TRUE), rownames = FALSE)
   })
 
-  output$tox_event_table <- renderDT({
+  output$tox_event_table <- DT::renderDT({
     req(rv$tox_results, rv$tox_results$weight_loss)
     wl <- rv$tox_results$weight_loss
-    if (isTRUE(wl$error)) return(datatable(data.frame(Message = wl$message)))
-    datatable(format_df_for_display(wl$event_data),
+    if (isTRUE(wl$error)) return(DT::datatable(data.frame(Message = wl$message)))
+    DT::datatable(format_df_for_display(wl$event_data),
               options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
   })
 
   # ---- ET: Result tables ----
   # R20-K (package v0.27.0): two axes, each with its interval, and a
   # tolerability flag; the TWM ratio and its ranking are gone.
-  output$tox_et_twm_table <- renderDT({
+  output$tox_et_twm_table <- DT::renderDT({
     req(rv$tox_results, rv$tox_results$twm)
     twm <- rv$tox_results$twm
-    if (isTRUE(twm$error)) return(datatable(data.frame(Message = twm$message)))
+    if (isTRUE(twm$error)) return(DT::datatable(data.frame(Message = twm$message)))
     tw_tbl <- window_display_table(twm$window_table, rv$tox_results$twm_reference)
     DT::formatStyle(
-      datatable(tw_tbl, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+      DT::datatable(tw_tbl, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
                 rownames = FALSE),
       "Tolerability", fontWeight = "bold",
       color = DT::styleEqual(c("Tolerated", "Not tolerated", "Unclear"),
@@ -1033,11 +1033,11 @@ toxicity_server <- function(id, rv) {
     )
   })
 
-  output$tox_twm_attrition_table <- renderDT({
+  output$tox_twm_attrition_table <- DT::renderDT({
     req(rv$tox_results, rv$tox_results$twm)
     twm <- rv$tox_results$twm
     if (isTRUE(twm$error) || is.null(twm$attrition)) return(NULL)
-    datatable(format_df_for_display(as.data.frame(twm$attrition)),
+    DT::datatable(format_df_for_display(as.data.frame(twm$attrition)),
               options = list(paging = FALSE, searching = FALSE), rownames = FALSE)
   })
 
@@ -1070,13 +1070,13 @@ toxicity_server <- function(id, rv) {
     )
   })
 
-  output$tox_km_censoring_table <- renderDT({
+  output$tox_km_censoring_table <- DT::renderDT({
     req(rv$tox_results, rv$tox_results$weight_loss)
     wl <- rv$tox_results$weight_loss
     if (isTRUE(wl$error) || is.null(wl$censoring_summary)) return(NULL)
     cs <- as.data.frame(wl$censoring_summary)
     if (!nrow(cs)) return(NULL)
-    datatable(format_df_for_display(cs),
+    DT::datatable(format_df_for_display(cs),
               options = list(paging = FALSE, searching = FALSE), rownames = FALSE)
   })
 

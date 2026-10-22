@@ -5913,3 +5913,75 @@ Both were reported from the dashboard while using the All Features demo.
 - **Back-transformation bias.** With no dropout, both estimators read about 3 % high against the population curve: the back-transformed mean of log volume over 10 animals is biased upward. It is the same in every arm, so a ratio between arms is barely affected.
 - **In the dashboard.** The dashboard (26.10.007) now states this in the AUC help.
 
+
+## R20-Y The dashboard joins the package (v0.34.0, 2026-10-22)
+
+**The decision,** from the maintainer: the whole project should be open source, and users should be able to run the dashboard locally. Choices made:
+- MIT licence for all of it;
+- keep the dashboard's history;
+- aim for CRAN (preparation comes last, after the reproducible R-script download);
+- no usage analytics in local runs.
+
+**History.** The dashboard's 398 commits are part of this repository's history. They were rewritten with `git filter-repo` on a fresh clone before the merge:
+- **Paths moved so nothing collides.** The dashboard's top-level documents (README, CHANGELOG, CODE_REVIEW, CONTRIBUTING and older notes) and its `docs/` now live in `docs/dashboard/` in every commit. Its `DESCRIPTION`, `NAMESPACE`, `LICENSE`, ignore files and workflow sit there too, and the merge deletes them.
+- **Two strings replaced in every commit:**
+  - the contact address of a company that no longer exists, replaced by the current one;
+  - a server login in a deployment note, replaced by a placeholder.
+- **Audited before publishing.** No commit holds credentials or real study data; the data files are the synthetic demo sets.
+- **The merge.** `git merge --allow-unrelated-histories` (7263de0), 706 commits in all. Because the paths were rewritten in every commit, `git log` on a dashboard file shows its whole history under its current path.
+
+**The package:**
+- **The entry point.** `run_dashboard()` (exported) replaces `mouseExperimentDashboard::runDashboard()`.
+- **Dependencies.**
+  - `shiny` is an Import (`@import shiny`), and the other 14 dashboard packages are Suggests.
+  - `dashboard_packages()` lists them, and `run_dashboard()` checks them with `rlang::check_installed()`.
+  - This keeps the non-default Imports at 19, under the 20 that draws a CRAN NOTE, and installing for the analysis functions pulls in no Shiny stack.
+  - Calls into a Suggests package must name it, so the 150 bare `datatable()`, `DTOutput()` and `renderDT()` calls in the code, tests and test apps became `DT::` calls.
+- **Analytics.** The Umami script tag is emitted only when `dashboard_analytics()` is true, which requires `MOUSEEXPERIMENT_ANALYTICS=true` or `options(mouseExperiment.analytics = TRUE)`. Production sets the variable (sciOmicsVPS, the next step).
+- **Removed:**
+  - the dashboard's `.onLoad()`, which loaded shiny, logger and the backend's namespaces and warned when the backend was missing;
+  - the backend-version test (R4.D2);
+  - R19.6, which checked that every `NAMESPACE` import from the backend resolved. There is no separate backend any more.
+- **The About tab** shows one package: its version, build date, source (MIT) and how to run it locally.
+- **Download Results READMEs** list mouseExperiment's version only.
+- **Two user-facing strings** no longer refer to a separate backend: "(backend v0.27.0)" in the Synergy Info tab, and "This backend version does not return analysis_data" in Dose Response.
+- **Help-page fixes.** Regenerating the help pages exposed misplaced documentation blocks in the dashboard's code:
+  - Sixteen files opened with a `#'` header followed by a blank line. Roxygen joins such a header to the next block, so `data_upload_server`'s page was titled "Server modules for the mouseExperiment dashboard / Data Upload Server Logic". The headers are now plain `#` comments, and three internal objects they had documented as datasets (`.job_registry`, `.SESSION_COOKIE_RE`, `.sweeper_state`) no longer have pages.
+  - `translate_error` carried `safe_analysis`'s block; each now has its own.
+  - `build_mcmc_rank_plot` documented an argument it does not have.
+  - In `helpers_format.R` and `mod_power.R`, three blocks sat above the wrong function, so a page described another function and keywords came from prose.
+  - `logging.R` and `mod_log_session.R` each had a file-level `@name` block without `NULL`, which absorbed the next block.
+  - `bayes_diagnostics_panel` showed `\%`.
+  - Every page now parses cleanly, and the only keywords are `internal` and `datasets`.
+- **R CMD check.** The first check of the merged package gave 4 WARNINGs and 1 NOTE. CI fails on a warning (`error-on: "warning"`), so all of them are fixed here:
+  - **Non-ASCII characters in code (WARNING).** 203 string literals in 18 dashboard files held characters such as mm³, ×, −, — and ≥. R's parser located each literal, and its non-ASCII characters were rewritten as `\u` escapes. Each file parses to identical code before and after (`identical()` on the parsed expressions), so every string the app shows is unchanged. Comments keep their characters, since the check ignores comments.
+  - **Rd (3 WARNINGs).**
+    - Unescaped braces in `build_html_report`.
+    - `[12.3, 18.9]` read as a link in `fmt_interval`.
+    - The usage mismatches in `build_mcmc_rank_plot`, `tab_info` and `translate_error`.
+    - `%||%` is now `@noRd`.
+  - **Undefined globals (NOTE).** The dashboard's old hand-kept `NAMESPACE` never imported `png`, `dev.off`, `plot.new`, `title`, `capture.output` or `write.csv`, and never declared its plot columns. Both are now declared: the imports by `importFrom`, the 27 column names in `R/globals.R`.
+- **Documentation:**
+  - The README has a Dashboard section.
+  - The dashboard's README, CONTRIBUTING, ARCHITECTURE and DATA_FORMAT describe one package. CONTRIBUTING's "install the sibling backend first" section is gone.
+  - The unused Shiny Server files (`shiny-server-app.R`, `shiny-server-conf.template`) are deleted; deployment uses Docker.
+  - `docs/dashboard/DEPLOYMENT.md` still describes the two-package image. It changes with the VPS switch.
+- **CI.** `R-CMD-check.yaml` installs the dashboard's Suggests, plus shinytest2 and chromote, so the dashboard's tests run on every pull request.
+
+**Verification (executed):**
+- **The test suite,** the package's and the dashboard's together, from the source tree with every Bayesian fit skipped, as the staging gate runs it: 684 tests, 0 failed, 31 skipped. CI runs the Bayesian fits.
+- **`R CMD build`** (vignette included), then **`R CMD check --no-manual --no-tests`:** Status OK, with no WARNINGs or NOTEs.
+- **Installed from that tarball into an empty library,** `run_dashboard()`:
+  - serves HTTP 200;
+  - loads all 43 local scripts, stylesheets and images the page references;
+  - shows the new About tab;
+  - loads no external script.
+- **With `MOUSEEXPERIMENT_ANALYTICS=true`,** the Umami tag is present.
+
+**Not done here:**
+- **The VPS switch** (sciOmicsVPS): one package in the image, one repository for the webhook and the gate, and `MOUSEEXPERIMENT_ANALYTICS=true` in production.
+- **Archiving** `mouseExperimentDashboard`.
+- **CRAN preparation:**
+  - `skip_if_not_installed()` for the Suggests in the dashboard's tests;
+  - help titles ending in a period;
+  - the check's runtime.

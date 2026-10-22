@@ -8,8 +8,8 @@
 skip_if_not_installed("shiny")
 skip_if_not_installed("promises")
 
-pkg <- tryCatch(getNamespace("mouseExperimentDashboard"), error = function(e) NULL)
-skip_if(is.null(pkg), "mouseExperimentDashboard namespace not loadable")
+pkg <- tryCatch(getNamespace("mouseExperiment"), error = function(e) NULL)
+skip_if(is.null(pkg), "mouseExperiment namespace not loadable")
 
 g <- function(nm) get(nm, envir = pkg)
 

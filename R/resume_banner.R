@@ -1,23 +1,23 @@
-#' Resume-banner module (CODE_REVIEW.md F.7).
-#'
-#' UI module that lists outstanding / completed / failed jobs for the
-#' current sid and offers per-job Resume / Cancel actions plus a
-#' Dismiss-all. Renders nothing when the sid has no jobs — so the
-#' banner is invisible on fresh sessions.
-#'
-#' Wiring contract:
-#'   * `session_id` is a reactive that returns the current sid (set by
-#'     `app.R` from `get_sid(session)` once the cookie arrives).
-#'   * `on_resume` is a callback `function(job)` provided by the parent
-#'     scope. It's responsible for populating `rv$<kind>_results` and
-#'     switching the navbar to the right tab (the banner is content-
-#'     unaware; it just hands the job back).
-#'
-#' Click delegation: per-row buttons use a single delegated JS handler
-#' that sets one of three module-scoped inputs (`resume_clicked`,
-#' `cancel_clicked`, `dismiss_clicked`) each with an event-priority
-#' message so repeat clicks fire even when the value is the same. This
-#' avoids registering an observer per dynamic button ID.
+# Resume-banner module (CODE_REVIEW.md F.7).
+#
+# UI module that lists outstanding / completed / failed jobs for the
+# current sid and offers per-job Resume / Cancel actions plus a
+# Dismiss-all. Renders nothing when the sid has no jobs — so the
+# banner is invisible on fresh sessions.
+#
+# Wiring contract:
+#   * `session_id` is a reactive that returns the current sid (set by
+#     `app.R` from `get_sid(session)` once the cookie arrives).
+#   * `on_resume` is a callback `function(job)` provided by the parent
+#     scope. It's responsible for populating `rv$<kind>_results` and
+#     switching the navbar to the right tab (the banner is content-
+#     unaware; it just hands the job back).
+#
+# Click delegation: per-row buttons use a single delegated JS handler
+# that sets one of three module-scoped inputs (`resume_clicked`,
+# `cancel_clicked`, `dismiss_clicked`) each with an event-priority
+# message so repeat clicks fire even when the value is the same. This
+# avoids registering an observer per dynamic button ID.
 
 #' Resume-banner UI
 #' @param id moduleServer namespace.
@@ -187,7 +187,7 @@ resume_banner_server <- function(id = "resume_banner",
   kind_lbl <- .kind_to_label(job$kind)
   shiny::tags$li(
     style = "margin-bottom: 6px;",
-    shiny::tags$strong(kind_lbl), " — ", status_lbl,
+    shiny::tags$strong(kind_lbl), " \u2014 ", status_lbl,
     shiny::span(style = "margin-left: 12px;",
       if (job$status %in% c("queued", "running", "completed")) {
         shiny::tags$button(

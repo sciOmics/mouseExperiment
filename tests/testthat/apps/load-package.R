@@ -6,12 +6,12 @@
 local({
   root <- normalizePath(file.path(getwd(), "..", "..", "..", ".."), mustWork = FALSE)
   from_source <- file.exists(file.path(root, "DESCRIPTION")) &&
-    any(grepl("^Package: mouseExperimentDashboard$",
+    any(grepl("^Package: mouseExperiment$",
               readLines(file.path(root, "DESCRIPTION"), warn = FALSE))) &&
     requireNamespace("pkgload", quietly = TRUE)
   if (from_source) {
     pkgload::load_all(root, quiet = TRUE, helpers = FALSE, export_all = TRUE)
   } else {
-    library(mouseExperimentDashboard)
+    library(mouseExperiment)
   }
 })

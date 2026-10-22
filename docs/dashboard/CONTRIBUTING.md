@@ -1,6 +1,6 @@
 # Contributing
 
-How to work on `mouseExperimentDashboard`. This document covers the conventions, testing requirements, and review process. For the technical layout, read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) first.
+How to work on the dashboard in `mouseExperiment` (`R/app.R`, the `R/mod_*.R` modules and the files around them). This document covers the conventions, testing requirements, and review process. For the technical layout, read [`ARCHITECTURE.md`](ARCHITECTURE.md) first.
 
 ---
 
@@ -8,19 +8,11 @@ How to work on `mouseExperimentDashboard`. This document covers the conventions,
 
 ```r
 # Clone, then in R:
-setwd("/path/to/mouseExperimentDashboard")
 devtools::load_all()
-
-# The backend is a hard dependency; DESCRIPTION's Imports gives the minimum
-# version (mouseExperiment >= 0.33.0 as of 26.10.005)
-# If you're developing both, sync the local backend:
-devtools::install("/path/to/mouseExperiment", quiet = TRUE, upgrade = FALSE)
-
-# Run the dashboard
-runDashboard()
+run_dashboard()
 ```
 
-For Bayesian feature development you also need `brms` ≥ 2.19, `future`, `promises`, and `bayesplot`.
+`brms` and `bayesplot` are Imports of the package; the dashboard runs Bayesian fits in the background with `future` and `promises` (Suggests).
 
 ---
 
@@ -97,7 +89,7 @@ Multiple unrelated download handlers | Extract `_downloads.R` even at smaller fi
 
 ### Adding a new analysis module
 
-See [`docs/ARCHITECTURE.md::"Adding a new analysis module"`](docs/ARCHITECTURE.md#adding-a-new-analysis-module).
+See [`ARCHITECTURE.md::"Adding a new analysis module"`](ARCHITECTURE.md#adding-a-new-analysis-module).
 
 ### F.7-specific conventions
 
@@ -136,21 +128,10 @@ The codebase is intentionally permissive on lint warnings — many existing file
 
 ## Testing
 
-**Install the sibling backend first.** `devtools::load_all()` resolves
-`Imports: mouseExperiment` against the **installed** library, not
-`../mouseExperiment`, so testing against a stale backend is the default failure
-mode rather than an unlikely accident:
-
-```r
-devtools::install("../mouseExperiment", upgrade = FALSE)
-devtools::test()
-```
-
-`test-backend-version.R` **fails** — it does not skip — when the installed backend
-is older than the sibling source, and tells you the command above. That is
-deliberate: during the Round 3 review this suite reported 210 passing against a
-backend six releases behind the code under review, and a green run against the
-wrong backend is worse than no run. See `CODE_REVIEW.md` §R4.D2.
+The dashboard and the analysis functions have been one package since v0.34.0, so
+`devtools::test()` tests the code under review. Before then the dashboard was tested
+against an installed backend, which could be releases behind its source
+(`CODE_REVIEW.md` §R4.D2).
 
 Targeted runs:
 
@@ -177,7 +158,6 @@ devtools::test(filter = "helpers")              # helper functions
 | `test-shiny_app.R` | shinytest2 headless-browser integration (skips if `chromote` missing) |
 | `test-backend-contract.R` | The named fields the dashboard reads from backend results (R3.D9, I.2, R4.D2) |
 | `test-backend-calls-resolve.R` | Every `mouseExperiment::` call names a function that exists (R17.3) |
-| `test-backend-version.R` | Installed backend vs sibling source skew; **fails**, does not skip (R4.D2) |
 | `test-demo-data-reachable.R` | The backend's demo datasets load from the app (D.12) |
 | `test-docs-current.R` | Info / Help tabs match the app and backend (D.13) |
 | `test-helpers_data.R`, `test-helpers_format.R`, `test-helpers_plot_ui.R` | Data, formatting, plot and UI helpers (D.1, D.9) |
@@ -226,10 +206,10 @@ User-facing docs live in `docs/`:
 
 | File | What it covers |
 |---|---|
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Module pattern, F.7 flow, async |
-| [`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md) | Long-format CSV spec, column detection |
-| [`docs/SECURITY.md`](docs/SECURITY.md) | F.7 threat model, isolation guarantees |
-| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Docker / NPM / Cloudflare setup |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Module pattern, F.7 flow, async |
+| [`DATA_FORMAT.md`](DATA_FORMAT.md) | Long-format CSV spec, column detection |
+| [`SECURITY.md`](SECURITY.md) | F.7 threat model, isolation guarantees |
+| [`DEPLOYMENT.md`](DEPLOYMENT.md) | Docker / NPM / Cloudflare setup |
 
 Keep these in sync with the code. When you change cookie attributes, update SECURITY.md. When you add a new analysis module, update ARCHITECTURE.md and DATA_FORMAT.md.
 
@@ -255,10 +235,8 @@ Keep these in sync with the code. When you change cookie attributes, update SECU
    - Title: matches the commit-message convention (`feat:`, `fix:`, etc.)
    - Body: same shape as the commit body (the *why*); for multi-commit PRs, summarize the sequence
    - Linked CODE_REVIEW.md item ID if applicable
-4. Run the test suite locally against the backend of the target branch:
-   `devtools::test()`, with that branch of mouseExperiment installed. GitHub
-   Actions is not paid for on this private repository, so
-   `.github/workflows/R-CMD-check.yaml` runs only when started by hand.
+4. Run the test suite locally (`devtools::test()`). `.github/workflows/R-CMD-check.yaml`
+   runs R CMD check and the test suite on every pull request.
 5. Self-review for:
    - Tests cover new behavior
    - No code or comments leak the F.7 sid
@@ -274,9 +252,9 @@ Keep these in sync with the code. When you change cookie attributes, update SECU
 
 | Question | Where to look |
 |---|---|
-| How does the F.7 banner work? | `R/resume_banner.R` + [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) + [`docs/SECURITY.md`](docs/SECURITY.md) |
-| What columns does the dashboard accept? | [`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md) |
-| What does the Bayesian X mean? | Backend `docs/BAYESIAN.md` and `docs/METHODS.md` |
+| How does the F.7 banner work? | `R/resume_banner.R` + [`ARCHITECTURE.md`](ARCHITECTURE.md) + [`SECURITY.md`](SECURITY.md) |
+| What columns does the dashboard accept? | [`DATA_FORMAT.md`](DATA_FORMAT.md) |
+| What does the Bayesian X mean? | [`docs/BAYESIAN.md`](../BAYESIAN.md) and [`docs/METHODS.md`](../METHODS.md) |
 | Why is X organized this way? | `CODE_REVIEW.md` (the relevant item explains the history) |
 | Deployment broke | `sciOmicsVPS/docs/troubleshooting.md` |
 | A test is failing | Read the test + the code path it exercises; many tests have detailed comments |
@@ -285,9 +263,9 @@ Keep these in sync with the code. When you change cookie attributes, update SECU
 
 ## See also
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- [`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md)
-- [`docs/SECURITY.md`](docs/SECURITY.md)
-- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
-- `CODE_REVIEW.md` (repo root) — design-decision history
-- Backend `CONTRIBUTING.md` — for backend-side conventions
+- [`ARCHITECTURE.md`](ARCHITECTURE.md)
+- [`DATA_FORMAT.md`](DATA_FORMAT.md)
+- [`SECURITY.md`](SECURITY.md)
+- [`DEPLOYMENT.md`](DEPLOYMENT.md)
+- [`CODE_REVIEW.md`](CODE_REVIEW.md) — the dashboard's design-decision history to v0.34.0; the repository root's `CODE_REVIEW.md` from then on
+- [`CONTRIBUTING.md`](../../CONTRIBUTING.md) at the repository root — the package's conventions

@@ -18,7 +18,7 @@ If you're adding a new analysis module: read sections 4-5.
 | `.xlsx`, `.xls` | Not supported. Convert to CSV first |
 | `.tsv` | Not supported. Convert to CSV first |
 
-Files up to 30 MB are accepted (`runDashboard()` sets `shiny.maxRequestSize`). Comma-, semicolon- and tab-separated files are read, with a decimal comma when the delimiter is a semicolon or tab, in UTF-8, UTF-16 or Latin-1. A row whose number of fields differs from the header is reported with its line number; quote any value that contains the delimiter.
+Files up to 30 MB are accepted (`run_dashboard()` sets `shiny.maxRequestSize`). Comma-, semicolon- and tab-separated files are read, with a decimal comma when the delimiter is a semicolon or tab, in UTF-8, UTF-16 or Latin-1. A row whose number of fields differs from the header is reported with its line number; quote any value that contains the delimiter.
 
 ### Wide format
 
@@ -250,7 +250,7 @@ The dashboard ships sample datasets in `inst/sample_data/` for testing without u
 | Weight | `weight_synthetic_data.csv` | Body-weight trajectories |
 | All Features | `all_features_synthetic_data.csv` | Every optional column: six arms (vehicle, a three-dose series, a second drug and their combination), length/width/height, weight, dose, cage, necrosis flag, survival event and removal reason |
 
-Load them from the Data Upload tab's "Try Demo Data" list, or read directly in R via `system.file("sample_data/combo_treatment_synthetic_data.csv", package = "mouseExperimentDashboard")`.
+Load them from the Data Upload tab's "Try Demo Data" list, or read directly in R via `system.file("sample_data/combo_treatment_synthetic_data.csv", package = "mouseExperiment")`.
 
 ---
 

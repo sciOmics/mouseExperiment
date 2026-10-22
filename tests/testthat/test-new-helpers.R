@@ -7,7 +7,7 @@
 # ---------------------------------------------------------------------------
 source_new_helpers <- function() {
   tryCatch({
-    pkg_env <- getNamespace("mouseExperimentDashboard")
+    pkg_env <- getNamespace("mouseExperiment")
     list(
       palette_colors       = get("palette_colors",       envir = pkg_env),
       default_group_colors = get("default_group_colors", envir = pkg_env)

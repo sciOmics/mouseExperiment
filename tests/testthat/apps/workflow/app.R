@@ -1,6 +1,6 @@
 # Data Upload + Tumor Growth, for the upload -> fit workflow test (Round 2 I.5).
 source(file.path("..", "load-package.R"))
-ns <- asNamespace("mouseExperimentDashboard")
+ns <- asNamespace("mouseExperiment")
 
 shiny::shinyApp(
   ui = shiny::fluidPage(
