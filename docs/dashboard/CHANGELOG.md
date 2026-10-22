@@ -4,6 +4,38 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.10.009] - 2026-10-22
+
+### Changed
+- **Survival, Toxicity, Drug Synergy, Dose Response and Power explain their options in `?`
+  tooltips,** as Tumor Growth has since 26.10.007.
+  - The paragraphs under sidebar options are gone.
+  - What stays visible is state or a caveat that changes what you would do: the
+    randomisation unit, which removal reasons count as deaths, what is assumed about other
+    deaths, the tumour-mass formula, and the note that the Tumor Volume covariate is not used.
+- **Download Results on every analysis tab.** Survival, Drug Synergy, Dose Response and Power
+  gain the tab, and it replaces Toxicity's "Download All", which exported CSV tables only.
+  - Each tab lists what its run produced, with plots in PNG, PDF or SVG and a README.
+  - Drug Synergy, Dose Response and Power export each plot as last shown, so open a plot once
+    first. A plot never drawn is listed in the README as not available.
+- **The Help tab matches the app again.**
+  - It now describes the `?` tooltips, the "How to read this plot" notes, Download Results,
+    the HTML report, background runs with their resume banner, setting presets, the
+    removal-reason mapping and the accepted CSV formats.
+  - The endpoint estimands carry the names the sidebars use.
+  - Bliss is described as independent action, with its formula.
+  - The five-parameter dose-response curve is mentioned.
+  - The troubleshooting entries are brought up to date.
+
+### Fixed
+- **The Drug Synergy Info tab described Bliss as "the sum of individual TGIs, capped at 100 %"**
+  and announced "two reference models" with only one listed. It also said Tumor Growth must
+  be run first, which has not been true since Synergy prepares its own data.
+- **The Power tooltip said the analytic mode could use a one-way ANOVA.** It is a two-sample
+  t-test for each treated-vs-control comparison; the ANOVA went in 26.09.002.
+- **Help listed a "Survival time" column role** that was detected by name and never used.
+  The detection and the row are removed.
+
 ## [26.10.008] - 2026-10-22
 
 ### Changed

@@ -53,14 +53,8 @@ synergyUI <- function(id) {
                 div(class = "panel panel-default",
                   div(class = "panel-heading", h4(class = "panel-title", "Overview")),
                   div(class = "panel-body",
-                    p("The Drug Synergy tab assesses whether a drug combination produces greater tumor suppression than predicted from the individual drugs acting independently. Two reference models are evaluated simultaneously:"),
-                    tags$ul(
-                      tags$li(strong("Bliss Independence"), " — treats the two drugs as probabilistically independent. The expected combined TGI is the sum of individual TGIs, capped at 100 %."),
-                    ),
-                    p("Four treatment groups must be assigned in the sidebar: Control, Drug A only, Drug B only, and the Combination (A + B). Analysis can be run at a single timepoint or tracked over the full study duration."),
-                    p(tags$small(class = "text-muted",
-                      "Tumor Growth Analysis must be run first — Drug Synergy uses preprocessed volume data from that tab."
-                    ))
+                    p("The Drug Synergy tab assesses whether a drug combination produces greater tumor suppression than predicted from the individual drugs acting independently. The reference model is ", strong("Bliss independence"), ": the drugs act independently on the fraction of tumour each one leaves, so the expected combined effect is FE_A + FE_B \u2212 FE_A \u00d7 FE_B (details below)."),
+                    p("Four treatment groups must be assigned in the sidebar: Control, Drug A only, Drug B only, and the Combination (A + B). Analysis can be run at a single timepoint or tracked over the full study duration.")
                   )
                 ),
 

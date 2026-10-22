@@ -154,7 +154,8 @@ test_that("D.13: every auto-detected column role appears in the Help table", {
   # users unaware the app can use a column they already have — which is how the
   # necrosis, sex and height columns went unmentioned.
   ui <- read_src("ui_modules.R")
-  roles <- c("Necrotic", "Sex", "Date", "Survival_Time", "Height", "Removal_Reason")
+  # Survival_Time was detected but never used, and went in 26.10.009.
+  roles <- c("Necrotic", "Sex", "Date", "Height", "Removal_Reason")
   for (r in roles) {
     expect_match(ui, r, fixed = TRUE, info = paste("Help omits role:", r))
   }

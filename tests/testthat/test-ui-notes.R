@@ -74,3 +74,26 @@ test_that("Power Analysis comes after Drug Synergy in the navbar", {
   expect_identical(tabs, c("Data", "Tumor Growth", "Survival", "Toxicity", "Dose Response",
                            "Drug Synergy", "Power Analysis", "Help", "About"))
 })
+
+test_that("26.10.009: the Help tab matches the app", {
+  h <- html(g("helpUI")())
+  # Features it did not mention.
+  for (s in c("Download Results", "Save Preset", "resume or cancel", "How to read this plot",
+              "up to 30 MB")) expect_match(h, s, fixed = TRUE, info = s)
+  # The endpoint estimands by the names the sidebars use.
+  for (s in c("Each animal's last observation", "Survivors")) expect_match(h, s, fixed = TRUE)
+  expect_false(grepl("‘Observed’", h, fixed = TRUE))
+  # A survival-time column is detected by name but never used.
+  expect_false(grepl("Survival_Time, Time_To_Event", h, fixed = TRUE))
+  # Bliss is independent action, not additivity.
+  expect_false(grepl("expected additive effect", h, fixed = TRUE))
+  expect_match(h, "FE_A + FE_B", fixed = TRUE)
+  # The Synergy Info tab: one reference model, described correctly, and no
+  # need to run Tumor Growth first.
+  syn <- html(g("synergyUI")("syn"))
+  expect_false(grepl("sum of individual TGIs", syn, fixed = TRUE))
+  expect_false(grepl("Two reference models", syn, fixed = TRUE))
+  expect_false(grepl("must be run first", syn, fixed = TRUE))
+  # Power's analytic mode is a t-test per comparison (no ANOVA since 26.09.002).
+  expect_false(grepl("one-way ANOVA from an effect", html(g("powerAnalysisUI")("pw")), fixed = TRUE))
+})

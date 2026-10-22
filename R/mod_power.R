@@ -17,8 +17,8 @@ powerAnalysisUI <- function(id) {
           # Explanations sit in help_tip() tooltips (26.10.009).
           radioButtons(ns("pw_mode"),
                        label    = tagList("Analysis Mode", help_tip(paste(
-                         "Analytic: a closed-form t-test or one-way ANOVA from an effect",
-                         "size, in seconds. LMM Simulation: simulates whole growth studies",
+                         "Analytic: a two-sample t-test for each treated-vs-control",
+                         "comparison, from an effect size, in seconds. LMM Simulation: simulates whole growth studies",
                          "and fits the Tumour Growth model to each, so it plans for the",
                          "analysis you will run; it takes longer."))),
                        choices  = c("A priori — Analytic"      = "apriori_analytic",
