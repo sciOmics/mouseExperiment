@@ -1481,6 +1481,22 @@ helpUI <- function() {
     hr(),
 
     # \u2500\u2500 Workflow overview \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    # Quick start (26.10.009): the shortest path to a first result.
+    div(
+      class = "alert alert-info",
+      h4(icon("rocket"), " Quick start"),
+      tags$ol(style = "margin-bottom:0;",
+        tags$li("On the ", strong("Data"), " tab, under ", strong("Try Demo Data"), ", choose ",
+                strong("All Features"), " and click ", strong("Load Demo Data"), "."),
+        tags$li("Below the column mapping, check ", strong("Study Design"), ": volume units mm\u00b3 and the ",
+                "control group Vehicle."),
+        tags$li("Open ", strong("Tumor Growth"), " and click ", strong("Run Analysis"),
+                "; the results open on the Summary tab."),
+        tags$li("Look through the other result tabs (Plots, Comparisons, Diagnostics), then save what you ",
+                "need from ", strong("Download Results"), ". Every other analysis tab works the same way.")
+      )
+    ),
+
     h3(icon("arrows-turn-right"), " Basic Workflow"),
     tags$ol(
       tags$li(strong("Data tab"), " \u2014 upload a CSV file and map your columns (ID, time, volume, treatment). Optional columns: cage, dose, body weight, survival/censor indicator."),
@@ -1558,6 +1574,60 @@ helpUI <- function() {
     hr(),
 
     # \u2500\u2500 Analysis modules \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    h3(icon("book"), " Key Concepts"),
+
+    h4("Evaluable days"),
+    p(evaluable_rule_text()),
+    p("Comparisons on one day, or over a window, use only days on which every arm compared is ",
+      "evaluable. The AUC's window ends at the last such day. Dose Response and the therapeutic ",
+      "window use the last evaluable day unless you choose another, and Drug Synergy offers every ",
+      "evaluable day or one of them. Later than that, an arm is represented by too few animals, ",
+      "and by the ones whose tumours grew slowest, for a fair comparison."),
+
+    h4("Glossary"),
+    tags$dl(
+      tags$dt("Reference group"),
+      tags$dd("The control arm chosen under Study Design. Comparisons are made against it, or between ",
+              "all pairs of arms where a tab offers that."),
+      tags$dt("Geometric mean"),
+      tags$dd("The average taken on the log scale and converted back: the typical tumour volume. A few ",
+              "very large tumours move it far less than they move the ordinary (arithmetic) mean. ",
+              "Model-based estimates of tumour volume are geometric means."),
+      tags$dt("TGI (tumour growth inhibition)"),
+      tags$dd("(1 \u2212 treated volume / control volume) \u00d7 100 at the evaluation day, from each arm's ",
+              "mean volume: the geometric mean under the model-based estimand, the arithmetic mean under ",
+              "the observed ones. 100 % means no tumour left, 0 % the same as control, and a negative ",
+              "value a larger tumour than control."),
+      tags$dt("Estimand"),
+      tags$dd("What a number is meant to estimate, decided before looking at the data. For example, ",
+              "each arm's mean volume on day 21 had every animal stayed on study (model-based), or the ",
+              "mean of the animals still present on day 21 (survivors). They differ when animals leave ",
+              "early, and the Toxicity and Drug Synergy sidebars let you choose."),
+      tags$dt("Random effects (random slopes)"),
+      tags$dd("Each animal's own starting size and growth rate, around its arm's. They let a model use ",
+              "repeated measurements of the same animal correctly, instead of treating them as ",
+              "independent animals."),
+      tags$dt("Adjusted and unadjusted p-values"),
+      tags$dd("Comparing several arms with the control makes several tests, and some p-values will be ",
+              "small by chance. An adjusted p-value (Dunnett, Tukey, Holm, Bonferroni or FDR) accounts ",
+              "for the whole family of comparisons shown, and adjusted intervals do the same for ",
+              "intervals. Report adjusted values when several arms are compared; an unadjusted value ",
+              "suits only a single planned comparison."),
+      tags$dt("Confidence and credible intervals"),
+      tags$dd("A 95 % confidence interval (frequentist) comes from a procedure that covers the true ",
+              "value in 95 % of repeated studies. A 95 % credible interval (Bayesian) contains the ",
+              "value with 95 % probability, given the data, the model and its priors."),
+      tags$dt("Hazard ratio and time ratio"),
+      tags$dd("A hazard ratio below 1 means the endpoint is reached at a lower rate than in the ",
+              "reference arm. A time ratio above 1 (Bayesian survival) means it takes longer to reach."),
+      tags$dt("Bliss difference"),
+      tags$dd("The combination's observed effect minus the effect expected if the two drugs acted ",
+              "independently, in percentage points. Positive suggests synergy, negative antagonism; ",
+              "its 95 % interval decides the verdict.")
+    ),
+
+    hr(),
+
     h3(icon("flask"), " Analysis Modules"),
 
     h4("Tumor Growth"),

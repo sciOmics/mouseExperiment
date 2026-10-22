@@ -2884,3 +2884,13 @@ The Info tab keeps the full descriptions.
 - **Full suite, from source, against mouseExperiment 0.33.1:** 315 tests, 0 failed, 0 skipped.
 - **In a browser (1400 px):** the Power sidebar with its tips; Toxicity's Download Results after a body-weight run gave 15 files, both plots included.
 
+**Added to Help, at the maintainer's request:**
+- **A Quick start box.**
+- **A Key Concepts section:**
+  - **Evaluable days:** the rule, from the same `evaluable_rule_text()` the Study Design panel shows, and where it applies.
+  - **A glossary of nine terms.** Each was checked against the code:
+    - TGI is `(1 - Mean_Volume / control) * 100` in `endpoint_tgi()`. Means are geometric under the model estimand (`exp(log_mean)`) and arithmetic under the observed ones.
+    - Power's analytic mode is `power.t.test()` per comparison.
+- **Power's Info tab** loses its release-history sentence.
+- **Tests:** `test-ui-notes.R` checks the quick start, that the rule text is the Study Design's, all nine glossary terms, and the removed sentence. The full suite has 316 tests, 0 failed. The new sections were checked in a browser.
+

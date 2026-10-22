@@ -266,8 +266,7 @@ powerAnalysisUI <- function(id) {
                     tags$blockquote(
                       p(tags$b("Two groups:"), " one comparison at the chosen alpha."),
                       p(tags$b("Three or more groups:"), " each comparison is tested at alpha / (number of comparisons) under the default Bonferroni correction, so each treated arm that differs from control by d is detected with the reported power. ",
-                        "Dunnett, the Tumor Growth default, is slightly less conservative, so the N shown is a small overestimate for it. ",
-                        "Versions before 26.09.002 used a one-way ANOVA with f = d / \u221a2 here, which gave sample sizes 2.6\u20134\u00d7 too small (CODE_REVIEW.md R20.7).")
+                        "Dunnett, the Tumor Growth default, is slightly less conservative, so the N shown is a small overestimate for it.")
                     ),
                     p(tags$b("Attrition:"), " Required_N is the number that must reach the endpoint; with an expected attrition above 0 %, Enroll_N is the number to start with."),
 

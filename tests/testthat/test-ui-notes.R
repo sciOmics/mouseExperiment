@@ -97,3 +97,19 @@ test_that("26.10.009: the Help tab matches the app", {
   # Power's analytic mode is a t-test per comparison (no ANOVA since 26.09.002).
   expect_false(grepl("one-way ANOVA from an effect", html(g("powerAnalysisUI")("pw")), fixed = TRUE))
 })
+
+test_that("26.10.009: Help has a quick start, the evaluable-day rule and a glossary", {
+  h <- html(g("helpUI")())
+  expect_match(h, "Quick start", fixed = TRUE)
+  expect_match(h, "Load Demo Data", fixed = TRUE)
+  # The rule is the same text the Study Design panel shows.
+  expect_match(h, g("evaluable_rule_text")(), fixed = TRUE)
+  for (term in c("Reference group", "Geometric mean", "TGI (tumour growth inhibition)",
+                 "Estimand", "Random effects (random slopes)", "Adjusted and unadjusted p-values",
+                 "Confidence and credible intervals", "Hazard ratio and time ratio",
+                 "Bliss difference")) {
+    expect_match(h, paste0("<dt>", term, "</dt>"), fixed = TRUE, info = term)
+  }
+  # Release history is not user guidance.
+  expect_false(grepl("Versions before 26.09.002", html(g("powerAnalysisUI")("pw")), fixed = TRUE))
+})

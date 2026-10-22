@@ -26,6 +26,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   - Bliss is described as independent action, with its formula.
   - The five-parameter dose-response curve is mentioned.
   - The troubleshooting entries are brought up to date.
+- **New in Help:**
+  - a **Quick start** box (load the All Features demo, run Tumor Growth, download results);
+  - a **Key Concepts** section with the **evaluable-day rule**, which sets the comparison
+    days and the AUC window;
+  - a **glossary**: reference group, geometric mean, TGI, estimand, random effects, adjusted
+    and unadjusted p-values, confidence and credible intervals, hazard and time ratios, and
+    the Bliss difference.
+- **Power's Info tab** no longer carries release history ("Versions before 26.09.002…").
 
 ### Fixed
 - **The Drug Synergy Info tab described Bliss as "the sum of individual TGIs, capped at 100 %"**
