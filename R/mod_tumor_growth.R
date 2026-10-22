@@ -1208,6 +1208,9 @@ tumor_growth_server <- function(id, rv) {
           tags$li(strong("N"), " \u2014 animals enrolled in the arm."),
           tags$li(strong("Reference"), " \u2014 TRUE for the reference group.")
         ),
+        p("Animals that died or were removed early count through all their measurements: the ",
+          "model keeps each one's growth rate in its arm's curve, so early deaths of large tumours ",
+          "do not pull an arm's AUC down. See the Info tab for how far this holds."),
         em("For comparisons between arms see the Comparisons tab; per-animal trapezoidal AUCs, for description, are in the AUC Individual Data tab.")
       )
     } else {

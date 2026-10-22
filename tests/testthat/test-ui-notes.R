@@ -53,3 +53,12 @@ test_that("the Tumour Growth results have no Compare tab", {
   expect_false(grepl('data-value="Compare"', ui, fixed = TRUE))
   expect_false(grepl("tg_compare_panel", ui, fixed = TRUE))
 })
+
+test_that("the AUC help says how animals that die early are handled", {
+  tg <- html(g("tumorGrowthUI")("tg"))
+  # The sidebar tooltip, and the Info tab's fuller account with its limits.
+  expect_match(tg, "animals that die early still count through all their measurements", fixed = TRUE)
+  expect_match(tg, "Animals that die or are removed early", fixed = TRUE)
+  expect_match(tg, "read the Survival analysis alongside the AUC", fixed = TRUE)
+  expect_match(html(g("helpUI")()), "early deaths of large tumours do not pull the AUC down", fixed = TRUE)
+})

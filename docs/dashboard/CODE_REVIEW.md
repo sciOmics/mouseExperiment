@@ -2773,3 +2773,15 @@ The Info tab keeps the full descriptions.
 - **Test.** `test-ui-notes.R` checks the tab is gone.
 - **Full suite:** 302 tests. 301 pass. The one failure is `R4.D2` ("the installed backend is not older than the sibling source"), because the sibling package checkout was on the v0.33.1 branch while the test library held 0.33.0. That is an environment check, not this change.
 
+**Added, at the maintainer's request: how the AUC handles animals that die early.**
+- **The question:** "Wouldn't early deaths cause an underestimate of a group's AUC?"
+- **The answer, now stated in four places:** the sidebar tooltip, the Info tab's AUC panel, the Help glossary, and the AUC treatment-effects note.
+- **The evidence.** A simulation with the package's own AUC path, recorded in the package's `CODE_REVIEW.md` R20-X and `dev/sim_auc_dropout.R`:
+  - **Design:** 2 arms of 10, measured every 3 days to day 30. Each of 200 studies was generated once, and every dropout mechanism was applied to the same animals.
+  - **Shift in the treated arm's AUC from the deaths alone, model-based vs survivors' average:**
+    - random deaths: +0.2 % vs +1.3 %;
+    - removal at the volume limit: −0.2 % vs −13.0 %;
+    - death just before a large measurement: −2.8 % vs −17.6 %;
+    - early death of the most aggressive tumours: −4.7 % vs −21.1 %.
+- **Test.** `test-ui-notes.R` checks the text in each place.
+

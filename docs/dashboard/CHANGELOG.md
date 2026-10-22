@@ -20,6 +20,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   requests.
 - **Survival: the model menu says "Cox Proportional Hazards"** instead of "Frequentist (Cox PH)".
 - **Toxicity: "Estimation method" has a tooltip** explaining when to use REML and when ML.
+- **AUC: how animals that die early are handled** is explained in the sidebar tooltip, the
+  Info tab, the Help glossary and the AUC results.
+  - Every measurement an animal had counts, so early deaths of large tumours do not pull an
+    arm's AUC down.
+  - In simulations, removal at the volume limit moved the AUC by −0.2 %, where an average of
+    the survivors moved by −13 %.
+  - Deaths that earlier measurements only partly foreshadow leave a −3 % to −5 % underestimate.
 - **Diagnostics: the "How to read this plot" notes are easy to find.** They were a collapsed
   line of small grey text below each plot, often a screen further down. Each is now a clearly
   styled link with an info icon, under the plot's title. The MCMC trace plots (Tumour Growth
