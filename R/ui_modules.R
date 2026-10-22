@@ -425,27 +425,28 @@ tumorGrowthUI <- function(id) {
           h4("Analysis Parameters"),
 
           # 1. Statistical Model
+          # Explanations sit in help_tip() tooltips, so the controls and the
+          # Run button stay in view (26.10.007); the Info tab has the detail.
           selectInput(ns("tg_model_type"),
-                     "Statistical Model",
+                     tagList("Statistical Model", help_tip(paste(
+                       "LME4: a linear mixed-effects model of each animal's growth over time.",
+                       "AUC: compares total tumour burden, the area under each arm's fitted",
+                       "curve, over a window that every arm covers. Bayesian LMM: the LME4",
+                       "model with posterior distributions and credible intervals; it runs in",
+                       "the background and takes seconds to a few minutes."))),
                      choices = c("Linear Mixed-Effects (LME4)"           = "lme4",
                                 "Area Under Curve (AUC)"                 = "auc",
                                 "Bayesian LMM (brms)"                    = "bayes"),
                      selected = "lme4"),
-          helpText("LME4 models tumor volume trajectories over time using a linear ",
-                   "mixed-effects model, which handles repeated measures and unequal ",
-                   "timepoints. AUC compares total tumor burden as the area under ",
-                   "each arm's fitted growth curve over a window common to every arm. ",
-                   "Bayesian LMM fits the same mixed-effects ",
-                   "model as LME4 but reports full posterior distributions and 95 % ",
-                   "credible intervals; it runs in the background and takes from ",
-                   "seconds to a few minutes."),
 
           # 2. Reference Group: the study's control group (R20-D.H)
           uiOutput(ns("tg_reference_note")),
 
           # 3. Post-hoc Comparisons
           selectInput(ns("tg_comparison_type"),
-                     "Post-hoc Comparisons",
+                     tagList("Post-hoc Comparisons", help_tip(paste(
+                       "vs Reference Group compares each arm with the control group.",
+                       "All Comparisons compares every pair of arms."))),
                      choices = c("vs Reference Group" = "reference",
                                 "All Comparisons" = "tukey"),
                      selected = "reference"),
@@ -457,91 +458,67 @@ tumorGrowthUI <- function(id) {
           # because the unit has to be a deliberate statement about the design
           # rather than a default someone accepts without reading.
           checkboxInput(ns("tg_run_perm"),
-                       "Run randomisation test of treatment \u00d7 time", value = FALSE),
+                       tagList("Run randomisation test of treatment \u00d7 time", help_tip(paste(
+                         "A permutation test of whether the arms' growth rates differ, which",
+                         "needs neither the model's degrees-of-freedom approximation nor",
+                         "normal random effects. Each permutation refits the model, so it",
+                         "takes longer."))),
+                       value = FALSE),
           conditionalPanel(ns = ns, condition = "input.tg_run_perm == true",
             uiOutput(ns("tg_perm_unit_note")),
             numericInput(ns("tg_perm_n"), "Permutations",
-                        value = 999, min = 99, max = 9999, step = 100),
-            helpText(
-              "Tests the interaction without the denominator-df approximation or ",
-              "normal random effects. It is only valid if the unit matches how ",
-              "treatment was actually assigned: if animals were randomised and ",
-              "then re-housed by group, the unit is ", strong("animals"),
-              " and cage is a post-randomisation variable. Cage-level tests are ",
-              "far less powerful \u2014 two cages per arm cannot reach p < 0.05 at ",
-              "any effect size. Small designs are enumerated exactly.")
+                        value = 999, min = 99, max = 9999, step = 100)
           ),
 
           selectInput(ns("tg_p_adjust"),
-                     "Multiple-comparison correction",
+                     tagList("Multiple-comparison correction", help_tip(paste(
+                       "Applied over exactly the comparisons shown. Dunnett (vs reference)",
+                       "and Tukey (all pairs) use the correlation between comparisons, so",
+                       "they are less conservative than Bonferroni or Holm. The AUC model",
+                       "offers Holm, Bonferroni, FDR or none."))),
                      choices = tg_p_adjust_choices("lme4"),
                      selected = "dunnett"),
-          helpText("The correction is applied over exactly the set of ",
-                   "comparisons shown, so the family and the correction always ",
-                   "agree. Dunnett is only valid for 'vs Reference Group' and ",
-                   "Tukey only for 'All Comparisons'; the other options work ",
-                   "with either. Dunnett exploits the correlation between ",
-                   "vs-control contrasts, so it is less conservative than ",
-                   "Bonferroni for the same family. The AUC model compares ",
-                   "arms by the ratio of their AUCs with Wald tests; Dunnett and ",
-                   "Tukey are not offered for it, and Holm is its default."),
 
           # 4. Data Transformation (LME4 only)
           conditionalPanel(ns = ns,
             condition = "input.tg_model_type == 'lme4'",
             selectInput(ns("tg_transform"),
-                       "Data Transformation",
+                       tagList("Data Transformation", help_tip(paste(
+                         "Applied to tumour volume before modelling. Log is recommended for",
+                         "most data: it stabilises the variance and makes exponential growth",
+                         "linear."))),
                        choices = c("Log" = "log",
                                   "Square Root" = "sqrt",
                                   "None" = "none"),
-                       selected = "log"),
-            helpText("Transformation applied to tumor volume before modeling. Log ",
-                     "transformation is recommended for most tumor growth data as it ",
-                     "stabilizes variance and linearizes exponential growth. Use 'None' ",
-                     "for already-linear data.")
+                       selected = "log")
           ),
 
           # 5. Extrapolation Points — PLOTTING ONLY as of backend v0.8.0
           numericInput(ns("tg_extrapolation_points"),
-                      "Extrapolation Points (plots only)",
+                      tagList("Extrapolation Points (plots only)", help_tip(paste(
+                        "Affects the growth-trajectory plots only: the number of recent",
+                        "timepoints used to project the curve of an animal that left the",
+                        "study early, drawn dashed. 0 turns it off. The statistics never use",
+                        "projected values; the endpoint metrics extrapolate inside the model."))),
                       value = 3, min = 0, max = 10, step = 1),
-          helpText(strong("Affects the growth-trajectory plots only."), " Number of ",
-                   "recent timepoints used to estimate the slope when projecting ",
-                   "the curve for mice that left the study early; projected ",
-                   "segments are drawn dashed. Set to 0 to disable. ",
-                   "This no longer feeds the statistical model: appending an ",
-                   "imputed observation and treating it as measured data made ",
-                   "standard errors and p-values ignore the imputation. The ",
-                   "endpoint metrics now extrapolate inside the model, which ",
-                   "propagates that uncertainty (CODE_REVIEW.md R3.9 / G.4)."),
           uiOutput(ns("tg_extrap_note")),
 
           # 6. Cage Effect Handling (LME4 only)
           conditionalPanel(ns = ns,
             condition = "input.tg_model_type == 'lme4'",
             selectInput(ns("tg_cage_effect"),
-                       "Cage Effect Handling",
+                       tagList("Cage Effect Handling", help_tip(paste(
+                         "How cage enters the model. Auto follows the design: a fixed effect",
+                         "when cages mix treatments, a random intercept when each arm has two",
+                         "or more cages of its own, and left out with a warning when an arm",
+                         "has a single cage. The legacy option drops nested cages, which",
+                         "understates standard errors."))),
                        choices = c("Auto (match the design)" = "auto",
                                   "Include if not collinear (legacy)" = "include_if_not_collinear",
                                   "Always include" = "always_include",
                                   "Never include" = "never_include",
                                   "As random effect" = "as_random_effect"),
-                       selected = "auto"),
-            helpText("How cage housing enters the model. ", strong("Auto"),
-                     " classifies the design and picks the correct treatment: ",
-                     "cage as a fixed effect when cages hold more than one ",
-                     "treatment; as a random intercept (1|Cage) when each cage ",
-                     "holds one treatment but there are two or more cages per ",
-                     "arm — the usual layout, where a fixed effect is not ",
-                     "estimable but the random intercept is; and omitted with a ",
-                     "warning when each arm has a single cage, since cage and ",
-                     "treatment are then inseparable. ",
-                     strong("Include if not collinear"), " reproduces the ",
-                     "pre-0.6.0 behaviour, which dropped cage whenever it was ",
-                     "nested and so discarded variance the design could estimate ",
-                     "— that understates standard errors. The detected structure ",
-                     "and the cage ICC are shown in the model summary. Requires a ",
-                     "Cage ID column mapped in Data Upload.")
+                       selected = "auto")
           ),
 
           # 7. Random Effects (LME4 and Bayesian)
@@ -552,19 +529,18 @@ tumorGrowthUI <- function(id) {
             # the residual and the Treatment x Day test rejected a true null in
             # 73 % of simulated studies.
             selectInput(ns("tg_random_effects"),
-                       "Random Effects",
+                       tagList("Random Effects", help_tip(paste(
+                         "Random slopes give each animal its own baseline and growth rate.",
+                         "Intercept only assumes every animal in an arm grows at the same",
+                         "rate; when they do not, the treatment \u00d7 time test finds",
+                         "differences that are not there. If a model cannot be fitted, the",
+                         "analysis falls back to simpler random effects and says so. Bayesian",
+                         "mode treats Uncorrelated as Random slopes and None as Intercept only."))),
                        choices = c("Random slopes (recommended)" = "slope",
                                    "Uncorrelated random slopes" = "slope_uncorrelated",
                                    "Intercept only (all animals in an arm grow at the same rate)" = "intercept_only",
                                    "None" = "none"),
-                       selected = "slope"),
-            helpText("Each animal gets its own baseline volume and its own growth rate. ",
-                     "If the model cannot be fitted, the analysis falls back to ",
-                     "uncorrelated slopes and then to an intercept only, and says so. ",
-                     "'Intercept only' assumes every animal in an arm grows at the same ",
-                     "rate; when they do not, the Treatment \u00d7 Day test finds ",
-                     "differences that are not there. ('None' and 'Uncorrelated' are ",
-                     "not available in Bayesian mode.)")
+                       selected = "slope")
           ),
 
           # 8. Bayesian-specific controls
@@ -572,7 +548,11 @@ tumorGrowthUI <- function(id) {
             condition = "input.tg_model_type == 'bayes'",
             hr(),
             h5(strong("Bayesian Settings")),
-            selectInput(ns("tg_prior_strength"), "Prior Strength",
+            selectInput(ns("tg_prior_strength"),
+              tagList("Prior Strength", help_tip(paste(
+                "The prior on the treatment effects. Skeptical, N(0, 0.25), needs strong",
+                "data to support a large effect; Weakly informative is N(0, 1);",
+                "Informative N(0, 0.5); Diffuse N(0, 2.5). Manual sets each prior below."))),
               choices = c(
                 "Skeptical (recommended)" = "skeptical",
                 "Weakly informative"      = "weakly_informative",
@@ -581,13 +561,6 @@ tumorGrowthUI <- function(id) {
                 "Manual specification"    = "manual"
               ),
               selected = "skeptical"
-            ),
-            helpText(
-              strong("Skeptical"), " — N(0, 0.25): requires strong data to support large effects. ",
-              strong("Weakly informative"), " — N(0, 1). ",
-              strong("Informative"), " — N(0, 0.5). ",
-              strong("Diffuse"), " — N(0, 2.5). ",
-              strong("Manual"), " — specify each prior below."
             ),
             # Manual prior specification — shown only when "Manual" is selected
             conditionalPanel(ns = ns,
@@ -646,16 +619,14 @@ tumorGrowthUI <- function(id) {
                         choices  = c("rstan", "cmdstanr"),
                         selected = "rstan"),
             div(class = "alert alert-warning", style = "font-size:0.85em; padding:8px; margin-top:6px;",
-              icon("clock"), " The first Bayesian fit of a model compiles it (about 20 s); ",
-              "a later fit with the same structure reuses it and usually takes under a minute. ",
-              "Fits run one at a time on a background worker, so other users and tabs stay ",
-              "responsive, and yours may wait for one ahead of it. You can close the browser ",
-              "and return later; the result waits for you, and the banner at the top lets ",
-              "you resume or cancel the fit."
+              icon("clock"), " The first fit of a model compiles it (about 20 s); later fits ",
+              "with the same structure reuse it. Fits run one at a time in the background: ",
+              "you can close the browser and resume or cancel from the banner when you return."
             )
           ),
 
-          # Necrotic handling — rendered server-side so rv$necrotic_col drives visibility
+          # Necrotic handling: rendered server-side, shown once a necrotic column
+          # is mapped on Data Upload (R20-D.V)
           uiOutput(ns("necrotic_handling_ui")),
 
           br(),

@@ -113,6 +113,7 @@ register_tg_resume <- function(input, output, session, rv) {
     model_type      = "bayes",
     random_effects  = bayes_params$random_effects %||% "",
     reference_group = bayes_params$reference_group %||% "",
+    necrotic_handling = bayes_params$necrotic_handling %||% "",
     n_rows          = if (!is.null(bayes_params$data)) nrow(bayes_params$data) else NA)
   result$model <- NULL   # not requested (R20.D18); a no-op kept for safety
   # R20.D59: the posterior contrasts vs the reference feed the forest plot,

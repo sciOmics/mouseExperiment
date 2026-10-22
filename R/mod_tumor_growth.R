@@ -33,7 +33,12 @@ tumor_growth_server <- function(id, rv) {
     unit <- rv$settings$randomisation_unit %||% "mouse"
     tags$p(style = "font-size:12px;", "Unit permuted: ",
            strong(if (identical(unit, "cage")) "whole cages" else "individual animals"),
-           " (the unit of randomisation under Study Design on Data Upload).")
+           " (set under Study Design on Data Upload).",
+           help_tip(paste(
+             "Valid only if this matches how treatment was assigned: if animals were",
+             "randomised and then housed by group, the unit is animals. Cage-level",
+             "tests have little power; with two cages per arm no effect can reach",
+             "p < 0.05. Small designs are enumerated exactly.")))
   })
 
   # Run analysis button handler
@@ -244,7 +249,7 @@ tumor_growth_server <- function(id, rv) {
         extrap_pts        = as.integer(input$tg_extrapolation_points %||% 0L),
         dose_col          = rv$dose_col,
         necrotic_col      = rv$necrotic_col,
-        necrotic_handling = input$tg_necrotic_handling %||% "none",
+        necrotic_handling = tg_necrotic_handling(),
         volume_units      = backend_volume_units(rv),
         plot_groups       = rv$tg_plot_groups
       )
@@ -313,7 +318,7 @@ tumor_growth_server <- function(id, rv) {
         # Backend H.3 -- a perm_spec only when the user opted in and declared
         # the unit; it is added for the background run (R20.D6).
         necrotic_column   = rv$necrotic_col,
-        necrotic_handling = input$tg_necrotic_handling %||% "none",
+        necrotic_handling = tg_necrotic_handling(),
         volume_units      = backend_volume_units(rv),   # backend R20.32 zero floor
         return_model = TRUE,
         include_diagnostics = TRUE,
@@ -730,6 +735,7 @@ tumor_growth_server <- function(id, rv) {
       random_effects  = input$tg_random_effects %||% "",
       reference_group = ref,
       cage_effect     = input$tg_cage_effect    %||% "",
+      necrotic_handling = tg_necrotic_handling(),
       n_rows          = nrow(data))
 
     # CODE_REVIEW.md Round 2 F.3 — preserve previous result for compare tab
@@ -803,12 +809,27 @@ tumor_growth_server <- function(id, rv) {
     if (isTRUE(input$tg_prior_sigma_dist == "half_normal")) "Scale σ" else "Rate"
   })
 
-  # Necrotic handling selector — visible only when a necrotic column is mapped
+  # R20-D.V: how necrotic observations are handled. The selector used to appear
+  # only once a run had set rv$necrotic_col, and until then the run fell back to
+  # "none": the first analysis kept necrotic observations, then the selector
+  # appeared showing "Exclude", and the next run excluded them. It now appears
+  # as soon as the column is mapped, and the fallback is its displayed default.
+  necrotic_mapped <- reactive({
+    col <- rv$settings$col_necrotic
+    is.character(col) && length(col) == 1L && nzchar(col) && !identical(col, "None")
+  })
+  tg_necrotic_handling <- function() {
+    if (is.null(rv$necrotic_col)) "none" else input$tg_necrotic_handling %||% "exclude"
+  }
+
   output$necrotic_handling_ui <- renderUI({
-    if (is.null(rv$necrotic_col)) return(NULL)
+    if (!isTRUE(necrotic_mapped())) return(NULL)
     tagList(
       hr(),
-      h5(strong("Necrotic Observations")),
+      h5(strong("Necrotic Observations"), help_tip(paste(
+        "Exclude removes flagged observations before fitting. Covariate adds a 0/1",
+        "Necrotic term to the fixed effects. No adjustment ignores the flag and keeps",
+        "every observation."))),
       selectInput(session$ns("tg_necrotic_handling"), NULL,
         choices = c(
           "Exclude from analysis"    = "exclude",
@@ -816,13 +837,6 @@ tumor_growth_server <- function(id, rv) {
           "No adjustment (raw data)" = "none"
         ),
         selected = "exclude"
-      ),
-      helpText(
-        strong("Exclude"), " — removes flagged observations before fitting the model.",
-        tags$br(),
-        strong("Covariate"), " — adds a 0/1 Necrotic term to the fixed effects.",
-        tags$br(),
-        strong("No adjustment"), " — ignores the flag (keeps all observations)."
       )
     )
   })

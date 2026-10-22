@@ -4,6 +4,28 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.10.007] - 2026-10-22
+
+### Changed
+- **Tumour Growth sidebar: explanations moved into `?` tooltips.** The paragraphs under each
+  option now sit in a tooltip beside its label, cut to one to three sentences. The sidebar is
+  half as tall (with LME4 and the randomisation test: 2,445 px to 1,199 px), and Run Analysis
+  moves up from 2,274 px to 1,028 px.
+  - **Still visible:** the reference group, the unit permuted, and the note that no curve is
+    extrapolated without an Event/Censor column.
+  - **Removed:** an internal review reference ("CODE_REVIEW.md R3.9 / G.4") in the
+    extrapolation help.
+  - The full method descriptions are unchanged in the Info tab.
+
+### Fixed
+- **The first Tumour Growth run ignored "Exclude" for necrotic observations** (R20-D.V). The
+  Necrotic Observations selector appeared only after a run, and until then the run used "No
+  adjustment". So the first analysis kept the necrotic observations (42 of 604 in the All
+  Features demo). The selector then appeared showing "Exclude from analysis", and the next run
+  excluded them, though nothing had been changed.
+  - It now appears as soon as a necrotic column is mapped, and a run uses the default it shows.
+  - Each run records its necrotic handling with its settings.
+
 ## [26.10.006] - 2026-10-11
 
 ### Fixed
