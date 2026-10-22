@@ -62,3 +62,15 @@ test_that("the AUC help says how animals that die early are handled", {
   expect_match(tg, "read the Survival analysis alongside the AUC", fixed = TRUE)
   expect_match(html(g("helpUI")()), "early deaths of large tumours do not pull the AUC down", fixed = TRUE)
 })
+
+test_that("Power Analysis comes after Drug Synergy in the navbar", {
+  app <- suppressMessages(g("dashboard_app")())
+  ui  <- get("ui", envir = environment(app$httpHandler))
+  if (is.function(ui)) ui <- ui(list())
+  h   <- paste(as.character(htmltools::renderTags(ui)$html), collapse = "\n")
+  nav <- regmatches(h, regexpr('<ul class="nav navbar-nav[^"]*"[^>]*>[\\s\\S]*?</ul>', h, perl = TRUE))
+  tabs <- gsub('^data-value="|"$', "", regmatches(nav, gregexpr('data-value="[^"]+"', nav))[[1]])
+  # 26.10.006 put Power Analysis second, between Data and Tumor Growth.
+  expect_identical(tabs, c("Data", "Tumor Growth", "Survival", "Toxicity", "Dose Response",
+                           "Drug Synergy", "Power Analysis", "Help", "About"))
+})

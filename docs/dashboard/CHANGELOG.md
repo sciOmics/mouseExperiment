@@ -4,6 +4,12 @@ All notable changes to the mouseExperiment package will be documented in this fi
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
+## [26.10.008] - 2026-10-22
+
+### Changed
+- **The navbar puts Power Analysis after Drug Synergy,** last among the analyses: it plans the
+  next study, while the others analyse the loaded one.
+
 ## [26.10.007] - 2026-10-22
 
 ### Changed

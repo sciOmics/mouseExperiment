@@ -2785,3 +2785,9 @@ The Info tab keeps the full descriptions.
     - early death of the most aggressive tumours: −4.7 % vs −21.1 %.
 - **Test.** `test-ui-notes.R` checks the text in each place.
 
+**Changed (26.10.008), at the maintainer's request: Power Analysis moves after Drug Synergy in the navbar.**
+- **The order** is now Data, Tumor Growth, Survival, Toxicity, Dose Response, Drug Synergy, Power Analysis, then Help and About on the right.
+- **Nothing depends on position.** `navbar.js` and `overlay.js` select tabs by `data-value`, and the Help tab already listed Power Analysis last.
+- **Test.** `test-ui-notes.R` reads the order from the built UI.
+- **Wrapping.** At a 1400 px window the last tab wraps to a second row, as "Drug Synergy" did before. At 1920 px all seven fit on one row.
+
