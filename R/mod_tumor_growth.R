@@ -738,12 +738,6 @@ tumor_growth_server <- function(id, rv) {
       necrotic_handling = tg_necrotic_handling(),
       n_rows          = nrow(data))
 
-    # CODE_REVIEW.md Round 2 F.3 — preserve previous result for compare tab
-    # when the model_type just changed.
-    if (!is.null(rv$tg_results) &&
-        !identical(rv$tg_results$model_type_used %||% "", result$model_type_used)) {
-      rv$tg_results_prev <- isolate(rv$tg_results)
-    }
     run_token <- paste0(format(Sys.time(), "%H%M%OS6"), sample.int(1e6, 1))
     result$run_token <- run_token
     rv$tg_results <- result
@@ -1214,6 +1208,9 @@ tumor_growth_server <- function(id, rv) {
           tags$li(strong("N"), " \u2014 animals enrolled in the arm."),
           tags$li(strong("Reference"), " \u2014 TRUE for the reference group.")
         ),
+        p("Animals that died or were removed early count through all their measurements: the ",
+          "model keeps each one's growth rate in its arm's curve, so early deaths of large tumours ",
+          "do not pull an arm's AUC down. See the Info tab for how far this holds."),
         em("For comparisons between arms see the Comparisons tab; per-animal trapezoidal AUCs, for description, are in the AUC Individual Data tab.")
       )
     } else {
@@ -1619,57 +1616,6 @@ tumor_growth_server <- function(id, rv) {
       shinyjs::runjs("window.trackDownload('tumor_growth', 'report', 'html');")
     }
   )
-
-  # CODE_REVIEW.md Round 2 F.3 — side-by-side compare tab
-  output$tg_compare_panel <- renderUI({
-    if (is.null(rv$tg_results)) {
-      return(div(class = "alert alert-info",
-                 icon("info-circle"),
-                 " Run a Tumor Growth analysis first; the most recent two runs ",
-                 "with different model types will appear here for comparison."))
-    }
-    if (is.null(rv$tg_results_prev)) {
-      return(div(class = "alert alert-info",
-                 icon("info-circle"),
-                 " Only one analysis result is stored so far. Run again with a ",
-                 "different ", strong("Statistical Model"),
-                 " (e.g. switch from LME4 to Bayesian) to ",
-                 "populate this comparison view."))
-    }
-
-    cur  <- rv$tg_results
-    prev <- rv$tg_results_prev
-
-    tag_for <- function(res, label) {
-      te <- res$treatment_effects
-      if (is.null(te)) {
-        df_tag <- div(class = "alert alert-warning",
-                      "No treatment_effects available for ", strong(label))
-      } else {
-        df <- format_df_for_display(as.data.frame(te))
-        df_tag <- DT::datatable(
-          df,
-          options = list(scrollX = TRUE, paging = FALSE, searching = FALSE,
-                         dom = "t"),
-          rownames = FALSE
-        )
-      }
-      div(
-        h5(strong(label),
-           tags$small(style = "color:#6c757d; margin-left:8px;",
-                      paste("model_type_used:",
-                            res$model_type_used %||% "unknown"))),
-        df_tag
-      )
-    }
-
-    fluidRow(
-      column(6, tag_for(prev,
-                        sprintf("Previous (%s)", prev$model_type_used %||% "?"))),
-      column(6, tag_for(cur,
-                        sprintf("Current (%s)", cur$model_type_used %||% "?")))
-    )
-  })
 
   # AUC individual data table
   output$tg_auc_individual_table <- renderDT({

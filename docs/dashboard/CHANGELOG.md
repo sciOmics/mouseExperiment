@@ -16,8 +16,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   - **Removed:** an internal review reference ("CODE_REVIEW.md R3.9 / G.4") in the
     extrapolation help.
   - The full method descriptions are unchanged in the Info tab.
+- **About: a contact address,** david@sciomics.bio, for questions, bug reports and feature
+  requests.
+- **Survival: the model menu says "Cox Proportional Hazards"** instead of "Frequentist (Cox PH)".
+- **Toxicity: "Estimation method" has a tooltip** explaining when to use REML and when ML.
+- **AUC: how animals that die early are handled** is explained in the sidebar tooltip, the
+  Info tab, the Help glossary and the AUC results.
+  - Every measurement an animal had counts, so early deaths of large tumours do not pull an
+    arm's AUC down.
+  - In simulations, removal at the volume limit moved the AUC by −0.2 %, where an average of
+    the survivors moved by −13 %.
+  - Deaths that earlier measurements only partly foreshadow leave a −3 % to −5 % underestimate.
+- **Diagnostics: the "How to read this plot" notes are easy to find.** They were a collapsed
+  line of small grey text below each plot, often a screen further down. Each is now a clearly
+  styled link with an info icon, under the plot's title. The MCMC trace plots (Tumour Growth
+  and Survival), which had none, have one.
 
 ### Fixed
+- **The group colour and shape controls overflowed the plot-options panel** (Tumour Growth,
+  Survival, Toxicity). At a 1400 px window the panel is 209 px wide. Each group's row needed
+  about 275 px, so the shape menus ran out of the box by 66 px, and the names were cut to
+  "Drug_...".
+  - Each group now takes two lines: the full name, then the colour and a shape menu that
+    shows the symbol only.
+
+### Removed
+- **Tumour Growth's Compare tab.** It showed the previous and current runs' treatment effects
+  side by side, but only after a change of model type. So it compared LME4 growth-rate
+  differences with AUC ratios, and never two runs of the same model with different settings.
+  Each session also kept a full copy of the previous result just for this tab.
 - **The first Tumour Growth run ignored "Exclude" for necrotic observations** (R20-D.V). The
   Necrotic Observations selector appeared only after a run, and until then the run used "No
   adjustment". So the first analysis kept the necrotic observations (42 of 604 in the All

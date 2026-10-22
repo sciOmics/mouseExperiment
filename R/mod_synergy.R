@@ -1118,31 +1118,27 @@ synergy_server <- function(id, rv) {
   output$syn_diag_left_heading <- renderUI({
     if (isTRUE(tryCatch(syn_model_diag(), error = function(e) FALSE))) {
       tagList(h4("Endpoint model residuals by arm"),
-        tags$details(tags$summary(tags$small("How to read this plot")),
-          tags$small("Standardised residuals of the model behind the TGIs. Points near ",
+        plot_help("Standardised residuals of the model behind the TGIs. Points near ",
                      "the dashed line: the log-normal model fits. A curve or heavy tails ",
-                     "in one arm: that arm's volumes are not well described by it.")))
+                     "in one arm: that arm's volumes are not well described by it."))
     } else {
       tagList(h4("Per-group Q-Q of tumor volumes"),
-        tags$details(tags$summary(tags$small("How to read this plot")),
-          tags$small("One panel per group; points on the red dashed line = normally ",
+        plot_help("One panel per group; points on the red dashed line = normally ",
                      "distributed. ", strong("S-shape: "), "heavy tails. ",
-                     strong("Far outliers: "), "investigate before reporting.")))
+                     strong("Far outliers: "), "investigate before reporting."))
     }
   })
 
   output$syn_diag_right_heading <- renderUI({
     if (isTRUE(tryCatch(syn_model_diag(), error = function(e) FALSE))) {
       tagList(h4("Each arm's fitted curve over its data"),
-        tags$details(tags$summary(tags$small("How to read this plot")),
-          tags$small("Log volume of every measurement, with the model's curve for the ",
+        plot_help("Log volume of every measurement, with the model's curve for the ",
                      "arm. The curve should follow the points up to the evaluation day ",
-                     "(dashed line); where it does not, the TGI at that day is suspect.")))
+                     "(dashed line); where it does not, the TGI at that day is suspect."))
     } else {
       tagList(h4("Per-group tumor volume boxplot"),
-        tags$details(tags$summary(tags$small("How to read this plot")),
-          tags$small("Boxplots with individual mice jittered; outliers in red. ",
-                     strong("Wide IQR + an outlier: "), "the call may be driven by that one mouse.")))
+        plot_help("Boxplots with individual mice jittered; outliers in red. ",
+                     strong("Wide IQR + an outlier: "), "the call may be driven by that one mouse."))
     }
   })
 

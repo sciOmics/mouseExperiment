@@ -24,6 +24,17 @@ help_tip <- function(text) {
   )
 }
 
+# Shared helper: a "How to read this plot" note under a plot's title, collapsed
+# until clicked. It used to be a small grey line below each plot, often a
+# screen further down, and was easy to miss (2026-10-22).
+plot_help <- function(..., summary = "How to read this plot") {
+  tags$details(
+    class = "plot-help",
+    tags$summary(icon("circle-info"), " ", summary),
+    tags$div(class = "plot-help-body", ...)
+  )
+}
+
 # Helper: collapsible section for the plot control panel.
 # Starts collapsed; click the header to expand.
 ctrl_section <- function(id, icon_nm, title, ...) {
@@ -431,7 +442,8 @@ tumorGrowthUI <- function(id) {
                      tagList("Statistical Model", help_tip(paste(
                        "LME4: a linear mixed-effects model of each animal's growth over time.",
                        "AUC: compares total tumour burden, the area under each arm's fitted",
-                       "curve, over a window that every arm covers. Bayesian LMM: the LME4",
+                       "curve, over a window that every arm covers; animals that die early",
+                       "still count through all their measurements. Bayesian LMM: the LME4",
                        "model with posterior distributions and credible intervals; it runs in",
                        "the background and takes seconds to a few minutes."))),
                      choices = c("Linear Mixed-Effects (LME4)"           = "lme4",
@@ -814,6 +826,18 @@ tumorGrowthUI <- function(id) {
                       tags$dt("Per-animal AUC"),
                       tags$dd("Each animal's own trapezoidal AUC, for description only.")
                     ),
+                    div(class = "alert alert-info", style = "font-size:0.9em;",
+                      icon("circle-info"), " ",
+                      strong("Animals that die or are removed early "), "still count. Every measurement an ",
+                      "animal had goes into the model, which estimates its growth rate from them and keeps it in ",
+                      "the arm's curve as if the animal had continued. So the AUC is not pulled down when the ",
+                      "largest tumours leave the study, as an average of the animals still on study would be. ",
+                      "In simulations with 10 animals per arm and about a third of the treated arm lost, removal at ",
+                      "the volume limit moved the AUC by −0.2 % (the average of the survivors: −13 %). ",
+                      "Deaths that the earlier measurements only partly foreshadow left a small underestimate, ",
+                      "−3 % to −5 % (survivors: −18 % to −21 %). When many animals die for ",
+                      "reasons their growth does not show, read the Survival analysis alongside the AUC."
+                    ),
                     div(class = "alert alert-warning", style = "font-size:0.9em; margin-bottom:0;",
                       icon("triangle-exclamation"), " ",
                       strong("Why not each animal's own AUC? "), "An animal euthanised on day 14 has a smaller ",
@@ -1043,16 +1067,6 @@ tumorGrowthUI <- function(id) {
             )
           ),
           
-          # CODE_REVIEW.md Round 2 F.3 — side-by-side previous vs current
-          # treatment-effects when the user ran two different model_types.
-          tabPanel("Compare",
-            tab_info(
-              strong("Side-by-side comparison "),
-              "of the previous and current Tumor Growth analyses. The previous run is automatically preserved whenever you re-run with a different model type (e.g. LME4 → Bayesian)."
-            ),
-            uiOutput(ns("tg_compare_panel"))
-          ),
-
           tabPanel("Data Summary",
             tab_info(
               strong("Descriptive statistics for tumor volume "), "by treatment group and timepoint, on the volume scale in the declared units, whatever transform the model used.",
@@ -1249,14 +1263,7 @@ tumorGrowthUI <- function(id) {
             fluidRow(
               column(6,
                 h4("Q-Q Plot of Residuals"),
-                div(style = "margin-bottom: 24px;",
-                  shinycssloaders::withSpinner(
-                    plotOutput(ns("tg_diag_qq"), height = "380px")
-                  )
-                ),
-                tags$details(
-                  tags$summary(tags$small("How to read this plot")),
-                  tags$small(
+                plot_help(
                     "The residuals are standardised (centred and divided by their SD), so ",
                     "for a well-fitting model the points fall along the red dashed line. ",
                     strong("S-shape: "), "residuals have heavier tails than normal — ",
@@ -1264,27 +1271,26 @@ tumorGrowthUI <- function(id) {
                     strong("Bow: "), "skewed residuals — check the volume transform ",
                     "(log vs sqrt vs none). ",
                     strong("A few outliers at the ends: "), "common; not a problem ",
-                    "unless they're clinically obvious errors."
+                    "unless they're clinically obvious errors."),
+                div(style = "margin-bottom: 24px;",
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tg_diag_qq"), height = "380px")
                   )
                 )
               ),
               column(6,
                 h4("Residuals vs Fitted"),
-                div(style = "margin-bottom: 24px;",
-                  shinycssloaders::withSpinner(
-                    plotOutput(ns("tg_diag_resid_fitted"), height = "380px")
-                  )
-                ),
-                tags$details(
-                  tags$summary(tags$small("How to read this plot")),
-                  tags$small(
+                plot_help(
                     "Points should scatter randomly around the red zero line. ",
                     strong("Curved blue trend: "), "the model misses non-linearity ",
                     "— growth is not log-linear over the whole study; try a different volume ",
                     "transform. ",
                     strong("Fan shape (wider on the right): "), "heteroscedasticity ",
                     "— variance grows with the mean. Switch to log transform or a ",
-                    "model with variance structure."
+                    "model with variance structure."),
+                div(style = "margin-bottom: 24px;",
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tg_diag_resid_fitted"), height = "380px")
                   )
                 )
               )
@@ -1293,39 +1299,31 @@ tumorGrowthUI <- function(id) {
             fluidRow(
               column(6,
                 h4("Scale-Location"),
-                div(style = "margin-bottom: 24px;",
-                  shinycssloaders::withSpinner(
-                    plotOutput(ns("tg_diag_scale_location"), height = "380px")
-                  )
-                ),
-                tags$details(
-                  tags$summary(tags$small("How to read this plot")),
-                  tags$small(
+                plot_help(
                     "Plots sqrt(|residuals|) vs fitted to magnify variance ",
                     "trends. ",
                     strong("Flat blue line: "), "constant variance — LMM assumption ",
                     "satisfied. ",
                     strong("Upward slope: "), "heteroscedasticity — see ",
-                    "Residuals vs Fitted notes above."
+                    "Residuals vs Fitted notes above."),
+                div(style = "margin-bottom: 24px;",
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tg_diag_scale_location"), height = "380px")
                   )
                 )
               ),
               column(6,
                 h4("Random-effects Q-Q"),
-                div(style = "margin-bottom: 24px;",
-                  shinycssloaders::withSpinner(
-                    plotOutput(ns("tg_diag_re_qq"), height = "380px")
-                  )
-                ),
-                tags$details(
-                  tags$summary(tags$small("How to read this plot")),
-                  tags$small(
+                plot_help(
                     "Per-animal random intercepts (and slopes, if used) should ",
                     "be normally distributed. The values are standardised, so points ",
                     "along the red line = assumption met. A component with no spread ",
                     "(estimated variance zero) is left out. Heavy tails / clear S-shape: the LMM ",
                     "may be giving a few animals too much / too little ",
-                    "shrinkage. Rare and usually safe to ignore at N ≤ 30."
+                    "shrinkage. Rare and usually safe to ignore at N ≤ 30."),
+                div(style = "margin-bottom: 24px;",
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tg_diag_re_qq"), height = "380px")
                   )
                 )
               )
@@ -1394,60 +1392,53 @@ tumorGrowthUI <- function(id) {
               fluidRow(
                 column(6,
                   h5(strong("Pareto-k distribution (all observations)")),
-                  tags$details(
-                    tags$summary(tags$small("How to read this plot")),
-                    tags$small(
+                  plot_help(
                       "Histogram of LOO Pareto-k values across all observations. ",
                       strong("All bars left of 0.5 (orange dotted): "), "LOO is reliable. ",
                       strong("Some bars between 0.5 and 0.7: "), "moderate influence; estimates usable but inspect. ",
-                      strong("Bars right of 0.7 (red dashed): "), "those observations are too influential for PSIS-LOO to estimate reliably — see the table above for which.")
-                  ),
+                      strong("Bars right of 0.7 (red dashed): "), "those observations are too influential for PSIS-LOO to estimate reliably — see the table above for which."),
                   shinycssloaders::withSpinner(plotOutput(ns("tg_pareto_k_plot"), height = "300px"))
                 ),
                 column(6,
                   h5(strong("Posterior predictive coverage")),
-                  tags$details(
-                    tags$summary(tags$small("How to read this plot")),
-                    tags$small(
+                  plot_help(
                       "Each bar = empirical coverage of the corresponding nominal posterior-predictive interval. ",
                       strong("Bars near red dashed line: "), "well-calibrated. ",
                       strong("Bars below: "), "under-coverage — model intervals are too narrow. ",
-                      strong("Bars above: "), "over-coverage — too wide; model is being conservative.")
-                  ),
+                      strong("Bars above: "), "over-coverage — too wide; model is being conservative."),
                   shinycssloaders::withSpinner(plotOutput(ns("tg_ppc_coverage_plot"), height = "300px"))
                 )
               ),
               br(),
+              h5(strong("MCMC trace plots")),
+              plot_help(
+                "Each line is one chain's draws of a parameter, after warmup. Converged chains ",
+                "overlap and look like stationary noise around one level (a \u2018fuzzy ",
+                "caterpillar\u2019). ", strong("A drift, a trend, or a chain at a different level: "),
+                "the chains have not converged and the estimates are unreliable; run more warmup ",
+                "iterations or simplify the model."),
               shinycssloaders::withSpinner(plotOutput(ns("tg_mcmc_trace_plot"), height = "500px")),
               br(),
               h5(strong("MCMC rank plots")),
-              tags$details(
-                tags$summary(tags$small("How to read these plots")),
-                tags$small(
+              plot_help(
                   "Modern convergence diagnostic. Each chain's draws are rank-normalised; chains that have converged look like uniform draws (flat histograms) and resemble each other. ",
-                  strong("Distinctly non-uniform shapes or chain-specific patterns: "), "the chain hasn't mixed and the posterior estimate is unreliable.")
-              ),
+                  strong("Distinctly non-uniform shapes or chain-specific patterns: "), "the chain hasn't mixed and the posterior estimate is unreliable.",
+                  summary = "How to read these plots"),
               shinycssloaders::withSpinner(plotOutput(ns("tg_mcmc_rank_plot"), height = "500px")),
               br(),
               fluidRow(
                 column(6,
                   h5(strong("Treatment-parameter posterior densities")),
-                  tags$details(
-                    tags$summary(tags$small("How to read this plot")),
-                    tags$small(
+                  plot_help(
                       "Posterior density (filled area) for each treatment coefficient. ",
-                      "Look for: (a) modes shifted from the prior (the data informed the parameter), (b) credible-interval bars that don't include zero (significant posterior direction), (c) heavy tails / multiple modes (potential identifiability issue).")
-                  ),
+                      "Look for: (a) modes shifted from the prior (the data informed the parameter), (b) credible-interval bars that don't include zero (significant posterior direction), (c) heavy tails / multiple modes (potential identifiability issue)."),
                   shinycssloaders::withSpinner(plotOutput(ns("tg_posterior_dist_plot"), height = "400px"))
                 ),
                 column(6,
                   h5(strong("Bayesian residuals vs day")),
-                  tags$details(
-                    tags$summary(tags$small("How to read this plot")),
-                    tags$small(
+                  plot_help(
                       "Posterior-mean residuals plotted against study day, faceted by treatment, with a loess smoother. Flat horizontal line at zero per group = the linear-time assumption is satisfied. ",
-                      strong("Systematic curvature: "), "the log-linear time assumption is violated; read growth-rate comparisons with care.")
-                  ),
+                      strong("Systematic curvature: "), "the log-linear time assumption is violated; read growth-rate comparisons with care."),
                   shinycssloaders::withSpinner(plotOutput(ns("tg_bayes_residuals_plot"), height = "400px"))
                 )
               )
@@ -1580,7 +1571,7 @@ helpUI <- function() {
       tags$dt("LME4 (linear mixed-effects)"),
       tags$dd("Log-transforms tumor volume and fits a linear mixed model with a Treatment \u00d7 Day interaction. Each animal has its own intercept and growth rate (random slopes), falling back to simpler structures only if the fit fails; the ANOVA reports F-tests with Satterthwaite degrees of freedom. Cage handling is chosen to match the housing design rather than applied uniformly \u2014 see the tab's Info panel. Pairwise contrasts via emmeans; the comparison family and its correction are two separate settings, defaulting to vs-reference with an exact Dunnett correction."),
       tags$dt("AUC (area under the curve)"),
-      tags$dd("The area under each arm's fitted growth curve over the window in which every arm is evaluable (at least 50 % of its enrolled animals, and at least 3, on study). Arms are compared by the ratio of their AUCs, with intervals and Wald p-values from the model and the selected correction. Each animal's own trapezoidal AUC is shown for description only: an animal removed early accumulates less area from being measured for less time."),
+      tags$dd("The area under each arm's fitted growth curve over the window in which every arm is evaluable (at least 50 % of its enrolled animals, and at least 3, on study). Animals that die or are removed early count through all their measurements, so early deaths of large tumours do not pull the AUC down. Arms are compared by the ratio of their AUCs, with intervals and Wald p-values from the model and the selected correction. Each animal's own trapezoidal AUC is shown for description only: an animal removed early accumulates less area from being measured for less time."),
       tags$dt("Bayesian LMM (brms)"),
       tags$dd("The LME4 model fitted via MCMC (Stan). Return posterior distributions for treatment effects with credible intervals, plus convergence diagnostics (Rhat, ESS, trace and rank plots) and PSIS-LOO influence measures. Requires the brms package."),
       tags$dt("Randomisation test (optional, any frequentist mode)"),
@@ -1728,6 +1719,16 @@ citationUI <- function() {
               )
             )
           )
+        )
+      )
+    ),
+
+    fluidRow(
+      column(12,
+        wellPanel(
+          h4(icon("envelope"), " Contact"),
+          p("Questions, bug reports and feature requests: ",
+            tags$a("david@sciomics.bio", href = "mailto:david@sciomics.bio"), ".")
         )
       )
     ),

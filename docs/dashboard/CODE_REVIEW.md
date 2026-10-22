@@ -2741,3 +2741,47 @@ The Info tab keeps the full descriptions.
   - sidebar height 2,445 px to 1,199 px;
   - Run button top 2,274 px to 1,028 px.
 
+## R20-D.W The maintainer's notes from using the dashboard (26.10.007, 2026-10-22)
+
+**About.** A Contact panel gives david@sciomics.bio, as a `mailto:` link.
+
+**Survival.** The model menu says "Cox Proportional Hazards" instead of "Frequentist (Cox PH)". The value `frequentist` is unchanged, so saved presets still load.
+
+**Toxicity.** "Estimation method" has a `help_tip()` explaining when to use REML and when ML.
+
+**Group colour and shape controls.** These are `group_order_and_color_ui()`, used by Tumour Growth, Survival and Toxicity.
+- **The problem.** Each group was one flex row: drag handle, name, colour input, and a 125 px shape menu that could not shrink. At a 1400 px window the plot-options panel is 209 px wide. The row needed about 275 px, so the shape menus ran out of the panel by 66 px (measured in Chrome), and the names were cut to "Drug_...".
+- **Now:** two lines per group:
+  - the drag handle and the full name, which wraps;
+  - the colour swatch (44 px) and a shape menu that fills the rest and shows only the symbol (●, ■, ▲, ▼, ◆).
+- **Measured:** 0 px overflow at both 1400 and 1920 px.
+
+**Diagnostics.** The 19 "How to read this plot" notes were a collapsed `<details>` with a `<small>` grey summary. Eight of them (Tumour Growth and Toxicity residual plots) sat below plots 380 px tall.
+- **The conversion.** A script converted all 19 to `plot_help()`, a styled summary with an info icon and a tinted body, without changing any wording.
+- **Placement.** It moved the eight under their plot's title.
+- **New notes.** The MCMC trace plots in Tumour Growth and Survival had no note, and have one now.
+
+**Tests (executed):**
+- **`test-ui-notes.R`,** 5 tests; on 26.10.006 they fail with 1, 2, 1, 3 and 6 failed checks.
+- **A new browser test** in `test-shiny_app.R` loads the All Features demo at 1400 px, runs an analysis, opens the Groups section, and requires no element of the group rows to extend past the panel.
+- **Full suite, from source:** 301 tests, 0 failed, 0 skipped.
+
+**Removed, at the maintainer's request: the Compare tab (Round 2 F.3).**
+- **What it did.** It showed the previous and current runs' `treatment_effects` side by side, filled only when the model type changed.
+- **Why it went:** it set LME4 rate differences beside AUC ratios, it never compared two runs of the same model, and every session kept a full copy of the previous result (`rv$tg_results_prev`) for it.
+- **What was removed:** the tab, `output$tg_compare_panel`, and both places that stored the copy (`mod_tumor_growth.R`, `tg_resume.R`).
+- **Test.** `test-ui-notes.R` checks the tab is gone.
+- **Full suite:** 302 tests. 301 pass. The one failure is `R4.D2` ("the installed backend is not older than the sibling source"), because the sibling package checkout was on the v0.33.1 branch while the test library held 0.33.0. That is an environment check, not this change.
+
+**Added, at the maintainer's request: how the AUC handles animals that die early.**
+- **The question:** "Wouldn't early deaths cause an underestimate of a group's AUC?"
+- **The answer, now stated in four places:** the sidebar tooltip, the Info tab's AUC panel, the Help glossary, and the AUC treatment-effects note.
+- **The evidence.** A simulation with the package's own AUC path, recorded in the package's `CODE_REVIEW.md` R20-X and `dev/sim_auc_dropout.R`:
+  - **Design:** 2 arms of 10, measured every 3 days to day 30. Each of 200 studies was generated once, and every dropout mechanism was applied to the same animals.
+  - **Shift in the treated arm's AUC from the deaths alone, model-based vs survivors' average:**
+    - random deaths: +0.2 % vs +1.3 %;
+    - removal at the volume limit: −0.2 % vs −13.0 %;
+    - death just before a large measurement: −2.8 % vs −17.6 %;
+    - early death of the most aggressive tumours: −4.7 % vs −21.1 %.
+- **Test.** `test-ui-notes.R` checks the text in each place.
+

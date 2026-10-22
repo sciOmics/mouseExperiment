@@ -253,6 +253,41 @@ test_that("a help icon shows its tooltip on a click and does not open the menu",
 })
 
 # ===========================================================================
+# Test: the group colour and shape controls stay inside the plot-options panel
+# (user report 2026-10-22)
+# ===========================================================================
+# At a 1400 px window the panel is about 209 px wide. Each group was one row
+# (handle, name, colour, a 125 px shape menu) that needed about 275 px, so the
+# shape menus ran out of the box by 66 px.
+test_that("the group colour and shape controls fit the plot-options panel at 1400 px", {
+  app <- shinytest2::AppDriver$new(
+    test_path("apps", "dashboard"),
+    name = "dashboard-group-rows", timeout = 30000, load_timeout = 90000, wait = TRUE,
+    width = 1400, height = 1000)
+  on.exit(app$stop(), add = TRUE)
+  app$run_js("$('.modal-footer button').click();")
+  app$set_inputs(`data-demo_dataset` = "all_features", wait_ = FALSE)
+  app$click("data-load_demo_data")
+  app$wait_for_js("$('#data-col_weight').val() === 'Weight'", timeout = 30000)
+  app$run_js("$('a[data-value=\"Tumor Growth\"]').click();")
+  app$wait_for_js("$('#tg-run_tg_analysis').is(':visible')", timeout = 20000)
+  app$click("tg-run_tg_analysis")
+  app$wait_for_js("$('#tg-tg_status_msg').text().indexOf('completed') >= 0", timeout = 90000)
+  app$set_inputs(`tg-tg_results_tabs` = "Plots")
+  app$wait_for_js("$('#tg-tg_group_order_color_ui').length > 0", timeout = 30000)
+  # Outputs in a collapsed section render only once it is opened.
+  app$run_js("$('#tg-tg_group_order_color_ui').closest('.collapse').collapse('show');")
+  app$wait_for_js("$('#tg-tg_group_order_color_ui li').length === 6", timeout = 30000)
+  Sys.sleep(1)
+  overflow <- app$get_js(paste0(
+    "(function () { var w = $('#tg-tg_group_order_color_ui').closest('.well')[0].getBoundingClientRect();",
+    " var worst = -1e9; $('#tg-tg_group_order_color_ui li *').each(function () {",
+    " var r = this.getBoundingClientRect(); if (r.width > 0) worst = Math.max(worst, r.right - w.right); });",
+    " return worst; })()"))
+  expect_lte(overflow, 0)
+})
+
+# ===========================================================================
 # Test: end-to-end upload → run TG LME4 → verify results populate
 # (CODE_REVIEW.md Round 2 I.5)
 # ===========================================================================

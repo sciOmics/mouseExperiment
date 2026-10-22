@@ -15,7 +15,7 @@ survivalUI <- function(id) {
 
           selectInput(ns("surv_model_type"), "Statistical Model",
             choices = c(
-              "Frequentist (Cox PH)"    = "frequentist",
+              "Cox Proportional Hazards" = "frequentist",
               "Bayesian (Weibull/brms)" = "bayes"
             ),
             selected = "frequentist"
@@ -317,6 +317,13 @@ survivalUI <- function(id) {
                  "Observations the LOO approximation can't reliably estimate. Investigate these mice individually."),
               shinycssloaders::withSpinner(DTOutput(ns("surv_bayes_influential"))),
               br(),
+              h5(strong("MCMC trace plots")),
+              plot_help(
+                "Each line is one chain's draws of a parameter, after warmup. Converged chains ",
+                "overlap and look like stationary noise around one level (a \u2018fuzzy ",
+                "caterpillar\u2019). ", strong("A drift, a trend, or a chain at a different level: "),
+                "the chains have not converged and the estimates are unreliable; run more warmup ",
+                "iterations or simplify the model."),
               shinycssloaders::withSpinner(
                 plotOutput(ns("surv_mcmc_trace_plot"), height = "500px"))
             )

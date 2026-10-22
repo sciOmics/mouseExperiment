@@ -121,11 +121,6 @@ register_tg_resume <- function(input, output, session, rv) {
   if (is.data.frame(result$pairwise_comparisons) && nrow(result$pairwise_comparisons)) {
     result$reference_comparisons_dunnett <- result$pairwise_comparisons
   }
-  if (!is.null(rv$tg_results) &&
-      !identical(rv$tg_results$model_type_used %||% "",
-                 result$model_type_used)) {
-    rv$tg_results_prev <- shiny::isolate(rv$tg_results)
-  }
   rv$tg_results <- result
   shiny::updateTabsetPanel(session, "tg_results_tabs", selected = "Summary")
   rv$tg_running <- FALSE

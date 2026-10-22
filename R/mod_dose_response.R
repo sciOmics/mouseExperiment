@@ -372,9 +372,7 @@ doseResponseUI <- function(id) {
             fluidRow(
               column(6,
                 h4("Lack-of-fit test"),
-                tags$details(
-                  tags$summary(tags$small("How to read this table")),
-                  tags$small(
+                plot_help(
                     "drc::modelFit compares the Hill fit against a one-mean-",
                     "per-dose smoother via an F-test. ",
                     strong("Large p (\u2265 0.05): "),
@@ -383,18 +381,15 @@ doseResponseUI <- function(id) {
                     strong("Small p (< 0.05): "),
                     "the smoother fits significantly better \u2014 the Hill ",
                     "equation may be the wrong shape; inspect the residuals ",
-                    "plot for clues."
-                  )
-                ),
+                    "plot for clues.",
+                    summary = "How to read this table"),
                 shinycssloaders::withSpinner(
                   DTOutput(ns("dr_lack_of_fit_table"))
                 )
               ),
               column(6,
                 h4("Residuals vs Dose"),
-                tags$details(
-                  tags$summary(tags$small("How to read this plot")),
-                  tags$small(
+                plot_help(
                     "Points should scatter around the red zero line with no ",
                     "trend. ",
                     strong("Curved blue smoother: "),
@@ -402,9 +397,7 @@ doseResponseUI <- function(id) {
                     "\u2014 try a different model. ",
                     strong("Fan shape (variance grows with dose): "),
                     "heteroscedasticity; consider log-transforming the ",
-                    "volume axis or weighting."
-                  )
-                ),
+                    "volume axis or weighting."),
                 shinycssloaders::withSpinner(
                   plotOutput(ns("dr_residuals_plot"), height = "400px")
                 )
