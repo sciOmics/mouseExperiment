@@ -133,7 +133,17 @@ dataUploadUI <- function(id) {
     uiOutput(ns("data_preview_ui")),
 
     # Settings preset (column mapping + methods)
-    settings_preset_ui(ns)
+    settings_preset_ui(ns),
+
+    # F4: one report of every analysis run in this session.
+    wellPanel(
+      h5(strong(icon("file-lines"), " Study report")),
+      tags$p(style = "font-size:12px; color:#6c757d;",
+             "Every analysis you have run in this session, with its settings, tables, plots and ",
+             "diagnostics, and the data check, in one HTML file to print or keep. Each tab's ",
+             "Download Results has its own report too."),
+      downloadButton(ns("download_study_report"), "Download the study report (HTML)",
+                     class = "btn-sm btn-default"))
   )
 }
 

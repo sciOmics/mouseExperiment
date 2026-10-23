@@ -101,7 +101,19 @@ add_download_results <- function(input, output, session, prefix, module,
   ns  <- session$ns
   id  <- function(x) paste0(prefix, "_dl_", x)
   gid <- function(g) id(paste0("group_", g))
-  current <- function() items() %||% list()
+  # F4: every tab's report is built from its other items, and the tab is
+  # registered for the study report (session$userData is the session's).
+  title <- function() sub("^mouseExperiment dashboard: (.*) results$", "\\1",
+                          tryCatch(readme_header()[1L], error = function(e) module))
+  base_items <- function() Filter(function(x) x$id != "report", items() %||% list())
+  current <- function() {
+    it <- base_items()
+    if (!length(it)) return(it)
+    c(it, list(report_dl_item(title(), base_items, readme_header, plot_size)))
+  }
+  reg <- session$userData$dl_registry %||% list()
+  reg[[module]] <- list(title = title, items = base_items, header = readme_header, size = plot_size)
+  session$userData$dl_registry <- reg
 
   output[[id("choices")]] <- renderUI({
     it <- current()

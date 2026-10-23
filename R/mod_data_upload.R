@@ -808,6 +808,21 @@ data_upload_server <- function(id, rv) {
       utils::write.csv(f, file, row.names = FALSE)
     })
 
+  # F4: the study report: the data check, then each tab with a result.
+  output$download_study_report <- downloadHandler(
+    filename = function() paste0("study_report_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".html"),
+    content = function(file) {
+      qc <- tryCatch(data_check(), error = function(e) NULL)
+      data_part <- if (!is.null(qc)) paste0(
+        "<section><h1>Data</h1>",
+        if (nrow(qc$summary)) report_table(qc$summary[, c("Severity", "Check", "Animals", "Rows", "What")],
+                                           "The data check: what was found in the file")
+        else "<p>The data check found nothing.</p>", "</section>")
+      tabs <- study_report_sections(session$userData$dl_registry %||% list())
+      if (!length(tabs)) tabs <- "<section><h1>Analyses</h1><p>No analysis has been run in this session yet.</p></section>"
+      report_document(file, "Study report", c(data_part, tabs))
+    })
+
   # Settings preset handlers
   setup_settings_preset(input, output, session, rv, study_defaults)
 

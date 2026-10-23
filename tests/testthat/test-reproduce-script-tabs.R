@@ -167,7 +167,7 @@ test_that("R20-AA: Power's analytic script stacks one call per effect size", {
     expect_length(res$call_records, 2L)
     run <- run_tab_script(output, session, "pw")
     # No data: the script has none to read.
-    expect_identical(run$files, c("README.txt", "analysis.R"))
+    expect_identical(run$files, c("README.txt", "analysis.R", "packages.lock"))   # F10
     expect_true(any(grepl("It needs no data", run$script, fixed = TRUE)))
     same_table(run$env$scenario_table, res$scenario_table, "scenarios")
   })

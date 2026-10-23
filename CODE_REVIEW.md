@@ -6401,7 +6401,8 @@ After the first CRAN release, renaming any of these breaks users' code. Fix: the
 | F7 Prism export | Proposal | Declined by the maintainer (2026-10-23) |
 | F6 | Proposal | ✅ Added v0.44.0 |
 | F5 | Proposal | ✅ Added v0.45.0 |
-| F4, F8–F11 | Proposals | Approved; to do |
+| F4, F10 | Proposals | ✅ Added v0.46.0 |
+| F8, F9, F11 | Proposals | Approved; to do |
 
 ### Open questions for the maintainer
 
@@ -6778,3 +6779,40 @@ The maintainer approved every proposal except F7 (Prism export). These three com
 
 
 **Verification (executed):** the full suite, Bayesian fits skipped: 752 tests, 0 failed. `R CMD check --no-manual --no-tests`: Status OK, including `check_study_data()`'s example.
+
+## R22-H Implementation log — v0.46.0: reports for every tab and the study; package versions (F4, F10, 2026-10-23)
+
+**F4 — reports.**
+- **Built from Download Results.** Each tab's Download Results item list already says what the run produced. So the report is built from those items, with no per-tab code:
+  - the README header (versions and the run's settings);
+  - the "tables" items as HTML tables;
+  - the "plots" items drawn to PNG and embedded as base64, with the tab's plot size, so they look as on screen;
+  - the "diagnostics" items.
+- **Where it is added.** `add_download_results()` appends the "HTML report" item (`report_dl_item()`) to every tab with a result.
+- **The builder.** `helpers_report.R` is rewritten:
+  - `report_table()`, which keeps R20.D15's one header cell per column;
+  - `report_item()`, `report_section()` and `report_document()`;
+  - the old Tumor-Growth-only `build_html_report()` is gone.
+- **Tumor Growth's Summary button** gives the same report as its Download Results.
+- **The study report.** `add_download_results()` registers each tab (title, items, header, size) in `session$userData$dl_registry`, which belongs to the session. The Data tab's "Study report" gathers the data check's summary and every registered tab that has a result (`study_report_sections()`), one section per tab, each starting a new printed page.
+
+**F10 — package versions.**
+- **The lockfile.** `package_lock()` lists mouseExperiment, its recursive Depends, Imports and LinkingTo, and every other loaded namespace, without base packages. Each has its installed version and source: CRAN or another repository, GitHub with its remote fields, or "Unknown" for a local build, which renv skips.
+- **Where it goes.** `write_script_bundle()` writes it as `packages.lock` (renv's lockfile format) beside `analysis.R`.
+- **The script.** Its header says how to use the lockfile.
+
+**Tests** (`test-reports.R`, 4):
+- **A section's contents:** the settings, a table with one header cell per column, and an embedded plot, but not the data.
+- **Survival,** which had no report: it now offers one, with its Kaplan-Meier plot and tables, and registers for the study report.
+- **The study report:** the data check, a registered tab with a result, and no section for one without.
+- **The lockfile:** brms, mouseExperiment and R at their running versions, no base packages, and a Power run's ZIP holding it.
+
+R20.D15's test now checks `report_table()`.
+
+**Checked by rendering** a Tumor Growth report in headless Chrome.
+- **Its contents.** The page holds every table (including the new response and delay tables), every plot and the diagnostics.
+- **Its size.** About 1 MB with the plots embedded.
+
+**Updated tests.** Two ZIP listings now include `packages.lock`. R20.D46's test now finds the run's settings in the report's opening block: still the run's settings, not the sidebar's.
+
+**Verification (executed):** the full suite, Bayesian fits skipped: 756 tests; the 3 failures were those three expectations, which pass after the update. `R CMD check --no-manual --no-tests`: Status OK.

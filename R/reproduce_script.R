@@ -181,6 +181,8 @@ script_header <- function(title, when, data_files, from_upload = FALSE) {
     "#",
     "# The same package version gives the same results. To install it:",
     install,
+    "# packages.lock, beside this script, lists every package version the dashboard",
+    "# ran with; renv::restore(lockfile = \"packages.lock\") installs the same ones.",
     "#",
     "# Plots are not repeated with the dashboard's styling (colours, labels, group",
     "# order); the plots in this ZIP are the ones the dashboard drew.",
@@ -255,7 +257,50 @@ write_script_bundle <- function(bundle, dir) {
     writeBin(bundle$source$bytes, file.path(dir, up))
     out <- c(out, up)
   }
+  # F10: every package version the dashboard ran with.
+  lock <- tryCatch(package_lock(), error = function(e) NULL)
+  if (!is.null(lock) && requireNamespace("jsonlite", quietly = TRUE)) {
+    jsonlite::write_json(lock, file.path(dir, "packages.lock"), auto_unbox = TRUE,
+                         pretty = TRUE)
+    out <- c(out, "packages.lock")
+  }
   out
+}
+
+#' Every package version the dashboard ran with, as an renv lockfile (F10)
+#'
+#' mouseExperiment, the packages it needs (Depends, Imports and LinkingTo,
+#' recursively) and every other package loaded in the session, each with the
+#' version installed and where it came from. `renv::restore(lockfile =
+#' "packages.lock")` installs those versions; a package installed from neither
+#' CRAN nor GitHub (a local build) is marked "Unknown", which renv skips.
+#' @return A list in renv's lockfile format.
+#' @keywords internal
+package_lock <- function() {
+  ip <- utils::installed.packages()
+  ip <- ip[!duplicated(ip[, "Package"]), , drop = FALSE]
+  base <- rownames(ip)[ip[, "Priority"] %in% "base"]
+  deps <- tools::package_dependencies("mouseExperiment", db = ip, recursive = TRUE,
+                                      which = c("Depends", "Imports", "LinkingTo"))[[1L]]
+  pkgs <- sort(intersect(setdiff(unique(c("mouseExperiment", deps, loadedNamespaces())), base),
+                         rownames(ip)))
+  entry <- function(p) {
+    d <- utils::packageDescription(p)
+    out <- list(Package = p, Version = d$Version)
+    if (identical(tolower(d$RemoteType %||% ""), "github")) {
+      c(out, list(Source = "GitHub", RemoteType = "github",
+                  RemoteHost = d$RemoteHost %||% "api.github.com",
+                  RemoteUsername = d$RemoteUsername, RemoteRepo = d$RemoteRepo,
+                  RemoteRef = d$RemoteRef, RemoteSha = d$RemoteSha))
+    } else if (!is.null(d$Repository)) {
+      c(out, list(Source = "Repository", Repository = d$Repository))
+    } else {
+      c(out, list(Source = "Unknown"))
+    }
+  }
+  list(R = list(Version = paste(R.version$major, R.version$minor, sep = "."),
+                Repositories = list(list(Name = "CRAN", URL = "https://cloud.r-project.org"))),
+       Packages = stats::setNames(lapply(pkgs, entry), pkgs))
 }
 
 #' The Download Results item for a module's R script

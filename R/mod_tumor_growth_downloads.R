@@ -323,14 +323,7 @@ add_tg_download_handlers <- function(input, output, session, rv,
                 "The data as analysed: one row per measurement, with the derived Day and Volume"),
       # R script, with the data it reads (R20-Z)
       if (!is.null(res$call_record))
-        script_dl_item(function(up) tg_script_bundle(res, up, extra = tg_endpoint_steps(resp, delay))),
-      # Report
-      dl_item("report", "report", "HTML report", "report.html", "file",
-              function(path) build_html_report(result = res,
-                                               title = "Tumor Growth Analysis Report",
-                                               settings = tg_report_settings(res),
-                                               file = path),
-              "The analysis report; open it in a browser")
+        script_dl_item(function(up) tg_script_bundle(res, up, extra = tg_endpoint_steps(resp, delay)))
     )
     Filter(Negate(is.null), items)
   })

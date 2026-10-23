@@ -5,6 +5,23 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.46.0] - 2026-10-23
+
+A report for every tab and for the study, and every package version in the ZIP
+(`CODE_REVIEW.md` Round 22 proposals F4 and F10, R22-H).
+
+### Added
+- **Every tab's Download Results offers an HTML report.** It has the run's settings, its
+  tables, its plots (embedded, as drawn on screen) and its diagnostics, in one page to print
+  or keep. Only Tumor Growth had a report before, and it held five tables. Tumor Growth's
+  Summary button now gives the same full report.
+- **A study report** on the Data tab: the data check and every analysis run in the session,
+  in one HTML file.
+- **`packages.lock` beside the R script:** every package version the dashboard ran with
+  (mouseExperiment, everything it needs, and the other packages loaded), in renv's lockfile
+  format. `renv::restore(lockfile = "packages.lock")` installs the same versions, and the
+  script says so.
+
 ## [0.45.0] - 2026-10-23
 
 A check of the data on upload (`CODE_REVIEW.md` Round 22 proposal F5, R22-G).
