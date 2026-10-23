@@ -6192,3 +6192,219 @@ The seventh test checks that Power offers no file.
 **Verification (executed):**
 - The full suite, Bayesian fits skipped: 713 tests, 0 failed.
 - `R CMD check --no-manual --no-tests`: Status OK.
+
+## Round 22 — whole-project audit after the merge and the R script (2026-10-23)
+
+**Scope.** Branch `feature/script-from-upload` (0.38.0, with PRs #19 and #20): 75 R files (32,942 lines), 67 test files, 35 exports.
+
+**How:**
+- **Static checks:**
+  - functions defined but never called (from R's parse data);
+  - declared dependencies against use;
+  - `codetools::checkUsage` on every function.
+- **The docs** compared with the code: README, vignette, `docs/`, `docs/dashboard/`, and the Help and Info text.
+- **A messy study** (`audit/messy_study.R`, 48 animals):
+  - ear tags and cage labels reused in every arm;
+  - one treatment name at three doses;
+  - removal at 1,500 mm³, deaths from other causes, a weight-loss removal;
+  - missing calipers, a regressed tumour, necrosis flags;
+  - day-first dates, in a semicolon CSV with decimal commas.
+- **The study through every entry point:**
+  - every exported function;
+  - every dashboard tab, followed by its R script from the original file;
+  - both Bayesian fits.
+- **Swallowed errors.** A build in which all 116 `error = function(e) NULL/NA` handlers record when they fire, run through the same batteries.
+- **Seeded runs** on a real `multisession` worker against an R session.
+- **`R CMD check --as-cran`.**
+
+**What held up:**
+- Every exported function and every tab ran on the messy study, with plausible results.
+- Every tab's R script from the original file reproduced the dashboard's tables (TG LME4 with the randomisation test, TG AUC, Survival from a column with deaths and from a volume limit, both Toxicity modes, Synergy, Dose Response).
+- None of the 116 swallowed-error handlers fired in any battery, Bayesian fits included.
+- Reused ear tags are keyed correctly: the model sees 48 animals.
+- The job context, which now carries the uploaded file, is not sent to the worker (`globals = list(fun, args)`).
+- Analytics calls are safe without Umami.
+- `--as-cran` raised one WARNING and one environmental NOTE, and nothing else: no note on the number of imports.
+
+### Major
+
+**R22.1 — A seeded analysis gives different numbers on the dashboard's worker than in an R session.** `R/job_registry.R:242-247` runs background jobs with `future(..., seed = TRUE)`, which switches the job's generator to L'Ecuyer-CMRG. The package seeds with `set.seed(seed)` and no `kind` at these call sites:
+- `apriori_power_simulation.R:210`;
+- `permutation_trajectory.R:368`;
+- `utils_endpoint.R:398`, `utils_contrasts.R:183` and `utils_synergy.R:66`;
+- `survival_statistics.R:554` and `:811`;
+- `tumor_growth_statistics.R:503` and `:544`.
+
+The same seed therefore draws different streams.
+- **Executed** (`audit/rng_check.R`): `apriori_power_simulation(seed = 20260730)` gave power 0.933 in a session and 0.833 on a worker. `trajectory_permutation_test(seed = 20260730)` drew different permutation statistics; the p-value agreed only because both hit the floor.
+- **Affected:** the randomisation test and the LMM power simulation, both of which run on the worker. Their R scripts (R20-Z, R20-AA) cannot reproduce the dashboard's numbers, and neither can a user's own call.
+- **Why the round-trip tests missed it:** they run the script in the dashboard's own session (R22.19).
+- **Fix:** seed with an explicit kind, `set.seed(seed, kind = "Mersenne-Twister", normal.kind = "Inversion", sample.kind = "Rejection")`, through one helper. `me_with_seed()` already restores `.Random.seed`, and with it the caller's kind. A seeded result is then the same wherever it runs. Route the nine sites above through that helper.
+
+**R22.2 — After a Bayesian survival run, the effects table cannot be downloaded, the forest plot is empty, and the R script prints `NULL`.** `bayesian_survival()` returns `treatment_effects` and no `results` (`R/bayesian_survival.R:536`). The on-screen table reads `treatment_effects`; four other places read `results`:
+- `download_items.R:24-28`: the Download Results item, labelled "Treatment effects" for Bayesian runs, is never offered;
+- `mod_survival_downloads.R:55`: the CSV button beside the table writes no file, so the download fails;
+- `mod_survival_downloads.R:114`: `surv_forest_plot_styled()` returns NULL;
+- `reproduce_script.R:344`: the script prints `result$results`.
+
+Executed (`audit/bayes_surv_dl.R`): the items offered were `plot_km, diag_influential, data`, the forest plot was NULL, and Shiny reported that the CSV download "did not write a file". Fix: read `treatment_effects` when `model_type_used == "bayes"` in all four places, with a test on a Bayesian-shaped result.
+
+**R22.3 — Cage labels reused across arms are treated as cages that hold several arms.**
+- **The setup.** With cages numbered within each arm (C1/C2 in every arm), `classify_cage_structure()` (`utils_cage.R:48`) calls the design "crossed".
+- **What happens:**
+  - `tumor_growth_statistics()` enters Cage as a two-level fixed effect (`Volume ~ Day * Arm + Cage + (Day | ID)`) instead of a random effect for each physical cage;
+  - the cage-level randomisation test is skipped;
+  - Survival's cage frailty and cage exclusion (R22.16) pool those cages across arms.
+- **The effect** (messy study, executed: `audit/cage_check.R`): with the same 12 cages labelled uniquely, the model is `(1 | Cage)` and the p-values are larger:
+
+| Comparison | p, labels reused | p, unique labels |
+|---|---|---|
+| combination | 5.2e-7 | 3.0e-5 |
+| Drug A 20 | 0.0029 | 0.0079 |
+
+  The reused labels make the results look more certain than they are.
+- **Why the package can't settle it.** From labels alone, "numbered within arm" and "really shared cages" look the same.
+- **Fix:**
+  - a Study Design question, "Are cage labels unique across the study, or numbered within each arm?". With "within each arm", cages are keyed by arm and cage, as animals already are.
+  - a package argument for the same choice (e.g. a `label_cages()` step);
+  - a warning when every arm uses the same set of cage labels.
+
+  Open question 1.
+
+**R22.4 — `weight_loss_threshold()` fits Firth's model with coxphf's defaults.** R20-X fixed `survival_statistics()` (`maxit = 1000, maxstep = 0.05`, `survival_statistics.R:864`). The sibling call at `weight_loss_threshold.R:291-294` was not changed, so its profile-likelihood intervals and p-values can fail to converge in the same way.
+- **Executed:** on the messy study it warned "Convergence ... not attained", and every interval was NA.
+- **Fix:** the same settings, plus R20-X's test pattern on a weight-loss study with event-free arms.
+
+This is failure mode 3 of the review notes: a fix applied to one sibling only.
+
+**R22.5 — CI never runs about 45 tests.**
+- **The cause.** Tests that read the R sources, the Help text or `man/` skip under R CMD check, which runs on an installed copy. Locally they run.
+- **The scale.** The latest green run skipped 50 tests, 49 of them for that reason.
+- **What should catch them doesn't.** The workflow's "Source-tree tests" step (`R-CMD-check.yaml:88-89`) runs only `readme|code_review_round16|code_review_round18`.
+- **What never runs in CI:**
+  - `test-docs-current.R`, whose Help and Info text checks are 14+ tests;
+  - `test-power-params.R`;
+  - `test-backend-calls-resolve.R`;
+  - the dashboard's source-reading checks.
+- **Fix:** the step should run every file that reads sources (`grep -l "dash_source\|test_path(\"..\", \"..\"" tests/testthat`), or the whole suite from source with Bayesian fits traced to skip, which takes about 6 minutes.
+
+**R22.6 — The README and the vignette teach a per-animal reduction that merges animals with reused ear tags.**
+- **The code.** `README.md:129`, `:142` and `vignettes/mouseExperiment.Rmd:147` reduce the data with `mm[!duplicated(mm$ID, fromLast = TRUE), ]`.
+- **Why it hasn't shown.** It is correct on `master_synthetic_data`, whose 48 IDs are unique.
+- **The risk.** On the common data with tags 1–8 in every arm, it keeps one row per tag, not per animal. It also takes the last row instead of the first flagged day.
+- **The guidance it contradicts.** The package itself documents that IDs may restart in each arm (`docs/METHODS.md:40`).
+- **Fix:** use `survival_events()` (0.37.0) in all three examples.
+
+**R22.7 — Argument names are inconsistent across the exported functions, and CRAN is the time to settle them.**
+
+| Concept | Most functions | Outliers |
+|---|---|---|
+| Animal ID | `id_column` (15 functions) | `ID_column` in `plot_tumor_growth()` |
+| Study day | `time_column` (13) | `day_column` in `plot_tumor_growth()` and `dose_response_statistics()` |
+| Event flag | `event_column` (2) | `censor_column` in `survival_statistics()`; `survival_column` in `plot_tumor_growth()` |
+| Control arm | `reference_group` (7) | `control_group_name` in Dose Response; `control_name` in the synergy functions |
+| Seed | `seed` (5) | `boot_seed` (3); `auc_bootstrap_seed` |
+
+After the first CRAN release, renaming any of these breaks users' code. Fix: the majority name everywhere, with the old names kept for one or two releases as deprecated aliases that warn. Open question 2.
+
+### Minor
+
+**R22.8 — The weight-loss Cox model is reported when the data cannot support it.**
+- **Example.** On the messy study, the only weight-loss event fell on day 31. By then every Vehicle animal had been removed at the volume limit, so no hazard ratio against Vehicle is identifiable.
+- **What was reported anyway:** coefficients such as −2.08 for an event-free arm, with p = 0.33, which come from Firth's penalty alone.
+- **Fix:** below a minimum number of events, or when the reference arm is not at risk at any event time, report the Kaplan-Meier curves and the counts without a Cox table, and say why.
+
+**R22.9 — `ggpubr` is a hard dependency that nothing calls.** The only reference is `@importFrom ggpubr ggarrange` at `analyze_drug_synergy_over_time.R:85`. `ggarrange()` is called nowhere. The package brings 85 packages with it into every install and the server image. Fix: drop it from `Imports`, and from the dependency notes in `README.md:32` and `CONTRIBUTING.md:27`.
+
+**R22.10 — Duplicated helpers:**
+- **`me_with_seed()` is defined twice**, at `utils_contrasts.R:172` and `utils_endpoint.R:387`. The later file wins at load. The two agree except on a NULL seed, so this is confusing rather than wrong.
+- **Two animal-key functions:** `animal_key()` (`helpers_data.R:31`) and `make_mouse_key()` (`utils_auc.R:13`). Only `make_mouse_key()` guards against a missing column (T1/R20.15), and every current caller of `animal_key()` checks its columns first. The dashboard's copy predates the merge.
+- **Two exported date readers:** `calculate_dates()` (one given format) and `study_days()` (whole-column detection). Fix: one of them should call the other, or `calculate_dates()` should point to `study_days()`.
+
+**R22.11 — Dead code:**
+- **Never called:** `group_order_ui()` (`helpers_plot.R:207`) and `tgs_boot_diff_ci()` (`tumor_growth_statistics.R:531`).
+- **Called only by their own tests:** `tgs_perm_diff_p()` (`:492`), `format_number()` (`helpers_format.R:20`), `back_transform()` (`:154`) and `me_interval_cols()` (`utils_result_meta.R:124`).
+- **JavaScript never called:** `trackPlotGenerated`, `trackReferenceGroupSelected` and `trackFeatureAccess` in `umami-events.js`.
+- **Locals assigned but never read:**
+  - `poly_summary` (`dose_response_statistics.R:960`);
+  - `dose_effect_detected` (`:1014`);
+  - `extrapolation_method`, `log_volumes` and `max_day` (`plot_tumor_growth.R:128-203`);
+  - `ci_lower_na`/`ci_upper_na` (`survival_statistics.R:1055`);
+  - `vol_col` (`mod_data_upload.R:368`);
+  - `method` (`mod_survival.R:1203`).
+
+**R22.12 — Stale documentation:**
+- **README:**
+  - "Round 20 is the latest" (`:26`);
+  - `ggpubr` listed as required (`:32`).
+- **CONTRIBUTING.md:**
+  - lists `pwr` and `ggpubr` as dependencies (`:27`);
+  - says to pin the backend version in the dashboard repository (`:299`).
+- **`docs/DIAGNOSTICS.md:16`** says the TG Diagnostics tab is broken; the same file later records it fixed.
+- **`docs/dashboard/ARCHITECTURE.md`, `README.md:194` and `CONTRIBUTING.md:122`** cite `R/helpers.R`, split long ago into `helpers_data/format/plot/ui.R`. ARCHITECTURE's tree also omits every analysis file and the download, script and preparation files.
+- **`docs/dashboard/README.md:18`, `:68`** still describe "Download All".
+- **`docs/dashboard/DATA_FORMAT.md:262`** names `calculate_dates()` as the dashboard's date conversion; it is `study_days()`.
+- **`docs/dashboard/SECURITY.md:33`** says uploads are read with `read.csv`. It does not mention that the uploaded file is now kept in memory for the session and goes into the ZIP when ticked (R20-AC).
+- **Neither the vignette nor `docs/METHODS.md`** mentions the preparation functions (R20-AB), the dashboard, or the R script.
+
+**R22.13 — The Bayesian posterior-summary table shows brms's internal names,** such as `TreatmentDrugAPDrugB10` for "Drug A + Drug B 10" (`bayesian_tumor_growth.R:480`). Fix: map them back to the arm labels, as the comparisons table already does.
+
+**R22.14 — The Synergy help cites a version** ("removed in v0.21.0", `ui_modules.R:1672`). The Power help dropped its version history earlier (26.10.009); this should match.
+
+**R22.15 — `tumor_doubling_time()` returns row names such as "times" and "times1".** Fix: `rownames(out) <- NULL`.
+
+**R22.16 — The subset filter cannot exclude one dose arm.** Treatments are excluded by the raw treatment value, so with one name at several doses only the whole drug, or animals one at a time, can go. Cage exclusion matches raw labels, so with labels reused across arms it removes that cage label from every arm (see R22.3). Fix: offer arms (treatment and dose) as well as treatments, once R22.3 is settled.
+
+**R22.17 — CRAN blockers outside the dashboard:**
+- **No `skip_on_cran()` on the Bayesian test files.** `test-bayesian_tumor_growth.R` (11 tests), `test-bayesian_survival.R`, `test-code_review_round20_step6.R` and others compile and sample Stan models. Only 2 of 67 test files use `skip_on_cran()`, so CRAN's check would take far over its time limit.
+- **`htmltools::` in tests is not declared** (the `--as-cran` WARNING).
+- **DESCRIPTION has no `URL` or `BugReports`.**
+
+**R22.18 — Hygiene:**
+- `.Rbuildignore` lists files that no longer exist: `plan.md`, `update_namespace.R`, `NOTES.md`, `DASHBOARD_PLAN.md`, `build.R` and `temp`.
+- Eight R files end without a newline.
+- `umami-events.js` polls for Umami for 5 s, and logs every event to the console, even when analytics are off. Fix: include the script only when `dashboard_analytics()` is true.
+
+**R22.19 — The round-trip tests run each script in the dashboard's own session.** That hid R22.1, because the session's generator state was shared. Fix: run each script in a fresh R process (`callr::r()` with the package's library path), or at least reset `RNGkind("default")` before sourcing it.
+
+### Improvements and features (proposals, not defects)
+
+| # | Proposal | Why |
+|---|---|---|
+| F1 | **Response categories (mRECIST: CR/PR/SD/PD) and a best-response waterfall** of the % change in volume | The standard per-animal summary in PDX studies (Gao et al. 2015); the growth-rate waterfall exists already |
+| F2 | **Tumour growth delay** (T − C, median time to a volume) with an interval | A classic endpoint that `survival_events()` (volume limit) almost provides |
+| F3 | **%T/C beside TGI** | Many reports and the NCI criteria use T/C; it is 100 − TGI with the same interval |
+| F4 | **A report for every tab** (and a combined study report) | Only Tumor Growth has the HTML report |
+| F5 | **A data-quality check on upload**, with a report | Duplicate rows, implausible jumps, shrinking calipers, gaps in the schedule, weight outliers |
+| F6 | **Power for survival endpoints** (Schoenfeld / log-rank) and **Dunnett** in the analytic power | The Power tab covers volume endpoints only, with Bonferroni or none |
+| F7 | **GraphPad Prism export** (`.pzfx`) of the main tables | What most bench scientists plot in |
+| F8 | **Result classes with `print()`/`summary()` methods** | The analysis functions return bare lists, so a console user sees a wall of fields |
+| F9 | **Plot code in the R script, with the dashboard's styling** ("Level 3") | The script repeats the numbers but not the figures |
+| F10 | **Every package version in the ZIP** (an `renv`-style lock) beside `sessionInfo()` | So the environment can be rebuilt, not just the package |
+| F11 | **Split `ui_modules.R` (1,794 lines)** so the Help content stands apart from the UI modules; factor out the record/prep/source boilerplate repeated in six run handlers | Maintainability |
+
+### Status
+
+| Item | Severity | Status |
+|---|---|---|
+| R22.1 RNG kind on the worker | Major | Open |
+| R22.2 Bayesian survival downloads and script | Major | Open |
+| R22.3 Reused cage labels | Major | Open (question 1) |
+| R22.4 Firth defaults in `weight_loss_threshold()` | Major | Open |
+| R22.5 CI skips the source-reading tests | Major | Open |
+| R22.6 README/vignette per-animal reduction | Major | Open |
+| R22.7 API naming before CRAN | Major | Open (question 2) |
+| R22.8–R22.19 | Minor | Open |
+| F1–F11 | Proposals | For the maintainer |
+
+### Open questions for the maintainer
+
+1. **Cage labels (R22.3).** Should the dashboard ask at Study Design whether cage labels are unique or numbered within each arm? My recommendation is yes, plus a warning when every arm shares one set of labels.
+2. **Argument names (R22.7).** Harmonise now, before CRAN, keeping the old names as deprecated aliases for two releases?
+3. **Which proposals (F1–F11)?** They are worth scheduling after the Major items and before or after CRAN. My suggestion is F1–F3 first: they are the endpoints reviewers ask for.
+
+**Suggested order:**
+- **Release fixes:** R22.1, R22.2, R22.4 and R22.6, with R22.19, as one release.
+- **Next:** R22.5 (CI), then R22.3 and R22.7 once the questions are answered.
+- **Cleanup:** the Minor items as one cleanup release.
+- **Then CRAN:** R22.17 and R22.9 are part of the CRAN preparation.
