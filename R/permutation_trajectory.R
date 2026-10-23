@@ -275,6 +275,8 @@ trajectory_permutation_test <- function(df,
            "\nA cage holding more than one treatment has no single label to ",
            "permute. If animals were randomised individually and then re-housed, ",
            "the randomisation unit is the mouse \u2014 use perm_spec(unit = 'mouse').",
+           if (!is.null(m <- reused_cage_message(df, cage_column, treatment_column)))
+             paste0("\n", m),
            call. = FALSE)
     }
     unit_of <- d$.cage

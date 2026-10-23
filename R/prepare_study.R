@@ -79,7 +79,9 @@ read_study_csv <- function(path) {
 #'   and `cage` when `cage_column` is given. `arm` is the treatment, or
 #'   "Treatment Dose" when `dose_column` is given (as [label_arms()] writes it).
 #' @param treatments Values of `treatment_column` to remove.
-#' @param cages Values of `cage_column` to remove.
+#' @param cages Cages to remove: values of `cage_column`, or a data frame with
+#'   columns `arm` and `cage` to remove one arm's cage when cages are numbered
+#'   within each arm ("C1" in Vehicle but not "C1" in Drug A).
 #' @param treatment_column,id_column Column names.
 #' @param cage_column,dose_column Column names, or NULL when the study has none.
 #' @return `df` without the excluded rows.
@@ -109,9 +111,56 @@ apply_exclusions <- function(df, animals = NULL, treatments = NULL, cages = NULL
   if (length(treatments) && has_col(df, treatment_column)) {
     df <- df[!(as.character(df[[treatment_column]]) %in% as.character(treatments)), , drop = FALSE]
   }
-  if (length(cages) && has_cage) {
-    df <- df[!(as.character(df[[cage_column]]) %in% as.character(cages)), , drop = FALSE]
+  if (NROW(cages) && has_cage) {
+    cage <- as.character(df[[cage_column]])
+    if (is.data.frame(cages)) {
+      # One arm's cage, for cages numbered within each arm (R22.3).
+      if (!all(c("arm", "cage") %in% names(cages))) {
+        stop("`cages` as a data frame needs columns arm and cage.", call. = FALSE)
+      }
+      drop <- animal_key(cages$arm, cages$cage)
+      df <- df[!(animal_key(arm_labels(df, treatment_column, dose_column), cage) %in% drop), ,
+               drop = FALSE]
+    } else {
+      df <- df[!(cage %in% as.character(cages)), , drop = FALSE]
+    }
   }
+  df
+}
+
+#' Make cage labels unique across the study
+#'
+#' Cages are often numbered within each arm: C1 and C2 in Vehicle, and C1 and
+#' C2 again in every other arm. The analyses read a cage label as one cage, so
+#' those would be two cages that each hold every arm, and the cage effect would
+#' be estimated across arms. `label_cages()` puts each cage's arm in front of
+#' its label ("Vehicle C1"), so each cage has its own label. Run it after
+#' [apply_exclusions()] and before the analyses.
+#'
+#' From the labels alone, cages numbered within each arm cannot be told apart
+#' from cages that really hold several arms, so the choice is the study's. The
+#' analyses warn when every arm's cage labels come from one set.
+#'
+#' @param df Study data.
+#' @param cage_column The cage column.
+#' @param treatment_column,dose_column The treatment column, and the dose
+#'   column or NULL. With a dose, the arm is "Treatment Dose", as
+#'   [label_arms()] writes it.
+#' @return `df` with the cage column relabelled, as character. A missing cage
+#'   stays missing.
+#' @export
+#' @examples
+#' d <- data.frame(ID = 1:8, Treatment = rep(c("Vehicle", "Drug A"), each = 4),
+#'                 Cage = rep(c("C1", "C1", "C2", "C2"), 2))
+#' label_cages(d)$Cage
+label_cages <- function(df, cage_column = "Cage", treatment_column = "Treatment",
+                        dose_column = NULL) {
+  for (col in c(cage_column, treatment_column)) {
+    if (!has_col(df, col)) stop("Column '", col, "' is not in the data.", call. = FALSE)
+  }
+  cage <- as.character(df[[cage_column]])
+  df[[cage_column]] <- ifelse(is.na(cage), NA_character_,
+                              paste(arm_labels(df, treatment_column, dose_column), cage))
   df
 }
 

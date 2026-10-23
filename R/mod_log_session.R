@@ -135,6 +135,7 @@ setup_settings_preset <- function(input, output, session, rv,
       # Study design (R20-D.H)
       design <- list(volume_units = one_of(st$volume_units, c("mm3", "cm3")),
                      randomisation_unit = one_of(st$randomisation_unit, c("mouse", "cage")),
+                     cage_labels = one_of(st$cage_labels, c("study", "arm")),
                      control_group = {
                        cg <- as.character(unlist(st$control_group))
                        if (length(cg) == 1L && nzchar(cg)) cg else NULL
@@ -162,6 +163,8 @@ setup_settings_preset <- function(input, output, session, rv,
         updateRadioButtons(session, "volume_units", selected = design$volume_units)
       if (!is.null(design$randomisation_unit))
         updateRadioButtons(session, "randomisation_unit", selected = design$randomisation_unit)
+      if (!is.null(design$cage_labels))
+        updateRadioButtons(session, "cage_labels", selected = design$cage_labels)
       if (!is.null(design$control_group))
         updateSelectInput(session, "control_group", selected = design$control_group)
 
@@ -277,8 +280,8 @@ setup_subset_filter <- function(input, output, session, rv) {
     } else character(0)
     txs <- if (!is.null(tx_col) && nzchar(tx_col) && tx_col %in% colnames(df))
       sort(unique(as.character(df[[tx_col]]))) else character(0)
-    cgs <- if (!is.null(cg_col) && nzchar(cg_col) && cg_col %in% colnames(df))
-      sort(unique(as.character(df[[cg_col]]))) else character(0)
+    # R22.3: with cages numbered within each arm, each arm's cage.
+    cgs <- cage_filter_choices(df, rv$settings, isolate(rv$exclude_cages) %||% character(0))
 
     updateSelectizeInput(session, "exclude_ids",
                         choices = ids,
@@ -289,8 +292,8 @@ setup_subset_filter <- function(input, output, session, rv) {
                         selected = intersect(isolate(rv$exclude_treatments), txs),
                         server = TRUE)
     updateSelectizeInput(session, "exclude_cages",
-                        choices = cgs,
-                        selected = intersect(isolate(rv$exclude_cages), cgs),
+                        choices = cgs$choices,
+                        selected = cgs$selected,
                         server = TRUE)
   })
 

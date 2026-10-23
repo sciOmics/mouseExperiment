@@ -254,6 +254,7 @@ bayesian_survival <- function(
   )
   if (!is.null(cage_column) && cage_column %in% names(df)) {
     work$Cage <- as.character(df[[cage_column]])
+    if (isTRUE(include_cage_effect)) warn_reused_cage_labels(df, cage_column, treatment_column)   # R22.3
   }
   if (!all(work$Event %in% c(0L, 1L, NA))) {
     stop("'", user_event_column,

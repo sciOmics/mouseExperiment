@@ -94,11 +94,67 @@ subset_filter_args <- function(df, rv) {
   }
   list(animals = animals,
        treatments = if (length(ex_tx)) ex_tx,
-       cages = if (length(ex_cg)) ex_cg,
+       cages = if (length(ex_cg) && !is.null(cage)) cage_exclusions(df, s, ex_cg),
        treatment_column = s$col_treatment %||% "",
        id_column = s$col_id %||% "",
        cage_column = cage,
        dose_column = col(s$col_dose))
+}
+
+#' Excluded cages as [apply_exclusions()]'s `cages`
+#'
+#' The Subset Filter stores a cage as its label, or, when cages are numbered
+#' within each arm (R22.3), one arm's cage as `animal_key(arm, cage)`. Labels
+#' alone are passed as they are; with any arm's cage, every exclusion becomes a
+#' row of arm and cage, a whole cage one row per arm that has it.
+#' @param df The data the filter applies to.
+#' @param s `rv$settings`.
+#' @param stored `rv$exclude_cages`.
+#' @keywords internal
+cage_exclusions <- function(df, s, stored) {
+  one_arm <- grepl("|||", stored, fixed = TRUE)
+  if (!any(one_arm)) return(stored)
+  p <- strsplit(stored[one_arm], "|||", fixed = TRUE)
+  out <- data.frame(arm = vapply(p, `[`, "", 1L), cage = vapply(p, `[`, "", 2L),
+                    stringsAsFactors = FALSE)
+  if (any(!one_arm) && has_col(df, s$col_treatment)) {
+    cage <- as.character(df[[s$col_cage]])
+    whole <- data.frame(arm = arm_labels(df, s$col_treatment, s$col_dose), cage = cage,
+                        stringsAsFactors = FALSE)[cage %in% stored[!one_arm], , drop = FALSE]
+    out <- rbind(out, unique(whole))
+  }
+  out
+}
+
+#' The Subset Filter's cage choices, and which of them are excluded
+#'
+#' A cage label is one cage, unless cages are numbered within each arm
+#' (R22.3): then each arm's cage is its own choice ("Vehicle C1"). An
+#' exclusion made under the other reading stays visible: a whole cage shows
+#' as each arm's, and one arm's cage stays a choice of its own.
+#' @inheritParams cage_exclusions
+#' @return list(choices, selected).
+#' @keywords internal
+cage_filter_choices <- function(df, s, stored = character(0)) {
+  if (!has_col(df, s$col_cage)) return(list(choices = character(0), selected = character(0)))
+  cage <- as.character(df[[s$col_cage]])
+  ok <- !is.na(cage)
+  pairs <- if (has_col(df, s$col_treatment)) {
+    arm <- arm_labels(df, s$col_treatment, s$col_dose)[ok]
+    u <- unique(data.frame(key = animal_key(arm, cage[ok]), label = paste(arm, cage[ok]),
+                           cage = cage[ok], stringsAsFactors = FALSE))
+    u[order(u$label), , drop = FALSE]
+  }
+  if (identical(s$cage_labels, "arm") && !is.null(pairs)) {
+    choices  <- stats::setNames(pairs$key, pairs$label)
+    selected <- pairs$key[pairs$key %in% stored | pairs$cage %in% stored]
+  } else {
+    labels  <- sort(unique(cage[ok]))
+    held    <- if (!is.null(pairs)) pairs[pairs$key %in% stored, , drop = FALSE]
+    choices <- c(stats::setNames(labels, labels), stats::setNames(held$key, held$label))
+    selected <- unname(choices)[unname(choices) %in% stored]
+  }
+  list(choices = choices, selected = selected)
 }
 
 #' Sorted distinct values of the treatment column
@@ -567,12 +623,11 @@ detect_date_format <- function(data, date_column, reference_date,
 #' Reads the dates with [detect_date_format()] and passes them to
 #' `mouseExperiment::calculate_dates()` as unambiguous YYYY-MM-DD values, so
 #' the backend defines Day and the dashboard only decides what the dates are.
-#' Days before the reference date are reported (R20.D1).
+#' Days before the reference date are reported (R20.D1). The exported
+#' [study_days()] returns the data and raises the notes as a warning; the
+#' dashboard shows them as a notification instead.
 #'
 #' @inheritParams detect_date_format
-#' The exported [study_days()] returns the data and raises the notes as a
-#' warning; the dashboard shows them as a notification instead.
-#'
 #' @return A list: `data` (with a `Day` column), `layout`, `reason` and
 #'   `notes`.
 #' @keywords internal
@@ -654,7 +709,7 @@ ensure_preprocessed <- function(rv) {
        date_fmt_warning = if (length(pu$notes)) paste(pu$notes, collapse = " "))
 }
 
-#' Prepare the upload, recording each step: exclusions, study days, volume
+#' Prepare the upload, recording each step: exclusions, cage labels, study days, volume
 #'
 #' Tumor Growth and [ensure_preprocessed()] both prepare an upload this way.
 #' Each step is an exported function (R20-AB) and is recorded with
@@ -676,6 +731,16 @@ prepare_upload <- function(rv) {
     args <- c(list(df = data), ex)
     data <- do.call(apply_exclusions, args)
     steps <- c(steps, list(record_call("apply_exclusions", args, keep_data = FALSE)))
+  }
+
+  # R22.3: cages numbered within each arm get their arm in the label, after
+  # the exclusions (which name cages as uploaded) and before any analysis.
+  if (identical(s$cage_labels, "arm") && has_col(data, s$col_cage) &&
+      has_col(data, s$col_treatment)) {
+    args <- list(df = data, cage_column = s$col_cage, treatment_column = s$col_treatment,
+                 dose_column = if (has_col(data, s$col_dose)) s$col_dose)
+    data <- do.call(label_cages, args)
+    steps <- c(steps, list(record_call("label_cages", args, keep_data = FALSE)))
   }
 
   # Date -> Day. R20.D1: the whole column decides the day/month order, and

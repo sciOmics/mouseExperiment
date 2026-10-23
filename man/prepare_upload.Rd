@@ -2,7 +2,7 @@
 % Please edit documentation in R/helpers_data.R
 \name{prepare_upload}
 \alias{prepare_upload}
-\title{Prepare the upload, recording each step: exclusions, study days, volume}
+\title{Prepare the upload, recording each step: exclusions, cage labels, study days, volume}
 \usage{
 prepare_upload(rv)
 }

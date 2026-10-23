@@ -44,6 +44,8 @@ The tumor growth pipeline supports three models:
 
 Optional: `cage_column` (random intercept), `dose_column` (when crossed with treatment), `necrotic_column` (binary indicator → handled per `necrotic_handling`).
 
+**Cage labels** (v0.41.0, `CODE_REVIEW.md` R22.3). A cage label is read as one cage. With cages numbered within each arm (C1 and C2 in every arm), each label would be one cage holding every arm: cage becomes a fixed effect estimated across arms instead of a random intercept for each physical cage, and the p-values are too small. Run `label_cages()` first ("C1" becomes "Vehicle C1"); on the dashboard, choose "Numbered within each arm" under Study Design. From the labels alone the two layouts look the same, so it is the study's choice. Tumour growth, survival, the body-weight model and the Bayesian models warn when every arm's cage labels come from one set.
+
 ### Transforms (`transform` argument)
 
 - `"log"` (default) — exponential growth is linear on log scale; standard.

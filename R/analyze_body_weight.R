@@ -128,6 +128,7 @@ analyze_body_weight <- function(df,
   has_cage <- !is.null(cage_column) && cage_column %in% names(df)
   if (has_cage) {
     wd$Cage <- as.factor(df[[cage_column]])
+    warn_reused_cage_labels(df, cage_column, treatment_column)   # R22.3
   }
 
   # Initial mass per mouse (baseline weight at earliest timepoint).

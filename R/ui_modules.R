@@ -351,6 +351,7 @@ study_design_ui <- function(treatments, defaults = list(), ns = NS(NULL)) {
       ),
       column(4,
         conditionalPanel(ns = ns, condition = "input.col_cage != ''",
+          uiOutput(ns("cage_labels_ui")),
           radioButtons(ns("randomisation_unit"),
             tagList("Treatment was assigned to", help_tip("Whole cages: survival compares arms by moving whole cages between them (a cage-level permutation log-rank), and the tumour-growth permutation test permutes cages. With 2 cages per arm the smallest attainable p-value is 1/3, and with 3 it is 0.1, so a cage-randomised comparison with so few cages cannot reach p < 0.05.")),
             choices = c("Individual animals" = "mouse", "Whole cages" = "cage"),
@@ -361,6 +362,50 @@ study_design_ui <- function(treatments, defaults = list(), ns = NS(NULL)) {
     # R20-D.H: the meaning of each removal reason, when that column is mapped.
     uiOutput(ns("removal_reasons_ui"))
   )
+}
+
+#' Study Design's cage-label question (R22.3)
+#'
+#' @param reused The labels every arm reuses (see `reused_cage_labels()`);
+#'   empty when the labels show no such pattern.
+#' @param selected "study" or "arm" from a preset; otherwise guessed: "arm"
+#'   when the arms reuse one set of labels.
+#' @param ns Namespace function.
+#' @keywords internal
+cage_labels_ui <- function(reused = character(0), selected = NULL, ns = NS(NULL)) {
+  if (length(selected) != 1L || !selected %in% c("study", "arm")) {
+    selected <- if (length(reused)) "arm" else "study"
+  }
+  tagList(
+    radioButtons(ns("cage_labels"),
+      tagList("Cage labels are", help_tip("Unique across the study: each label is one cage, which may hold several arms. Numbered within each arm: C1 in Vehicle and C1 in Drug A are different cages, and the analyses label them 'Vehicle C1' and 'Drug A C1'. This decides how the cage effect is modelled: one cage holding several arms is estimated across arms.")),
+      choices = c("Unique across the study" = "study", "Numbered within each arm" = "arm"),
+      selected = selected),
+    uiOutput(ns("cage_labels_status"))
+  )
+}
+
+#' What the cage labels suggest, beside the question
+#' @param reused The labels every arm reuses.
+#' @param choice The current answer, "study" or "arm".
+#' @keywords internal
+cage_labels_note <- function(reused, choice) {
+  shown <- paste0(paste(utils::head(reused, 5L), collapse = ", "),
+                  if (length(reused) > 5L) ", ...")
+  if (identical(choice, "arm")) {
+    tags$p(class = "text-muted", style = "font-size:12px; margin-top:-6px;",
+           icon("circle-info"),
+           paste0(" Every arm uses the labels ", shown, ", so they are read as numbered ",
+                  "within each arm. Choose 'Unique' only if those cages really held ",
+                  "several arms."))
+  } else {
+    tags$p(class = "text-warning", style = "font-size:12px; margin-top:-6px;",
+           icon("triangle-exclamation"),
+           paste0(" Every arm uses the labels ", shown, ". Read as unique, each is one ",
+                  "cage holding several arms, and the cage effect is estimated across ",
+                  "arms. Choose 'Numbered within each arm' unless the cages really were ",
+                  "shared."))
+  }
 }
 
 #' Removal-reason mapping UI
@@ -1500,7 +1545,7 @@ helpUI <- function() {
     h3(icon("arrows-turn-right"), " Basic Workflow"),
     tags$ol(
       tags$li(strong("Data tab"), " \u2014 upload a CSV file and map your columns (ID, time, volume, treatment). Optional columns: cage, dose, body weight, survival/censor indicator."),
-      tags$li(strong("Study Design"), " (on the Data tab) \u2014 declare the tumour volume units (mm\u00b3 or cm\u00b3), the control group, and, when a cage column is mapped, whether individual animals or whole cages were randomised. With a removal-reason column mapped, say what each reason means (death, weight loss, the volume limit, a planned end); Survival and Toxicity use it. Every analysis tab uses these settings; none has its own reference selector."),
+      tags$li(strong("Study Design"), " (on the Data tab) \u2014 declare the tumour volume units (mm\u00b3 or cm\u00b3), the control group, and, when a cage column is mapped, whether cage labels are unique across the study or numbered within each arm (C1 and C2 in every arm are then different cages) and whether individual animals or whole cages were randomised. With a removal-reason column mapped, say what each reason means (death, weight loss, the volume limit, a planned end); Survival and Toxicity use it. Every analysis tab uses these settings; none has its own reference selector."),
       tags$li(strong("Analysis tabs"), " \u2014 each tab activates once the required columns are mapped:"),
       tags$ul(
         tags$li(strong("Tumor Growth"), " \u2014 always available after upload"),
