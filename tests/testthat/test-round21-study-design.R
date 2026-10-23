@@ -64,7 +64,7 @@ test_that("R20.D1: DD/MM/YYYY dates are read day-first", {
   # -57, 33, 155, 247, NA, NA.
   df <- data.frame(Date = c("01/03/2025", "04/03/2025", "08/03/2025",
                             "11/03/2025", "15/03/2025", "18/03/2025"))
-  sd <- g("study_days")(df, "Date", "2025-03-01")
+  sd <- g("study_days_info")(df, "Date", "2025-03-01")
   expect_equal(sd$data$Day, c(0, 3, 7, 10, 14, 17))
   expect_equal(sd$layout, "DD/MM/YYYY")
   expect_match(sd$reason, "15/03/2025")
@@ -72,24 +72,24 @@ test_that("R20.D1: DD/MM/YYYY dates are read day-first", {
 
 test_that("R20.D1: an ambiguous column asks for the order, and a declared order is used", {
   df <- data.frame(Date = c("01/03/2025", "04/03/2025", "08/03/2025"))
-  expect_error(g("study_days")(df, "Date", "2025-03-01"), "Choose the date order")
-  expect_equal(g("study_days")(df, "Date", "2025-03-01", "dmy")$data$Day, c(0, 3, 7))
-  expect_equal(g("study_days")(df, "Date", "2025-01-03", "mdy")$data$Day, c(0, 90, 212))
+  expect_error(g("study_days_info")(df, "Date", "2025-03-01"), "Choose the date order")
+  expect_equal(g("study_days_info")(df, "Date", "2025-03-01", "dmy")$data$Day, c(0, 3, 7))
+  expect_equal(g("study_days_info")(df, "Date", "2025-01-03", "mdy")$data$Day, c(0, 90, 212))
   # A declared order the data contradict is an error, not a silent NA.
   df2 <- data.frame(Date = c("01/03/2025", "15/03/2025"))
-  expect_error(g("study_days")(df2, "Date", "2025-03-01", "mdy"), "month 15")
+  expect_error(g("study_days_info")(df2, "Date", "2025-03-01", "mdy"), "month 15")
 })
 
 test_that("R20.D1: year-less dates across New Year do not go negative", {
   df <- data.frame(Date = c("20-Dec", "27-Dec", "03-Jan", "10-Jan"))
-  sd <- g("study_days")(df, "Date", "2025-12-20")
+  sd <- g("study_days_info")(df, "Date", "2025-12-20")
   expect_equal(sd$data$Day, c(0, 7, 14, 21))
   expect_match(paste(sd$notes, collapse = " "), "crosses New Year")
 })
 
 test_that("R20.D1: unreadable dates and days before Day 0 are reported", {
   df <- data.frame(Date = c("2025-03-20", "2025-03-24", "2025-03-31", "n/a"))
-  sd <- g("study_days")(df, "Date", "2025-03-24")
+  sd <- g("study_days_info")(df, "Date", "2025-03-24")
   expect_equal(sd$data$Day, c(-4, 0, 7, NA))
   notes <- paste(sd$notes, collapse = " ")
   expect_match(notes, "1 row\\(s\\) have no usable date")
@@ -425,7 +425,10 @@ test_that("R20.D36: after a Tumour Growth run with a dose column, Synergy's own 
     session$setInputs(tg_model_type = "lme4", tg_reference = "Vehicle 0",
                       tg_p_adjust = "dunnett", run_tg_analysis = 1)
   }))
-  expect_equal(shiny::isolate(rv$tx_col), "TreatmentGroup")
+  # R20-AB: Tumor Growth labels arms on its own copy; the shared data keep the
+  # treatment column, so other tabs no longer depend on whether it ran.
+  expect_equal(shiny::isolate(rv$tx_col), "Treatment")
+  expect_false("TreatmentGroup" %in% names(shiny::isolate(rv$processed_data)))
   suppressWarnings(shiny::testServer(g("synergy_server"), args = list(rv = rv), {
     ui <- html_of(output$syn_group_selectors_ui)
     opts <- unique(regmatches(ui, gregexpr('(?<=<option value=")[^"]+', ui, perl = TRUE))[[1]])

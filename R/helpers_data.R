@@ -64,27 +64,41 @@ animal_label <- function(treatment, id, cage = NULL) {
 #' @keywords internal
 apply_subset_filter <- function(df, rv) {
   if (is.null(df) || nrow(df) == 0L) return(df)
+  args <- subset_filter_args(df, rv)
+  if (is.null(args)) return(df)
+  do.call(apply_exclusions, c(list(df = df), args))
+}
 
+#' The subset filter as [apply_exclusions()] arguments, or NULL when none is set
+#'
+#' Excluded animals are stored as [animal_key()]s; they are given to
+#' apply_exclusions() as a data frame of arm, id and (with cages) cage.
+#' Columns that are not mapped, or not in `df`, are left out, as before.
+#' @param df The data the filter applies to.
+#' @param rv Shared reactiveValues.
+#' @keywords internal
+subset_filter_args <- function(df, rv) {
   ex_ids <- shiny::isolate(rv$exclude_ids)        %||% character(0)
   ex_tx  <- shiny::isolate(rv$exclude_treatments) %||% character(0)
   ex_cg  <- shiny::isolate(rv$exclude_cages)      %||% character(0)
-
-  id_col <- shiny::isolate(rv$settings$col_id)
-  tx_col <- shiny::isolate(rv$settings$col_treatment)
-  cg_col <- shiny::isolate(rv$settings$col_cage)
-
-  if (length(ex_ids) > 0L && has_col(df, id_col) && has_col(df, tx_col)) {
-    key <- animal_key(arm_labels(df, tx_col, shiny::isolate(rv$settings$col_dose)),
-                      df[[id_col]], if (has_col(df, cg_col)) df[[cg_col]])
-    df <- df[!(key %in% ex_ids), , drop = FALSE]
+  if (!length(ex_ids) && !length(ex_tx) && !length(ex_cg)) return(NULL)
+  s <- shiny::isolate(rv$settings)
+  col <- function(x) if (has_col(df, x)) x
+  cage <- col(s$col_cage)
+  animals <- if (length(ex_ids)) {
+    parts <- strsplit(ex_ids, "|||", fixed = TRUE)
+    a <- data.frame(arm = vapply(parts, `[`, "", 1L), id = vapply(parts, `[`, "", 2L),
+                    stringsAsFactors = FALSE)
+    if (!is.null(cage)) a$cage <- vapply(parts, function(p) if (length(p) >= 3L) p[3L] else NA_character_, "")
+    a
   }
-  if (length(ex_tx) > 0L && has_col(df, tx_col)) {
-    df <- df[!(as.character(df[[tx_col]]) %in% ex_tx), , drop = FALSE]
-  }
-  if (length(ex_cg) > 0L && has_col(df, cg_col)) {
-    df <- df[!(as.character(df[[cg_col]]) %in% ex_cg), , drop = FALSE]
-  }
-  df
+  list(animals = animals,
+       treatments = if (length(ex_tx)) ex_tx,
+       cages = if (length(ex_cg)) ex_cg,
+       treatment_column = s$col_treatment %||% "",
+       id_column = s$col_id %||% "",
+       cage_column = cage,
+       dose_column = col(s$col_dose))
 }
 
 #' Sorted distinct values of the treatment column
@@ -556,10 +570,13 @@ detect_date_format <- function(data, date_column, reference_date,
 #' Days before the reference date are reported (R20.D1).
 #'
 #' @inheritParams detect_date_format
+#' The exported [study_days()] returns the data and raises the notes as a
+#' warning; the dashboard shows them as a notification instead.
+#'
 #' @return A list: `data` (with a `Day` column), `layout`, `reason` and
 #'   `notes`.
 #' @keywords internal
-study_days <- function(data, date_column, reference_date, date_order = "auto") {
+study_days_info <- function(data, date_column, reference_date, date_order = "auto") {
   info <- detect_date_format(data, date_column, reference_date, date_order)
   tmp <- data
   tmp[[".me_date_iso"]] <- format(info$dates, "%Y-%m-%d")
@@ -615,11 +632,11 @@ ensure_preprocessed <- function(rv) {
   data <- apply_subset_filter(rv$uploaded_data, rv)
   settings <- rv$settings
 
-  # Date → Day. R20.D1: study_days() reads the whole column and stops on an
+  # Date → Day. R20.D1: study_days_info() reads the whole column and stops on an
   # ambiguous or contradictory layout instead of guessing.
   date_fmt_warning <- NULL
   if (!is.null(settings$time_method) && settings$time_method == "from_date") {
-    sd <- study_days(data, settings$col_date_for_day, settings$reference_date,
+    sd <- study_days_info(data, settings$col_date_for_day, settings$reference_date,
                      settings$date_order %||% "auto")
     if (length(sd$notes)) date_fmt_warning <- paste(sd$notes, collapse = " ")
     data <- sd$data
@@ -632,7 +649,7 @@ ensure_preprocessed <- function(rv) {
   if (!is.null(settings$volume_method) && settings$volume_method == "calculate") {
     len_col <- settings$col_length %||% "Length"
     wid_col <- settings$col_width  %||% "Width"
-    vol_formula <- settings$volume_formula %||% "modified_ellipsoid"
+    vol_formula <- settings$volume_formula %||% "ellipsoid"   # calculate_volume()'s default
     ht_col <- if (!is.null(settings$col_height) && nzchar(settings$col_height)) settings$col_height else NULL
     if (has_col(data, len_col) && has_col(data, wid_col)) {
       data <- mouseExperiment::calculate_volume(
@@ -742,61 +759,7 @@ validate_uploaded_file <- function(file_path, file_ext) {
   })
 }
 
-#' Read an uploaded study CSV, whatever its delimiter and encoding -- R20.D23
-#'
-#' `read.csv()` alone rejected semicolon-separated files with decimal commas
-#' (what Excel writes in much of Europe) with a raw error, rejected Latin-1
-#' and UTF-16 files, loaded a tab-separated `.csv` silently as one column, and
-#' shifted every later column when a value held an unquoted comma. This sniffs
-#' the encoding (byte-order marks, else UTF-8 or Latin-1), the delimiter
-#' (comma, semicolon or tab) and the decimal mark, and stops with a message
-#' naming the line when rows and header disagree.
-#'
-#' @param path File path.
-#' @return A data frame (headers sanitised as by `read.csv()`).
-#' @keywords internal
-read_study_csv <- function(path) {
-  raw <- readBin(path, "raw", n = min(file.size(path), 262144L))
-  enc <- if (length(raw) >= 2L && raw[1] == as.raw(0xFF) && raw[2] == as.raw(0xFE)) {
-    "UTF-16LE"
-  } else if (length(raw) >= 2L && raw[1] == as.raw(0xFE) && raw[2] == as.raw(0xFF)) {
-    "UTF-16BE"
-  } else if (length(raw) >= 3L && all(raw[1:3] == as.raw(c(0xEF, 0xBB, 0xBF)))) {
-    "UTF-8-BOM"
-  } else if (validUTF8(rawToChar(raw[raw != as.raw(0)]))) {
-    "UTF-8"
-  } else {
-    "latin1"
-  }
-  con <- file(path, encoding = enc)
-  head_lines <- tryCatch(readLines(con, n = 50L, warn = FALSE), finally = close(con))
-  head_lines <- head_lines[nzchar(trimws(head_lines))]
-  if (!length(head_lines)) stop("The file is empty.", call. = FALSE)
-  # Fields outside quotes, per line, for each candidate delimiter.
-  unquoted <- gsub('"[^"]*"', "", head_lines)
-  counts <- vapply(c(",", ";", "\t"), function(d) {
-    n <- lengths(regmatches(unquoted, gregexpr(d, unquoted, fixed = TRUE)))
-    if (all(n == n[1]) && n[1] > 0) n[1] else 0L
-  }, integer(1))
-  sep <- if (any(counts > 0)) names(counts)[which.max(counts)] else ","
-  dec <- if (sep != "," && any(grepl("[0-9],[0-9]", unquoted))) "," else "."
-  # Every row must have the header's number of fields.
-  con <- file(path, encoding = enc)
-  nf <- tryCatch(utils::count.fields(con, sep = sep, quote = "\"", blank.lines.skip = TRUE,
-                                     comment.char = ""), finally = close(con))
-  if (length(nf) > 1L && any(nf != nf[1], na.rm = TRUE)) {
-    bad <- which(nf != nf[1])[1]
-    stop(sprintf(paste0(
-      "Line %d has %d fields but the header has %d. A value probably contains ",
-      "an unquoted '%s'; put that value in quotes, or remove the '%s'."),
-      bad, nf[bad], nf[1], if (sep == "\t") "tab" else sep, if (sep == "\t") "tab" else sep),
-      call. = FALSE)
-  }
-  utils::read.table(path, sep = sep, dec = dec, header = TRUE, quote = "\"",
-                    comment.char = "", fill = FALSE, stringsAsFactors = FALSE,
-                    check.names = TRUE, strip.white = TRUE, fileEncoding = enc,
-                    na.strings = c("NA", ""))
-}
+# read_study_csv() moved to R/prepare_study.R and is exported (R20-AB).
 
 #' Detect column names matching common patterns
 #'

@@ -6093,3 +6093,52 @@ The Tumor Growth pilot (R20-Z) was merged, which accepted the script's shape, an
 - the arm labels;
 - dates to days;
 - the survival events from the volume limit and the removal reasons.
+
+## R20-AB The dashboard's data preparation as package functions (v0.37.0, 2026-10-23)
+
+**The decision,** from the maintainer, after the R script (R20-Z, R20-AA):
+- scripts should be able to start from the uploaded file ("Level 2"), with the file in the ZIP only when the user ticks it;
+- this comes before CRAN preparation, so the exported API is settled once.
+
+This is step 1: the preparation becomes package functions that the dashboard calls. Step 2 records the steps and writes them into the script.
+
+**The functions** (`R/prepare_study.R`, exported). Each was a dashboard helper:
+
+| Function | Was | Notes |
+|---|---|---|
+| `read_study_csv()` | `read_study_csv()` (internal) | moved unchanged |
+| `apply_exclusions()` | the core of `apply_subset_filter(df, rv)` | Shiny-free. `animals` is a data frame of `arm`, `id` and `cage`, so a script shows which animals were removed. `apply_subset_filter()` now converts the stored keys and calls it. |
+| `study_days()` | `study_days()` (internal, returned a list) | Returns the data, and raises the notes as a warning. The list version is now `study_days_info()`, which the dashboard uses to show the notes as a notification. |
+| `label_arms()` | `paste(treatment, dose)` in three modules | |
+| `survival_events()` | `survival_animal_rows()` + `volume_threshold_events()` + the removal-reason deaths, inline in `mod_survival.R` | Returns one row per animal with `Time` and `Event`, which `survival_statistics()` now reads. The number of deaths added is the attribute `death_events_added`. |
+
+**A path dependence removed.**
+- Tumor Growth, with a dose column, wrote its "TreatmentGroup" labels into the shared `rv$processed_data` and set `rv$tx_col <- "TreatmentGroup"`.
+- `ensure_preprocessed()` returns that cache, so Toxicity and Dose Response analysed "Drug_A Low 5"-style arms after Tumor Growth had run, and "Drug_A Low" otherwise.
+- Tumor Growth now labels its own copy. The shared data and `rv$tx_col` are always the treatment column.
+- **For the maintainer:** with a dose column, Toxicity now never splits arms by dose. A study whose treatment column alone does not separate its arms (one name at every dose) would merge them there, as it already did when Toxicity ran first. Labelling Toxicity's arms by dose, as Tumor Growth, Survival and Synergy do, is a behaviour change left for the maintainer to decide.
+
+**Smaller fixes:**
+- `ensure_preprocessed()`'s fallback volume formula was `"modified_ellipsoid"`, while Tumor Growth and `calculate_volume()` use `"ellipsoid"`. The upload page always sets the formula, so the two never met; the fallback now agrees.
+
+**Tests** (`test-prepare-study.R`, 7 tests):
+- `read_study_csv()`: semicolons with decimal commas, and the line-numbered error.
+- `apply_exclusions()`:
+  - an ear tag removed in one arm and cage only;
+  - arm labels with doses;
+  - arms and cages;
+  - the error for missing columns.
+- The subset filter equals `apply_exclusions()` with the stored settings.
+- `study_days()`: returns the data, warns about unreadable values, and stops on ambiguous dates unless the order is given.
+- `label_arms()`.
+- `survival_events()`:
+  - first flagged day;
+  - volume limit;
+  - a death from another cause becoming an event;
+  - its two errors.
+- The existing tests of the internals still pass, with `study_days_info()` where they read the list.
+- **One existing test changed.** R20.D36's test asserted that `rv$tx_col` is "TreatmentGroup" after a Tumor Growth run, which was the path dependence itself. It now asserts that the shared data keep the treatment column. Its purpose is unchanged: Synergy still runs on its own dose-labelled choices.
+
+**Verification (executed):**
+- The full suite, Bayesian fits skipped: 705 tests, 0 failed.
+- `R CMD check --no-manual --no-tests`: Status OK, including the new examples.

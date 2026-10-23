@@ -240,7 +240,7 @@ test_that("D.9: empty and NULL input survive the filter", {
 
 test_that("D.9: each supported date layout is read to the right day", {
   mk <- function(v) data.frame(Date = v, stringsAsFactors = FALSE)
-  day <- function(v, ...) study_days(mk(v), "Date", "2025-03-24", ...)$data$Day
+  day <- function(v, ...) study_days_info(mk(v), "Date", "2025-03-24", ...)$data$Day
   expect_equal(day(c("03/24/2025", "03/31/2025")), c(0, 7))
   expect_equal(day(c("24/03/2025", "31/03/2025")), c(0, 7))
   expect_equal(day(c("2025-03-24", "2025-03-31 09:30")), c(0, 7))

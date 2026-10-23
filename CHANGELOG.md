@@ -5,6 +5,32 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.37.0] - 2026-10-23
+
+The dashboard's data preparation as package functions (`CODE_REVIEW.md` R20-AB), the
+first step of R scripts that start from the uploaded file.
+
+### Added
+- **Five exported functions** do what the dashboard does to an upload before any
+  analysis. The dashboard now calls them itself.
+  - `read_study_csv()`: reads comma, semicolon or tab separated files, a decimal comma,
+    and UTF-8, Latin-1 or UTF-16.
+  - `apply_exclusions()`: the subset filter. Animals are identified by arm, ID and cage;
+    arms and cages can be excluded too.
+  - `study_days()`: dates to study days, with the whole column deciding day/month order.
+  - `label_arms()`: "Treatment Dose" arm labels.
+  - `survival_events()`: one row per animal with its time and event. Events come from an
+    event column or a volume limit, plus deaths from removal reasons.
+  - Before, a package user analysing the same file had to rebuild these steps.
+
+### Fixed
+- **Toxicity and Dose Response no longer change arm labels depending on whether Tumor
+  Growth ran first.**
+  - With a dose column mapped, Tumor Growth used to replace the shared prepared data with
+    its "Treatment Dose" labels.
+  - The two tabs then analysed those labels, and their own treatment names otherwise.
+  - Tumor Growth now labels its own copy, so both tabs always use the treatment column.
+
 ## [0.36.0] - 2026-10-23
 
 The R script on every analysis tab (`CODE_REVIEW.md` R20-AA).
