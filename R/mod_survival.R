@@ -792,24 +792,26 @@ survival_server <- function(id, rv) {
     show_analysis_modal("Fitting survival model\u2026", "Results will appear automatically when complete.")
     on.exit(shiny::removeModal(), add = TRUE)
 
-    result <- safe_analysis(module = "survival", {
-      # R20.D14: the ID column is passed (it used to have to be named "ID").
-      # R20.6: the declared unit of randomisation decides the test.
-      mouseExperiment::survival_statistics(
-        df = data,
-        time_column = time_col_use,
-        censor_column = censor_col_use,
-        treatment_column = tx_col_surv,
-        cage_column = cage_col_surv,
-        id_column = id_col_surv,
-        randomisation_unit = if (!is.null(cage_col_surv))
-                               rv$settings$randomisation_unit %||% "mouse" else "mouse",
-        dose_column = dose_col_surv,
-        reference_group = ref_group,
-        firth_correction = TRUE,
-        verbose = FALSE
-      )
-    })
+    # R20.D14: the ID column is passed (it used to have to be named "ID").
+    # R20.6: the declared unit of randomisation decides the test.
+    surv_args <- list(
+      df = data,
+      time_column = time_col_use,
+      censor_column = censor_col_use,
+      treatment_column = tx_col_surv,
+      cage_column = cage_col_surv,
+      id_column = id_col_surv,
+      randomisation_unit = if (!is.null(cage_col_surv))
+                             rv$settings$randomisation_unit %||% "mouse" else "mouse",
+      dose_column = dose_col_surv,
+      reference_group = ref_group,
+      firth_correction = TRUE,
+      verbose = FALSE
+    )
+    result <- safe_analysis(module = "survival",
+                            do.call(mouseExperiment::survival_statistics, surv_args))
+    # R20-AA: the call exactly as made, for the R script in Download Results.
+    if (!isTRUE(result$error)) result$call_record <- record_call("survival_statistics", surv_args)
 
     # Store event source for downstream use (KM plot titles, summary text)
     result$event_src_used     <- event_src

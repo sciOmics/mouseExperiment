@@ -11,8 +11,9 @@ record_call(fun, args, data_arg = "df", exprs = list())
 
 \item{args}{The argument list passed to it, exactly as passed.}
 
-\item{data_arg}{The argument that holds the data. Its value is kept as
-\code{data} (the frame the script's CSV is written from), not deparsed.}
+\item{data_arg}{The argument that holds the data, or NULL when the call
+takes none (power analysis). Its value is kept as \code{data} (the frame the
+script's data file is written from), not deparsed.}
 
 \item{exprs}{Named calls to write in place of argument values that do not
 deparse readably, e.g. \code{permutation_test = quote(perm_spec(...))}.}

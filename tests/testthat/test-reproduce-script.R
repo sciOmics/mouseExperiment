@@ -24,7 +24,7 @@ tg_rv <- function(...) {
     data_valid = TRUE, session_id = NULL, settings = settings)
 }
 
-# Download only the script (the data must come with it), unzip, and run it.
+# Download only the script (it writes the data it reads), unzip, and run it.
 run_downloaded_script <- function(output, session) {
   session$setInputs(tg_dl_group_tables = character(0), tg_dl_group_plots = character(0),
                     tg_dl_group_diagnostics = character(0), tg_dl_group_data = character(0),
@@ -112,7 +112,7 @@ test_that("R20-Z: the randomisation test is written as the call that ran", {
 
     # Before the test's result arrives, the script says so instead of running it.
     res$permutation_test <- NULL
-    s <- g("tg_reproduce_script")(res)
+    s <- g("tg_script_bundle")(res)$lines
     expect_true(any(grepl("had not finished", s, fixed = TRUE)))
     expect_false(any(grepl("perm <-", s, fixed = TRUE)))
   }))
@@ -135,7 +135,7 @@ test_that("R20-Z: a Bayesian run's script names the fit the worker made", {
   res <- list(model_type_used = "bayes",
               call_record = g("record_call")("bayesian_tumor_growth", task$args),
               posterior_summary = data.frame(x = 1))
-  s <- g("tg_reproduce_script")(res)
+  s <- g("tg_script_bundle")(res)$lines
   expect_silent(parse(text = s))
   expect_true(any(grepl("result <- bayesian_tumor_growth(", s, fixed = TRUE)))
   expect_true(any(grepl("n_chains = 2L", s, fixed = TRUE)))

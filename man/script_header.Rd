@@ -4,15 +4,14 @@
 \alias{script_header}
 \title{The opening lines every script shares}
 \usage{
-script_header(title, rec, data_file)
+script_header(title, when, data_files)
 }
 \arguments{
 \item{title}{What was run, e.g. "Tumor Growth (LME4)".}
 
-\item{rec}{The main call's record, for the time of the run.}
+\item{when}{The time of the run.}
 
-\item{data_file}{The data's path inside the ZIP, without the extension:
-the script reads the \code{.rds} (exact) and falls back to the \code{.csv}.}
+\item{data_files}{The data files the script reads, without extensions.}
 }
 \description{
 The opening lines every script shares

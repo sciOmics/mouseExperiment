@@ -29,26 +29,21 @@ DL_TOP_LEVEL <- c("code", "report")
 #' @param label What the checkbox says.
 #' @param file File name; tables and plots without the extension.
 #' @param kind "table" (a data frame), "plot" (a ggplot or other printable
-#'   plot) or "file" (a function that writes the file to the path it is given).
+#'   plot), "file" (a function that writes the file to the path it is given)
+#'   or "files" (a function that writes several files into the directory it is
+#'   given and returns their paths relative to it, e.g. a script and its data).
 #' @param value For "table" and "plot", a function returning the object (or
-#'   NULL when it cannot be made); for "file", a function(path).
+#'   NULL when it cannot be made); for "file", a function(path); for "files",
+#'   a function(dir).
 #' @param about One line describing the file, for README.txt.
 #' @param row_names Write the data frame's row names (e.g. an ANOVA table).
-#' @param requires Ids of items that go into the ZIP with this one, ticked or
-#'   not: the R script needs the data it reads.
 #' @keywords internal
-dl_item <- function(id, group, label, file, kind = c("table", "plot", "file"),
-                    value, about = label, row_names = FALSE, requires = character(0)) {
+dl_item <- function(id, group, label, file, kind = c("table", "plot", "file", "files"),
+                    value, about = label, row_names = FALSE) {
   kind <- match.arg(kind)
   stopifnot(group %in% names(DL_GROUPS), is.function(value))
   list(id = id, group = group, label = label, file = file, kind = kind,
-       value = value, about = about, row_names = row_names, requires = requires)
-}
-
-# The ticked ids plus what they require.
-dl_with_required <- function(chosen, items) {
-  req <- unlist(lapply(Filter(function(x) x$id %in% chosen, items), `[[`, "requires"))
-  union(chosen, req)
+       value = value, about = about, row_names = row_names)
 }
 
 #' The "Download Results" tab's contents
@@ -130,7 +125,6 @@ add_download_results <- function(input, output, session, prefix, module,
     },
     content = function(file) {
       chosen <- unlist(lapply(names(DL_GROUPS), function(g) input[[gid(g)]]))
-      chosen <- dl_with_required(chosen, current())
       it <- Filter(function(x) x$id %in% chosen, current())
       write_results_zip(file, it, fmt = input[[id("plot_format")]] %||% "png",
                         size = plot_size(), header = readme_header())
@@ -164,13 +158,16 @@ write_results_zip <- function(zipfile, items, fmt = c("png", "pdf", "svg"),
     dir <- if (nzchar(folder)) file.path(outdir, folder) else outdir
     dir.create(dir, showWarnings = FALSE)
     f <- tryCatch(dl_write(x, dir, fmt, size), error = function(e) NULL)
-    if (is.null(f)) {
+    if (!length(f)) {
       missing <- c(missing, x$label)
       next
     }
+    # A "files" item writes several; the first is the item, the rest its data.
     rel <- if (nzchar(folder)) file.path(folder, f) else f
-    written <- c(written, rel)
-    listing <- c(listing, sprintf("  %-40s %s", rel, x$about))
+    new <- !rel %in% written
+    written <- c(written, rel[new])
+    listing <- c(listing, sprintf("  %-40s %s", rel[new],
+                                  c(x$about, rep(paste("read by", rel[1L]), length(rel) - 1L))[new]))
   }
 
   readme <- c(header, "", "Files", listing)
@@ -185,9 +182,13 @@ write_results_zip <- function(zipfile, items, fmt = c("png", "pdf", "svg"),
   invisible(zipfile)
 }
 
-# Write one item into `dir`; returns its file name, or NULL when the object
-# is not available.
+# Write one item into `dir`; returns its file name (several for "files"), or
+# NULL when the object is not available.
 dl_write <- function(x, dir, fmt, size) {
+  if (identical(x$kind, "files")) {
+    rel <- x$value(dir)
+    return(rel[file.exists(file.path(dir, rel))])
+  }
   if (identical(x$kind, "file")) {
     x$value(file.path(dir, x$file))
     return(if (file.exists(file.path(dir, x$file))) x$file else NULL)

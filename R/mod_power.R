@@ -499,7 +499,8 @@ lmm_power_note <- function(st) {
     mode              = "apriori_lmm",
     ap_submode        = "find_power",
     lmm_params        = result$params,
-    lmm_attrition     = result$attrition
+    lmm_attrition     = result$attrition,
+    call_records      = if (!is.null(context$call_record)) list(context$call_record)
   )
   shinyjs::runjs("window.trackAnalysisComplete('power', true);")
   output$pw_status_msg <- shiny::renderUI(
@@ -662,25 +663,21 @@ power_server <- function(id, rv) {
       show_analysis_modal("Computing a priori power\u2026", "Results will appear automatically when complete.")
       on.exit(shiny::removeModal(), add = TRUE)
 
-      # Call apriori_power_analysis() once per effect size; combine results
+      # Call apriori_power_analysis() once per effect size; combine results.
+      # R20-AA: each call's arguments are kept for the R script.
       if (input$pw_ap_es_mode == "cohens_d") {
-        ap_runs <- lapply(es_vals, function(d) {
-          tryCatch(
-            mouseExperiment::apriori_power_analysis(
-              effect_size          = d,
-              n_groups             = n_groups,
-              alpha                = alpha_vals,
-              target_power         = power_vals,
-              n_per_group          = n_vals,
-              mode                 = input$pw_ap_submode,
-              p_adjust_method      = p_adj,
-              n_comparisons        = n_comp,
-              dropout_rate         = dropout,
-              sd_sensitivity_range = 0   # no SD to vary
-            ),
-            error = function(e) list(error = TRUE, message = conditionMessage(e))
-          )
-        })
+        ap_args <- lapply(es_vals, function(d) list(
+          effect_size          = d,
+          n_groups             = n_groups,
+          alpha                = alpha_vals,
+          target_power         = power_vals,
+          n_per_group          = n_vals,
+          mode                 = input$pw_ap_submode,
+          p_adjust_method      = p_adj,
+          n_comparisons        = n_comp,
+          dropout_rate         = dropout,
+          sd_sensitivity_range = 0   # no SD to vary
+        ))
       } else {
         # delta + SD path: single call, sensitivity table available
         delta_val <- input$pw_ap_delta %||% 0
@@ -691,25 +688,23 @@ power_server <- function(id, rv) {
           })
           return()
         }
-        ap_runs <- list(
-          tryCatch(
-            mouseExperiment::apriori_power_analysis(
-              delta                = delta_val,
-              pooled_sd            = sd_val,
-              n_groups             = n_groups,
-              alpha                = alpha_vals,
-              target_power         = power_vals,
-              n_per_group          = n_vals,
-              mode                 = input$pw_ap_submode,
-              p_adjust_method      = p_adj,
-              n_comparisons        = n_comp,
-              dropout_rate         = dropout,
-              sd_sensitivity_range = 0.4
-            ),
-            error = function(e) list(error = TRUE, message = conditionMessage(e))
-          )
-        )
+        ap_args <- list(list(
+          delta                = delta_val,
+          pooled_sd            = sd_val,
+          n_groups             = n_groups,
+          alpha                = alpha_vals,
+          target_power         = power_vals,
+          n_per_group          = n_vals,
+          mode                 = input$pw_ap_submode,
+          p_adjust_method      = p_adj,
+          n_comparisons        = n_comp,
+          dropout_rate         = dropout,
+          sd_sensitivity_range = 0.4
+        ))
       }
+      ap_runs <- lapply(ap_args, function(a) tryCatch(
+        do.call(mouseExperiment::apriori_power_analysis, a),
+        error = function(e) list(error = TRUE, message = conditionMessage(e))))
 
       # Check for errors
       errors <- Filter(function(x) isTRUE(x$error), ap_runs)
@@ -736,7 +731,9 @@ power_server <- function(id, rv) {
         method_note       = ap_runs[[1]]$method_note,
         p_adjust_method   = p_adj,
         n_comparisons     = n_comp,
-        dropout_rate      = dropout
+        dropout_rate      = dropout,
+        call_records      = lapply(ap_args, function(a)
+          record_call("apriori_power_analysis", a, data_arg = NULL))
       )
 
       shinyjs::runjs("window.trackAnalysisComplete('power', true);")
@@ -792,11 +789,16 @@ power_server <- function(id, rv) {
           if (length(dl) != 1L || is.na(dl) || dl <= 0) Inf else dl
         },
         alpha               = alpha_vals,
-        n_simulations       = as.integer(input$pw_lmm_n_sims %||% 500)
+        n_simulations       = as.integer(input$pw_lmm_n_sims %||% 500),
+        # R20-AA: seeded like the other resampling analyses, so a rerun, and
+        # the R script, give the same power. It drew a new stream each run.
+        seed                = 20260730L
       )
       launch_background_job(
         kind = "power_sim",
         task = background_task(mouseExperiment::apriori_power_simulation, sim_args),
+        context = list(call_record = record_call("apriori_power_simulation", sim_args,
+                                                 data_arg = NULL)),
         input = input, output = output, session = session, rv = rv,
         job_id_field = "pw_job_id",
         modal_title  = "Running LMM power simulation\u2026",

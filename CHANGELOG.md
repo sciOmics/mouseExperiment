@@ -5,6 +5,29 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.36.0] - 2026-10-23
+
+The R script on every analysis tab (`CODE_REVIEW.md` R20-AA).
+
+### Added
+- **Download Results on Survival, Toxicity, Drug Synergy, Dose Response and Power offers the R
+  script too.** Each script repeats the run's own package calls:
+  - **Survival:** `survival_statistics()`, or `bayesian_survival()`. Events derived from the
+    volume limit or the removal reasons are in its data, and the script says so.
+  - **Toxicity:** the body-weight model and the weight-loss threshold (one data file), or the
+    therapeutic window.
+  - **Drug Synergy:** one day, or every evaluable day.
+  - **Dose Response:** the chosen dose series.
+  - **Power:** one call per effect size, stacked as the dashboard shows them, or the LMM
+    simulation. These scripts need no data.
+
+### Changed
+- **The R script is one item, "R script, with the data it reads".** It writes `analysis.R` and
+  its data (`.rds`, with a `.csv` beside it), so it can no longer be downloaded without its
+  data. The separate "Analysed data (R, exact)" item from 0.35.0 is gone.
+- **The LMM power simulation is seeded** (20260730), like the dashboard's other resampling. A
+  rerun now gives the same power, and so does its script. Before, every run drew a new stream.
+
 ## [0.35.0] - 2026-10-23
 
 The R script download, piloted on Tumor Growth (`CODE_REVIEW.md` R20-Z).
