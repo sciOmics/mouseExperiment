@@ -5,6 +5,35 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.35.0] - 2026-10-23
+
+The R script download, piloted on Tumor Growth (`CODE_REVIEW.md` R20-Z).
+
+### Added
+- **Download Results on Tumor Growth offers an R script** (`analysis.R`) that repeats the run
+  with the package.
+  - **What it runs:** the exact call the dashboard made, recorded when it was made, with every
+    argument it passed.
+  - **Its data:** it reads the analysed data that comes with it in the ZIP, ticked or not.
+    `data/analysed_data.rds` holds it exactly; the CSV is the same table as text.
+  - **What it prints:** the main tables, then `sessionInfo()`.
+  - **The randomisation test** is included as the call that ran, with its seed.
+  - **Bayesian runs** name the fit the worker made, whose seed is the package default (42).
+  - **Not repeated:** plot styling. The plots in the ZIP are the ones the dashboard drew.
+- **The analysed data in the ZIP is the frame this run analysed.** Before, it was whatever
+  another tab had last prepared.
+
+### Fixed
+- **The endpoint model behind the AUC, synergy, dose-response and the therapeutic window no
+  longer changes structure on a borderline convergence check.**
+  - **The cause:** a failed lme4 gradient check sent the correlated random-slope model
+    straight to uncorrelated slopes.
+  - **The trigger:** the check flipped on data that differed by about 1e-13, such as
+    calculated volumes read back from 17-digit text.
+  - **The effect:** the AUC's intervals moved by up to 5%.
+  - **The fix:** the endpoint model now restarts from the estimates first, as the main model
+    has since 0.30.0 (R20-T). The results then agree to about 1e-6.
+
 ## [0.34.0] - 2026-10-22
 
 The dashboard joins the package (`CODE_REVIEW.md` R20-Y).

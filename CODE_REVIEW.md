@@ -5985,3 +5985,52 @@ Both were reported from the dashboard while using the All Features demo.
   - `skip_if_not_installed()` for the Suggests in the dashboard's tests;
   - help titles ending in a period;
   - the check's runtime.
+
+## R20-Z The R script download, piloted on Tumor Growth (v0.35.0, 2026-10-23)
+
+**The request,** from the maintainer: download an R script of the analysis, with all function calls, so that a user can reproduce it with mouseExperiment. The agreed design:
+- capture the call at run time, not rebuild it from the sidebar;
+- Level 1 first, from the data as analysed;
+- a round-trip test;
+- pilot on Tumor Growth, then roll out to the other tabs.
+
+**The design:**
+- **`record_call()`** (`R/reproduce_script.R`) keeps the function name, every argument exactly as passed, the data, and the time. Tumor Growth records:
+  - the frequentist call (`tumor_growth_statistics()`, the `do.call()` arguments);
+  - the randomisation test's call, which is the same call with `permutation_test`;
+  - the Bayesian worker's call (`bayesian_tumor_growth()`, from `.tg_bayes_task()`).
+  - `perm_spec()` is now built as a call and evaluated, so the script writes that same call instead of a deparsed object.
+- **`tg_reproduce_script()`** writes the script:
+  - a header with the version, the commit when the package came from GitHub, and how to install it;
+  - a version check;
+  - the data;
+  - the recorded call with every argument, explicit `NULL`s included (`cage_column = NULL` is not the default `"Cage"`);
+  - the main tables, the randomisation test once its result is in, and `sessionInfo()`.
+- **Download Results:**
+  - **New items:** an "R script" group with `analysis.R`, and an exact copy of the data (`data/analysed_data.rds`).
+  - **`dl_item(requires =)`** puts the script's data into the ZIP even when it is not ticked.
+  - **"Analysed data"** is now the frame the run recorded. `rv$processed_data`, which it used before, is rewritten whenever another tab prepares the data.
+
+**What the round trip found:**
+- **CSV is not exact.** `write.csv()` keeps 15 significant digits, and a calculated volume needs 17.
+  - Even 17-digit text does not always read back exactly: R's parser is not correctly rounded on every platform. On this Mac, `as.numeric(sprintf("%.17g", 2^-30))` is one unit in the last place off.
+  - So the script reads the `.rds`. The CSV stays for other software.
+- **A real bug: the endpoint model changed structure on a borderline gradient check.**
+  - The calculated volumes read back from 17-digit text (98 of 604 values about 1e-13 off) failed lme4's gradient check for the correlated random-slope model, at max|grad| 0.0086 against a tolerance of 0.002. The original data passed it.
+  - `me_endpoint_model()` then fell back to uncorrelated slopes, and the AUC intervals moved by up to 5%.
+  - The main model and the body-weight model have retried from the estimates since R20-T; the endpoint model never did. It now calls `me_lmer_restart()`.
+  - Across five perturbations of about 1e-13, the structure stays correlated and the results agree to 1.3e-5 at most, against 5% before.
+  - The endpoint model is shared by the AUC, synergy, dose-response and the therapeutic window.
+
+**Tests** (`test-reproduce-script.R`, 5 tests). Each runs the tab through `testServer()`, downloads only the script, unzips, runs `analysis.R` in a clean environment, and compares it with the dashboard's own result:
+- **LME4:** ANOVA, comparisons and treatment effects equal to 1e-8. The ZIP holds the script and both data files.
+- **AUC** on volumes calculated from three calipers, with necrotic observations excluded: equal to 1e-8.
+- **The randomisation test** (19 permutations): the script writes `perm_spec(unit = "mouse", n_perm = 19L, seed = 20260730L)`, and its p-value equals the dashboard's. Before the result arrives, the script says so instead of running the test.
+- **Bayesian:** the script parses, and its call has exactly the worker's arguments. No fit is run here; the Bayesian tests cover the model.
+- **The endpoint model on the 17-digit copy:** the AUC agrees with the original to 1e-4. It fails without the restart, and skips where the parser reads 17 digits back exactly.
+
+**Verification (executed):**
+- The full suite, Bayesian fits skipped: 689 tests, 0 failed. The endpoint-model restart changed no existing test's numbers.
+- `R CMD check --no-manual --no-tests`: Status OK.
+
+**Still to do:** roll the script out to Survival, Toxicity, Drug Synergy, Dose Response and Power. Level 2, from the original upload, needs the data preparation (subset filter, arm labels, survival events) as exported functions.

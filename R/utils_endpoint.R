@@ -288,6 +288,11 @@ me_endpoint_model <- function(d, zero_floor = 2, volume_units = "mm3",
         msgs <<- c(msgs, conditionMessage(e))
         NULL
       })
+    # R20-Z: as for the main model (R20-T), a failed gradient check is retried
+    # from the estimates before the structure is given up. Without it, data
+    # that differ by 1e-13 (a CSV round trip) chose different structures.
+    rs <- me_lmer_restart(f, msgs)
+    f <- rs$fit; msgs <- rs$msgs
     failed <- is.null(f) ||
       any(grepl("failed to converge|unable to evaluate|unidentifiable|degenerate",
                 msgs, ignore.case = TRUE))
