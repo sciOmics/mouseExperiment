@@ -6616,7 +6616,7 @@ The forest plot takes the measure as a parameter: its title, axis and labels say
 - **The R script.** It writes `arms = ` only when some are excluded.
 
 **R22.17 — CRAN blockers outside the dashboard:**
-- the tests that fit Stan models call `skip_on_cran()`;
+- the 30 tests that fit Stan models call `skip_on_cran()`. They were found by tracing `brms::brm()` to skip over the whole suite, so the list is exact, not guessed. In CRAN mode the Bayesian files now run only their non-fitting tests, in seconds;
 - `htmltools` is in Suggests;
 - DESCRIPTION has `URL` (the repository and mouseexperiment.com) and `BugReports` (the Issues).
 

@@ -42,6 +42,7 @@ local({
   }
 
   test_that("bayesian_tumor_growth: returns list with all expected top-level fields", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes()
     res <- get_bayes_result()
     required <- c(
@@ -56,12 +57,14 @@ local({
   })
 
   test_that("bayesian_tumor_growth: model_type_used is 'bayes_tg'", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes()
     res <- get_bayes_result()
     expect_equal(res$model_type_used, "bayes_tg")
   })
 
   test_that("bayesian_tumor_growth: treatment_effects uses CrI column naming", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes()
     res <- get_bayes_result()
     required_cols <- c("Group", "Adjusted_Mean", "Lower_CrI", "Upper_CrI")
@@ -74,6 +77,7 @@ local({
   })
 
   test_that("bayesian_tumor_growth: pairwise_comparisons is a non-empty data frame", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes()
     res <- get_bayes_result()
     expect_s3_class(res$pairwise_comparisons, "data.frame")
@@ -81,6 +85,7 @@ local({
   })
 
   test_that("bayesian_tumor_growth: convergence per current Stan recommendations", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes()
     res <- get_bayes_result()
     diag <- res$mcmc_diagnostics
@@ -106,12 +111,14 @@ local({
   })
 
   test_that("bayesian_tumor_growth: mcmc_diagnostics has Converged column", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes()
     res <- get_bayes_result()
     expect_true("Converged" %in% colnames(res$mcmc_diagnostics))
   })
 
   test_that("bayesian_tumor_growth: posterior_summary is a data frame with at least one row", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes()
     res <- get_bayes_result()
     expect_s3_class(res$posterior_summary, "data.frame")
@@ -119,6 +126,7 @@ local({
   })
 
   test_that("bayesian_tumor_growth: growth_rates has same structure as lme4 path", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes()
     res <- get_bayes_result()
     expect_s3_class(res$growth_rates, "data.frame")
@@ -126,12 +134,14 @@ local({
   })
 
   test_that("bayesian_tumor_growth: model is a brmsfit object when return_model=TRUE", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes()
     res <- get_bayes_result()
     expect_s3_class(res$model, "brmsfit")
   })
 
   test_that("bayesian_tumor_growth: model is NULL when return_model=FALSE", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes()
     df <- make_tg_simple()
     res <- suppressWarnings(suppressMessages(
