@@ -225,6 +225,9 @@ apriori_power_simulation(n_per_group = c(6L, 10L), n_simulations = 50L, seed = 1
 | `tumor_growth_statistics()` | LME4 / AUC tumor growth analysis |
 | `bayesian_tumor_growth()` | Bayesian LMM via brms |
 | `tumor_doubling_time()` | Doubling time estimation |
+| `response_categories()` | Each animal's mRECIST response (mCR, mPR, mSD, mPD) and each arm's response rate |
+| `plot_response_waterfall()` | Best-response waterfall plot |
+| `growth_delay()` | Tumour growth delay: T − C in the median time to a volume, with an interval |
 | `plot_tumor_growth()` | Growth trajectory plot |
 | `plot_growth_rate()` | Growth-rate forest plot |
 
@@ -239,7 +242,7 @@ apriori_power_simulation(n_per_group = c(6L, 10L), n_simulations = 50L, seed = 1
 |----------|-------------|
 | `analyze_body_weight()` | LME4 mixed model for body weight |
 | `weight_loss_threshold()` | Time to a weight-loss threshold (KM / competing risks) |
-| `therapeutic_window_metric()` | Therapeutic window: efficacy vs weight loss |
+| `therapeutic_window_metric()` | Therapeutic window: efficacy (TGI and %T/C) vs weight loss |
 
 ### Drug Synergy
 | Function | Description |

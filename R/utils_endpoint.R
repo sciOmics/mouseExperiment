@@ -519,3 +519,23 @@ me_per_mouse_baseline <- function(df, key_cols, value_col, day_col = "Day",
   names(out)[ncol(out)] <- out_name
   out
 }
+
+#' Add %T/C beside TGI (F3)
+#'
+#' T/C is the treated arm's mean volume as a percentage of the control's, at
+#' the same day and from the same model: 100 - TGI, with the interval
+#' mirrored. Many reports, and the historical NCI activity criterion
+#' (T/C <= 42 %), use it rather than TGI.
+#' @param df A table with `TGI`, `TGI_Lower` and `TGI_Upper`.
+#' @return `df` with `TC`, `TC_Lower` and `TC_Upper` after `TGI_Upper`.
+#' @noRd
+me_add_tc <- function(df) {
+  if (is.null(df) || !all(c("TGI", "TGI_Lower", "TGI_Upper") %in% names(df))) return(df)
+  df$TC <- 100 - df$TGI
+  df$TC_Lower <- 100 - df$TGI_Upper
+  df$TC_Upper <- 100 - df$TGI_Lower
+  at <- match("TGI_Upper", names(df))
+  rest <- setdiff(names(df), c("TC", "TC_Lower", "TC_Upper"))
+  df[, c(rest[seq_len(at)], "TC", "TC_Lower", "TC_Upper", rest[-seq_len(at)]), drop = FALSE]
+}
+

@@ -264,9 +264,9 @@ therapeutic_window_metric <- function(df,
                       ifelse(hi < tolerability_threshold, "Tolerated",
                       ifelse(lo >= tolerability_threshold, "Not tolerated",
                              "Unclear")))
-  win <- win[, c("Treatment", "N_Animals", "TGI", "TGI_Lower", "TGI_Upper",
-                 "Worst_Loss", "Worst_Loss_Lower", "Worst_Loss_Upper",
-                 "N_Over_Threshold", "Tolerability")]
+  win <- me_add_tc(win[, c("Treatment", "N_Animals", "TGI", "TGI_Lower", "TGI_Upper",
+                           "Worst_Loss", "Worst_Loss_Lower", "Worst_Loss_Upper",
+                           "N_Over_Threshold", "Tolerability")])   # F3: %T/C
 
   thr <- format(tolerability_threshold)
   list(

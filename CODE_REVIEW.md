@@ -6397,7 +6397,9 @@ After the first CRAN release, renaming any of these breaks users' code. Fix: the
 | R22.19 Round trips in the dashboard's session | Minor | ✅ Fixed v0.39.0 |
 | R22.10 Duplicated helpers | Minor | ✅ Fixed v0.39.0 (`me_with_seed()`) and v0.42.0 (the rest) |
 | R22.8, R22.9, R22.11–R22.18 | Minor | ✅ Fixed v0.42.0 |
-| F1–F11 | Proposals | For the maintainer |
+| F1–F3 | Proposals | ✅ Added v0.43.0 |
+| F7 Prism export | Proposal | Declined by the maintainer (2026-10-23) |
+| F4–F6, F8–F11 | Proposals | Approved; to do |
 
 ### Open questions for the maintainer
 
@@ -6646,3 +6648,58 @@ Rewritten: `test-param_sensitivity.R`, `test-code_review_round3.R` (R3.9, B7.1),
 - The full suite, Bayesian fits skipped: 738 tests, 0 failed.
 - CRAN mode on the Bayesian files: their Stan tests skip and the rest pass.
 - `R CMD check --no-manual --no-tests`: Status OK, including the vignette's new preparation chunk.
+
+## R22-E Implementation log — v0.43.0: %T/C, mRECIST responses, growth delay (F1–F3, 2026-10-23)
+
+The maintainer approved every proposal except F7 (Prism export). These three come first because reports and reviewers ask for them.
+
+**F3 — %T/C.**
+- **Where.** `me_add_tc()` (`utils_endpoint.R`) adds `TC`, `TC_Lower` and `TC_Upper` after `TGI_Upper`, in the therapeutic window's `window_table` and dose-response's `tgi_table`. The Toxicity tab's window table shows "T/C (%)" and its interval.
+- **What.** T/C is 100 − TGI with the interval mirrored: the same model, day and draws.
+- **Not added to synergy.** Synergy works in fractional effects, where T/C would add a second scale for one quantity.
+
+**F1 — mRECIST.**
+- **The function.** `response_categories()` follows Gao et al. (2015):
+  - best response and best average response from the % change from each animal's first measurement, over days at least `min_day` (10) after it;
+  - their thresholds for mCR, mPR, mSD and mPD;
+  - "Not evaluable" for an animal never measured `min_day` after baseline, or with no positive baseline;
+  - per arm, counts and the response rate (mCR + mPR among evaluable animals).
+- **Keys.** Animals are keyed by arm, ID and cage.
+- **The plot.** `plot_response_waterfall()` sorts the animals by best response and marks the thresholds. Bars above a cap (200 %) are drawn at the cap, and a caption says how many: per-bar labels overlapped.
+
+**F2 — growth delay.**
+- **The function.** `growth_delay()` gives T − C in the Kaplan-Meier median time to a volume.
+  - **Each animal's time** is interpolated on the log scale; an animal that never reached the volume is censored at its last measurement.
+  - **An arm in which fewer than half reached it** has a median of `Inf`, shown as "not reached".
+  - **The interval** is a percentile bootstrap over animals within arms, seeded through `me_with_seed()`.
+  - **The delay** is also given as a percentage of C.
+- **The median convention.** survfit's: where the curve sits at exactly 0.5, the midpoint to the next event.
+
+**The dashboard.** Tumor Growth has a "Response & Delay" results tab (`mod_tumor_growth_endpoints.R`).
+- **Its data.** Both endpoints come from the data and columns the displayed run recorded (`call_record`), so they follow every run.
+- **Its settings.** The day responses count from, the delay volume (in the declared units) and the resamples. Changing them recomputes without refitting.
+- **Download Results** offers the response summary, the per-animal responses, the delay table and the waterfall.
+- **The R script** adds the two calls after the model's, on the same analysed data (`tg_endpoint_steps()`, `tg_script_bundle(extra = )`).
+- **Help** has an entry for the tab.
+
+**Tests** (`test-endpoints.R`):
+- **F3:** T/C = 100 − TGI with mirrored intervals, in both tables and on screen.
+- **F1:**
+  - each category, from constructed trajectories;
+  - a late drop that stays mPD because the average is high;
+  - the best day and the running mean;
+  - the response rate;
+  - reused tags kept apart;
+  - the waterfall's caption.
+- **F2:**
+  - exact interpolated times for log-linear growth;
+  - the medians by survfit's convention;
+  - T − C and its percentage, the interval holding the estimate, and reproducibility from the seed;
+  - an arm that never reaches the volume;
+  - the display table.
+- **The dashboard:** a Tumor Growth run, then a ZIP with the new tables, the waterfall and the script; the script reproduces both tables.
+
+**Checked in a browser.** The demo study's tab renders. The combination arm is 6 mPR and 2 mSD (response rate 75 %). Delays run from 5.7 days (Drug_A Low) to "not reached" (the combination and Drug_A High).
+
+
+**Verification (executed):** the full suite, Bayesian fits skipped: 745 tests, 0 failed. `R CMD check --no-manual --no-tests`: Status OK, including the new examples.

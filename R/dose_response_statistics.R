@@ -153,7 +153,7 @@ dose_response_statistics <- function(df,
   endpoint_model <- me_endpoint_model(d_std, me_zero_floor(volume_units, zero_floor),
                                       volume_units, "dose_response_statistics")
   tgi_table <- if (!is.na(ctrl_dose) && !is.null(endpoint_model)) {
-    dr_tgi_table(endpoint_model, evaluability, eval_day, ctrl_dose)
+    me_add_tc(dr_tgi_table(endpoint_model, evaluability, eval_day, ctrl_dose))   # F3
   } else NULL
   
   # Generate summary statistics

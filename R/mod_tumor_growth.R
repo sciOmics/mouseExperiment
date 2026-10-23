@@ -1661,6 +1661,10 @@ tumor_growth_server <- function(id, rv) {
   tg_wf_plot     <- tg_plots$waterfall
   tg_forest_plot <- tg_plots$forest
 
+  # F1/F2: response categories and growth delay, from the run's data.
+  tg_endpoints <- add_tg_endpoints(input, output, session, rv, colors = reactive(
+    remap_colors_to_treatment(build_color_vector(input, "tg_color", ordered_tg_grps()))))
+
   # --- Bayesian-specific output renderers ---
 
   output$tg_posterior_summary <- DT::renderDT({
@@ -1789,7 +1793,8 @@ tumor_growth_server <- function(id, rv) {
   add_tg_download_handlers(
     input, output, session, rv,
     tg_growth_plot, tg_rates_plot,
-    tg_auc_plot, tg_forest_plot, tg_wf_plot
+    tg_auc_plot, tg_forest_plot, tg_wf_plot,
+    endpoints = tg_endpoints
   )
 
   # F.7 — register the resume handler. The banner module dispatches to
