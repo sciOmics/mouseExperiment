@@ -817,6 +817,11 @@ toxicity_server <- function(id, rv) {
         adjust_tumor_weight = adjust, tumor_density = density,
         volume_units = units,
         covariates = covs, estimation = est_method, reference_group = ref_group)
+      # R20-AA: both calls exactly as made, for the R script. They travel with
+      # the pending run, so a run resumed after a reload keeps them.
+      rv$tox_pending$call_records <- list(
+        bw = record_call("analyze_body_weight", bw_args),
+        wl = record_call("weight_loss_threshold", rv$tox_pending$wl_args))
       launch_background_job(
         kind = "bw_model",
         task = background_task(mouseExperiment::analyze_body_weight, bw_args),
@@ -849,20 +854,23 @@ toxicity_server <- function(id, rv) {
         return()
       }
 
-      results$twm <- safe_analysis(module = "et_twm", {
-        mouseExperiment::therapeutic_window_metric(
-          df = data, volume_column = vol_col, weight_column = wt_col,
-          time_column = time_col, treatment_column = tx_col, id_column = id_col,
-          cage_column = cage_col,  # R20.D31: cage is part of the animal key
-          adjust_tumor_weight = adjust, tumor_density = density,
-          volume_units = units, reference_group = ref_group,
-          # Backend 0.33.0: the endpoint model's zero floor, in the declared
-          # units even when the mass correction (and so `units`) is off.
-          zero_floor = if (identical(backend_volume_units(rv), "cm3")) 0.002 else NULL,
-          tolerability_threshold = tol_thr,
-          endpoint_method = ep_method, n_boot = n_boot_tw, boot_seed = 20260730L
-        )
-      })
+      twm_args <- list(
+        df = data, volume_column = vol_col, weight_column = wt_col,
+        time_column = time_col, treatment_column = tx_col, id_column = id_col,
+        cage_column = cage_col,  # R20.D31: cage is part of the animal key
+        adjust_tumor_weight = adjust, tumor_density = density,
+        volume_units = units, reference_group = ref_group,
+        # Backend 0.33.0: the endpoint model's zero floor, in the declared
+        # units even when the mass correction (and so `units`) is off.
+        zero_floor = if (identical(backend_volume_units(rv), "cm3")) 0.002 else NULL,
+        tolerability_threshold = tol_thr,
+        endpoint_method = ep_method, n_boot = n_boot_tw, boot_seed = 20260730L
+      )
+      results$twm <- safe_analysis(module = "et_twm",
+                                   do.call(mouseExperiment::therapeutic_window_metric, twm_args))
+      # R20-AA: the call exactly as made, for the R script.
+      if (!isTRUE(results$twm$error))
+        results$call_records <- list(twm = record_call("therapeutic_window_metric", twm_args))
 
       results$twm_reference <- ref_group
       n_err   <- as.integer(isTRUE(results$twm$error))

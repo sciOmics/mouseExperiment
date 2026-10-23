@@ -536,55 +536,59 @@ synergy_server <- function(id, rv) {
     on.exit(shiny::removeModal(), add = TRUE)
 
     if (rv$syn_over_time) {
-      result <- safe_analysis(module = "synergy_over_time", {
-        mouseExperiment::analyze_drug_synergy_over_time(
-          df               = analysis_data,
-          treatment_column = tx_col,
-          volume_column    = vol_col,
-          time_column      = time_col,
-          drug_a_name      = input$syn_drug_a,
-          drug_b_name      = input$syn_drug_b,
-          combo_name       = input$syn_combo,
-          control_name     = syn_ctrl,
-          # R20.D14: the ID column (it had to be named "ID"), cage, and the
-          # estimand and bootstrap settings, which "All dates" used to ignore.
-          id_column        = id_col_syn,
-          cage_column      = cage_col_syn,
-          endpoint_method  = input$syn_endpoint_method %||% "model",
-          n_boot           = as.integer(input$syn_n_boot %||% 2000L),
-          boot_seed        = 20260730L,
-          verbose          = FALSE,
-          volume_units     = backend_volume_units(rv)   # backend 0.33.0 zero floor
-        )
-      })
+      syn_fun <- "analyze_drug_synergy_over_time"
+      syn_args <- list(
+        df               = analysis_data,
+        treatment_column = tx_col,
+        volume_column    = vol_col,
+        time_column      = time_col,
+        drug_a_name      = input$syn_drug_a,
+        drug_b_name      = input$syn_drug_b,
+        combo_name       = input$syn_combo,
+        control_name     = syn_ctrl,
+        # R20.D14: the ID column (it had to be named "ID"), cage, and the
+        # estimand and bootstrap settings, which "All dates" used to ignore.
+        id_column        = id_col_syn,
+        cage_column      = cage_col_syn,
+        endpoint_method  = input$syn_endpoint_method %||% "model",
+        n_boot           = as.integer(input$syn_n_boot %||% 2000L),
+        boot_seed        = 20260730L,
+        verbose          = FALSE,
+        volume_units     = backend_volume_units(rv)   # backend 0.33.0 zero floor
+      )
+      result <- safe_analysis(module = "synergy_over_time",
+                              do.call(mouseExperiment::analyze_drug_synergy_over_time, syn_args))
     } else {
-      result <- safe_analysis(module = "synergy", {
-        mouseExperiment::analyze_drug_synergy(
-          df               = analysis_data,
-          treatment_column = tx_col,
-          volume_column    = vol_col,
-          time_column      = time_col,
-          id_column        = id_col_syn,
-          cage_column      = cage_col_syn,  # part of the animal key
-          drug_a_name      = input$syn_drug_a,
-          drug_b_name      = input$syn_drug_b,
-          combo_name       = input$syn_combo,
-          control_name     = syn_ctrl,
-          eval_time_point  = eval_tp,
-          # Backend v0.8.0+: "model" reads each arm's geometric mean at the
-          # evaluation day off a log-scale LMM fitted to every observation, so
-          # animals removed earlier still contribute. "survivors" reproduces the
-          # pre-0.8.0 raw survivor mean.
-          endpoint_method  = input$syn_endpoint_method %||% "model",
-          # Backend v0.7.0+: mouse-level bootstrap so the verdict carries an
-          # interval instead of standing on a bare point estimate.
-          n_boot           = as.integer(input$syn_n_boot %||% 2000L),
-          boot_seed        = 20260730L,
-          verbose          = FALSE,
-          volume_units     = backend_volume_units(rv)   # backend 0.33.0 zero floor
-        )
-      })
+      syn_fun <- "analyze_drug_synergy"
+      syn_args <- list(
+        df               = analysis_data,
+        treatment_column = tx_col,
+        volume_column    = vol_col,
+        time_column      = time_col,
+        id_column        = id_col_syn,
+        cage_column      = cage_col_syn,  # part of the animal key
+        drug_a_name      = input$syn_drug_a,
+        drug_b_name      = input$syn_drug_b,
+        combo_name       = input$syn_combo,
+        control_name     = syn_ctrl,
+        eval_time_point  = eval_tp,
+        # Backend v0.8.0+: "model" reads each arm's geometric mean at the
+        # evaluation day off a log-scale LMM fitted to every observation, so
+        # animals removed earlier still contribute. "survivors" reproduces the
+        # pre-0.8.0 raw survivor mean.
+        endpoint_method  = input$syn_endpoint_method %||% "model",
+        # Backend v0.7.0+: mouse-level bootstrap so the verdict carries an
+        # interval instead of standing on a bare point estimate.
+        n_boot           = as.integer(input$syn_n_boot %||% 2000L),
+        boot_seed        = 20260730L,
+        verbose          = FALSE,
+        volume_units     = backend_volume_units(rv)   # backend 0.33.0 zero floor
+      )
+      result <- safe_analysis(module = "synergy",
+                              do.call(mouseExperiment::analyze_drug_synergy, syn_args))
     }
+    # R20-AA: the call exactly as made, for the R script in Download Results.
+    if (!isTRUE(result$error)) result$call_record <- record_call(syn_fun, syn_args)
     
     if (!isTRUE(result$error)) {
       if (rv$syn_over_time) {

@@ -6034,3 +6034,62 @@ Both were reported from the dashboard while using the All Features demo.
 - `R CMD check --no-manual --no-tests`: Status OK.
 
 **Still to do:** roll the script out to Survival, Toxicity, Drug Synergy, Dose Response and Power. Level 2, from the original upload, needs the data preparation (subset filter, arm labels, survival events) as exported functions.
+
+## R20-AA The R script on every analysis tab (v0.36.0, 2026-10-23)
+
+The Tumor Growth pilot (R20-Z) was merged, which accepted the script's shape, and it rolls out to the other five tabs.
+
+**The framework (`R/reproduce_script.R`):**
+- **Steps.** A script is a list of `script_step()`s, one per recorded call.
+  - Each step reads its data from a file in `data/`; steps that share a file share the data.
+  - `record_call(data_arg = NULL)` records a call that takes no data (Power).
+- **`script_bundle()`** returns the script's lines and the data frames to write. `write_script_bundle()` writes `analysis.R`, plus an `.rds` and a `.csv` for each data file.
+- **The script reads data through `read_analysed()`,** a five-line helper written into it: the `.rds` if present, else the `.csv`.
+- **Download Results.** A new item kind, `"files"`, writes several files and reports them. The script is now one item, "R script, with the data it reads".
+  - `dl_item(requires =)` and the separate `.rds` item from R20-Z are removed: a script can no longer be downloaded without its data.
+  - The README lists each data file as read by `analysis.R`, and a file two items both write is listed once.
+
+**The tabs.** Each call is now an argument list passed to `do.call()`, recorded where it is made:
+
+| Tab | Calls recorded | Where |
+|---|---|---|
+| Survival | `survival_statistics()`; `bayesian_survival()` | `mod_survival.R`; `.surv_bayes_task()` via the job context |
+| Toxicity | `analyze_body_weight()` + `weight_loss_threshold()`; `therapeutic_window_metric()` | the pending run (so a resumed run keeps them); `mod_toxicity.R` |
+| Drug Synergy | `analyze_drug_synergy()` or `_over_time()` | `mod_synergy.R` |
+| Dose Response | `dose_response_statistics()` | `mod_dose_response.R` |
+| Power | `apriori_power_analysis()`, once per effect size; `apriori_power_simulation()` | `mod_power.R`; the simulation via the job context |
+
+- **Notes in the scripts:**
+  - **Survival:** when the dashboard derived the events, from the volume limit or the removal reasons, the script says which columns hold them.
+  - **Toxicity (window) and Synergy:** the bootstrap seed is in the call.
+  - **Power:** no data is needed.
+
+**Found along the way: the LMM power simulation was never seeded.**
+- `apriori_power_simulation(seed = NULL)` draws a new random-number stream, and the dashboard passed no seed.
+- So the same design gave a slightly different power on every run, and no script could have reproduced it.
+- It now passes `seed = 20260730L`, the seed the dashboard's other resampling uses.
+
+**Tests** (`test-reproduce-script-tabs.R`, 10 tests). Each runs the tab through `testServer()`, downloads only the script, runs it in a clean environment, and requires the dashboard's tables to 1e-8:
+
+| Test | Compared |
+|---|---|
+| Survival, Cox | hazard ratios |
+| Survival, events from a 1,500 mm³ volume limit | hazard ratios; the script names the limit |
+| Toxicity, body weight | fixed effects, rate comparisons and weight-loss events; both calls read one data file |
+| Toxicity, therapeutic window (200 bootstraps) | the window table |
+| Drug Synergy, one day (50 bootstraps), on days and volumes computed from dates and calipers | metrics and intervals |
+| Drug Synergy, every evaluable day | the summary |
+| Dose Response | TGI and the statistics table |
+| Power, analytic with two effect sizes | the stacked scenario table; the ZIP holds no data |
+| Power, delta and SD | scenarios and SD sensitivity |
+| Power, LMM simulation (20 simulations) | simulated power; the seed is in the script |
+
+**Verification (executed):**
+- The full suite, Bayesian fits skipped: 699 tests, 0 failed.
+- `R CMD check --no-manual --no-tests`: Status OK.
+
+**Still to do.** Level 2, scripts from the original upload, needs the data preparation as exported package functions:
+- the subset filter;
+- the arm labels;
+- dates to days;
+- the survival events from the volume limit and the removal reasons.

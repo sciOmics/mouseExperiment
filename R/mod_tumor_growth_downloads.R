@@ -300,18 +300,8 @@ add_tg_download_handlers <- function(input, output, session, rv,
         dl_item("data", "data", "Analysed data", "analysed_data", "table",
                 get(res$call_record$data %||% rv$processed_data),
                 "The data as analysed: one row per measurement, with the derived Day and Volume"),
-      # The same frame, exactly: CSV keeps 15 significant digits, and a
-      # calculated volume can need 17 (R20-Z). The R script reads this.
-      if (has(res$call_record$data))
-        dl_item("data_rds", "data", "Analysed data (R, exact)", "analysed_data.rds", "file",
-                function(path) saveRDS(res$call_record$data, path),
-                "The analysed data as an R object, read by analysis.R; identical to the CSV, without rounding"),
-      # R script (R20-Z)
-      if (!is.null(res$call_record))
-        dl_item("script", "code", "R script (repeats this run)", "analysis.R", "file",
-                function(path) writeLines(tg_reproduce_script(res), path),
-                "Repeats this run with the package, from the analysed data that comes with it",
-                requires = c("data", "data_rds")),
+      # R script, with the data it reads (R20-Z)
+      if (!is.null(res$call_record)) script_dl_item(function() tg_script_bundle(res)),
       # Report
       dl_item("report", "report", "HTML report", "report.html", "file",
               function(path) build_html_report(result = res,

@@ -9,11 +9,10 @@ dl_item(
   group,
   label,
   file,
-  kind = c("table", "plot", "file"),
+  kind = c("table", "plot", "file", "files"),
   value,
   about = label,
-  row_names = FALSE,
-  requires = character(0)
+  row_names = FALSE
 )
 }
 \arguments{
@@ -26,17 +25,17 @@ dl_item(
 \item{file}{File name; tables and plots without the extension.}
 
 \item{kind}{"table" (a data frame), "plot" (a ggplot or other printable
-plot) or "file" (a function that writes the file to the path it is given).}
+plot), "file" (a function that writes the file to the path it is given)
+or "files" (a function that writes several files into the directory it is
+given and returns their paths relative to it, e.g. a script and its data).}
 
 \item{value}{For "table" and "plot", a function returning the object (or
-NULL when it cannot be made); for "file", a function(path).}
+NULL when it cannot be made); for "file", a function(path); for "files",
+a function(dir).}
 
 \item{about}{One line describing the file, for README.txt.}
 
 \item{row_names}{Write the data frame's row names (e.g. an ANOVA table).}
-
-\item{requires}{Ids of items that go into the ZIP with this one, ticked or
-not: the R script needs the data it reads.}
 }
 \description{
 One file the "Download Results" tab can put in its ZIP

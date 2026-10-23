@@ -20,6 +20,7 @@ surv_dl_items <- function(res, km_plot, forest_plot) {
   ph    <- res$ph_test
   draws <- res$posterior_draws
   Filter(Negate(is.null), list(
+    if (!is.null(res$call_record)) script_dl_item(function() surv_script_bundle(res)),
     if (dl_has(res$results))
       dl_item("results", "tables", if (bayes) "Treatment effects" else "Hazard ratios",
               "survival_results", "table", dl_get(res$results),
@@ -77,6 +78,7 @@ tox_dl_items <- function(res, traj_plot, km_plot, window_plot) {
     twm <- res$twm
     if (is.null(twm) || isTRUE(twm$error)) return(NULL)
     return(Filter(Negate(is.null), list(
+      if (!is.null(res$call_records)) script_dl_item(function() tox_script_bundle(res)),
       if (dl_has(twm$window_table))
         dl_item("window", "tables", "Therapeutic window", "therapeutic_window", "table",
                 dl_get(twm$window_table), "TGI and worst weight loss by arm, with tolerability"),
@@ -92,6 +94,8 @@ tox_dl_items <- function(res, traj_plot, km_plot, window_plot) {
   wl <- res$weight_loss
   wl_ok <- !is.null(wl) && !isTRUE(wl$error)
   Filter(Negate(is.null), list(
+    if (!is.null(res$call_records) && (mm_ok || wl_ok))
+      script_dl_item(function() tox_script_bundle(res)),
     if (mm_ok && dl_has(mm$fixed_effects))
       dl_item("fixed", "tables", "Model coefficients", "body_weight_model", "table",
               dl_get(mm$fixed_effects), "Fixed effects of the body-weight model"),
@@ -152,6 +156,7 @@ syn_dl_items <- function(res, over_time, main_plot, trend_plot, tgi_plot, diag) 
              else res$synergy_metrics
   shown <- "Drawn as last shown on the Plots tabs; open a plot there first if it is missing."
   Filter(Negate(is.null), list(
+    if (!is.null(res$call_record)) script_dl_item(function() syn_script_bundle(res)),
     if (!is.null(metrics))
       dl_item("metrics", "tables", "Synergy metrics", "synergy_metrics", "table",
               function() as.data.frame(metrics),
@@ -193,6 +198,7 @@ dr_dl_items <- function(res, scatter_plot, tgi_plot) {
   st <- res$statistics
   shown <- "Drawn as last shown on the Plots tab."
   Filter(Negate(is.null), list(
+    if (!is.null(res$call_record)) script_dl_item(function() dr_script_bundle(res)),
     if (dl_has(res$summary_table))
       dl_item("summary", "tables", "Summary by dose", "dose_summary", "table",
               function() as.data.frame(res$summary_table), "Tumour volume by dose group"),
@@ -232,6 +238,7 @@ pw_dl_items <- function(res, curve_plot) {
   if (is.null(res) || isTRUE(res$error)) return(NULL)
   lmm <- identical(res$mode, "apriori_lmm")
   Filter(Negate(is.null), list(
+    if (length(res$call_records)) script_dl_item(function() pw_script_bundle(res)),
     if (dl_has(res$scenario_table))
       dl_item("scenarios", "tables", if (lmm) "Simulated power" else "Scenarios",
               if (lmm) "lmm_power" else "scenarios", "table",
