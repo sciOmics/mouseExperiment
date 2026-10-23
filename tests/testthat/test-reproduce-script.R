@@ -36,6 +36,10 @@ run_downloaded_script <- function(output, session) {
   env <- new.env(parent = globalenv())
   old <- setwd(dir)
   on.exit(setwd(old))
+  # R22.19: R's default generator, as in a fresh session. The dashboard's
+  # worker draws with L'Ecuyer-CMRG; a seeded result must not depend on it.
+  old_kind <- RNGkind("Mersenne-Twister", "Inversion", "Rejection")
+  on.exit(RNGkind(old_kind[1], old_kind[2], old_kind[3]), add = TRUE)
   suppressMessages(suppressWarnings(utils::capture.output(
     sys.source("analysis.R", envir = env, keep.source = FALSE))))
   list(files = files, env = env, script = readLines(file.path(dir, "analysis.R")))
@@ -107,6 +111,9 @@ test_that("R20-Z: the randomisation test is written as the call that ran", {
     expect_true(any(grepl('perm_spec(unit = "mouse", n_perm = 19L, seed = 20260730L)',
                           run$script, fixed = TRUE)))
     expect_equal(run$env$perm$p_value, res$permutation_test$p_value)
+    # R22.19: the draws themselves, not just the p-value, which often ties at
+    # its floor. The dashboard ran the test as a background job (L'Ecuyer-CMRG).
+    expect_identical(run$env$perm$perm_statistics, res$permutation_test$perm_statistics)
     expect_equal(run$env$perm$observed_statistic, res$permutation_test$observed_statistic,
                  tolerance = 1e-8)
 

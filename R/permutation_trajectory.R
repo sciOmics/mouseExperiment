@@ -365,7 +365,7 @@ trajectory_permutation_test <- function(df,
     on.exit({
       if (!is.null(old_seed)) assign(".Random.seed", old_seed, envir = .GlobalEnv)
     }, add = TRUE)
-    set.seed(spec$seed)
+    me_set_seed(spec$seed)   # R22.1
   }
 
   unit_names <- names(unit_labels)

@@ -4,7 +4,16 @@
 \alias{build_surv_forest_plot}
 \title{Hazard-ratio forest plot for the Survival tab}
 \usage{
-build_surv_forest_plot(res, ref_grp, pt_color, show_hr, show_ci, show_p)
+build_surv_forest_plot(
+  res,
+  ref_grp,
+  pt_color,
+  show_hr,
+  show_ci,
+  show_p,
+  measure = "Hazard Ratio",
+  abbrev = "HR"
+)
 }
 \arguments{
 \item{res}{Cox results table with \code{Group}, \code{HR}, \code{CI_Lower}, \code{CI_Upper},

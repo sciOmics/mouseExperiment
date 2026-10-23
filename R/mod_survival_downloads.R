@@ -52,9 +52,8 @@ add_surv_download_handlers <- function(input, output, session, rv, km_plot_r) {
     filename = function() paste0("survival_results_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv"),
     content = function(file) {
       shinyjs::runjs("window.trackDownload('survival', 'table', 'csv');")
-      if (!is.null(rv$surv_results$results)) {
-        write.csv(rv$surv_results$results, file, row.names = FALSE)
-      }
+      ef <- surv_effects(rv$surv_results)   # R22.2: Bayesian runs too
+      if (!is.null(ef)) write.csv(ef$table, file, row.names = FALSE)
     }
   )
 
@@ -71,7 +70,7 @@ add_surv_download_handlers <- function(input, output, session, rv, km_plot_r) {
     filename = function() paste0("forest_plot_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content = function(file) {
       shinyjs::runjs("window.trackDownload('survival', 'plot', 'png');")
-      req(rv$surv_results, !isTRUE(rv$surv_results$error), rv$surv_results$results)
+      req(rv$surv_results, !isTRUE(rv$surv_results$error), surv_effects(rv$surv_results))
       p <- surv_forest_plot_styled(rv$surv_results, input)
       req(!is.null(p))
       png(file, width = input$surv_plot_width %||% 900,
@@ -111,14 +110,16 @@ surv_risk_table <- function(km_fit) {
 #' The forest plot as the Plots tab styles it (labels, legend position)
 #' @keywords internal
 surv_forest_plot_styled <- function(res, input) {
-  if (is.null(res) || isTRUE(res$error) || is.null(res$results)) return(NULL)
+  ef <- surv_effects(res)
+  if (is.null(ef)) return(NULL)
   p <- build_surv_forest_plot(
-    res      = res$results,
+    res      = ef$forest,
     ref_grp  = res$reference_group,
     pt_color = input$surv_forest_pt_color %||% "steelblue",
     show_hr  = isTRUE(input$surv_forest_show_hr %||% TRUE),
     show_ci  = isTRUE(input$surv_forest_show_ci %||% TRUE),
-    show_p   = isTRUE(input$surv_forest_show_p  %||% TRUE)
+    show_p   = isTRUE(input$surv_forest_show_p  %||% TRUE),
+    measure  = ef$measure, abbrev = ef$abbrev
   )
   if (is.null(p)) return(NULL)
   p <- apply_plot_labels(p,
@@ -130,6 +131,34 @@ surv_forest_plot_styled <- function(res, input) {
                          ylab       = input$surv_plot_yaxis_label  %||% "",
                          legend_lab = input$surv_plot_legend_label %||% "")
   apply_legend_pos(p, input$surv_opt_legend_pos %||% "right")
+}
+
+#' A survival run's effects by arm, and what they measure
+#'
+#' CODE_REVIEW.md R22.2: a Cox run reports hazard ratios in `results`; a
+#' Bayesian AFT run reports time ratios with credible intervals in
+#' `treatment_effects` and has no `results`. The download, the CSV button,
+#' the forest plot and the R script read `results`, so after a Bayesian run
+#' they offered nothing, wrote no file, drew nothing and printed NULL.
+#' @param res `rv$surv_results`.
+#' @return NULL, or list(table, forest, measure, abbrev): the table as shown,
+#'   the same in the forest plot's columns (Group, HR, CI_Lower, CI_Upper,
+#'   P_Value), and the measure's name and abbreviation.
+#' @keywords internal
+surv_effects <- function(res) {
+  if (is.null(res) || isTRUE(res$error)) return(NULL)
+  if (identical(res$model_type_used, "bayes")) {
+    te <- res$treatment_effects
+    if (!is.data.frame(te) || !nrow(te)) return(NULL)
+    return(list(table = te,
+                forest = data.frame(Group = te$Group, HR = te$Time_Ratio, CI_Lower = te$Lower_CrI,
+                                    CI_Upper = te$Upper_CrI, P_Value = NA_real_,
+                                    stringsAsFactors = FALSE),
+                measure = "Time Ratio", abbrev = "TR"))
+  }
+  r <- res$results
+  if (!is.data.frame(r) || !nrow(r)) return(NULL)
+  list(table = r, forest = r, measure = "Hazard Ratio", abbrev = "HR")
 }
 
 #' The run's settings, for the README

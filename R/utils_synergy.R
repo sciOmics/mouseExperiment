@@ -63,7 +63,7 @@ synergy_bootstrap <- function(vols, n_boot = 2000L, seed = NULL) {  # R20.67: ci
     on.exit({
       if (!is.null(old_seed)) assign(".Random.seed", old_seed, envir = .GlobalEnv)
     }, add = TRUE)
-    set.seed(seed)
+    me_set_seed(seed)   # R22.1
   }
 
   # One resample: draw mice with replacement within each arm, then recompute

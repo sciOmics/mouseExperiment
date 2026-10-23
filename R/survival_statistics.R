@@ -551,7 +551,7 @@ cage_permutation_logrank <- function(df, group, reference_group,
     } else NULL
     on.exit(if (!is.null(old_seed)) assign(".Random.seed", old_seed, envir = .GlobalEnv),
             add = TRUE)
-    set.seed(seed)
+    me_set_seed(seed)   # R22.1
     vapply(seq_len(n_perm), function(i) stat_for(sample(cage_ids, n_trt)), numeric(1))
   }
   stats <- stats[is.finite(stats)]
@@ -808,7 +808,7 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
             old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) {
               get(".Random.seed", envir = .GlobalEnv)
             } else NULL
-            set.seed(withr_seed)
+            me_set_seed(withr_seed)   # R22.1
             lt <- coin::logrank_test(
               pair_formula, data = pair_data,
               distribution = coin::approximate(nresample = 20000L)

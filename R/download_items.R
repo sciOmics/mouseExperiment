@@ -21,10 +21,10 @@ surv_dl_items <- function(res, km_plot, forest_plot) {
   draws <- res$posterior_draws
   Filter(Negate(is.null), list(
     if (!is.null(res$call_record)) script_dl_item(function(up) surv_script_bundle(res, up)),
-    if (dl_has(res$results))
+    if (!is.null(surv_effects(res)))   # R22.2: a Bayesian run's are treatment_effects
       dl_item("results", "tables", if (bayes) "Treatment effects" else "Hazard ratios",
-              "survival_results", "table", dl_get(res$results),
-              if (bayes) "Posterior treatment effects by arm"
+              "survival_results", "table", function() surv_effects(res)$table,
+              if (bayes) "Posterior time ratios by arm, with credible intervals"
               else "Each arm against the reference, with the correction selected"),
     if (!is.null(res$km_fit))
       dl_item("risk", "tables", "Risk table", "risk_table", "table",
@@ -32,9 +32,10 @@ surv_dl_items <- function(res, km_plot, forest_plot) {
               "Animals at risk, events and censored, by arm and day"),
     dl_item("plot_km", "plots", "Kaplan-Meier curves", "kaplan_meier", "plot",
             dl_drawn(km_plot), "Survival curves by arm, as displayed"),
-    if (!bayes && dl_has(res$results))
+    if (!is.null(surv_effects(res)))
       dl_item("plot_forest", "plots", "Forest plot", "forest_plot", "plot",
-              dl_drawn(forest_plot), "Hazard ratios with their intervals"),
+              dl_drawn(forest_plot),
+              if (bayes) "Time ratios with their credible intervals" else "Hazard ratios with their intervals"),
     if (!is.null(ph) && !is.null(ph$table))
       dl_item("ph_table", "diagnostics", "Proportional-hazards test (CSV)", "ph_test",
               "table", function() {

@@ -381,6 +381,22 @@ me_beta_draws <- function(em, n, seed = NULL) {
   })
 }
 
+#' Seed R's generator, always with the same kinds
+#'
+#' CODE_REVIEW.md R22.1: `set.seed(seed)` keeps whatever generator is active.
+#' The dashboard's worker runs jobs with L'Ecuyer-CMRG (future's `seed =
+#' TRUE`), so the same seed drew a different stream there than in an R
+#' session: an LMM power simulation gave 0.833 on the worker and 0.933 in R.
+#' Seeding with R's default kinds makes a seeded result the same wherever it
+#' runs. Every caller restores `.Random.seed` afterwards, and with it the
+#' caller's own kinds.
+#' @noRd
+#' @keywords internal
+me_set_seed <- function(seed) {
+  set.seed(seed, kind = "Mersenne-Twister", normal.kind = "Inversion",
+           sample.kind = "Rejection")
+}
+
 #' Evaluate an expression under a seed, restoring the caller's RNG state
 #' @noRd
 #' @keywords internal
@@ -395,7 +411,7 @@ me_with_seed <- function(seed, expr) {
         rm(".Random.seed", envir = .GlobalEnv)
       }
     }, add = TRUE)
-    set.seed(seed)
+    me_set_seed(seed)
   }
   expr
 }

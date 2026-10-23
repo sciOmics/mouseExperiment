@@ -40,6 +40,10 @@ run_tab_script <- function(output, session, prefix) {
   env <- new.env(parent = globalenv())
   old <- setwd(dir)
   on.exit(setwd(old))
+  # R22.19: R's default generator, as in a fresh session. The dashboard's
+  # worker draws with L'Ecuyer-CMRG; a seeded result must not depend on it.
+  old_kind <- RNGkind("Mersenne-Twister", "Inversion", "Rejection")
+  on.exit(RNGkind(old_kind[1], old_kind[2], old_kind[3]), add = TRUE)
   suppressMessages(suppressWarnings(utils::capture.output(
     sys.source("analysis.R", envir = env, keep.source = FALSE))))
   list(env = env, files = utils::unzip(z, list = TRUE)$Name,
@@ -185,11 +189,14 @@ test_that("R20-AA: Power's delta-and-SD script includes the SD sensitivity", {
 
 test_that("R20-AA: Power's LMM simulation is seeded, and its script gives the same power", {
   shiny::testServer(g("power_server"), args = list(rv = shiny::reactiveValues()), {
-    session$setInputs(pw_mode = "apriori_lmm", pw_lmm_n_per_group = "6", pw_lmm_n_groups = 2,
-                      pw_lmm_n_sims = 20, pw_lmm_n_timepoints = 5, pw_lmm_day_interval = 3,
-                      pw_alpha = "0.05", run_pw_analysis = 1)
+    # A small effect, so the power is not near 0 or 1 under any stream and a
+    # different random stream shows (R22.19).
+    session$setInputs(pw_mode = "apriori_lmm", pw_lmm_n_per_group = "5", pw_lmm_n_groups = 2,
+                      pw_lmm_n_sims = 40, pw_lmm_n_timepoints = 5, pw_lmm_day_interval = 3,
+                      pw_lmm_tx_effect = 0.04, pw_alpha = "0.05", run_pw_analysis = 1)
     res <- rv$ap_results
     skip_if(!identical(res$mode, "apriori_lmm"), "the simulation did not finish here")
+    expect_true(all(res$scenario_table$Power > 0.1 & res$scenario_table$Power < 0.9))
     run <- run_tab_script(output, session, "pw")
     expect_true(any(grepl("seed = 20260730L", run$script, fixed = TRUE)))
     same_table(run$env$sim$power_table, res$scenario_table, "simulated power")

@@ -455,7 +455,8 @@ group_order_and_color_ui <- function(prefix, groups, ns = NS(NULL)) {
 #' @param show_hr,show_ci,show_p Which annotations to print beside each row.
 #' @return A ggplot, or NULL when there is nothing to plot.
 #' @keywords internal
-build_surv_forest_plot <- function(res, ref_grp, pt_color, show_hr, show_ci, show_p) {
+build_surv_forest_plot <- function(res, ref_grp, pt_color, show_hr, show_ci, show_p,
+                                   measure = "Hazard Ratio", abbrev = "HR") {
   plot_df <- res[!is.na(res$HR), ]
   if (!is.null(ref_grp)) plot_df <- plot_df[plot_df$Group != ref_grp, ]
   if (nrow(plot_df) == 0) return(NULL)
@@ -495,7 +496,7 @@ build_surv_forest_plot <- function(res, ref_grp, pt_color, show_hr, show_ci, sho
   plot_df$label_text <- vapply(seq_len(nrow(plot_df)), function(i) {
     if (isTRUE(plot_df$is_ref[i])) return("")
     parts <- character(0)
-    if (show_hr && !is.na(hr_vals[i]))  parts <- c(parts, paste0("HR: ", round(hr_vals[i], 2)))
+    if (show_hr && !is.na(hr_vals[i]))  parts <- c(parts, paste0(abbrev, ": ", round(hr_vals[i], 2)))
     if (show_ci && !is.na(ci_lo[i]))    parts <- c(parts, paste0("[", round(ci_lo[i], 2), "\u2013", round(ci_hi[i], 2), "]"))
     if (show_p  && !is.na(p_vals[i]))   parts <- c(parts, paste0("p = ", format_pval(p_vals[i])))
     paste(parts, collapse = "  ")
@@ -528,10 +529,10 @@ build_surv_forest_plot <- function(res, ref_grp, pt_color, show_hr, show_ci, sho
       labels = x_labels
     ) +
     ggplot2::labs(
-      title = paste("Forest Plot: Hazard Ratios vs", ref_grp),
+      title = paste0("Forest Plot: ", measure, "s vs ", ref_grp),
       # Plain "log10": the PNG device font has no subscript digits, so the
       # label rendered as "log" plus two boxes, on screen and in the download.
-      x     = "Hazard Ratio (log10 scale)",
+      x     = paste(measure, "(log10 scale)"),
       y     = NULL
     ) +
     ggplot2::theme_classic(base_size = 14) +

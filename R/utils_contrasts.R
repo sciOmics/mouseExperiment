@@ -166,23 +166,7 @@ build_requested_contrasts <- function(emm, spec, reference_group = NULL,
 #' @keywords internal
 me_contrast_summary <- function(x, ...) me_with_seed(20260930L, summary(x, ...))
 
-#' Evaluate `expr` under `seed`, leaving the caller's RNG state as it was
-#' @noRd
-#' @keywords internal
-me_with_seed <- function(seed, expr) {
-  genv <- globalenv()
-  had  <- exists(".Random.seed", envir = genv, inherits = FALSE)
-  old  <- if (had) get(".Random.seed", envir = genv, inherits = FALSE)
-  on.exit({
-    if (had) {
-      assign(".Random.seed", old, envir = genv)
-    } else if (exists(".Random.seed", envir = genv, inherits = FALSE)) {
-      rm(".Random.seed", envir = genv)
-    }
-  }, add = TRUE)
-  set.seed(seed)
-  expr
-}
+# me_with_seed() is in utils_endpoint.R (R22.10: it was defined in both files).
 
 #' Pairwise contrast table for the body-weight models
 #'
