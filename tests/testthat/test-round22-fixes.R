@@ -31,8 +31,8 @@ test_that("R22.1: the randomisation test draws the same permutations under eithe
 
 test_that("R22.1: the synergy bootstrap and the AUC draws do not depend on the RNG kind", {
   syn <- function() analyze_drug_synergy(master_synthetic_data, drug_a_name = "Drug_A Mid",
-    drug_b_name = "Drug_B", combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-    n_boot = 100, boot_seed = 20260730L, verbose = FALSE)
+    drug_b_name = "Drug_B", combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+    n_boot = 100, seed = 20260730L, verbose = FALSE)
   expect_equal(under_kind("Mersenne-Twister", syn())$synergy_ci,
                under_kind("L'Ecuyer-CMRG", syn())$synergy_ci)
   auc <- function() suppressWarnings(tumor_growth_statistics(master_synthetic_data,

@@ -12,15 +12,15 @@ analyze_drug_synergy(
   drug_a_name,
   drug_b_name,
   combo_name,
-  control_name = "Control",
-  eval_time_point = NULL,
+  reference_group = "Control",
+  endpoint_day = NULL,
   id_column = "ID",
   cage_column = NULL,
   endpoint_method = c("model", "last_obs", "survivors"),
   ci_thresholds = c(0.85, 1.15),
   additivity_margin = 0.1,
   n_boot = 2000L,
-  boot_seed = NULL,
+  seed = NULL,
   verbose = TRUE,
   volume_units = c("mm3", "cm3"),
   zero_floor = NULL
@@ -41,9 +41,9 @@ analyze_drug_synergy(
 
 \item{combo_name}{A character string specifying the name of the combination treatment group.}
 
-\item{control_name}{A character string specifying the name of the control/vehicle group. Default is "Control".}
+\item{reference_group}{A character string specifying the name of the control/vehicle group. Default is "Control".}
 
-\item{eval_time_point}{Day at which to evaluate synergy. \code{NULL}
+\item{endpoint_day}{Day at which to evaluate synergy. \code{NULL}
 (default): the last day on which all four arms are evaluable, i.e. at
 least 50 \% of each arm's enrolled animals, and at least 3, are still on
 study (see \code{\link{evaluable_days}}). A requested day must be
@@ -60,7 +60,7 @@ mice for the bootstrap; also used to report per-group n.}
 is counted as different animals (CODE_REVIEW.md T1). NULL or absent means
 no cage information.}
 
-\item{endpoint_method}{How each arm's volume at \code{eval_time_point} is
+\item{endpoint_method}{How each arm's volume at \code{endpoint_day} is
 obtained: "model" (default: each arm's geometric mean from a mixed model
 of log volume fitted to every observation, with a natural spline in time
 per arm and per-animal random slopes), "last_obs", or "survivors"
@@ -84,7 +84,7 @@ bootstrap resamples of animals within arm, control included
 (CODE_REVIEW.md R3.6 / R3.7 / G.6, R20.2). Either way the point estimate
 is reported, not the median of the draws. Default 2000. Set 0 to skip.}
 
-\item{boot_seed}{Optional integer seed for reproducible resampling.}
+\item{seed}{Optional integer seed for reproducible resampling.}
 
 \item{verbose}{Logical. If TRUE, prints detailed results to the console.}
 
@@ -183,8 +183,8 @@ was labelled synergistic in about half of simulated studies
 m <- master_synthetic_data
 syn <- analyze_drug_synergy(m,
   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
-  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-  cage_column = "Cage", n_boot = 200, boot_seed = 1, verbose = FALSE)
+  combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+  cage_column = "Cage", n_boot = 200, seed = 1, verbose = FALSE)
 syn$summary
 plot_drug_synergy(syn)
 }

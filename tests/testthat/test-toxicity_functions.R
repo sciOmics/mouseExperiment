@@ -160,7 +160,7 @@ test_that("therapeutic_window_metric returns expected structure", {
     id_column        = "ID",
     reference_group  = "Control",
     volume_units     = "mm3",
-    boot_seed        = 1
+    seed        = 1
   )
 
   expect_type(res, "list")
@@ -182,7 +182,7 @@ test_that("therapeutic_window_metric returns expected structure", {
 test_that("therapeutic_window_metric tolerability threshold is in percent", {
   df <- make_weight_data()
   tw <- function(...) therapeutic_window_metric(
-    df, reference_group = "Control", volume_units = "mm3", boot_seed = 1, ...)
+    df, reference_group = "Control", volume_units = "mm3", seed = 1, ...)
   expect_error(tw(tolerability_threshold = 0.2), "percent")
   # At 10 %, DrugA's worst loss (about 15 %) is no longer tolerated.
   win <- tw(tolerability_threshold = 10)$window_table

@@ -21,7 +21,7 @@ firth_study <- function() {
 surv_fit <- function(d) {
   w <- character(0)
   res <- withCallingHandlers(
-    survival_statistics(d, time_column = "Day", censor_column = "Event",
+    survival_statistics(d, time_column = "Day", event_column = "Event",
                         treatment_column = "Treatment", id_column = "ID",
                         reference_group = "Vehicle", verbose = FALSE),
     warning = function(cw) { w <<- c(w, conditionMessage(cw)); invokeRestart("muffleWarning") })
@@ -74,7 +74,7 @@ test_that("R20-X: a dose-response fit no longer warns about L-BFGS-B tolerances"
   w <- character(0)
   withCallingHandlers(suppressMessages(dose_response_statistics(
     df, dose_column = "Dose", treatment_column = "Treatment", volume_column = "Volume",
-    day_column = "Day", id_column = "ID", control_group_name = "D0",
+    time_column = "Day", id_column = "ID", reference_group = "D0",
     treatments = setdiff(unique(df$Treatment), "D0"))),
     warning = function(cw) { w <<- c(w, conditionMessage(cw)); invokeRestart("muffleWarning") })
   expect_false(any(grepl("L-BFGS-B uses 'factr'", w, fixed = TRUE)))

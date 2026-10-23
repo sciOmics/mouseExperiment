@@ -228,7 +228,7 @@ test_that("R3.31: Jonckheere-Terpstra trend test actually runs", {
 
   res <- suppressWarnings(suppressMessages(dose_response_statistics(
     df, dose_column = "Dose", volume_column = "Volume",
-    day_column = "Day", id_column = "ID", verbose = FALSE,
+    time_column = "Day", id_column = "ID", verbose = FALSE,
     treatments = c("Dose_10", "Dose_30", "Dose_100")      # one agent (R20.16)
   )))
   jt <- res$trend_test$jonckheere_test
@@ -676,7 +676,7 @@ test_that("R3.5: the endpoint estimand reaches synergy and the other consumers",
   # default is the last evaluable day, where controls have already been lost.
   syn <- function(m) suppressWarnings(suppressMessages(analyze_drug_synergy(
     df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
-    control_name = "Control", endpoint_method = m,
+    reference_group = "Control", endpoint_method = m,
     n_boot = 0, verbose = FALSE)))
 
   s_surv  <- syn("survivors")
@@ -703,8 +703,8 @@ test_that("R3.6/R3.7: synergy metrics carry bootstrap intervals", {
 
   r <- suppressWarnings(suppressMessages(analyze_drug_synergy(
     df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
-    control_name = "Control", eval_time_point = 21,
-    endpoint_method = "survivors", n_boot = 1000, boot_seed = 1,
+    reference_group = "Control", endpoint_day = 21,
+    endpoint_method = "survivors", n_boot = 1000, seed = 1,
     verbose = FALSE)))
 
   ci <- r$synergy_ci
@@ -715,14 +715,14 @@ test_that("R3.6/R3.7: synergy metrics carry bootstrap intervals", {
   # Reproducible given a seed.
   r2 <- suppressWarnings(suppressMessages(analyze_drug_synergy(
     df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
-    control_name = "Control", eval_time_point = 21,
-    endpoint_method = "survivors", n_boot = 1000, boot_seed = 1,
+    reference_group = "Control", endpoint_day = 21,
+    endpoint_method = "survivors", n_boot = 1000, seed = 1,
     verbose = FALSE)))
   expect_equal(ci$CI_Lower, r2$synergy_ci$CI_Lower)
   # n_boot = 0 skips it.
   r0 <- suppressWarnings(suppressMessages(analyze_drug_synergy(
     df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
-    control_name = "Control", eval_time_point = 21,
+    reference_group = "Control", endpoint_day = 21,
     endpoint_method = "survivors", n_boot = 0, verbose = FALSE)))
   expect_null(r0$synergy_ci)
 })
@@ -732,7 +732,7 @@ test_that("R3.6/R3.7: the therapeutic window carries intervals on both axes", {
   for (m in c("model", "last_obs")) {
     r <- suppressWarnings(suppressMessages(therapeutic_window_metric(
       df, reference_group = "Control", endpoint_method = m,
-      n_boot = 500, boot_seed = 2, adjust_tumor_weight = FALSE)))
+      n_boot = 500, seed = 2, adjust_tumor_weight = FALSE)))
     w <- r$window_table[r$window_table$Treatment != "Control", ]
     # Every interval exists and holds its own point estimate (R20.2).
     expect_true(all(is.finite(c(w$TGI_Lower, w$TGI_Upper))), info = m)
@@ -818,31 +818,6 @@ test_that("H.4: the log-rank fallback uses an exact permutation test", {
 })
 
 # ---- H.2 --------------------------------------------------------------------
-
-test_that("H.2 (superseded by R20.4): auc_permutations is ignored, with a warning", {
-  # The per-animal permutation p-values belonged to the Welch t-tests, which
-  # the model-based AUC replaced in v0.26.0.
-  set.seed(3)
-  days <- c(0, 4, 8, 12, 16, 20)
-  rows <- list()
-  for (tx in c("Control", "DrugA", "DrugB")) {
-    rate <- if (tx == "Control") 0.10 else 0.075
-    for (i in 1:9) {
-      rows[[length(rows) + 1L]] <- data.frame(
-        ID = paste0(tx, i), Cage = paste0(tx, "_C", (i > 4) + 1),
-        Treatment = tx, Day = days,
-        Volume = exp(log(200) + stats::rnorm(1, 0, 0.2) + rate * days +
-                       stats::rnorm(6, 0, 0.15)),
-        stringsAsFactors = FALSE)
-    }
-  }
-  df <- do.call(rbind, rows)
-  expect_warning(
-    suppressMessages(tumor_growth_statistics(
-      df, model_type = "auc", auc_permutations = 2000, auc_bootstrap_seed = 1,
-      plots = FALSE, verbose = FALSE)),
-    "ignored")
-})
 
 test_that("H.2: the permutation test warns when its resolution is too coarse", {
   # With 3 vs 3 there are only choose(6,3) = 20 label splits, so the smallest

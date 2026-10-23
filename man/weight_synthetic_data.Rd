@@ -29,7 +29,7 @@ contain spaces, as exported spreadsheets often do. It is the dashboard's
 "Weight" demo.
 }
 \examples{
-d <- calculate_dates(weight_synthetic_data, start_date = "March 1", year = 2025)
+d <- calculate_dates(weight_synthetic_data, reference_date = "March 1", year = 2025)
 head(d)
 }
 \keyword{datasets}

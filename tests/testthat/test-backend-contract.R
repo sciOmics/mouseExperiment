@@ -45,8 +45,8 @@ test_that("contract: synergy result carries the fields the Synergy tab renders",
     contract_df(), treatment_column = "Treatment", volume_column = "Volume",
     time_column = "Day", id_column = "ID",
     drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
-    control_name = "Control", eval_time_point = 28,
-    endpoint_method = "model", n_boot = 200, boot_seed = 1, verbose = FALSE)))
+    reference_group = "Control", endpoint_day = 28,
+    endpoint_method = "model", n_boot = 200, seed = 1, verbose = FALSE)))
 
   # syn_ci_table / syn_ci_verdict_note
   expect_false(is.null(res$synergy_ci))
@@ -72,7 +72,7 @@ test_that("contract: the therapeutic window carries both axes, the flag and attr
       time_column = "Day", treatment_column = "Treatment", id_column = "ID",
       reference_group = "Control", adjust_tumor_weight = FALSE,
       tolerability_threshold = 20,
-      endpoint_method = "model", n_boot = 200, boot_seed = 1)))
+      endpoint_method = "model", n_boot = 200, seed = 1)))
 
   # tox_et_twm_table / window_display_table / tox_window_plot read these.
   expect_true(all(c("Treatment", "N_Animals", "TGI", "TGI_Lower", "TGI_Upper",

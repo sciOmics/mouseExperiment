@@ -70,7 +70,7 @@ test_that("R20-W: a regression to zero takes the fixed floor, not the smallest v
 test_that("R20-W: synergy, dose-response and the therapeutic window take the floor's units", {
   d <- regressed()
   syn <- function(...) quiet(analyze_drug_synergy(d, drug_a_name = "Drug_A High",
-    drug_b_name = "Drug_B", combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
+    drug_b_name = "Drug_B", combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
     cage_column = "Cage", n_boot = 0, verbose = FALSE, ...))
   a <- syn(volume_units = "mm3")
   b <- syn(zero_floor = 20)
@@ -85,7 +85,7 @@ test_that("R20-W: synergy, dose-response and the therapeutic window take the flo
 
 test_that("R20.D60: the synergy metrics report the Bliss difference in percentage points", {
   r <- quiet(analyze_drug_synergy(m, drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
-    combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle", cage_column = "Cage",
+    combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle", cage_column = "Cage",
     n_boot = 0, verbose = FALSE))
   sm <- r$synergy_metrics
   expect_identical(sm$Metric[1], "Bliss Difference (percentage points)")

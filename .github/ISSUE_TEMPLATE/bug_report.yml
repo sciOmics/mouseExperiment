@@ -1,0 +1,47 @@
+name: Bug report
+description: Something in the dashboard or the R package gave a wrong result, an error, or did not work.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues are public. Please don't attach unpublished study data: a few made-up rows that show the problem are enough, or one of the demo datasets.
+        Security problems: please report them privately instead (see SECURITY.md).
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - The dashboard at mouseexperiment.com
+        - The dashboard on my computer (run_dashboard())
+        - The R package, in my own code
+        - An R script downloaded from the dashboard
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: On the dashboard's About tab, or packageVersion("mouseExperiment") in R.
+      placeholder: "0.40.0"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: Which tab or function, the settings you chose, and any error message.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: For the package, a short R snippet if you can.
+      render: r
+  - type: textarea
+    id: session
+    attributes:
+      label: sessionInfo()
+      description: Only for the package or a downloaded script. The output of sessionInfo() in R.
+      render: text

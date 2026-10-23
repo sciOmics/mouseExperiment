@@ -65,7 +65,7 @@ test_that("R20.8: an agent that accelerates growth yields no Bliss quantities", 
   df <- r20_synergy_df(c(Control = 0.10, DrugA = 0.13, DrugB = 0.10, Combo = 0.10))
   res <- suppressWarnings(analyze_drug_synergy(
     df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
-    control_name = "Control", verbose = FALSE, n_boot = 200, boot_seed = 1))
+    reference_group = "Control", verbose = FALSE, n_boot = 200, seed = 1))
 
   expect_false(res$bliss_applies)
   expect_true(is.na(res$bliss_independence$synergy))      # was TRUE
@@ -77,7 +77,7 @@ test_that("R20.8: an agent that accelerates growth yields no Bliss quantities", 
 
   ot <- suppressWarnings(suppressMessages(analyze_drug_synergy_over_time(
     df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
-    control_name = "Control", verbose = FALSE)))
+    reference_group = "Control", verbose = FALSE)))
   expect_false(any(ot$synergy_summary$Bliss_Applies))
   expect_equal(nrow(ot$peak_bliss_synergy), 0L)            # was day 28, 173.8 %
 
@@ -93,7 +93,7 @@ test_that("R20.8: inhibitory agents are unaffected", {
   df <- r20_synergy_df(c(Control = 0.10, DrugA = 0.07, DrugB = 0.075, Combo = 0.03))
   res <- suppressWarnings(analyze_drug_synergy(
     df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
-    control_name = "Control", verbose = FALSE, n_boot = 200, boot_seed = 1))
+    reference_group = "Control", verbose = FALSE, n_boot = 200, seed = 1))
   expect_true(res$bliss_applies)
   expect_true(is.logical(res$bliss_independence$synergy) &&
                 !is.na(res$bliss_independence$synergy))
@@ -102,7 +102,7 @@ test_that("R20.8: inhibitory agents are unaffected", {
 
   ot <- suppressWarnings(suppressMessages(analyze_drug_synergy_over_time(
     df, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
-    control_name = "Control", verbose = FALSE)))
+    reference_group = "Control", verbose = FALSE)))
   expect_equal(nrow(ot$peak_bliss_synergy), 1L)
   expect_true(ot$synergy_summary$Bliss_Applies[
     ot$synergy_summary$Time_Point == ot$peak_bliss_synergy$Time_Point])
@@ -190,7 +190,7 @@ test_that("R20.3: synergy counts animals by treatment + ID + cage", {
   d <- r20_t1_df()
   syn <- function(id, cage) quiet(analyze_drug_synergy(
     d, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
-    control_name = "Control", id_column = id, cage_column = cage,
+    reference_group = "Control", id_column = id, cage_column = cage,
     n_boot = 0, verbose = FALSE))
   a <- syn("UID", NULL); b <- syn("RID_cg", "Cage")
   expect_equal(unname(b$group_n), rep(8L, 4L))            # was 4 per arm
@@ -202,18 +202,18 @@ test_that("R20.15: over-time synergy takes an ID column that is not called ID", 
   names(d)[names(d) == "UID"] <- "Animal"
   ot <- quiet(analyze_drug_synergy_over_time(
     d, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
-    control_name = "Control", id_column = "Animal", n_boot = 0, verbose = FALSE))
+    reference_group = "Control", id_column = "Animal", n_boot = 0, verbose = FALSE))
   expect_equal(nrow(ot$synergy_summary), 7L)               # was an error
   d$Animal <- NULL
   expect_error(quiet(analyze_drug_synergy_over_time(
     d, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
-    control_name = "Control", verbose = FALSE)), "Missing required columns")
+    reference_group = "Control", verbose = FALSE)), "Missing required columns")
 })
 
 test_that("R20.3 / R20.15: survival works with reused IDs and a differently named ID column", {
   s <- r20_t1_surv(r20_t1_df())
   sv <- function(id) quiet(survival_statistics(
-    s, time_column = "Time", censor_column = "Event", treatment_column = "Treatment",
+    s, time_column = "Time", event_column = "Event", treatment_column = "Treatment",
     id_column = id, cage_column = NULL, reference_group = "Control", verbose = FALSE))
   a <- sv("UID"); b <- sv("RID_arm")
   expect_equal(b$results$HR, a$results$HR, tolerance = 1e-8)
@@ -226,7 +226,7 @@ test_that("R20.3: dose-response groups animals by the key", {
   # are named as the series (R20.16).
   dr <- function(id, cage = NULL) quiet(dose_response_statistics(
     d, dose_column = "Dose", treatment_column = "Treatment", volume_column = "Volume",
-    day_column = "Day", id_column = id, cage_column = cage,
+    time_column = "Day", id_column = id, cage_column = cage,
     treatments = c("DrugA", "DrugB", "Combo"), verbose = FALSE))
   # IDs restart in every cage, so only treatment + ID + cage identifies an animal.
   a <- dr("UID"); b <- dr("RID_cg", "Cage")
@@ -252,11 +252,11 @@ test_that("R20.43: entry points accept column names with spaces", {
   expect_equal(unname(lme4::fixef(tg1$model)), unname(lme4::fixef(tg0$model)),
                tolerance = 1e-8)
 
-  sv0 <- quiet(survival_statistics(s, time_column = "Time", censor_column = "Event",
+  sv0 <- quiet(survival_statistics(s, time_column = "Time", event_column = "Event",
     treatment_column = "Treatment", id_column = "UID", cage_column = NULL,
     reference_group = "Control", verbose = FALSE))
   sv1 <- quiet(survival_statistics(ss, time_column = "Days On Study",
-    censor_column = "Death Event", treatment_column = "Treatment Group",
+    event_column = "Death Event", treatment_column = "Treatment Group",
     id_column = "Animal ID", cage_column = NULL, reference_group = "Control",
     verbose = FALSE))                                       # "unexpected symbol" before
   expect_equal(sv1$results$HR, sv0$results$HR, tolerance = 1e-8)
@@ -266,13 +266,13 @@ test_that("R20.43: entry points accept column names with spaces", {
                                         verbose = FALSE))
   dr1 <- quiet(dose_response_statistics(dd, dose_column = "Dose mg",
     treatment_column = "Treatment Group", volume_column = "Tumor Volume",
-    day_column = "Study Day", id_column = "Animal ID", treatments = tx, verbose = FALSE))
+    time_column = "Study Day", id_column = "Animal ID", treatments = tx, verbose = FALSE))
   expect_equal(unname(stats::coef(dr1$linear_model)), unname(stats::coef(dr0$linear_model)),
                tolerance = 1e-8)                             # "unexpected symbol" before
 
   ot1 <- quiet(analyze_drug_synergy_over_time(dd, treatment_column = "Treatment Group",
     volume_column = "Tumor Volume", time_column = "Study Day", drug_a_name = "DrugA",
-    drug_b_name = "DrugB", combo_name = "Combo", control_name = "Control",
+    drug_b_name = "DrugB", combo_name = "Combo", reference_group = "Control",
     id_column = "Animal ID", n_boot = 0, verbose = FALSE))
   expect_equal(nrow(ot1$synergy_summary), 7L)
 })
@@ -372,7 +372,7 @@ r20_cage_surv <- function(n_cages = 2, per_cage = 5, hr = 1, seed = 1) {
 
 test_that("R20.6: randomisation by animal uses ordinary standard errors, no cluster()", {
   s <- r20_cage_surv()
-  r <- quiet(survival_statistics(s, time_column = "Time", censor_column = "Event",
+  r <- quiet(survival_statistics(s, time_column = "Time", event_column = "Event",
     treatment_column = "Treatment", cage_column = "Cage", id_column = "ID",
     reference_group = "Control", verbose = FALSE))
   expect_identical(r$randomisation_unit, "mouse")
@@ -386,7 +386,7 @@ test_that("R20.6: randomisation by animal uses ordinary standard errors, no clus
 test_that("R20.6: randomisation by cage permutes whole cages and reports the floor", {
   s <- r20_cage_surv(n_cages = 2, hr = 0.2)
   expect_warning(
-    r <- survival_statistics(s, time_column = "Time", censor_column = "Event",
+    r <- survival_statistics(s, time_column = "Time", event_column = "Event",
       treatment_column = "Treatment", cage_column = "Cage", id_column = "ID",
       randomisation_unit = "cage", reference_group = "Control", verbose = FALSE),
     "cannot reach p <")
@@ -400,7 +400,7 @@ test_that("R20.6: randomisation by cage permutes whole cages and reports the flo
 
   # Three cages per arm: floor 0.1.
   s3 <- r20_cage_surv(n_cages = 3, hr = 0.2)
-  r3 <- quiet(survival_statistics(s3, time_column = "Time", censor_column = "Event",
+  r3 <- quiet(survival_statistics(s3, time_column = "Time", event_column = "Event",
     treatment_column = "Treatment", cage_column = "Cage", id_column = "ID",
     randomisation_unit = "cage", reference_group = "Control", verbose = FALSE))
   expect_equal(r3$cage_permutation$Min_Attainable_P, 0.1)
@@ -409,7 +409,7 @@ test_that("R20.6: randomisation by cage permutes whole cages and reports the flo
 test_that("R20.6: cage randomisation is refused when cages hold several treatments", {
   s <- r20_cage_surv()
   s$Cage <- rep(c("C1", "C2"), length.out = nrow(s))   # every cage mixes arms
-  expect_error(quiet(survival_statistics(s, time_column = "Time", censor_column = "Event",
+  expect_error(quiet(survival_statistics(s, time_column = "Time", event_column = "Event",
     treatment_column = "Treatment", cage_column = "Cage", id_column = "ID",
     randomisation_unit = "cage", reference_group = "Control", verbose = FALSE)),
     "hold more than one treatment")
@@ -490,12 +490,12 @@ test_that("R20.1: synergy defaults to the last evaluable day and refuses later d
   d <- r20_gompertz(1)
   ev <- evaluable_days(d)
   r <- quiet(analyze_drug_synergy(d, drug_a_name = "A", drug_b_name = "B",
-    combo_name = "Combo", control_name = "Control", n_boot = 0, verbose = FALSE))
+    combo_name = "Combo", reference_group = "Control", n_boot = 0, verbose = FALSE))
   expect_equal(r$eval_time_point, ev$last_day)
   expect_lt(r$eval_time_point, 28)                  # the last study day before
   expect_equal(r$evaluability$last_day, ev$last_day)
   expect_error(quiet(analyze_drug_synergy(d, drug_a_name = "A", drug_b_name = "B",
-    combo_name = "Combo", control_name = "Control", eval_time_point = 28,
+    combo_name = "Combo", reference_group = "Control", endpoint_day = 28,
     n_boot = 0, verbose = FALSE)), "is not evaluable")
 })
 
@@ -505,7 +505,7 @@ test_that("R20.1: with Gompertz growth the endpoint model recovers TGI and the B
   est <- vapply(1:6, function(s) {
     d <- r20_gompertz(s)
     r <- quiet(analyze_drug_synergy(d, drug_a_name = "A", drug_b_name = "B",
-      combo_name = "Combo", control_name = "Control", n_boot = 0, verbose = FALSE))
+      combo_name = "Combo", reference_group = "Control", n_boot = 0, verbose = FALSE))
     t <- r$eval_time_point
     tru <- vapply(c("Control", "A", "B", "Combo"), r20_gompertz_truth, numeric(1), t = t)
     fe  <- 1 - tru[2:4] / tru[["Control"]]
@@ -525,7 +525,7 @@ test_that("R20.1: with Gompertz growth the endpoint model recovers TGI and the B
 test_that("R20.2: synergy intervals, tests and point estimates describe one estimand", {
   d <- r20_gompertz(2)
   r <- quiet(analyze_drug_synergy(d, drug_a_name = "A", drug_b_name = "B",
-    combo_name = "Combo", control_name = "Control", n_boot = 500, boot_seed = 1,
+    combo_name = "Combo", reference_group = "Control", n_boot = 500, seed = 1,
     verbose = FALSE))
   ci <- r$synergy_ci
   # The point estimate is reported (not the median of the draws), and it lies
@@ -539,8 +539,8 @@ test_that("R20.2: synergy intervals, tests and point estimates describe one esti
   # The per-animal estimand pairs with a per-animal bootstrap, and also reports
   # its point estimate.
   s <- quiet(analyze_drug_synergy(d, drug_a_name = "A", drug_b_name = "B",
-    combo_name = "Combo", control_name = "Control", endpoint_method = "last_obs",
-    n_boot = 300, boot_seed = 1, verbose = FALSE))
+    combo_name = "Combo", reference_group = "Control", endpoint_method = "last_obs",
+    n_boot = 300, seed = 1, verbose = FALSE))
   expect_equal(s$synergy_ci$Estimate[1], s$summary$TGI_Percent[1])
   expect_match(s$interval_method, "bootstrap of animals")
 })
@@ -552,7 +552,7 @@ test_that("R20.1 / R20.29: the endpoint model uses random slopes and leaves out 
   last_combo <- max(d$Day[d$Treatment == "Combo" & d$ID == 1])
   d$Volume[d$Treatment == "Combo" & d$ID == 1 & d$Day == last_combo] <- 0
   r <- quiet(analyze_drug_synergy(d, drug_a_name = "A", drug_b_name = "B",
-    combo_name = "Combo", control_name = "Control", n_boot = 0, verbose = FALSE))
+    combo_name = "Combo", reference_group = "Control", n_boot = 0, verbose = FALSE))
   info <- r$endpoint_model
   expect_true(info$random_effects %in% c("correlated", "uncorrelated"))
   expect_identical(info$time_basis, "natural spline, 3 df")
@@ -564,7 +564,7 @@ test_that("R20.1: over-time synergy analyses evaluable days only, and lists the 
   d <- r20_gompertz(4)
   ev <- evaluable_days(d)
   r <- quiet(analyze_drug_synergy_over_time(d, drug_a_name = "A", drug_b_name = "B",
-    combo_name = "Combo", control_name = "Control", n_boot = 200, boot_seed = 1,
+    combo_name = "Combo", reference_group = "Control", n_boot = 200, seed = 1,
     verbose = FALSE))
   expect_equal(r$synergy_summary$Time_Point, ev$days)
   expect_equal(r$evaluability$excluded$Day, ev$excluded$Day)
@@ -595,7 +595,7 @@ test_that("R20.17: dose-response analyses the last evaluable day and reports TGI
   expect_true(all(tt$TGI_Lower <= tt$TGI & tt$TGI <= tt$TGI_Upper))
   # A day on which the control has thinned out is refused, not silently
   # analysed without it.
-  expect_error(quiet(dose_response_statistics(d, time_point = 20, verbose = FALSE)),
+  expect_error(quiet(dose_response_statistics(d, endpoint_day = 20, verbose = FALSE)),
                "is not evaluable")
 })
 
@@ -756,7 +756,7 @@ r20_window_df <- function(seed = 8) {
 
 test_that("R20-K: the therapeutic window is two axes with intervals and a tolerability flag", {
   r <- quiet(therapeutic_window_metric(r20_window_df(), reference_group = "Control",
-                                       adjust_tumor_weight = FALSE, boot_seed = 3))
+                                       adjust_tumor_weight = FALSE, seed = 3))
   w <- r$window_table
   expect_null(r$twm_table)
   expect_false("TWM" %in% names(w))
@@ -794,8 +794,8 @@ r20_bliss_df <- function(means, spread = 0.1) {
 test_that("R20.19: the synergy verdict is symmetric and rests on the interval", {
   syn <- function(means, n_boot, spread = 0.1) quiet(analyze_drug_synergy(
     r20_bliss_df(means, spread), drug_a_name = "A", drug_b_name = "B",
-    combo_name = "AB", control_name = "C", endpoint_method = "survivors",
-    eval_time_point = 21, n_boot = n_boot, boot_seed = 1, verbose = FALSE))
+    combo_name = "AB", reference_group = "C", endpoint_method = "survivors",
+    endpoint_day = 21, n_boot = n_boot, seed = 1, verbose = FALSE))
   # Bliss expects FE 0.4 + 0.5 - 0.2 = 0.7, a combination mean of 300.
   above <- syn(c(C = 1000, A = 600, B = 500, AB = 250), n_boot = 0)   # excess +0.05
   below <- syn(c(C = 1000, A = 600, B = 500, AB = 350), n_boot = 0)   # excess -0.05
@@ -838,7 +838,7 @@ test_that("R20.14: an animal with no usable volume or a missing volume no longer
   }))))
   died <- d$Dose == 30 & d$ID %in% 1:2 & d$Day > 6
   d_na <- d; d_na$Volume[died] <- NA
-  gr <- function(x) quiet(dose_response_statistics(x, time_point = 6,
+  gr <- function(x) quiet(dose_response_statistics(x, endpoint_day = 6,
                                                    verbose = FALSE))$statistics$growth_model
   expect_equal(stats::coef(gr(d_na)), stats::coef(gr(d[!died, ])), tolerance = 1e-10)
 })
@@ -851,7 +851,7 @@ test_that("R20.16: dose-response analyses one agent's series and a validated con
   expect_error(dr(), "treatments =")                   # was pooled onto one dose axis
   expect_error(dr(treatments = c("Drug_A Mid", "Drug_A Mid + Drug_B")),
                "Dose 15 holds more than one arm")
-  expect_error(dr(control_group_name = "does-not-exist",
+  expect_error(dr(reference_group = "does-not-exist",
                   treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High")),
                "not in column")
   a <- dr(treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High"))
@@ -861,7 +861,7 @@ test_that("R20.16: dose-response analyses one agent's series and a validated con
   # A vehicle arm coded with a missing dose is the control, not dropped.
   m_na <- m; m_na$Dose[m_na$Treatment == "Vehicle"] <- NA
   b <- quiet(dose_response_statistics(m_na, cage_column = "Cage", verbose = FALSE,
-                                      control_group_name = "Vehicle",
+                                      reference_group = "Vehicle",
                                       treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High")))
   expect_equal(b$statistics$ec50, a$statistics$ec50)
   expect_equal(b$tgi_table, a$tgi_table)

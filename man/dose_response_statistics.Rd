@@ -9,11 +9,11 @@ dose_response_statistics(
   dose_column = "Dose",
   treatment_column = "Treatment",
   volume_column = "Volume",
-  day_column = "Day",
+  time_column = "Day",
   id_column = "ID",
   cage_column = NULL,
-  time_point = NULL,
-  control_group_name = NULL,
+  endpoint_day = NULL,
+  reference_group = NULL,
   treatments = NULL,
   verbose = TRUE,
   volume_units = c("mm3", "cm3"),
@@ -29,7 +29,7 @@ dose_response_statistics(
 
 \item{volume_column}{Column storing tumor volume measurements. Default: "Volume".}
 
-\item{day_column}{Column with number of days since experiment start. Default: "Day".}
+\item{time_column}{Column with number of days since experiment start. Default: "Day".}
 
 \item{id_column}{Column with individual mouse identifiers. Default: "ID".}
 
@@ -37,12 +37,12 @@ dose_response_statistics(
 ID + cage), so an ID reused across cages or arms is not one animal
 (CODE_REVIEW.md T1). NULL or absent means no cage information.}
 
-\item{time_point}{Day to analyse. Default \code{NULL}: the last day on which
+\item{endpoint_day}{Day to analyse. Default \code{NULL}: the last day on which
 every dose group is evaluable (see \code{\link{evaluable_days}}). A day that
 is not evaluable is an error. Before v0.26.0 the default was each animal's
 own last observation (CODE_REVIEW.md R20.17).}
 
-\item{control_group_name}{Name of the control arm in \code{treatment_column}.
+\item{reference_group}{Name of the control arm in \code{treatment_column}.
 It must exist, and its dose must be 0 or missing (a missing dose is read
 as 0). \code{NULL} (default): the rows with dose 0 are the control. Before
 v0.27.0 a name that did not exist was ignored (CODE_REVIEW.md R20.16).}
@@ -96,7 +96,7 @@ non-linear relationships.
 # One agent's dose series against its control
 dr <- dose_response_statistics(master_synthetic_data,
   treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High"),
-  control_group_name = "Vehicle", cage_column = "Cage", verbose = FALSE)
+  reference_group = "Vehicle", cage_column = "Cage", verbose = FALSE)
 dr$summary_table
 dr$trend_test
 }

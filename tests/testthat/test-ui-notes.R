@@ -8,8 +8,11 @@ skip_if(is.null(.pkg), "mouseExperiment namespace not loadable")
 g <- function(nm) get(nm, envir = .pkg)
 html <- function(x) paste(as.character(x), collapse = "\n")
 
-test_that("the About tab gives a contact address", {
-  expect_match(html(g("citationUI")()), 'href="mailto:david@sciomics.bio"', fixed = TRUE)
+test_that("the About tab sends bug reports and feature requests to GitHub Issues", {
+  ui <- html(g("citationUI")())
+  expect_match(ui, 'href="https://github.com/sciOmics/mouseExperiment/issues"', fixed = TRUE)
+  # 0.40.0: not by email.
+  expect_false(grepl("mailto:", ui, fixed = TRUE))
 })
 
 test_that("the Survival model menu says Cox Proportional Hazards", {

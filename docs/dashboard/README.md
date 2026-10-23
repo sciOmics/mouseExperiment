@@ -222,4 +222,4 @@ If you use the dashboard in your research, please cite the package: `citation("m
 
 ## Support
 
-For questions or issues, contact: david@sciomics.bio
+Report bugs, request features and ask questions on [GitHub Issues](https://github.com/sciOmics/mouseExperiment/issues).

@@ -331,7 +331,7 @@ surv_script_bundle <- function(res, include_upload = FALSE) {
   notes <- c(
     if (identical(res$event_src_used, "volume"))
       c(sprintf("The event and time columns (%s, %s) were derived by the dashboard:",
-                rec$args$censor_column %||% rec$args$event_column, rec$args$time_column),
+                rec$args$event_column, rec$args$time_column),
         sprintf("an event is the first day a tumour reached the volume limit of %s.",
                 format(res$vol_threshold_used)),
         "They are in the data."),
@@ -365,7 +365,7 @@ tox_script_bundle <- function(res, include_upload = FALSE) {
       script_step(recs$twm, "twm", prints = c(
         window_table = "TGI and worst weight loss by arm, with tolerability",
         weight_loss_data = "Each animal's worst weight loss"))),
-      c("The intervals come from a bootstrap with the seed in the call (boot_seed)."),
+      c("The intervals come from a bootstrap with the seed in the call."),
       prep = script_prep(res, include_upload)))
   }
   ok <- function(x) !is.null(x) && !isTRUE(x$error)
@@ -407,7 +407,7 @@ syn_script_bundle <- function(res, include_upload = FALSE) {
     synergy_ci = "95% intervals of the synergy metrics"))
   script_bundle(if (over_time) "Drug Synergy (every evaluable day)" else "Drug Synergy",
                 list(script_step(rec, "result", prints = prints)),
-                "The intervals come from a bootstrap with the seed in the call (boot_seed).",
+                "The intervals come from a bootstrap with the seed in the call.",
                 prep = script_prep(res, include_upload))
 }
 

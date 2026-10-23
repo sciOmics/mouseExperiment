@@ -74,15 +74,15 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
       mouseExperiment::plot_tumor_growth(
         df                  = data,
         volume_column       = col_names$volume_column,
-        day_column          = col_names$time_column,
+        time_column          = col_names$time_column,
         # When a dose column is present, pass the original treatment column so
         # plot_tumor_growth can build 'Group = Treatment - Dose: X' itself,
         # matching the names used in rv$tg_plot_groups and the colour pickers.
         treatment_column    = if (!is.null(rv$dose_col)) rv$settings$col_treatment else col_names$treatment_column,
         dose_column         = rv$dose_col,
-        ID_column           = col_names$id_column,
+        id_column           = col_names$id_column,
         cage_column         = col_names$cage_column,
-        survival_column     = if (isTRUE(surv_col_mapped)) rv$settings$col_survival_event else NULL,
+        event_column     = if (isTRUE(surv_col_mapped)) rv$settings$col_survival_event else NULL,
         extrapolate_volumes = do_extrapolate,
         extrapolation_points = if (extra_pts > 0L) extra_pts else "all",
         group_summary_line  = isTRUE(input$tg_opt_group_line),

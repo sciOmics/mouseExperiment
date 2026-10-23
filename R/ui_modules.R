@@ -1770,8 +1770,11 @@ citationUI <- function() {
       column(12,
         wellPanel(
           h4(icon("envelope"), " Contact"),
-          p("Questions, bug reports and feature requests: ",
-            tags$a("david@sciomics.bio", href = "mailto:david@sciomics.bio"), ".")
+          p("Report bugs, request features and ask questions on ",
+            tags$a("GitHub Issues", href = "https://github.com/sciOmics/mouseExperiment/issues",
+                   target = "_blank"),
+            ". Issues are public, so please don't attach unpublished study data: a few ",
+            "made-up rows, or a demo dataset, that show the problem are enough.")
         )
       )
     ),

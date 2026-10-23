@@ -12,14 +12,14 @@ analyze_drug_synergy_over_time(
   drug_a_name,
   drug_b_name,
   combo_name,
-  control_name = "Control",
-  min_time_point = NULL,
-  max_time_point = NULL,
+  reference_group = "Control",
+  min_day = NULL,
+  max_day = NULL,
   id_column = "ID",
   cage_column = NULL,
   endpoint_method = c("model", "last_obs", "survivors"),
   n_boot = 2000L,
-  boot_seed = NULL,
+  seed = NULL,
   verbose = TRUE,
   volume_units = c("mm3", "cm3"),
   zero_floor = NULL
@@ -40,11 +40,11 @@ analyze_drug_synergy_over_time(
 
 \item{combo_name}{A character string specifying the name of the combination treatment group.}
 
-\item{control_name}{A character string specifying the name of the control/vehicle group. Default is "Control".}
+\item{reference_group}{A character string specifying the name of the control/vehicle group. Default is "Control".}
 
-\item{min_time_point}{Optional. A numeric value specifying the minimum time point to include in analysis. Default is NULL.}
+\item{min_day}{Optional. A numeric value specifying the minimum time point to include in analysis. Default is NULL.}
 
-\item{max_time_point}{Optional. A numeric value specifying the maximum time point to include in analysis. Default is NULL.}
+\item{max_day}{Optional. A numeric value specifying the maximum time point to include in analysis. Default is NULL.}
 
 \item{id_column}{Column identifying individual animals (required). Before
 v0.25.0 this function had no such argument: each day's analysis looked for a
@@ -53,7 +53,7 @@ key, so every day failed (CODE_REVIEW.md R20.15).}
 
 \item{cage_column}{Optional cage column, part of the animal key.}
 
-\item{endpoint_method, n_boot, boot_seed}{As in
+\item{endpoint_method, n_boot, seed}{As in
 \code{\link{analyze_drug_synergy}}. Under the model estimand one endpoint
 model is fitted and evaluated on every day.}
 
@@ -119,9 +119,9 @@ where active single agents sit. See \code{\link{analyze_drug_synergy}}.
 \examples{
 trend <- analyze_drug_synergy_over_time(master_synthetic_data,
   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
-  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-  min_time_point = 2,  # day 0 has no growth to inhibit
-  cage_column = "Cage", n_boot = 200, boot_seed = 1, verbose = FALSE)
+  combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+  min_day = 2,  # day 0 has no growth to inhibit
+  cage_column = "Cage", n_boot = 200, seed = 1, verbose = FALSE)
 head(trend$synergy_summary)
 trend$peak_bliss_synergy
 plot_synergy_trend(trend)

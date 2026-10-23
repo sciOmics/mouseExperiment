@@ -12,16 +12,16 @@
 #' @param dose_column Column containing dose concentrations. Default: "Dose".
 #' @param treatment_column Column containing treatment names. Default: "Treatment".
 #' @param volume_column Column storing tumor volume measurements. Default: "Volume".
-#' @param day_column Column with number of days since experiment start. Default: "Day".
+#' @param time_column Column with number of days since experiment start. Default: "Day".
 #' @param id_column Column with individual mouse identifiers. Default: "ID".
 #' @param cage_column Optional cage column, part of the animal key (treatment +
 #'   ID + cage), so an ID reused across cages or arms is not one animal
 #'   (CODE_REVIEW.md T1). NULL or absent means no cage information.
-#' @param time_point Day to analyse. Default \code{NULL}: the last day on which
+#' @param endpoint_day Day to analyse. Default \code{NULL}: the last day on which
 #'   every dose group is evaluable (see \code{\link{evaluable_days}}). A day that
 #'   is not evaluable is an error. Before v0.26.0 the default was each animal's
 #'   own last observation (CODE_REVIEW.md R20.17).
-#' @param control_group_name Name of the control arm in \code{treatment_column}.
+#' @param reference_group Name of the control arm in \code{treatment_column}.
 #'   It must exist, and its dose must be 0 or missing (a missing dose is read
 #'   as 0). \code{NULL} (default): the rows with dose 0 are the control. Before
 #'   v0.27.0 a name that did not exist was ignored (CODE_REVIEW.md R20.16).
@@ -73,18 +73,18 @@
 #' # One agent's dose series against its control
 #' dr <- dose_response_statistics(master_synthetic_data,
 #'   treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High"),
-#'   control_group_name = "Vehicle", cage_column = "Cage", verbose = FALSE)
+#'   reference_group = "Vehicle", cage_column = "Cage", verbose = FALSE)
 #' dr$summary_table
 #' dr$trend_test
 dose_response_statistics <- function(df, 
                                    dose_column = "Dose", 
                                    treatment_column = "Treatment",
                                    volume_column = "Volume", 
-                                   day_column = "Day", 
+                                   time_column = "Day", 
                                    id_column = "ID",
                                    cage_column = NULL,
-                                   time_point = NULL,
-                                   control_group_name = NULL,
+                                   endpoint_day = NULL,
+                                   reference_group = NULL,
                                    treatments = NULL,
                                    verbose = TRUE,
                                    volume_units = c("mm3", "cm3"),
@@ -92,7 +92,7 @@ dose_response_statistics <- function(df,
   volume_units <- match.arg(volume_units)
   
   # Validate input
-  required_columns <- c(dose_column, treatment_column, volume_column, day_column, id_column)
+  required_columns <- c(dose_column, treatment_column, volume_column, time_column, id_column)
   missing_cols <- required_columns[!required_columns %in% colnames(df)]
   if (length(missing_cols) > 0) {
     stop("Missing required columns in data frame: ", paste(missing_cols, collapse = ", "))
@@ -111,7 +111,7 @@ dose_response_statistics <- function(df,
   # and the Drug_A Mid + Drug_B combination (dose 15) were fitted as doses of
   # Drug_A, and `control_group_name` changed nothing.
   series <- dr_select_series(df, dose_column, treatment_column,
-                             control_group_name, treatments)
+                             reference_group, treatments)
   df <- series$df
   # R20.14: the key includes the dose, so an ID reused across the dose groups
   # of a single-agent layout (one treatment name at every dose) is not one
@@ -130,7 +130,7 @@ dose_response_statistics <- function(df,
   # evaluable is an error, which includes a control that has thinned out.
   dose_num <- suppressWarnings(as.numeric(df[[dose_column]]))
   vol_num  <- suppressWarnings(as.numeric(df[[volume_column]]))
-  day_num  <- suppressWarnings(as.numeric(df[[day_column]]))
+  day_num  <- suppressWarnings(as.numeric(df[[time_column]]))
   keep <- is.finite(dose_num) & is.finite(vol_num) & is.finite(day_num)
   d_std <- data.frame(MouseKey  = df$.mouse_key[keep],
                       Treatment = format(dose_num[keep], trim = TRUE,
@@ -139,11 +139,11 @@ dose_response_statistics <- function(df,
                       Volume    = vol_num[keep],
                       stringsAsFactors = FALSE)
   evaluability <- me_evaluability(d_std)
-  eval_day <- me_resolve_eval_day(evaluability, time_point)
+  eval_day <- me_resolve_eval_day(evaluability, endpoint_day)
 
   # Prepare data for analysis: the animals measured on the evaluation day.
   analysis_data <- prepare_dose_data(df, dose_column = dose_column, treatment_column = treatment_column,
-                                    volume_column = volume_column, day_column = day_column,
+                                    volume_column = volume_column, day_column = time_column,
                                     id_column = id_column, time_point = eval_day)
 
   # TGI per dose group at the same day, from the endpoint model shared with
@@ -165,7 +165,7 @@ dose_response_statistics <- function(df,
   
   # Perform statistical analyses
   stats_results <- perform_statistical_analyses(analysis_data, dose_column = dose_column, volume_column = volume_column, 
-                                              day_column = day_column, id_column = id_column, original_df = df,
+                                              day_column = time_column, id_column = id_column, original_df = df,
                                               verbose = verbose)
   
   # Generate user-friendly report
@@ -238,13 +238,13 @@ dr_select_series <- function(df, dose_column, treatment_column,
     is_ctrl <- is.finite(dose) & dose == 0
     if (!any(is_ctrl)) {
       stop("No rows with dose 0 to serve as the control. Name the control arm ",
-           "with control_group_name.", call. = FALSE)
+           "with reference_group.", call. = FALSE)
     }
   }
   control <- sort(unique(tx[is_ctrl]))
   if (length(control) > 1L) {
     stop("Dose 0 holds more than one arm (", paste(control, collapse = ", "),
-         "). Name the control with control_group_name.", call. = FALSE)
+         "). Name the control with reference_group.", call. = FALSE)
   }
 
   others <- sort(unique(tx[!is_ctrl & !is.na(tx)]))

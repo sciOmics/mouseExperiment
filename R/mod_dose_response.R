@@ -630,11 +630,11 @@ dose_response_server <- function(id, rv) {
       dose_column        = dose_col,
       treatment_column   = tx_col,
       volume_column      = vol_col,
-      day_column         = time_col,
+      time_column        = time_col,
       id_column          = id_col,
       cage_column        = rv$cage_col,  # part of the animal key
-      time_point         = time_point_val,
-      control_group_name = si$control,
+      endpoint_day       = time_point_val,
+      reference_group    = si$control,
       treatments         = series,
       verbose            = FALSE,  # the report went to the server log
       volume_units       = backend_volume_units(rv)   # backend 0.33.0 zero floor

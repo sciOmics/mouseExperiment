@@ -877,7 +877,7 @@ toxicity_server <- function(id, rv) {
         # units even when the mass correction (and so `units`) is off.
         zero_floor = if (identical(backend_volume_units(rv), "cm3")) 0.002 else NULL,
         tolerability_threshold = tol_thr,
-        endpoint_method = ep_method, n_boot = n_boot_tw, boot_seed = 20260730L
+        endpoint_method = ep_method, n_boot = n_boot_tw, seed = 20260730L
       )
       results$twm <- safe_analysis(module = "et_twm",
                                    do.call(mouseExperiment::therapeutic_window_metric, twm_args))

@@ -7,7 +7,7 @@
 survival_statistics(
   df,
   time_column = "Day",
-  censor_column = "Survival_Censor",
+  event_column = "Survival_Censor",
   treatment_column = "Treatment",
   cage_column = "Cage",
   id_column = "ID",
@@ -30,7 +30,7 @@ each animal's last observation, carrying its event indicator.}
 
 \item{time_column}{Name of column containing time-to-event data. Default: "Day"}
 
-\item{censor_column}{Name of column containing censoring indicator (1=event, 0=censored). Default: "Survival_Censor"}
+\item{event_column}{Name of column containing censoring indicator (1=event, 0=censored). Default: "Survival_Censor"}
 
 \item{treatment_column}{Name of column containing treatment groups. Default: "Treatment"}
 

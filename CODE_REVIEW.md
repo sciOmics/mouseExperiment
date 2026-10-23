@@ -6393,7 +6393,7 @@ After the first CRAN release, renaming any of these breaks users' code. Fix: the
 | R22.4 Firth defaults in `weight_loss_threshold()` | Major | ✅ Fixed v0.39.0 |
 | R22.5 CI skips the source-reading tests | Major | ✅ Fixed v0.39.0 |
 | R22.6 README/vignette per-animal reduction | Major | ✅ Fixed v0.39.0 |
-| R22.7 API naming before CRAN | Major | Open (question 2) |
+| R22.7 API naming before CRAN | Major | ✅ Fixed v0.40.0 (no aliases) |
 | R22.19 Round trips in the dashboard's session | Minor | ✅ Fixed v0.39.0 |
 | R22.10 (`me_with_seed()` twice) | Minor | ✅ Fixed v0.39.0; the rest of R22.10 open |
 | R22.8, R22.9, R22.11–R22.18 | Minor | Open |
@@ -6403,6 +6403,7 @@ After the first CRAN release, renaming any of these breaks users' code. Fix: the
 
 1. **Cage labels (R22.3).** Should the dashboard ask at Study Design whether cage labels are unique or numbered within each arm? My recommendation is yes, plus a warning when every arm shares one set of labels.
 2. **Argument names (R22.7).** Harmonise now, before CRAN, keeping the old names as deprecated aliases for two releases?
+   - **Answer (2026-10-23):** harmonise, without aliases: the package has no users yet. Done in 0.40.0 (R22-B).
 3. **Which proposals (F1–F11)?** They are worth scheduling after the Major items and before or after CRAN. My suggestion is F1–F3 first: they are the endpoints reviewers ask for.
 
 **Suggested order:**
@@ -6459,3 +6460,55 @@ The forest plot takes the measure as a parameter: its title, axis and labels say
 - The full suite, Bayesian fits skipped: 721 tests, 0 failed.
 - `R CMD check --no-manual --no-tests`: Status OK, including the vignette's new `survival_events()` example.
 - The CI source-tree step's commands, run locally: 11 files, 74 tests, none failing.
+
+## R22-B Implementation log — v0.40.0: one name per argument role (2026-10-23)
+
+**R22.7 — the renames.** The maintainer chose to rename without deprecated aliases, since the package has no users yet.
+
+| Function | Old | New |
+|---|---|---|
+| `analyze_drug_synergy()` | `control_name`, `boot_seed`, `eval_time_point` | `reference_group`, `seed`, `endpoint_day` |
+| `analyze_drug_synergy_over_time()` | `control_name`, `boot_seed`, `min_time_point`, `max_time_point` | `reference_group`, `seed`, `min_day`, `max_day` |
+| `dose_response_statistics()` | `day_column`, `control_group_name`, `time_point` | `time_column`, `reference_group`, `endpoint_day` |
+| `survival_statistics()` | `censor_column` | `event_column` |
+| `plot_tumor_growth()` | `ID_column`, `day_column`, `survival_column` | `id_column`, `time_column`, `event_column` |
+| `therapeutic_window_metric()` | `boot_seed` | `seed` |
+| `tumor_growth_statistics()` | `auc_bootstrap_seed` | `seed` |
+| `calculate_dates()` | `start_date` | `reference_date` |
+| `plot_drug_synergy()`, `plot_synergy_trend()` | `custom_title`, `custom_colors` | `title`, `colors` |
+
+**How:**
+- **A parser-based rename.** R's parse data located each formal, each use of it inside the function, and each named argument in a call to the function, anywhere in `R/` and `tests/`: 225 edits in 32 files. Text replacement would also have hit the internal helpers that share these names, and result fields such as the synergy result's `eval_time_point`.
+- **By hand, where the parser cannot see the callee:**
+  - the dashboard's `do.call()` argument lists (Dose Response, Synergy, Survival, Toxicity);
+  - the roxygen examples, which R CMD check runs;
+  - the messages that name an argument, e.g. Dose Response's "Name the control with `reference_group`";
+  - the R script's notes;
+  - README, the vignette and `docs/METHODS.md`.
+- **Not renamed:** internal helpers' parameters, and the fields of returned results.
+
+**Removed, not renamed:** `tumor_growth_statistics()`'s `n_boot` and `auc_permutations`.
+- They have done nothing since 0.26.0 (R20.4), when the model-based AUC replaced the per-animal t-tests they configured. They only warned.
+- Their help still described the bootstrap and the permutation p-values, and `seed`'s help said it seeded that bootstrap. It now says what it does: it seeds the AUC model's draws, and without it a fixed seed is used.
+
+**Tests:**
+- **`test-round22-arguments.R` (3 tests):**
+  - no exported function takes a retired name;
+  - the shared roles (`reference_group`, `event_column`, `endpoint_day`, `seed`, `title`) are taken by the functions that have them;
+  - the dashboard's argument lists, as text, use the new names.
+- **Rewritten:**
+  - the R20.4 test that `n_boot` warns now checks that the AUC intervals hold their estimates and that `seed` fixes them;
+  - the H.2 test that `auc_permutations` warns is removed.
+- **Updated:** the existing tests' calls (by the rename), the mocked Dose Response call's `reference_group`, and the R script's `seed = 20260730L`.
+
+
+**Also in 0.40.0: bug reports and feature requests go to GitHub Issues** (the maintainer's request).
+- The About tab's Contact section links to the repository's Issues instead of an email address. It asks people not to attach unpublished study data, since issues are public.
+- The README has a Support section saying the same.
+- New issues open with a bug-report form (where, version, what happened, steps, `sessionInfo()`) or a feature-request form.
+- A contact link sends security problems to `SECURITY.md`, which still asks for a private report.
+- **Test:** `test-ui-notes.R` checks that the About tab links to Issues and has no `mailto:` link.
+
+**Verification (executed):**
+- The full suite, Bayesian fits skipped: 723 tests, 0 failed.
+- `R CMD check --no-manual --no-tests`: Status OK, with every example and the vignette under the new names.

@@ -54,7 +54,7 @@ call_synergy_ot <- function(df) {
       drug_a_name      = "DrugA",
       drug_b_name      = "DrugB",
       combo_name       = "DrugA+DrugB",
-      control_name     = "Control",
+      reference_group     = "Control",
       verbose          = FALSE
     )
   ))
@@ -112,8 +112,8 @@ test_that("analyze_drug_synergy_over_time respects min/max time point filters", 
       drug_a_name  = "DrugA",
       drug_b_name  = "DrugB",
       combo_name   = "DrugA+DrugB",
-      min_time_point = 7,
-      max_time_point = 14,
+      min_day = 7,
+      max_day = 14,
       verbose      = FALSE
     )
   ))

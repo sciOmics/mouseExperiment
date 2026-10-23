@@ -760,16 +760,9 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'   (\code{endpoint_method = "model"}), which extrapolate inside the model and
 #'   propagate the uncertainty. Extrapolation for \emph{plotting} is unaffected
 #'   — see \code{\link{plot_tumor_growth}}. CODE_REVIEW.md R3.9 / G.4.
-#' @param auc_bootstrap_n Integer >= 0. When > 0 and \code{model_type = "auc"},
-#'   each pairwise Welch's t-test gains a non-parametric percentile-bootstrap
-#'   95% CI for the mean difference (\code{boot_ci_lower}, \code{boot_ci_upper}
-#'   columns in \code{pairwise_comparisons}). Honest at small N when per-mouse
-#'   AUC distributions are skewed (especially under extrapolation), where the
-#'   parametric t-CI is only approximate. A typical value is \code{999};
-#'   higher (e.g. \code{4999}) gives smoother percentile estimates. Default
-#'   \code{0} (skip; \code{boot_ci_*} columns are \code{NA}).
-#' @param auc_bootstrap_seed Optional integer seed for reproducible bootstrap
-#'   resampling. \code{NULL} (default) uses the caller's RNG state.
+#' @param seed Seed for the AUC path's model draws (its intervals and
+#'   p-values). \code{NULL} (default) uses a fixed seed, so the result is
+#'   reproducible either way; the caller's RNG state is left as it was.
 #' @param volume_units Units of the volume column, \code{"mm3"} (default) or
 #'   \code{"cm3"}. Used for the zero floor, and to warn when the volumes do not
 #'   look like the declared units.
@@ -787,14 +780,6 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'   if \code{unit} matches how the study actually randomised, so the unit is an
 #'   explicit choice rather than a default. See \code{\link{perm_spec}}.
 #'   CODE_REVIEW.md H.3.
-#' @param auc_permutations Integer >= 0. When > 0 and
-#'   \code{model_type = "auc"}, each pairwise comparison additionally gains a
-#'   two-sided permutation p-value (\code{perm_p_value}, plus
-#'   \code{perm_p_adjusted} over the comparison family). At n = 8-10 per arm on
-#'   a right-skewed derived statistic, this is more trustworthy than Welch's
-#'   normal-theory approximation, and the null here is genuinely label
-#'   exchangeability. A typical value is \code{2000}. Default \code{0} (skip).
-#'   CODE_REVIEW.md H.2.
 #'
 #' @return A list containing the following components:
 #' \describe{
@@ -893,9 +878,7 @@ tumor_growth_statistics <- function(df,
                                   extrapolation_points = 0,
                                   necrotic_column  = NULL,
                                   necrotic_handling = c("exclude", "covariate", "none"),
-                                  auc_bootstrap_n = 0L,
-                                  auc_bootstrap_seed = NULL,
-                                  auc_permutations = 0L,
+                                  seed = NULL,
                                   permutation_test = NULL,
                                   volume_units = c("mm3", "cm3"),
                                   zero_floor = NULL) {
@@ -1162,9 +1145,7 @@ tumor_growth_statistics <- function(df,
       reference_group     = reference_group,
       return_model        = return_model,
       include_diagnostics = include_diagnostics,
-      auc_bootstrap_n     = auc_bootstrap_n,
-      auc_bootstrap_seed  = auc_bootstrap_seed,
-      auc_permutations    = auc_permutations,
+      seed                = seed,
       cage_analysis       = cage_analysis,
       data_summary        = data_summary,
       necrosis_summary    = necrosis_summary,
