@@ -6404,7 +6404,7 @@ After the first CRAN release, renaming any of these breaks users' code. Fix: the
 | F4, F10 | Proposals | ✅ Added v0.46.0 |
 | F8 | Proposal | ✅ Added v0.47.0 |
 | F9 | Proposal | ✅ Added v0.48.0 (the plots from exported plotting functions) |
-| F11 | Proposal | Approved; to do |
+| F11 | Proposal | ✅ Done v0.49.0 |
 
 ### Open questions for the maintainer
 
@@ -6859,3 +6859,26 @@ R20.D15's test now checks `report_table()`.
 The ZIP listing in `test-reproduce-script.R` now includes `data/plot_data`.
 
 **Verification (executed):** the full suite, Bayesian fits skipped: 761 tests, 0 failed. `R CMD check --no-manual --no-tests`: Status OK, including `style_plot()`'s example.
+
+## R22-K Implementation log — v0.49.0: splitting ui_modules.R, one provenance helper (F11, 2026-10-23)
+
+**The split.** `ui_modules.R` (1,907 lines) was split by function with R's parse data, each function moving with the comment block above it:
+- `ui_data.R` (456 lines): `dataUploadUI()`, the column mapping, Study Design, the cage-label question, the removal reasons, the data check and the preview;
+- `ui_tumor_growth.R` (1,039 lines): `tumorGrowthUI()`;
+- `ui_help.R` (348 lines): `helpUI()` and `citationUI()`;
+- `ui_modules.R` (65 lines): the shared helpers, `tab_info()`, `help_tip()`, `plot_help()` and `ctrl_section()`.
+
+The other tabs' UIs were already with their modules.
+
+**Tests that read the UI's source** now read every UI file through `read_ui()`, or `ui_data.R` for the demo-dataset choices. The demo-dataset test skips when its text is not found, so a wrong file would have skipped it silently rather than failed it. The 52 tests in those files all run: none skip, none fail.
+
+**`with_provenance(result, call_record, prep_steps, source_file, field)`** (`reproduce_script.R`) replaces the three assignments every run handler made for its R script:
+- Tumor Growth, Survival, Synergy, Dose Response and Toxicity;
+- the two Bayesian resume finalizers;
+- Toxicity's background run.
+
+It leaves a result with an error as it is, as the guarded handlers did; the two finalizers and the background run were unguarded, and an error result has no script either way.
+
+**Docs.** ARCHITECTURE's tree and the dashboard README's file table list the new files.
+
+**Verification (executed):** the full suite, Bayesian fits skipped: 761 tests, 0 failed. `R CMD check --no-manual --no-tests`: Status OK.

@@ -119,7 +119,7 @@ test_that("R20.D29/D54: the KM p-value says what it is; the survival help is cor
 # ---- R20.D30: explainer text --------------------------------------------------------------
 
 test_that("R20.D30: cage, random-effects and treatment-effects help match what the backend does", {
-  u <- read_src("ui_modules.R")
+  u <- paste(vapply(c("ui_modules.R", "ui_data.R", "ui_tumor_growth.R", "ui_help.R"), read_src, ""), collapse = "\n")
   expect_match(u, "Cage is separable from treatment and enters as a fixed effect", fixed = TRUE)
   expect_false(grepl("'Intercept only' (default)", u, fixed = TRUE))
   expect_false(grepl("five quantile days", u, fixed = TRUE))

@@ -595,11 +595,7 @@ synergy_server <- function(id, rv) {
                               do.call(mouseExperiment::analyze_drug_synergy, syn_args))
     }
     # R20-AA: the call exactly as made, for the R script in Download Results.
-    if (!isTRUE(result$error)) {
-      result$call_record <- record_call(syn_fun, syn_args)
-      result$prep_steps  <- prep_steps       # R20-AC
-      result$source_file <- rv$source_file
-    }
+    result <- with_provenance(result, record_call(syn_fun, syn_args), prep_steps, rv$source_file)
     
     if (!isTRUE(result$error)) {
       if (rv$syn_over_time) {

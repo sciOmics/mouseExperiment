@@ -802,11 +802,8 @@ survival_server <- function(id, rv) {
     result <- safe_analysis(module = "survival",
                             do.call(mouseExperiment::survival_statistics, surv_args))
     # R20-AA: the call exactly as made, for the R script in Download Results.
-    if (!isTRUE(result$error)) {
-      result$call_record <- record_call("survival_statistics", surv_args)
-      result$prep_steps  <- prep_steps       # R20-AC
-      result$source_file <- rv$source_file
-    }
+    result <- with_provenance(result, record_call("survival_statistics", surv_args),
+                              prep_steps, rv$source_file)
 
     # Store event source for downstream use (KM plot titles, summary text)
     result$event_src_used     <- event_src

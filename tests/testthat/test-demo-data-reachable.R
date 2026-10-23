@@ -99,7 +99,7 @@ test_that("Demo selector: four short names, All Features last", {
   # descriptions dropped, and "Master" renamed "All Features" and moved last.
   for (f in c("synthetic_data.csv", "necrotic_synthetic_data.csv", "master_synthetic_data.csv"))
     expect_false(file.exists(file.path(sample_dir(), f)), info = paste("still shipped:", f))
-  src <- dash_source("R", "ui_modules.R")
+  src <- dash_source("R", "ui_data.R")
   blk <- regmatches(src, regexpr('"-- Select a demo dataset --" = ""[\\s\\S]*?\\n                \\)',
                                  src, perl = TRUE))
   skip_if(length(blk) != 1L, "demo_dataset choices not locatable")
@@ -111,7 +111,7 @@ test_that("Demo selector: four short names, All Features last", {
 test_that("D.12: the UI selector offers exactly what the loader knows", {
   # A choice in the dropdown with no matching loader entry silently does nothing
   # when clicked; a loader entry with no choice is unreachable. Both directions.
-  src <- dash_source("R", "ui_modules.R")
+  src <- dash_source("R", "ui_data.R")
   blk <- regmatches(src, regexpr('"-- Select a demo dataset --" = ""[\\s\\S]*?\\n                \\)',
                                  src, perl = TRUE))
   skip_if(length(blk) != 1L, "demo_dataset choices not locatable")

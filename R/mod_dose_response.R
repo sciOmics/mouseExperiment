@@ -642,11 +642,8 @@ dose_response_server <- function(id, rv) {
     result <- safe_analysis(module = "dose_response",
                             do.call(mouseExperiment::dose_response_statistics, dr_args))
     # R20-AA: the call exactly as made, for the R script in Download Results.
-    if (!isTRUE(result$error)) {
-      result$call_record <- record_call("dose_response_statistics", dr_args)
-      result$prep_steps  <- prep_steps       # R20-AC
-      result$source_file <- rv$source_file
-    }
+    result <- with_provenance(result, record_call("dose_response_statistics", dr_args),
+                              prep_steps, rv$source_file)
     # The plots and tables use the control of the displayed run (R20.D48).
     if (is.list(result)) result$control_group_used <- si$control %||% "dose 0"
     # The backend names its argument; here the choice is the sidebar selector.

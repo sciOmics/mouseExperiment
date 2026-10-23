@@ -104,9 +104,8 @@ register_surv_resume <- function(input, output, session, rv) {
     }, error = function(e) NULL)
   }
   result$model <- NULL   # not requested (R20.D18); a no-op kept for safety
-  result$call_record <- context$call_record   # R20-AA: for the R script
-  result$prep_steps  <- bayes_params$prep_steps    # R20-AC
-  result$source_file <- bayes_params$source_file
+  result <- with_provenance(result, context$call_record, bayes_params$prep_steps,
+                            bayes_params$source_file)
   rv$surv_results <- result
   shiny::updateTabsetPanel(session, "surv_results_tabs", selected = "Summary")
   rv$surv_running <- FALSE
