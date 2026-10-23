@@ -756,6 +756,58 @@ data_upload_server <- function(id, rv) {
     ignoreInit = TRUE
   )
 
+  # ---------------------------------------------------------------------------
+  # F5: the data check. The whole file as uploaded (before the Subset Filter),
+  # prepared with the mapped columns, so each flag names its line in the file.
+  # ---------------------------------------------------------------------------
+  data_check <- reactive({
+    req(isTRUE(rv$data_valid), rv$uploaded_data)
+    s <- rv$settings
+    d <- rv$uploaded_data
+    req(has_col(d, s$col_treatment), has_col(d, s$col_id))
+    d$.File_Line <- seq_len(nrow(d)) + 1L
+    # As measured: calculate_volume() swaps a width above the length.
+    cal <- identical(s$volume_method, "calculate") && has_col(d, s$col_length) &&
+      has_col(d, s$col_width)
+    if (cal) {
+      d$.Length_As_Measured <- d[[s$col_length]]
+      d$.Width_As_Measured  <- d[[s$col_width]]
+    }
+    pu <- tryCatch(suppressWarnings(prepare_upload(list(settings = s, uploaded_data = d))),
+                   error = function(e) NULL)
+    req(pu, has_col(pu$data, pu$time_col), has_col(pu$data, pu$vol_col))
+    opt <- function(col) if (has_col(pu$data, col)) col
+    tryCatch(check_study_data(pu$data, time_column = pu$time_col, volume_column = pu$vol_col,
+      treatment_column = s$col_treatment, id_column = s$col_id,
+      cage_column = opt(s$col_cage), dose_column = opt(s$col_dose),
+      weight_column = opt(s$col_weight), event_column = opt(s$col_survival_event),
+      length_column = if (cal) ".Length_As_Measured", width_column = if (cal) ".Width_As_Measured",
+      row_column = ".File_Line"), error = function(e) NULL)
+  })
+
+  output$data_check_ui <- renderUI({
+    qc <- data_check()
+    req(qc)
+    data_check_panel(qc, ns = session$ns)
+  })
+
+  output$data_check_flagged <- DT::renderDT({
+    qc <- data_check()
+    req(qc, nrow(qc$flagged))
+    f <- qc$flagged
+    names(f)[names(f) == "Row"] <- "Line"
+    DT::datatable(f, rownames = FALSE, filter = "top",
+                  options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+  output$download_data_check <- downloadHandler(
+    filename = "data_check.csv",
+    content = function(file) {
+      f <- data_check()$flagged
+      names(f)[names(f) == "Row"] <- "Line"
+      utils::write.csv(f, file, row.names = FALSE)
+    })
+
   # Settings preset handlers
   setup_settings_preset(input, output, session, rv, study_defaults)
 

@@ -6400,7 +6400,8 @@ After the first CRAN release, renaming any of these breaks users' code. Fix: the
 | F1–F3 | Proposals | ✅ Added v0.43.0 |
 | F7 Prism export | Proposal | Declined by the maintainer (2026-10-23) |
 | F6 | Proposal | ✅ Added v0.44.0 |
-| F4, F5, F8–F11 | Proposals | Approved; to do |
+| F5 | Proposal | ✅ Added v0.45.0 |
+| F4, F8–F11 | Proposals | Approved; to do |
 
 ### Open questions for the maintainer
 
@@ -6739,3 +6740,41 @@ The maintainer approved every proposal except F7 (Prism export). These three com
 
 
 **Verification (executed):** the full suite, Bayesian fits skipped: 749 tests, 0 failed. `R CMD check --no-manual --no-tests`: Status OK, including `apriori_survival_power()`'s example.
+
+## R22-G Implementation log — v0.45.0: the data check (F5, 2026-10-23)
+
+**`check_study_data()`** (exported, `check_study_data.R`). It works on prepared data (days and volumes), keyed by arm, ID and cage, and changes nothing. It returns `summary` (one row per check that found something: severity, animals, rows, what it means) and `flagged` (one row per flag, with the row's line when `row_column` gives it).
+- **Problems:** rows with no ID, arm or day; duplicate measurements (the same volume, counted twice, or conflicting volumes); negative volumes; non-positive weights.
+- **To check:**
+  - **Rows:** a row without a volume; rows after an animal's event.
+  - **Jumps:** a volume change of more than `jump_fold` (4) between consecutive measurements, both volumes at least the study's 10th percentile, since small tumours are noisy.
+  - **Calipers:** width above length. They must be given as measured, because `calculate_volume()` swaps them in place.
+  - **Missed days:** an animal measured before and after a day has no row on it, while at least three quarters of its arm on study was measured. This flag has no row.
+  - **Weight:** a drop of more than `weight_drop` (15 %) between weighings.
+  - **Single measurements:** an animal measured once.
+- **Notes:** staggered starts, arms under 3, IDs reused across arms, cage labels reused across arms (from `reused_cage_labels()`).
+
+**The Data tab.**
+- **What is checked.** The panel follows the Dataset Summary. The check runs on the whole file as uploaded, before the Subset Filter, prepared with the mapped columns through `prepare_upload()`.
+- **Line numbers.** A `.File_Line` column carries each row's line in the file.
+- **Calipers.** Copies of the caliper columns as measured are checked, since preparation swaps them.
+- **What it shows:**
+  - a headline (no problems, things to look at, or possible errors with what to do);
+  - a table of the checks with their severity and meaning;
+  - the flagged rows in a filterable table, under a disclosure;
+  - a CSV download of them.
+
+**Calibrated on the fixtures.**
+- **The messy study.** It gives its two rows without a volume and the design notes. An earlier version also flagged one of those as a missed day; a row without a volume is now only "No volume".
+- **The thresholds.** Two thresholds changed when a planted error went unflagged. The jump floor is now inclusive, because every day-0 volume sat exactly at the 10th percentile. The missed-day rule is now three quarters of the arm, because 80 % excluded 3 of 4.
+
+**Tests** (`test-data-check.R`, 3):
+- **A clean study** passes.
+- **Seven planted errors are found on their lines:** a sign error, a row entered twice, a decimal slip, a 30 % weight drop, a missing ID, a row after the event and a deleted day. The row that lost its ID also shows as that animal's missed day, which is correct.
+- **The notes:** reused tags and cage labels, a reversed caliper pair, and a row without a volume that is not also a missed day.
+- **The Data tab** shows the check and downloads the flagged rows with their lines.
+
+**Checked in a browser** on the Combo demo. It reports two large jumps (tumours growing from near zero) and the ear tags reused across arms.
+
+
+**Verification (executed):** the full suite, Bayesian fits skipped: 752 tests, 0 failed. `R CMD check --no-manual --no-tests`: Status OK, including `check_study_data()`'s example.
