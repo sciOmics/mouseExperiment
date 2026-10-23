@@ -242,7 +242,6 @@ survival_statistics <- function(df,
   # replicated or crossed. A sandwich variance from 4-10 clusters is badly
   # downward-biased: 28 % false positives with 2 cages x 5 mice per arm. The
   # declared unit of randomisation decides instead (see randomisation_unit).
-  use_cage_cluster <- FALSE
   if (cage_structure$structure == "nested_partial") {
     warning("Some arms are housed in a single cage: ", cage_structure$description,
             " Their hazard ratios include any cage effect.", call. = FALSE)
@@ -1053,8 +1052,6 @@ print_results <- function(results, df = NULL, treatment_column = NULL, time_colu
     
     # Safely handle HR values
     hr_na <- is.na(results$HR[i])
-    ci_lower_na <- is.na(results$CI_Lower[i]) 
-    ci_upper_na <- is.na(results$CI_Upper[i])
     
     hr_text <- if(hr_na || (!hr_na && results$HR[i] == 0)) {
       "Hazard Ratio: Not estimable"

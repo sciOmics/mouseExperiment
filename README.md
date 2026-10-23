@@ -23,13 +23,13 @@ An R package for statistical analysis of mouse tumor growth experiments. Covers 
 | Item | State |
 |---|---|
 | Version | see `DESCRIPTION` |
-| Review | `CODE_REVIEW.md`, cumulative rounds; Round 20 is the latest |
+| Review | `CODE_REVIEW.md`, cumulative rounds, the latest last |
 | Checks | `R CMD check` and the test suite run on every push and nightly (GitHub Actions) |
 | README | every non-Bayesian code block below is run by `tests/testthat/test-readme.R` |
 
 ### A note on dependencies
 
-The statistical packages (`brms`, `bayesplot`, `coin`, `clinfun`, `ggpubr`,
+The statistical packages (`brms`, `bayesplot`, `coin`, `clinfun`,
 `posterior`) are **required**, not suggested, so installing needs a working C++
 toolchain: `brms` pulls in the Stan stack.
 

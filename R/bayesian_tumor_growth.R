@@ -470,15 +470,8 @@ bayesian_tumor_growth <- function(
   model_reused <- isTRUE(attr(model, "me_model_reused"))
 
   # ── Posterior summary (fixed effects) ──────────────────────────────────────
-  brms_smry     <- summary(model)
-  fixed_df      <- as.data.frame(brms_smry$fixed)
-  fixed_df      <- cbind(Parameter = rownames(fixed_df), fixed_df,
-                         stringsAsFactors = FALSE)
-  rownames(fixed_df) <- NULL
-  # Rename CrI columns to consistent names
-  names(fixed_df)[names(fixed_df) == "l-95% CI"] <- "Lower_95_CrI"
-  names(fixed_df)[names(fixed_df) == "u-95% CI"] <- "Upper_95_CrI"
-  posterior_summary <- fixed_df
+  # R22.13: with a Term column giving each arm as labelled, not brms's name.
+  posterior_summary <- bayes_fixed_summary(model, levels(analysis_df[[treatment_column]]))
 
   # ── MCMC diagnostics ───────────────────────────────────────────────────────
   mcmc_diagnostics <- make_mcmc_diagnostics(posterior_summary,
@@ -788,7 +781,7 @@ tg_bayes_residuals_plot <- function(resid_df, transform, time_label) {
 
 #' Per-animal posterior growth rates from a brms LMM
 #'
-#' Combines treatment-level fixed slope draws (Treatment[i]:Day) with each
+#' Combines treatment-level fixed slope draws (`Treatment[i]:Day`) with each
 #' animal's random slope draw (ranef ID, Day) to produce a posterior
 #' distribution of growth rates per mouse. Returns a data frame compatible
 #' with the lme4 path's \code{growth_rates} shape plus credible-interval

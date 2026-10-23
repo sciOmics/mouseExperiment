@@ -82,7 +82,7 @@ tumor_doubling_time <- function(df,
       growth_rate <- NA_real_
       r_sq <- NA_real_
     } else {
-      growth_rate <- stats::coef(fit)[2]
+      growth_rate <- unname(stats::coef(fit)[2])   # R22.15: no "times" row names
       r_sq <- summary(fit)$r.squared
     }
 
@@ -99,5 +99,7 @@ tumor_doubling_time <- function(df,
     )
   }
 
-  do.call(rbind, result_list)
+  out <- do.call(rbind, result_list)
+  rownames(out) <- NULL
+  out
 }

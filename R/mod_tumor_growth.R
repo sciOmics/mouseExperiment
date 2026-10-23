@@ -298,9 +298,6 @@ tumor_growth_server <- function(id, rv) {
           else if (req_adj == "tukey" && fam != "all_pairs") "dunnett"
           else req_adj
         }),
-        # extrapolation_points is deprecated in backend v0.8.0 — the model-based
-        # endpoint means extrapolate inside the model and carry the uncertainty.
-        # Plot-side extrapolation is unaffected.
         # Backend H.3 -- a perm_spec only when the user opted in and declared
         # the unit; it is added for the background run (R20.D6).
         necrotic_column   = rv$necrotic_col,
@@ -585,8 +582,6 @@ tumor_growth_server <- function(id, rv) {
     if (!isTRUE(result$error) && !is.null(result$model)) {
       tryCatch({
         # Extract fixed effects terms and treatment comparisons from emmeans
-        treatment_col_name <- col_names$treatment_column
-
         if (!is.null(result$posthoc) && !is.null(result$posthoc$pairwise) &&
             "comparison" %in% colnames(result$posthoc$pairwise)) {
           # --- AUC mode: the backend's model-based AUC comparisons (R20.4) ---

@@ -12,7 +12,8 @@ test_that("R22.7: no exported function takes one of the retired argument names",
   retired <- c("ID_column", "day_column", "survival_column", "censor_column", "control_name",
                "control_group_name", "boot_seed", "auc_bootstrap_seed", "auc_bootstrap_n",
                "auc_permutations", "eval_time_point", "time_point", "min_time_point",
-               "max_time_point", "start_date", "custom_title", "custom_colors")
+               "max_time_point", "start_date", "custom_title", "custom_colors",
+               "ci_thresholds", "in_place")   # 0.42.0: deprecated arguments, removed
   fm <- exported_formals()
   hits <- Filter(length, lapply(fm, intersect, retired))
   expect_identical(hits, stats::setNames(list(), character()))

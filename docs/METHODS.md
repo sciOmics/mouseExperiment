@@ -327,12 +327,23 @@ Simulates data under an LME4 model with specified variance structure, fits, and 
 
 ---
 
-## Utilities
+## Data preparation and utilities
+
+The preparation functions take a study file to the data the analyses use. The dashboard runs them in this order, and the R script in its Download Results replays them from the uploaded file (`CODE_REVIEW.md` R20-AB, R20-AC):
 
 | Function | Notes |
 |---|---|
-| `calculate_volume()` | Tumor volume from length × width. Default is the standard ellipsoid `V = (L × W²) × π / 6`. Other formulas: modified ellipsoid, cylinder, sphere. Dimensions are auto-corrected so the longer measurement is always L (handles "I measured them in the wrong order" data) |
-| `calculate_dates()` | Date-to-day conversion using a reference date. Two methods: `"direct"` (study day already in data) and `"computed"` (compute from a date column) |
+| `read_study_csv()` | Reads a CSV with comma, semicolon or tab separators, a decimal comma, and UTF-8, Latin-1 or UTF-16 text. A row with the wrong number of fields stops with its line number |
+| `apply_exclusions()` | Removes animals (keyed by arm, ID and cage), treatments, single dose arms and cages |
+| `label_cages()` | Cage labels made unique when cages are numbered within each arm (see "Cage labels" above) |
+| `study_days()` | Dates to study days from a reference date. The whole column decides the day/month order (a value such as 13/03/2025 settles day-first); a column that cannot say stops unless `date_order` is given |
+| `calculate_volume()` | Tumor volume from length × width. Default is the standard ellipsoid `V = (L × W²) × π / 6`. Other formulas: modified ellipsoid, three-axis ellipsoid, cylinder, sphere, box. Dimensions are auto-corrected so the longer measurement is always L (handles "I measured them in the wrong order" data) |
+| `label_arms()` | Each row's arm: the treatment, or "Treatment Dose" when a dose column is given |
+| `survival_events()` | One row per animal with its time and event, from an event column or a volume limit, with deaths from removal reasons |
+
+| Utility | Notes |
+|---|---|
+| `calculate_dates()` | Dates to study days when every date has one known format (given, or detected from the first date). Prefer `study_days()` when the day/month order is not known |
 | `calculate_auc()` | Trapezoidal AUC over a time-volume vector |
 | `tumor_doubling_time()` | Doubling time from exponential growth rate (returns `log(2) / rate`) |
 | `tg_priors()`, `tg_mcmc()` | Config helpers (v0.4.7+) — bundle prior and MCMC arguments. See [`BAYESIAN.md`](BAYESIAN.md) |

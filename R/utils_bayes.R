@@ -920,3 +920,52 @@ describe_priors <- function(priors, stanvars = attr(priors, "me_stanvars")) {
     scaling         = attr(priors, "me_prior_scaling")
   )
 }
+
+#' brms's name for each arm, from brms's own renaming of factor levels
+#'
+#' brms drops spaces, brackets and quotes from a level and spells out
+#' operators: "Drug A + Drug B 10" becomes "DrugAPDrugB10". These are brms's
+#' default replacements (its internal `rename()`).
+#' @noRd
+brms_level_names <- function(x) {
+  from <- c(" ", "(", ")", "[", "]", ",", "\"", "'", "?", "+", "-", "*", "/", "^", "=", "$")
+  to   <- c(rep("", 9), "P", "M", "MU", "D", "E", "EQ", "USD")
+  for (i in seq_along(from)) x <- gsub(from[i], to[i], x, fixed = TRUE)
+  x
+}
+
+#' Readable names for a brms fit's fixed effects (R22.13)
+#'
+#' The posterior summary listed brms's names, such as
+#' `TreatmentDrugAPDrugB10:Day`; this gives "Treatment: Drug A + Drug B 10 x
+#' Day", with the arm as labelled. Terms that are not an arm are unchanged.
+#' @param par brms parameter names.
+#' @param arms The arm labels.
+#' @param factor_name The treatment variable's name in the formula.
+#' @noRd
+bayes_term_labels <- function(par, arms, factor_name = "Treatment") {
+  arms <- unique(as.character(arms))
+  lab <- stats::setNames(paste0(factor_name, ": ", arms),
+                         paste0(factor_name, brms_level_names(arms)))
+  vapply(strsplit(as.character(par), ":", fixed = TRUE), function(p) {
+    hit <- p %in% names(lab)
+    p[hit] <- lab[p[hit]]
+    paste(p, collapse = " \u00d7 ")
+  }, character(1L))
+}
+
+#' A brms fit's fixed-effects summary, with readable terms
+#' @param model A brmsfit.
+#' @param arms The arm labels.
+#' @noRd
+bayes_fixed_summary <- function(model, arms) {
+  fixed_df <- as.data.frame(summary(model)$fixed)
+  out <- data.frame(Parameter = rownames(fixed_df),
+                    Term = bayes_term_labels(rownames(fixed_df), arms),
+                    fixed_df, stringsAsFactors = FALSE, check.names = FALSE)
+  rownames(out) <- NULL
+  names(out)[names(out) == "l-95% CI"] <- "Lower_95_CrI"
+  names(out)[names(out) == "u-95% CI"] <- "Upper_95_CrI"
+  out
+}
+

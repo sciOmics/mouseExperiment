@@ -17,7 +17,6 @@ analyze_drug_synergy(
   id_column = "ID",
   cage_column = NULL,
   endpoint_method = c("model", "last_obs", "survivors"),
-  ci_thresholds = c(0.85, 1.15),
   additivity_margin = 0.1,
   n_boot = 2000L,
   seed = NULL,
@@ -66,9 +65,6 @@ of log volume fitted to every observation, with a natural spline in time
 per arm and per-animal random slopes), "last_obs", or "survivors"
 (pre-0.8.0 behaviour; conditions on survival and understates TGI). See
 CODE_REVIEW.md R3.5 / G.3 and R20.1.}
-
-\item{ci_thresholds}{Deprecated and ignored; retained so existing calls do
-not error. It configured the removed Combination Index band.}
 
 \item{additivity_margin}{Numeric. Used only when there is no interval
 (\code{n_boot = 0}): a Bliss excess within this distance of zero is

@@ -10,8 +10,7 @@ calculate_volume(
   width_column = "Width",
   height_column = NULL,
   formula = c("ellipsoid", "modified_ellipsoid", "ellipsoid_3axis", "cylinder", "sphere",
-    "box"),
-  in_place = FALSE
+    "box")
 )
 }
 \arguments{
@@ -32,12 +31,9 @@ calculate_volume(
 \item "sphere": V = (π × width³) / 6 (uses only the width/diameter)
 \item "box": V = length × width × height (requires height_column)
 }}
-
-\item{in_place}{Logical, whether to modify the input data frame (TRUE) or return a new data frame (FALSE, default)}
 }
 \value{
-Returns a data frame with a "Volume" column appended, calculated using the specified formula.
-If in_place=FALSE (default), returns a new data frame; if in_place=TRUE, modifies the input data frame and returns it.
+\code{df} with a "Volume" column, calculated using the specified formula.
 }
 \description{
 Calculate tumor volume using length and width measurements

@@ -387,10 +387,6 @@ data_upload_server <- function(id, rv) {
                 else if (!is.null(input$col_day) && input$col_day != "") input$col_day
                 else NULL
     
-    vol_col <- if (!is.null(input$volume_method) && input$volume_method == "calculate") "Volume"
-               else if (!is.null(input$col_volume) && input$col_volume != "") input$col_volume
-               else NULL
-    
     # --- Treatment groups ---
     tx_box <- if (has_col(data, tx_col)) {
       if (has_col(data, dose_col)) {

@@ -221,7 +221,8 @@ subset_filter_ui <- function(ns) {
                        options = list(placeholder = "(none excluded)"))
       ),
       column(4,
-        selectizeInput(ns("exclude_treatments"), "Exclude Treatments",
+        selectizeInput(ns("exclude_treatments"),
+                       tagList("Exclude Treatments", help_tip("A whole treatment, or with a dose column one of its doses, e.g. 'Drug A, dose 10'.")),
                        choices = NULL, multiple = TRUE,
                        options = list(placeholder = "(none excluded)"))
       ),
@@ -278,8 +279,7 @@ setup_subset_filter <- function(input, output, session, rv) {
       o   <- order(arm[u], suppressWarnings(as.numeric(idv)), idv)
       stats::setNames(key[u][o], lab[u][o])
     } else character(0)
-    txs <- if (!is.null(tx_col) && nzchar(tx_col) && tx_col %in% colnames(df))
-      sort(unique(as.character(df[[tx_col]]))) else character(0)
+    txs <- treatment_filter_choices(df, rv$settings)
     # R22.3: with cages numbered within each arm, each arm's cage.
     cgs <- cage_filter_choices(df, rv$settings, isolate(rv$exclude_cages) %||% character(0))
 
@@ -289,7 +289,7 @@ setup_subset_filter <- function(input, output, session, rv) {
                         server = TRUE)
     updateSelectizeInput(session, "exclude_treatments",
                         choices = txs,
-                        selected = intersect(isolate(rv$exclude_treatments), txs),
+                        selected = intersect(isolate(rv$exclude_treatments), unname(txs)),
                         server = TRUE)
     updateSelectizeInput(session, "exclude_cages",
                         choices = cgs$choices,

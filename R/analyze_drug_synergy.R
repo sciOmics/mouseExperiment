@@ -130,8 +130,6 @@
 #'   labelled additive. Default 0.1, a convention rather than a derived
 #'   quantity. It replaces \code{strong_synergy_delta} (v0.27.0), which set the
 #'   "Strong Synergy" label; that label was removed with the asymmetric bands.
-#' @param ci_thresholds Deprecated and ignored; retained so existing calls do
-#'   not error. It configured the removed Combination Index band.
 #' @param n_boot Integer >= 0. Number of draws behind the 95 % intervals in
 #'   \code{synergy_ci}. Under \code{endpoint_method = "model"} they are draws
 #'   of the endpoint model's fixed effects, so the intervals describe the
@@ -153,7 +151,6 @@ analyze_drug_synergy <- function(df,
                                id_column = "ID",
                                cage_column = NULL,
                                endpoint_method = c("model", "last_obs", "survivors"),
-                               ci_thresholds = c(0.85, 1.15),
                                additivity_margin = 0.1,
                                n_boot = 2000L,
                                seed = NULL,

@@ -119,7 +119,7 @@ The codebase is intentionally permissive on lint warnings — many existing file
 - **Roxygen for every exported function.** Non-exported helpers may use a minimal `@keywords internal` block.
 - **No new emoji in code or comments** unless a UI element explicitly calls for one (e.g., status icons via `shiny::icon()`).
 - **No `eval(parse(text = user_input))`** anywhere. This is non-negotiable — F.7 worker isolation depends on it.
-- **Pure helpers go in `helpers.R`** (or `helpers_bayes.R` / `helpers_report.R` if the topic is large enough to warrant its own file).
+- **Pure helpers go in the `helpers_*.R` file for their topic:** `helpers_ui.R` (status, errors, modals), `helpers_data.R` (preparation, the Subset Filter), `helpers_format.R`, `helpers_plot.R`, `helpers_bayes.R`, `helpers_report.R`. Analysis code belongs in the package's own files (see [ARCHITECTURE.md](ARCHITECTURE.md)).
 - **Tests for new behavior.** PRs that add user-visible behavior without tests will be asked for tests before merge.
 
 ### When in doubt, match the existing style of the file you're editing.
@@ -146,7 +146,7 @@ devtools::test(filter = "helpers")              # helper functions
 
 | File | What it covers |
 |---|---|
-| `test-helpers.R` | Pure helper functions |
+| `test-helpers.R`, `test-helpers_data.R`, `test-helpers_format.R`, `test-helpers_plot_ui.R` | Pure helper functions, by file |
 | `test-new-helpers.R` | More recent helpers (subset filter, palette presets, etc.) |
 | `test-modal-and-cachebust.R` | Modal display + cache-busting query string |
 | `test-module_servers.R` | Module init smoke tests (`shiny::testServer`) |

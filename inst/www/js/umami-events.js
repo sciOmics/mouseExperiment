@@ -8,25 +8,14 @@ window.umamiReady = function() {
   return typeof window.umami !== 'undefined' && window.umami.track;
 };
 
-// Ensure we wait for Umami to be available (max 5 seconds)
-window.umamiInit = new Promise(function(resolve) {
-  var attempts = 0;
-  var maxAttempts = 50; // 5 seconds with 100ms checks
-  var checkUmami = setInterval(function() {
-    attempts++;
-    if (window.umamiReady() || attempts >= maxAttempts) {
-      clearInterval(checkUmami);
-      resolve(window.umamiReady());
-    }
-  }, 100);
-});
-
-// Tracking function wrapper (safe even if Umami is unavailable)
+// Tracking function wrapper. The server calls these functions whether or not
+// analytics are on (dashboard_analytics()), so they are always defined; without
+// the Umami script on the page they do nothing (R22.18: they used to poll for
+// it for 5 seconds, and log every event to the console).
 window.trackEvent = function(eventName, properties) {
   if (window.umamiReady()) {
     try {
       window.umami.track(eventName, properties || {});
-      console.log('[Umami]', eventName, properties || {});
     } catch (e) {
       console.error('[Umami] Error tracking event:', eventName, e);
     }
@@ -130,19 +119,6 @@ window.trackAnalysisComplete = function(analysisType, success, errorMessage, dur
 };
 
 /**
- * Track plot generation
- * @param {string} analysisType - 'tumor_growth', 'survival', etc.
- * @param {string} plotType - 'growth_curve', 'km_curve', 'forest_plot', etc.
- */
-window.trackPlotGenerated = function(analysisType, plotType) {
-  window.trackEvent('plot_generated', {
-    analysis_type: analysisType,
-    plot_type: plotType,
-    timestamp: new Date().toISOString()
-  });
-};
-
-/**
  * Track download action
  * @param {string} analysisType - 'tumor_growth', 'survival', etc.
  * @param {string} contentType - 'plot', 'table', 'results', etc.
@@ -174,19 +150,6 @@ window.trackError = function(errorType, errorMessage, context) {
 };
 
 /**
- * Track reference group selection
- * @param {string} analysisType - 'tumor_growth' or 'survival'
- * @param {string} referenceGroup - selected reference group value
- */
-window.trackReferenceGroupSelected = function(analysisType, referenceGroup) {
-  // R20.D12: that a reference was chosen, not which arm.
-  window.trackEvent('reference_group_selected', {
-    analysis_type: analysisType,
-    timestamp: new Date().toISOString()
-  });
-};
-
-/**
  * Track demo data loading
  * @param {string} demoName - name of demo dataset
  */
@@ -196,18 +159,3 @@ window.trackDemoDataLoaded = function(demoName) {
     timestamp: new Date().toISOString()
   });
 };
-
-/**
- * Track feature access
- * @param {string} featureName - name of feature being accessed
- * @param {string} status - 'enabled', 'disabled', 'coming_soon', etc.
- */
-window.trackFeatureAccess = function(featureName, status) {
-  window.trackEvent('feature_access', {
-    feature: featureName,
-    status: status,
-    timestamp: new Date().toISOString()
-  });
-};
-
-console.log('[Umami Events] Helper functions loaded. Waiting for Umami script to initialize...');

@@ -16,8 +16,8 @@ Character vector of keys.
 }
 \description{
 Ear tags are commonly reused in each arm or cage, so an ID alone does not
-identify an animal (CODE_REVIEW.md R20.D2, R20.D57). This is the dashboard's
-copy of the package's internal \code{make_mouse_key()} convention (package T1):
-the parts joined by "|||", treatment first.
+identify an animal (CODE_REVIEW.md R20.D2, R20.D57). The key is the
+package's \code{make_mouse_key()} (T1), treatment first; until 0.42.0 this was a
+copy of it without its check for a missing column (R22.10).
 }
 \keyword{internal}

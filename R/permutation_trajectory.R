@@ -91,7 +91,7 @@ print.perm_spec <- function(x, ...) {
 #' refits drop from the assignments to the distinct statistics (90 to 15 for
 #' six cages in three arms of two).
 #'
-#' @param assignments List of label vectors from [enumerate_label_perms()].
+#' @param assignments List of label vectors from `enumerate_label_perms()`.
 #' @return The subset that represents each partition once.
 #' @noRd
 #' @keywords internal

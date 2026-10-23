@@ -82,7 +82,6 @@
 #' plot_synergy_trend(trend)
 #' @import dplyr
 #' @import ggplot2
-#' @importFrom ggpubr ggarrange
 #' @export
 analyze_drug_synergy_over_time <- function(df, 
                                       treatment_column = "Treatment",

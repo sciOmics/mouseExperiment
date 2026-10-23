@@ -1,14 +1,19 @@
-#' Calculate the number of days for measurements
+#' Study days from dates in one known format
+#'
+#' Reads the dates with one format, given or detected from the first date,
+#' and counts days from `reference_date`. For a column whose day/month order
+#' is not known, use [study_days()], which decides it from the whole column
+#' (a value such as 13/03/2025 settles day-first) and stops when the column
+#' cannot say; it is what the dashboard uses.
 #'
 #' @param df A data frame containing longitudinal tumor measurements
 #' @param reference_date Date the tumors were injected
 #' @param date_column The name of the column with dates of measurements
 #' @param date_format Optional format string for parsing dates (e.g., "%d-%b" for "24-Mar" format, "%m/%d/%Y" for "03/24/2025" format)
 #' @param year Optional year to use when date format doesn't include year
-#' @param in_place Logical, whether to modify the input data frame (TRUE) or return a new data frame (FALSE, default)
 #'
-#' @return Returns a data frame with a Day column appended. If in_place=FALSE (default), 
-#'         returns a new data frame; if in_place=TRUE, modifies the input data frame and returns it.
+#' @return `df` with a Day column.
+#' @seealso [study_days()]
 #' @export
 #'
 #' @examples
@@ -23,24 +28,14 @@
 #' d <- calculate_dates(combo_treatment_synthetic_data, reference_date = "03/24/2025",
 #'                      date_format = "%m/%d/%Y")
 calculate_dates <- function(df, reference_date, date_column = "Date", 
-                            date_format = NULL, year = NULL, in_place = FALSE) {
-  # Deprecation warning for in_place parameter
-  if (in_place) {
-    warning("The 'in_place' parameter is deprecated and will be removed in a future version. ",
-            "Use 'df <- calculate_dates(df, ...)' instead.", call. = FALSE)
-  }
+                            date_format = NULL, year = NULL) {
   
   # Input validation
   if(!date_column %in% colnames(df)) {
     stop(paste("Column", date_column, "not found in data frame"))
   }
   
-  # Choose whether to modify in place or create a copy
-  if (in_place) {
-    df_result <- df  # Reference to the original dataframe
-  } else {
-    df_result <- df  # Create a copy of the data frame
-  }
+  df_result <- df
   
   # Attempt to auto-detect common date formats if none provided
   if (is.null(date_format)) {
@@ -128,7 +123,7 @@ calculate_dates <- function(df, reference_date, date_column = "Date",
   if (is.na(start_date_parsed)) {
     # Try a fallback approach for start date
     tryCatch({
-      message("Trying alternative approach for parsing start date...")
+      message("Trying another way to parse reference_date...")
       # Check if start_date might be in DD-Mon format
       if (grepl("^\\d{1,2}-[A-Za-z]{3}$", reference_date)) {
         # Use current year if none provided
@@ -153,10 +148,10 @@ calculate_dates <- function(df, reference_date, date_column = "Date",
       
       # Check if successful now
       if (is.na(start_date_parsed)) {
-        stop("Start date could not be parsed. Please specify date_format parameter explicitly.")
+        stop("reference_date could not be parsed. Give date_format explicitly.")
       }
     }, error = function(e) {
-      stop(paste("Start date could not be parsed:", e$message, 
+      stop(paste("reference_date could not be parsed:", e$message, 
                  "\nTry specifying date_format parameter (e.g., date_format = '%d-%b', year = 2023)."))
     })
   }
@@ -171,16 +166,6 @@ calculate_dates <- function(df, reference_date, date_column = "Date",
   }
   result <- cbind(df_result, Day)
   
-  # in_place is deprecated and now a no-op. parent.frame() / assign()
-  # silently failed when calculate_dates() was called from inside another
-  # function (the assignment hit that inner function's frame, not the
-  # user's workspace). Matches the calculate_volume() deprecation.
-  if (isTRUE(in_place)) {
-    warning("`in_place = TRUE` is deprecated and has no effect; ",
-            "use the return value of calculate_dates() instead.",
-            call. = FALSE)
-  }
-
   # Return the result
   return(result)
 }

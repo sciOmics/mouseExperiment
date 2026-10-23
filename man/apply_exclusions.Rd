@@ -12,7 +12,8 @@ apply_exclusions(
   treatment_column = "Treatment",
   id_column = "ID",
   cage_column = NULL,
-  dose_column = NULL
+  dose_column = NULL,
+  arms = NULL
 )
 }
 \arguments{
@@ -31,6 +32,9 @@ within each arm ("C1" in Vehicle but not "C1" in Drug A).}
 \item{treatment_column, id_column}{Column names.}
 
 \item{cage_column, dose_column}{Column names, or NULL when the study has none.}
+
+\item{arms}{Arms to remove, as \code{\link[=label_arms]{label_arms()}} writes them ("Drug A 10"): one
+dose of a treatment given at several.}
 }
 \value{
 \code{df} without the excluded rows.

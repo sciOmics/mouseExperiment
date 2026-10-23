@@ -3,24 +3,11 @@
 # Split out of the former `helpers.R` under CODE_REVIEW.md D.1.
 #
 # These decide how a number is presented, which is not a cosmetic question when
-# the number lives on a transformed scale. `back_transform()` and
-# `scale_suffix()` are the pair that turn a model estimate back into a volume; a
-# disagreement between them mislabels every figure on screen. `comparisons_title()`
+# the number lives on a transformed scale: `scale_suffix()` labels the scale an
+# axis is on. `comparisons_title()`
 # and `resolve_interval_cols()` report multiplicity and interval provenance, and
 # the latter exists because the previous column-name sniffing silently returned
 # NA and blanked the panel (R4.D5).
-
-#' Format numeric values for display
-#'
-#' @param x Numeric value
-#' @param digits Number of decimal places
-#'
-#' @return Formatted character string
-#' @keywords internal
-format_number <- function(x, digits = 3) {
-  if (is.na(x)) return("NA")
-  format(round(x, digits), nsmall = digits, trim = TRUE)
-}
 
 #' Format a p-value for display
 #'
@@ -139,26 +126,6 @@ forest_ci_note <- function(pc_df, lower_col) {
   }
   if (startsWith(adj, "none")) return("Intervals: 95% per comparison (no correction applied)")
   paste0("Intervals adjusted for multiple comparisons (", adj, "), like the p-values")
-}
-
-#' Back-transform values from analysis scale to original scale
-#'
-#' Inverse of the transform applied in `tumor_growth_statistics()` and
-#' `bayesian_tumor_growth()`, which both use `log(Volume)` (not
-#' `log1p`). For `"sqrt"`, returns `x^2`. For `"none"`, returns `x` unchanged.
-#'
-#' @param x Numeric vector on the transformed scale
-#' @param transform One of "log", "sqrt", or "none"
-#' @return Numeric vector on the original scale
-#' @keywords internal
-back_transform <- function(x, transform) {
-  x <- suppressWarnings(as.numeric(x))
-  switch(transform,
-    "log"  = exp(x),
-    "sqrt" = x ^ 2,
-    "none" = x,
-    x
-  )
 }
 
 #' Axis-label suffix for an analysis-scale plot

@@ -20,18 +20,16 @@
 #' One key per animal: treatment + ID (+ cage)
 #'
 #' Ear tags are commonly reused in each arm or cage, so an ID alone does not
-#' identify an animal (CODE_REVIEW.md R20.D2, R20.D57). This is the dashboard's
-#' copy of the package's internal `make_mouse_key()` convention (package T1):
-#' the parts joined by "|||", treatment first.
+#' identify an animal (CODE_REVIEW.md R20.D2, R20.D57). The key is the
+#' package's `make_mouse_key()` (T1), treatment first; until 0.42.0 this was a
+#' copy of it without its check for a missing column (R22.10).
 #'
 #' @param treatment,id Vectors of equal length.
 #' @param cage Optional cage vector; NULL when no cage column is mapped.
 #' @return Character vector of keys.
 #' @keywords internal
 animal_key <- function(treatment, id, cage = NULL) {
-  parts <- list(as.character(treatment), as.character(id))
-  if (!is.null(cage)) parts <- c(parts, list(as.character(cage)))
-  do.call(paste, c(parts, sep = "|||"))
+  if (is.null(cage)) make_mouse_key(treatment, id) else make_mouse_key(treatment, id, cage)
 }
 
 #' Human-readable animal label, e.g. "3 (Vehicle, cage C1)"
@@ -92,13 +90,20 @@ subset_filter_args <- function(df, rv) {
     if (!is.null(cage)) a$cage <- vapply(parts, function(p) if (length(p) >= 3L) p[3L] else NA_character_, "")
     a
   }
-  list(animals = animals,
-       treatments = if (length(ex_tx)) ex_tx,
-       cages = if (length(ex_cg) && !is.null(cage)) cage_exclusions(df, s, ex_cg),
-       treatment_column = s$col_treatment %||% "",
-       id_column = s$col_id %||% "",
-       cage_column = cage,
-       dose_column = col(s$col_dose))
+  # R22.16: one dose arm is stored as animal_key(treatment, dose).
+  one_arm <- grepl("|||", ex_tx, fixed = TRUE)
+  arms <- if (any(one_arm)) vapply(strsplit(ex_tx[one_arm], "|||", fixed = TRUE),
+                                   paste, "", collapse = " ")
+  ex_tx <- ex_tx[!one_arm]
+  out <- list(animals = animals,
+              treatments = if (length(ex_tx)) ex_tx,
+              cages = if (length(ex_cg) && !is.null(cage)) cage_exclusions(df, s, ex_cg),
+              treatment_column = s$col_treatment %||% "",
+              id_column = s$col_id %||% "",
+              cage_column = cage,
+              dose_column = col(s$col_dose))
+  if (!is.null(arms)) out$arms <- arms
+  out
 }
 
 #' Excluded cages as [apply_exclusions()]'s `cages`
@@ -155,6 +160,30 @@ cage_filter_choices <- function(df, s, stored = character(0)) {
     selected <- unname(choices)[unname(choices) %in% stored]
   }
   list(choices = choices, selected = selected)
+}
+
+#' The Subset Filter's treatment choices: each treatment, and each dose arm
+#'
+#' With a dose column, a treatment given at several doses also offers each
+#' dose ("Drug A, dose 10"), stored as `animal_key(treatment, dose)` (R22.16).
+#' @param df The uploaded data.
+#' @param s `rv$settings`.
+#' @return Named character vector, values to labels.
+#' @keywords internal
+treatment_filter_choices <- function(df, s) {
+  tx <- s$col_treatment
+  if (!has_col(df, tx)) return(character(0))
+  txs <- treatment_values(df, tx)
+  out <- stats::setNames(txs, txs)
+  if (has_col(df, s$col_dose)) {
+    d <- unique(data.frame(t = as.character(df[[tx]]), d = as.character(df[[s$col_dose]]),
+                           stringsAsFactors = FALSE))
+    d <- d[!is.na(d$t) & !is.na(d$d), , drop = FALSE]
+    d <- d[d$t %in% d$t[duplicated(d$t)], , drop = FALSE]   # treatments at several doses
+    d <- d[order(d$t, suppressWarnings(as.numeric(d$d)), d$d), , drop = FALSE]
+    out <- c(out, stats::setNames(animal_key(d$t, d$d), paste0(d$t, ", dose ", d$d)))
+  }
+  out
 }
 
 #' Sorted distinct values of the treatment column

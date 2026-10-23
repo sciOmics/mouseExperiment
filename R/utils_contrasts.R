@@ -220,7 +220,7 @@ bw_pairwise_table <- function(emm_obj, spec, reference_group = NULL,
 #' which it is holding. Same approach as B7.1: declare, do not rename.
 #'
 #' @param x An `emmGrid` or data frame of contrasts.
-#' @param comparison_spec Result of [resolve_comparison_spec()], for provenance.
+#' @param comparison_spec Result of `resolve_comparison_spec()`, for provenance.
 #' @param adjusted_col Name of the column holding multiplicity-adjusted p-values.
 #' @param raw_col Name of the column holding unadjusted p-values, if the path
 #'   reports one separately.

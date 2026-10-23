@@ -39,6 +39,8 @@
 #' @return A list with: event_data (per animal, including \code{Censor_Type} —
 #'   "event", "administrative" or "competing_removal" — and \code{Status_CR}),
 #'   km_fit, km_summary, log_rank, cox_model, cox_summary, cox_method, ph_test,
+#'   \code{cox_skipped} (why there is no Cox model: fewer than 3 events, or no
+#'   reference animal at risk at any event; otherwise \code{NULL}),
 #'   \code{cuminc} (Aalen-Johansen cumulative incidence with competing
 #'   removals, when a removal-reason column identifies any),
 #'   \code{censoring_summary}, \code{n_competing_risk} and \code{assumption}
@@ -270,7 +272,24 @@ weight_loss_threshold <- function(df,
   cox_summary <- NULL
   cox_method  <- NA_character_
   ph_test     <- NULL
-  if (length(levels(event_df$Treatment)) >= 2) {
+  # R22.8: a hazard ratio against the reference needs events while the
+  # reference arm is at risk. With one weight-loss event, after every
+  # reference animal had left, Firth's penalty alone gave coefficients such as
+  # -2.08 (p = 0.33) for an event-free arm. Then only the Kaplan-Meier curves
+  # and the counts are reported, with the reason.
+  ev_times <- event_df$Time[event_df$Event == 1L]
+  ref_time <- event_df$Time[event_df$Treatment == reference_group]
+  cox_skipped <- if (length(levels(event_df$Treatment)) < 2L) {
+    NULL
+  } else if (length(ev_times) < 3L) {
+    sprintf(paste0("No hazard ratios: %d weight-loss event%s in the study, and a Cox ",
+                   "model needs at least 3."), length(ev_times),
+            if (length(ev_times) == 1L) "" else "s")
+  } else if (!any(vapply(ev_times, function(t) any(ref_time >= t), NA))) {
+    paste0("No hazard ratios: no ", reference_group, " animal was still on study at any ",
+           "weight-loss event, so no arm can be compared with it.")
+  }
+  if (length(levels(event_df$Treatment)) >= 2 && is.null(cox_skipped)) {
     # Detect complete separation (a group with no events). Firth provides
     # bias-reduced estimates when standard Cox is unstable.
     ev_by_grp <- tapply(event_df$Event, event_df$Treatment,
@@ -326,6 +345,7 @@ weight_loss_threshold <- function(df,
     cox_model    = cox_model,
     cox_summary  = cox_summary,
     cox_method   = cox_method,
+    cox_skipped  = cox_skipped,   # R22.8: why there is no Cox model, or NULL
     ph_test      = ph_test,
     threshold    = threshold,
     baseline_day = baseline_day

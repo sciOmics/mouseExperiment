@@ -1200,7 +1200,6 @@ survival_server <- function(id, rv) {
     if (isTRUE(rv$surv_results$error)) return(NULL)
     if (isTRUE(rv$surv_results$model_type_used == "bayes")) return(NULL)
 
-    method <- rv$surv_results$method_used %||% NA_character_
     c_idx  <- rv$surv_results$c_index
     ph     <- rv$surv_results$ph_test
 
