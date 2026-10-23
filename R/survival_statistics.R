@@ -237,6 +237,7 @@ survival_statistics <- function(df,
   # since there is no replication to estimate from.
   cage_structure <- classify_cage_structure(df, cage_column, id_column,
                                             treatment_column)
+  warn_reused_cage_labels(df, cage_column, treatment_column)   # R22.3
   # CODE_REVIEW.md R20.6 -- this used cluster(cage) whenever cages were
   # replicated or crossed. A sandwich variance from 4-10 clusters is badly
   # downward-biased: 28 % false positives with 2 cages x 5 mice per arm. The

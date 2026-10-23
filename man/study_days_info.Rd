@@ -6,6 +6,17 @@
 \usage{
 study_days_info(data, date_column, reference_date, date_order = "auto")
 }
+\arguments{
+\item{data}{Data frame containing the date column.}
+
+\item{date_column}{Name of the date column.}
+
+\item{reference_date}{The study's Day 0, preferably as YYYY-MM-DD. A
+d/d/yyyy reference date is read in the column's order.}
+
+\item{date_order}{"auto", "dmy" or "mdy": how to read d/d/yyyy values
+when the data do not decide it.}
+}
 \value{
 A list: \code{data} (with a \code{Day} column), \code{layout}, \code{reason} and
 \code{notes}.
@@ -14,6 +25,8 @@ A list: \code{data} (with a \code{Day} column), \code{layout}, \code{reason} and
 Reads the dates with \code{\link[=detect_date_format]{detect_date_format()}} and passes them to
 \code{mouseExperiment::calculate_dates()} as unambiguous YYYY-MM-DD values, so
 the backend defines Day and the dashboard only decides what the dates are.
-Days before the reference date are reported (R20.D1).
+Days before the reference date are reported (R20.D1). The exported
+\code{\link[=study_days]{study_days()}} returns the data and raises the notes as a warning; the
+dashboard shows them as a notification instead.
 }
 \keyword{internal}

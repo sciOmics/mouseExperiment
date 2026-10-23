@@ -1062,6 +1062,7 @@ tumor_growth_statistics <- function(df,
   cage_structure <- classify_cage_structure(
     analysis_df, cage_column, id_column, treatment_column
   )
+  warn_reused_cage_labels(analysis_df, cage_column, treatment_column)   # R22.3
   cage_analysis$structure <- cage_structure
   cage_handling <- resolve_cage_handling(cage_structure, handle_cage_effects,
                                          verbose = verbose)

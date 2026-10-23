@@ -247,6 +247,28 @@ data_upload_server <- function(id, rv) {
     as.list(stats::setNames(cats, vals))
   })
 
+  # R22.3: are the cage labels unique, or numbered within each arm? From the
+  # labels alone the two cannot be told apart. When every arm's labels come
+  # from one set, "within each arm" is chosen (the error on that side is the
+  # conservative one), unless a preset says otherwise.
+  reused_cages <- reactive({
+    cg <- input$col_cage %||% ""
+    tx <- input$col_treatment %||% ""
+    d  <- rv$uploaded_data
+    if (!isTRUE(rv$data_valid) || !has_col(d, cg) || !has_col(d, tx)) return(NULL)
+    reused_cage_labels(d[[cg]], arm_labels(d, tx, input$col_dose))
+  })
+  output$cage_labels_ui <- renderUI({
+    lab <- reused_cages()
+    if (is.null(lab)) return(NULL)
+    cage_labels_ui(lab, isolate(study_defaults()$cage_labels), ns = session$ns)
+  })
+  output$cage_labels_status <- renderUI({
+    lab <- reused_cages()
+    if (!length(lab)) return(NULL)
+    cage_labels_note(lab, input$cage_labels %||% "arm")
+  })
+
   output$volume_units_status <- renderUI({
     if (!is.null(input$volume_units)) return(NULL)
     tags$small(class = "text-danger", icon("exclamation-circle"),
@@ -689,7 +711,10 @@ data_upload_server <- function(id, rv) {
       col_removal_reason = input$col_removal_reason %||% "",
       removal_reason_map = removal_reason_map(),
       randomisation_unit = if (nzchar(input$col_cage %||% ""))
-                             input$randomisation_unit %||% "mouse" else "mouse"
+                             input$randomisation_unit %||% "mouse" else "mouse",
+      # R22.3: "arm" when cages are numbered within each arm.
+      cage_labels       = if (nzchar(input$col_cage %||% ""))
+                            input$cage_labels %||% "study" else "study"
     )
     
     # Track column mapping when all required columns are set
@@ -728,7 +753,7 @@ data_upload_server <- function(id, rv) {
          input$col_date_for_day, input$col_volume, input$col_length,
          input$col_width, input$volume_method, input$time_method,
          input$reference_date, input$date_order, input$volume_formula,
-         input$col_height, input$col_cage, input$col_dose),
+         input$col_height, input$col_cage, input$col_dose, input$cage_labels),
     {
       rv$processed_data <- NULL
     },

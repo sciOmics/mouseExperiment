@@ -6389,7 +6389,7 @@ After the first CRAN release, renaming any of these breaks users' code. Fix: the
 |---|---|---|
 | R22.1 RNG kind on the worker | Major | ✅ Fixed v0.39.0 |
 | R22.2 Bayesian survival downloads and script | Major | ✅ Fixed v0.39.0 |
-| R22.3 Reused cage labels | Major | Open (question 1) |
+| R22.3 Reused cage labels | Major | ✅ Fixed v0.41.0 |
 | R22.4 Firth defaults in `weight_loss_threshold()` | Major | ✅ Fixed v0.39.0 |
 | R22.5 CI skips the source-reading tests | Major | ✅ Fixed v0.39.0 |
 | R22.6 README/vignette per-animal reduction | Major | ✅ Fixed v0.39.0 |
@@ -6402,6 +6402,7 @@ After the first CRAN release, renaming any of these breaks users' code. Fix: the
 ### Open questions for the maintainer
 
 1. **Cage labels (R22.3).** Should the dashboard ask at Study Design whether cage labels are unique or numbered within each arm? My recommendation is yes, plus a warning when every arm shares one set of labels.
+   - **Answer (2026-10-23):** yes, as recommended. Done in 0.41.0 (R22-C).
 2. **Argument names (R22.7).** Harmonise now, before CRAN, keeping the old names as deprecated aliases for two releases?
    - **Answer (2026-10-23):** harmonise, without aliases: the package has no users yet. Done in 0.40.0 (R22-B).
 3. **Which proposals (F1–F11)?** They are worth scheduling after the Major items and before or after CRAN. My suggestion is F1–F3 first: they are the endpoints reviewers ask for.
@@ -6512,3 +6513,55 @@ The forest plot takes the measure as a parameter: its title, axis and labels say
 **Verification (executed):**
 - The full suite, Bayesian fits skipped: 723 tests, 0 failed.
 - `R CMD check --no-manual --no-tests`: Status OK, with every example and the vignette under the new names.
+
+## R22-C Implementation log — v0.41.0: cages numbered within each arm (2026-10-23)
+
+**R22.3**, as the maintainer approved: a Study Design question, a package step, and a warning.
+
+**The package:**
+- **`label_cages(df, cage_column, treatment_column, dose_column)`** (`prepare_study.R`, exported) puts each cage's arm in front of its label. The arm is the treatment, or "Treatment Dose" as `label_arms()` writes it. A missing cage stays missing.
+- **`apply_exclusions(cages = )`** also takes a data frame with `arm` and `cage`, which removes one arm's cage. A character vector still removes a whole cage, in every arm.
+- **`reused_cage_labels(cage, arm)`** (`utils_cage.R`) flags the pattern: at least two arms share a label, and one arm's labels include every other arm's. So Vehicle C1–C3 with C1–C2 elsewhere counts. Unique labels do not count, nor do cages that each hold a different pair of arms.
+- **The warning, `warn_reused_cage_labels()`,** comes from the five analyses that model cage:
+  - `tumor_growth_statistics()`;
+  - `survival_statistics()`;
+  - `analyze_body_weight()`;
+  - `bayesian_tumor_growth()` and `bayesian_survival()`, when they include the cage effect.
+
+  The cage-level randomisation test adds the same text when it stops on a crossed design.
+
+**The dashboard:**
+- **Study Design** asks "Cage labels are: Unique across the study / Numbered within each arm" when a cage column is mapped (`cage_labels_ui()`).
+  - **The default.** When the labels show the pattern, "within each arm" is preselected, because that side's error is the conservative one: a random intercept for each arm's cage, rather than a fixed effect across arms. A preset's answer wins.
+  - **The note.** Beside the question, a note names the reused labels. If "unique" is chosen for such labels, the note is a warning.
+  - **Settings and presets.** `rv$settings$cage_labels` carries the answer, and presets save and load it. Changing it clears the preparation cache.
+- **Preparation** (`prepare_upload()`). With "within each arm", `label_cages()` runs after `apply_exclusions()` and before the dates and volumes, and is recorded for the R script. The exclusions run first because the Subset Filter names cages as they were uploaded, so its animal keys stay valid under either answer.
+- **The Subset Filter** (`cage_filter_choices()`, `cage_exclusions()`).
+  - **The choices.** With "within each arm", each arm's cage is a choice, "Vehicle C1", stored as `animal_key(arm, cage)`.
+  - **Changing the answer loses nothing.** A whole cage stored under "unique" shows as each arm's cage. One arm's cage stored under "within each arm" stays a choice of its own under "unique".
+  - **The same rows either way.** An exclusion removes the same rows under either answer.
+
+**Tests** (`test-round22-cages.R`, 11 tests):
+- **`label_cages()`:** with and without a dose, a missing cage, a missing column.
+- **The pattern:** identical sets, nested sets, numeric ordering, unique labels, pair-crossed cages and a single arm.
+- **Tumour growth:**
+  - it warns on reused labels;
+  - the cage structure is crossed with them and nested and replicated after `label_cages()`;
+  - the estimates and SEs then equal those from the original C01–C12 labels;
+  - every p-value was smaller with the reused labels.
+- **The other warnings:** Survival and the body-weight model warn; the randomisation test's stop names `label_cages()`.
+- **`apply_exclusions()`:** removes one arm's cage, given arm and cage.
+- **`prepare_upload()`:** records `apply_exclusions` then `label_cages`, and labels the cages; with "unique", it does not.
+- **The Subset Filter:** its choices and selections under both answers, and the same rows excluded either way.
+- **Study Design:** the guess, the preset answer, the warning note, and the settings, which fall back to "unique" without a cage column.
+- **The R script from the original file:**
+  - it has `label_cages()` and the arm's cage exclusion;
+  - it runs;
+  - it reproduces the dashboard's comparisons.
+
+**Also:** `study_days_info()`'s roxygen had text after `@inheritParams`, which roxygen read as a topic name. The text now sits in the description.
+
+
+**Verification (executed):**
+- The full suite, Bayesian fits skipped: 733 tests, 0 failed.
+- `R CMD check --no-manual --no-tests`: Status OK, including `label_cages()`'s example and the vignette's.

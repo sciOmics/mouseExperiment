@@ -5,6 +5,36 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.41.0] - 2026-10-23
+
+Cages numbered within each arm (`CODE_REVIEW.md` R22.3, R22-C).
+
+### Fixed
+- **Cage labels reused across arms were read as cages that hold several arms.** With C1 and
+  C2 in every arm, tumour growth entered cage as a fixed effect estimated across arms,
+  instead of a random intercept for each cage. Survival, the body-weight model and the Bayesian
+  models pooled those cages too, and the cage-level randomisation test stopped. The p-values
+  were too small. On `master_synthetic_data` with its cages numbered within each arm,
+  Drug_B vs Vehicle had p = 2.3e-5 instead of 5.2e-4.
+
+### Added
+- **Study Design asks whether cage labels are unique across the study or numbered within
+  each arm.**
+  - When every arm's labels come from one set, "within each arm" is chosen for you, and a note
+    says so.
+  - Choosing "unique" for such labels shows a warning.
+  - With "within each arm", cages become "Vehicle C1", "Drug A C1" and so on before any
+    analysis, and the Subset Filter lists each arm's cages.
+  - Presets save the answer.
+- **`label_cages()`** does the same in R. The R script from the original file includes it
+  when the dashboard did.
+- **`apply_exclusions(cages = )`** also takes a data frame of arm and cage, to remove one
+  arm's C1 but not another's.
+- **A warning when every arm's cage labels come from one set,** from
+  `tumor_growth_statistics()`, `survival_statistics()`, `analyze_body_weight()`,
+  `bayesian_tumor_growth()` and `bayesian_survival()`. The cage-level randomisation test
+  names the cause when it stops.
+
 ## [0.40.0] - 2026-10-23
 
 One name for each argument role across the exported functions (`CODE_REVIEW.md` R22.7,

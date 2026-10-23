@@ -52,6 +52,17 @@ head(d[, c("Treatment", "Cage", "ID", "Day", "Volume")], 3)
 and a three-axis ellipsoid when a height is measured
 (`height_column = "Height"`).
 
+A cage label is read as one cage. These data label their cages across the
+study, 1 to 4. If yours are numbered within each arm, C1 and C2 in every arm,
+make the labels unique first, or each label is read as one cage holding every
+arm:
+
+```{r cages}
+cages <- data.frame(Treatment = rep(c("Vehicle", "Drug_A"), each = 2),
+                    Cage = c("C1", "C2", "C1", "C2"))
+label_cages(cages)$Cage
+```
+
 # Which days can be compared
 
 Once mice start leaving at the endpoint, late days compare survivors only. An

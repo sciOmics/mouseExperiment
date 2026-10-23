@@ -319,6 +319,7 @@ bayesian_tumor_growth <- function(
   )
   if (!is.null(cage_column) && cage_column %in% names(df)) {
     work$Cage <- as.character(df[[cage_column]])
+    if (isTRUE(include_cage_effect)) warn_reused_cage_labels(df, cage_column, treatment_column)   # R22.3
   }
   if (!is.null(necrotic_column) && necrotic_column %in% names(df)) {
     work$Necrotic <- df[[necrotic_column]]

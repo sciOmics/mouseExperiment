@@ -272,7 +272,8 @@ The dashboard prepares an upload with these, in this order; its R script can rep
 | Function | Description |
 |----------|-------------|
 | `read_study_csv()` | Read a CSV with any of comma, semicolon or tab, a decimal comma, and UTF-8, Latin-1 or UTF-16 |
-| `apply_exclusions()` | Remove excluded animals (by arm, ID and cage), arms and cages |
+| `apply_exclusions()` | Remove excluded animals (by arm, ID and cage), arms and cages (a whole cage, or one arm's) |
+| `label_cages()` | Cage labels made unique when cages are numbered within each arm: "C1" becomes "Vehicle C1" |
 | `study_days()` | Study Day from a date column; the whole column decides day/month order |
 | `calculate_volume()` | Volume from length × width (multiple geometric formulas) |
 | `label_arms()` | Arms labelled by treatment and dose, e.g. "Drug_A 10" |

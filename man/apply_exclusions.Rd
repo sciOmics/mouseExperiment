@@ -24,7 +24,9 @@ and \code{cage} when \code{cage_column} is given. \code{arm} is the treatment, o
 
 \item{treatments}{Values of \code{treatment_column} to remove.}
 
-\item{cages}{Values of \code{cage_column} to remove.}
+\item{cages}{Cages to remove: values of \code{cage_column}, or a data frame with
+columns \code{arm} and \code{cage} to remove one arm's cage when cages are numbered
+within each arm ("C1" in Vehicle but not "C1" in Drug A).}
 
 \item{treatment_column, id_column}{Column names.}
 
