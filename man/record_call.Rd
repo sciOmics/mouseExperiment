@@ -4,7 +4,7 @@
 \alias{record_call}
 \title{Record a package call as the dashboard makes it}
 \usage{
-record_call(fun, args, data_arg = "df", exprs = list())
+record_call(fun, args, data_arg = "df", exprs = list(), keep_data = TRUE)
 }
 \arguments{
 \item{fun}{The function's name in mouseExperiment.}
@@ -17,6 +17,9 @@ script's data file is written from), not deparsed.}
 
 \item{exprs}{Named calls to write in place of argument values that do not
 deparse readably, e.g. \code{permutation_test = quote(perm_spec(...))}.}
+
+\item{keep_data}{FALSE for a preparation step (R20-AC): the script replays
+it on the data before it, so its input need not be kept.}
 }
 \value{
 A list: fun, args (without the data), data_arg, data, exprs and the

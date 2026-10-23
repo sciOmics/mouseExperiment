@@ -4,7 +4,7 @@
 \alias{script_bundle}
 \title{A script and the data it reads}
 \usage{
-script_bundle(title, steps, notes = character(0))
+script_bundle(title, steps, notes = character(0), prep = NULL)
 }
 \arguments{
 \item{title}{What was run.}
@@ -13,10 +13,14 @@ script_bundle(title, steps, notes = character(0))
 NULLs are dropped.}
 
 \item{notes}{Lines written after the header (without "# ").}
+
+\item{prep}{NULL, or list(steps, source): the recorded preparation and the
+uploaded file, when the user asked for the script to start from it
+(R20-AC). It applies to the first data file.}
 }
 \value{
-list(lines, data): the script, and the data frames to write,
-named by their file (without extension).
+list(lines, data, source): the script, the data frames to write
+(named by their file, without extension), and the uploaded file or NULL.
 }
 \description{
 A script and the data it reads

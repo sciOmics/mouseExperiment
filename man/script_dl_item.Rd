@@ -7,7 +7,9 @@
 script_dl_item(bundle_fn)
 }
 \arguments{
-\item{bundle_fn}{A function returning the \code{\link[=script_bundle]{script_bundle()}}, or NULL.}
+\item{bundle_fn}{A function(include_upload) returning the
+\code{\link[=script_bundle]{script_bundle()}}, or NULL. \code{include_upload} is the "Include my original
+file" tick (R20-AC).}
 }
 \description{
 The Download Results item for a module's R script

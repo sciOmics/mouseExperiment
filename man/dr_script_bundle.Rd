@@ -4,10 +4,12 @@
 \alias{dr_script_bundle}
 \title{The Dose Response run as a script bundle}
 \usage{
-dr_script_bundle(res)
+dr_script_bundle(res, include_upload = FALSE)
 }
 \arguments{
 \item{res}{The stored Dose Response result, with its \code{call_record}.}
+
+\item{include_upload}{Start from the uploaded file (see \code{\link[=script_prep]{script_prep()}}).}
 }
 \value{
 A \code{\link[=script_bundle]{script_bundle()}}, or NULL when the run left no record.

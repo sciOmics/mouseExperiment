@@ -758,8 +758,12 @@ toxicity_server <- function(id, rv) {
     # R20-AB (maintainer's decision): with a dose column, each treatment-dose
     # combination is its own arm, as on Tumor Growth, Survival and Synergy. A
     # treatment given at several doses used to be one arm here.
+    prep_steps <- pp$steps   # R20-AC: the preparation, for the R script
     if (has_col(data, rv$settings$col_dose) && has_col(data, tx_col)) {
-      data   <- label_arms(data, tx_col, rv$settings$col_dose, name = "TreatmentGroup")
+      la_args <- list(df = data, treatment_column = tx_col,
+                      dose_column = rv$settings$col_dose, name = "TreatmentGroup")
+      data   <- do.call(label_arms, la_args)
+      prep_steps <- c(prep_steps, list(record_call("label_arms", la_args, keep_data = FALSE)))
       tx_col <- "TreatmentGroup"
     }
     ref_group <- study_reference(rv, data[[tx_col]])
@@ -829,6 +833,8 @@ toxicity_server <- function(id, rv) {
       rv$tox_pending$call_records <- list(
         bw = record_call("analyze_body_weight", bw_args),
         wl = record_call("weight_loss_threshold", rv$tox_pending$wl_args))
+      rv$tox_pending$prep_steps  <- prep_steps       # R20-AC
+      rv$tox_pending$source_file <- rv$source_file
       launch_background_job(
         kind = "bw_model",
         task = background_task(mouseExperiment::analyze_body_weight, bw_args),
@@ -876,8 +882,11 @@ toxicity_server <- function(id, rv) {
       results$twm <- safe_analysis(module = "et_twm",
                                    do.call(mouseExperiment::therapeutic_window_metric, twm_args))
       # R20-AA: the call exactly as made, for the R script.
-      if (!isTRUE(results$twm$error))
+      if (!isTRUE(results$twm$error)) {
         results$call_records <- list(twm = record_call("therapeutic_window_metric", twm_args))
+        results$prep_steps   <- prep_steps       # R20-AC
+        results$source_file  <- rv$source_file
+      }
 
       results$twm_reference <- ref_group
       n_err   <- as.integer(isTRUE(results$twm$error))

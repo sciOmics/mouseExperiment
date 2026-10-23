@@ -111,6 +111,7 @@ data_upload_server <- function(id, rv) {
     reset_analyses(rv)
     study_defaults(list(volume_units = "mm3"))  # every demo is in mm3
     rv$uploaded_data  <- result$data
+    rv$source_file    <- source_file_record(data_path)   # R20-AC: for the R script
     rv$data_valid     <- TRUE
     rv$detected_cols  <- detect_columns(colnames(result$data))
 
@@ -151,6 +152,7 @@ data_upload_server <- function(id, rv) {
     if (result$valid) {
       reset_analyses(rv)
       rv$uploaded_data <- result$data
+      rv$source_file   <- source_file_record(file_path, file_info$name)   # R20-AC: for the R script
       rv$data_valid <- TRUE
       rv$detected_cols <- detect_columns(colnames(result$data))
       study_defaults(if (is.null(rv$detected_cols$volume)) list(volume_units = "mm3") else list())
@@ -169,6 +171,7 @@ data_upload_server <- function(id, rv) {
     } else {
       rv$data_valid <- FALSE
       rv$uploaded_data <- NULL
+      rv$source_file   <- NULL
       output$file_validation_msg <- renderUI({
         status_alert(result$message, "danger")
       })

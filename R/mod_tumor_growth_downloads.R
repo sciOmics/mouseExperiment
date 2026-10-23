@@ -301,7 +301,7 @@ add_tg_download_handlers <- function(input, output, session, rv,
                 get(res$call_record$data %||% rv$processed_data),
                 "The data as analysed: one row per measurement, with the derived Day and Volume"),
       # R script, with the data it reads (R20-Z)
-      if (!is.null(res$call_record)) script_dl_item(function() tg_script_bundle(res)),
+      if (!is.null(res$call_record)) script_dl_item(function(up) tg_script_bundle(res, up)),
       # Report
       dl_item("report", "report", "HTML report", "report.html", "file",
               function(path) build_html_report(result = res,

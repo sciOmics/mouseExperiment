@@ -4,10 +4,12 @@
 \alias{surv_script_bundle}
 \title{The Survival run as a script bundle}
 \usage{
-surv_script_bundle(res)
+surv_script_bundle(res, include_upload = FALSE)
 }
 \arguments{
 \item{res}{The stored Survival result, with its \code{call_record}.}
+
+\item{include_upload}{Start from the uploaded file (see \code{\link[=script_prep]{script_prep()}}).}
 }
 \value{
 A \code{\link[=script_bundle]{script_bundle()}}, or NULL when the run left no record.

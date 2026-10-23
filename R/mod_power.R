@@ -408,7 +408,7 @@ powerAnalysisUI <- function(id) {
           tabPanel(
             title = tags$span(icon("file-zipper"), " Download Results"),
             value = "__download_results__",
-            wellPanel(download_results_ui(ns, "pw"))
+            wellPanel(download_results_ui(ns, "pw", upload = FALSE))
           )
         )
       )

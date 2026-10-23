@@ -4,10 +4,12 @@
 \alias{tox_script_bundle}
 \title{The Toxicity run as a script bundle}
 \usage{
-tox_script_bundle(res)
+tox_script_bundle(res, include_upload = FALSE)
 }
 \arguments{
 \item{res}{The stored Toxicity result, with its \code{call_records}.}
+
+\item{include_upload}{Start from the uploaded file (see \code{\link[=script_prep]{script_prep()}}).}
 }
 \value{
 A \code{\link[=script_bundle]{script_bundle()}}, or NULL when the run left no record.

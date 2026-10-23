@@ -69,39 +69,7 @@ tumor_growth_server <- function(id, rv) {
       status_alert("Running analysis...", "info")
     })
     
-    # Prepare data
-    # CODE_REVIEW.md Round 2 F.5: apply the global Subset Filter (set on the
-    # Data Upload tab) before any column derivation, so excluded mice /
-    # treatments / cages are gone from every downstream computation.
-    data <- apply_subset_filter(rv$uploaded_data, rv)
-    
-    # Handle time column - either use direct day or calculate from date
-    if (rv$settings$time_method == "from_date") {
-      # R20.D4: a date error used to escape this observer and leave
-      # "Running analysis..." on screen. Report it and stop instead.
-      data <- tryCatch({
-        # R20.D1: the whole column decides the day/month order.
-        sd <- study_days_info(data, rv$settings$col_date_for_day,
-                         rv$settings$reference_date,
-                         rv$settings$date_order %||% "auto")
-        if (length(sd$notes)) {
-          showNotification(paste(sd$notes, collapse = " "), type = "warning",
-                           duration = 10)
-        }
-        sd$data
-      }, error = function(e) {
-        log_caught_error("tumor_growth", "date preprocessing", e)
-        output$tg_status_msg <- renderUI(status_alert(conditionMessage(e), "danger"))
-        rv$tg_running <- FALSE
-        NULL
-      })
-      if (is.null(data)) return()
-      time_col <- "Day"  # calculate_dates produces a "Day" column
-    } else {
-      time_col <- rv$settings$col_day
-    }
-    
-    # Apply volume calculation if needed
+    # Caliper columns, checked first so the message names the problem.
     if (rv$settings$volume_method == "calculate") {
       len_col <- rv$settings$col_length %||% ""
       wid_col <- rv$settings$col_width  %||% ""
@@ -113,8 +81,8 @@ tumor_growth_server <- function(id, rv) {
         rv$tg_running <- FALSE
         return()
       }
-      if (!len_col %in% colnames(data) || !wid_col %in% colnames(data)) {
-        missing_col <- if (!len_col %in% colnames(data)) len_col else wid_col
+      if (!len_col %in% colnames(rv$uploaded_data) || !wid_col %in% colnames(rv$uploaded_data)) {
+        missing_col <- if (!len_col %in% colnames(rv$uploaded_data)) len_col else wid_col
         output$tg_status_msg <- renderUI({
           status_alert(paste0("Column not found in data: '", missing_col, "'"), "danger")
         })
@@ -123,21 +91,30 @@ tumor_growth_server <- function(id, rv) {
         rv$tg_running <- FALSE
         return()
       }
-      ht_col_tg <- if (!is.null(rv$settings$col_height) && nzchar(rv$settings$col_height)) rv$settings$col_height else NULL
-      data <- mouseExperiment::calculate_volume(
-        data,
-        length_column = len_col,
-        width_column  = wid_col,
-        height_column = ht_col_tg,
-        formula       = rv$settings$volume_formula
-      )
-      vol_col <- "Volume"
-    } else {
-      vol_col <- rv$settings$col_volume
     }
+
+    # Prepare data: the subset filter (CODE_REVIEW.md Round 2 F.5) before any
+    # column derivation, then study days, then volume, each step recorded for
+    # the R script (prepare_upload(), R20-AC).
+    # R20.D4: a date error used to escape this observer and leave
+    # "Running analysis..." on screen. Report it and stop instead.
+    pu <- tryCatch(prepare_upload(rv), error = function(e) {
+      log_caught_error("tumor_growth", "date preprocessing", e)
+      output$tg_status_msg <- renderUI(status_alert(conditionMessage(e), "danger"))
+      rv$tg_running <- FALSE
+      NULL
+    })
+    if (is.null(pu)) return()
+    if (length(pu$notes)) {
+      showNotification(paste(pu$notes, collapse = " "), type = "warning", duration = 10)
+    }
+    data     <- pu$data
+    time_col <- pu$time_col
+    vol_col  <- pu$vol_col
     
     # Store preprocessed data and resolved column names for reuse by other modules
-    rv$processed_data <- data
+    rv$processed_data  <- data
+    rv$processed_steps <- pu$steps
     rv$time_col       <- time_col
     rv$vol_col        <- vol_col
     rv$tx_col         <- rv$settings$col_treatment
@@ -151,8 +128,12 @@ tumor_growth_server <- function(id, rv) {
     # the shared rv$processed_data and rv$tx_col, so Toxicity and Dose
     # Response saw "TreatmentGroup" arms only after Tumor Growth had run.
     tg_tx_col <- rv$settings$col_treatment
+    prep_steps <- pu$steps
     if (!is.null(rv$dose_col)) {
-      data <- label_arms(data, rv$settings$col_treatment, rv$dose_col, name = "TreatmentGroup")
+      la_args <- list(df = data, treatment_column = rv$settings$col_treatment,
+                      dose_column = rv$dose_col, name = "TreatmentGroup")
+      data <- do.call(label_arms, la_args)
+      prep_steps <- c(prep_steps, list(record_call("label_arms", la_args, keep_data = FALSE)))
       tg_tx_col <- "TreatmentGroup"
     }
 
@@ -252,7 +233,9 @@ tumor_growth_server <- function(id, rv) {
         necrotic_col      = rv$necrotic_col,
         necrotic_handling = tg_necrotic_handling(),
         volume_units      = backend_volume_units(rv),
-        plot_groups       = rv$tg_plot_groups
+        plot_groups       = rv$tg_plot_groups,
+        prep_steps        = prep_steps,       # R20-AC: for the R script
+        source_file       = rv$source_file
       )
 
       # F.7 — route through the job registry so the fit survives tab
@@ -329,8 +312,13 @@ tumor_growth_server <- function(id, rv) {
       )
     result <- safe_analysis(module = "tumor_growth",
                             do.call(mouseExperiment::tumor_growth_statistics, tg_args))
-    # R20-Z: the call exactly as made, for the R script in Download Results.
-    if (!isTRUE(result$error)) result$call_record <- record_call("tumor_growth_statistics", tg_args)
+    # R20-Z: the call exactly as made, for the R script in Download Results;
+    # R20-AC: with the preparation before it and the uploaded file.
+    if (!isTRUE(result$error)) {
+      result$call_record <- record_call("tumor_growth_statistics", tg_args)
+      result$prep_steps  <- prep_steps
+      result$source_file <- rv$source_file
+    }
     
     # Generate plots from the results
     if (!isTRUE(result$error)) {

@@ -23,17 +23,65 @@
 #'   script's data file is written from), not deparsed.
 #' @param exprs Named calls to write in place of argument values that do not
 #'   deparse readably, e.g. `permutation_test = quote(perm_spec(...))`.
+#' @param keep_data FALSE for a preparation step (R20-AC): the script replays
+#'   it on the data before it, so its input need not be kept.
 #' @return A list: fun, args (without the data), data_arg, data, exprs and the
 #'   time of the run.
 #' @keywords internal
-record_call <- function(fun, args, data_arg = "df", exprs = list()) {
+record_call <- function(fun, args, data_arg = "df", exprs = list(), keep_data = TRUE) {
   stopifnot(is.character(fun), length(fun) == 1L,
             is.null(data_arg) || data_arg %in% names(args))
   list(fun = fun,
        args = if (is.null(data_arg)) args else args[setdiff(names(args), data_arg)],
        data_arg = data_arg,
-       data = if (!is.null(data_arg)) args[[data_arg]],
+       data = if (!is.null(data_arg) && keep_data) args[[data_arg]],
        exprs = exprs, when = Sys.time())
+}
+
+#' A preparation step that is a line of R rather than a package call
+#'
+#' For the few things a tab does to its data besides the exported preparation
+#' functions, such as coercing a column to numeric. `code` writes `{d}` for
+#' the data, e.g. `{d}[["Dose"]] <- suppressWarnings(as.numeric({d}[["Dose"]]))`.
+#' @keywords internal
+record_code <- function(code) list(code = code)
+
+#' The uploaded file, kept for the R script (R20-AC)
+#' @param path Where it is now.
+#' @param name Its name as uploaded.
+#' @return list(name, ext, bytes).
+#' @keywords internal
+source_file_record <- function(path, name = basename(path)) {
+  ext <- tolower(tools::file_ext(name))
+  list(name = name, ext = if (nzchar(ext)) ext else "csv",
+       bytes = readBin(path, "raw", n = file.size(path)))
+}
+
+#' The script's "From your original file" section
+#'
+#' Replays the recorded preparation from the uploaded file with the package's
+#' functions, stops unless the result is the data the dashboard analysed, and
+#' hands it to the analysis.
+#' @param prep list(steps, source): the recorded preparation and the file.
+#' @param var The variable that holds the analysed data.
+#' @keywords internal
+script_prep_lines <- function(prep, var) {
+  path <- paste0("data/original_upload.", prep$source$ext)
+  steps <- unlist(lapply(prep$steps, function(st) {
+    if (!is.null(st$code)) gsub("{d}", "prepared", st$code, fixed = TRUE)
+    else script_call(st, "prepared", data_name = "prepared")
+  }))
+  c("# ---- From your original file ----------------------------------------------",
+    "# The dashboard's preparation, replayed with the package from the file you",
+    sprintf("# uploaded (%s), which is %s here.", prep$source$name, path),
+    sprintf('prepared <- read_study_csv("%s")', path),
+    steps,
+    "# It must be the data the dashboard analysed; the analysis then starts from it.",
+    sprintf("if (!isTRUE(all.equal(prepared, %s, check.attributes = FALSE)))", var),
+    sprintf('  stop("The data prepared from your file differ from %s, the data the dashboard analysed.")',
+            "data/analysed_data.rds"),
+    sprintf("%s <- prepared", var),
+    "")
 }
 
 #' One argument value as R source
@@ -43,6 +91,12 @@ record_call <- function(fun, args, data_arg = "df", exprs = list()) {
 #' @keywords internal
 script_value <- function(x) {
   if (is.language(x)) return(paste(deparse(x, width.cutoff = 500L), collapse = " "))
+  # A data frame as data.frame(col = c(...)), not structure(list(...)):
+  # apply_exclusions()'s animals.
+  if (is.data.frame(x)) {
+    cols <- vapply(names(x), function(n) paste0(n, " = ", script_value(x[[n]])), "")
+    return(paste0("data.frame(", paste(cols, collapse = ", "), ")"))
+  }
   paste(deparse(x, width.cutoff = 500L, control = c("keepNA", "keepInteger", "niceNames")),
         collapse = " ")
 }
@@ -95,8 +149,9 @@ script_step <- function(rec, name, data_file = "data/analysed_data", data_var = 
 #' @param title What was run, e.g. "Tumor Growth (LME4)".
 #' @param when The time of the run.
 #' @param data_files The data files the script reads, without extensions.
+#' @param from_upload Whether the script starts from the uploaded file.
 #' @keywords internal
-script_header <- function(title, when, data_files) {
+script_header <- function(title, when, data_files, from_upload = FALSE) {
   ver <- tryCatch(utils::packageDescription("mouseExperiment")$Version, error = function(e) NULL) %||% "?"
   sha <- tryCatch(utils::packageDescription("mouseExperiment")$RemoteSha, error = function(e) NULL)
   install <- if (length(sha) && grepl("^[0-9a-f]{40}$", sha)) {
@@ -111,6 +166,9 @@ script_header <- function(title, when, data_files) {
       "# after the subset filter, the day and volume calculations and the arm labels.",
       "# The .csv beside each is the same table as text, which keeps 15 significant",
       "# digits; from it, results can differ in about the 6th digit.",
+      if (from_upload)
+        c("# It first rebuilds that data from the file you uploaded, with the package's",
+          "# preparation functions, and checks the two agree (\"From your original file\")."),
       "# Run it from the folder the ZIP was unzipped into (setwd() there first).")
   } else {
     "# It needs no data: the calculation uses only the design values below."
@@ -140,10 +198,13 @@ script_header <- function(title, when, data_files) {
 #' @param steps A list of [script_step()]s, in the order they are written;
 #'   NULLs are dropped.
 #' @param notes Lines written after the header (without "# ").
-#' @return list(lines, data): the script, and the data frames to write,
-#'   named by their file (without extension).
+#' @param prep NULL, or list(steps, source): the recorded preparation and the
+#'   uploaded file, when the user asked for the script to start from it
+#'   (R20-AC). It applies to the first data file.
+#' @return list(lines, data, source): the script, the data frames to write
+#'   (named by their file, without extension), and the uploaded file or NULL.
 #' @keywords internal
-script_bundle <- function(title, steps, notes = character(0)) {
+script_bundle <- function(title, steps, notes = character(0), prep = NULL) {
   steps <- Filter(Negate(is.null), steps)
   stopifnot(length(steps) > 0L)
   with_data <- Filter(function(s) !is.null(s$rec$data_arg), steps)
@@ -157,7 +218,8 @@ script_bundle <- function(title, steps, notes = character(0)) {
       '  utils::read.csv(paste0(path, ".csv"), check.names = FALSE, encoding = "UTF-8")',
       "}",
       sprintf('%s <- read_analysed("%s")', vapply(files, function(f) first_for(f)$data_var, ""), files),
-      "")
+      "",
+      if (!is.null(prep) && length(files)) script_prep_lines(prep, first_for(files[1L])$data_var))
   }
   body <- unlist(lapply(steps, function(s) {
     c(if (length(s$comment)) paste0("# ", s$comment),
@@ -167,10 +229,10 @@ script_bundle <- function(title, steps, notes = character(0)) {
       s$after,
       "")
   }))
-  lines <- c(script_header(title, steps[[1L]]$rec$when, files),
+  lines <- c(script_header(title, steps[[1L]]$rec$when, files, !is.null(prep)),
              if (length(notes)) c(paste0("# ", notes), ""),
              reads, body, "sessionInfo()")
-  list(lines = lines, data = data)
+  list(lines = lines, data = data, source = if (length(files)) prep$source)
 }
 
 #' Write a script bundle into a directory
@@ -187,28 +249,46 @@ write_script_bundle <- function(bundle, dir) {
     utils::write.csv(bundle$data[[f]], file.path(dir, paste0(f, ".csv")), row.names = FALSE)
     out <- c(out, paste0(f, ".rds"), paste0(f, ".csv"))
   }
+  if (!is.null(bundle$source)) {
+    up <- paste0("data/original_upload.", bundle$source$ext)
+    dir.create(file.path(dir, "data"), showWarnings = FALSE)
+    writeBin(bundle$source$bytes, file.path(dir, up))
+    out <- c(out, up)
+  }
   out
 }
 
 #' The Download Results item for a module's R script
-#' @param bundle_fn A function returning the [script_bundle()], or NULL.
+#' @param bundle_fn A function(include_upload) returning the
+#'   [script_bundle()], or NULL. `include_upload` is the "Include my original
+#'   file" tick (R20-AC).
 #' @keywords internal
 script_dl_item <- function(bundle_fn) {
   dl_item("script", "code", "R script, with the data it reads", "analysis.R", "files",
-          function(dir) {
-            b <- bundle_fn()
+          function(dir, opts = list()) {
+            b <- bundle_fn(isTRUE(opts$include_upload))
             if (is.null(b)) character(0) else write_script_bundle(b, dir)
           },
           "Repeats this run with the package; reads the files in data/ written with it")
+}
+
+#' The preparation to replay, when the user asked for it and the run has it
+#' @param res A stored result with `prep_steps` and `source_file`.
+#' @param include_upload The "Include my original file" tick.
+#' @keywords internal
+script_prep <- function(res, include_upload) {
+  if (!isTRUE(include_upload) || is.null(res$source_file) || is.null(res$prep_steps)) return(NULL)
+  list(steps = res$prep_steps, source = res$source_file)
 }
 
 #' The Tumor Growth run as a script bundle
 #'
 #' @param res The stored Tumor Growth result, with its `call_record` (and
 #'   `perm_call_record` when the randomisation test ran).
+#' @param include_upload Start from the uploaded file (see [script_prep()]).
 #' @return A [script_bundle()], or NULL when the run left no record.
 #' @keywords internal
-tg_script_bundle <- function(res) {
+tg_script_bundle <- function(res, include_upload = FALSE) {
   rec <- res$call_record
   if (is.null(rec)) return(NULL)
   bayes <- identical(rec$fun, "bayesian_tumor_growth")
@@ -235,14 +315,15 @@ tg_script_bundle <- function(res) {
     if (!is.null(prec) && is.null(res$permutation_test))
       c("The randomisation test was requested but had not finished when this was",
         "downloaded; download again once its result is shown."))
-  script_bundle(title, steps, notes)
+  script_bundle(title, steps, notes, prep = script_prep(res, include_upload))
 }
 
 #' The Survival run as a script bundle
 #' @param res The stored Survival result, with its `call_record`.
+#' @param include_upload Start from the uploaded file (see [script_prep()]).
 #' @return A [script_bundle()], or NULL when the run left no record.
 #' @keywords internal
-surv_script_bundle <- function(res) {
+surv_script_bundle <- function(res, include_upload = FALSE) {
   rec <- res$call_record
   if (is.null(rec)) return(NULL)
   bayes <- identical(rec$fun, "bayesian_survival")
@@ -262,7 +343,8 @@ surv_script_bundle <- function(res) {
                  "move the draws slightly."))
   shown <- c(results = if (bayes) "Posterior treatment effects by arm"
                        else "Each arm against the reference, with the correction selected")
-  script_bundle(title, list(script_step(rec, "result", prints = shown)), notes)
+  script_bundle(title, list(script_step(rec, "result", prints = shown)), notes,
+                prep = script_prep(res, include_upload))
 }
 
 #' The Toxicity run as a script bundle
@@ -270,9 +352,10 @@ surv_script_bundle <- function(res) {
 #' A body-weight run makes two calls on the same data (the model and the
 #' weight-loss threshold); a therapeutic-window run makes one.
 #' @param res The stored Toxicity result, with its `call_records`.
+#' @param include_upload Start from the uploaded file (see [script_prep()]).
 #' @return A [script_bundle()], or NULL when the run left no record.
 #' @keywords internal
-tox_script_bundle <- function(res) {
+tox_script_bundle <- function(res, include_upload = FALSE) {
   recs <- res$call_records
   if (is.null(recs)) return(NULL)
   if (identical(res$model_type, "et")) {
@@ -281,7 +364,8 @@ tox_script_bundle <- function(res) {
       script_step(recs$twm, "twm", prints = c(
         window_table = "TGI and worst weight loss by arm, with tolerability",
         weight_loss_data = "Each animal's worst weight loss"))),
-      c("The intervals come from a bootstrap with the seed in the call (boot_seed).")))
+      c("The intervals come from a bootstrap with the seed in the call (boot_seed)."),
+      prep = script_prep(res, include_upload)))
   }
   ok <- function(x) !is.null(x) && !isTRUE(x$error)
   steps <- list(
@@ -295,7 +379,7 @@ tox_script_bundle <- function(res) {
         event_data = "Each animal's time to the weight-loss threshold")))
   steps <- Filter(Negate(is.null), steps)
   if (!length(steps)) return(NULL)
-  script_bundle("Toxicity (body weight)", steps)
+  script_bundle("Toxicity (body weight)", steps, prep = script_prep(res, include_upload))
 }
 
 # The prints a step makes: only the fields this run's result holds.
@@ -308,9 +392,10 @@ script_prints <- function(res, prints) {
 
 #' The Drug Synergy run as a script bundle
 #' @param res The stored Drug Synergy result, with its `call_record`.
+#' @param include_upload Start from the uploaded file (see [script_prep()]).
 #' @return A [script_bundle()], or NULL when the run left no record.
 #' @keywords internal
-syn_script_bundle <- function(res) {
+syn_script_bundle <- function(res, include_upload = FALSE) {
   rec <- res$call_record
   if (is.null(rec)) return(NULL)
   over_time <- identical(rec$fun, "analyze_drug_synergy_over_time")
@@ -321,14 +406,16 @@ syn_script_bundle <- function(res) {
     synergy_ci = "95% intervals of the synergy metrics"))
   script_bundle(if (over_time) "Drug Synergy (every evaluable day)" else "Drug Synergy",
                 list(script_step(rec, "result", prints = prints)),
-                "The intervals come from a bootstrap with the seed in the call (boot_seed).")
+                "The intervals come from a bootstrap with the seed in the call (boot_seed).",
+                prep = script_prep(res, include_upload))
 }
 
 #' The Dose Response run as a script bundle
 #' @param res The stored Dose Response result, with its `call_record`.
+#' @param include_upload Start from the uploaded file (see [script_prep()]).
 #' @return A [script_bundle()], or NULL when the run left no record.
 #' @keywords internal
-dr_script_bundle <- function(res) {
+dr_script_bundle <- function(res, include_upload = FALSE) {
   rec <- res$call_record
   if (is.null(rec)) return(NULL)
   prints <- script_prints(res, c(
@@ -337,7 +424,8 @@ dr_script_bundle <- function(res) {
   script_bundle("Dose Response", list(script_step(
     rec, "result", prints = prints,
     after = c("# Trend tests, the EC50 with its interval, and the curve's parameters",
-              "str(result$statistics, max.level = 1)"))))
+              "str(result$statistics, max.level = 1)"))),
+    prep = script_prep(res, include_upload))
 }
 
 #' The Power Analysis run as a script bundle

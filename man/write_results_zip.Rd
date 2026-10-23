@@ -9,7 +9,8 @@ write_results_zip(
   items,
   fmt = c("png", "pdf", "svg"),
   size = list(width = 800, height = 600, dpi = 100),
-  header = character(0)
+  header = character(0),
+  opts = list()
 )
 }
 \value{
@@ -18,5 +19,7 @@ The ZIP's path, invisibly.
 \description{
 An item whose object cannot be made (NULL or an error) is left out and
 listed in the README as not available, rather than failing the download.
+\code{opts} goes to "files" items: \code{include_upload}, the "Include my original
+file" tick (R20-AC).
 }
 \keyword{internal}

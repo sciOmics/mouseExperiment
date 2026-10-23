@@ -4,11 +4,13 @@
 \alias{tg_script_bundle}
 \title{The Tumor Growth run as a script bundle}
 \usage{
-tg_script_bundle(res)
+tg_script_bundle(res, include_upload = FALSE)
 }
 \arguments{
 \item{res}{The stored Tumor Growth result, with its \code{call_record} (and
 \code{perm_call_record} when the randomisation test ran).}
+
+\item{include_upload}{Start from the uploaded file (see \code{\link[=script_prep]{script_prep()}}).}
 }
 \value{
 A \code{\link[=script_bundle]{script_bundle()}}, or NULL when the run left no record.
