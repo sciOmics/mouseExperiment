@@ -611,64 +611,30 @@ study_days_info <- function(data, date_column, reference_date, date_order = "aut
 #' \code{rv$settings} and stores the result in \code{rv} for future callers.
 #'
 #' @param rv The shared reactiveValues list.
-#' @return A list with \code{data}, \code{time_col}, \code{vol_col}, \code{tx_col}.
+#' @return A list with \code{data}, \code{time_col}, \code{vol_col}, \code{tx_col}
+#'   and \code{steps}, the recorded preparation (see [prepare_upload()]).
 #' @keywords internal
 ensure_preprocessed <- function(rv) {
   # Reuse canonical result if available. CODE_REVIEW.md Round 2 F.5:
   # always re-apply the Subset Filter to the cached frame so changes to
   # the filter take effect on the next analysis run without needing a
-  # full re-upload + re-preprocess.
+  # full re-upload + re-preprocess. (Applying or clearing the filter also
+  # clears the cache, so the recorded steps hold the current filter.)
   if (!is.null(rv$processed_data)) {
     return(list(
       data     = apply_subset_filter(rv$processed_data, rv),
       time_col = rv$time_col,
       vol_col  = rv$vol_col,
-      tx_col   = rv$tx_col
+      tx_col   = rv$tx_col,
+      steps    = rv$processed_steps
     ))
   }
 
-  # Otherwise preprocess from scratch. Apply the Subset Filter to the
-  # raw upload before any column derivation.
-  data <- apply_subset_filter(rv$uploaded_data, rv)
+  pu <- prepare_upload(rv)
   settings <- rv$settings
-
-  # Date → Day. R20.D1: study_days_info() reads the whole column and stops on an
-  # ambiguous or contradictory layout instead of guessing.
-  date_fmt_warning <- NULL
-  if (!is.null(settings$time_method) && settings$time_method == "from_date") {
-    sd <- study_days_info(data, settings$col_date_for_day, settings$reference_date,
-                     settings$date_order %||% "auto")
-    if (length(sd$notes)) date_fmt_warning <- paste(sd$notes, collapse = " ")
-    data <- sd$data
-    time_col <- "Day"
-  } else {
-    time_col <- settings$col_day
-  }
-
-  # Volume calculation
-  if (!is.null(settings$volume_method) && settings$volume_method == "calculate") {
-    len_col <- settings$col_length %||% "Length"
-    wid_col <- settings$col_width  %||% "Width"
-    vol_formula <- settings$volume_formula %||% "ellipsoid"   # calculate_volume()'s default
-    ht_col <- if (!is.null(settings$col_height) && nzchar(settings$col_height)) settings$col_height else NULL
-    if (has_col(data, len_col) && has_col(data, wid_col)) {
-      data <- mouseExperiment::calculate_volume(
-        data,
-        length_column = len_col,
-        width_column  = wid_col,
-        height_column = ht_col,
-        formula       = vol_formula
-      )
-    }
-    vol_col <- "Volume"
-  } else {
-    vol_col <- settings$col_volume %||% "Volume"
-  }
-
   tx_col <- settings$col_treatment
 
   # Resolve optional columns (id, cage, dose) so other modules don't
-
   # depend on TG analysis having been run first.
   rv$id_col   <- if (!is.null(settings$col_id)   && nzchar(settings$col_id))   settings$col_id   else NULL
   rv$cage_col <- if (!is.null(settings$col_cage)  && nzchar(settings$col_cage)) settings$col_cage  else NULL
@@ -677,13 +643,72 @@ ensure_preprocessed <- function(rv) {
   rv$sex_col    <- if (!is.null(settings$col_sex)    && nzchar(settings$col_sex))    settings$col_sex    else NULL
 
   # Cache for future callers
-  rv$processed_data <- data
-  rv$time_col       <- time_col
-  rv$vol_col        <- vol_col
-  rv$tx_col         <- tx_col
+  rv$processed_data  <- pu$data
+  rv$processed_steps <- pu$steps
+  rv$time_col        <- pu$time_col
+  rv$vol_col         <- pu$vol_col
+  rv$tx_col          <- tx_col
 
-  list(data = data, time_col = time_col, vol_col = vol_col, tx_col = tx_col,
-       date_fmt_warning = date_fmt_warning)
+  list(data = pu$data, time_col = pu$time_col, vol_col = pu$vol_col, tx_col = tx_col,
+       steps = pu$steps,
+       date_fmt_warning = if (length(pu$notes)) paste(pu$notes, collapse = " "))
+}
+
+#' Prepare the upload, recording each step: exclusions, study days, volume
+#'
+#' Tumor Growth and [ensure_preprocessed()] both prepare an upload this way.
+#' Each step is an exported function (R20-AB) and is recorded with
+#' [record_call()] (R20-AC), so the R script can replay it from the uploaded
+#' file. The exclusions come first, so excluded rows play no part in deciding
+#' how dates are read.
+#' @param rv Shared reactiveValues.
+#' @return list(data, time_col, vol_col, steps, notes): `notes` are what
+#'   reading the dates found (see [study_days_info()]).
+#' @keywords internal
+prepare_upload <- function(rv) {
+  s <- rv$settings
+  data <- rv$uploaded_data
+  steps <- list()
+  notes <- character(0)
+
+  ex <- subset_filter_args(data, rv)
+  if (!is.null(ex) && !is.null(data) && nrow(data) > 0L) {
+    args <- c(list(df = data), ex)
+    data <- do.call(apply_exclusions, args)
+    steps <- c(steps, list(record_call("apply_exclusions", args, keep_data = FALSE)))
+  }
+
+  # Date -> Day. R20.D1: the whole column decides the day/month order, and
+  # an ambiguous or contradictory layout stops instead of being guessed.
+  if (identical(s$time_method, "from_date")) {
+    args <- list(df = data, date_column = s$col_date_for_day,
+                 reference_date = s$reference_date, date_order = s$date_order %||% "auto")
+    info <- study_days_info(data, args$date_column, args$reference_date, args$date_order)
+    data <- info$data
+    notes <- info$notes
+    steps <- c(steps, list(record_call("study_days", args, keep_data = FALSE)))
+    time_col <- "Day"
+  } else {
+    time_col <- s$col_day
+  }
+
+  # Volume from calipers. Without both caliper columns nothing is calculated
+  # (Tumor Growth reports that before it gets here).
+  if (identical(s$volume_method, "calculate")) {
+    len <- s$col_length %||% "Length"
+    wid <- s$col_width  %||% "Width"
+    if (has_col(data, len) && has_col(data, wid)) {
+      args <- list(df = data, length_column = len, width_column = wid,
+                   height_column = if (has_col(data, s$col_height)) s$col_height,
+                   formula = s$volume_formula %||% "ellipsoid")   # calculate_volume()'s default
+      data <- do.call(mouseExperiment::calculate_volume, args)
+      steps <- c(steps, list(record_call("calculate_volume", args, keep_data = FALSE)))
+    }
+    vol_col <- "Volume"
+  } else {
+    vol_col <- s$col_volume %||% "Volume"
+  }
+  list(data = data, time_col = time_col, vol_col = vol_col, steps = steps, notes = notes)
 }
 
 #' Pick the best default reference group

@@ -5,6 +5,25 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.38.0] - 2026-10-23
+
+R scripts that start from the uploaded file (`CODE_REVIEW.md` R20-AC).
+
+### Added
+- **"Include my original file" in Download Results,** on every tab with data. Ticked:
+  - the ZIP holds the file you uploaded, as it was;
+  - the R script rebuilds the analysed data from it with the package's preparation
+    functions: `read_study_csv()`, `apply_exclusions()`, `study_days()`,
+    `calculate_volume()`, `label_arms()` and `survival_events()`;
+  - each step is written with the arguments the dashboard used, including which animals
+    you excluded;
+  - the script stops unless the rebuilt data equal the data the dashboard analysed, then
+    runs the analysis on them.
+
+  Unticked, the script starts from the analysed data, as before. The file includes any
+  animals you excluded and columns no analysis uses.
+- **The dashboard keeps the uploaded file** (or the demo file) for this.
+
 ## [0.37.0] - 2026-10-23
 
 The dashboard's data preparation as package functions (`CODE_REVIEW.md` R20-AB), the

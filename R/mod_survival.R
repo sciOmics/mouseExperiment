@@ -671,8 +671,12 @@ survival_server <- function(id, rv) {
     # When a dose column is mapped, each treatment-dose combination is its own
     # arm, labelled "Treatment Dose" (label_arms(), exported in R20-AB).
     has_dose_surv <- has_col(data, dose_col_surv) && has_col(data, rv$settings$col_treatment)
+    prep_steps <- pp$steps   # R20-AC: the preparation, for the R script
     if (has_dose_surv) {
-      data <- label_arms(data, rv$settings$col_treatment, dose_col_surv, name = "TreatmentGroup")
+      la_args <- list(df = data, treatment_column = rv$settings$col_treatment,
+                      dose_column = dose_col_surv, name = "TreatmentGroup")
+      data <- do.call(label_arms, la_args)
+      prep_steps <- c(prep_steps, list(record_call("label_arms", la_args, keep_data = FALSE)))
     }
 
     time_col  <- pp$time_col
@@ -722,6 +726,7 @@ survival_server <- function(id, rv) {
       rv$surv_running <- FALSE
       return()
     }
+    prep_steps <- c(prep_steps, list(record_call("survival_events", ev_args, keep_data = FALSE)))
     n_death_events <- attr(data, "death_events_added")
     censor_col_use <- "Event"
     time_col_use   <- "Time"
@@ -762,7 +767,9 @@ survival_server <- function(id, rv) {
         vol_threshold  = if (event_src == "volume") as.numeric(input$surv_vol_threshold %||% 2000) else NA_real_,
         time_method    = rv$settings$time_method,
         time_col_orig  = time_col,
-        ref_date       = rv$settings$reference_date
+        ref_date       = rv$settings$reference_date,
+        prep_steps     = prep_steps,       # R20-AC: for the R script
+        source_file    = rv$source_file
       )
 
       # F.7 — route through the job registry so the fit survives tab
@@ -795,7 +802,11 @@ survival_server <- function(id, rv) {
     result <- safe_analysis(module = "survival",
                             do.call(mouseExperiment::survival_statistics, surv_args))
     # R20-AA: the call exactly as made, for the R script in Download Results.
-    if (!isTRUE(result$error)) result$call_record <- record_call("survival_statistics", surv_args)
+    if (!isTRUE(result$error)) {
+      result$call_record <- record_call("survival_statistics", surv_args)
+      result$prep_steps  <- prep_steps       # R20-AC
+      result$source_file <- rv$source_file
+    }
 
     # Store event source for downstream use (KM plot titles, summary text)
     result$event_src_used     <- event_src

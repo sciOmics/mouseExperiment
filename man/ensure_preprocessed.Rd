@@ -10,7 +10,8 @@ ensure_preprocessed(rv)
 \item{rv}{The shared reactiveValues list.}
 }
 \value{
-A list with \code{data}, \code{time_col}, \code{vol_col}, \code{tx_col}.
+A list with \code{data}, \code{time_col}, \code{vol_col}, \code{tx_col}
+and \code{steps}, the recorded preparation (see \code{\link[=prepare_upload]{prepare_upload()}}).
 }
 \description{
 If the canonical preprocessing from the Tumor Growth module has already run

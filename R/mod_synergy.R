@@ -499,8 +499,11 @@ synergy_server <- function(id, rv) {
     vol_col  <- pp$vol_col
     time_col <- pp$time_col
     # R20.D36: analyse the same arm labels the selectors offer.
-    analysis_data <- label_arms(analysis_data, rv$settings$col_treatment,
-                                rv$settings$col_dose, name = ".arm")
+    la_args <- list(df = analysis_data, treatment_column = rv$settings$col_treatment,
+                    dose_column = rv$settings$col_dose, name = ".arm")
+    analysis_data <- do.call(label_arms, la_args)
+    prep_steps <- c(pp$steps,   # R20-AC: the preparation, for the R script
+                    list(record_call("label_arms", la_args, keep_data = FALSE)))
     tx_col   <- ".arm"
     cage_col_syn <- if (has_col(analysis_data, rv$settings$col_cage)) rv$settings$col_cage else NULL
     # Animal identifier: needed by the backend's mouse-level bootstrap and by its
@@ -518,10 +521,11 @@ synergy_server <- function(id, rv) {
     }
     
     # Coerce time and volume to numeric (guard against CSV character reads)
-    if (time_col %in% colnames(analysis_data))
-      analysis_data[[time_col]] <- suppressWarnings(as.numeric(analysis_data[[time_col]]))
-    if (vol_col %in% colnames(analysis_data))
-      analysis_data[[vol_col]]  <- suppressWarnings(as.numeric(analysis_data[[vol_col]]))
+    for (col in intersect(c(time_col, vol_col), colnames(analysis_data))) {
+      analysis_data[[col]] <- suppressWarnings(as.numeric(analysis_data[[col]]))
+      prep_steps <- c(prep_steps, list(record_code(sprintf(
+        "{d}[[%s]] <- suppressWarnings(as.numeric({d}[[%s]]))", script_value(col), script_value(col)))))
+    }
     
     eval_tp <- if (!is.null(input$syn_time_point) && input$syn_time_point != "all") {
       as.numeric(input$syn_time_point)
@@ -588,7 +592,11 @@ synergy_server <- function(id, rv) {
                               do.call(mouseExperiment::analyze_drug_synergy, syn_args))
     }
     # R20-AA: the call exactly as made, for the R script in Download Results.
-    if (!isTRUE(result$error)) result$call_record <- record_call(syn_fun, syn_args)
+    if (!isTRUE(result$error)) {
+      result$call_record <- record_call(syn_fun, syn_args)
+      result$prep_steps  <- prep_steps       # R20-AC
+      result$source_file <- rv$source_file
+    }
     
     if (!isTRUE(result$error)) {
       if (rv$syn_over_time) {

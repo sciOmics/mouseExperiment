@@ -4,12 +4,15 @@
 \alias{download_results_ui}
 \title{The "Download Results" tab's contents}
 \usage{
-download_results_ui(ns, prefix)
+download_results_ui(ns, prefix, upload = TRUE)
 }
 \arguments{
 \item{ns}{The module's namespace function.}
 
 \item{prefix}{Input-ID prefix for this module (e.g. "tg").}
+
+\item{upload}{Offer to include the uploaded file, so the R script starts
+from it (R20-AC); not on Power, which reads no data.}
 }
 \description{
 The "Download Results" tab's contents

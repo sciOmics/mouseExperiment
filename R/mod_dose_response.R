@@ -591,6 +591,9 @@ dose_response_server <- function(id, rv) {
 
     # Coerce dose column to numeric
     data[[dose_col]] <- suppressWarnings(as.numeric(data[[dose_col]]))
+    prep_steps <- c(pp$steps, list(record_code(sprintf(   # R20-AC: for the R script
+      "{d}[[%s]] <- suppressWarnings(as.numeric({d}[[%s]]))",
+      script_value(dose_col), script_value(dose_col)))))
     n_na_dose <- sum(is.na(data[[dose_col]]))
     if (n_na_dose == nrow(data)) {
       output$dr_status_msg <- renderUI({
@@ -639,7 +642,11 @@ dose_response_server <- function(id, rv) {
     result <- safe_analysis(module = "dose_response",
                             do.call(mouseExperiment::dose_response_statistics, dr_args))
     # R20-AA: the call exactly as made, for the R script in Download Results.
-    if (!isTRUE(result$error)) result$call_record <- record_call("dose_response_statistics", dr_args)
+    if (!isTRUE(result$error)) {
+      result$call_record <- record_call("dose_response_statistics", dr_args)
+      result$prep_steps  <- prep_steps       # R20-AC
+      result$source_file <- rv$source_file
+    }
     # The plots and tables use the control of the displayed run (R20.D48).
     if (is.list(result)) result$control_group_used <- si$control %||% "dose 0"
     # The backend names its argument; here the choice is the sidebar selector.

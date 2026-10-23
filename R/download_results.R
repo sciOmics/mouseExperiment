@@ -49,13 +49,24 @@ dl_item <- function(id, group, label, file, kind = c("table", "plot", "file", "f
 #' The "Download Results" tab's contents
 #' @param ns The module's namespace function.
 #' @param prefix Input-ID prefix for this module (e.g. "tg").
+#' @param upload Offer to include the uploaded file, so the R script starts
+#'   from it (R20-AC); not on Power, which reads no data.
 #' @keywords internal
-download_results_ui <- function(ns, prefix) {
+download_results_ui <- function(ns, prefix, upload = TRUE) {
   id <- function(x) ns(paste0(prefix, "_dl_", x))
   tagList(
     tags$p("Choose what to download. It all goes into one ZIP file, with a README.txt ",
            "that lists every file, the settings of the run and the package versions."),
     uiOutput(id("choices")),
+    if (upload) checkboxInput(id("include_upload"), tagList(
+      "Include my original file, so the R script starts from it",
+      help_tip(paste(
+        "The ZIP then holds the file you uploaded, as it was, and the R script rebuilds",
+        "the analysed data from it with the package's preparation functions: your",
+        "exclusions, the study days, the volumes and the arm labels. It checks the result",
+        "against the data the dashboard analysed before running the analysis. The file",
+        "includes any animals you excluded and columns no analysis uses."))),
+      value = FALSE),
     fluidRow(
       column(6,
         radioButtons(id("plot_format"),
@@ -127,7 +138,8 @@ add_download_results <- function(input, output, session, prefix, module,
       chosen <- unlist(lapply(names(DL_GROUPS), function(g) input[[gid(g)]]))
       it <- Filter(function(x) x$id %in% chosen, current())
       write_results_zip(file, it, fmt = input[[id("plot_format")]] %||% "png",
-                        size = plot_size(), header = readme_header())
+                        size = plot_size(), header = readme_header(),
+                        opts = list(include_upload = isTRUE(input[[id("include_upload")]])))
       shinyjs::runjs(sprintf("window.trackDownload(%s, 'selected_results', 'zip');",
                              js_string(module)))
       log_info(sprintf("download_results | module=%s | files=%d", module, length(it)))
@@ -140,11 +152,13 @@ add_download_results <- function(input, output, session, prefix, module,
 #'
 #' An item whose object cannot be made (NULL or an error) is left out and
 #' listed in the README as not available, rather than failing the download.
+#' `opts` goes to "files" items: `include_upload`, the "Include my original
+#' file" tick (R20-AC).
 #' @return The ZIP's path, invisibly.
 #' @keywords internal
 write_results_zip <- function(zipfile, items, fmt = c("png", "pdf", "svg"),
                               size = list(width = 800, height = 600, dpi = 100),
-                              header = character(0)) {
+                              header = character(0), opts = list()) {
   fmt <- match.arg(fmt)
   outdir <- tempfile("results_")
   dir.create(outdir)
@@ -157,7 +171,7 @@ write_results_zip <- function(zipfile, items, fmt = c("png", "pdf", "svg"),
     folder <- if (x$group %in% DL_TOP_LEVEL) "" else x$group
     dir <- if (nzchar(folder)) file.path(outdir, folder) else outdir
     dir.create(dir, showWarnings = FALSE)
-    f <- tryCatch(dl_write(x, dir, fmt, size), error = function(e) NULL)
+    f <- tryCatch(dl_write(x, dir, fmt, size, opts), error = function(e) NULL)
     if (!length(f)) {
       missing <- c(missing, x$label)
       next
@@ -184,9 +198,9 @@ write_results_zip <- function(zipfile, items, fmt = c("png", "pdf", "svg"),
 
 # Write one item into `dir`; returns its file name (several for "files"), or
 # NULL when the object is not available.
-dl_write <- function(x, dir, fmt, size) {
+dl_write <- function(x, dir, fmt, size, opts = list()) {
   if (identical(x$kind, "files")) {
-    rel <- x$value(dir)
+    rel <- x$value(dir, opts)
     return(rel[file.exists(file.path(dir, rel))])
   }
   if (identical(x$kind, "file")) {

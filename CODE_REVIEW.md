@@ -6147,3 +6147,48 @@ This is step 1: the preparation becomes package functions that the dashboard cal
 **Verification (executed):**
 - The full suite, Bayesian fits skipped: 706 tests, 0 failed, with Toxicity's labels.
 - `R CMD check --no-manual --no-tests`: Status OK, including the new examples.
+
+## R20-AC R scripts that start from the uploaded file (v0.38.0, 2026-10-23)
+
+Level 2, step 2 (step 1 is R20-AB).
+
+**What the user gets.** Download Results has "Include my original file, so the R script starts from it", unticked by default and absent on Power, which reads no data. Ticked:
+- **The ZIP** holds `data/original_upload.csv`: the exact bytes uploaded, or the demo file.
+- **The script** gains a section, "From your original file":
+  - `read_study_csv()` on that file;
+  - every preparation step the run made, as package calls with the arguments used;
+  - a check that the rebuilt data equal the analysed data (`all.equal(..., check.attributes = FALSE)`; it stops otherwise);
+  - then `df <- prepared`, so the analysis runs on data rebuilt from the user's file.
+
+**How:**
+- **The file.** The upload and demo handlers keep the file's name and bytes (`source_file_record()`), and each run's result carries them.
+- **The shared preparation.** `prepare_upload()` performs the exclusions, then study days, then volume, each with the exported function, and records each as a call (`record_call(keep_data = FALSE)`: the replay needs only its arguments).
+  - Tumor Growth and `ensure_preprocessed()` both use it.
+  - The cache keeps its steps (`rv$processed_steps`). Applying or clearing the filter clears the cache, so the steps hold the current exclusions.
+- **Each tab's own steps** are recorded where they are made:
+  - Tumor Growth, Survival and Toxicity: `label_arms()`;
+  - Survival: `survival_events()`;
+  - Synergy: `label_arms()` and its numeric coercions;
+  - Dose Response: its dose coercion.
+  - A coercion is a line of R (`record_code()`), written with the script's variable.
+  - Bayesian and background runs carry the steps through the job context.
+- **Exclusions in the script.** Excluded animals are written as `data.frame(arm = ..., id = ..., cage = ...)`: `script_value()` now writes data frames that way.
+- **Download Results** passes the tick to "files" items (`opts`).
+
+**Tests** (`test-reproduce-upload.R`, 7). Each tab is run on an upload read as the dashboard reads one (`read_study_csv()`, with the file kept). Then it downloads the script with the file and runs it.
+
+| Tab | What it covers | Compared |
+|---|---|---|
+| Tumor Growth | one animal and one cage excluded, arms labelled by dose | three tables to 1e-8 |
+| Tumor Growth | one value of the original file altered | the script stops with "differ from data/analysed_data.rds" |
+| Tumor Growth | box unticked | no original file in the ZIP |
+| Survival | events from a 1,500 mm³ volume limit, with exclusions | hazard ratios |
+| Toxicity, body weight | arms labelled by dose | fixed effects and weight-loss events |
+| Drug Synergy | days from dates, volumes from calipers, the numeric coercions | metrics and intervals |
+| Dose Response | the dose coercion | TGI |
+
+The seventh test checks that Power offers no file.
+
+**Verification (executed):**
+- The full suite, Bayesian fits skipped: 713 tests, 0 failed.
+- `R CMD check --no-manual --no-tests`: Status OK.
