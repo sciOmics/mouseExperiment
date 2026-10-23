@@ -12,7 +12,8 @@ dl_item(
   kind = c("table", "plot", "file"),
   value,
   about = label,
-  row_names = FALSE
+  row_names = FALSE,
+  requires = character(0)
 )
 }
 \arguments{
@@ -33,6 +34,9 @@ NULL when it cannot be made); for "file", a function(path).}
 \item{about}{One line describing the file, for README.txt.}
 
 \item{row_names}{Write the data frame's row names (e.g. an ANOVA table).}
+
+\item{requires}{Ids of items that go into the ZIP with this one, ticked or
+not: the R script needs the data it reads.}
 }
 \description{
 One file the "Download Results" tab can put in its ZIP

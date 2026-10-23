@@ -13,12 +13,14 @@
 # =============================================================================
 
 # The checklist's groups, in display order. Each is also a folder in the ZIP,
-# except "report", whose files sit at the top level.
+# except "code" and "report", whose files sit at the top level.
 DL_GROUPS <- c(tables      = "Tables (CSV)",
                plots       = "Plots",
                diagnostics = "Diagnostics",
                data        = "Data (CSV)",
+               code        = "R script",
                report      = "Report")
+DL_TOP_LEVEL <- c("code", "report")
 
 #' One file the "Download Results" tab can put in its ZIP
 #'
@@ -32,13 +34,21 @@ DL_GROUPS <- c(tables      = "Tables (CSV)",
 #'   NULL when it cannot be made); for "file", a function(path).
 #' @param about One line describing the file, for README.txt.
 #' @param row_names Write the data frame's row names (e.g. an ANOVA table).
+#' @param requires Ids of items that go into the ZIP with this one, ticked or
+#'   not: the R script needs the data it reads.
 #' @keywords internal
 dl_item <- function(id, group, label, file, kind = c("table", "plot", "file"),
-                    value, about = label, row_names = FALSE) {
+                    value, about = label, row_names = FALSE, requires = character(0)) {
   kind <- match.arg(kind)
   stopifnot(group %in% names(DL_GROUPS), is.function(value))
   list(id = id, group = group, label = label, file = file, kind = kind,
-       value = value, about = about, row_names = row_names)
+       value = value, about = about, row_names = row_names, requires = requires)
+}
+
+# The ticked ids plus what they require.
+dl_with_required <- function(chosen, items) {
+  req <- unlist(lapply(Filter(function(x) x$id %in% chosen, items), `[[`, "requires"))
+  union(chosen, req)
 }
 
 #' The "Download Results" tab's contents
@@ -120,6 +130,7 @@ add_download_results <- function(input, output, session, prefix, module,
     },
     content = function(file) {
       chosen <- unlist(lapply(names(DL_GROUPS), function(g) input[[gid(g)]]))
+      chosen <- dl_with_required(chosen, current())
       it <- Filter(function(x) x$id %in% chosen, current())
       write_results_zip(file, it, fmt = input[[id("plot_format")]] %||% "png",
                         size = plot_size(), header = readme_header())
@@ -149,7 +160,7 @@ write_results_zip <- function(zipfile, items, fmt = c("png", "pdf", "svg"),
   listing <- character(0)
   missing <- character(0)
   for (x in items) {
-    folder <- if (identical(x$group, "report")) "" else x$group
+    folder <- if (x$group %in% DL_TOP_LEVEL) "" else x$group
     dir <- if (nzchar(folder)) file.path(outdir, folder) else outdir
     dir.create(dir, showWarnings = FALSE)
     f <- tryCatch(dl_write(x, dir, fmt, size), error = function(e) NULL)

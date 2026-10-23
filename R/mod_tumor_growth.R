@@ -271,12 +271,14 @@ tumor_growth_server <- function(id, rv) {
     # it runs on the background worker (22 s at 999 permutations, 145 s at
     # 9,999, during which every session on the server used to freeze), and
     # its result joins this run's when it arrives.
-    perm <- if (isTRUE(input$tg_run_perm)) {
-      mouseExperiment::perm_spec(
-        unit   = rv$settings$randomisation_unit %||% "mouse",
-        n_perm = as.integer(input$tg_perm_n %||% 999L),
-        seed   = 20260730L)
+    # Built as a call and evaluated, so the R script writes the same call
+    # (R20-Z) instead of a deparsed perm_spec object.
+    perm_call <- if (isTRUE(input$tg_run_perm)) {
+      bquote(perm_spec(unit   = .(rv$settings$randomisation_unit %||% "mouse"),
+                       n_perm = .(as.integer(input$tg_perm_n %||% 999L)),
+                       seed   = 20260730L))
     } else NULL
+    perm <- if (!is.null(perm_call)) eval(perm_call, asNamespace("mouseExperiment")) else NULL
     tg_args <- list(
         df = data,
         time_column = col_names$time_column,
@@ -326,6 +328,8 @@ tumor_growth_server <- function(id, rv) {
       )
     result <- safe_analysis(module = "tumor_growth",
                             do.call(mouseExperiment::tumor_growth_statistics, tg_args))
+    # R20-Z: the call exactly as made, for the R script in Download Results.
+    if (!isTRUE(result$error)) result$call_record <- record_call("tumor_growth_statistics", tg_args)
     
     # Generate plots from the results
     if (!isTRUE(result$error)) {
@@ -740,6 +744,15 @@ tumor_growth_server <- function(id, rv) {
 
     run_token <- paste0(format(Sys.time(), "%H%M%OS6"), sample.int(1e6, 1))
     result$run_token <- run_token
+    # R20.D6: the randomisation test's call (run below), recorded for the
+    # R script; the script includes it once the test's result has arrived.
+    if (!is.null(perm) && !isTRUE(result$error)) {
+      perm_args <- tg_args
+      perm_args[c("permutation_test", "return_model", "include_diagnostics")] <-
+        list(perm, FALSE, FALSE)
+      result$perm_call_record <- record_call("tumor_growth_statistics", perm_args,
+                                             exprs = list(permutation_test = perm_call))
+    }
     rv$tg_results <- result
     updateTabsetPanel(session, "tg_results_tabs", selected = "Summary")
     rv$tg_running <- FALSE
@@ -747,9 +760,6 @@ tumor_growth_server <- function(id, rv) {
     # R20.D6: the randomisation test, on the background worker.
     rv$tg_perm_status <- NULL
     if (!is.null(perm) && !isTRUE(result$error)) {
-      perm_args <- tg_args
-      perm_args[c("permutation_test", "return_model", "include_diagnostics")] <-
-        list(perm, FALSE, FALSE)
       launched <- launch_background_job(
         kind = "tg_perm",
         task = background_task(.tg_perm_only, perm_args),
