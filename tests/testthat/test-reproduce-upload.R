@@ -54,6 +54,10 @@ run_from_upload <- function(output, session, prefix, edit = NULL) {
   env <- new.env(parent = globalenv())
   old <- setwd(dir)
   on.exit(setwd(old))
+  # R22.19: R's default generator, as in a fresh session. The dashboard's
+  # worker draws with L'Ecuyer-CMRG; a seeded result must not depend on it.
+  old_kind <- RNGkind("Mersenne-Twister", "Inversion", "Rejection")
+  on.exit(RNGkind(old_kind[1], old_kind[2], old_kind[3]), add = TRUE)
   err <- tryCatch({
     suppressMessages(suppressWarnings(utils::capture.output(
       sys.source("analysis.R", envir = env, keep.source = FALSE))))

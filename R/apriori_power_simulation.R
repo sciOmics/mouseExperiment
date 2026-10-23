@@ -207,7 +207,7 @@ apriori_power_simulation <- function(n_per_group          = c(5L, 8L, 10L, 12L, 
       else if (exists(".Random.seed", envir = globalenv(), inherits = FALSE))
         rm(".Random.seed", envir = globalenv())
     }, add = TRUE)
-    set.seed(seed)
+    me_set_seed(seed)   # R22.1: the same stream on the dashboard's worker
   }
 
   group_names   <- c("Control", paste0("Treatment", seq_len(n_groups - 1L)))

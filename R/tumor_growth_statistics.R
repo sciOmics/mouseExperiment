@@ -500,7 +500,7 @@ tgs_perm_diff_p <- function(x, y, n_perm = 2000L, seed = NULL) {
     on.exit({
       if (!is.null(old_seed)) assign(".Random.seed", old_seed, envir = .GlobalEnv)
     }, add = TRUE)
-    set.seed(seed)
+    me_set_seed(seed)   # R22.1
   }
 
   pooled <- c(x, y)
@@ -541,7 +541,7 @@ tgs_boot_diff_ci <- function(x, y, n_boot = 999L, seed = NULL) {
         assign(".Random.seed", old_seed, envir = .GlobalEnv)
       }
     })
-    set.seed(seed)
+    me_set_seed(seed)   # R22.1
   }
   diffs <- vapply(seq_len(n_boot), function(b) {
     mean(sample(x, length(x), replace = TRUE)) -

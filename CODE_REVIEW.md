@@ -6387,14 +6387,16 @@ After the first CRAN release, renaming any of these breaks users' code. Fix: the
 
 | Item | Severity | Status |
 |---|---|---|
-| R22.1 RNG kind on the worker | Major | Open |
-| R22.2 Bayesian survival downloads and script | Major | Open |
+| R22.1 RNG kind on the worker | Major | ✅ Fixed v0.39.0 |
+| R22.2 Bayesian survival downloads and script | Major | ✅ Fixed v0.39.0 |
 | R22.3 Reused cage labels | Major | Open (question 1) |
-| R22.4 Firth defaults in `weight_loss_threshold()` | Major | Open |
-| R22.5 CI skips the source-reading tests | Major | Open |
-| R22.6 README/vignette per-animal reduction | Major | Open |
+| R22.4 Firth defaults in `weight_loss_threshold()` | Major | ✅ Fixed v0.39.0 |
+| R22.5 CI skips the source-reading tests | Major | ✅ Fixed v0.39.0 |
+| R22.6 README/vignette per-animal reduction | Major | ✅ Fixed v0.39.0 |
 | R22.7 API naming before CRAN | Major | Open (question 2) |
-| R22.8–R22.19 | Minor | Open |
+| R22.19 Round trips in the dashboard's session | Minor | ✅ Fixed v0.39.0 |
+| R22.10 (`me_with_seed()` twice) | Minor | ✅ Fixed v0.39.0; the rest of R22.10 open |
+| R22.8, R22.9, R22.11–R22.18 | Minor | Open |
 | F1–F11 | Proposals | For the maintainer |
 
 ### Open questions for the maintainer
@@ -6408,3 +6410,52 @@ After the first CRAN release, renaming any of these breaks users' code. Fix: the
 - **Next:** R22.5 (CI), then R22.3 and R22.7 once the questions are answered.
 - **Cleanup:** the Minor items as one cleanup release.
 - **Then CRAN:** R22.17 and R22.9 are part of the CRAN preparation.
+
+## R22-A Implementation log — v0.39.0: the Round 22 fixes that needed no decision (2026-10-23)
+
+**R22.1 — seeded results no longer depend on the generator kind:**
+- **The fix.** `me_set_seed()` (`utils_endpoint.R`) seeds with `kind = "Mersenne-Twister", normal.kind = "Inversion", sample.kind = "Rejection"`. All nine `set.seed()` sites call it:
+  - the power simulation;
+  - the trajectory and survival randomisation tests;
+  - the log-rank fallback;
+  - the per-animal AUC tests;
+  - the synergy bootstrap;
+  - `me_with_seed()`, used by the endpoint-model draws and the contrast summaries.
+- **The caller's state.** Each site still restores `.Random.seed`, and with it the caller's kind.
+- **What changes for users.** On the dashboard, the randomisation test and the LMM power simulation now give the numbers an R session gives for the same seed. The values they showed before were valid, but drawn from a different stream.
+- **R22.10, in part.** The second definition of `me_with_seed()` (`utils_contrasts.R`) is removed.
+
+**R22.2 — Bayesian survival effects.** `surv_effects()` (`mod_survival_downloads.R`) returns a run's effects and what they measure: hazard ratios from `results` for Cox, and time ratios with credible intervals from `treatment_effects` for the Bayesian AFT model. Five places that read only `results` now use it:
+- the Download Results table;
+- the CSV button;
+- the forest plot, on screen and downloaded;
+- the R script.
+
+The forest plot takes the measure as a parameter: its title, axis and labels say time ratio for a Bayesian run. The on-screen plot is now drawn by the same function as the download. The plot's heading becomes "Forest Plot".
+
+**R22.4 — Firth settings.** `weight_loss_threshold()` calls `coxphf(..., maxit = 1000, maxstep = 0.05)`, as `survival_statistics()` has since R20-X.
+
+**R22.5 — CI.** The source-tree step selects every test file that reads sources, by the helpers it calls (`dash_source`, `dash_all_sources`, `pkg_source_files`) or the skip it has. That is 11 files, against 3 before, and 74 tests run from the source tree, all passing locally.
+
+**R22.6 — per-animal survival data.** The README's two survival examples and the vignette use `survival_events()`. On `master_synthetic_data` the hazard ratios, p-values and event counts are identical to the old reduction's, since its IDs are unique; only the row order differs.
+
+**R22.19 — round trips:**
+- The three round-trip runners run each script under R's default generator.
+- The randomisation-test round trip compares the permutation draws, not only the p-value, which often ties at its floor.
+- The LMM power round trip uses a design whose power is between 0.1 and 0.9 and says so, so a different stream shows.
+- **Verified both ways.** With `me_set_seed()` reverted to `set.seed(seed)`, both round trips fail; with it, they pass. The old weak versions passed either way.
+
+**Tests** (`test-round22-fixes.R`, 8 tests; 7 fail on 0.38.0):
+- **R22.1:** the power simulation, the randomisation test, the synergy bootstrap and the AUC draws, each under Mersenne-Twister and under L'Ecuyer-CMRG; the caller's kind and stream are unchanged.
+- **R22.2:** for a Bayesian-shaped result,
+  - the effects and forest items are offered;
+  - the forest plot is titled with time ratios;
+  - a Cox run still says hazard ratios;
+  - the CSV button writes the time ratios;
+  - the script prints `treatment_effects`.
+- **R22.4:** a weight-loss study with two event-free arms has no convergence warning and no NA p-value (arm A's was NA), and the p-values equal coxphf's with the new settings.
+
+**Verification (executed):**
+- The full suite, Bayesian fits skipped: 721 tests, 0 failed.
+- `R CMD check --no-manual --no-tests`: Status OK, including the vignette's new `survival_events()` example.
+- The CI source-tree step's commands, run locally: 11 files, 74 tests, none failing.

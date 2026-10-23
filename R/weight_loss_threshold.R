@@ -287,10 +287,13 @@ weight_loss_threshold <- function(df,
     # when Firth is unavailable or fails, and then with its warning.
     if (!has_separation) cox_model <- fit_cox()
     if (is.null(cox_model) && requireNamespace("coxphf", quietly = TRUE)) {
+      # R22.4: the settings survival_statistics() has used since R20-X. With
+      # coxphf's defaults (maxit = 50, maxstep = 0.5) the profile-likelihood
+      # intervals and p-values of event-free arms did not converge.
       firth_fit <- tryCatch(
         coxphf::coxphf(
           survival::Surv(Time, Event) ~ Treatment,
-          data = event_df
+          data = event_df, maxit = 1000, maxstep = 0.05
         ),
         error = function(e) NULL
       )

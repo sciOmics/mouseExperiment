@@ -5,6 +5,34 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.39.0] - 2026-10-23
+
+The Round 22 audit's fixes that needed no decision (`CODE_REVIEW.md` R22-A).
+
+### Fixed
+- **A seeded result is the same wherever it runs.**
+  - The dashboard's background worker draws random numbers with a different generator than an R
+    session. The randomisation test and the LMM power simulation therefore gave different numbers
+    there for the same seed: power 0.833 on the server and 0.933 in R, for example.
+  - The R script could not reproduce them.
+  - Every seeded analysis now fixes the generator, and leaves the caller's as it was. Server
+    results for those two analyses change accordingly.
+- **Bayesian survival:**
+  - the time-ratio table is offered in Download Results;
+  - the CSV button beside it writes a file (it wrote none);
+  - the forest plot shows time ratios with credible intervals (it was empty);
+  - the R script prints the treatment effects (it printed `NULL`).
+- **`weight_loss_threshold()`'s Firth model converges** for arms with no events, as
+  `survival_statistics()`'s has since 0.33.1. A p-value could come back `NA`.
+- **The README and vignette build per-animal survival data with `survival_events()`.** They
+  reduced by ID alone, which merges animals when ear tags are reused across arms.
+
+### Tests
+- **CI runs every test that reads the sources.** Help text, README and man pages were checked
+  only locally before: about 45 tests skipped in CI.
+- **The R-script round trips** run the script under R's default generator, and compare
+  randomisation draws and mid-range simulated power, so a different random stream shows.
+
 ## [0.38.0] - 2026-10-23
 
 R scripts that start from the uploaded file (`CODE_REVIEW.md` R20-AC).

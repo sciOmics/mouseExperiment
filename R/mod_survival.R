@@ -341,7 +341,7 @@ survivalUI <- function(id) {
                   selectInput(ns("surv_plot_selector"), "Select Plot",
                     choices = c(
                       "Kaplan-Meier Curve"       = "km",
-                      "Hazard Ratio Forest Plot" = "forest"
+                      "Forest Plot (hazard or time ratios)" = "forest"
                     )
                   ),
                   ctrl_section("surv-groups", "sort", "Groups",
@@ -421,7 +421,7 @@ survivalUI <- function(id) {
                   )
                 ),
                 conditionalPanel(ns = ns,"input.surv_plot_selector == 'forest'",
-                  h4("Hazard Ratio Forest Plot"),
+                  h4("Forest Plot"),
                   shinycssloaders::withSpinner(
                     plotOutput(ns("surv_forest_plot"), width = "auto", height = "auto")
                   )
@@ -1380,38 +1380,13 @@ survival_server <- function(id, rv) {
   # build_surv_forest_plot() lives in helpers_plot.R (R20.D19): the download
   # handler in mod_survival_downloads.R could not see it as a local here.
   # Forest plot
+  # R22.2: the same plot as the download (surv_forest_plot_styled()), so a
+  # Bayesian run's time ratios are drawn too; it read the Cox table only.
   output$surv_forest_plot <- renderPlot({
     req(rv$surv_results)
-    if (isTRUE(rv$surv_results$error) || is.null(rv$surv_results$results)) return(NULL)
-    
-    res <- rv$surv_results$results
-    req(all(c("Group", "HR", "CI_Lower", "CI_Upper", "P_Value") %in% colnames(res)))
-    
-    ref_grp <- rv$surv_results$reference_group
-    
-    # Verify at least one non-reference group with valid HR
-    plot_df <- res[!is.na(res$HR), ]
-    if (!is.null(ref_grp)) plot_df <- plot_df[plot_df$Group != ref_grp, ]
-    req(nrow(plot_df) > 0)
-
-    pt_color <- input$surv_forest_pt_color %||% "steelblue"
-    show_hr  <- isTRUE(input$surv_forest_show_hr)
-    show_ci  <- isTRUE(input$surv_forest_show_ci)
-    show_p   <- isTRUE(input$surv_forest_show_p)
-
-    p <- build_surv_forest_plot(res, ref_grp, pt_color, show_hr, show_ci, show_p)
+    p <- surv_forest_plot_styled(rv$surv_results, input)
     req(!is.null(p))
-    text_size   <- input$surv_opt_text_size %||% 16
-    legend_pos  <- input$surv_opt_legend_pos %||% "right"
-    p <- apply_plot_labels(p,
-                           input$surv_plot_title        %||% "",
-                           input$surv_plot_subtitle     %||% "",
-                           input$surv_plot_title_align  %||% "center",
-                           text_size,
-                           xlab       = input$surv_plot_xaxis_label  %||% "",
-                           ylab       = input$surv_plot_yaxis_label  %||% "",
-                           legend_lab = input$surv_plot_legend_label %||% "")
-    apply_legend_pos(p, legend_pos)
+    p
   }, width = function() input$surv_plot_width %||% 800,
      height = function() input$surv_plot_height %||% 600)
 

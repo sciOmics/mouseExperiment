@@ -341,8 +341,9 @@ surv_script_bundle <- function(res, include_upload = FALSE) {
     if (bayes) c("MCMC: the seed is the package default, so the same version on the same",
                  "platform draws the same chains; another compiler or Stan version can",
                  "move the draws slightly."))
-  shown <- c(results = if (bayes) "Posterior treatment effects by arm"
-                       else "Each arm against the reference, with the correction selected")
+  # R22.2: a Bayesian AFT run reports treatment_effects (time ratios), not results.
+  shown <- if (bayes) c(treatment_effects = "Posterior time ratios by arm, with credible intervals")
+           else c(results = "Each arm against the reference, with the correction selected")
   script_bundle(title, list(script_step(rec, "result", prints = shown)), notes,
                 prep = script_prep(res, include_upload))
 }

@@ -82,8 +82,14 @@ jobs:
           error-on: '"warning"'
 
       # R CMD check runs the tests against the installed package, without the
-      # README or R/ sources, so the tests that read them skip there. Run them
-      # here, from the source tree (R20.51, R20.53).
-      - name: Source-tree tests (README examples, source checks)
+      # README, R/ or man/ sources, so the tests that read them skip there. Run
+      # them here, from the source tree (R20.51, R20.53). R22.5: this step used
+      # to name three files and missed about 45 tests (the Help-text checks
+      # among them); it now finds every file that reads sources, by the helpers
+      # it calls or the skip it has.
+      - name: Source-tree tests (README examples, source and docs checks)
         run: |
-          Rscript -e 'devtools::test(filter = "readme|code_review_round16|code_review_round18", reporter = c("summary", "fail"), stop_on_failure = TRUE)'
+          files=$(grep -l -E 'dash_source|dash_all_sources|pkg_source_files|not locatable|sources not available|not available \(R CMD check' tests/testthat/test-*.R \
+                    | xargs -n1 basename | sed 's/^test-//; s/[.]R$//' | paste -sd'|' -)
+          echo "Source-reading test files: $files"
+          Rscript -e "devtools::test(filter = '^($files)\$', reporter = c('summary', 'fail'), stop_on_failure = TRUE)"

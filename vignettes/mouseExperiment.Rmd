@@ -137,15 +137,19 @@ dr$trend_test
 
 # Survival
 
-Survival needs one row per animal: its last record, carrying the event
-indicator. Here the unit of randomisation is the mouse. With
-`randomisation_unit = "cage"` the comparison becomes a cage-level permutation
-log-rank test instead.
+Survival needs one row per animal, with its time and event.
+`survival_events()` makes it. It keys animals by arm, ID and cage, so ear tags
+reused in each arm stay apart, and an event is at the animal's first flagged
+day. With `volume_limit` instead of `event_column`, an event is the first day
+a tumour reached that volume. Here the unit of randomisation is the mouse.
+With `randomisation_unit = "cage"` the comparison becomes a cage-level
+permutation log-rank test instead.
 
 ```{r survival}
-mm <- m[order(m$ID, m$Day), ]
-per_animal <- mm[!duplicated(mm$ID, fromLast = TRUE), ]
-surv <- survival_statistics(per_animal, reference_group = "Vehicle",
+per_animal <- survival_events(m, event_column = "Survival_Censor",
+                              cage_column = "Cage")
+surv <- survival_statistics(per_animal, time_column = "Time",
+                            censor_column = "Event", reference_group = "Vehicle",
                             verbose = FALSE)
 surv$method_used
 surv$results

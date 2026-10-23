@@ -124,11 +124,14 @@ Every analysis function takes `plots = FALSE` to skip its figures. The model dia
 library(mouseExperiment)
 m <- master_synthetic_data
 
-# One row per animal: its last record carries the event indicator
-mm <- m[order(m$ID, m$Day), ]
-per_animal <- mm[!duplicated(mm$ID, fromLast = TRUE), ]
+# One row per animal, with its Time and Event. Animals are keyed by arm, ID
+# and cage, so ear tags reused in each arm stay apart; an event is at the
+# animal's first flagged day.
+per_animal <- survival_events(m, event_column = "Survival_Censor",
+                              cage_column = "Cage")
 
-surv <- survival_statistics(per_animal, reference_group = "Vehicle",
+surv <- survival_statistics(per_animal, time_column = "Time",
+                            censor_column = "Event", reference_group = "Vehicle",
                             verbose = FALSE)
 surv$results               # hazard ratios, intervals, p-values, medians
 surv$method_used           # "coxphf" (Firth) by default
@@ -138,9 +141,10 @@ surv$method_used           # "coxphf" (Firth) by default
 # Bayesian AFT model (Weibull or log-normal)
 library(mouseExperiment)
 m <- master_synthetic_data
-mm <- m[order(m$ID, m$Day), ]
-per_animal <- mm[!duplicated(mm$ID, fromLast = TRUE), ]
-bayes_surv <- bayesian_survival(per_animal, reference_group = "Vehicle",
+per_animal <- survival_events(m, event_column = "Survival_Censor",
+                              cage_column = "Cage")
+bayes_surv <- bayesian_survival(per_animal, time_column = "Time",
+                                event_column = "Event", reference_group = "Vehicle",
                                 family = "weibull",
                                 mcmc = tg_mcmc(chains = 4, iter = 500))
 bayes_surv$treatment_effects   # time ratio and hazard ratio, with 95 % CrI
