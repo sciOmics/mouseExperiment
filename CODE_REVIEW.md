@@ -6639,3 +6639,10 @@ The forest plot takes the measure as a parameter: its title, axis and labels say
 
 Rewritten: `test-param_sensitivity.R`, `test-code_review_round3.R` (R3.9, B7.1), `test-code_review_rounds12.R` (J.20) and `test-helpers_format.R`.
 
+
+**Caught by the browser tests.** The first version of `treatment_filter_choices()` stopped the dashboard's session on the All Features demo. There no treatment has several doses, and `paste0()` of zero-length parts returns one string, so the choices' names did not fit. The unit test had only a treatment with several doses. The fix guards the empty case, and the unit test now covers it.
+
+**Verification (executed):**
+- The full suite, Bayesian fits skipped: 738 tests, 0 failed.
+- CRAN mode on the Bayesian files: their Stan tests skip and the rest pass.
+- `R CMD check --no-manual --no-tests`: Status OK, including the vignette's new preparation chunk.
