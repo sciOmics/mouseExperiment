@@ -365,7 +365,10 @@ test_that("R20.D31: the therapeutic window gets the cage column and the declared
   })
   expect_equal(seen$cage_column, "Cage")
   expect_equal(seen$volume_units, "mm3")
-  expect_equal(seen$reference_group, "Vehicle")
+  # R20-AB: with the dose column mapped, arms are "Treatment Dose"; the
+  # study's control "Vehicle" is the arm "Vehicle 0".
+  expect_equal(seen$reference_group, "Vehicle 0")
+  expect_equal(seen$treatment_column, "TreatmentGroup")
 })
 
 # ---- Dose-response and synergy -----------------------------------------------------

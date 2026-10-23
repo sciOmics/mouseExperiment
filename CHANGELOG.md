@@ -23,13 +23,21 @@ first step of R scripts that start from the uploaded file.
     event column or a volume limit, plus deaths from removal reasons.
   - Before, a package user analysing the same file had to rebuild these steps.
 
+### Changed
+- **Toxicity labels arms by treatment and dose when a dose column is mapped,** as Tumor
+  Growth, Survival and Drug Synergy do.
+  - A treatment given at several doses is now several arms, e.g. "Drug_A 5" and "Drug_A 10".
+    It was one arm, its doses pooled.
+  - The control is the arm "Vehicle 0".
+
 ### Fixed
 - **Toxicity and Dose Response no longer change arm labels depending on whether Tumor
   Growth ran first.**
   - With a dose column mapped, Tumor Growth used to replace the shared prepared data with
     its "Treatment Dose" labels.
   - The two tabs then analysed those labels, and their own treatment names otherwise.
-  - Tumor Growth now labels its own copy, so both tabs always use the treatment column.
+  - Tumor Growth now labels its own copy. Dose Response always uses the treatment column, and
+    Toxicity always labels by dose (above).
 
 ## [0.36.0] - 2026-10-23
 

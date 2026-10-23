@@ -99,3 +99,30 @@ test_that("R20-AB: survival_events() gives each animal its time and event", {
   expect_error(survival_events(d), "event column")
   expect_error(survival_events(d, volume_limit = 1500), "volume column")
 })
+
+test_that("R20-AB: Toxicity labels arms by treatment and dose, so one drug at several doses is several arms", {
+  skip_if_not_installed("shiny", minimum_version = "1.5.0")
+  d <- utils::read.csv(system.file("sample_data", "all_features_synthetic_data.csv",
+                                   package = "mouseExperiment"), stringsAsFactors = FALSE)
+  # One treatment name at every dose of the series.
+  d$Treatment[grepl("^Drug_A (Low|Mid|High)$", d$Treatment)] <- "Drug_A"
+  expect_gt(length(unique(d$Dose[d$Treatment == "Drug_A"])), 1L)
+  rv <- shiny::reactiveValues(
+    uploaded_data = d, data_valid = TRUE, session_id = NULL,
+    settings = list(col_id = "ID", col_day = "Day", time_method = "day", col_volume = "Volume",
+                    volume_method = "precalculated", col_treatment = "Treatment",
+                    col_cage = "Cage", col_weight = "Weight", col_dose = "Dose",
+                    control_group = "Vehicle", volume_units = "mm3"))
+  shiny::isolate(ensure_preprocessed(rv))
+  suppressWarnings(shiny::testServer(toxicity_server, args = list(rv = rv), {
+    session$setInputs(tox_model_type = "bw", tox_adjust_tumor = FALSE, tox_estimation = "REML",
+                      tox_threshold = 20, tox_baseline_day = "first", run_tox_analysis = 1)
+    res <- rv$tox_results
+    skip_if(is.null(res$trajectory_data), "the body-weight model did not finish here")
+    arms <- unique(res$trajectory_data$Treatment)
+    expected <- unique(paste(d$Treatment, d$Dose))
+    expect_setequal(arms, expected)
+    expect_true(sum(startsWith(arms, "Drug_A ")) >= 3L)
+    expect_equal(res$call_records$bw$args$reference_group, "Vehicle 0")
+  }))
+})

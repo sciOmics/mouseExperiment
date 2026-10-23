@@ -669,11 +669,11 @@ toxicity_server <- function(id, rv) {
     invisible(NULL)
   })
 
-  # The study's control group, in the labels of the data this tab analyses
-  # ("Treatment Dose" after a Tumour Growth run with a dose column).
+  # The study's control group, in the labels of the data this tab analyses:
+  # "Treatment Dose" when a dose column is mapped (R20-AB).
   tox_ref <- reactive({
     req(rv$processed_data, rv$tx_col)
-    study_reference(rv, rv$processed_data[[rv$tx_col]])
+    study_reference(rv, arm_labels(rv$processed_data, rv$tx_col, rv$settings$col_dose))
   })
 
   output$tox_reference_note <- renderUI({
@@ -755,6 +755,13 @@ toxicity_server <- function(id, rv) {
     id_col    <- rv$id_col
     sex_col   <- rv$sex_col
     cage_col  <- rv$cage_col
+    # R20-AB (maintainer's decision): with a dose column, each treatment-dose
+    # combination is its own arm, as on Tumor Growth, Survival and Synergy. A
+    # treatment given at several doses used to be one arm here.
+    if (has_col(data, rv$settings$col_dose) && has_col(data, tx_col)) {
+      data   <- label_arms(data, tx_col, rv$settings$col_dose, name = "TreatmentGroup")
+      tx_col <- "TreatmentGroup"
+    }
     ref_group <- study_reference(rv, data[[tx_col]])
     has_vol   <- !is.null(vol_col) && vol_col %in% names(data)
     adjust    <- isTRUE(input$tox_adjust_tumor) && has_vol
