@@ -57,7 +57,7 @@
 #'   (control included). Weight-loss intervals always come from a bootstrap of
 #'   animals within arm (CODE_REVIEW.md R3.6 / R3.7, R20.2). Default 2000; 0
 #'   skips the intervals, and with them the tolerability flag.
-#' @param boot_seed Optional integer seed for reproducible resampling.
+#' @param seed Optional integer seed for reproducible resampling.
 #' @param zero_floor The volume a regression to zero takes on the endpoint
 #'   model's log scale: 2 mm3 or 0.002 cm3 (from \code{volume_units}, mm3 when
 #'   it is \code{NULL}) unless set (R20.32, R20-W).
@@ -98,7 +98,7 @@
 #' @examples
 #' tw <- therapeutic_window_metric(master_synthetic_data, volume_units = "mm3",
 #'                                 cage_column = "Cage", reference_group = "Vehicle",
-#'                                 n_boot = 200, boot_seed = 1)
+#'                                 n_boot = 200, seed = 1)
 #' tw$window_table
 #' @export
 therapeutic_window_metric <- function(df,
@@ -116,7 +116,7 @@ therapeutic_window_metric <- function(df,
                                       endpoint_day     = NULL,
                                       endpoint_method  = c("model", "last_obs", "survivors"),
                                       n_boot           = 2000L,
-                                      boot_seed        = NULL,
+                                      seed        = NULL,
                                       zero_floor       = NULL) {
 
   endpoint_method <- match.arg(endpoint_method)
@@ -242,14 +242,14 @@ therapeutic_window_metric <- function(df,
   tgi_ci <- if (n_boot >= 2L) {
     if (model_based) {
       twm_model_tgi_ci(ep$model, tgi_data$Treatment, reference_group, max_day,
-                       n_draws = n_boot, seed = boot_seed)
+                       n_draws = n_boot, seed = seed)
     } else {
       twm_animal_tgi_ci(ep$per_mouse, reference_group, n_boot = n_boot,
-                        seed = boot_seed)
+                        seed = seed)
     }
   }
   wl_ci <- if (n_boot >= 2L) twm_wl_bootstrap(mouse_wl, n_boot = n_boot,
-                                              seed = boot_seed)
+                                              seed = seed)
   pick <- function(ci, col) {
     if (is.null(ci)) return(rep(NA_real_, length(arms)))
     ci[[col]][match(arms, ci$Treatment)]

@@ -6,7 +6,7 @@
 \usage{
 calculate_dates(
   df,
-  start_date,
+  reference_date,
   date_column = "Date",
   date_format = NULL,
   year = NULL,
@@ -16,7 +16,7 @@ calculate_dates(
 \arguments{
 \item{df}{A data frame containing longitudinal tumor measurements}
 
-\item{start_date}{Date the tumors were injected}
+\item{reference_date}{Date the tumors were injected}
 
 \item{date_column}{The name of the column with dates of measurements}
 
@@ -35,13 +35,13 @@ Calculate the number of days for measurements
 }
 \examples{
 # "MM/DD/YYYY" dates; the format is detected
-d <- calculate_dates(combo_treatment_synthetic_data, start_date = "03/24/2025")
+d <- calculate_dates(combo_treatment_synthetic_data, reference_date = "03/24/2025")
 range(d$Day)
 
 # "DD-Mon" dates carry no year, so supply it
-d <- calculate_dates(dose_levels_synthetic_data, start_date = "24-Mar", year = 2025)
+d <- calculate_dates(dose_levels_synthetic_data, reference_date = "24-Mar", year = 2025)
 
 # An explicit format skips the detection
-d <- calculate_dates(combo_treatment_synthetic_data, start_date = "03/24/2025",
+d <- calculate_dates(combo_treatment_synthetic_data, reference_date = "03/24/2025",
                      date_format = "\%m/\%d/\%Y")
 }

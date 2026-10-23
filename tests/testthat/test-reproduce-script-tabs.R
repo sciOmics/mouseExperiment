@@ -110,7 +110,7 @@ test_that("R20-AA: Toxicity's therapeutic-window script reproduces the window", 
     res <- rv$tox_results
     expect_false(isTRUE(res$twm$error))
     run <- run_tab_script(output, session, "tox")
-    expect_true(any(grepl("boot_seed = 20260730L", run$script, fixed = TRUE)))
+    expect_true(any(grepl("seed = 20260730L", run$script, fixed = TRUE)))
     same_table(run$env$twm$window_table, res$twm$window_table, "window")
   }))
 })

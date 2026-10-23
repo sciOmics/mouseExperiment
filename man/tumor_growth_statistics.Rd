@@ -29,9 +29,7 @@ tumor_growth_statistics(
   extrapolation_points = 0,
   necrotic_column = NULL,
   necrotic_handling = c("exclude", "covariate", "none"),
-  auc_bootstrap_n = 0L,
-  auc_bootstrap_seed = NULL,
-  auc_permutations = 0L,
+  seed = NULL,
   permutation_test = NULL,
   volume_units = c("mm3", "cm3"),
   zero_floor = NULL
@@ -162,26 +160,9 @@ to \code{NULL}, in which case every observation is used.}
 them, \code{"covariate"} adds a 0/1 necrotic fixed effect, and
 \code{"none"} uses them as they are.}
 
-\item{auc_bootstrap_n}{Integer >= 0. When > 0 and \code{model_type = "auc"},
-each pairwise Welch's t-test gains a non-parametric percentile-bootstrap
-95\% CI for the mean difference (\code{boot_ci_lower}, \code{boot_ci_upper}
-columns in \code{pairwise_comparisons}). Honest at small N when per-mouse
-AUC distributions are skewed (especially under extrapolation), where the
-parametric t-CI is only approximate. A typical value is \code{999};
-higher (e.g. \code{4999}) gives smoother percentile estimates. Default
-\code{0} (skip; \code{boot_ci_*} columns are \code{NA}).}
-
-\item{auc_bootstrap_seed}{Optional integer seed for reproducible bootstrap
-resampling. \code{NULL} (default) uses the caller's RNG state.}
-
-\item{auc_permutations}{Integer >= 0. When > 0 and
-\code{model_type = "auc"}, each pairwise comparison additionally gains a
-two-sided permutation p-value (\code{perm_p_value}, plus
-\code{perm_p_adjusted} over the comparison family). At n = 8-10 per arm on
-a right-skewed derived statistic, this is more trustworthy than Welch's
-normal-theory approximation, and the null here is genuinely label
-exchangeability. A typical value is \code{2000}. Default \code{0} (skip).
-CODE_REVIEW.md H.2.}
+\item{seed}{Seed for the AUC path's model draws (its intervals and
+p-values). \code{NULL} (default) uses a fixed seed, so the result is
+reproducible either way; the caller's RNG state is left as it was.}
 
 \item{permutation_test}{Optional \code{\link{perm_spec}} object. When supplied
 (and \code{model_type = "lme4"}), a randomisation test of the treatment x

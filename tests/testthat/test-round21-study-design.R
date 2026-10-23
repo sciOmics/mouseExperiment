@@ -387,7 +387,7 @@ test_that("Study Design: dose-response uses the study's control and the cage key
                       dr_treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High"),
                       run_dr_analysis = 1)
   })
-  expect_equal(seen$control_group_name, "Vehicle")
+  expect_equal(seen$reference_group, "Vehicle")
   expect_equal(seen$cage_column, "Cage")
 })
 

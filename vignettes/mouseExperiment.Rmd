@@ -43,7 +43,7 @@ does. `calculate_dates()` and `calculate_volume()` convert them.
 ```{r prepare}
 raw <- combo_treatment_synthetic_data
 head(raw, 3)
-d <- calculate_dates(raw, start_date = "03/24/2025")
+d <- calculate_dates(raw, reference_date = "03/24/2025")
 d <- calculate_volume(d)          # ellipsoid: pi * L * W^2 / 6
 head(d[, c("Treatment", "Cage", "ID", "Day", "Volume")], 3)
 ```
@@ -106,8 +106,8 @@ the Bliss difference, not on its point estimate.
 ```{r synergy}
 syn <- analyze_drug_synergy(m,
   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
-  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-  cage_column = "Cage", n_boot = 500, boot_seed = 1, verbose = FALSE)
+  combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+  cage_column = "Cage", n_boot = 500, seed = 1, verbose = FALSE)
 syn$summary
 plot_drug_synergy(syn)
 ```
@@ -117,8 +117,8 @@ The same comparison on every evaluable day:
 ```{r synergy-trend}
 trend <- analyze_drug_synergy_over_time(m,
   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
-  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-  min_time_point = 2, cage_column = "Cage", n_boot = 500, boot_seed = 1,
+  combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+  min_day = 2, cage_column = "Cage", n_boot = 500, seed = 1,
   verbose = FALSE)
 plot_synergy_trend(trend)
 ```
@@ -130,7 +130,7 @@ Dose-response analyses one agent's dose series against its control.
 ```{r dose}
 dr <- dose_response_statistics(m,
   treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High"),
-  control_group_name = "Vehicle", cage_column = "Cage", verbose = FALSE)
+  reference_group = "Vehicle", cage_column = "Cage", verbose = FALSE)
 dr$summary_table
 dr$trend_test
 ```
@@ -149,7 +149,7 @@ permutation log-rank test instead.
 per_animal <- survival_events(m, event_column = "Survival_Censor",
                               cage_column = "Cage")
 surv <- survival_statistics(per_animal, time_column = "Time",
-                            censor_column = "Event", reference_group = "Vehicle",
+                            event_column = "Event", reference_group = "Vehicle",
                             verbose = FALSE)
 surv$method_used
 surv$results
@@ -179,7 +179,7 @@ each with an interval:
 ```{r window}
 tw <- therapeutic_window_metric(m, volume_units = "mm3", cage_column = "Cage",
                                 reference_group = "Vehicle",
-                                n_boot = 500, boot_seed = 1)
+                                n_boot = 500, seed = 1)
 tw$window_table
 ```
 

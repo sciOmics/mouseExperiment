@@ -4,14 +4,14 @@
 \alias{plot_drug_synergy}
 \title{Plot Drug Combination Synergy Analysis}
 \usage{
-plot_drug_synergy(synergy_results, custom_title = NULL, custom_colors = NULL)
+plot_drug_synergy(synergy_results, title = NULL, colors = NULL)
 }
 \arguments{
 \item{synergy_results}{Results object from analyze_drug_synergy function}
 
-\item{custom_title}{Optional custom title for the plot}
+\item{title}{Optional custom title for the plot}
 
-\item{custom_colors}{Optional named vector of custom colors for plot elements}
+\item{colors}{Optional named vector of custom colors for plot elements}
 }
 \value{
 A ggplot2 object visualizing the synergy analysis results
@@ -23,7 +23,7 @@ and synergy metrics from a drug combination analysis.
 \examples{
 syn <- analyze_drug_synergy(master_synthetic_data,
   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
-  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-  n_boot = 200, boot_seed = 1, verbose = FALSE)
-plot_drug_synergy(syn, custom_title = "Drug_A Mid + Drug_B vs Bliss")
+  combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+  n_boot = 200, seed = 1, verbose = FALSE)
+plot_drug_synergy(syn, title = "Drug_A Mid + Drug_B vs Bliss")
 }

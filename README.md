@@ -79,7 +79,7 @@ through the same analysis with explanations.
 library(mouseExperiment)
 
 # Raw laboratory data: calendar dates and caliper measurements
-d <- calculate_dates(combo_treatment_synthetic_data, start_date = "03/24/2025")
+d <- calculate_dates(combo_treatment_synthetic_data, reference_date = "03/24/2025")
 d <- calculate_volume(d)     # ellipsoid, pi * L * W^2 / 6
 head(d)
 
@@ -131,7 +131,7 @@ per_animal <- survival_events(m, event_column = "Survival_Censor",
                               cage_column = "Cage")
 
 surv <- survival_statistics(per_animal, time_column = "Time",
-                            censor_column = "Event", reference_group = "Vehicle",
+                            event_column = "Event", reference_group = "Vehicle",
                             verbose = FALSE)
 surv$results               # hazard ratios, intervals, p-values, medians
 surv$method_used           # "coxphf" (Firth) by default
@@ -172,8 +172,8 @@ m <- master_synthetic_data
 
 syn <- analyze_drug_synergy(m,
   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
-  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-  cage_column = "Cage", n_boot = 500, boot_seed = 1, verbose = FALSE)
+  combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+  cage_column = "Cage", n_boot = 500, seed = 1, verbose = FALSE)
 syn$summary
 plot_drug_synergy(syn)
 ```
@@ -186,7 +186,7 @@ m <- master_synthetic_data
 
 dr <- dose_response_statistics(m,
   treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High"),
-  control_group_name = "Vehicle", cage_column = "Cage", verbose = FALSE)
+  reference_group = "Vehicle", cage_column = "Cage", verbose = FALSE)
 dr$summary_table
 dr$trend_test        # Jonckheere-Terpstra
 ```
@@ -201,7 +201,7 @@ tw <- therapeutic_window_metric(m,
   reference_group = "Vehicle", cage_column = "Cage",
   volume_units = "mm3",               # needed to subtract tumour mass
   tolerability_threshold = 20,        # percent of baseline weight
-  n_boot = 500, boot_seed = 1)
+  n_boot = 500, seed = 1)
 tw$window_table   # TGI and worst weight loss per arm, with intervals and a flag
 ```
 
@@ -319,6 +319,13 @@ Rscript coverage.R              # coverage baseline (excludes Bayesian fits by
                                 # default -- a large exclusion now that the whole
                                 # Bayesian surface is required and tested)
 ```
+
+## Support
+
+Report bugs, request features and ask questions on
+[GitHub Issues](https://github.com/sciOmics/mouseExperiment/issues). Issues are public, so
+please don't attach unpublished study data: a few made-up rows, or a demo dataset, are enough.
+Report security problems privately, as [SECURITY.md](docs/dashboard/SECURITY.md) describes.
 
 ## License
 

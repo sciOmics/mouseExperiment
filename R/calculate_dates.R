@@ -1,7 +1,7 @@
 #' Calculate the number of days for measurements
 #'
 #' @param df A data frame containing longitudinal tumor measurements
-#' @param start_date Date the tumors were injected
+#' @param reference_date Date the tumors were injected
 #' @param date_column The name of the column with dates of measurements
 #' @param date_format Optional format string for parsing dates (e.g., "%d-%b" for "24-Mar" format, "%m/%d/%Y" for "03/24/2025" format)
 #' @param year Optional year to use when date format doesn't include year
@@ -13,16 +13,16 @@
 #'
 #' @examples
 #' # "MM/DD/YYYY" dates; the format is detected
-#' d <- calculate_dates(combo_treatment_synthetic_data, start_date = "03/24/2025")
+#' d <- calculate_dates(combo_treatment_synthetic_data, reference_date = "03/24/2025")
 #' range(d$Day)
 #'
 #' # "DD-Mon" dates carry no year, so supply it
-#' d <- calculate_dates(dose_levels_synthetic_data, start_date = "24-Mar", year = 2025)
+#' d <- calculate_dates(dose_levels_synthetic_data, reference_date = "24-Mar", year = 2025)
 #'
 #' # An explicit format skips the detection
-#' d <- calculate_dates(combo_treatment_synthetic_data, start_date = "03/24/2025",
+#' d <- calculate_dates(combo_treatment_synthetic_data, reference_date = "03/24/2025",
 #'                      date_format = "%m/%d/%Y")
-calculate_dates <- function(df, start_date, date_column = "Date", 
+calculate_dates <- function(df, reference_date, date_column = "Date", 
                             date_format = NULL, year = NULL, in_place = FALSE) {
   # Deprecation warning for in_place parameter
   if (in_place) {
@@ -48,7 +48,7 @@ calculate_dates <- function(df, start_date, date_column = "Date",
     first_date <- as.character(df[1, date_column])
     
     # Also check start_date format to ensure we handle it correctly
-    start_date_str <- as.character(start_date)
+    start_date_str <- as.character(reference_date)
     
     # Check for MM/DD/YYYY format (e.g., "03/24/2025")
     if (grepl("^\\d{1,2}/\\d{1,2}/\\d{4}$", first_date)) {
@@ -94,16 +94,16 @@ calculate_dates <- function(df, start_date, date_column = "Date",
       # Parse start date - try the data format first, then fall back to common formats
       # (dashboard always supplies start_date in YYYY-MM-DD regardless of data format)
       if (!is.null(year) && !grepl("%Y", date_format)) {
-        start_date_with_year <- paste(start_date, year, sep = "-")
+        start_date_with_year <- paste(reference_date, year, sep = "-")
         start_date_parsed <- as.POSIXct(strptime(start_date_with_year, format = date_format_with_year))
       } else {
-        start_date_parsed <- as.POSIXct(strptime(start_date, format = date_format))
+        start_date_parsed <- as.POSIXct(strptime(reference_date, format = date_format))
       }
       # If the data-format parse failed (e.g. start_date is YYYY-MM-DD but data is MM/DD/YYYY),
       # try a sequence of common unambiguous formats before reaching the anytime fallback below.
       if (is.na(start_date_parsed)) {
         for (fmt in c("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%d-%b-%Y", "%B %d %Y", "%B %d, %Y")) {
-          start_date_parsed <- as.POSIXct(strptime(start_date, format = fmt))
+          start_date_parsed <- as.POSIXct(strptime(reference_date, format = fmt))
           if (!is.na(start_date_parsed)) break
         }
       }
@@ -111,12 +111,12 @@ calculate_dates <- function(df, start_date, date_column = "Date",
       # Format without year and no year provided (not recommended)
       warning("No year information in dates. Results may be incorrect.")
       dates_parsed <- as.POSIXct(strptime(df[,date_column], format = date_format))
-      start_date_parsed <- as.POSIXct(strptime(start_date, format = date_format))
+      start_date_parsed <- as.POSIXct(strptime(reference_date, format = date_format))
     }
   } else {
     # Use anytime for automatic parsing (original behavior)
     message("Using automatic date parsing. For more reliable results, specify date_format.")
-    start_date_parsed <- anytime::anytime(start_date)
+    start_date_parsed <- anytime::anytime(reference_date)
     dates_parsed <- anytime::anytime(df[,date_column])
   }
   
@@ -130,14 +130,14 @@ calculate_dates <- function(df, start_date, date_column = "Date",
     tryCatch({
       message("Trying alternative approach for parsing start date...")
       # Check if start_date might be in DD-Mon format
-      if (grepl("^\\d{1,2}-[A-Za-z]{3}$", start_date)) {
+      if (grepl("^\\d{1,2}-[A-Za-z]{3}$", reference_date)) {
         # Use current year if none provided
         if (is.null(year)) {
           year <- as.numeric(format(Sys.Date(), "%Y"))
           message("Using current year (", year, ") for calculations.")
         }
         # Format with explicit year
-        start_date_with_year <- paste(start_date, year, sep = "-")
+        start_date_with_year <- paste(reference_date, year, sep = "-")
         date_format_with_year <- "%d-%b-%Y"
         start_date_parsed <- as.POSIXct(strptime(start_date_with_year, format = date_format_with_year))
         
@@ -148,7 +148,7 @@ calculate_dates <- function(df, start_date, date_column = "Date",
         }
       } else {
         # Fall back to anytime as last resort
-        start_date_parsed <- anytime::anytime(start_date)
+        start_date_parsed <- anytime::anytime(reference_date)
       }
       
       # Check if successful now

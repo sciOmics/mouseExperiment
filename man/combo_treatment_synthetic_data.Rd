@@ -32,7 +32,7 @@ codes rather than unique animal numbers, and length and width rather than
 volume. It is the dashboard's "Combo Treatment" demo.
 }
 \examples{
-d <- calculate_dates(combo_treatment_synthetic_data, start_date = "03/24/2025")
+d <- calculate_dates(combo_treatment_synthetic_data, reference_date = "03/24/2025")
 d <- calculate_volume(d)
 head(d)
 }

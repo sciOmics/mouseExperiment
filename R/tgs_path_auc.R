@@ -37,9 +37,7 @@
 #' @param comparison_spec Output of \code{resolve_comparison_spec()}.
 #' @param return_model,include_diagnostics See
 #'   \code{\link{tumor_growth_statistics}}.
-#' @param auc_bootstrap_n,auc_permutations Ignored since v0.26.0, with a
-#'   warning when positive: they belonged to the per-animal t-tests.
-#' @param auc_bootstrap_seed Seed for the model draws; \code{NULL} uses a fixed
+#' @param seed Seed for the model draws; \code{NULL} uses a fixed
 #'   seed so the reported interval is reproducible.
 #' @param cage_analysis,data_summary,necrosis_summary Summaries assembled in
 #'   the main function.
@@ -54,9 +52,7 @@ tgs_path_auc <- function(auc_analysis,
                          reference_group,
                          return_model,
                          include_diagnostics,
-                         auc_bootstrap_n,
-                         auc_bootstrap_seed,
-                         auc_permutations,
+                         seed,
                          cage_analysis,
                          data_summary,
                          necrosis_summary,
@@ -66,12 +62,6 @@ tgs_path_auc <- function(auc_analysis,
                          time_column,
                          volume_column,
                          zero_floor_info) {
-
-  if (isTRUE(auc_bootstrap_n > 0) || isTRUE(auc_permutations > 0)) {
-    warning("auc_bootstrap_n and auc_permutations are ignored: since v0.26.0 ",
-            "the AUC is model-based, with intervals and p-values from draws of ",
-            "the model (CODE_REVIEW.md R20.4).", call. = FALSE)
-  }
 
   d <- data.frame(
     MouseKey  = make_mouse_key(as.character(auc_df[[treatment_column]]),
@@ -106,7 +96,7 @@ tgs_path_auc <- function(auc_analysis,
   h <- diff(grid)
   trapz_rows <- function(M) as.numeric(M[, -1L, drop = FALSE] %*% (h / 2) +
                                        M[, -ncol(M), drop = FALSE] %*% (h / 2))
-  seed  <- if (is.null(auc_bootstrap_seed)) 20260930L else auc_bootstrap_seed
+  seed  <- if (is.null(seed)) 20260930L else seed
   draws <- me_beta_draws(em, 4000L, seed)
   X_by  <- lapply(stats::setNames(arms, arms), function(a) me_endpoint_X(em, a, grid))
   auc_hat <- vapply(X_by, function(X) {

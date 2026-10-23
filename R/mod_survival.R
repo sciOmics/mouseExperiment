@@ -788,7 +788,7 @@ survival_server <- function(id, rv) {
     surv_args <- list(
       df = data,
       time_column = time_col_use,
-      censor_column = censor_col_use,
+      event_column = censor_col_use,
       treatment_column = tx_col_surv,
       cage_column = cage_col_surv,
       id_column = id_col_surv,

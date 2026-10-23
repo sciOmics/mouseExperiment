@@ -49,8 +49,8 @@ for individual drugs and their combination, along with the calculated Bliss valu
 \examples{
 trend <- analyze_drug_synergy_over_time(master_synthetic_data,
   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
-  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-  min_time_point = 2,  # day 0 has no growth to inhibit
-  n_boot = 200, boot_seed = 1, verbose = FALSE)
+  combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+  min_day = 2,  # day 0 has no growth to inhibit
+  n_boot = 200, seed = 1, verbose = FALSE)
 plot_bliss(trend)   # lines labelled with the arms analysed
 }

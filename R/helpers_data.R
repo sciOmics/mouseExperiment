@@ -582,7 +582,7 @@ study_days_info <- function(data, date_column, reference_date, date_order = "aut
   tmp[[".me_date_iso"]] <- format(info$dates, "%Y-%m-%d")
   out <- withCallingHandlers(
     mouseExperiment::calculate_dates(
-      tmp, start_date = format(info$reference, "%Y-%m-%d"),
+      tmp, reference_date = format(info$reference, "%Y-%m-%d"),
       date_column = ".me_date_iso", date_format = "%Y-%m-%d"),
     # Unreadable values are already described in info$notes.
     warning = function(w) {

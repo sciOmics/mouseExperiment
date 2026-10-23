@@ -549,14 +549,14 @@ synergy_server <- function(id, rv) {
         drug_a_name      = input$syn_drug_a,
         drug_b_name      = input$syn_drug_b,
         combo_name       = input$syn_combo,
-        control_name     = syn_ctrl,
+        reference_group  = syn_ctrl,
         # R20.D14: the ID column (it had to be named "ID"), cage, and the
         # estimand and bootstrap settings, which "All dates" used to ignore.
         id_column        = id_col_syn,
         cage_column      = cage_col_syn,
         endpoint_method  = input$syn_endpoint_method %||% "model",
         n_boot           = as.integer(input$syn_n_boot %||% 2000L),
-        boot_seed        = 20260730L,
+        seed             = 20260730L,
         verbose          = FALSE,
         volume_units     = backend_volume_units(rv)   # backend 0.33.0 zero floor
       )
@@ -574,8 +574,8 @@ synergy_server <- function(id, rv) {
         drug_a_name      = input$syn_drug_a,
         drug_b_name      = input$syn_drug_b,
         combo_name       = input$syn_combo,
-        control_name     = syn_ctrl,
-        eval_time_point  = eval_tp,
+        reference_group  = syn_ctrl,
+        endpoint_day     = eval_tp,
         # Backend v0.8.0+: "model" reads each arm's geometric mean at the
         # evaluation day off a log-scale LMM fitted to every observation, so
         # animals removed earlier still contribute. "survivors" reproduces the
@@ -584,7 +584,7 @@ synergy_server <- function(id, rv) {
         # Backend v0.7.0+: mouse-level bootstrap so the verdict carries an
         # interval instead of standing on a bare point estimate.
         n_boot           = as.integer(input$syn_n_boot %||% 2000L),
-        boot_seed        = 20260730L,
+        seed             = 20260730L,
         verbose          = FALSE,
         volume_units     = backend_volume_units(rv)   # backend 0.33.0 zero floor
       )
@@ -948,7 +948,7 @@ synergy_server <- function(id, rv) {
       # for the Bliss expectation.
       custom_colors <- c(Observed = col_combo, Expected = col_ctrl)
       tryCatch(
-        mouseExperiment::plot_drug_synergy(rv$syn_results, custom_colors = custom_colors),
+        mouseExperiment::plot_drug_synergy(rv$syn_results, colors = custom_colors),
         error = function(e) {
           log_caught_error("synergy", "plot_drug_synergy re-render", e)
           rv$syn_results$plot_main

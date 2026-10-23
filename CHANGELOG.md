@@ -5,6 +5,45 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.40.0] - 2026-10-23
+
+One name for each argument role across the exported functions (`CODE_REVIEW.md` R22.7,
+R22-B). The package has no users yet, so the old names are gone rather than kept as aliases:
+a call with an old name stops with "unused argument".
+
+### Changed
+- **Renamed arguments:**
+
+  | Function | Old | New |
+  |---|---|---|
+  | `analyze_drug_synergy()` | `control_name`, `boot_seed`, `eval_time_point` | `reference_group`, `seed`, `endpoint_day` |
+  | `analyze_drug_synergy_over_time()` | `control_name`, `boot_seed`, `min_time_point`, `max_time_point` | `reference_group`, `seed`, `min_day`, `max_day` |
+  | `dose_response_statistics()` | `day_column`, `control_group_name`, `time_point` | `time_column`, `reference_group`, `endpoint_day` |
+  | `survival_statistics()` | `censor_column` | `event_column` |
+  | `plot_tumor_growth()` | `ID_column`, `day_column`, `survival_column` | `id_column`, `time_column`, `event_column` |
+  | `therapeutic_window_metric()` | `boot_seed` | `seed` |
+  | `tumor_growth_statistics()` | `auc_bootstrap_seed` | `seed` |
+  | `calculate_dates()` | `start_date` | `reference_date` |
+  | `plot_drug_synergy()`, `plot_synergy_trend()` | `custom_title`, `custom_colors` | `title`, `colors` |
+
+  The same roles elsewhere already used the new names: `reference_group` (ten functions),
+  `time_column` (15), `event_column`, `endpoint_day`, `seed`, and `title` and `colors` (six
+  plots).
+
+- **Bug reports and feature requests go to GitHub Issues,** not email. The dashboard's About
+  tab and the README link to them, and new issues open with a bug-report or feature-request
+  form, which asks for the version and reminds people not to attach unpublished data. Security
+  problems are still reported privately (`SECURITY.md`).
+
+### Removed
+- **`tumor_growth_statistics()`'s `n_boot` and `auc_permutations`.** They have done nothing
+  since 0.26.0, when the model-based AUC replaced the per-animal t-tests they configured,
+  and only warned.
+
+### Fixed
+- **`tumor_growth_statistics()`'s `seed` help** described that removed bootstrap. It sets the
+  draws behind the AUC intervals and p-values; without it a fixed seed is used.
+
 ## [0.39.0] - 2026-10-23
 
 The Round 22 audit's fixes that needed no decision (`CODE_REVIEW.md` R22-A).
