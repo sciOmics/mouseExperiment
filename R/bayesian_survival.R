@@ -512,7 +512,7 @@ bayesian_survival <- function(
   )
 
   # ── Return ─────────────────────────────────────────────────────────────────
-  list(
+  me_result(list(
     model               = if (isTRUE(return_model)) model else NULL,
     model_type_used     = "bayes_survival",
     # B7.2 -- an AFT model applies no volume transform. Report "none"
@@ -548,7 +548,7 @@ bayesian_survival <- function(
     survival_curve_plot  = survival_curve_plot,
     posterior_draws      = posterior_draws,
     model_reused         = model_reused
-  )
+  ), "me_bayes_survival")
 }
 
 

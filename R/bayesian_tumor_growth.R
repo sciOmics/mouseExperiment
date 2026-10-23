@@ -678,7 +678,7 @@ bayesian_tumor_growth <- function(
   )
 
   # ── Return ─────────────────────────────────────────────────────────────────
-  list(
+  me_result(list(
     model                   = if (isTRUE(return_model)) model else NULL,
     model_type_used         = "bayes_tg",
     transform_used          = transform,
@@ -710,7 +710,7 @@ bayesian_tumor_growth <- function(
     necrosis_summary        = necrosis_summary,
     posterior_draws         = posterior_draws,
     model_reused            = model_reused
-  )
+  ), "me_bayes_tumor_growth")
 }
 
 #' Forest plot of the Bayesian treatment effects (model-free; R20.80)

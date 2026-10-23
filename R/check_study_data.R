@@ -228,5 +228,5 @@ check_study_data <- function(df, time_column = "Day", volume_column = "Volume",
     Rows = vapply(checks$Check, function(k) sum(flagged$Check == k), integer(1)),
     What = unname(what[checks$Check]), stringsAsFactors = FALSE)
   rownames(summary) <- NULL
-  list(summary = summary, flagged = flagged)
+  me_result(list(summary = summary, flagged = flagged), "me_data_check")
 }

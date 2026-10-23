@@ -172,7 +172,7 @@ dose_response_statistics <- function(df,
   if (isTRUE(verbose)) generate_user_report(stats_results, plots)
   
   # Return all results
-  return(list(
+  return(me_result(list(
     dose_effect_test = list(
       linear_model = stats_results$linear_model,
       linear_pvalue = stats_results$statistics$linear_p_value,
@@ -204,7 +204,7 @@ dose_response_statistics <- function(df,
     # blank. Returning what was analysed also removes the chance of a
     # re-derivation drifting from it (the R14.4 principle).
     analysis_data = analysis_data
-  ))
+  ), "me_dose_response"))
 }
 
 # Removed validate_input function as it's now inlined in the main function

@@ -501,7 +501,7 @@ survival_statistics <- function(df,
     result_list$c_index <- model_results$c_index
   }
 
-  return(result_list)
+  return(me_result(result_list, "me_survival"))
 }
 
 #' Cage-level permutation log-rank: one treated arm against the reference

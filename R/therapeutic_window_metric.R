@@ -269,7 +269,7 @@ therapeutic_window_metric <- function(df,
                            "N_Over_Threshold", "Tolerability")])   # F3: %T/C
 
   thr <- format(tolerability_threshold)
-  list(
+  me_result(list(
     reference_group  = reference_group,   # R20.46
     window_table     = win,
     weight_loss_data = mouse_wl,
@@ -296,7 +296,7 @@ therapeutic_window_metric <- function(df,
     } else {
       "TGI and weight-loss intervals: bootstrap of animals within arm."
     }
-  )
+  ), "me_therapeutic_window")
 }
 
 #' TGI intervals from the endpoint model

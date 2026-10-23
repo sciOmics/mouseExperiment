@@ -332,7 +332,7 @@ weight_loss_threshold <- function(df,
     }
   }
 
-  list(
+  me_result(list(
     reference_group = reference_group,   # R20.46
     event_data   = event_df,
     km_fit       = km_fit,
@@ -349,5 +349,5 @@ weight_loss_threshold <- function(df,
     ph_test      = ph_test,
     threshold    = threshold,
     baseline_day = baseline_day
-  )
+  ), "me_weight_loss")
 }

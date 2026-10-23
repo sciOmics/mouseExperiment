@@ -6402,7 +6402,8 @@ After the first CRAN release, renaming any of these breaks users' code. Fix: the
 | F6 | Proposal | ✅ Added v0.44.0 |
 | F5 | Proposal | ✅ Added v0.45.0 |
 | F4, F10 | Proposals | ✅ Added v0.46.0 |
-| F8, F9, F11 | Proposals | Approved; to do |
+| F8 | Proposal | ✅ Added v0.47.0 |
+| F9, F11 | Proposals | Approved; to do |
 
 ### Open questions for the maintainer
 
@@ -6816,3 +6817,19 @@ R20.D15's test now checks `report_table()`.
 **Updated tests.** Two ZIP listings now include `packages.lock`. R20.D46's test now finds the run's settings in the report's opening block: still the run's settings, not the sidebar's.
 
 **Verification (executed):** the full suite, Bayesian fits skipped: 756 tests; the 3 failures were those three expectations, which pass after the update. `R CMD check --no-manual --no-tests`: Status OK.
+
+## R22-I Implementation log — v0.47.0: result classes (F8, 2026-10-23)
+
+**The classes.** `me_result(x, class)` (`result_classes.R`) gives a result the class `c(<class>, "me_result")`; it stays a list.
+- **Which functions.** The 17 exported analysis functions wrap their results in it, at each top-level return point. The points were found with R's parse data, which skips `return()` calls inside inner closures. Tumour growth has two (the AUC and LME4 paths); dose-response, synergy over time and survival have one each; the others return their last expression.
+- **What a subset is.** `[` drops the class, so the scripts' `print(perm[c(...)])` still prints a plain list.
+
+**The methods.** One spec table, `.me_result_spec`, gives each class a title, the tables that carry its answer (by field) and an optional line about the run (reference, method, endpoint day, a note such as `cox_skipped`).
+- **`print()`** shows those tables' first `n` rows (10). It keeps row names when they carry information, such as an ANOVA's terms, and points to `names(x)` and `summary(x)`.
+- **`summary()`** returns the tables, with a print method of its own.
+
+**Tests** (`test-result-classes.R`, 2):
+- **Every function's result,** two Bayesian shapes aside: its class, still a list, a print headed by its title in under 200 lines, and a summary of data frames.
+- **The details:** the ANOVA prints its terms; subsets and `unclass()` give plain lists; an unknown class is refused.
+
+**Verification (executed):** the full suite, Bayesian fits skipped: 758 tests, 0 failed. Nothing in the dashboard relied on results being unclassed lists. `R CMD check --no-manual --no-tests`: Status OK.

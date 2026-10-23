@@ -73,6 +73,9 @@ Every example uses `master_synthetic_data`, which ships with the package and has
 every column the functions use. The vignette, `vignette("mouseExperiment")`, walks
 through the same analysis with explanations.
 
+Each analysis returns a list. Printing it shows what was found, its headline tables'
+first rows; `summary()` returns those tables whole, and `names()` lists every field.
+
 ### Preparing data
 
 ```r

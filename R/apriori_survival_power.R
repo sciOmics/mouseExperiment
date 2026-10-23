@@ -129,7 +129,7 @@ apriori_survival_power <- function(hazard_ratio, control_event_prob, n_groups = 
     "is asymptotic; with few events the real power is usually somewhat lower, so treat ",
     "the N as a minimum.")
 
-  list(scenario_table = scenario_table, power_curve_data = power_curve_data,
-       method_note = method_note, hazard_ratio = hazard_ratio,
-       event_probs = c(control = p_c, treated = p_t), mode = mode)
+  me_result(list(scenario_table = scenario_table, power_curve_data = power_curve_data,
+                 method_note = method_note, hazard_ratio = hazard_ratio,
+                 event_probs = c(control = p_c, treated = p_t), mode = mode), "me_survival_power")
 }
