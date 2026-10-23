@@ -14,7 +14,7 @@ apriori_power_analysis(
   n_per_group = NULL,
   mode = c("find_n", "find_power"),
   n_comparisons = NULL,
-  p_adjust_method = c("bonferroni", "none"),
+  p_adjust_method = c("bonferroni", "dunnett", "none"),
   dropout_rate = 0,
   sd_sensitivity_range = 0.4
 )
@@ -69,19 +69,24 @@ target_power) combination return the N per group required to achieve it.
 achieved power at those N values.}
 
 \item{n_comparisons}{Integer. Number of treatment-vs-control comparisons the
-analysis will make. Used with \code{p_adjust_method = "bonferroni"} to
-derive the effective per-comparison alpha. Defaults to \code{n_groups - 1}
+analysis will make. Used with \code{p_adjust_method = "bonferroni"} or
+\code{"dunnett"} to derive the effective per-comparison alpha. Defaults to \code{n_groups - 1}
 (the vs-control family these designs normally use).}
 
-\item{p_adjust_method}{\code{"bonferroni"} (default) or \code{"none"}.
+\item{p_adjust_method}{\code{"bonferroni"} (default), \code{"dunnett"} or
+\code{"none"}.
 \code{"bonferroni"} computes power at \code{alpha / n_comparisons}, which
 matches an analysis that adjusts over the \eqn{k - 1} vs-control
 comparisons, as \code{tumor_growth_statistics()} does by default. With two
 groups there is one comparison, so it changes nothing. Powering at an
 unadjusted alpha and then analysing with an adjustment delivers materially
-less power than the nominal target. Dunnett's exact correction is slightly
-less conservative than Bonferroni, so for a Dunnett analysis the Bonferroni
-N is a small overestimate. The default was \code{"none"} before 0.24.0.}
+less power than the nominal target. \code{"dunnett"} (v0.44.0) powers each
+comparison at Dunnett's per-comparison alpha: the two-sided critical value
+of the \eqn{k - 1} comparisons with a shared control (equal group sizes,
+correlation 0.5) on the pooled error degrees of freedom \eqn{k (n - 1)},
+so it depends on \eqn{n}. It is slightly less conservative than
+Bonferroni, and matches the Tumour Growth default. The default was
+\code{"none"} before 0.24.0.}
 
 \item{dropout_rate}{Numeric in [0, 1). Expected proportion of enrolled
 animals that will not be analysable (euthanasia for tumour burden,

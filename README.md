@@ -259,7 +259,8 @@ apriori_power_simulation(n_per_group = c(6L, 10L), n_simulations = 50L, seed = 1
 ### Power Analysis
 | Function | Description |
 |----------|-------------|
-| `apriori_power_analysis()` | Analytic (t-test / ANOVA) |
+| `apriori_power_analysis()` | Analytic, for a volume endpoint (t-test per comparison; Dunnett or Bonferroni) |
+| `apriori_survival_power()` | Analytic, for a survival endpoint (log-rank, Schoenfeld) |
 | `apriori_power_simulation()` | LMM simulation-based |
 
 ### Bayesian configuration helpers (v0.4.7+, CODE_REVIEW.md D.2)
