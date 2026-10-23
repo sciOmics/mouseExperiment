@@ -81,7 +81,7 @@ tumor_growth_server <- function(id, rv) {
       # "Running analysis..." on screen. Report it and stop instead.
       data <- tryCatch({
         # R20.D1: the whole column decides the day/month order.
-        sd <- study_days(data, rv$settings$col_date_for_day,
+        sd <- study_days_info(data, rv$settings$col_date_for_day,
                          rv$settings$reference_date,
                          rv$settings$date_order %||% "auto")
         if (length(sd$notes)) {
@@ -146,13 +146,14 @@ tumor_growth_server <- function(id, rv) {
     rv$dose_col       <- if (!is.null(rv$settings$col_dose)     && rv$settings$col_dose != "")     rv$settings$col_dose     else NULL
     rv$necrotic_col   <- if (!is.null(rv$settings$col_necrotic) && rv$settings$col_necrotic != "") rv$settings$col_necrotic else NULL
 
-    # When a dose column is mapped, combine treatment + dose into a single
-    # group label so each dose level is treated as its own group by all analyses.
+    # When a dose column is mapped, each treatment-dose combination is its own
+    # arm (label_arms()). R20-AB: on this run's copy only. It used to replace
+    # the shared rv$processed_data and rv$tx_col, so Toxicity and Dose
+    # Response saw "TreatmentGroup" arms only after Tumor Growth had run.
+    tg_tx_col <- rv$settings$col_treatment
     if (!is.null(rv$dose_col)) {
-      data[["TreatmentGroup"]] <- paste(data[[rv$settings$col_treatment]],
-                                        data[[rv$dose_col]], sep = " ")
-      rv$processed_data <- data
-      rv$tx_col         <- "TreatmentGroup"
+      data <- label_arms(data, rv$settings$col_treatment, rv$dose_col, name = "TreatmentGroup")
+      tg_tx_col <- "TreatmentGroup"
     }
 
     # Prepare column names
@@ -160,7 +161,7 @@ tumor_growth_server <- function(id, rv) {
       time_column = time_col,
       volume_column = vol_col,
       id_column = rv$settings$col_id,
-      treatment_column = rv$tx_col,
+      treatment_column = tg_tx_col,
       cage_column = if (rv$settings$col_cage != "") rv$settings$col_cage else NULL
     )
 

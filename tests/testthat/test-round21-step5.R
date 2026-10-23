@@ -108,7 +108,8 @@ test_that("R20-K: Toxicity sets TGI beside worst weight loss, with intervals and
     expect_true(all(c("Worst_Loss", "Tolerability") %in% names(tw$window_table)))
     txt <- paste(output$tox_summary, collapse = " ")
     expect_match(txt, "Tolerability threshold: 12% weight loss")
-    expect_match(txt, "Vehicle:  TGI \\(reference\\)")
+    # R20-AB: with the dose column mapped, arms are "Treatment Dose".
+    expect_match(txt, "Vehicle 0:  TGI \\(reference\\)")
     expect_false(grepl("TWM", txt, fixed = TRUE))
     expect_match(html_of(output$tox_twm_tolerability_note), "at or above 12%")
     expect_true(nzchar(output$tox_et_twm_plot$src))

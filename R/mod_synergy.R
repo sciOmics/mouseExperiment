@@ -426,7 +426,7 @@ synergy_server <- function(id, rv) {
     days <- tryCatch({
       pp <- ensure_preprocessed(rv)
       d <- pp$data
-      d[[".arm"]] <- arm_labels(d, rv$settings$col_treatment, rv$settings$col_dose)
+      d <- label_arms(d, rv$settings$col_treatment, rv$settings$col_dose, name = ".arm")
       ctrl <- study_reference(rv, analysis_group_labels(rv))
       arms <- unique(c(ctrl, input$syn_drug_a, input$syn_drug_b, input$syn_combo))
       arms <- arms[!is.na(arms) & nzchar(arms)]
@@ -499,8 +499,8 @@ synergy_server <- function(id, rv) {
     vol_col  <- pp$vol_col
     time_col <- pp$time_col
     # R20.D36: analyse the same arm labels the selectors offer.
-    analysis_data[[".arm"]] <- arm_labels(analysis_data, rv$settings$col_treatment,
-                                          rv$settings$col_dose)
+    analysis_data <- label_arms(analysis_data, rv$settings$col_treatment,
+                                rv$settings$col_dose, name = ".arm")
     tx_col   <- ".arm"
     cage_col_syn <- if (has_col(analysis_data, rv$settings$col_cage)) rv$settings$col_cage else NULL
     # Animal identifier: needed by the backend's mouse-level bootstrap and by its

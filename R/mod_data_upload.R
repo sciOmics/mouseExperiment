@@ -289,7 +289,7 @@ data_upload_server <- function(id, rv) {
     if (!is.null(input$time_method) && input$time_method == "from_date" &&
         !is.null(input$col_date_for_day) && input$col_date_for_day != "") {
       tryCatch({
-        sd <- study_days(data, input$col_date_for_day,
+        sd <- study_days_info(data, input$col_date_for_day,
                          input$reference_date %||% "",
                          input$date_order %||% "auto")
         data <- sd$data

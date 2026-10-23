@@ -668,20 +668,14 @@ survival_server <- function(id, rv) {
     dose_col_surv <- if (!is.null(rv$settings$col_dose) && nzchar(rv$settings$col_dose) &&
                          rv$settings$col_dose != "None") rv$settings$col_dose else NULL
 
-    # When a dose column is mapped, build a combined "Treatment Dose" group label
-    # so each dose level is treated as its own group.
+    # When a dose column is mapped, each treatment-dose combination is its own
+    # arm, labelled "Treatment Dose" (label_arms(), exported in R20-AB).
     has_dose_surv <- has_col(data, dose_col_surv) && has_col(data, rv$settings$col_treatment)
     if (has_dose_surv) {
-      data[["TreatmentGroup"]] <- paste(data[[rv$settings$col_treatment]],
-                                        data[[dose_col_surv]], sep = " ")
+      data <- label_arms(data, rv$settings$col_treatment, dose_col_surv, name = "TreatmentGroup")
     }
 
-    # Handle time column — reuse from preprocessed data
     time_col  <- pp$time_col
-    full_data <- data  # preserve full longitudinal data for volume-threshold event derivation
-
-    # One row per animal (R20.D2): keyed by arm + ID (+ cage), at the first
-    # flagged event day. See survival_animal_rows().
     id_col_surv   <- rv$settings$col_id
     cage_col_surv <- if (!is.null(rv$settings$col_cage) && nzchar(rv$settings$col_cage) &&
                          rv$settings$col_cage != "None") rv$settings$col_cage else NULL
@@ -696,51 +690,41 @@ survival_server <- function(id, rv) {
       rv$surv_running <- FALSE
       return()
     }
-    data <- survival_animal_rows(
-      full_data, time_col, tx_col_surv, id_col_surv, cage_col_surv,
-      event_col = if (event_src == "column") rv$settings$col_survival_event)
-
-    # Resolve event/time columns: either from user-supplied censor column or derived
-    # by finding the first day each animal's tumour exceeded the volume threshold
-    if (event_src == "volume") {
-      if (is.null(pp$vol_col) || !pp$vol_col %in% names(full_data)) {
-        showNotification(
-          "Volume column not mapped. Cannot derive survival events from volume threshold.",
-          type = "error"
-        )
-        rv$surv_running <- FALSE
-        return(NULL)
-      }
-      vol_threshold <- as.numeric(input$surv_vol_threshold %||% 2000)
-      ev <- volume_threshold_events(full_data, time_col, tx_col_surv, id_col_surv,
-                                    cage_col_surv, vol_col = pp$vol_col,
-                                    threshold = vol_threshold)
-      m <- match(data$.animal_key, ev$.animal_key)
-      data[[".__DerivedTime"]]  <- ev$Time[m]
-      data[[".__DerivedEvent"]] <- ev$Event[m]
-
-      censor_col_use <- ".__DerivedEvent"
-      time_col_use   <- ".__DerivedTime"
-    } else {
-      censor_col_use <- rv$settings$col_survival_event
-      time_col_use   <- time_col
+    if (event_src == "volume" && (is.null(pp$vol_col) || !pp$vol_col %in% names(data))) {
+      showNotification(
+        "Volume column not mapped. Cannot derive survival events from volume threshold.",
+        type = "error"
+      )
+      rv$surv_running <- FALSE
+      return(NULL)
     }
 
-    # R20.D13 / R20-D.H: with a removal-reason column, deaths from other
-    # causes can count as events, at the animal's last measurement.
+    # One row per animal with its Time and Event (survival_events(), exported
+    # in R20-AB): keyed by arm + ID (+ cage), at the first flagged day
+    # (R20.D2), or at the first day the tumour reached the volume limit. With
+    # a removal-reason column, deaths from other causes can count as events,
+    # at the animal's last measurement (R20.D13 / R20-D.H).
     death_spec <- removal_reason_spec(rv)
-    n_death_events <- NA_integer_
-    if (!is.null(death_spec) && isTRUE(input$surv_death_as_event) &&
-        has_col(full_data, death_spec$column) && has_col(data, censor_col_use)) {
-      reasons <- animal_removal_reasons(full_data, tx_col_surv, id_col_surv,
-                                        cage_col_surv, death_spec$column, time_col)
-      died <- names(reasons)[!is.na(reasons) &
-                               reasons %in% reasons_in(death_spec, "death")]
-      ev_now <- suppressWarnings(as.numeric(data[[censor_col_use]]))
-      hit <- data$.animal_key %in% died & (is.na(ev_now) | ev_now == 0)
-      data[[censor_col_use]] <- ifelse(hit, 1, ev_now)
-      n_death_events <- sum(hit)
+    use_deaths <- !is.null(death_spec) && isTRUE(input$surv_death_as_event)
+    ev_args <- list(
+      df = data, time_column = time_col, treatment_column = tx_col_surv,
+      id_column = id_col_surv, cage_column = cage_col_surv,
+      event_column = if (event_src == "column") rv$settings$col_survival_event,
+      volume_column = if (event_src == "volume") pp$vol_col,
+      volume_limit = if (event_src == "volume") as.numeric(input$surv_vol_threshold %||% 2000),
+      removal_reason_column = if (use_deaths) death_spec$column,
+      death_reasons = if (use_deaths) reasons_in(death_spec, "death"))
+    data <- tryCatch(do.call(survival_events, ev_args), error = function(e) {
+      output$surv_status_msg <- renderUI(status_alert(conditionMessage(e), "danger"))
+      NULL
+    })
+    if (is.null(data)) {
+      rv$surv_running <- FALSE
+      return()
     }
+    n_death_events <- attr(data, "death_events_added")
+    censor_col_use <- "Event"
+    time_col_use   <- "Time"
 
     # Validate all required columns exist before analysis
     required <- c(Treatment = tx_col_surv,

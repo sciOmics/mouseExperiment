@@ -262,11 +262,22 @@ apriori_power_simulation(n_per_group = c(6L, 10L), n_simulations = 50L, seed = 1
 | `tg_mcmc(chains, warmup, iter, seed, backend)` | MCMC-config object — bundles the four MCMC arguments |
 | `clear_compiled_model_cache()` | Empties the session's cache of compiled Stan models; a fit whose model has the same structure as an earlier one reuses its compiled model and skips the ~20 s compile (v0.28.0) |
 
+### Preparing data
+The dashboard prepares an upload with these, in this order; its R script can replay them.
+
+| Function | Description |
+|----------|-------------|
+| `read_study_csv()` | Read a CSV with any of comma, semicolon or tab, a decimal comma, and UTF-8, Latin-1 or UTF-16 |
+| `apply_exclusions()` | Remove excluded animals (by arm, ID and cage), arms and cages |
+| `study_days()` | Study Day from a date column; the whole column decides day/month order |
+| `calculate_volume()` | Volume from length × width (multiple geometric formulas) |
+| `label_arms()` | Arms labelled by treatment and dose, e.g. "Drug_A 10" |
+| `survival_events()` | One row per animal with its time and event, from an event column or a volume limit, with deaths from removal reasons |
+
 ### Utilities
 | Function | Description |
 |----------|-------------|
-| `calculate_volume()` | Volume from length × width (multiple geometric formulas) |
-| `calculate_dates()` | Date-to-day conversion |
+| `calculate_dates()` | Date-to-day conversion from one given date format |
 | `calculate_auc()` | Trapezoidal AUC |
 
 ## Datasets
