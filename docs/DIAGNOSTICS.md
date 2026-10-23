@@ -13,7 +13,7 @@ This document is part audit, part reference. Sections 1-5 inventory the diagnost
 - **Bayesian path:** comprehensive and well-rendered. Rhat / ESS / NUTS / Bayes R² / PPC coverage / PSIS-LOO + Pareto-k + influential observations + PPC density overlay + prior-posterior overlay + MCMC trace. Unified `bayes_diagnostics_panel()` helper renders them consistently across modules.
 - **Cox survival:** PH assumption (`cox.zph` per-term + global) and concordance / C-index. Both surfaced in dedicated tabs.
 - **Frequentist Body Weight (`analyze_body_weight`):** Q-Q plot + residuals-vs-fitted ggplot. Rendered properly.
-- **Frequentist Tumor Growth LME4:** **the dashboard's TG Diagnostics tab is broken** — the backend doesn't produce the fields the dashboard tries to render. See section 7.
+- **Frequentist Tumor Growth LME4:** Q-Q and residuals-vs-fitted plots in the TG Diagnostics tab. When this audit was written the tab was empty, because the backend did not produce the fields the dashboard read; fixed in v0.4.8 (section 7, item 1).
 - **GAM / GAMM paths:** no rendered diagnostics. `mgcv::k.check()` and `mgcv::concurvity()` are the missing essentials.
 - **Frequentist Dose-Response:** no goodness-of-fit, no residual plots, no Hill-fit diagnostics. `drc` exposes plenty (`modelFit`, `mselect`); none surfaced.
 - **Frequentist Synergy:** no model-assumption diagnostics for the t-test path.
@@ -113,7 +113,7 @@ The Bayesian functions also compute and return:
 | `posterior_dist_plot` | Posterior density areas for treatment parameters (`bayesplot::mcmc_areas`) |
 | `credible_intervals_plot` | Forest plot of group EMMs with 95% CrI |
 
-**None of these are rendered in the dashboard.** They're computed (so they cost compile/render time when `plots = TRUE`) and silently dropped. See section 7.
+**When this audit was written, none of these were rendered in the dashboard**; they were computed and dropped. Fixed in v0.4.8–v0.4.9 (section 7).
 
 ---
 
@@ -182,7 +182,7 @@ Inherits the full Bayesian diagnostics suite (section 1). No PH check because th
 
 **The data is computed and stored, but NO rendered ggplot is produced.**
 
-**Dashboard impact (BUG):** the dashboard's `output$tg_diag_qq` and `output$tg_diag_resid_fitted` look for `rv$tg_results$diag_qq_plot` and `rv$tg_results$diag_resid_fitted_plot` — fields the backend never sets. Every LME4 TG run shows "Q-Q plot not available" and "Residuals vs Fitted not available" in the TG Diagnostics tab. See section 7.
+**Dashboard impact (BUG, fixed in v0.4.8; section 7, item 1):** the dashboard's `output$tg_diag_qq` and `output$tg_diag_resid_fitted` look for `rv$tg_results$diag_qq_plot` and `rv$tg_results$diag_resid_fitted_plot` — fields the backend never sets. Every LME4 TG run shows "Q-Q plot not available" and "Residuals vs Fitted not available" in the TG Diagnostics tab. See section 7.
 
 ### AUC path (`tgs_path_auc.R`)
 

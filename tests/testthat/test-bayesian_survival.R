@@ -45,6 +45,7 @@ local({
 
   # ── Return structure ────────────────────────────────────────────────────────
   test_that("bayesian_survival: returns list with all expected top-level fields", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes_surv()
     res <- get_surv_result()
     required <- c(
@@ -59,17 +60,20 @@ local({
   })
 
   test_that("bayesian_survival: model_type_used is 'bayes_survival'", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes_surv()
     expect_equal(get_surv_result()$model_type_used, "bayes_survival")
   })
 
   test_that("bayesian_survival: family_used matches requested family", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes_surv()
     expect_equal(get_surv_result()$family_used, "weibull")
   })
 
   # ── treatment_effects table ─────────────────────────────────────────────────
   test_that("bayesian_survival: treatment_effects has required columns", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes_surv()
     te <- get_surv_result()$treatment_effects
     required_cols <- c(
@@ -84,6 +88,7 @@ local({
   })
 
   test_that("bayesian_survival: reference group has Time_Ratio = 1 and HR = 1", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes_surv()
     te  <- get_surv_result()$treatment_effects
     ref <- te[te$Note == "Reference group", ]
@@ -93,6 +98,7 @@ local({
   })
 
   test_that("bayesian_survival: non-reference group TR credible interval excludes 1", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes_surv()
     te      <- get_surv_result()$treatment_effects
     non_ref <- te[te$Note != "Reference group", ]
@@ -103,6 +109,7 @@ local({
   })
 
   test_that("bayesian_survival: event counts match input data", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes_surv()
     df <- make_surv_simple()
     te <- get_surv_result()$treatment_effects
@@ -111,6 +118,7 @@ local({
   })
 
   test_that("bayesian_survival: Median_Survival is positive and finite", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes_surv()
     te <- get_surv_result()$treatment_effects
     expect_true(all(is.finite(te$Median_Survival) & te$Median_Survival > 0))
@@ -118,6 +126,7 @@ local({
 
   # ── posterior_summary ──────────────────────────────────────────────────────
   test_that("bayesian_survival: posterior_summary is a data frame with Rhat column", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes_surv()
     ps <- get_surv_result()$posterior_summary
     expect_s3_class(ps, "data.frame")
@@ -126,6 +135,7 @@ local({
 
   # ── mcmc_diagnostics ───────────────────────────────────────────────────────
   test_that("bayesian_survival: mcmc_diagnostics has Converged column", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes_surv()
     diag <- get_surv_result()$mcmc_diagnostics
     expect_true("Converged" %in% colnames(diag))
@@ -134,6 +144,7 @@ local({
 
   # ── survival_data passthrough ───────────────────────────────────────────────
   test_that("bayesian_survival: survival_data mirrors input structure", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes_surv()
     sd <- get_surv_result()$survival_data
     expect_s3_class(sd, "data.frame")
@@ -166,6 +177,7 @@ local({
 
   # ── summary metadata ───────────────────────────────────────────────────────
   test_that("bayesian_survival: summary contains expected metadata fields", {
+  skip_on_cran()   # fits a Stan model (R22.17)
     skip_bayes_surv()
     s <- get_surv_result()$summary
     expect_equal(s$data_description$total_events, 7L)
@@ -177,6 +189,7 @@ local({
 # ── Family-specific: lognormal ──────────────────────────────────────────────
 
 test_that("bayesian_survival: lognormal family runs and returns HR = NA for non-reference", {
+  skip_on_cran()   # fits a Stan model (R22.17)
   skip_bayes_surv()
   df <- make_surv_simple()
   res <- suppressWarnings(suppressMessages(
@@ -194,6 +207,7 @@ test_that("bayesian_survival: lognormal family runs and returns HR = NA for non-
 # ── Frailty ────────────────────────────────────────────────────────────────
 
 test_that("bayesian_survival: frailty_used is FALSE when no cage_column supplied", {
+  skip_on_cran()   # fits a Stan model (R22.17)
   skip_bayes_surv()
   df <- make_surv_simple()
   res <- suppressWarnings(suppressMessages(

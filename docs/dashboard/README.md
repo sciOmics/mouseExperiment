@@ -15,7 +15,7 @@ The dashboard wraps the statistical and visualization capabilities of `mouseExpe
 - Fit dose-response curves (Hill/Emax)
 - Assess toxicity via a body-weight mixed-effects model and time to a weight-loss threshold, with a Therapeutic Window mode
 - Compute a priori power via analytic formulas or LMM simulation
-- Customize and download all plots and tables (PNG / CSV / HTML report / ZIP)
+- Customize and download plots and tables, and Download Results: a ZIP of the tables, plots, diagnostics, data, an HTML report and an R script that reproduces the analysis, from the analysed data or from your original file
 - **Resume Bayesian fits after tab disconnect** — the registry survives an NPM proxy timeout or browser sleep; the banner on reconnect offers Resume / Cancel
 
 The Bayesian fits (tumor growth and survival) run asynchronously via `future` / `promises`, so the app remains responsive during Stan compilation and MCMC sampling.
@@ -65,7 +65,7 @@ devtools::check()      # R CMD check
 3. **Analysis Setup** — Pick a module, choose method (frequentist / Bayesian), set sidebar parameters
 4. **Run Analysis** — Click Run; Bayesian fits run in the background and surface in the resume banner if you disconnect
 5. **Explore Results** — Per-module result tabs: summary, model output, plots, pairwise comparisons, MCMC diagnostics (Bayesian)
-6. **Download** — Per-tab PNG / CSV / "Download All Results" ZIP. HTML report from the Tumor Growth Summary tab
+6. **Download** — Per-plot PNG and per-table CSV buttons, and each tab's **Download Results** ZIP: choose tables, plots, diagnostics, data, the report and the R script
 
 ### Analysis modules
 
@@ -191,13 +191,14 @@ The dashboard is structured as a Shiny `navbarPage` with one tab per analysis mo
 | `R/bayes_job_runner.R` | F.7 shared poller + resume registration helpers |
 | `R/tg_resume.R`, `surv_resume.R` | F.7 resume helpers for the two Bayesian fits (tumor growth, survival) |
 | `R/ttl_sweeper.R` | F.7 periodic registry housekeeping |
-| `R/helpers.R` | Core utilities: validation, error translation, formatting, plot helpers |
+| `R/helpers_ui.R`, `helpers_data.R`, `helpers_format.R`, `helpers_plot.R` | Core utilities: status and errors; data preparation and the Subset Filter; formatting; plot helpers |
+| `R/download_results.R`, `download_items.R`, `reproduce_script.R` | Download Results, what each tab offers in it, and its R script |
 | `R/helpers_bayes.R` | Bayesian diagnostics panel + LOO influential observations |
 | `R/helpers_report.R` | Standalone HTML report builder |
 | `R/logging.R` | Structured JSON logging to stdout |
 | `R/ui_modules.R` | Shared UI components / layout helpers |
 | `inst/www/css/` | Custom styles (light + dark modes) |
-| `inst/www/js/` | `session-id.js` (F.7 cookie), `navbar.js`, `darkmode.js`, `overlay.js`, `umami-events.js` |
+| `inst/www/js/` | `session-id.js` (F.7 cookie), `navbar.js`, `sidebar.js`, `darkmode.js`, `help-tips.js`, `overlay.js`, `umami-events.js` |
 | `inst/sample_data/` | Example datasets |
 | `tests/testthat/` | The package's tests, the dashboard's among them; the shinytest2 browser tests use the apps in `tests/testthat/apps/` |
 

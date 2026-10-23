@@ -957,7 +957,6 @@ analyze_polynomial_trends <- function(analysis_data, dose_column = "Dose",
       
       # Fit model with polynomial contrasts
       poly_model <- stats::lm(as.formula(paste(me_bt(volume_column), "~ dose_factor")), data = analysis_data)
-      poly_summary <- summary(poly_model)
       poly_anova <- stats::anova(poly_model)
       
       if (isTRUE(verbose)) {
@@ -1011,12 +1010,10 @@ generate_user_report <- function(stats_results, plots) {
     message("QUESTION: Is there a dose-response relationship?\n")
     
     # Summarize key findings
-    dose_effect_detected <- FALSE
     evidence_strength <- "No evidence"
     
     # Check linear regression
     if (!is.null(statistics$linear_p_value) && statistics$linear_p_value < 0.05) {
-      dose_effect_detected <- TRUE
       if (statistics$linear_p_value < 0.001) {
         evidence_strength <- "Strong evidence"
       } else if (statistics$linear_p_value < 0.01) {
@@ -1028,7 +1025,6 @@ generate_user_report <- function(stats_results, plots) {
     
     # Check Jonckheere-Terpstra test
     if (!is.null(jt_result) && !is.null(jt_result$p.value) && jt_result$p.value < 0.05) {
-      dose_effect_detected <- TRUE
       if (jt_result$p.value < 0.001) {
         evidence_strength <- "Strong evidence"
       } else if (jt_result$p.value < 0.01) {
@@ -1040,7 +1036,6 @@ generate_user_report <- function(stats_results, plots) {
     
     # Check linear trend
     if (!is.null(statistics$linear_trend_pvalue) && statistics$linear_trend_pvalue < 0.05) {
-      dose_effect_detected <- TRUE
       if (statistics$linear_trend_pvalue < 0.001 && evidence_strength != "Strong evidence") {
         evidence_strength <- "Strong evidence"
       } else if (statistics$linear_trend_pvalue < 0.01 && 

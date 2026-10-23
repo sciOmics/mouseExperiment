@@ -79,6 +79,8 @@ read_study_csv <- function(path) {
 #'   and `cage` when `cage_column` is given. `arm` is the treatment, or
 #'   "Treatment Dose" when `dose_column` is given (as [label_arms()] writes it).
 #' @param treatments Values of `treatment_column` to remove.
+#' @param arms Arms to remove, as [label_arms()] writes them ("Drug A 10"): one
+#'   dose of a treatment given at several.
 #' @param cages Cages to remove: values of `cage_column`, or a data frame with
 #'   columns `arm` and `cage` to remove one arm's cage when cages are numbered
 #'   within each arm ("C1" in Vehicle but not "C1" in Drug A).
@@ -94,7 +96,7 @@ read_study_csv <- function(path) {
 #' nrow(d)
 apply_exclusions <- function(df, animals = NULL, treatments = NULL, cages = NULL,
                              treatment_column = "Treatment", id_column = "ID",
-                             cage_column = NULL, dose_column = NULL) {
+                             cage_column = NULL, dose_column = NULL, arms = NULL) {
   if (is.null(df) || nrow(df) == 0L) return(df)
   has_cage <- has_col(df, cage_column)
   if (!is.null(animals) && NROW(animals) > 0L && has_col(df, id_column) &&
@@ -110,6 +112,9 @@ apply_exclusions <- function(df, animals = NULL, treatments = NULL, cages = NULL
   }
   if (length(treatments) && has_col(df, treatment_column)) {
     df <- df[!(as.character(df[[treatment_column]]) %in% as.character(treatments)), , drop = FALSE]
+  }
+  if (length(arms) && has_col(df, treatment_column)) {   # R22.16
+    df <- df[!(arm_labels(df, treatment_column, dose_column) %in% as.character(arms)), , drop = FALSE]
   }
   if (NROW(cages) && has_cage) {
     cage <- as.character(df[[cage_column]])

@@ -26,7 +26,6 @@ tumor_growth_statistics(
   include_diagnostics = TRUE,
   plots = TRUE,
   verbose = FALSE,
-  extrapolation_points = 0,
   necrotic_column = NULL,
   necrotic_handling = c("exclude", "covariate", "none"),
   seed = NULL,
@@ -141,15 +140,6 @@ for statistical comparisons. If NULL, the first treatment group alphabetically w
 \item{plots}{Boolean. Should standard plots be generated and returned? Default is TRUE.}
 
 \item{verbose}{Boolean. Should detailed information be printed during analysis? Default is FALSE.}
-
-\item{extrapolation_points}{\strong{Deprecated} and ignored as of v0.8.0.
-It appended one synthetic final-day observation per animal and handed it to
-the model as measured data, so the fit's uncertainty did not reflect the
-imputation, and the linear fit on the raw scale biased an exponential
-process downward. Use the model-based endpoint means instead
-(\code{endpoint_method = "model"}), which extrapolate inside the model and
-propagate the uncertainty. Extrapolation for \emph{plotting} is unaffected
-— see \code{\link{plot_tumor_growth}}. CODE_REVIEW.md R3.9 / G.4.}
 
 \item{necrotic_column}{Optional. Name of a column flagging necrotic
 observations (Y/N, yes/no, 1/0, TRUE/FALSE, case-insensitive). Defaults

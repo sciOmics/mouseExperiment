@@ -30,7 +30,8 @@ These are intentional limitations of the current design:
 | Insider threat (someone with shell access on the host) | Same as above |
 | Network observer between the user and Cloudflare | Mitigated by HTTPS (Let's Encrypt). Cloudflare-to-origin link is also HTTPS |
 | Side-channel timing attacks | Not realistic against the kinds of operations performed (Bayesian fits dominated by Stan; sid lookups in O(1) dictionary access) |
-| Malicious file uploads (R-code-as-data) | Uploads are read with `utils::read.csv` only. The R data-file (`.rda` / `.RData`) upload and the `.rds` session restore were removed in v26.09.001, so no upload is deserialized into R objects; the settings preset is parsed as JSON |
+| Malicious file uploads (R-code-as-data) | Uploads are read as delimited text only, by `read_study_csv()` (`utils::read.table`). The R data-file (`.rda` / `.RData`) upload and the `.rds` session restore were removed in v26.09.001, so no upload is deserialized into R objects; the settings preset is parsed as JSON |
+| Retention of the uploaded file | Since 0.38.0 the session keeps the uploaded file's bytes in memory, so Download Results can include the original file and an R script that rebuilds the analysed data from it. Only that user's session holds it, and it goes when the session ends. It goes into a ZIP only when the user ticks "Include my original file"; the ZIP is assembled in a per-download temporary directory that is deleted once the ZIP is made, next to Shiny's own temporary copy of the upload. |
 
 ---
 

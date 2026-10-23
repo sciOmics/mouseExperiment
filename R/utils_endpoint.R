@@ -62,7 +62,7 @@ ME_ENDPOINT_METHODS <- c("model", "last_obs", "survivors")
 #' @param model A fitted `me_endpoint_model()` object to reuse, e.g. across
 #'   the days of an over-time analysis. `NULL` fits one.
 #' @param zero_floor,volume_units The fixed floor for regressions to zero
-#'   under `"model"` (R20-W); see [me_zero_floor()].
+#'   under `"model"` (R20-W); see `me_zero_floor()`.
 #' @return A list with `group_means` (data frame: Treatment, Mean_Volume, N,
 #'   N_On_Study, plus SE_log / CI bounds under `"model"`), `per_mouse`
 #'   (Treatment, MouseKey, Volume, Day_Used) for the resampling-based methods,
@@ -226,7 +226,7 @@ endpoint_volumes <- function(df,
 #'
 #' @param d Data frame with `MouseKey`, `Treatment`, `Day` and `Volume`.
 #' @param zero_floor The volume a regression to zero takes before the log,
-#'   from [me_zero_floor()].
+#'   from `me_zero_floor()`.
 #' @param volume_units For the floor's warnings.
 #' @param fn Calling function, for messages.
 #' @return An `me_endpoint_model` list, or `NULL` when no model can be fitted.

@@ -6395,8 +6395,8 @@ After the first CRAN release, renaming any of these breaks users' code. Fix: the
 | R22.6 README/vignette per-animal reduction | Major | ✅ Fixed v0.39.0 |
 | R22.7 API naming before CRAN | Major | ✅ Fixed v0.40.0 (no aliases) |
 | R22.19 Round trips in the dashboard's session | Minor | ✅ Fixed v0.39.0 |
-| R22.10 (`me_with_seed()` twice) | Minor | ✅ Fixed v0.39.0; the rest of R22.10 open |
-| R22.8, R22.9, R22.11–R22.18 | Minor | Open |
+| R22.10 Duplicated helpers | Minor | ✅ Fixed v0.39.0 (`me_with_seed()`) and v0.42.0 (the rest) |
+| R22.8, R22.9, R22.11–R22.18 | Minor | ✅ Fixed v0.42.0 |
 | F1–F11 | Proposals | For the maintainer |
 
 ### Open questions for the maintainer
@@ -6565,3 +6565,84 @@ The forest plot takes the measure as a parameter: its title, axis and labels say
 **Verification (executed):**
 - The full suite, Bayesian fits skipped: 733 tests, 0 failed.
 - `R CMD check --no-manual --no-tests`: Status OK, including `label_cages()`'s example and the vignette's.
+
+## R22-D Implementation log — v0.42.0: the Minor items (2026-10-23)
+
+**R22.8 — the weight-loss Cox guard.** `weight_loss_threshold()` fits no Cox model when there are fewer than 3 events, or when no reference animal is at risk at any event time. `cox_model` and `cox_summary` are then `NULL`, and the new `cox_skipped` gives the reason. The dashboard never showed this table; the change is for package users and the result.
+
+**R22.9 — `ggpubr`** is gone from Imports, and from the dependency lists in the README and CONTRIBUTING.
+- **Correction to the finding.** It said 85 packages came with `ggpubr`. Measured against the other imports' closure on CRAN, it adds 6 (`ggrepel`, `ggsci`, `ggsignif`, `polynom`, `rstatix`, `corrplot`), so that is what a package install saves.
+- **The server image** still installs `ggpubr`, because `survminer`, which the dashboard uses for its Kaplan-Meier plots, depends on it. So the VPS Dockerfile is unchanged.
+
+**R22.10, the rest:**
+- **One animal key.** `animal_key()` calls `make_mouse_key()`, so it stops on a missing column (T1/R20.15) instead of giving every animal of an arm one key.
+- **`calculate_dates()`** is documented as the reader for dates in one known format, and points to `study_days()` for the rest. Its errors name `reference_date`.
+- **`in_place` is removed** from `calculate_dates()` and `calculate_volume()`. It was a deprecated no-op that only warned; the package has no users yet.
+
+**R22.11 — dead code:**
+- **Removed functions:** `group_order_ui()`, `tgs_boot_diff_ci()`, `tgs_perm_diff_p()`, `format_number()`, `back_transform()` and `me_interval_cols()`. With them went their tests (H.2's resolution warning, D.9's back-transform tests) and an orphaned roxygen block ("Calculate area under the curve for each subject"), whose function no longer exists; it caused a roxygen warning.
+- **B7.1's test now checks the meta contract directly:** the result's `meta$interval_columns` name columns the result has.
+- **Removed JavaScript:** `trackPlotGenerated`, `trackReferenceGroupSelected` and `trackFeatureAccess`.
+- **Removed locals:** eleven unused local variables, re-checked with `codetools::checkUsage`. The four it still lists (`log_vol`, `times`, `log_volume`, `log_volumes`) are used inside model formulas, which it cannot see.
+- **Also removed, as deprecated no-ops:** `tumor_growth_statistics(extrapolation_points)` and `analyze_drug_synergy(ci_thresholds)`. `plot_tumor_growth()` keeps its own `extrapolation_points`, which works. `test-round22-arguments.R` now lists both removed arguments, and `in_place`, as retired names.
+
+**R22.12 — documentation:**
+- **README:** the review row no longer names a round.
+- **CONTRIBUTING:** no version pin for the dashboard.
+- **`docs/dashboard/`:**
+  - ARCHITECTURE: the directory tree is rebuilt, with the package's files in a table; the helpers section is split by file.
+  - README: Download Results replaces "Download All", and the file table is current.
+  - CONTRIBUTING: helpers go in the `helpers_*.R` file for their topic.
+  - DATA_FORMAT: names the preparation functions.
+  - SECURITY: uploads are read by `read_study_csv()`, and a new row says how long the uploaded file is kept and where it goes.
+- **DIAGNOSTICS:** the TL;DR and two notes say the TG Diagnostics bug was fixed.
+- **The vignette:**
+  - it starts from the CSV with `read_study_csv()` and `study_days()`, and lists the preparation functions in order;
+  - it ends with a section on the dashboard and its R script.
+- **METHODS:** "Utilities" becomes "Data preparation and utilities". It drops `calculate_dates()`'s invented "direct"/"computed" methods.
+- **Roxygen:** five more warnings are fixed, so `roxygenise()` now runs with none: a markdown block quote, a bracketed index read as a link, and four links to undocumented internal functions.
+
+**R22.13 — Bayesian term names.** `bayes_fixed_summary()` (`utils_bayes.R`) builds both Bayesian models' posterior summaries, with a `Term` column that maps brms's names back to the arm labels.
+- **How.** `brms_level_names()` applies brms's default renaming; a test compares it with `brms:::rename()`.
+- **Checked on a real fit.** `TreatmentDrugAPDrugB10:Day` became "Treatment: Drug A + Drug B 10 × Day".
+
+**R22.14.** Synergy's Help explains why there is no Combination Index without citing a version. A test checks the Help has no "v0." version references.
+
+**R22.15.** `tumor_doubling_time()` unnames the slope and resets the row names.
+
+**R22.16 — one dose arm.**
+- **The package.** `apply_exclusions(arms = )` removes arms as `label_arms()` writes them.
+- **The Subset Filter.** "Exclude Treatments" lists each dose of a treatment given at several ("Drug A, dose 10"), stored as `animal_key(treatment, dose)`; `subset_filter_args()` passes those as `arms`.
+- **The R script.** It writes `arms = ` only when some are excluded.
+
+**R22.17 — CRAN blockers outside the dashboard:**
+- the 30 tests that fit Stan models call `skip_on_cran()`. They were found by tracing `brms::brm()` to skip over the whole suite, so the list is exact, not guessed. In CRAN mode the Bayesian files now run only their non-fitting tests, in seconds;
+- `htmltools` is in Suggests;
+- DESCRIPTION has `URL` (the repository and mouseexperiment.com) and `BugReports` (the Issues).
+
+**R22.18 — hygiene:**
+- **`.Rbuildignore`** loses seven entries for files that no longer exist. A test checks that each entry names a file that exists or is made locally (`.gitignore`).
+- **Final newlines.** Every R file ends with one now; the earlier rewrites fixed them.
+- **`umami-events.js`.**
+  - **Still loaded when analytics are off.** The server calls its helpers whether or not analytics are on, so dropping the script would turn each call into a JavaScript error. Here this differs from the finding's suggested fix.
+  - **What changed.** It no longer polls for Umami or logs each event. A test checks that the helpers the server calls are exactly the ones defined.
+
+**Tests** (`test-round22-minors.R`):
+- R22.8, three cases;
+- R22.10: the key and the help pointer;
+- R22.11/R22.18: the analytics helpers;
+- R22.13: term names and brms's renaming;
+- R22.14: no versions in the Help;
+- R22.15: row names;
+- R22.16: arm exclusion end to end;
+- R22.18: `.Rbuildignore`.
+
+Rewritten: `test-param_sensitivity.R`, `test-code_review_round3.R` (R3.9, B7.1), `test-code_review_rounds12.R` (J.20) and `test-helpers_format.R`.
+
+
+**Caught by the browser tests.** The first version of `treatment_filter_choices()` stopped the dashboard's session on the All Features demo. There no treatment has several doses, and `paste0()` of zero-length parts returns one string, so the choices' names did not fit. The unit test had only a treatment with several doses. The fix guards the empty case, and the unit test now covers it.
+
+**Verification (executed):**
+- The full suite, Bayesian fits skipped: 738 tests, 0 failed.
+- CRAN mode on the Bayesian files: their Stan tests skip and the rest pass.
+- `R CMD check --no-manual --no-tests`: Status OK, including the vignette's new preparation chunk.

@@ -412,14 +412,8 @@ bayesian_survival <- function(
   model_reused <- isTRUE(attr(model, "me_model_reused"))
 
   # ── Posterior summary (fixed effects) ──────────────────────────────────────
-  brms_smry <- summary(model)
-  fixed_df  <- as.data.frame(brms_smry$fixed)
-  fixed_df  <- cbind(Parameter = rownames(fixed_df), fixed_df,
-                     stringsAsFactors = FALSE)
-  rownames(fixed_df) <- NULL
-  names(fixed_df)[names(fixed_df) == "l-95% CI"] <- "Lower_95_CrI"
-  names(fixed_df)[names(fixed_df) == "u-95% CI"] <- "Upper_95_CrI"
-  posterior_summary <- fixed_df
+  # R22.13: with a Term column giving each arm as labelled, not brms's name.
+  posterior_summary <- bayes_fixed_summary(model, treatment_levels)
 
   # ── MCMC diagnostics ───────────────────────────────────────────────────────
   mcmc_diagnostics <- make_mcmc_diagnostics(posterior_summary,

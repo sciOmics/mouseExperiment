@@ -195,25 +195,6 @@ observe_palette_preset <- function(input, session, prefix, groups_rv) {
 }
 
 
-#' Render a drag-and-drop rank list for reordering treatment groups
-#'
-#' Returns a \code{sortable::rank_list} widget.  The current order is
-#' read back from \code{input[[paste0(prefix, "_order")]]}.
-#'
-#' @param prefix    Input-ID prefix shared with colour pickers (e.g. \code{"tg"}).
-#' @param groups    Character vector of group names in their default order.
-#' @return A \code{sortable::rank_list} tag, or \code{NULL} when fewer than 2 groups.
-#' @keywords internal
-group_order_ui <- function(prefix, groups) {
-  if (is.null(groups) || length(groups) < 2L) return(NULL)
-  sortable::rank_list(
-    text     = "Group order",
-    labels   = as.list(groups),
-    input_id = paste0(prefix, "_order"),
-    class    = "default-sortable"
-  )
-}
-
 #' Return groups in the user-specified drag-and-drop order
 #'
 #' Reads \code{input[[paste0(prefix, "_order")]]} and validates it.

@@ -98,8 +98,8 @@
 #'
 #' @param n_per_group Integer vector. Sample sizes per group to evaluate.
 #'   Power is computed for each value independently. Default \code{c(5, 8, 10, 12, 15)}.
-#' @param n_groups Integer ≥ 2. Number of treatment groups (default 2). When
-#'   > 2, all non-control groups share the same \code{treatment_effect}.
+#' @param n_groups Integer ≥ 2. Number of treatment groups (default 2). With
+#'   more than 2, all non-control groups share the same \code{treatment_effect}.
 #' @param baseline_volume Numeric > 0. Geometric mean tumour volume at Day 0
 #'   in mm³ (default 100).
 #' @param baseline_sd Numeric \eqn{\ge} 0. Standard deviation (in mm^3) of the

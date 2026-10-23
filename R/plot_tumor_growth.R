@@ -125,7 +125,6 @@ plot_tumor_growth <- function(df, volume_column = "Volume", time_column = "Day",
   if (extrapolate_volumes) {
     # Get all unique time points (days)
     all_days <- sort(unique(plot_df[[time_column]]))
-    max_day <- max(all_days)
     
     # For each unique mouse (using the Mouse_ID composite identifier), check if they died
     # and extrapolate values if needed
@@ -139,16 +138,12 @@ plot_tumor_growth <- function(df, volume_column = "Volume", time_column = "Day",
     if (!using_all_points && !is.numeric(extrapolation_points)) {
       warning("extrapolation_points must be 'all' or a positive number. Defaulting to 'all'.")
       using_all_points <- TRUE
-      extrapolation_method <- "all available data points"
     } else if (!using_all_points) {
       extrapolation_points <- as.integer(extrapolation_points)
       if (extrapolation_points < 1) {
         warning("extrapolation_points must be at least 1. Defaulting to 3.")
         extrapolation_points <- 3
       }
-      extrapolation_method <- paste(extrapolation_points, "most recent data points")
-    } else {
-      extrapolation_method <- "all available data points"
     }
     
     # Loop through each mouse

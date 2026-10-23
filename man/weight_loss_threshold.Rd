@@ -77,6 +77,8 @@ burden or death, is a competing removal.}
 A list with: event_data (per animal, including \code{Censor_Type} —
 "event", "administrative" or "competing_removal" — and \code{Status_CR}),
 km_fit, km_summary, log_rank, cox_model, cox_summary, cox_method, ph_test,
+\code{cox_skipped} (why there is no Cox model: fewer than 3 events, or no
+reference animal at risk at any event; otherwise \code{NULL}),
 \code{cuminc} (Aalen-Johansen cumulative incidence with competing
 removals, when a removal-reason column identifies any),
 \code{censoring_summary}, \code{n_competing_risk} and \code{assumption}

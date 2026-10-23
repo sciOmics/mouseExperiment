@@ -817,35 +817,15 @@ test_that("H.4: the log-rank fallback uses an exact permutation test", {
   expect_equal(perm$results$P_Value_Unadjusted, perm2$results$P_Value_Unadjusted)
 })
 
-# ---- H.2 --------------------------------------------------------------------
-
-test_that("H.2: the permutation test warns when its resolution is too coarse", {
-  # With 3 vs 3 there are only choose(6,3) = 20 label splits, so the smallest
-  # attainable two-sided p-value is 0.1 regardless of the observed difference.
-  expect_warning(tgs_perm_diff_p(stats::rnorm(3), stats::rnorm(3), n_perm = 200),
-                 regexp = "distinct label splits")
-  expect_no_warning(tgs_perm_diff_p(stats::rnorm(12), stats::rnorm(12),
-                                    n_perm = 200))
-})
-
 # ---- R3.9 -------------------------------------------------------------------
 
-test_that("R3.9: extrapolation_points is deprecated and ignored", {
-  df <- make_tg_df()
-  expect_warning(
-    r_extrap <- suppressMessages(tumor_growth_statistics(
-      df, extrapolation_points = 3, plots = FALSE, verbose = FALSE)),
-    regexp = "deprecated"
-  )
-  r_plain <- suppressWarnings(suppressMessages(tumor_growth_statistics(
-    df, plots = FALSE, verbose = FALSE)))
-
-  # Ignored means identical results, not merely similar.
-  expect_equal(as.data.frame(summary(r_extrap$pairwise_comparisons))$estimate,
-               as.data.frame(summary(r_plain$pairwise_comparisons))$estimate)
-  # The helper is gone.
+test_that("R3.9: statistical extrapolation is gone, argument and helper", {
+  # Deprecated and ignored since v0.8.0; the argument was removed in 0.42.0.
+  expect_false("extrapolation_points" %in% names(formals(tumor_growth_statistics)))
   expect_false(exists("tgs_extrapolate",
                       envir = asNamespace("mouseExperiment"), inherits = FALSE))
+  # Plotting keeps its own.
+  expect_true("extrapolation_points" %in% names(formals(plot_tumor_growth)))
 })
 
 # ---- R3.8 -------------------------------------------------------------------
@@ -1086,17 +1066,11 @@ test_that("B7.1: interval columns are read from meta, not guessed", {
   r <- suppressWarnings(suppressMessages(tumor_growth_statistics(
     df, plots = FALSE, verbose = FALSE)))
 
-  ic <- me_interval_cols(r, r$treatment_effects)
-  expect_false(is.null(ic))
-  expect_identical(ic$lower, r$treatment_effects$Lower_CL)
-  expect_identical(ic$upper, r$treatment_effects$Upper_CL)
-
-  # A result whose meta disagrees with its own columns is a bug in the analysis
-  # function, and must warn rather than silently return NULL.
-  broken <- r
-  broken$meta$interval_columns <- c(lower = "Nope_L", upper = "Nope_U")
-  expect_warning(me_interval_cols(broken, r$treatment_effects),
-                 regexp = "not present")
+  # The meta names columns the result has (its reader, me_interval_cols(),
+  # had no caller and was removed in 0.42.0, R22.11).
+  ic <- r$meta$interval_columns
+  expect_true(all(ic %in% names(r$treatment_effects)))
+  expect_identical(unname(ic[["lower"]]), "Lower_CL")
 })
 
 test_that("B7.2: transform_used is always reported, never absent", {

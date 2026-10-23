@@ -5,6 +5,53 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.42.0] - 2026-10-23
+
+The Round 22 audit's Minor items (`CODE_REVIEW.md` R22.8–R22.18, R22-D).
+
+### Fixed
+- **`weight_loss_threshold()` reports no Cox model the data cannot support.** With fewer
+  than 3 weight-loss events, or none while a reference animal was still on study, it fitted
+  one anyway. On one study a single late event gave an event-free arm a coefficient of
+  −2.08 from Firth's penalty alone. Now `cox_model` is `NULL`, and the new `cox_skipped`
+  says why. The Kaplan-Meier curves and counts are unchanged.
+- **The Bayesian posterior summaries name each arm as you labelled it.** A new `Term`
+  column reads "Treatment: Drug A + Drug B 10 × Day" where brms wrote
+  `TreatmentDrugAPDrugB10:Day`.
+- **`tumor_doubling_time()`'s rows are numbered 1, 2, …**, not "times", "times1", ….
+- **The Subset Filter can exclude one dose of a treatment** given at several, e.g. "Drug A,
+  dose 10". `apply_exclusions()` gains `arms`.
+- **The analytics helper script no longer polls for Umami or logs each event to the browser
+  console** when analytics are off.
+- **Documentation:**
+  - README, CONTRIBUTING, the dashboard's README, ARCHITECTURE, DATA_FORMAT and SECURITY
+    (which now says how long the uploaded file is kept), and DIAGNOSTICS were out of date;
+  - the vignette and METHODS now cover the preparation functions, the dashboard and its
+    R script;
+  - roxygen builds without warnings.
+
+### Removed
+- **Deprecated arguments, since the package has no users yet:**
+  - `tumor_growth_statistics(extrapolation_points)`, ignored since 0.8.0;
+  - `analyze_drug_synergy(ci_thresholds)`, ignored since the Combination Index went;
+  - `calculate_dates(in_place)` and `calculate_volume(in_place)`, deprecated no-ops.
+- **`ggpubr` from Imports.** Nothing called it. A package install needs 6 fewer packages;
+  the dashboard still installs it with `survminer`.
+- **Dead code:**
+  - six unused internal functions, and their tests;
+  - three unused analytics helpers;
+  - eleven unused local variables.
+
+### Changed
+- **`calculate_dates()`'s help points to `study_days()`** for dates whose day/month order is
+  not known. Its errors name `reference_date`.
+- **The dashboard's animal key is the package's `make_mouse_key()`,** which stops on a
+  missing column instead of giving every animal of an arm one key.
+- **Synergy's Help no longer cites package versions.**
+- **DESCRIPTION gains `URL` and `BugReports`, and `htmltools` in Suggests.** The Bayesian
+  tests that fit Stan models skip on CRAN.
+- **`.Rbuildignore`** loses seven entries for files that no longer exist.
+
 ## [0.41.0] - 2026-10-23
 
 Cages numbered within each arm (`CODE_REVIEW.md` R22.3, R22-C).

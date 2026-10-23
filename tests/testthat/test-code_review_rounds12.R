@@ -140,20 +140,17 @@ test_that("R2-J.2/R3.37: plot slots hold plots, not silent NULLs", {
 
 # ---- Round 1 §3.3 / J.20: no parent-frame magic -----------------------------
 
-test_that("R1-3.3/J.20: in_place does not mutate the caller's environment", {
+test_that("R1-3.3/J.20: the caller's data are left as they were", {
   # Both calculate_volume() and calculate_dates() used assign() into
-  # parent.frame(), which silently did the wrong thing when called from inside
-  # another function. Both were deprecated to plain returns.
+  # parent.frame(). in_place was deprecated to plain returns, and removed in
+  # 0.42.0 (R22.10).
   df_local <- data.frame(Length = c(10, 12), Width = c(5, 6),
                          stringsAsFactors = FALSE)
   before <- df_local
-
-  out <- suppressWarnings(calculate_volume(df_local, in_place = TRUE))
-
-  # The caller's object must be untouched; the result comes back as a value.
+  out <- calculate_volume(df_local)
   expect_identical(df_local, before)
   expect_true("Volume" %in% names(out))
-  expect_false("Volume" %in% names(df_local))
+  expect_false("in_place" %in% c(names(formals(calculate_volume)), names(formals(calculate_dates))))
 })
 
 # ---- Round 2 §A.1: the PH assumption is actually tested ---------------------
