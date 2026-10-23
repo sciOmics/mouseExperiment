@@ -181,7 +181,8 @@ treatment_filter_choices <- function(df, s) {
     d <- d[!is.na(d$t) & !is.na(d$d), , drop = FALSE]
     d <- d[d$t %in% d$t[duplicated(d$t)], , drop = FALSE]   # treatments at several doses
     d <- d[order(d$t, suppressWarnings(as.numeric(d$d)), d$d), , drop = FALSE]
-    out <- c(out, stats::setNames(animal_key(d$t, d$d), paste0(d$t, ", dose ", d$d)))
+    # paste0() of zero-length parts gives one string, not none.
+    if (nrow(d)) out <- c(out, stats::setNames(animal_key(d$t, d$d), paste0(d$t, ", dose ", d$d)))
   }
   out
 }

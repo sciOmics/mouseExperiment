@@ -125,6 +125,10 @@ test_that("R22.16: apply_exclusions() removes one dose arm, and the Subset Filte
   expect_identical(names(ch)[4:5], c("Drug A, dose 10", "Drug A, dose 20"))
   expect_identical(unname(g("treatment_filter_choices")(d, utils::modifyList(s, list(col_dose = "")))),
                    c("Drug A", "Drug B", "Vehicle"))
+  # Every treatment at one dose (the All Features demo): treatments only. This
+  # stopped the dashboard's session before it was guarded.
+  one <- d[d$Treatment != "Drug A" | d$Dose == 10, ]
+  expect_identical(unname(g("treatment_filter_choices")(one, s)), c("Drug A", "Drug B", "Vehicle"))
   rv <- shiny::reactiveValues(settings = s, exclude_treatments = c("Drug B", animal_key("Drug A", "20")))
   args <- shiny::isolate(g("subset_filter_args")(d, rv))
   expect_identical(args$treatments, "Drug B")
