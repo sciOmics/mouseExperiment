@@ -4,7 +4,15 @@
 \alias{syn_dl_items}
 \title{Drug Synergy}
 \usage{
-syn_dl_items(res, over_time, main_plot, trend_plot, tgi_plot, diag)
+syn_dl_items(
+  res,
+  over_time,
+  main_plot,
+  trend_plot,
+  tgi_plot,
+  diag,
+  plot_record = NULL
+)
 }
 \arguments{
 \item{res}{\code{rv$syn_results}.}
@@ -14,6 +22,8 @@ syn_dl_items(res, over_time, main_plot, trend_plot, tgi_plot, diag)
 \item{main_plot, trend_plot, tgi_plot}{Functions returning the plots last drawn.}
 
 \item{diag}{The diagnostics' source (the displayed result, or the last day's).}
+
+\item{plot_record}{A function returning the Bliss plot's record (F9), or NULL.}
 }
 \description{
 Drug Synergy

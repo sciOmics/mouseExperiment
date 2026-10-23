@@ -20,7 +20,8 @@ add_tg_download_handlers(
   tg_auc_plot,
   tg_forest_plot,
   tg_wf_plot,
-  endpoints = NULL
+  endpoints = NULL,
+  growth_record = NULL
 )
 }
 \arguments{

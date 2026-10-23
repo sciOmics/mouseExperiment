@@ -5,6 +5,30 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.48.0] - 2026-10-23
+
+The R script redraws plots with the dashboard's styling (`CODE_REVIEW.md` Round 22 proposal
+F9, R22-J).
+
+### Added
+- **`style_plot()`** applies the dashboard's plot options to any ggplot: theme, colours and
+  shapes for the groups, title and subtitle (and their alignment), axis and legend labels,
+  text size, the legend's place (including inside the plot), a log scale and the x-axis
+  range. The dashboard's own plots now go through it.
+- **The R script draws the plots that come from the package's plotting functions,** with
+  the options you chose on the dashboard:
+  - Tumor Growth's growth curves (`plot_tumor_growth()` then `style_plot()`), from the plot's
+    own data, which the ZIP holds;
+  - the best-response waterfall;
+  - Drug Synergy's Bliss plot.
+
+  The script's header says which plots it draws; the other plots in the ZIP are the ones
+  the dashboard drew.
+
+### Changed
+- **`ggplot2 (>= 3.5.0)`.** A legend placed inside a plot uses the newer `legend.position =
+  "inside"`.
+
 ## [0.47.0] - 2026-10-23
 
 Results that print what they found (`CODE_REVIEW.md` Round 22 proposal F8, R22-I).

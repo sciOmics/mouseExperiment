@@ -344,6 +344,9 @@ synergy_server <- function(id, rv) {
 
   # ReactiveVals to hold the current rendered plot (for download fidelity — D4, D5)
   current_syn_main_plot  <- reactiveVal(NULL)
+  # F9: the Bliss plot as calls, for the R script, as last drawn. (Clearing it
+  # on a new run raced the drawing; the calls draw the run's own result.)
+  current_syn_plot_record <- reactiveVal(NULL)
   current_syn_trend_plot <- reactiveVal(NULL)
   current_syn_tgi_plot   <- reactiveVal(NULL)
 
@@ -962,6 +965,15 @@ synergy_server <- function(id, rv) {
                                  input$syn_plot_title_align %||% "center",
                                  text_sz)
     current_syn_main_plot(final_p)
+    if (!isTRUE(rv$syn_over_time)) {
+      style <- list(title = input$syn_plot_title %||% "", subtitle = input$syn_plot_subtitle %||% "",
+                    title_align = input$syn_plot_title_align %||% "center", text_size = text_sz)
+      if (identical(style$title_align, "center")) style$title_align <- NULL
+      current_syn_plot_record(list(
+        plot = record_call("plot_drug_synergy", list(synergy_results = NULL, colors = custom_colors),
+                           data_arg = NULL, exprs = list(synergy_results = quote(result))),
+        style = Filter(function(v) length(v) && !(is.character(v) && !nzchar(v)), style)))
+    }
     print(final_p)
   }, width = function() input$syn_plot_width %||% 800,
      height = function() input$syn_plot_height %||% 600)
@@ -1123,6 +1135,7 @@ synergy_server <- function(id, rv) {
     items = reactive(syn_dl_items(
       rv$syn_results, over_time = isTRUE(rv$syn_over_time),
       main_plot  = function() current_syn_main_plot(),
+      plot_record = function() current_syn_plot_record(),
       trend_plot = function() current_syn_trend_plot(),
       tgi_plot   = function() current_syn_tgi_plot(),
       diag = tryCatch({

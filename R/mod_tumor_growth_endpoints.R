@@ -134,6 +134,20 @@ add_tg_endpoints <- function(input, output, session, rv, colors = NULL) {
                             colors = if (length(cols)) cols)
   })
 
+  # F9: the waterfall as a call on the script's `responses`.
+  waterfall_record <- reactive({
+    r <- responses()$result
+    if (failed(r) || !any(is.finite(r$per_animal$Best_Response))) return(NULL)
+    cap <- input$tg_waterfall_cap
+    cols <- if ((input$tg_waterfall_fill %||% "treatment") == "treatment" && is.function(colors))
+      tryCatch(colors(), error = function(e) NULL)
+    record_call("plot_response_waterfall",
+                list(responses = NULL, fill = input$tg_waterfall_fill %||% "treatment",
+                     colors = if (length(cols)) cols,
+                     cap = if (is.numeric(cap) && is.finite(cap) && cap > 0) cap else 200),
+                data_arg = NULL, exprs = list(responses = quote(responses)))
+  })
+
   output$tg_response_waterfall <- renderPlot({
     p <- waterfall()
     req(!is.null(p))
@@ -157,7 +171,8 @@ add_tg_endpoints <- function(input, output, session, rv, colors = NULL) {
                   options = list(paging = FALSE, searching = FALSE, scrollX = TRUE))
   })
 
-  list(responses = responses, delay = delay, waterfall = waterfall)
+  list(responses = responses, delay = delay, waterfall = waterfall,
+       waterfall_record = waterfall_record)
 }
 
 #' The growth-delay table as shown: "not reached" for infinite medians

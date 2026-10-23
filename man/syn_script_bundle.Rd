@@ -4,12 +4,14 @@
 \alias{syn_script_bundle}
 \title{The Drug Synergy run as a script bundle}
 \usage{
-syn_script_bundle(res, include_upload = FALSE)
+syn_script_bundle(res, include_upload = FALSE, plot = NULL)
 }
 \arguments{
 \item{res}{The stored Drug Synergy result, with its \code{call_record}.}
 
 \item{include_upload}{Start from the uploaded file (see \code{\link[=script_prep]{script_prep()}}).}
+
+\item{plot}{The Bliss plot's record, list(plot, style) (F9), or NULL.}
 }
 \value{
 A \code{\link[=script_bundle]{script_bundle()}}, or NULL when the run left no record.

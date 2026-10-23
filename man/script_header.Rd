@@ -4,7 +4,13 @@
 \alias{script_header}
 \title{The opening lines every script shares}
 \usage{
-script_header(title, when, data_files, from_upload = FALSE)
+script_header(
+  title,
+  when,
+  data_files,
+  from_upload = FALSE,
+  draws_plots = FALSE
+)
 }
 \arguments{
 \item{title}{What was run, e.g. "Tumor Growth (LME4)".}
@@ -14,6 +20,8 @@ script_header(title, when, data_files, from_upload = FALSE)
 \item{data_files}{The data files the script reads, without extensions.}
 
 \item{from_upload}{Whether the script starts from the uploaded file.}
+
+\item{draws_plots}{Whether the script redraws plots (F9).}
 }
 \description{
 The opening lines every script shares

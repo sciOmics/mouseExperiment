@@ -150,8 +150,9 @@ script_step <- function(rec, name, data_file = "data/analysed_data", data_var = 
 #' @param when The time of the run.
 #' @param data_files The data files the script reads, without extensions.
 #' @param from_upload Whether the script starts from the uploaded file.
+#' @param draws_plots Whether the script redraws plots (F9).
 #' @keywords internal
-script_header <- function(title, when, data_files, from_upload = FALSE) {
+script_header <- function(title, when, data_files, from_upload = FALSE, draws_plots = FALSE) {
   ver <- tryCatch(utils::packageDescription("mouseExperiment")$Version, error = function(e) NULL) %||% "?"
   sha <- tryCatch(utils::packageDescription("mouseExperiment")$RemoteSha, error = function(e) NULL)
   install <- if (length(sha) && grepl("^[0-9a-f]{40}$", sha)) {
@@ -184,8 +185,13 @@ script_header <- function(title, when, data_files, from_upload = FALSE) {
     "# packages.lock, beside this script, lists every package version the dashboard",
     "# ran with; renv::restore(lockfile = \"packages.lock\") installs the same ones.",
     "#",
-    "# Plots are not repeated with the dashboard's styling (colours, labels, group",
-    "# order); the plots in this ZIP are the ones the dashboard drew.",
+    if (draws_plots) c(
+      "# The plots drawn below use the dashboard's options (colours, shapes, labels,",
+      "# legend, axes) through style_plot(); the other plots in this ZIP are the ones",
+      "# the dashboard drew.")
+    else c(
+      "# Plots are not repeated with the dashboard's styling (colours, labels, group",
+      "# order); the plots in this ZIP are the ones the dashboard drew."),
     "",
     "library(mouseExperiment)",
     sprintf('if (as.character(packageVersion("mouseExperiment")) != "%s")', ver),
@@ -231,7 +237,8 @@ script_bundle <- function(title, steps, notes = character(0), prep = NULL) {
       s$after,
       "")
   }))
-  lines <- c(script_header(title, steps[[1L]]$rec$when, files, !is.null(prep)),
+  draws <- any(vapply(steps, function(s) startsWith(s$rec$fun, "plot_"), NA))
+  lines <- c(script_header(title, steps[[1L]]$rec$when, files, !is.null(prep), draws),
              if (length(notes)) c(paste0("# ", notes), ""),
              reads, body, "sessionInfo()")
   list(lines = lines, data = data, source = if (length(files)) prep$source)
@@ -385,6 +392,42 @@ tg_endpoint_steps <- function(responses = NULL, delay = NULL) {
                   prints = c(delay_table = "Each arm's median time to the volume, and T - C with its interval"))))
 }
 
+#' Tumor Growth's redrawn plots as script steps (F9)
+#' @param growth The growth curves' record: list(plot, style).
+#' @param waterfall The best-response waterfall's record, on the script's
+#'   `responses` (so after [tg_endpoint_steps()]).
+#' @keywords internal
+tg_plot_steps <- function(growth = NULL, waterfall = NULL) {
+  Filter(Negate(is.null), list(
+    if (!is.null(growth$plot))
+      plot_script_step(growth$plot, "p_growth", growth$style,
+                       comment = "Growth curves, drawn and styled as on the dashboard"),
+    if (!is.null(waterfall))
+      plot_script_step(waterfall, "p_waterfall",
+                       comment = "The best-response waterfall, as on the Response & Delay tab")))
+}
+
+#' A plot as script steps: the plotting call, then style_plot() (F9)
+#'
+#' @param rec The plotting call's [record_call()]. With data, the data are
+#'   written to `data_file`; without (`data_arg = NULL`), the call names an
+#'   earlier result in `exprs`.
+#' @param name The plot's variable in the script.
+#' @param style Named [style_plot()] arguments, or empty.
+#' @param comment Lines above the call.
+#' @param data_file,data_var Where the plot's data go, when it has its own.
+#' @return A [script_step()].
+#' @keywords internal
+plot_script_step <- function(rec, name, style = list(), comment = character(0),
+                             data_file = "data/plot_data", data_var = "plot_df") {
+  styled <- if (length(style)) {
+    script_call(record_call("style_plot", c(list(p = NULL), style), data_arg = NULL,
+                            exprs = list(p = as.name(name))), name)
+  }
+  script_step(rec, name, data_file = data_file, data_var = data_var, comment = comment,
+              after = c(styled, sprintf("print(%s)", name)))
+}
+
 #' The Survival run as a script bundle
 #' @param res The stored Survival result, with its `call_record`.
 #' @param include_upload Start from the uploaded file (see [script_prep()]).
@@ -462,8 +505,9 @@ script_prints <- function(res, prints) {
 #' @param res The stored Drug Synergy result, with its `call_record`.
 #' @param include_upload Start from the uploaded file (see [script_prep()]).
 #' @return A [script_bundle()], or NULL when the run left no record.
+#' @param plot The Bliss plot's record, list(plot, style) (F9), or NULL.
 #' @keywords internal
-syn_script_bundle <- function(res, include_upload = FALSE) {
+syn_script_bundle <- function(res, include_upload = FALSE, plot = NULL) {
   rec <- res$call_record
   if (is.null(rec)) return(NULL)
   over_time <- identical(rec$fun, "analyze_drug_synergy_over_time")
@@ -473,7 +517,11 @@ syn_script_bundle <- function(res, include_upload = FALSE) {
     summary = "Each arm's tumour growth inhibition",
     synergy_ci = "95% intervals of the synergy metrics"))
   script_bundle(if (over_time) "Drug Synergy (every evaluable day)" else "Drug Synergy",
-                list(script_step(rec, "result", prints = prints)),
+                list(script_step(rec, "result", prints = prints),
+                     # F9: the Bliss plot, as on the dashboard.
+                     if (!over_time && !is.null(plot$plot))
+                       plot_script_step(plot$plot, "p_synergy", plot$style,
+                                        comment = "The Bliss plot, drawn and styled as on the dashboard")),
                 "The intervals come from a bootstrap with the seed in the call.",
                 prep = script_prep(res, include_upload))
 }
