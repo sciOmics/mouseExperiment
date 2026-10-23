@@ -1,6 +1,6 @@
 # mouseExperiment
 
-An R package for statistical analysis of mouse tumor growth experiments. Covers the preclinical-oncology analysis pipeline: tumor growth, survival, body weight toxicity, drug synergy, dose-response and power analysis, with Bayesian models for tumor growth and survival.
+An R package for statistical analysis of mouse tumor growth experiments. Covers the preclinical-oncology analysis pipeline: tumor growth, survival, body weight toxicity, drug synergy, dose-response and power analysis, with Bayesian models for tumor growth and survival. Every analysis can also be run without code, from an interactive dashboard (`run_dashboard()`).
 
 ## Features
 
@@ -15,6 +15,7 @@ An R package for statistical analysis of mouse tumor growth experiments. Covers 
 - **Bayesian diagnostics** — Rhat, ESS, NUTS divergences / max_treedepth / E-BFMI, Bayes R², PPC coverage, PSIS-LOO with Pareto-k, posterior P(effect ≠ 0)
 - **Comprehensive plots** — KM curves, growth trajectories, synergy bar charts, dose-response curves, forest plots, MCMC diagnostics
 - **Config helpers** — `tg_priors()` and `tg_mcmc()` bundle prior + MCMC arguments so Bayesian entry-point signatures stay readable
+- **Dashboard** — `run_dashboard()` opens an interactive Shiny app: upload a CSV, map its columns and run each analysis from the browser, with downloadable tables, plots and an HTML report. The hosted version is at [mouseexperiment.com](https://mouseexperiment.com)
 - **Code-coverage** — `covr::package_coverage()` baseline; one-line `Rscript coverage.R` for HTML / stdout reports
 
 ## Current status
@@ -50,6 +51,21 @@ install.packages("cmdstanr",
                  repos = c("https://mc-stan.org/r-packages/", getOption("repos")))
 cmdstanr::install_cmdstan()
 ```
+
+## Dashboard
+
+```r
+mouseExperiment::run_dashboard()
+```
+
+The dashboard opens in your browser and runs on your computer, so your data never
+leaves it. Its packages (DT, shinyjs, future, promises and a few others) are
+Suggests, so installing `mouseExperiment` for its functions does not pull them in;
+`run_dashboard()` offers to install any that are missing. Usage analytics are off
+unless a server enables them.
+
+The developer documentation is in [`docs/dashboard/`](docs/dashboard/README.md).
+Until v0.34.0 the dashboard was a separate package, `mouseExperimentDashboard`.
 
 ## Usage
 

@@ -38,6 +38,9 @@ jobs:
           r-version: release
           use-public-rspm: true
 
+      # The dashboard's packages are Suggests (dashboard_packages()); its tests
+      # need them, and shinytest2 drives the runner's Chrome.
+      #
       # rstan comes as a binary, which skips its LinkingTo packages, but brms
       # compiles each model at run time and needs their headers then. Of
       # rstan's LinkingTo, Rcpp, RcppParallel and StanHeaders are installed
@@ -56,6 +59,21 @@ jobs:
             any::rmarkdown
             any::withr
             any::survminer
+            any::DT
+            any::shinyjs
+            any::shinyFeedback
+            any::shinycssloaders
+            any::colourpicker
+            any::sortable
+            any::logger
+            any::future
+            any::promises
+            any::later
+            any::scales
+            any::jsonlite
+            any::htmlwidgets
+            any::shinytest2
+            any::chromote
           needs: check
 
       - uses: r-lib/actions/check-r-package@v2

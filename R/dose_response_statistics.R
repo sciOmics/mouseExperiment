@@ -606,12 +606,12 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
       n_dose_levels <- length(unique(analysis_data[[dose_column]][
         is.finite(analysis_data[[dose_column]])]))
       fml <- as.formula(paste(me_bt(volume_column), "~", me_bt(dose_column)))
-      dr_model_4p <- drc::drm(
+      dr_model_4p <- me_muffle_lbfgsb_tol(drc::drm(
         fml, data = drc_data,
         fct  = drc::LL.4(names = c("Slope", "Lower Limit", "Upper Limit",
                                    "EC50")),
         lowerl = c(-Inf, 0, -Inf, -Inf)
-      )
+      ))
       dr_model_5p <- if (n_dose_levels >= 6L) tryCatch({
         m5 <- drc::drm(
           fml, data = drc_data,
@@ -1132,3 +1132,21 @@ generate_user_report <- function(stats_results, plots) {
   
   invisible(NULL)
 }
+
+#' Run a drc fit without optim()'s L-BFGS-B tolerance warning
+#'
+#' A bound (the lower asymptote >= 0, R20.18) makes drc fit with L-BFGS-B, but
+#' drc still passes its relative tolerance to optim() as `reltol`, which
+#' L-BFGS-B does not use. optim() then warns "method L-BFGS-B uses 'factr' (and
+#' 'pgtol') instead of 'reltol' and 'abstol'" on every fit, and the dashboard
+#' showed it as an analysis warning. It says nothing about the fit, so only that
+#' warning is muffled; every other warning passes through.
+#' @noRd
+#' @keywords internal
+me_muffle_lbfgsb_tol <- function(expr) {
+  withCallingHandlers(expr, warning = function(w) {
+    if (grepl("L-BFGS-B uses 'factr'", conditionMessage(w), fixed = TRUE))
+      invokeRestart("muffleWarning")
+  })
+}
+
