@@ -5,6 +5,30 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.43.0] - 2026-10-23
+
+Three endpoints that reports ask for (`CODE_REVIEW.md` Round 22 proposals F1–F3, R22-E).
+
+### Added
+- **%T/C beside TGI** (F3). The therapeutic window's and dose-response's TGI tables gain
+  `TC`, `TC_Lower` and `TC_Upper`: each arm's mean volume as a percentage of the control's,
+  at the same day and from the same model, so 100 − TGI with the interval mirrored. The
+  Toxicity tab's window table shows it.
+- **mRECIST response categories** (F1), `response_categories()`. Each animal's best response
+  and best average response, from its % change in volume from baseline, and its category
+  (mCR, mPR, mSD, mPD) by Gao et al. (2015); per arm, the counts and the response rate.
+  `plot_response_waterfall()` draws each animal's best response, sorted, with the
+  thresholds marked.
+- **Tumour growth delay** (F2), `growth_delay()`. T − C: the Kaplan-Meier median time for an
+  arm's tumours to reach a volume minus the reference arm's, with a bootstrap interval over
+  animals and the delay as a percentage of C. Times are interpolated on the log scale between
+  measurements; an animal that never reached the volume is censored, and an arm with fewer
+  than half reaching it is "not reached".
+- **Tumor Growth's new "Response & Delay" tab** shows both from the data the run analysed,
+  with their own settings (the day responses count from, the delay volume, the resamples),
+  so changing them needs no refit. Download Results offers the tables and the waterfall, and
+  the R script reproduces them.
+
 ## [0.42.0] - 2026-10-23
 
 The Round 22 audit's Minor items (`CODE_REVIEW.md` R22.8–R22.18, R22-D).
