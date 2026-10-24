@@ -377,6 +377,12 @@ The preparation functions take a study file to the data the analyses use. The da
 | `calculate_volume()` | Tumor volume from length × width. Default is the standard ellipsoid `V = (L × W²) × π / 6`. Other formulas: modified ellipsoid, three-axis ellipsoid, cylinder, sphere, box. Dimensions are auto-corrected so the longer measurement is always L (handles "I measured them in the wrong order" data) |
 | `label_arms()` | Each row's arm: the treatment, or "Treatment Dose" when a dose column is given |
 | `survival_events()` | One row per animal with its time and event, from an event column or a volume limit, with deaths from removal reasons |
+| `check_study_data()` | A check of the prepared data (v0.45.0); see below |
+
+**The data check** (`check_study_data()`, v0.45.0). The dashboard runs it on the whole uploaded file once the columns are mapped, and shows it on the Data tab with each flag's line in the file. Nothing is changed or removed. It reports in three tiers:
+- **Problems,** probably errors: rows with no ID, arm or day; an animal measured twice on one day (the same volume counts twice; different volumes conflict); negative volumes; non-positive weights.
+- **To check:** a row without a volume; a volume change of more than 4-fold between consecutive measurements, both above the study's 10th percentile; caliper width above length, given as measured; a day with no row, when three quarters of the arm was measured and the animal was measured before and after; a body-weight drop of more than 15 % between weighings; rows after an animal's event; animals measured once.
+- **Notes,** design rather than errors: staggered starts, arms of fewer than 3, IDs reused across arms, cage labels reused across arms.
 
 | Utility | Notes |
 |---|---|

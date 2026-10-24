@@ -5,6 +5,26 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.45.0] - 2026-10-23
+
+A check of the data on upload (`CODE_REVIEW.md` Round 22 proposal F5, R22-G).
+
+### Added
+- **`check_study_data()`** looks through a study's data and reports in three tiers:
+  - **probable errors:** rows that cannot be placed, an animal measured twice on one day,
+    negative volumes, non-positive weights;
+  - **things worth a look:** rows without a volume, more-than-4-fold jumps between
+    measurements, caliper width above length, days an animal missed while its arm was
+    measured, body-weight drops of more than 15 %, rows after an animal's event, animals
+    measured once;
+  - **design notes:** staggered starts, small arms, ear tags and cage labels reused across
+    arms.
+
+  It lists each flag with the row's line in the file. Nothing is changed.
+- **The Data tab shows the check** once the columns are mapped, on the whole file as
+  uploaded, with a headline, a table of what was found and what it means, the flagged rows,
+  and a CSV of them.
+
 ## [0.44.0] - 2026-10-23
 
 Power for survival endpoints, and Dunnett's correction (`CODE_REVIEW.md` Round 22 proposal F6,

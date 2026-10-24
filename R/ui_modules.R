@@ -120,6 +120,9 @@ dataUploadUI <- function(id) {
     # Dataset summary (shown after successful upload + column config)
     uiOutput(ns("data_summary_ui")),
 
+    # F5: what the data check found, once the columns are mapped.
+    uiOutput(ns("data_check_ui")),
+
     # Subset filter (CODE_REVIEW.md Round 2 F.5) — exclude mice / cages /
     # treatments. Sits between the Dataset Summary and Data Preview so
     # users see the summary first, choose what to filter, click Apply,
@@ -444,6 +447,47 @@ removal_reason_map_ui <- function(values, defaults = list(), col = "", ns = NS(N
                               choices = removal_reason_categories, selected = sel,
                               width = "100%")))
     })
+  )
+}
+
+#' The Data tab's data-check panel (F5)
+#'
+#' @param qc The result of `check_study_data()`.
+#' @param ns Namespace function.
+#' @keywords internal
+data_check_panel <- function(qc, ns = NS(NULL)) {
+  s <- qc$summary
+  colour <- c(Problem = "#c62828", Check = "#b26a00", Note = "#6c757d")
+  n_prob <- sum(s$Severity == "Problem")
+  n_check <- sum(s$Severity == "Check")
+  headline <- if (!nrow(s) || (n_prob + n_check) == 0L) {
+    status_alert(paste0("No problems found", if (nrow(s)) "; notes on the design below." else "."),
+                 "success")
+  } else if (n_prob) {
+    status_alert(paste0("Possible errors in the data: ", n_prob, " kind", if (n_prob > 1L) "s",
+                        " of problem. Correct them in your file, or exclude the rows' animals ",
+                        "under Subset Filter, before you rely on an analysis."), "danger")
+  } else {
+    status_alert("Nothing that is clearly an error; a few things are worth a look.", "warning")
+  }
+  wellPanel(
+    h4(strong("Data check")),
+    tags$p(class = "text-muted", style = "font-size:12px;",
+           "Your whole file, as uploaded, with the columns mapped above. Nothing is changed. ",
+           "\"Line\" is the line in your file, the header being line 1."),
+    headline,
+    if (nrow(s)) tags$table(class = "table table-condensed", style = "margin-bottom:8px;",
+      tags$thead(tags$tr(tags$th(""), tags$th("Check"), tags$th("Animals"), tags$th("Rows"),
+                         tags$th("What it means"))),
+      tags$tbody(lapply(seq_len(nrow(s)), function(i) tags$tr(
+        tags$td(tags$span(style = paste0("color:", colour[[s$Severity[i]]], "; font-weight:bold;"),
+                          s$Severity[i])),
+        tags$td(s$Check[i]), tags$td(s$Animals[i]), tags$td(s$Rows[i]), tags$td(s$What[i]))))),
+    if (nrow(qc$flagged)) tags$details(
+      tags$summary("Show the flagged rows"),
+      DT::DTOutput(ns("data_check_flagged")),
+      downloadButton(ns("download_data_check"), "Download the flagged rows (CSV)",
+                     class = "btn-sm btn-default"))
   )
 }
 
@@ -1546,7 +1590,7 @@ helpUI <- function() {
 
     h3(icon("arrows-turn-right"), " Basic Workflow"),
     tags$ol(
-      tags$li(strong("Data tab"), " \u2014 upload a CSV file and map your columns (ID, time, volume, treatment). Optional columns: cage, dose, body weight, survival/censor indicator."),
+      tags$li(strong("Data tab"), " \u2014 upload a CSV file and map your columns (ID, time, volume, treatment). Optional columns: cage, dose, body weight, survival/censor indicator. The Data check below the summary then lists likely errors in the file (duplicates, negative volumes, large jumps, missed days) with their line numbers."),
       tags$li(strong("Study Design"), " (on the Data tab) \u2014 declare the tumour volume units (mm\u00b3 or cm\u00b3), the control group, and, when a cage column is mapped, whether cage labels are unique across the study or numbered within each arm (C1 and C2 in every arm are then different cages) and whether individual animals or whole cages were randomised. With a removal-reason column mapped, say what each reason means (death, weight loss, the volume limit, a planned end); Survival and Toxicity use it. Every analysis tab uses these settings; none has its own reference selector."),
       tags$li(strong("Analysis tabs"), " \u2014 each tab activates once the required columns are mapped:"),
       tags$ul(

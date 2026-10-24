@@ -282,6 +282,7 @@ The dashboard prepares an upload with these, in this order; its R script can rep
 | `calculate_volume()` | Volume from length × width (multiple geometric formulas) |
 | `label_arms()` | Arms labelled by treatment and dose, e.g. "Drug_A 10" |
 | `survival_events()` | One row per animal with its time and event, from an event column or a volume limit, with deaths from removal reasons |
+| `check_study_data()` | Likely errors (duplicates, negative volumes, rows that cannot be placed), things to check (jumps, missed days, weight drops) and design notes, with each row's line |
 
 ### Utilities
 | Function | Description |
