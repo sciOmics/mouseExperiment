@@ -10,7 +10,7 @@ tg_report_settings(res)
 \item{res}{A tumour-growth result as stored in \code{rv$tg_results}.}
 }
 \value{
-A named list for \code{\link[=build_html_report]{build_html_report()}}.
+A named list for the README header and the report.
 }
 \description{
 The report read the sidebar when it was downloaded, so a dropdown changed

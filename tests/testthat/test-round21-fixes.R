@@ -158,10 +158,8 @@ test_that("R20.D15: HTML report tables have one header cell per column", {
   res <- list(treatment_effects = data.frame(Treatment = c("A", "B"),
                                              Estimate = c(1.5, 2.5),
                                              SE = c(0.1, 0.2)))
-  f <- tempfile(fileext = ".html")
-  on.exit(unlink(f), add = TRUE)
-  g("build_html_report")(res, title = "t", settings = list(), file = f)
-  html <- paste(readLines(f, warn = FALSE), collapse = "")
+  # The report's table builder since 0.46.0 (F4).
+  html <- g("report_table")(res$treatment_effects)
   first_table <- regmatches(html, regexpr("<table>.*?</table>", html, perl = TRUE))
   n_th <- lengths(regmatches(first_table, gregexpr("<th>", first_table, fixed = TRUE)))
   expect_equal(n_th, 3L)                              # was 1: "Treatment, Estimate, SE"

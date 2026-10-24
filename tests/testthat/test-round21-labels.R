@@ -122,10 +122,12 @@ test_that("R20.D46: the report records the run's settings, not the sidebar's", {
     # Change the sidebar without running again.
     session$setInputs(tg_model_type = "auc", tg_transform = "sqrt")
     html <- paste(readLines(output$download_tg_report, warn = FALSE), collapse = "\n")
-    expect_match(html, "<strong>model_type:</strong> lme4")
-    expect_match(html, "<strong>transform:</strong> log")
-    expect_false(grepl("<strong>transform:</strong> sqrt", html, fixed = TRUE))
-    expect_match(html, "<strong>reference_group:</strong> Vehicle")
+    # 0.46.0 (F4): the settings are the README header's, in the report's
+    # opening block.
+    expect_match(html, "  model_type: lme4\n", fixed = TRUE)
+    expect_match(html, "  transform: log\n", fixed = TRUE)
+    expect_false(grepl("transform: sqrt", html, fixed = TRUE))
+    expect_match(html, "  reference_group: Vehicle\n", fixed = TRUE)
   }))
 })
 

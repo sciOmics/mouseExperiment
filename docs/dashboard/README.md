@@ -65,7 +65,7 @@ devtools::check()      # R CMD check
 3. **Analysis Setup** — Pick a module, choose method (frequentist / Bayesian), set sidebar parameters
 4. **Run Analysis** — Click Run; Bayesian fits run in the background and surface in the resume banner if you disconnect
 5. **Explore Results** — Per-module result tabs: summary, model output, plots, pairwise comparisons, MCMC diagnostics (Bayesian)
-6. **Download** — Per-plot PNG and per-table CSV buttons, and each tab's **Download Results** ZIP: choose tables, plots, diagnostics, data, the report and the R script
+6. **Download** — Per-plot PNG and per-table CSV buttons, and each tab's **Download Results** ZIP: choose tables, plots, diagnostics, data, the HTML report (that tab's settings, tables, plots and diagnostics) and the R script, with `packages.lock`, every package version. The Data tab's **Study report** puts every analysis of the session, and the data check, in one HTML file
 
 ### Analysis modules
 
@@ -194,7 +194,7 @@ The dashboard is structured as a Shiny `navbarPage` with one tab per analysis mo
 | `R/helpers_ui.R`, `helpers_data.R`, `helpers_format.R`, `helpers_plot.R` | Core utilities: status and errors; data preparation and the Subset Filter; formatting; plot helpers |
 | `R/download_results.R`, `download_items.R`, `reproduce_script.R` | Download Results, what each tab offers in it, and its R script |
 | `R/helpers_bayes.R` | Bayesian diagnostics panel + LOO influential observations |
-| `R/helpers_report.R` | Standalone HTML report builder |
+| `R/helpers_report.R` | HTML reports: each tab's, built from its Download Results items, and the study report |
 | `R/logging.R` | Structured JSON logging to stdout |
 | `R/ui_modules.R` | Shared UI components / layout helpers |
 | `inst/www/css/` | Custom styles (light + dark modes) |

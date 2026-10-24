@@ -65,7 +65,7 @@ test_that("R20-Z: an LME4 run's script reproduces its tables", {
     run <- run_downloaded_script(output, session)
     # The script comes with the data it reads, although only the script was ticked.
     expect_setequal(run$files, c("README.txt", "analysis.R", "data/analysed_data.csv",
-                                 "data/analysed_data.rds"))
+                                 "data/analysed_data.rds", "packages.lock"))   # F10
     # Every argument the dashboard passed is written, NULLs included: a NULL
     # can differ from the default (cage_column defaults to "Cage").
     expect_true(any(grepl('p_adjust_method = "holm"', run$script, fixed = TRUE)))

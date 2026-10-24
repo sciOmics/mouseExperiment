@@ -15,7 +15,7 @@ An R package for statistical analysis of mouse tumor growth experiments. Covers 
 - **Bayesian diagnostics** — Rhat, ESS, NUTS divergences / max_treedepth / E-BFMI, Bayes R², PPC coverage, PSIS-LOO with Pareto-k, posterior P(effect ≠ 0)
 - **Comprehensive plots** — KM curves, growth trajectories, synergy bar charts, dose-response curves, forest plots, MCMC diagnostics
 - **Config helpers** — `tg_priors()` and `tg_mcmc()` bundle prior + MCMC arguments so Bayesian entry-point signatures stay readable
-- **Dashboard** — `run_dashboard()` opens an interactive Shiny app: upload a CSV, map its columns and run each analysis from the browser, with downloadable tables, plots and an HTML report. The hosted version is at [mouseexperiment.com](https://mouseexperiment.com)
+- **Dashboard** — `run_dashboard()` opens an interactive Shiny app: upload a CSV, map its columns and run each analysis from the browser, with downloadable tables and plots, an HTML report for each analysis and for the whole study, and an R script that reproduces each run. The hosted version is at [mouseexperiment.com](https://mouseexperiment.com)
 - **Code-coverage** — `covr::package_coverage()` baseline; one-line `Rscript coverage.R` for HTML / stdout reports
 
 ## Current status

@@ -1600,13 +1600,12 @@ tumor_growth_server <- function(id, rv) {
     },
     content = function(file) {
       req(rv$tg_results)
-      # R20.D46: the run's settings, not the sidebar's current values.
-      build_html_report(
-        result   = rv$tg_results,
-        title    = "Tumor Growth Analysis Report",
-        settings = tg_report_settings(rv$tg_results),
-        file     = file
-      )
+      # F4: the same report as in Download Results, from what it offers. R20.D46:
+      # the run's settings, not the sidebar's current values.
+      r <- session$userData$dl_registry$tumor_growth
+      req(r)
+      it <- Filter(function(x) x$group %in% c("tables", "plots", "diagnostics"), r$items())
+      report_document(file, "Tumor Growth report", report_section(r$title(), it, r$header(), r$size()))
       shinyjs::runjs("window.trackDownload('tumor_growth', 'report', 'html');")
     }
   )
