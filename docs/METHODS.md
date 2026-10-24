@@ -327,7 +327,7 @@ The analysis uses one day: by default the last day on which every dose group is 
 
 ## Power Analysis
 
-Function family: `apriori_power_analysis()`, `apriori_power_simulation()`. (`bayesian_power_analysis()` was removed in v0.23.0.)
+Function family: `apriori_power_analysis()`, `apriori_survival_power()`, `apriori_power_simulation()`. (`bayesian_power_analysis()` was removed in v0.23.0.)
 
 ### Analytic (`apriori_power_analysis()`)
 
@@ -335,7 +335,20 @@ Two-sample t-test power via `stats::power.t.test`, for one treated-vs-control co
 - You have an effect-size estimate (Cohen's d, treated arm vs control) from a prior study
 - You're sketching the study design — first-pass numbers
 
-Before v0.24.0 the k ≥ 3 path powered a one-way ANOVA with f = d/√2 (CODE_REVIEW.md R20.7). The conversion for its own configuration is d/√(2k), and sample sizes came out 2.6–4× too small. Dunnett's exact correction (the Tumor Growth default) is slightly less conservative than Bonferroni, so the Bonferroni N slightly overestimates what a Dunnett analysis needs.
+Before v0.24.0 the k ≥ 3 path powered a one-way ANOVA with f = d/√2 (CODE_REVIEW.md R20.7). The conversion for its own configuration is d/√(2k), and sample sizes came out 2.6–4× too small.
+
+**Dunnett** (`p_adjust_method = "dunnett"`, v0.44.0; the dashboard's default, matching Tumor Growth's).
+- **How.** Each comparison is powered at Dunnett's per-comparison alpha. That is the two-sided critical value for k − 1 comparisons with a shared control (equal arms, correlation 0.5) on the pooled error df k(n − 1), so the alpha depends on n and is solved for with it.
+- **The critical values.** Computed with `mvtnorm` at the classic tables' df and interpolated in 1/df; they agree with the published tables to 0.005.
+- **The result.** The N lies between the unadjusted and the Bonferroni ones.
+
+### Survival endpoint (`apriori_survival_power()`, v0.44.0)
+
+Animals per arm, or power, for comparing each treated arm's time to an event (usually the volume limit) with the control by the log-rank test, by Schoenfeld's approximation.
+- **Events.** One comparison with equal arms needs D = 4 (z₁₋α/₂ + z₁₋β)² / (log HR)² events: 66 to detect HR = 0.5 at 80 % power and α = 0.05.
+- **Animals.** The animals per arm are D / (p_C + p_T), where p_C is the share of controls with the event by the end (an input) and p_T = 1 − (1 − p_C)^HR under proportional hazards.
+- **Multiplicity.** Bonferroni, Dunnett (normal statistics) or none, over the k − 1 comparisons.
+- **Small studies.** The approximation is asymptotic, and with few events the log-rank test's real power is usually somewhat lower, so treat the N as a minimum.
 
 ### LMM simulation (`apriori_power_simulation()`)
 

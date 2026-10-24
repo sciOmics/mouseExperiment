@@ -5,6 +5,30 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.0] - 2026-10-23
+
+Power for survival endpoints, and Dunnett's correction (`CODE_REVIEW.md` Round 22 proposal F6,
+R22-F).
+
+### Added
+- **`apriori_survival_power()`**, for a survival endpoint. It gives the events and animals per
+  arm needed to detect a hazard ratio with the log-rank test, or the power at given numbers,
+  by Schoenfeld's approximation. The inputs are the hazard ratio and the share of controls
+  expected to have the event by the end; the treated arm's share follows under proportional
+  hazards. It handles Bonferroni, Dunnett or no correction over the comparisons with control,
+  and attrition.
+- **The Power tab plans a survival endpoint:** choose "Hazard ratio (survival, log-rank)" as
+  the effect in the analytic mode. Its R script calls `apriori_survival_power()`.
+- **Dunnett's correction in `apriori_power_analysis()`** (`p_adjust_method = "dunnett"`).
+  - **How.** Each comparison is powered at Dunnett's per-comparison alpha for k − 1
+    comparisons with a shared control, on the pooled error degrees of freedom.
+  - **The result.** The N lies between the unadjusted and the Bonferroni ones.
+  - **The dashboard's default is now Dunnett,** as in Tumor Growth's analysis. It was
+    Bonferroni, which overstated the N slightly.
+
+### Changed
+- **`mvtnorm` joins Imports.** `emmeans` already brought it, so installs are unchanged.
+
 ## [0.43.0] - 2026-10-23
 
 Three endpoints that reports ask for (`CODE_REVIEW.md` Round 22 proposals F1–F3, R22-E).

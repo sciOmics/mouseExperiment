@@ -6399,7 +6399,8 @@ After the first CRAN release, renaming any of these breaks users' code. Fix: the
 | R22.8, R22.9, R22.11–R22.18 | Minor | ✅ Fixed v0.42.0 |
 | F1–F3 | Proposals | ✅ Added v0.43.0 |
 | F7 Prism export | Proposal | Declined by the maintainer (2026-10-23) |
-| F4–F6, F8–F11 | Proposals | Approved; to do |
+| F6 | Proposal | ✅ Added v0.44.0 |
+| F4, F5, F8–F11 | Proposals | Approved; to do |
 
 ### Open questions for the maintainer
 
@@ -6703,3 +6704,38 @@ The maintainer approved every proposal except F7 (Prism export). These three com
 
 
 **Verification (executed):** the full suite, Bayesian fits skipped: 745 tests, 0 failed. `R CMD check --no-manual --no-tests`: Status OK, including the new examples.
+
+## R22-F Implementation log — v0.44.0: survival power and Dunnett (F6, 2026-10-23)
+
+**Dunnett in `apriori_power_analysis()`.**
+- **Where it was missing.** The Power tab offered Bonferroni or nothing, while Tumor Growth analyses with Dunnett by default.
+- **The helper.** `me_dunnett_alpha(alpha, m, df)` (`utils_power.R`) gives the per-comparison alpha: the two-sided critical value of `m` comparisons with a shared control (correlation 0.5) from `mvtnorm::qmvt` (seeded), converted to `2 P(T > c)`.
+- **Speed.** An exact value takes about 40 ms, and a power curve needs one per point. So values are computed exactly at the df of the classic tables (2–10, 12, 15, 20, 24, 30, 40, 60, 120, ∞), cached, and interpolated linearly in 1/df, as the printed tables are read. At df = 21 the interpolated value is within 0.0001 of the exact one.
+- **The checks.** The critical values match the published tables to 0.005: 2.21 for m = 2 and df = ∞; 2.54 for 3 and 20; 2.51 for 5 and ∞; 2.58 for 4 and 30.
+- **In the function.** The alpha depends on n through the pooled error df k(n − 1), so `alpha_at(i, n)` gives it at each n.
+  - **`find_n`** searches between the unadjusted and the Bonferroni answers, which bracket it.
+  - **`find_power`,** the curve and the SD sensitivity use it at their n.
+  - **`Alpha_Per_Comparison`** reports the value used.
+
+**`apriori_survival_power()` (exported).** Schoenfeld's formula for the log-rank test with equal arms.
+- **Inputs.** The hazard ratio and the controls' event share by the end; the treated share follows under proportional hazards.
+- **Multiplicity.** Bonferroni, Dunnett (df = ∞, since log-rank statistics are normal) or none.
+- **Attrition** is treated as early censoring, so `Enroll_N` allows for it.
+- **The result.** It returns the same shapes as `apriori_power_analysis()` (scenario table, curve data, method note), so the Power tab and its R script handle it with small changes.
+- **The note.** It says the approximation is asymptotic and the N a minimum when there are few events.
+
+**The Power tab.**
+- **The new choice.** The analytic mode's effect choices gain "Hazard ratio (survival, log-rank)", with the ratios and the controls' event percentage. It runs one call per hazard ratio, recorded for the R script.
+- **The correction.** It offers Dunnett, now the default, and the summary names the correction used.
+- **The power curves** are coloured by hazard ratio for a survival plan.
+- **Help** gains an entry, and the Scenario Table's notes explain the new columns.
+
+**Tests** (`test-power-survival-dunnett.R`, 4):
+- the Dunnett table values;
+- the Dunnett N lies between the others and reaches the target, while one fewer does not;
+- Schoenfeld's 66 events for HR 0.5;
+- proportional-hazards event shares, attrition and the find-power boundary;
+- a Power tab run whose R script reproduces the survival table.
+
+
+**Verification (executed):** the full suite, Bayesian fits skipped: 749 tests, 0 failed. `R CMD check --no-manual --no-tests`: Status OK, including `apriori_survival_power()`'s example.

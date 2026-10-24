@@ -1750,7 +1750,9 @@ helpUI <- function() {
     h4("Power Analysis"),
     tags$dl(
       tags$dt("Analytic (a priori)"),
-      tags$dd("Classical power for each treated-vs-control comparison (two-sample t-test), with the alpha split across the comparisons a multi-arm study makes and an optional attrition allowance, across a range of effect sizes and sample sizes."),
+      tags$dd("Classical power for each treated-vs-control comparison (two-sample t-test), with the alpha split across the comparisons a multi-arm study makes (Dunnett or Bonferroni) and an optional attrition allowance, across a range of effect sizes and sample sizes."),
+      tags$dt("Survival endpoint (a priori)"),
+      tags$dd("Under the analytic mode, choose \"Hazard ratio\" to plan the time to an event, such as the tumour volume limit, compared by the log-rank test. Schoenfeld's approximation gives the events one comparison needs from the hazard ratio, and the animals per arm from the share of controls expected to have the event by the end. It is asymptotic, so with few events treat the N as a minimum."),
       tags$dt("LMM simulation"),
       tags$dd("Simulates repeated-measures data under a linear mixed model and estimates power empirically across a grid of sample sizes. An optional euthanasia volume limit models attrition; leaving it blank assumes every animal is measured at every timepoint, which overstates power by roughly 6 points at 30 % attrition. Note that baseline SD and random-intercept SD do not affect the answer \u2014 the test is on growth rates, which are orthogonal to per-animal baselines. Random-slope SD is the parameter that matters.")
     ),
