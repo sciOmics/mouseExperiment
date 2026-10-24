@@ -101,8 +101,8 @@ growth_delay <- function(df, volume, time_column = "Day", volume_column = "Volum
                stringsAsFactors = FALSE)
   }))
   rownames(delay_table) <- NULL
-  list(delay_table = delay_table, per_animal = per_animal, volume = volume,
-       reference_group = reference_group, n_boot = as.integer(n_boot))
+  me_result(list(delay_table = delay_table, per_animal = per_animal, volume = volume,
+                 reference_group = reference_group, n_boot = as.integer(n_boot)), "me_growth_delay")
 }
 
 #' The day a tumour reached `v`, on the log scale between two measurements

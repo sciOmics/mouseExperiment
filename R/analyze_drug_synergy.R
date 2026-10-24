@@ -197,11 +197,11 @@ analyze_drug_synergy <- function(df,
             ", the last day on which all four arms are evaluable.")
   }
 
-  me_synergy_from_endpoint(
+  me_result(me_synergy_from_endpoint(
     ep, control_name = reference_group, drug_a_name = drug_a_name,
     drug_b_name = drug_b_name, combo_name = combo_name,
     additivity_margin = additivity_margin,
-    n_boot = n_boot, boot_seed = seed, verbose = verbose)
+    n_boot = n_boot, boot_seed = seed, verbose = verbose), "me_synergy")
 }
 
 #' Synergy quantities from one endpoint evaluation

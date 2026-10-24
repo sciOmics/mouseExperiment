@@ -5,6 +5,21 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.47.0] - 2026-10-23
+
+Results that print what they found (`CODE_REVIEW.md` Round 22 proposal F8, R22-I).
+
+### Added
+- **Every analysis result has a class, with `print()` and `summary()` methods.**
+  - **`print()`** shows a title, a line or two about the run, and the first rows of the
+    result's headline tables. Before, it printed every field: models, plots and all, several
+    screens long.
+  - **`summary()`** returns those tables whole.
+  - **Still lists.** Results remain lists, so `result$anova`, `names(result)` and existing
+    code work as before.
+  - **Which functions:** the 17 analysis functions, from `tumor_growth_statistics()` to
+    `check_study_data()`.
+
 ## [0.46.0] - 2026-10-23
 
 A report for every tab and for the study, and every package version in the ZIP

@@ -380,7 +380,7 @@ apriori_power_simulation <- function(n_per_group          = c(5L, 8L, 10L, 12L, 
 
   power_table <- do.call(rbind, rows)
 
-  list(
+  me_result(list(
     power_table      = power_table,
     power_curve_data = power_table,   # same structure; alias for plot code
     params = list(
@@ -400,5 +400,5 @@ apriori_power_simulation <- function(n_per_group          = c(5L, 8L, 10L, 12L, 
       p_adjust_method      = p_adjust_method
     ),
     attrition = do.call(rbind, attr_rows)
-  )
+  ), "me_power_simulation")
 }

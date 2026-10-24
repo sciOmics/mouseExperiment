@@ -282,7 +282,7 @@ analyze_drug_synergy_over_time <- function(df,
   }
   
   # Return comprehensive results
-  return(list(
+  return(me_result(list(
     timepoint_results = timepoint_results,
     synergy_summary = synergy_summary,
     peak_bliss_synergy = peak_bliss_synergy,
@@ -295,7 +295,7 @@ analyze_drug_synergy_over_time <- function(df,
     drug_a_name = drug_a_name,
     drug_b_name = drug_b_name,
     combo_name = combo_name
-  ))
+  ), "me_synergy_over_time"))
 }
 
 #' Plot Drug Synergy Trend Over Time

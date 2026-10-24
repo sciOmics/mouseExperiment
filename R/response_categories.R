@@ -94,11 +94,11 @@ response_categories <- function(df, time_column = "Day", volume_column = "Volume
   n_eval <- summary$N - summary[["Not evaluable"]]
   summary$Response_Rate <- ifelse(n_eval > 0, 100 * (summary$mCR + summary$mPR) / n_eval, NA_real_)
 
-  list(per_animal = per_animal, summary = summary,
-       criteria = data.frame(Category = c("mCR", "mPR", "mSD"),
-                             Best_Response_Below = c(-95, -50, 35),
-                             Best_Avg_Response_Below = c(-40, -20, 30)),
-       min_day = min_day)
+  me_result(list(per_animal = per_animal, summary = summary,
+                 criteria = data.frame(Category = c("mCR", "mPR", "mSD"),
+                                       Best_Response_Below = c(-95, -50, 35),
+                                       Best_Avg_Response_Below = c(-40, -20, 30)),
+                 min_day = min_day), "me_responses")
 }
 
 #' The mRECIST category for best and best-average responses

@@ -1011,7 +1011,7 @@ tumor_growth_statistics <- function(df,
       zero_floor_info     = zero_floor_info
     )
     auc_out$zero_floor <- zero_floor_info        # R20.32
-    return(auc_out)
+    return(me_result(auc_out, "me_tumor_growth"))
   } else {
     # Create ANOVA table
     # car is a hard Import (and always was). The dead fallback ran
@@ -1338,6 +1338,6 @@ tumor_growth_statistics <- function(df,
       necrosis_summary = necrosis_summary
     )
 
-    return(results)
+    return(me_result(results, "me_tumor_growth"))
   }
 }

@@ -426,7 +426,7 @@ trajectory_permutation_test <- function(df,
     (1 + sum(perm_stats[ok] >= observed - 1e-9)) / (1 + n_ok)
   }
 
-  list(
+  me_result(list(
     p_value                = p_value,
     observed_statistic     = observed,
     perm_statistics        = perm_stats[ok],
@@ -450,5 +450,5 @@ trajectory_permutation_test <- function(df,
                              "arms of equal size gives the same statistic)")
       else paste0(n_draw, " sampled permutations"),
       " of treatment labels at the ", spec$unit, " level")
-  )
+  ), "me_permutation")
 }

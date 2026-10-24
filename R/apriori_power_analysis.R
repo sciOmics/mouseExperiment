@@ -335,7 +335,7 @@ apriori_power_analysis <- function(effect_size   = NULL,
     )
   } else NULL
 
-  list(
+  me_result(list(
     scenario_table    = scenario_table,
     power_curve_data  = power_curve_data,
     sensitivity_table = sensitivity_table,
@@ -344,5 +344,5 @@ apriori_power_analysis <- function(effect_size   = NULL,
     n_groups          = n_groups,
     mode              = mode,
     method_note       = method_note
-  )
+  ), "me_power")
 }
