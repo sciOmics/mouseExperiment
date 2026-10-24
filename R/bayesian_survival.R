@@ -254,6 +254,7 @@ bayesian_survival <- function(
   )
   if (!is.null(cage_column) && cage_column %in% names(df)) {
     work$Cage <- as.character(df[[cage_column]])
+    if (isTRUE(include_cage_effect)) warn_reused_cage_labels(df, cage_column, treatment_column)   # R22.3
   }
   if (!all(work$Event %in% c(0L, 1L, NA))) {
     stop("'", user_event_column,
@@ -411,14 +412,8 @@ bayesian_survival <- function(
   model_reused <- isTRUE(attr(model, "me_model_reused"))
 
   # ── Posterior summary (fixed effects) ──────────────────────────────────────
-  brms_smry <- summary(model)
-  fixed_df  <- as.data.frame(brms_smry$fixed)
-  fixed_df  <- cbind(Parameter = rownames(fixed_df), fixed_df,
-                     stringsAsFactors = FALSE)
-  rownames(fixed_df) <- NULL
-  names(fixed_df)[names(fixed_df) == "l-95% CI"] <- "Lower_95_CrI"
-  names(fixed_df)[names(fixed_df) == "u-95% CI"] <- "Upper_95_CrI"
-  posterior_summary <- fixed_df
+  # R22.13: with a Term column giving each arm as labelled, not brms's name.
+  posterior_summary <- bayes_fixed_summary(model, treatment_levels)
 
   # ── MCMC diagnostics ───────────────────────────────────────────────────────
   mcmc_diagnostics <- make_mcmc_diagnostics(posterior_summary,
@@ -517,7 +512,7 @@ bayesian_survival <- function(
   )
 
   # ── Return ─────────────────────────────────────────────────────────────────
-  list(
+  me_result(list(
     model               = if (isTRUE(return_model)) model else NULL,
     model_type_used     = "bayes_survival",
     # B7.2 -- an AFT model applies no volume transform. Report "none"
@@ -553,7 +548,7 @@ bayesian_survival <- function(
     survival_curve_plot  = survival_curve_plot,
     posterior_draws      = posterior_draws,
     model_reused         = model_reused
-  )
+  ), "me_bayes_survival")
 }
 
 

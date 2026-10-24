@@ -2,46 +2,49 @@
 % Please edit documentation in R/calculate_dates.R
 \name{calculate_dates}
 \alias{calculate_dates}
-\title{Calculate the number of days for measurements}
+\title{Study days from dates in one known format}
 \usage{
 calculate_dates(
   df,
-  start_date,
+  reference_date,
   date_column = "Date",
   date_format = NULL,
-  year = NULL,
-  in_place = FALSE
+  year = NULL
 )
 }
 \arguments{
 \item{df}{A data frame containing longitudinal tumor measurements}
 
-\item{start_date}{Date the tumors were injected}
+\item{reference_date}{Date the tumors were injected}
 
 \item{date_column}{The name of the column with dates of measurements}
 
 \item{date_format}{Optional format string for parsing dates (e.g., "\%d-\%b" for "24-Mar" format, "\%m/\%d/\%Y" for "03/24/2025" format)}
 
 \item{year}{Optional year to use when date format doesn't include year}
-
-\item{in_place}{Logical, whether to modify the input data frame (TRUE) or return a new data frame (FALSE, default)}
 }
 \value{
-Returns a data frame with a Day column appended. If in_place=FALSE (default),
-returns a new data frame; if in_place=TRUE, modifies the input data frame and returns it.
+\code{df} with a Day column.
 }
 \description{
-Calculate the number of days for measurements
+Reads the dates with one format, given or detected from the first date,
+and counts days from \code{reference_date}. For a column whose day/month order
+is not known, use \code{\link[=study_days]{study_days()}}, which decides it from the whole column
+(a value such as 13/03/2025 settles day-first) and stops when the column
+cannot say; it is what the dashboard uses.
 }
 \examples{
 # "MM/DD/YYYY" dates; the format is detected
-d <- calculate_dates(combo_treatment_synthetic_data, start_date = "03/24/2025")
+d <- calculate_dates(combo_treatment_synthetic_data, reference_date = "03/24/2025")
 range(d$Day)
 
 # "DD-Mon" dates carry no year, so supply it
-d <- calculate_dates(dose_levels_synthetic_data, start_date = "24-Mar", year = 2025)
+d <- calculate_dates(dose_levels_synthetic_data, reference_date = "24-Mar", year = 2025)
 
 # An explicit format skips the detection
-d <- calculate_dates(combo_treatment_synthetic_data, start_date = "03/24/2025",
+d <- calculate_dates(combo_treatment_synthetic_data, reference_date = "03/24/2025",
                      date_format = "\%m/\%d/\%Y")
+}
+\seealso{
+\code{\link[=study_days]{study_days()}}
 }

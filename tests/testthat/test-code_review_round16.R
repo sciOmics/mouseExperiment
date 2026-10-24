@@ -14,6 +14,7 @@ test_that("R16.1: the configured treedepth limit is read, with Stan's default", 
 })
 
 test_that("R16.1: hits are counted against the limit, not the observed maximum", {
+  skip_on_cran()   # fits a Stan model (R22.17)
   skip_if_not_installed("brms")
 
   set.seed(53)

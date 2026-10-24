@@ -157,8 +157,8 @@ test_that("R20.61: plot_auc's interval uses t; the caterpillar plot uses Sattert
 
 test_that("R20.67: plot_bliss labels the analysed arms; day p-values are adjusted too", {
   tr <- quiet(analyze_drug_synergy_over_time(m, drug_a_name = "Drug_A Mid",
-    drug_b_name = "Drug_B", combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-    min_time_point = 2, n_boot = 50, boot_seed = 1, verbose = FALSE))
+    drug_b_name = "Drug_B", combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+    min_day = 2, n_boot = 50, seed = 1, verbose = FALSE))
   p <- plot_bliss(tr)
   lv <- levels(factor(p$data$Group))
   expect_true(all(c("Drug_A Mid", "Drug_B", "Drug_A Mid + Drug_B") %in% p$data$Group))

@@ -444,113 +444,6 @@ tgs_compute_summary <- function(analysis_df, treatment_column, time_column,
   })
 }
 
-#' Calculate area under the curve for each subject
-#'
-#' @param auc_df Untransformed data frame
-#' @param id_column Column name for subject IDs
-#' @param treatment_column Column name for treatment groups
-#' @param cage_column Column name for cage identifiers
-#' @param time_column Column name for time points
-#' @param volume_column Column name for tumor volume
-#' @param verbose Print progress messages
-#' @return List with individual and summary AUC results
-#' @noRd
-#' @keywords internal
-#' Percentile bootstrap CI for the mean difference of two AUC vectors
-#'
-#' Per-mouse AUC is a derived statistic whose distribution can be skewed
-#' (especially when extrapolation is in play), so the Welch's t-CI used
-#' downstream is only approximate at small N. The bootstrap CI is
-#' non-parametric and well-suited to this setting.
-#'
-#' Resamples each group with replacement \code{n_boot} times, computes the
-#' mean difference per resample, and returns the empirical 2.5 / 97.5 %
-#' percentiles. Returns \code{c(NA, NA)} when either group has fewer than
-#' two observations or n_boot < 2.
-#'
-#' @noRd
-#' Two-sample permutation p-value for a difference in means
-#'
-#' CODE_REVIEW.md H.2 — at the group sizes these studies use (n = 8-10), on a
-#' derived statistic whose distribution is right-skewed, Welch's t is exactly
-#' the approximation a permutation test improves on. The null here genuinely is
-#' label exchangeability ("the group label carries no information about a
-#' mouse's AUC"), which is what licenses permutation; contrast the synergy null,
-#' which is structural rather than about labels and cannot be permuted (H.5).
-#'
-#' Pairs naturally with the bootstrap CI: interval from the bootstrap, p-value
-#' from the permutation. They answer different questions and are not redundant.
-#'
-#' @param x,y Numeric vectors (per-mouse AUCs for the two arms).
-#' @param n_perm Number of label permutations.
-#' @param seed Optional RNG seed; the caller's state is restored on exit.
-#' @return Two-sided permutation p-value, or `NA_real_` when either arm has
-#'   fewer than two mice. Uses the `(1 + #{|d*| >= |d|}) / (1 + n_perm)`
-#'   estimator so the p-value is never exactly zero.
-#' @noRd
-#' @keywords internal
-tgs_perm_diff_p <- function(x, y, n_perm = 2000L, seed = NULL) {
-  x <- x[is.finite(x)]; y <- y[is.finite(y)]
-  if (length(x) < 2L || length(y) < 2L || n_perm < 1L) return(NA_real_)
-
-  if (!is.null(seed)) {
-    old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) {
-      get(".Random.seed", envir = .GlobalEnv)
-    } else NULL
-    on.exit({
-      if (!is.null(old_seed)) assign(".Random.seed", old_seed, envir = .GlobalEnv)
-    }, add = TRUE)
-    set.seed(seed)
-  }
-
-  pooled <- c(x, y)
-  nx     <- length(x)
-  obs    <- abs(mean(x) - mean(y))
-
-  # The permutation distribution has only choose(nx + ny, nx) distinct points,
-  # so the smallest attainable two-sided p-value is 2 / choose(n, nx). With 3
-  # mice per arm that floor is ~0.10 — no permutation test can report anything
-  # smaller, however large the observed difference. Say so rather than letting a
-  # user read the floor as a real p-value.
-  n_splits  <- choose(length(pooled), nx)
-  p_floor   <- 2 / n_splits
-  if (is.finite(p_floor) && p_floor > 0.01) {
-    warning(sprintf(paste0(
-      "Permutation test has only %.0f distinct label splits (n = %d vs %d), so ",
-      "the smallest attainable two-sided p-value is %.3f. Values at or near ",
-      "that floor reflect the test's resolution, not the strength of evidence."),
-      n_splits, nx, length(pooled) - nx, p_floor), call. = FALSE)
-  }
-  perm   <- vapply(seq_len(n_perm), function(i) {
-    idx <- sample.int(length(pooled), nx)
-    abs(mean(pooled[idx]) - mean(pooled[-idx]))
-  }, numeric(1))
-  (1 + sum(perm >= obs - 1e-12)) / (1 + n_perm)
-}
-
-tgs_boot_diff_ci <- function(x, y, n_boot = 999L, seed = NULL) {
-  if (length(x) < 2L || length(y) < 2L || n_boot < 2L) {
-    return(c(lower = NA_real_, upper = NA_real_))
-  }
-  if (!is.null(seed)) {
-    old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) {
-      get(".Random.seed", envir = .GlobalEnv)
-    } else NULL
-    on.exit({
-      if (!is.null(old_seed)) {
-        assign(".Random.seed", old_seed, envir = .GlobalEnv)
-      }
-    })
-    set.seed(seed)
-  }
-  diffs <- vapply(seq_len(n_boot), function(b) {
-    mean(sample(x, length(x), replace = TRUE)) -
-      mean(sample(y, length(y), replace = TRUE))
-  }, numeric(1L))
-  q <- stats::quantile(diffs, c(0.025, 0.975), names = FALSE, na.rm = TRUE)
-  c(lower = q[1L], upper = q[2L])
-}
-
 
 tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
                             time_column, volume_column, verbose) {
@@ -573,9 +466,6 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
   )
   auc_rows <- vector("list", length(unique(composite_id)))
   auc_row_idx <- 0L
-  
-  # Get max experiment time to determine if extrapolation is needed
-  max_experiment_time <- max(auc_df[[time_column]])
   
   for (unique_id in unique(composite_id)) {
     # Extract data for this unique ID
@@ -639,11 +529,7 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
                                                   SEM = stats::sd(x)/sqrt(length(x))))
   auc_summary <- do.call(data.frame, auc_summary)
   
-  # Create the AUC analysis list
-  auc_analysis <- list(
-    individual = auc_data,
-    summary = auc_summary
-  )
+  list(individual = auc_data, summary = auc_summary)
 }
 
 
@@ -752,24 +638,9 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'   \code{necrotic_column} is given: \code{"exclude"} (default) drops
 #'   them, \code{"covariate"} adds a 0/1 necrotic fixed effect, and
 #'   \code{"none"} uses them as they are.
-#' @param extrapolation_points \strong{Deprecated} and ignored as of v0.8.0.
-#'   It appended one synthetic final-day observation per animal and handed it to
-#'   the model as measured data, so the fit's uncertainty did not reflect the
-#'   imputation, and the linear fit on the raw scale biased an exponential
-#'   process downward. Use the model-based endpoint means instead
-#'   (\code{endpoint_method = "model"}), which extrapolate inside the model and
-#'   propagate the uncertainty. Extrapolation for \emph{plotting} is unaffected
-#'   — see \code{\link{plot_tumor_growth}}. CODE_REVIEW.md R3.9 / G.4.
-#' @param auc_bootstrap_n Integer >= 0. When > 0 and \code{model_type = "auc"},
-#'   each pairwise Welch's t-test gains a non-parametric percentile-bootstrap
-#'   95% CI for the mean difference (\code{boot_ci_lower}, \code{boot_ci_upper}
-#'   columns in \code{pairwise_comparisons}). Honest at small N when per-mouse
-#'   AUC distributions are skewed (especially under extrapolation), where the
-#'   parametric t-CI is only approximate. A typical value is \code{999};
-#'   higher (e.g. \code{4999}) gives smoother percentile estimates. Default
-#'   \code{0} (skip; \code{boot_ci_*} columns are \code{NA}).
-#' @param auc_bootstrap_seed Optional integer seed for reproducible bootstrap
-#'   resampling. \code{NULL} (default) uses the caller's RNG state.
+#' @param seed Seed for the AUC path's model draws (its intervals and
+#'   p-values). \code{NULL} (default) uses a fixed seed, so the result is
+#'   reproducible either way; the caller's RNG state is left as it was.
 #' @param volume_units Units of the volume column, \code{"mm3"} (default) or
 #'   \code{"cm3"}. Used for the zero floor, and to warn when the volumes do not
 #'   look like the declared units.
@@ -787,14 +658,6 @@ tgs_compute_auc <- function(auc_df, id_column, treatment_column, cage_column,
 #'   if \code{unit} matches how the study actually randomised, so the unit is an
 #'   explicit choice rather than a default. See \code{\link{perm_spec}}.
 #'   CODE_REVIEW.md H.3.
-#' @param auc_permutations Integer >= 0. When > 0 and
-#'   \code{model_type = "auc"}, each pairwise comparison additionally gains a
-#'   two-sided permutation p-value (\code{perm_p_value}, plus
-#'   \code{perm_p_adjusted} over the comparison family). At n = 8-10 per arm on
-#'   a right-skewed derived statistic, this is more trustworthy than Welch's
-#'   normal-theory approximation, and the null here is genuinely label
-#'   exchangeability. A typical value is \code{2000}. Default \code{0} (skip).
-#'   CODE_REVIEW.md H.2.
 #'
 #' @return A list containing the following components:
 #' \describe{
@@ -890,12 +753,9 @@ tumor_growth_statistics <- function(df,
                                   include_diagnostics = TRUE,
                                   plots = TRUE,
                                   verbose = FALSE,
-                                  extrapolation_points = 0,
                                   necrotic_column  = NULL,
                                   necrotic_handling = c("exclude", "covariate", "none"),
-                                  auc_bootstrap_n = 0L,
-                                  auc_bootstrap_seed = NULL,
-                                  auc_permutations = 0L,
+                                  seed = NULL,
                                   permutation_test = NULL,
                                   volume_units = c("mm3", "cm3"),
                                   zero_floor = NULL) {
@@ -960,37 +820,13 @@ tumor_growth_statistics <- function(df,
   reference_group <- me_resolve_reference(df[[treatment_column]], reference_group,
                                           "tumor_growth_statistics")
   
-  # CODE_REVIEW.md R3.9 / G.4 — statistical extrapolation is deprecated.
-  #
-  # tgs_extrapolate() was unflagged single imputation over informative dropout:
-  # it appended one synthetic row per animal, produced by an OLS fit to the last
-  # <=3 points on the RAW (exponential) scale, and the LMM then treated it as an
-  # ordinary observation. Consequences: no uncertainty inflation (residual
-  # variance, SEs and p-values were all computed as if the imputed points were
-  # measured, making everything anti-conservative); systematic downward bias
-  # from linear extrapolation of a log-linear process; and covariates copied
-  # from the animal's *first* row.
-  #
-  # It is unnecessary as of v0.8.0: endpoint_method = "model" extrapolates to
-  # the endpoint day inside the model, which propagates the extrapolation's
-  # uncertainty instead of hiding it. Extrapolation for *plotting* is unaffected
-  # — plot_tumor_growth(extrapolation_points = ...) is a separate implementation
-  # and is explicitly retained.
-  if (!missing(extrapolation_points) && isTRUE(extrapolation_points > 0)) {
-    warning(
-      "`extrapolation_points` is deprecated and will be removed in a future ",
-      "release. It performed single imputation of a synthetic final-day ",
-      "observation per animal and fed it to the model as measured data, so ",
-      "standard errors and p-values did not reflect the imputation. Model-based ",
-      "endpoint means (the default `endpoint_method = \"model\"` in ",
-      "therapeutic_window_metric() and analyze_drug_synergy()) are estimated ",
-      "inside the model and carry the uncertainty. Extrapolation for plotting ",
-      "is unaffected: see plot_tumor_growth(extrapolation_points = ). ",
-      "Ignoring the request.",
-      call. = FALSE
-    )
-  }
-  
+  # CODE_REVIEW.md R3.9 / G.4: statistical extrapolation (tgs_extrapolate(),
+  # single imputation of a final-day row per animal, fed to the model as
+  # measured data) was deprecated in v0.8.0, and its extrapolation_points
+  # argument removed in 0.42.0 (R22.11). endpoint_method = "model" extrapolates
+  # inside the model, with its uncertainty; plot_tumor_growth() keeps its own
+  # extrapolation for plotting.
+
   # Create a copy of the data for analysis
   analysis_df <- df
   
@@ -1079,6 +915,7 @@ tumor_growth_statistics <- function(df,
   cage_structure <- classify_cage_structure(
     analysis_df, cage_column, id_column, treatment_column
   )
+  warn_reused_cage_labels(analysis_df, cage_column, treatment_column)   # R22.3
   cage_analysis$structure <- cage_structure
   cage_handling <- resolve_cage_handling(cage_structure, handle_cage_effects,
                                          verbose = verbose)
@@ -1162,9 +999,7 @@ tumor_growth_statistics <- function(df,
       reference_group     = reference_group,
       return_model        = return_model,
       include_diagnostics = include_diagnostics,
-      auc_bootstrap_n     = auc_bootstrap_n,
-      auc_bootstrap_seed  = auc_bootstrap_seed,
-      auc_permutations    = auc_permutations,
+      seed                = seed,
       cage_analysis       = cage_analysis,
       data_summary        = data_summary,
       necrosis_summary    = necrosis_summary,
@@ -1176,7 +1011,7 @@ tumor_growth_statistics <- function(df,
       zero_floor_info     = zero_floor_info
     )
     auc_out$zero_floor <- zero_floor_info        # R20.32
-    return(auc_out)
+    return(me_result(auc_out, "me_tumor_growth"))
   } else {
     # Create ANOVA table
     # car is a hard Import (and always was). The dead fallback ran
@@ -1503,6 +1338,6 @@ tumor_growth_statistics <- function(df,
       necrosis_summary = necrosis_summary
     )
 
-    return(results)
+    return(me_result(results, "me_tumor_growth"))
   }
 }

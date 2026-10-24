@@ -38,8 +38,11 @@ launch_tg_bayes_job <- function(sid, bayes_params,
           "compiles it (about 20 s); later fits of the same structure reuse it."),
     cancel_id = session$ns("tg_cancel_bayes"))
 
-  job_id <- launch_job(sid, "bayes_tg", task = .tg_bayes_task(bayes_params),
-                       context = list(bayes_params = bayes_params))
+  task <- .tg_bayes_task(bayes_params)
+  # R20-Z: the call exactly as the worker makes it, for the R script.
+  job_id <- launch_job(sid, "bayes_tg", task = task,
+                       context = list(bayes_params = bayes_params,
+                                      call_record = record_call("bayesian_tumor_growth", task$args)))
   rv$tg_job_id <- job_id
   attach_bayes_poller(input, output, session, rv,
                       job_id_field          = "tg_job_id",
@@ -116,6 +119,8 @@ register_tg_resume <- function(input, output, session, rv) {
     necrotic_handling = bayes_params$necrotic_handling %||% "",
     n_rows          = if (!is.null(bayes_params$data)) nrow(bayes_params$data) else NA)
   result$model <- NULL   # not requested (R20.D18); a no-op kept for safety
+  result <- with_provenance(result, context$call_record, bayes_params$prep_steps,
+                            bayes_params$source_file)
   # R20.D59: the posterior contrasts vs the reference feed the forest plot,
   # which Bayesian runs never had.
   if (is.data.frame(result$pairwise_comparisons) && nrow(result$pairwise_comparisons)) {

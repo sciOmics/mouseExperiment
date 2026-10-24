@@ -18,6 +18,7 @@ Synergy, the therapeutic window, dose-response and the AUC all read each arm's v
 - **Zero volumes:** those measured before a tumour was palpable are left out; a zero after a positive volume is set to the smallest positive volume.
 - **Reported mean:** each arm's geometric mean at the endpoint day, exp of its log-scale mean.
 - **Intervals:** any function of the arm means (TGI, the Bliss excess, an AUC) gets its interval from draws of the model's fixed effects.
+- **%T/C** (v0.43.0): the treated arm's mean as a percentage of the control's, at the same day and from the same model, so 100 − TGI with the interval mirrored. The therapeutic window and dose-response tables report it beside TGI (`TC`, `TC_Lower`, `TC_Upper`). The historical NCI activity criterion is T/C ≤ 42 %.
 
 **Evaluable days** (`evaluable_days()`; maintainer decision R20-K, 2026-09-30). An arm is evaluable on a day when at least 50 % of its enrolled animals, and at least 3, are still on study (measured on that day or later). Every endpoint uses only days on which every arm it compares is evaluable. The default is the last such day, and a requested day that is not evaluable is an error. Past that day an arm's mean would be extrapolated beyond most of its own animals; the straight-line model that preceded this one put the Combo demo's control at 28,544 mm³ against about 3,000 observed. Each result reports `evaluability`: the rule, the day used, and the days and arms it excluded.
 
@@ -43,6 +44,8 @@ The tumor growth pipeline supports three models:
 | `treatment_column` | Treatment group label |
 
 Optional: `cage_column` (random intercept), `dose_column` (when crossed with treatment), `necrotic_column` (binary indicator → handled per `necrotic_handling`).
+
+**Cage labels** (v0.41.0, `CODE_REVIEW.md` R22.3). A cage label is read as one cage. With cages numbered within each arm (C1 and C2 in every arm), each label would be one cage holding every arm: cage becomes a fixed effect estimated across arms instead of a random intercept for each physical cage, and the p-values are too small. Run `label_cages()` first ("C1" becomes "Vehicle C1"); on the dashboard, choose "Numbered within each arm" under Study Design. From the labels alone the two layouts look the same, so it is the study's choice. Tumour growth, survival, the body-weight model and the Bayesian models warn when every arm's cage labels come from one set.
 
 ### Transforms (`transform` argument)
 
@@ -92,6 +95,29 @@ Since v0.26.0 (`CODE_REVIEW.md` R20.4) the AUC is **model-based**. It is the are
 - **Direct comparison of total tumor burden:** AUC. Use it as a confirmatory metric alongside the rate-based model, not as a replacement.
 
 ---
+
+### Per-animal response and growth delay (v0.43.0)
+
+Two model-free endpoints, from the measured volumes. The dashboard shows both on Tumor Growth's "Response & Delay" tab, from the data the run analysed.
+
+**`response_categories()`: mRECIST** (Gao et al. 2015, *Nature Medicine* 21:1318), the standard per-animal summary in PDX studies.
+- **The measures.** From each animal's % change in volume from its first measurement, the *best response* is the smallest change, and the *best average response* the smallest running mean of the changes, both over days at least `min_day` (default 10) after baseline.
+- **The categories:**
+  - **mCR:** best < −95 % and average < −40 %;
+  - **mPR:** best < −50 % and average < −20 %;
+  - **mSD:** best < 35 % and average < 30 %;
+  - **mPD:** otherwise.
+- **Not evaluable:** an animal never measured `min_day` after baseline, or with no positive baseline.
+- **The response rate** is mCR + mPR among evaluable animals.
+- **The waterfall.** `plot_response_waterfall()` draws each animal's best response, sorted, with the thresholds.
+
+**`growth_delay()`: T − C.** The median time for an arm's tumours to reach a volume, minus the reference arm's, in days, and as a percentage of the reference's median.
+- **Each animal's time** is interpolated on the log scale between the last measurement below the volume and the first at or above it.
+- **An animal that never reached the volume** is censored at its last measurement.
+- **The medians** are Kaplan-Meier medians, so censored animals count. An arm in which fewer than half reached the volume is "not reached" (`Inf`).
+- **The interval** is a percentile bootstrap over animals within each arm.
+
+Neither endpoint borrows strength across arms the way the endpoint model does, and neither corrects for animals removed early for reasons unrelated to growth. Read them as descriptions beside the model-based comparisons, not instead of them.
 
 ## Survival
 
@@ -281,7 +307,7 @@ volume(dose) = lower + (upper - lower) / (1 + (dose / EC50)^slope)
 
 Returns: `linear_model`, `anova_model`, `statistics$ec50`, `hill_slope`, `lower_limit`, `upper_limit`, `growth_dose_p_value`, plus the analysis data.
 
-**One agent's dose series** (v0.27.0). The analysis takes one agent at several doses plus its control. The control is `control_group_name`, which must exist and have dose 0 (a missing dose is read as 0), or by default the rows with dose 0. The agent's arms are `treatments`. Without it, the data may hold only one other arm name, as when one treatment name is used at every dose. A dose held by more than one arm is always an error. Before, every arm went onto one dose axis: on the Master demo, Drug_B and the Drug_A + Drug_B combination were fitted as doses of Drug_A (`CODE_REVIEW.md` R20.16).
+**One agent's dose series** (v0.27.0). The analysis takes one agent at several doses plus its control. The control is `reference_group`, which must exist and have dose 0 (a missing dose is read as 0), or by default the rows with dose 0. The agent's arms are `treatments`. Without it, the data may hold only one other arm name, as when one treatment name is used at every dose. A dose held by more than one arm is always an error. Before, every arm went onto one dose axis: on the Master demo, Drug_B and the Drug_A + Drug_B combination were fitted as doses of Drug_A (`CODE_REVIEW.md` R20.16).
 
 The analysis uses one day: by default the last day on which every dose group is evaluable (`endpoint_day`), with the animals measured that day. A requested day that is not evaluable, for example because the control has thinned out, is an error. Before v0.26.0 the default was each animal's own last observation, which gave removed controls capped, earlier volumes (EC50 7.5 against a true 2.2; R20.17). `tgi_table` reports TGI per dose group at `endpoint_day` from the endpoint model, with intervals, against the dose-0 control.
 
@@ -301,7 +327,7 @@ The analysis uses one day: by default the last day on which every dose group is 
 
 ## Power Analysis
 
-Function family: `apriori_power_analysis()`, `apriori_power_simulation()`. (`bayesian_power_analysis()` was removed in v0.23.0.)
+Function family: `apriori_power_analysis()`, `apriori_survival_power()`, `apriori_power_simulation()`. (`bayesian_power_analysis()` was removed in v0.23.0.)
 
 ### Analytic (`apriori_power_analysis()`)
 
@@ -309,7 +335,20 @@ Two-sample t-test power via `stats::power.t.test`, for one treated-vs-control co
 - You have an effect-size estimate (Cohen's d, treated arm vs control) from a prior study
 - You're sketching the study design — first-pass numbers
 
-Before v0.24.0 the k ≥ 3 path powered a one-way ANOVA with f = d/√2 (CODE_REVIEW.md R20.7). The conversion for its own configuration is d/√(2k), and sample sizes came out 2.6–4× too small. Dunnett's exact correction (the Tumor Growth default) is slightly less conservative than Bonferroni, so the Bonferroni N slightly overestimates what a Dunnett analysis needs.
+Before v0.24.0 the k ≥ 3 path powered a one-way ANOVA with f = d/√2 (CODE_REVIEW.md R20.7). The conversion for its own configuration is d/√(2k), and sample sizes came out 2.6–4× too small.
+
+**Dunnett** (`p_adjust_method = "dunnett"`, v0.44.0; the dashboard's default, matching Tumor Growth's).
+- **How.** Each comparison is powered at Dunnett's per-comparison alpha. That is the two-sided critical value for k − 1 comparisons with a shared control (equal arms, correlation 0.5) on the pooled error df k(n − 1), so the alpha depends on n and is solved for with it.
+- **The critical values.** Computed with `mvtnorm` at the classic tables' df and interpolated in 1/df; they agree with the published tables to 0.005.
+- **The result.** The N lies between the unadjusted and the Bonferroni ones.
+
+### Survival endpoint (`apriori_survival_power()`, v0.44.0)
+
+Animals per arm, or power, for comparing each treated arm's time to an event (usually the volume limit) with the control by the log-rank test, by Schoenfeld's approximation.
+- **Events.** One comparison with equal arms needs D = 4 (z₁₋α/₂ + z₁₋β)² / (log HR)² events: 66 to detect HR = 0.5 at 80 % power and α = 0.05.
+- **Animals.** The animals per arm are D / (p_C + p_T), where p_C is the share of controls with the event by the end (an input) and p_T = 1 − (1 − p_C)^HR under proportional hazards.
+- **Multiplicity.** Bonferroni, Dunnett (normal statistics) or none, over the k − 1 comparisons.
+- **Small studies.** The approximation is asymptotic, and with few events the log-rank test's real power is usually somewhat lower, so treat the N as a minimum.
 
 ### LMM simulation (`apriori_power_simulation()`)
 
@@ -325,12 +364,29 @@ Simulates data under an LME4 model with specified variance structure, fits, and 
 
 ---
 
-## Utilities
+## Data preparation and utilities
+
+The preparation functions take a study file to the data the analyses use. The dashboard runs them in this order, and the R script in its Download Results replays them from the uploaded file (`CODE_REVIEW.md` R20-AB, R20-AC):
 
 | Function | Notes |
 |---|---|
-| `calculate_volume()` | Tumor volume from length × width. Default is the standard ellipsoid `V = (L × W²) × π / 6`. Other formulas: modified ellipsoid, cylinder, sphere. Dimensions are auto-corrected so the longer measurement is always L (handles "I measured them in the wrong order" data) |
-| `calculate_dates()` | Date-to-day conversion using a reference date. Two methods: `"direct"` (study day already in data) and `"computed"` (compute from a date column) |
+| `read_study_csv()` | Reads a CSV with comma, semicolon or tab separators, a decimal comma, and UTF-8, Latin-1 or UTF-16 text. A row with the wrong number of fields stops with its line number |
+| `apply_exclusions()` | Removes animals (keyed by arm, ID and cage), treatments, single dose arms and cages |
+| `label_cages()` | Cage labels made unique when cages are numbered within each arm (see "Cage labels" above) |
+| `study_days()` | Dates to study days from a reference date. The whole column decides the day/month order (a value such as 13/03/2025 settles day-first); a column that cannot say stops unless `date_order` is given |
+| `calculate_volume()` | Tumor volume from length × width. Default is the standard ellipsoid `V = (L × W²) × π / 6`. Other formulas: modified ellipsoid, three-axis ellipsoid, cylinder, sphere, box. Dimensions are auto-corrected so the longer measurement is always L (handles "I measured them in the wrong order" data) |
+| `label_arms()` | Each row's arm: the treatment, or "Treatment Dose" when a dose column is given |
+| `survival_events()` | One row per animal with its time and event, from an event column or a volume limit, with deaths from removal reasons |
+| `check_study_data()` | A check of the prepared data (v0.45.0); see below |
+
+**The data check** (`check_study_data()`, v0.45.0). The dashboard runs it on the whole uploaded file once the columns are mapped, and shows it on the Data tab with each flag's line in the file. Nothing is changed or removed. It reports in three tiers:
+- **Problems,** probably errors: rows with no ID, arm or day; an animal measured twice on one day (the same volume counts twice; different volumes conflict); negative volumes; non-positive weights.
+- **To check:** a row without a volume; a volume change of more than 4-fold between consecutive measurements, both above the study's 10th percentile; caliper width above length, given as measured; a day with no row, when three quarters of the arm was measured and the animal was measured before and after; a body-weight drop of more than 15 % between weighings; rows after an animal's event; animals measured once.
+- **Notes,** design rather than errors: staggered starts, arms of fewer than 3, IDs reused across arms, cage labels reused across arms.
+
+| Utility | Notes |
+|---|---|
+| `calculate_dates()` | Dates to study days when every date has one known format (given, or detected from the first date). Prefer `study_days()` when the day/month order is not known |
 | `calculate_auc()` | Trapezoidal AUC over a time-volume vector |
 | `tumor_doubling_time()` | Doubling time from exponential growth rate (returns `log(2) / rate`) |
 | `tg_priors()`, `tg_mcmc()` | Config helpers (v0.4.7+) — bundle prior and MCMC arguments. See [`BAYESIAN.md`](BAYESIAN.md) |

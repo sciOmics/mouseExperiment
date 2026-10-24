@@ -109,29 +109,3 @@ print.me_meta <- function(x, ...) {
   invisible(x)
 }
 
-#' Read a result's interval columns without guessing at their names
-#'
-#' Replaces the `intersect(c("lower.CL", "Lower_CrI", ...))` sniffing that the
-#' dashboard used, which silently yields `NA` when a name changes and blanks the
-#' panel rather than failing (§K.2).
-#'
-#' @param result Any analysis result carrying `$meta`.
-#' @param df The data frame within it to read, e.g. `result$treatment_effects`.
-#' @return A list with `lower` and `upper` numeric vectors, or `NULL` when the
-#'   result reports no intervals.
-#' @noRd
-#' @keywords internal
-me_interval_cols <- function(result, df) {
-  meta <- result$meta
-  if (is.null(meta) || identical(meta$interval_type, "none")) return(NULL)
-  lo <- meta$interval_columns[["lower"]]
-  hi <- meta$interval_columns[["upper"]]
-  if (is.na(lo) || !all(c(lo, hi) %in% names(df))) {
-    warning("`meta` declares interval columns '", lo, "' / '", hi,
-            "' but they are not present in the supplied data frame. ",
-            "This is a bug in the analysis function, not the caller.",
-            call. = FALSE)
-    return(NULL)
-  }
-  list(lower = df[[lo]], upper = df[[hi]])
-}

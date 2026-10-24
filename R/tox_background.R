@@ -61,6 +61,8 @@
   results$mixed_model <- mixed_model
   results$weight_loss <- safe_analysis(module = "tox_threshold",
     do.call(mouseExperiment::weight_loss_threshold, pending$wl_args))
+  results <- with_provenance(results, pending$call_records, pending$prep_steps,
+                             pending$source_file, field = "call_records")
 
   # R20.D34 / R20.D31: plot the body-weight model's own net weight rather
   # than re-deriving it here with a hard-coded mm3 conversion. Lines are

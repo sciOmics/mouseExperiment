@@ -591,6 +591,9 @@ dose_response_server <- function(id, rv) {
 
     # Coerce dose column to numeric
     data[[dose_col]] <- suppressWarnings(as.numeric(data[[dose_col]]))
+    prep_steps <- c(pp$steps, list(record_code(sprintf(   # R20-AC: for the R script
+      "{d}[[%s]] <- suppressWarnings(as.numeric({d}[[%s]]))",
+      script_value(dose_col), script_value(dose_col)))))
     n_na_dose <- sum(is.na(data[[dose_col]]))
     if (n_na_dose == nrow(data)) {
       output$dr_status_msg <- renderUI({
@@ -622,22 +625,25 @@ dose_response_server <- function(id, rv) {
     show_analysis_modal("Fitting dose-response model\u2026", "Results will appear automatically when complete.")
     on.exit(shiny::removeModal(), add = TRUE)
 
-    result <- safe_analysis(module = "dose_response", {
-      mouseExperiment::dose_response_statistics(
-        df                 = data,
-        dose_column        = dose_col,
-        treatment_column   = tx_col,
-        volume_column      = vol_col,
-        day_column         = time_col,
-        id_column          = id_col,
-        cage_column        = rv$cage_col,  # part of the animal key
-        time_point         = time_point_val,
-        control_group_name = si$control,
-        treatments         = series,
-        verbose            = FALSE,  # the report went to the server log
-        volume_units       = backend_volume_units(rv)   # backend 0.33.0 zero floor
-      )
-    })
+    dr_args <- list(
+      df                 = data,
+      dose_column        = dose_col,
+      treatment_column   = tx_col,
+      volume_column      = vol_col,
+      time_column        = time_col,
+      id_column          = id_col,
+      cage_column        = rv$cage_col,  # part of the animal key
+      endpoint_day       = time_point_val,
+      reference_group    = si$control,
+      treatments         = series,
+      verbose            = FALSE,  # the report went to the server log
+      volume_units       = backend_volume_units(rv)   # backend 0.33.0 zero floor
+    )
+    result <- safe_analysis(module = "dose_response",
+                            do.call(mouseExperiment::dose_response_statistics, dr_args))
+    # R20-AA: the call exactly as made, for the R script in Download Results.
+    result <- with_provenance(result, record_call("dose_response_statistics", dr_args),
+                              prep_steps, rv$source_file)
     # The plots and tables use the control of the displayed run (R20.D48).
     if (is.list(result)) result$control_group_used <- si$control %||% "dose 0"
     # The backend names its argument; here the choice is the sidebar selector.

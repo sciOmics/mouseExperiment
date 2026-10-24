@@ -62,7 +62,7 @@ ME_ENDPOINT_METHODS <- c("model", "last_obs", "survivors")
 #' @param model A fitted `me_endpoint_model()` object to reuse, e.g. across
 #'   the days of an over-time analysis. `NULL` fits one.
 #' @param zero_floor,volume_units The fixed floor for regressions to zero
-#'   under `"model"` (R20-W); see [me_zero_floor()].
+#'   under `"model"` (R20-W); see `me_zero_floor()`.
 #' @return A list with `group_means` (data frame: Treatment, Mean_Volume, N,
 #'   N_On_Study, plus SE_log / CI bounds under `"model"`), `per_mouse`
 #'   (Treatment, MouseKey, Volume, Day_Used) for the resampling-based methods,
@@ -226,7 +226,7 @@ endpoint_volumes <- function(df,
 #'
 #' @param d Data frame with `MouseKey`, `Treatment`, `Day` and `Volume`.
 #' @param zero_floor The volume a regression to zero takes before the log,
-#'   from [me_zero_floor()].
+#'   from `me_zero_floor()`.
 #' @param volume_units For the floor's warnings.
 #' @param fn Calling function, for messages.
 #' @return An `me_endpoint_model` list, or `NULL` when no model can be fitted.
@@ -288,6 +288,11 @@ me_endpoint_model <- function(d, zero_floor = 2, volume_units = "mm3",
         msgs <<- c(msgs, conditionMessage(e))
         NULL
       })
+    # R20-Z: as for the main model (R20-T), a failed gradient check is retried
+    # from the estimates before the structure is given up. Without it, data
+    # that differ by 1e-13 (a CSV round trip) chose different structures.
+    rs <- me_lmer_restart(f, msgs)
+    f <- rs$fit; msgs <- rs$msgs
     failed <- is.null(f) ||
       any(grepl("failed to converge|unable to evaluate|unidentifiable|degenerate",
                 msgs, ignore.case = TRUE))
@@ -376,6 +381,22 @@ me_beta_draws <- function(em, n, seed = NULL) {
   })
 }
 
+#' Seed R's generator, always with the same kinds
+#'
+#' CODE_REVIEW.md R22.1: `set.seed(seed)` keeps whatever generator is active.
+#' The dashboard's worker runs jobs with L'Ecuyer-CMRG (future's `seed =
+#' TRUE`), so the same seed drew a different stream there than in an R
+#' session: an LMM power simulation gave 0.833 on the worker and 0.933 in R.
+#' Seeding with R's default kinds makes a seeded result the same wherever it
+#' runs. Every caller restores `.Random.seed` afterwards, and with it the
+#' caller's own kinds.
+#' @noRd
+#' @keywords internal
+me_set_seed <- function(seed) {
+  set.seed(seed, kind = "Mersenne-Twister", normal.kind = "Inversion",
+           sample.kind = "Rejection")
+}
+
 #' Evaluate an expression under a seed, restoring the caller's RNG state
 #' @noRd
 #' @keywords internal
@@ -390,7 +411,7 @@ me_with_seed <- function(seed, expr) {
         rm(".Random.seed", envir = .GlobalEnv)
       }
     }, add = TRUE)
-    set.seed(seed)
+    me_set_seed(seed)
   }
   expr
 }
@@ -498,3 +519,23 @@ me_per_mouse_baseline <- function(df, key_cols, value_col, day_col = "Day",
   names(out)[ncol(out)] <- out_name
   out
 }
+
+#' Add %T/C beside TGI (F3)
+#'
+#' T/C is the treated arm's mean volume as a percentage of the control's, at
+#' the same day and from the same model: 100 - TGI, with the interval
+#' mirrored. Many reports, and the historical NCI activity criterion
+#' (T/C <= 42 %), use it rather than TGI.
+#' @param df A table with `TGI`, `TGI_Lower` and `TGI_Upper`.
+#' @return `df` with `TC`, `TC_Lower` and `TC_Upper` after `TGI_Upper`.
+#' @noRd
+me_add_tc <- function(df) {
+  if (is.null(df) || !all(c("TGI", "TGI_Lower", "TGI_Upper") %in% names(df))) return(df)
+  df$TC <- 100 - df$TGI
+  df$TC_Lower <- 100 - df$TGI_Upper
+  df$TC_Upper <- 100 - df$TGI_Lower
+  at <- match("TGI_Upper", names(df))
+  rest <- setdiff(names(df), c("TC", "TC_Lower", "TC_Upper"))
+  df[, c(rest[seq_len(at)], "TC", "TC_Lower", "TC_Upper", rest[-seq_len(at)]), drop = FALSE]
+}
+

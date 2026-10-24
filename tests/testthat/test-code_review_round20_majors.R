@@ -41,7 +41,7 @@ test_that("R20.46: body weight stops on an unknown reference instead of using an
 })
 
 test_that("R20.46: the toxicity functions return the reference they used", {
-  tw <- quiet(therapeutic_window_metric(m, volume_units = "mm3", n_boot = 50, boot_seed = 1))
+  tw <- quiet(therapeutic_window_metric(m, volume_units = "mm3", n_boot = 50, seed = 1))
   expect_identical(tw$reference_group, "Vehicle")
   wl <- quiet(weight_loss_threshold(m, threshold = 0.1))
   expect_identical(wl$reference_group, "Vehicle")
@@ -51,8 +51,8 @@ test_that("R20.46: the toxicity functions return the reference they used", {
 
 test_that("R20.48: each synergy-trend line is labelled with its own name", {
   tr <- quiet(analyze_drug_synergy_over_time(m, drug_a_name = "Drug_A Mid",
-    drug_b_name = "Drug_B", combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-    min_time_point = 2, n_boot = 50, boot_seed = 1, verbose = FALSE))
+    drug_b_name = "Drug_B", combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+    min_day = 2, n_boot = 50, seed = 1, verbose = FALSE))
   sc <- ggplot2::ggplot_build(plot_synergy_trend(tr))$plot$scales$get_scales("colour")
   br <- sc$get_breaks()
   # v0.29.0 labelled the red Drug A line "Drug_B" and the grey Bliss line "Drug_A Mid".
@@ -180,7 +180,7 @@ test_that("R20.30: necrotic exclusion reaches AUC, growth rates and the permutat
 
 test_that("R20.30: dose_column analyses one arm per dose, and leaves dosed labels alone", {
   dd <- quiet(calculate_volume(calculate_dates(dose_levels_synthetic_data,
-                                               start_date = "24-Mar", year = 2025)))
+                                               reference_date = "24-Mar", year = 2025)))
   t1 <- quiet(tumor_growth_statistics(dd, reference_group = "Control", plots = FALSE,
                                       dose_column = "Dose"))
   # v0.29.0 pooled the three HDACi doses into one arm.
@@ -220,7 +220,7 @@ test_that("R20.32: zeros take a fixed floor of 2 mm3 (0.002 cm3), reported in th
   expect_equal(as.numeric(v), c(2, 150, 300, 2))
   expect_identical(attr(v, "n_floored"), 2L)
   dd <- quiet(calculate_volume(calculate_dates(dose_levels_synthetic_data,
-                                               start_date = "24-Mar", year = 2025)))
+                                               reference_date = "24-Mar", year = 2025)))
   t1 <- quiet(tumor_growth_statistics(dd, reference_group = "Control", plots = FALSE))
   expect_identical(t1$zero_floor$value, 2)
   expect_gt(t1$zero_floor$n_floored, 0L)

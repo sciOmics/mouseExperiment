@@ -26,7 +26,7 @@ surv_df <- function(with_cage = TRUE, seed = 31, n = 30) {
 }
 surv_run <- function(df, cage) {
   suppressWarnings(suppressMessages(survival_statistics(
-    df, time_column = "Time", censor_column = "Event",
+    df, time_column = "Time", event_column = "Event",
     treatment_column = "Treatment", id_column = "ID", cage_column = cage,
     reference_group = "Control", verbose = FALSE)))
 }

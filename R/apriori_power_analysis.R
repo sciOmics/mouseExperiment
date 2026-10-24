@@ -70,18 +70,23 @@
 #' }
 #'
 #' @param n_comparisons Integer. Number of treatment-vs-control comparisons the
-#'   analysis will make. Used with \code{p_adjust_method = "bonferroni"} to
-#'   derive the effective per-comparison alpha. Defaults to \code{n_groups - 1}
+#'   analysis will make. Used with \code{p_adjust_method = "bonferroni"} or
+#'   \code{"dunnett"} to derive the effective per-comparison alpha. Defaults to \code{n_groups - 1}
 #'   (the vs-control family these designs normally use).
-#' @param p_adjust_method \code{"bonferroni"} (default) or \code{"none"}.
+#' @param p_adjust_method \code{"bonferroni"} (default), \code{"dunnett"} or
+#'   \code{"none"}.
 #'   \code{"bonferroni"} computes power at \code{alpha / n_comparisons}, which
 #'   matches an analysis that adjusts over the \eqn{k - 1} vs-control
 #'   comparisons, as \code{tumor_growth_statistics()} does by default. With two
 #'   groups there is one comparison, so it changes nothing. Powering at an
 #'   unadjusted alpha and then analysing with an adjustment delivers materially
-#'   less power than the nominal target. Dunnett's exact correction is slightly
-#'   less conservative than Bonferroni, so for a Dunnett analysis the Bonferroni
-#'   N is a small overestimate. The default was \code{"none"} before 0.24.0.
+#'   less power than the nominal target. \code{"dunnett"} (v0.44.0) powers each
+#'   comparison at Dunnett's per-comparison alpha: the two-sided critical value
+#'   of the \eqn{k - 1} comparisons with a shared control (equal group sizes,
+#'   correlation 0.5) on the pooled error degrees of freedom \eqn{k (n - 1)},
+#'   so it depends on \eqn{n}. It is slightly less conservative than
+#'   Bonferroni, and matches the Tumour Growth default. The default was
+#'   \code{"none"} before 0.24.0.
 #' @param dropout_rate Numeric in [0, 1). Expected proportion of enrolled
 #'   animals that will not be analysable (euthanasia for tumour burden,
 #'   technical failure). \code{Required_N} is the number that must be
@@ -101,7 +106,7 @@ apriori_power_analysis <- function(effect_size   = NULL,
                                    n_per_group   = NULL,
                                    mode          = c("find_n", "find_power"),
                                    n_comparisons = NULL,
-                                   p_adjust_method = c("bonferroni", "none"),
+                                   p_adjust_method = c("bonferroni", "dunnett", "none"),
                                    dropout_rate  = 0,
                                    sd_sensitivity_range = 0.4) {
 
@@ -164,10 +169,16 @@ apriori_power_analysis <- function(effect_size   = NULL,
     max(1L, n_groups - 1L)
   }
   alpha_requested <- alpha
-  alpha_effective <- if (p_adjust_method == "bonferroni") {
-    alpha / n_comp_used
-  } else {
-    alpha
+  # F6: Dunnett's per-comparison alpha depends on n through the error degrees
+  # of freedom, so alpha_at() gives it at each n; alpha_effective holds its
+  # large-sample value for the notes.
+  alpha_effective <- switch(p_adjust_method,
+    bonferroni = alpha / n_comp_used,
+    dunnett    = vapply(alpha, me_dunnett_alpha, numeric(1), m = n_comp_used),
+    none       = alpha)
+  alpha_at <- function(i, n) {
+    if (p_adjust_method != "dunnett") return(alpha_effective[i])
+    me_dunnett_alpha(alpha_requested[i], n_comp_used, df = n_groups * (max(n, 2L) - 1L))
   }
 
   # ---- Power for one treated-vs-control comparison --------------------------
@@ -193,6 +204,22 @@ apriori_power_analysis <- function(effect_size   = NULL,
     )
   }
 
+  # The analysable n for power `pwr` at the i-th alpha. Under Dunnett the
+  # answer lies between the unadjusted and the Bonferroni ones, so those
+  # bracket the search.
+  n_for <- function(i, pwr, d = effect_size) {
+    if (p_adjust_method != "dunnett") return(n_fn(alpha_effective[i], pwr, d))
+    lo <- n_fn(alpha_requested[i], pwr, d)
+    hi <- n_fn(alpha_requested[i] / n_comp_used, pwr, d)
+    if (is.na(lo) || is.na(hi)) return(NA_integer_)
+    for (n in seq(max(2L, lo), max(2L, lo, hi))) {
+      p <- tryCatch(stats::power.t.test(n = n, delta = d, sd = 1, sig.level = alpha_at(i, n),
+                                        type = "two.sample")$power, error = function(e) NA_real_)
+      if (isTRUE(p >= pwr)) return(as.integer(n))
+    }
+    as.integer(max(lo, hi))
+  }
+
   # R20.71: one definition of n. Enrolment from an analysable n rounds before
   # ceiling(): 21 / (1 - 0.3) is 30.000000000000004 in floating point, which
   # ceiling() made 31. Analysable from enrolled: floor(n * (1 - dropout)).
@@ -204,10 +231,10 @@ apriori_power_analysis <- function(effect_size   = NULL,
       a_req <- alpha_requested[i]
       a_eff <- alpha_effective[i]
       lapply(target_power, function(tp) {
-        n_analysable <- n_fn(a_eff, tp)
+        n_analysable <- n_for(i, tp)
         data.frame(Effect_Size = effect_size, N_Groups = n_groups,
                    Alpha = a_req,
-                   Alpha_Per_Comparison = a_eff,
+                   Alpha_Per_Comparison = if (is.na(n_analysable)) a_eff else alpha_at(i, n_analysable),
                    N_Comparisons = n_comp_used,
                    Target_Power = tp,
                    # The number that must be analysable to hit the target...
@@ -224,9 +251,10 @@ apriori_power_analysis <- function(effect_size   = NULL,
       stop("'n_per_group' must be supplied when mode = 'find_power'.")
     rows <- lapply(as.integer(n_per_group), function(n) {
       lapply(seq_along(alpha), function(i) {
-        a <- alpha_effective[i]; a_req <- alpha_requested[i]
+        a_req <- alpha_requested[i]
         # n is what the user has; attrition reduces it to n_analysable.
         n_analysable <- analysable_n(n)
+        a <- alpha_at(i, n_analysable)
         data.frame(Effect_Size = effect_size, N_Groups = n_groups,
                    Alpha = a_req,
                    Alpha_Per_Comparison = a,
@@ -247,12 +275,12 @@ apriori_power_analysis <- function(effect_size   = NULL,
   # table gave 0.406 at 30 % dropout).
   n_seq <- seq(2L, 80L, by = 1L)
   curve_rows <- lapply(seq_along(alpha), function(i) {
-    a_eff <- alpha_effective[i]
+    a_eff <- vapply(analysable_n(n_seq), function(n) alpha_at(i, n), numeric(1))
     data.frame(
       Effect_Size = effect_size,
       N_Per_Group = n_seq,
       N_Analysable = analysable_n(n_seq),
-      Power       = vapply(analysable_n(n_seq), function(n) power_fn(n, a_eff), numeric(1)),
+      Power       = mapply(power_fn, analysable_n(n_seq), a_eff),
       Alpha       = alpha_requested[i],
       Alpha_Per_Comparison = a_eff,
       stringsAsFactors = FALSE
@@ -278,12 +306,13 @@ apriori_power_analysis <- function(effect_size   = NULL,
     sens_rows <- lapply(seq_along(sd_factors), function(i) {
       sd_i  <- stored_pooled_sd * sd_factors[i]
       d_i   <- raw_delta / sd_i
-      n_i   <- n_fn(ref_a_eff, ref_tp, d = d_i)
+      n_i   <- n_for(ref_i, ref_tp, d = d_i)
       # R20.71: with the enrolment that dropout implies, like the scenario table.
       data.frame(SD_Change = sd_labels[i], Assumed_SD = round(sd_i, 3),
                  Cohens_d = round(d_i, 3), Required_N = n_i,
                  Enroll_N = enroll_n(n_i), Dropout_Rate = dropout_rate,
-                 Alpha = ref_a, Alpha_Per_Comparison = ref_a_eff,
+                 Alpha = ref_a,
+                 Alpha_Per_Comparison = if (is.na(n_i)) ref_a_eff else alpha_at(ref_i, n_i),
                  Target_Power = ref_tp,
                  stringsAsFactors = FALSE)
     })
@@ -295,16 +324,18 @@ apriori_power_analysis <- function(effect_size   = NULL,
       "Power is for one treated-vs-control comparison (two-sample t-test) at ",
       "alpha ", paste(signif(alpha_effective, 3), collapse = " / "),
       " per comparison",
-      if (p_adjust_method == "bonferroni") {
-        paste0(" (Bonferroni over ", n_comp_used, " comparisons)")
-      } else " (no multiplicity adjustment)",
+      switch(p_adjust_method,
+        bonferroni = paste0(" (Bonferroni over ", n_comp_used, " comparisons)"),
+        dunnett    = paste0(" (Dunnett over ", n_comp_used, " comparisons with the control; ",
+                            "at the study's N the value is a little smaller)"),
+        none       = " (no multiplicity adjustment)"),
       ". Each treated arm that differs from control by d = ",
       signif(effect_size, 3), " is detected with this power; the chance of ",
       "detecting several such arms at once is lower."
     )
   } else NULL
 
-  list(
+  me_result(list(
     scenario_table    = scenario_table,
     power_curve_data  = power_curve_data,
     sensitivity_table = sensitivity_table,
@@ -313,5 +344,5 @@ apriori_power_analysis <- function(effect_size   = NULL,
     n_groups          = n_groups,
     mode              = mode,
     method_note       = method_note
-  )
+  ), "me_power")
 }

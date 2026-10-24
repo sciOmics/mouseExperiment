@@ -12,15 +12,15 @@
 #' @param drug_a_name A character string specifying the name of the first single agent treatment group.
 #' @param drug_b_name A character string specifying the name of the second single agent treatment group.
 #' @param combo_name A character string specifying the name of the combination treatment group.
-#' @param control_name A character string specifying the name of the control/vehicle group. Default is "Control".
-#' @param min_time_point Optional. A numeric value specifying the minimum time point to include in analysis. Default is NULL.
-#' @param max_time_point Optional. A numeric value specifying the maximum time point to include in analysis. Default is NULL.
+#' @param reference_group A character string specifying the name of the control/vehicle group. Default is "Control".
+#' @param min_day Optional. A numeric value specifying the minimum time point to include in analysis. Default is NULL.
+#' @param max_day Optional. A numeric value specifying the maximum time point to include in analysis. Default is NULL.
 #' @param id_column Column identifying individual animals (required). Before
 #'   v0.25.0 this function had no such argument: each day's analysis looked for a
 #'   column literally named "ID", and without one every animal in an arm shared a
 #'   key, so every day failed (CODE_REVIEW.md R20.15).
 #' @param cage_column Optional cage column, part of the animal key.
-#' @param endpoint_method,n_boot,boot_seed As in
+#' @param endpoint_method,n_boot,seed As in
 #'   \code{\link{analyze_drug_synergy}}. Under the model estimand one endpoint
 #'   model is fitted and evaluated on every day.
 #' @param verbose Logical. If TRUE, prints detailed results to the console.
@@ -74,15 +74,14 @@
 #' @examples
 #' trend <- analyze_drug_synergy_over_time(master_synthetic_data,
 #'   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
-#'   combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-#'   min_time_point = 2,  # day 0 has no growth to inhibit
-#'   cage_column = "Cage", n_boot = 200, boot_seed = 1, verbose = FALSE)
+#'   combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+#'   min_day = 2,  # day 0 has no growth to inhibit
+#'   cage_column = "Cage", n_boot = 200, seed = 1, verbose = FALSE)
 #' head(trend$synergy_summary)
 #' trend$peak_bliss_synergy
 #' plot_synergy_trend(trend)
 #' @import dplyr
 #' @import ggplot2
-#' @importFrom ggpubr ggarrange
 #' @export
 analyze_drug_synergy_over_time <- function(df, 
                                       treatment_column = "Treatment",
@@ -91,14 +90,14 @@ analyze_drug_synergy_over_time <- function(df,
                                       drug_a_name,
                                       drug_b_name,
                                       combo_name,
-                                      control_name = "Control",
-                                      min_time_point = NULL,
-                                      max_time_point = NULL,
+                                      reference_group = "Control",
+                                      min_day = NULL,
+                                      max_day = NULL,
                                       id_column = "ID",
                                       cage_column = NULL,
                                       endpoint_method = c("model", "last_obs", "survivors"),
                                       n_boot = 2000L,
-                                      boot_seed = NULL,
+                                      seed = NULL,
                                       verbose = TRUE,
                                       volume_units = c("mm3", "cm3"),
                                       zero_floor = NULL) {
@@ -116,7 +115,7 @@ analyze_drug_synergy_over_time <- function(df,
   }
   
   # Check that the specified groups exist in the data
-  all_groups <- c(drug_a_name, drug_b_name, combo_name, control_name)
+  all_groups <- c(drug_a_name, drug_b_name, combo_name, reference_group)
   missing_groups <- all_groups[!all_groups %in% unique(df[[treatment_column]])]
   
   if (length(missing_groups) > 0) {
@@ -125,7 +124,7 @@ analyze_drug_synergy_over_time <- function(df,
   }
   
   if (!is.null(cage_column) && !cage_column %in% colnames(df)) cage_column <- NULL
-  arms <- c(control_name, drug_a_name, drug_b_name, combo_name)
+  arms <- c(reference_group, drug_a_name, drug_b_name, combo_name)
 
   # CODE_REVIEW.md R20.1 / R20-K -- only evaluable days: every one of the four
   # arms has >= 50 % and >= 3 of its animals on study. Days after the control
@@ -148,15 +147,15 @@ analyze_drug_synergy_over_time <- function(df,
   all_timepoints <- evaluability$days
 
   # Apply time point filters if specified
-  if (!is.null(min_time_point)) {
-    all_timepoints <- all_timepoints[all_timepoints >= min_time_point]
+  if (!is.null(min_day)) {
+    all_timepoints <- all_timepoints[all_timepoints >= min_day]
   }
-  if (!is.null(max_time_point)) {
-    all_timepoints <- all_timepoints[all_timepoints <= max_time_point]
+  if (!is.null(max_day)) {
+    all_timepoints <- all_timepoints[all_timepoints <= max_day]
   }
   if (length(all_timepoints) == 0) {
     stop(if (!length(evaluability$days)) me_no_evaluable_day_msg(evaluability)
-         else "No evaluable day lies within min_time_point and max_time_point.",
+         else "No evaluable day lies within min_day and max_day.",
          call. = FALSE)
   }
 
@@ -183,9 +182,9 @@ analyze_drug_synergy_over_time <- function(df,
         endpoint_method = endpoint_method, arms = arms,
         model = endpoint_model, zero_floor = floor_value, volume_units = volume_units)
       synergy_results <- me_synergy_from_endpoint(
-        ep, control_name = control_name, drug_a_name = drug_a_name,
+        ep, control_name = reference_group, drug_a_name = drug_a_name,
         drug_b_name = drug_b_name, combo_name = combo_name,
-        n_boot = n_boot, boot_seed = boot_seed, verbose = FALSE,
+        n_boot = n_boot, boot_seed = seed, verbose = FALSE,
         warn_not_evaluable = FALSE)
       timepoint_results[[as.character(tp)]] <- synergy_results
 
@@ -283,7 +282,7 @@ analyze_drug_synergy_over_time <- function(df,
   }
   
   # Return comprehensive results
-  return(list(
+  return(me_result(list(
     timepoint_results = timepoint_results,
     synergy_summary = synergy_summary,
     peak_bliss_synergy = peak_bliss_synergy,
@@ -296,7 +295,7 @@ analyze_drug_synergy_over_time <- function(df,
     drug_a_name = drug_a_name,
     drug_b_name = drug_b_name,
     combo_name = combo_name
-  ))
+  ), "me_synergy_over_time"))
 }
 
 #' Plot Drug Synergy Trend Over Time
@@ -305,8 +304,8 @@ analyze_drug_synergy_over_time <- function(df,
 #' for different treatment groups, highlighting synergy and antagonism regions.
 #'
 #' @param synergy_results Results object from analyze_drug_synergy_over_time function
-#' @param custom_title Optional custom title for the plot
-#' @param custom_colors Optional named vector of custom colors for treatment groups
+#' @param title Optional custom title for the plot
+#' @param colors Optional named vector of custom colors for treatment groups
 #'
 #' @return A ggplot2 object visualizing TGI trends over time
 #' @export
@@ -314,11 +313,11 @@ analyze_drug_synergy_over_time <- function(df,
 #' @examples
 #' trend <- analyze_drug_synergy_over_time(master_synthetic_data,
 #'   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
-#'   combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-#'   min_time_point = 2,  # day 0 has no growth to inhibit
-#'   n_boot = 200, boot_seed = 1, verbose = FALSE)
+#'   combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+#'   min_day = 2,  # day 0 has no growth to inhibit
+#'   n_boot = 200, seed = 1, verbose = FALSE)
 #' plot_synergy_trend(trend)
-plot_synergy_trend <- function(synergy_results, custom_title = NULL, custom_colors = NULL) {
+plot_synergy_trend <- function(synergy_results, title = NULL, colors = NULL) {
   # Validate input
   if (!is.list(synergy_results) || is.null(synergy_results$synergy_summary)) {
     stop("Input must be a valid result object from analyze_drug_synergy_over_time()")
@@ -331,18 +330,18 @@ plot_synergy_trend <- function(synergy_results, custom_title = NULL, custom_colo
   combo_name <- synergy_results$combo_name
   
   # Set title
-  if (is.null(custom_title)) {
+  if (is.null(title)) {
     title <- "Tumor Growth Inhibition and Synergy Over Time"
   } else {
-    title <- custom_title
+    title <- title
   }
   
   # Create a named color vector to ensure correct assignment
-  if (is.null(custom_colors)) {
+  if (is.null(colors)) {
     color_values <- c("red", "blue", "purple", "gray50")
     names(color_values) <- c(drug_a_name, drug_b_name, combo_name, "Bliss Expected")
   } else {
-    color_values <- custom_colors
+    color_values <- colors
   }
   
   # Annotation coordinates: additive offsets so they work when Time_Point starts at 0

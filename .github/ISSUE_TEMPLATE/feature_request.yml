@@ -1,0 +1,24 @@
+name: Feature request
+description: An analysis, plot, option or download you would like.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: Issues are public. Please don't attach unpublished study data.
+  - type: textarea
+    id: want
+    attributes:
+      label: What you would like
+      description: What the dashboard or package should do.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What it is for
+      description: The study design or question behind it, and how you handle it today.
+  - type: textarea
+    id: refs
+    attributes:
+      label: References
+      description: A paper or method, if there is one.

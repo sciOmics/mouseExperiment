@@ -28,8 +28,8 @@ dr_fit <- function(df) {
   # named (R20.16).
   suppressWarnings(suppressMessages(dose_response_statistics(
     df, dose_column = "Dose", treatment_column = "Treatment",
-    volume_column = "Volume", day_column = "Day", id_column = "ID",
-    control_group_name = "D0", treatments = setdiff(unique(df$Treatment), "D0"))))
+    volume_column = "Volume", time_column = "Day", id_column = "ID",
+    reference_group = "D0", treatments = setdiff(unique(df$Treatment), "D0"))))
 }
 
 test_that("R14.1: the four curve parameters are reported, not NA", {
@@ -107,8 +107,8 @@ syn_fit <- function(df) {
   suppressWarnings(suppressMessages(analyze_drug_synergy(
     df, treatment_column = "Treatment", volume_column = "Volume",
     time_column = "Day", id_column = "ID", drug_a_name = "DrugA",
-    drug_b_name = "DrugB", combo_name = "Combo", control_name = "Control",
-    eval_time_point = 21, n_boot = 0, verbose = FALSE)))
+    drug_b_name = "DrugB", combo_name = "Combo", reference_group = "Control",
+    endpoint_day = 21, n_boot = 0, verbose = FALSE)))
 }
 
 test_that("R14.2: an agent that accelerates growth is not called synergistic", {
@@ -131,8 +131,8 @@ test_that("R14.2: the guard warns rather than failing silently", {
       syn_df(c(Control = 0.100, DrugA = 0.130, DrugB = 0.100, Combo = 0.098)),
       treatment_column = "Treatment", volume_column = "Volume",
       time_column = "Day", id_column = "ID", drug_a_name = "DrugA",
-      drug_b_name = "DrugB", combo_name = "Combo", control_name = "Control",
-      eval_time_point = 21, n_boot = 0, verbose = FALSE),
+      drug_b_name = "DrugB", combo_name = "Combo", reference_group = "Control",
+      endpoint_day = 21, n_boot = 0, verbose = FALSE),
     "did not inhibit growth")
 })
 

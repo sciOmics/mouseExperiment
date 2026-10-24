@@ -31,7 +31,7 @@ Caliper measurements for one drug at three doses and a vehicle control. It
 is the dashboard's "Dose Levels" demo.
 }
 \examples{
-d <- calculate_dates(dose_levels_synthetic_data, start_date = "24-Mar", year = 2025)
+d <- calculate_dates(dose_levels_synthetic_data, reference_date = "24-Mar", year = 2025)
 d <- calculate_volume(d)
 table(d$Treatment, d$Dose)
 }

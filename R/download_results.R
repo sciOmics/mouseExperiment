@@ -13,12 +13,14 @@
 # =============================================================================
 
 # The checklist's groups, in display order. Each is also a folder in the ZIP,
-# except "report", whose files sit at the top level.
+# except "code" and "report", whose files sit at the top level.
 DL_GROUPS <- c(tables      = "Tables (CSV)",
                plots       = "Plots",
                diagnostics = "Diagnostics",
                data        = "Data (CSV)",
+               code        = "R script",
                report      = "Report")
+DL_TOP_LEVEL <- c("code", "report")
 
 #' One file the "Download Results" tab can put in its ZIP
 #'
@@ -27,13 +29,16 @@ DL_GROUPS <- c(tables      = "Tables (CSV)",
 #' @param label What the checkbox says.
 #' @param file File name; tables and plots without the extension.
 #' @param kind "table" (a data frame), "plot" (a ggplot or other printable
-#'   plot) or "file" (a function that writes the file to the path it is given).
+#'   plot), "file" (a function that writes the file to the path it is given)
+#'   or "files" (a function that writes several files into the directory it is
+#'   given and returns their paths relative to it, e.g. a script and its data).
 #' @param value For "table" and "plot", a function returning the object (or
-#'   NULL when it cannot be made); for "file", a function(path).
+#'   NULL when it cannot be made); for "file", a function(path); for "files",
+#'   a function(dir).
 #' @param about One line describing the file, for README.txt.
 #' @param row_names Write the data frame's row names (e.g. an ANOVA table).
 #' @keywords internal
-dl_item <- function(id, group, label, file, kind = c("table", "plot", "file"),
+dl_item <- function(id, group, label, file, kind = c("table", "plot", "file", "files"),
                     value, about = label, row_names = FALSE) {
   kind <- match.arg(kind)
   stopifnot(group %in% names(DL_GROUPS), is.function(value))
@@ -44,13 +49,24 @@ dl_item <- function(id, group, label, file, kind = c("table", "plot", "file"),
 #' The "Download Results" tab's contents
 #' @param ns The module's namespace function.
 #' @param prefix Input-ID prefix for this module (e.g. "tg").
+#' @param upload Offer to include the uploaded file, so the R script starts
+#'   from it (R20-AC); not on Power, which reads no data.
 #' @keywords internal
-download_results_ui <- function(ns, prefix) {
+download_results_ui <- function(ns, prefix, upload = TRUE) {
   id <- function(x) ns(paste0(prefix, "_dl_", x))
   tagList(
     tags$p("Choose what to download. It all goes into one ZIP file, with a README.txt ",
            "that lists every file, the settings of the run and the package versions."),
     uiOutput(id("choices")),
+    if (upload) checkboxInput(id("include_upload"), tagList(
+      "Include my original file, so the R script starts from it",
+      help_tip(paste(
+        "The ZIP then holds the file you uploaded, as it was, and the R script rebuilds",
+        "the analysed data from it with the package's preparation functions: your",
+        "exclusions, the study days, the volumes and the arm labels. It checks the result",
+        "against the data the dashboard analysed before running the analysis. The file",
+        "includes any animals you excluded and columns no analysis uses."))),
+      value = FALSE),
     fluidRow(
       column(6,
         radioButtons(id("plot_format"),
@@ -85,7 +101,19 @@ add_download_results <- function(input, output, session, prefix, module,
   ns  <- session$ns
   id  <- function(x) paste0(prefix, "_dl_", x)
   gid <- function(g) id(paste0("group_", g))
-  current <- function() items() %||% list()
+  # F4: every tab's report is built from its other items, and the tab is
+  # registered for the study report (session$userData is the session's).
+  title <- function() sub("^mouseExperiment dashboard: (.*) results$", "\\1",
+                          tryCatch(readme_header()[1L], error = function(e) module))
+  base_items <- function() Filter(function(x) x$id != "report", items() %||% list())
+  current <- function() {
+    it <- base_items()
+    if (!length(it)) return(it)
+    c(it, list(report_dl_item(title(), base_items, readme_header, plot_size)))
+  }
+  reg <- session$userData$dl_registry %||% list()
+  reg[[module]] <- list(title = title, items = base_items, header = readme_header, size = plot_size)
+  session$userData$dl_registry <- reg
 
   output[[id("choices")]] <- renderUI({
     it <- current()
@@ -122,7 +150,8 @@ add_download_results <- function(input, output, session, prefix, module,
       chosen <- unlist(lapply(names(DL_GROUPS), function(g) input[[gid(g)]]))
       it <- Filter(function(x) x$id %in% chosen, current())
       write_results_zip(file, it, fmt = input[[id("plot_format")]] %||% "png",
-                        size = plot_size(), header = readme_header())
+                        size = plot_size(), header = readme_header(),
+                        opts = list(include_upload = isTRUE(input[[id("include_upload")]])))
       shinyjs::runjs(sprintf("window.trackDownload(%s, 'selected_results', 'zip');",
                              js_string(module)))
       log_info(sprintf("download_results | module=%s | files=%d", module, length(it)))
@@ -135,11 +164,13 @@ add_download_results <- function(input, output, session, prefix, module,
 #'
 #' An item whose object cannot be made (NULL or an error) is left out and
 #' listed in the README as not available, rather than failing the download.
+#' `opts` goes to "files" items: `include_upload`, the "Include my original
+#' file" tick (R20-AC).
 #' @return The ZIP's path, invisibly.
 #' @keywords internal
 write_results_zip <- function(zipfile, items, fmt = c("png", "pdf", "svg"),
                               size = list(width = 800, height = 600, dpi = 100),
-                              header = character(0)) {
+                              header = character(0), opts = list()) {
   fmt <- match.arg(fmt)
   outdir <- tempfile("results_")
   dir.create(outdir)
@@ -149,17 +180,20 @@ write_results_zip <- function(zipfile, items, fmt = c("png", "pdf", "svg"),
   listing <- character(0)
   missing <- character(0)
   for (x in items) {
-    folder <- if (identical(x$group, "report")) "" else x$group
+    folder <- if (x$group %in% DL_TOP_LEVEL) "" else x$group
     dir <- if (nzchar(folder)) file.path(outdir, folder) else outdir
     dir.create(dir, showWarnings = FALSE)
-    f <- tryCatch(dl_write(x, dir, fmt, size), error = function(e) NULL)
-    if (is.null(f)) {
+    f <- tryCatch(dl_write(x, dir, fmt, size, opts), error = function(e) NULL)
+    if (!length(f)) {
       missing <- c(missing, x$label)
       next
     }
+    # A "files" item writes several; the first is the item, the rest its data.
     rel <- if (nzchar(folder)) file.path(folder, f) else f
-    written <- c(written, rel)
-    listing <- c(listing, sprintf("  %-40s %s", rel, x$about))
+    new <- !rel %in% written
+    written <- c(written, rel[new])
+    listing <- c(listing, sprintf("  %-40s %s", rel[new],
+                                  c(x$about, rep(paste("read by", rel[1L]), length(rel) - 1L))[new]))
   }
 
   readme <- c(header, "", "Files", listing)
@@ -174,9 +208,13 @@ write_results_zip <- function(zipfile, items, fmt = c("png", "pdf", "svg"),
   invisible(zipfile)
 }
 
-# Write one item into `dir`; returns its file name, or NULL when the object
-# is not available.
-dl_write <- function(x, dir, fmt, size) {
+# Write one item into `dir`; returns its file name (several for "files"), or
+# NULL when the object is not available.
+dl_write <- function(x, dir, fmt, size, opts = list()) {
+  if (identical(x$kind, "files")) {
+    rel <- x$value(dir, opts)
+    return(rel[file.exists(file.path(dir, rel))])
+  }
   if (identical(x$kind, "file")) {
     x$value(file.path(dir, x$file))
     return(if (file.exists(file.path(dir, x$file))) x$file else NULL)

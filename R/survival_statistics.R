@@ -16,7 +16,7 @@
 #'   an independent subject at risk. Reduce to one row per animal first — e.g.
 #'   each animal's last observation, carrying its event indicator.
 #' @param time_column Name of column containing time-to-event data. Default: "Day"
-#' @param censor_column Name of column containing censoring indicator (1=event, 0=censored). Default: "Survival_Censor"
+#' @param event_column Name of column containing censoring indicator (1=event, 0=censored). Default: "Survival_Censor"
 #' @param treatment_column Name of column containing treatment groups. Default: "Treatment"
 #' @param cage_column Name of column containing cage identifiers. Default: "Cage"
 #' @param id_column Name of column containing individual mouse identifiers. Default: "ID"
@@ -112,7 +112,7 @@
 #' @export
 survival_statistics <- function(df,
                               time_column = "Day",
-                              censor_column = "Survival_Censor",
+                              event_column = "Survival_Censor",
                               treatment_column = "Treatment",
                               cage_column = "Cage",
                               id_column = "ID",
@@ -128,7 +128,7 @@ survival_statistics <- function(df,
   randomisation_unit <- match.arg(randomisation_unit)
 
   # Validate inputs
-  validate_inputs(df, time_column, censor_column, treatment_column)
+  validate_inputs(df, time_column, event_column, treatment_column)
   # R15.1: cage_column arrives either as NULL (the dashboard passes NULL when no
   # cage column is mapped) or as a name that may not be present -- the default is
   # "Cage", which is absent from plenty of real uploads. Both cases used to fail
@@ -163,7 +163,7 @@ survival_statistics <- function(df,
   # internal names once, here.
   work <- data.frame(
     Time      = as.numeric(df[[time_column]]),
-    Event     = df[[censor_column]],
+    Event     = df[[event_column]],
     Treatment = df[[treatment_column]],
     ID        = as.character(df[[id_column]]),
     stringsAsFactors = FALSE
@@ -171,7 +171,7 @@ survival_statistics <- function(df,
   if (!is.null(cage_column)) work$Cage <- as.character(df[[cage_column]])
   df               <- work
   time_column      <- "Time"
-  censor_column    <- "Event"
+  event_column    <- "Event"
   treatment_column <- "Treatment"
   id_column        <- "ID"
   if (!is.null(cage_column)) cage_column <- "Cage"
@@ -237,11 +237,11 @@ survival_statistics <- function(df,
   # since there is no replication to estimate from.
   cage_structure <- classify_cage_structure(df, cage_column, id_column,
                                             treatment_column)
+  warn_reused_cage_labels(df, cage_column, treatment_column)   # R22.3
   # CODE_REVIEW.md R20.6 -- this used cluster(cage) whenever cages were
   # replicated or crossed. A sandwich variance from 4-10 clusters is badly
   # downward-biased: 28 % false positives with 2 cages x 5 mice per arm. The
   # declared unit of randomisation decides instead (see randomisation_unit).
-  use_cage_cluster <- FALSE
   if (cage_structure$structure == "nested_partial") {
     warning("Some arms are housed in a single cage: ", cage_structure$description,
             " Their hazard ratios include any cage effect.", call. = FALSE)
@@ -269,10 +269,10 @@ survival_statistics <- function(df,
   }
   
   # Check for separation issues
-  surv_obj <- survival::Surv(df[[time_column]], df[[censor_column]])
+  surv_obj <- survival::Surv(df[[time_column]], df[[event_column]])
   surv_formula_str <- paste("surv_obj ~", treatment_column)
   cox_formula <- stats::as.formula(surv_formula_str)
-  separation_info <- check_separation(df, treatment_column, censor_column, verbose = verbose)
+  separation_info <- check_separation(df, treatment_column, event_column, verbose = verbose)
   
   # Choose and fit appropriate model
   model_results <- fit_survival_model(
@@ -283,7 +283,7 @@ survival_statistics <- function(df,
     treatment_groups,
     reference_group,
     time_column,
-    censor_column,
+    event_column,
     separation_info,
     firth_correction,
     verbose = verbose,
@@ -346,7 +346,7 @@ survival_statistics <- function(df,
   }
   
   # Create a separate survival fit for median survival calculation
-  surv_formula_str <- paste("Surv(", time_column, ",", censor_column, ") ~ ", 
+  surv_formula_str <- paste("Surv(", time_column, ",", event_column, ") ~ ", 
                             treatment_column)
   surv_formula <- stats::as.formula(surv_formula_str)
   km_fit <- survival::survfit(surv_formula, data = df)
@@ -400,10 +400,10 @@ survival_statistics <- function(df,
   # Next, find subjects with events
   # We need to handle possible duplicates in the data (multiple rows per subject)
   # For each subject, if any row has an event, count it as an event
-  event_data <- df[, c(id_column, treatment_column, censor_column, cage_column)]
+  event_data <- df[, c(id_column, treatment_column, event_column, cage_column)]
   # Aggregate to get maximum event per subject (1 if any event occurred, 0 otherwise)
   event_by_subject <- stats::aggregate(
-    event_data[[censor_column]], 
+    event_data[[event_column]], 
     by = c(
       list(
         ID = event_data[[id_column]],
@@ -437,7 +437,7 @@ survival_statistics <- function(df,
                          "p: pairwise log-rank (Firth's p-value did not converge)", ""))
   
   # Print formatted results
-  if (isTRUE(verbose)) print_results(results, df, treatment_column, time_column, censor_column)
+  if (isTRUE(verbose)) print_results(results, df, treatment_column, time_column, event_column)
   
   # Build our result list
   result_list <- list(
@@ -446,7 +446,7 @@ survival_statistics <- function(df,
     method_used = method_used,
     survival_data = data.frame(
       Time = df[[time_column]],
-      Event = df[[censor_column]],
+      Event = df[[event_column]],
       Treatment = df[[treatment_column]]
     )
   )
@@ -501,7 +501,7 @@ survival_statistics <- function(df,
     result_list$c_index <- model_results$c_index
   }
 
-  return(result_list)
+  return(me_result(result_list, "me_survival"))
 }
 
 #' Cage-level permutation log-rank: one treated arm against the reference
@@ -551,7 +551,7 @@ cage_permutation_logrank <- function(df, group, reference_group,
     } else NULL
     on.exit(if (!is.null(old_seed)) assign(".Random.seed", old_seed, envir = .GlobalEnv),
             add = TRUE)
-    set.seed(seed)
+    me_set_seed(seed)   # R22.1
     vapply(seq_len(n_perm), function(i) stat_for(sample(cage_ids, n_trt)), numeric(1))
   }
   stats <- stats[is.finite(stats)]
@@ -808,7 +808,7 @@ fit_survival_model <- function(df, surv_obj, cox_formula, treatment_column, trea
             old_seed <- if (exists(".Random.seed", envir = .GlobalEnv)) {
               get(".Random.seed", envir = .GlobalEnv)
             } else NULL
-            set.seed(withr_seed)
+            me_set_seed(withr_seed)   # R22.1
             lt <- coin::logrank_test(
               pair_formula, data = pair_data,
               distribution = coin::approximate(nresample = 20000L)
@@ -1052,8 +1052,6 @@ print_results <- function(results, df = NULL, treatment_column = NULL, time_colu
     
     # Safely handle HR values
     hr_na <- is.na(results$HR[i])
-    ci_lower_na <- is.na(results$CI_Lower[i]) 
-    ci_upper_na <- is.na(results$CI_Upper[i])
     
     hr_text <- if(hr_na || (!hr_na && results$HR[i] == 0)) {
       "Hazard Ratio: Not estimable"

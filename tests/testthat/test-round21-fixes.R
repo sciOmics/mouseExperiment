@@ -158,10 +158,8 @@ test_that("R20.D15: HTML report tables have one header cell per column", {
   res <- list(treatment_effects = data.frame(Treatment = c("A", "B"),
                                              Estimate = c(1.5, 2.5),
                                              SE = c(0.1, 0.2)))
-  f <- tempfile(fileext = ".html")
-  on.exit(unlink(f), add = TRUE)
-  g("build_html_report")(res, title = "t", settings = list(), file = f)
-  html <- paste(readLines(f, warn = FALSE), collapse = "")
+  # The report's table builder since 0.46.0 (F4).
+  html <- g("report_table")(res$treatment_effects)
   first_table <- regmatches(html, regexpr("<table>.*?</table>", html, perl = TRUE))
   n_th <- lengths(regmatches(first_table, gregexpr("<th>", first_table, fixed = TRUE)))
   expect_equal(n_th, 3L)                              # was 1: "Treatment, Estimate, SE"
@@ -214,7 +212,7 @@ test_that("R20.8: the synergy summary says Bliss does not apply rather than prin
   harm <- synergy_df(c(Control = 0.10, DrugA = 0.13, DrugB = 0.10, Combo = 0.10))
   res <- suppressWarnings(mouseExperiment::analyze_drug_synergy(
     harm, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
-    control_name = "Control", verbose = FALSE, n_boot = 200, boot_seed = 1))
+    reference_group = "Control", verbose = FALSE, n_boot = 200, seed = 1))
   rv <- shiny::reactiveValues(syn_results = res, syn_over_time = FALSE,
                               uploaded_data = harm, data_valid = TRUE)
   # The bar plot drops the NA "Bliss Expected" bar, with a ggplot warning.
@@ -228,7 +226,7 @@ test_that("R20.8: the synergy summary says Bliss does not apply rather than prin
 
   ot <- suppressWarnings(suppressMessages(mouseExperiment::analyze_drug_synergy_over_time(
     harm, drug_a_name = "DrugA", drug_b_name = "DrugB", combo_name = "Combo",
-    control_name = "Control", verbose = FALSE)))
+    reference_group = "Control", verbose = FALSE)))
   rv2 <- shiny::reactiveValues(syn_results = ot, syn_over_time = TRUE,
                                uploaded_data = harm, data_valid = TRUE)
   suppressWarnings(shiny::testServer(g("synergy_server"), args = list(rv = rv2), {

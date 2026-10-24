@@ -12,7 +12,7 @@ For the F.7 isolation guarantees and threat model, see [`docs/SECURITY.md`](SECU
 
 ## High-level layout
 
-The dashboard is a Shiny `navbarPage` with one tab per analysis module. Every module is a self-contained `shiny::moduleServer()` pair (UI + server). A small set of cross-cutting helpers (`helpers.R`, `helpers_bayes.R`, `helpers_report.R`) provides services every module uses. A separate F.7 layer (`job_registry.R` + per-module `*_resume.R` files) keeps long-running Bayesian fits resumable across tab disconnects.
+The dashboard is a Shiny `navbarPage` with one tab per analysis module. Every module is a self-contained `shiny::moduleServer()` pair (UI + server). A small set of cross-cutting helpers (`helpers_ui.R`, `helpers_data.R`, `helpers_format.R`, `helpers_plot.R`, `helpers_bayes.R`, `helpers_report.R`) provides services every module uses. Since 0.34.0 the dashboard is part of the `mouseExperiment` package: the analysis functions it calls live in the same `R/` directory. A separate F.7 layer (`job_registry.R` + per-module `*_resume.R` files) keeps long-running Bayesian fits resumable across tab disconnects.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -41,18 +41,29 @@ The dashboard is a Shiny `navbarPage` with one tab per analysis module. Every mo
 
 ## Directory layout
 
+`R/` holds the package's analysis functions and the dashboard together. The dashboard's files:
+
 ```
 R/
-├── app.R                          # entry point: run_dashboard()
-├── helpers.R                      # core utilities
+├── app.R                          # entry point: run_dashboard(), the navbarPage, server()
+├── ui_modules.R                   # shared UI helpers: info boxes, help icons, plot notes
+├── ui_data.R                      # the Data tab: upload, column mapping, Study Design, data check
+├── ui_tumor_growth.R              # the Tumor Growth tab
+├── ui_help.R                      # the Help and About pages
+├── helpers_ui.R                   # safe_analysis(), status_alert(), show_analysis_modal()
+├── helpers_data.R                 # animal keys, Subset Filter, prepare_upload(), ensure_preprocessed()
+├── helpers_format.R               # number, p-value and table formatting for display
+├── helpers_plot.R                 # colours, labels, legends, the group-order widget
 ├── helpers_bayes.R                # Bayesian diagnostics panel + LOO helpers
 ├── helpers_report.R               # standalone HTML report builder
+├── download_results.R             # the Download Results panel and its ZIP
+├── download_items.R               # what each tab offers in it
+├── reproduce_script.R             # the R script in the ZIP (record_call(), script_bundle())
 ├── logging.R                      # structured JSON logging
-├── ui_modules.R                   # shared UI components
-├── zzz.R                          # package onLoad hooks
+├── globals.R, zzz.R               # globalVariables(), onLoad hooks
 │
-├── mod_data_upload.R              # Data tab
-├── mod_log_session.R              # Log, filters and settings-preset panel
+├── mod_data_upload.R              # Data tab: upload, column mapping, Study Design, preview
+├── mod_log_session.R              # Subset Filter and settings presets
 ├── mod_power.R                    # Power Analysis tab
 ├── mod_tumor_growth.R             # TG lifecycle (observers, fit dispatch)
 ├── mod_tumor_growth_plots.R       #   TG plot reactives + renderPlots
@@ -62,6 +73,7 @@ R/
 ├── mod_toxicity.R                 # Toxicity lifecycle (BW + ET)
 ├── mod_toxicity_plots.R           #   Toxicity plot renderers
 ├── mod_toxicity_downloads.R       #   Toxicity downloads
+├── tox_background.R               #   Toxicity's background run
 ├── mod_synergy.R                  # Synergy lifecycle
 ├── mod_synergy_downloads.R        #   Synergy downloads
 ├── mod_dose_response.R            # DR lifecycle
@@ -73,30 +85,34 @@ R/
 ├── tg_resume.R                    # F.7 per-kind handlers for the two
 ├── surv_resume.R                  #     Bayesian fits (TG, survival)
 └── ttl_sweeper.R                  # F.7 periodic registry housekeeping
+```
 
+The package's files, which the dashboard calls:
+
+| Files | What they hold |
+|---|---|
+| `prepare_study.R`, `calculate_dates.R`, `calculate_volume.R` | The preparation functions: `read_study_csv()`, `apply_exclusions()`, `label_cages()`, `study_days()`, `calculate_volume()`, `label_arms()`, `survival_events()` |
+| `tumor_growth_statistics.R`, `tgs_path_auc.R`, `bayesian_tumor_growth.R`, `permutation_trajectory.R`, `tumor_doubling_time.R` | Tumour growth |
+| `survival_statistics.R`, `bayesian_survival.R` | Survival |
+| `analyze_body_weight.R`, `weight_loss_threshold.R`, `therapeutic_window_metric.R` | Toxicity |
+| `analyze_drug_synergy.R`, `analyze_drug_synergy_over_time.R` | Synergy |
+| `dose_response_statistics.R` | Dose response |
+| `apriori_power_analysis.R`, `apriori_power_simulation.R` | Power |
+| `plot_*.R` | Plots |
+| `utils_*.R`, `bayesian_config.R` | Internal: the endpoint model, cages, contrasts, evaluability, keys, diagnostics |
+| `data.R` | The synthetic datasets |
+
+```
 inst/www/
 ├── css/                           # custom + dark-mode styles
 └── js/
     ├── session-id.js              # F.7 cookie setter (first connect)
-    ├── navbar.js
-    ├── sidebar.js
-    ├── darkmode.js
+    ├── navbar.js, sidebar.js, darkmode.js, help-tips.js
     ├── overlay.js                 # Bayesian "fit running" overlay
-    └── umami-events.js            # analytics tracking
-
-tests/testthat/
-├── helper-app.R
-├── test-demo_data.R
-├── test-helpers.R
-├── test-modal-and-cachebust.R
-├── test-module_servers.R
-├── test-new-helpers.R
-├── test-session_isolation.R       # F.7 security audit (39 assertions)
-├── test-resume_banner.R           # F.7 banner module (10 assertions)
-├── test-tg_resume.R               # F.7 per-kind helpers (11 assertions)
-├── test-resume_e2e.R              # F.7 disconnect/reconnect cycle (26 assertions)
-└── test-shiny_app.R               # shinytest2 (Data tab smoke test)
+    └── umami-events.js            # analytics helpers (no-ops without the Umami script)
 ```
+
+`tests/testthat/` has about 70 test files: one per function or module, and one per review round (`test-code_review_round*.R`, `test-round2*.R`), whose tests each fail on the version before the fix. `helper-*.R` files hold shared fixtures; tests that read the sources skip outside the source tree (`helper-dashboard-source.R`).
 
 ### File-naming convention (CODE_REVIEW.md C.1/C.3)
 
@@ -138,7 +154,7 @@ observeEvent(input$tg_run_analysis, { ... }) in mod_tumor_growth.R
        └─ output$tg_status_msg <- renderUI(status_alert("…", "success"))
 ```
 
-`safe_analysis()` (in `helpers.R`) wraps any expression in `tryCatch` + structured logging so errors don't blow up the session. Total runtime: 5-30 seconds for typical preclinical datasets.
+`safe_analysis()` (in `helpers_ui.R`) wraps any expression in `tryCatch` + structured logging so errors don't blow up the session. Total runtime: 5-30 seconds for typical preclinical datasets.
 
 ### Bayesian (tumor growth or survival)
 
@@ -281,23 +297,23 @@ Default `availableCores() - 1` leaves one core for the main Shiny event loop. On
 
 ## Shared cross-cutting helpers
 
-### `R/helpers.R`
+### `R/helpers_ui.R`, `helpers_data.R`, `helpers_format.R`, `helpers_plot.R`
 
-| Function | Purpose |
-|---|---|
-| `safe_analysis(module, expr)` | tryCatch wrapper around any analysis expression; logs failures, returns `list(error = TRUE, message = ...)` on error |
-| `status_alert(msg, type)` | Bootstrap-styled `<div class="alert ...">` for status banners |
-| `show_analysis_modal(title, detail)` | Generic "fit running" modal with spinner |
-| `translate_error(msg)` | Heuristic mapping from R error messages to user-friendly text |
-| `js_string(x)` | Safely-escape a string for inclusion in inline JS |
-| `format_df_for_display(df)` | Round numerics, format p-values, prepare a data.frame for DT |
-| `format_pval(x)` | "p = 0.013" style formatting with scientific notation for small p |
-| `build_color_vector(input, prefix, groups)` | Reads per-group color pickers; returns named character vector |
-| `apply_plot_labels(p, title, subtitle, ...)` | Adds title/subtitle/axis labels to a ggplot |
-| `apply_legend_pos(p, pos)` | Handles "right" / "top" / "inplot_tl" etc. legend positions |
-| `observe_palette_preset(input, session, prefix, groups_rv)` | Wires colorblind-friendly palette preset selector |
-| `ensure_preprocessed(rv)` | Memoizes data preprocessing across modules |
-| `apply_subset_filter(df, rv)` | F.5 — drops rows by IDs / Treatments / Cages exclusion lists |
+| Function | File | Purpose |
+|---|---|---|
+| `safe_analysis(expr, module)` | `helpers_ui.R` | tryCatch wrapper around any analysis expression; logs failures, returns `list(error = TRUE, message = ...)` on error |
+| `status_alert(msg, type)` | `helpers_ui.R` | Bootstrap-styled `<div class="alert ...">` for status banners |
+| `show_analysis_modal(title, detail)` | `helpers_ui.R` | Generic "fit running" modal with spinner |
+| `translate_error(msg)` | `helpers_ui.R` | Maps R error messages to user-friendly text |
+| `js_string(x)` | `helpers_ui.R` | Safely escapes a string for inline JS |
+| `format_df_for_display(df)` | `helpers_format.R` | Rounds numerics and formats p-values for DT |
+| `format_pval(x)` | `helpers_format.R` | p-values in scientific notation when small, never "0" |
+| `build_color_vector(input, prefix, groups)` | `helpers_plot.R` | Reads per-group colour pickers; returns a named character vector |
+| `apply_plot_labels(p, ...)`, `apply_legend_pos(p, pos)` | `helpers_plot.R` | Titles, axis labels and legend positions |
+| `observe_palette_preset(...)` | `helpers_plot.R` | Wires the colourblind-friendly palette presets |
+| `prepare_upload(rv)` | `helpers_data.R` | Prepares the upload with the package's preparation functions, recording each step for the R script |
+| `ensure_preprocessed(rv)` | `helpers_data.R` | Caches that preparation across modules |
+| `apply_subset_filter(df, rv)` | `helpers_data.R` | F.5: drops excluded animals, treatments, dose arms and cages |
 
 ### `R/helpers_bayes.R`
 

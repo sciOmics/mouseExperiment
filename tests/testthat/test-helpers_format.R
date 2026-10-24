@@ -1,64 +1,26 @@
 # =============================================================================
 # helpers_format.R — CODE_REVIEW.md D.1 / D.9
 #
-# Presentation is not cosmetic when the number lives on a transformed scale.
-# `back_transform()` is the function that turns a model estimate back into a
-# volume; if it disagrees with what the backend actually did, every figure on
-# screen is wrong by a factor of e. It had no test.
+# Presentation is not cosmetic when the number lives on a transformed scale:
+# an axis must say which scale its values are on.
 #
 # This is the consumer side of R3.D6: that fix made `transform_used` report what
 # the backend did rather than what was requested. These tests pin what the
 # dashboard then does with it.
 # =============================================================================
 
-# ---- back_transform --------------------------------------------------------
+# ---- scale_suffix ----------------------------------------------------------
 
-test_that("D.9: log back-transform is exp(), not expm1()", {
-  # The distinction is the whole point. The backend fits log(Volume), not
-  # log1p(Volume) — the roxygen says so explicitly. Using expm1 here would be
-  # wrong by 1 unit at every point, which is invisible on large tumours and
-  # badly wrong on small ones.
-  x <- c(0, 1, log(150), log(2000))
-  expect_equal(back_transform(x, "log"), exp(x))
-  expect_false(isTRUE(all.equal(back_transform(x, "log"), expm1(x))))
-})
-
-test_that("D.9: back_transform round-trips the scale the backend fits on", {
-  v <- c(50, 150, 800, 2400)
-  expect_equal(back_transform(log(v), "log"), v)
-  expect_equal(back_transform(sqrt(v), "sqrt"), v)
-  expect_equal(back_transform(v, "none"), v)
-})
-
-test_that("D.9: an unrecognised transform returns values unchanged", {
-  # Documented, not accidental. The fall-through means a typo'd or future
-  # transform name silently yields analysis-scale numbers presented as volumes.
-  # R3.D6 constrains the input — transform_used now comes from the backend's own
-  # meta rather than a free-text UI field — so the vocabulary is closed in
-  # practice. Pinned so that if a fourth transform is ever added, this test fails
-  # and someone has to think about it.
-  x <- c(1, 2, 3)
-  expect_equal(back_transform(x, "cuberoot"), x)
-  expect_equal(back_transform(x, ""), x)
-})
-
-test_that("D.9: back_transform coerces character input", {
-  # Values arriving from a rendered table are character; silent NA here would
-  # blank a column rather than error.
-  expect_equal(back_transform(c("0", "1"), "log"), exp(c(0, 1)))
-})
-
-test_that("D.9: scale_suffix covers exactly the vocabulary back_transform does", {
-  # The two are used in different places — one converts, one labels — but they
-  # must recognise the same transform names, or a plot gets converted values
-  # under an unlabelled axis (or vice versa).
+test_that("D.9: scale_suffix labels the three transforms the backend fits on", {
+  # back_transform(), its converting partner, had no caller and was removed in
+  # 0.42.0 (R22.11).
   for (tf in c("log", "sqrt", "none")) {
     expect_type(scale_suffix(tf), "character")
   }
   expect_identical(scale_suffix("log"),  " (log scale)")
   expect_identical(scale_suffix("sqrt"), " (sqrt scale)")
   expect_identical(scale_suffix("none"), "")
-  # Unknown name: no label, matching back_transform's no-op.
+  # Unknown name: no label.
   expect_identical(scale_suffix("cuberoot"), "")
 })
 
@@ -84,11 +46,6 @@ test_that("D.9: format_pval is vectorised", {
   expect_length(out, 3L)
   expect_true(is.na(out[3]))
   expect_match(out[2], "^< ")
-})
-
-test_that("D.9: format_number handles NA without erroring", {
-  expect_identical(format_number(NA_real_), "NA")
-  expect_identical(format_number(1.23456, digits = 2), "1.23")
 })
 
 # ---- table display ---------------------------------------------------------

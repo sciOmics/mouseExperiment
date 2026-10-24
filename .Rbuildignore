@@ -3,15 +3,9 @@
 ^\.github$
 ^\.gitignore$
 ^\.Rhistory$
-^temp$
 ^\.git$
-^plan\.md$
-^update_namespace\.R$
 ^CODE_REVIEW\.md$
-^NOTES\.md$
 ^CHANGELOG\.md$
-^DASHBOARD_PLAN\.md$
-^build\.R$
 ^\.claude$
 ^\.waylog$
 ^\.DS_Store$
@@ -21,5 +15,4 @@
 ^CONTRIBUTING\.md$
 ^LICENSE\.md$
 ^dev$
-^README\.Rmd$
 ^Rplots\.pdf$

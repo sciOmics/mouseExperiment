@@ -13,10 +13,8 @@
 #'     \item "sphere": V = (π × width³) / 6 (uses only the width/diameter)
 #'     \item "box": V = length × width × height (requires height_column)
 #'   }
-#' @param in_place Logical, whether to modify the input data frame (TRUE) or return a new data frame (FALSE, default)
 #'
-#' @return Returns a data frame with a "Volume" column appended, calculated using the specified formula.
-#'   If in_place=FALSE (default), returns a new data frame; if in_place=TRUE, modifies the input data frame and returns it.
+#' @return `df` with a "Volume" column, calculated using the specified formula.
 #' @export
 #'
 #' @details
@@ -57,16 +55,10 @@ calculate_volume <- function(df, length_column = "Length", width_column = "Width
                             height_column = NULL,
                             formula = c("ellipsoid", "modified_ellipsoid",
                                         "ellipsoid_3axis", "cylinder",
-                                        "sphere", "box"),
-                            in_place = FALSE) {
+                                        "sphere", "box")) {
   # match.arg fails loudly on typo (e.g. "ellipsoid_3axes" → error) instead
   # of silently dropping into the previous default-catch ellipsoid branch.
   formula <- match.arg(formula)
-  # Deprecation warning for in_place parameter
-  if (in_place) {
-    warning("The 'in_place' parameter is deprecated and will be removed in a future version. ",
-            "Use 'df <- calculate_volume(df, ...)' instead.", call. = FALSE)
-  }
   
   # Input validation
   if(!length_column %in% colnames(df)) {
@@ -84,12 +76,7 @@ calculate_volume <- function(df, length_column = "Length", width_column = "Width
     stop(paste("Column", height_column, "not found in data frame but required for", formula, "formula."))
   }
   
-  # Choose whether to modify in place or create a copy
-  if (in_place) {
-    df_result <- df  # Reference to the original dataframe
-  } else {
-    df_result <- df  # Create a copy of the data frame
-  }
+  df_result <- df
   
   # Ensure longer dimension is always stored in length_column 
   # and shorter dimension in width_column

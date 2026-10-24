@@ -19,7 +19,9 @@ add_tg_download_handlers(
   tg_rates_plot,
   tg_auc_plot,
   tg_forest_plot,
-  tg_wf_plot
+  tg_wf_plot,
+  endpoints = NULL,
+  growth_record = NULL
 )
 }
 \arguments{

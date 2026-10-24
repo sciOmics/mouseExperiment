@@ -34,23 +34,50 @@ dose series (low, mid and high), Drug_B, and the combination of Drug_A Mid with
 Drug_B. Mice are measured every two days until day 26, or until they are removed
 at the tumour volume endpoint (`Survival_Censor = 1` on their last row).
 
-# From raw measurements to volumes and study days
+# From a study file to volumes and study days
 
 The study already carries `Volume` and `Day`. Raw laboratory data usually has
-calendar dates and caliper measurements instead, as the combination dataset
-does. `calculate_dates()` and `calculate_volume()` convert them.
+calendar dates and caliper measurements instead, as the combination study's file
+does. The preparation functions read and convert it, in this order; the
+dashboard uses the same functions, and its R script replays them:
+
+* `read_study_csv()` reads a CSV with comma, semicolon or tab separators, a
+  decimal comma, and UTF-8, Latin-1 or UTF-16 text;
+* `apply_exclusions()` removes animals, arms or cages you leave out;
+* `label_cages()` makes cage labels unique when cages are numbered within each
+  arm (below);
+* `study_days()` turns dates into study days, letting the whole column decide
+  whether 03/04 is the 3rd of April or the 4th of March;
+* `calculate_volume()` turns caliper measurements into volumes;
+* `label_arms()` labels each arm by treatment and dose, and
+  `survival_events()` reduces the data to one row per animal for survival.
 
 ```{r prepare}
-raw <- combo_treatment_synthetic_data
+path <- system.file("sample_data", "combo_treatment_synthetic_data.csv",
+                    package = "mouseExperiment")
+raw <- read_study_csv(path)
 head(raw, 3)
-d <- calculate_dates(raw, start_date = "03/24/2025")
+d <- study_days(raw, date_column = "Date", reference_date = "2025-03-24")
 d <- calculate_volume(d)          # ellipsoid: pi * L * W^2 / 6
 head(d[, c("Treatment", "Cage", "ID", "Day", "Volume")], 3)
 ```
 
+When every date has one known format, `calculate_dates()` reads them with it.
+
 `calculate_volume()` also offers the modified ellipsoid, cylinder, sphere, box
 and a three-axis ellipsoid when a height is measured
 (`height_column = "Height"`).
+
+A cage label is read as one cage. These data label their cages across the
+study, 1 to 4. If yours are numbered within each arm, C1 and C2 in every arm,
+make the labels unique first, or each label is read as one cage holding every
+arm:
+
+```{r cages}
+cages <- data.frame(Treatment = rep(c("Vehicle", "Drug_A"), each = 2),
+                    Cage = c("C1", "C2", "C1", "C2"))
+label_cages(cages)$Cage
+```
 
 # Which days can be compared
 
@@ -106,8 +133,8 @@ the Bliss difference, not on its point estimate.
 ```{r synergy}
 syn <- analyze_drug_synergy(m,
   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
-  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-  cage_column = "Cage", n_boot = 500, boot_seed = 1, verbose = FALSE)
+  combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+  cage_column = "Cage", n_boot = 500, seed = 1, verbose = FALSE)
 syn$summary
 plot_drug_synergy(syn)
 ```
@@ -117,8 +144,8 @@ The same comparison on every evaluable day:
 ```{r synergy-trend}
 trend <- analyze_drug_synergy_over_time(m,
   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
-  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-  min_time_point = 2, cage_column = "Cage", n_boot = 500, boot_seed = 1,
+  combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+  min_day = 2, cage_column = "Cage", n_boot = 500, seed = 1,
   verbose = FALSE)
 plot_synergy_trend(trend)
 ```
@@ -130,22 +157,26 @@ Dose-response analyses one agent's dose series against its control.
 ```{r dose}
 dr <- dose_response_statistics(m,
   treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High"),
-  control_group_name = "Vehicle", cage_column = "Cage", verbose = FALSE)
+  reference_group = "Vehicle", cage_column = "Cage", verbose = FALSE)
 dr$summary_table
 dr$trend_test
 ```
 
 # Survival
 
-Survival needs one row per animal: its last record, carrying the event
-indicator. Here the unit of randomisation is the mouse. With
-`randomisation_unit = "cage"` the comparison becomes a cage-level permutation
-log-rank test instead.
+Survival needs one row per animal, with its time and event.
+`survival_events()` makes it. It keys animals by arm, ID and cage, so ear tags
+reused in each arm stay apart, and an event is at the animal's first flagged
+day. With `volume_limit` instead of `event_column`, an event is the first day
+a tumour reached that volume. Here the unit of randomisation is the mouse.
+With `randomisation_unit = "cage"` the comparison becomes a cage-level
+permutation log-rank test instead.
 
 ```{r survival}
-mm <- m[order(m$ID, m$Day), ]
-per_animal <- mm[!duplicated(mm$ID, fromLast = TRUE), ]
-surv <- survival_statistics(per_animal, reference_group = "Vehicle",
+per_animal <- survival_events(m, event_column = "Survival_Censor",
+                              cage_column = "Cage")
+surv <- survival_statistics(per_animal, time_column = "Time",
+                            event_column = "Event", reference_group = "Vehicle",
                             verbose = FALSE)
 surv$method_used
 surv$results
@@ -175,7 +206,7 @@ each with an interval:
 ```{r window}
 tw <- therapeutic_window_metric(m, volume_units = "mm3", cage_column = "Cage",
                                 reference_group = "Vehicle",
-                                n_boot = 500, boot_seed = 1)
+                                n_boot = 500, seed = 1)
 tw$window_table
 ```
 
@@ -189,6 +220,16 @@ apriori_power_analysis(effect_size = 1.2, n_groups = 3)
 `apriori_power_simulation()` simulates whole studies with the same mixed model,
 including random slopes and dropout at a volume limit. Use at least 500
 simulations in practice.
+
+# The dashboard and its R script
+
+`run_dashboard()` opens the same analyses in a browser, without code. Each tab's
+**Download Results** offers a ZIP of the tables, plots, diagnostics and data,
+an HTML report, and an R script that reruns the analysis with these functions.
+The script starts from the analysed data, or, with "Include my original file"
+ticked, from the file you uploaded: it replays the preparation above with the
+settings you chose, and stops unless the result is the data the dashboard
+analysed.
 
 # Bayesian models
 

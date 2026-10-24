@@ -256,7 +256,7 @@ Load them from the Data Upload tab's "Try Demo Data" list, or read directly in R
 
 ## See also
 
-- `R/helpers_data.R::detect_columns()`, `detect_date_format()`, `study_days()`, `apply_subset_filter()` — the actual implementations
+- `R/helpers_data.R::detect_columns()`, `detect_date_format()`, `prepare_upload()`, `apply_subset_filter()` — the dashboard's side
 - `R/mod_data_upload.R` — the Data tab's upload + mapping UI
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — how the data flows from Data Upload to each analysis module
-- Backend `mouseExperiment::calculate_volume()`, `mouseExperiment::calculate_dates()` — the actual conversion functions
+- The package's preparation functions, which the dashboard calls and its R script replays: `read_study_csv()`, `apply_exclusions()`, `label_cages()`, `study_days()` (dates to days, the whole column deciding the day/month order), `calculate_volume()`, `label_arms()`, `survival_events()`

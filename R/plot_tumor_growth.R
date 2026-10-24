@@ -4,12 +4,12 @@
 #'
 #' @param df A data frame containing tumor measurements
 #' @param volume_column The name of the column storing tumor volume measurements
-#' @param day_column The name of the column with number of days since the beginning of the experiment for each observation
+#' @param time_column The name of the column with number of days since the beginning of the experiment for each observation
 #' @param treatment_column The name of the column with the treatment indicator
 #' @param cage_column The name of the column with the cage identifier
-#' @param ID_column The name of the column with the individual mouse identifier
+#' @param id_column The name of the column with the individual mouse identifier
 #' @param dose_column Optional. The name of the column with dose information (if present in the data)
-#' @param survival_column The name of the column indicating survival status (1 for death, 0 for alive)
+#' @param event_column The name of the column indicating survival status (1 for death, 0 for alive)
 #' @param extrapolate_volumes Boolean. Should missing volumes for mice that have died be extrapolated? Extrapolated values are shown with dashed lines. Default is FALSE.
 #' @param extrapolation_points Character or numeric. Number of data points to use for extrapolation: "all" uses all available data points, a numeric value uses that many recent points, with fallback options if needed. Default is "all".
 #' @param group_summary_line Boolean. Should a line for the treatment group average be plotted? Default is TRUE.
@@ -32,10 +32,10 @@
 #'   subset(master_synthetic_data,
 #'          Treatment %in% c("Vehicle", "Drug_A Low", "Drug_A Mid", "Drug_A High")),
 #'   dose_column = "Dose")
-plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
-                             treatment_column = "Treatment", cage_column = "Cage", ID_column = "ID",
+plot_tumor_growth <- function(df, volume_column = "Volume", time_column = "Day",
+                             treatment_column = "Treatment", cage_column = "Cage", id_column = "ID",
                              dose_column = NULL,
-                             survival_column = "Survival_Censor",
+                             event_column = "Survival_Censor",
                              extrapolate_volumes = FALSE,
                              extrapolation_points = "all",
                              group_summary_line = TRUE,
@@ -44,15 +44,15 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
                              volume_units = "mm3") {
   
   # Input validation — cage_column is optional
-  req_cols <- c(volume_column, day_column, treatment_column, ID_column)
+  req_cols <- c(volume_column, time_column, treatment_column, id_column)
   if (!all(req_cols %in% colnames(df))) {
     stop("Missing required columns in data frame: ", 
          paste(req_cols[!req_cols %in% colnames(df)], collapse = ", "))
   }
   
   # Check for survival column if extrapolation is requested
-  if (extrapolate_volumes && !(survival_column %in% colnames(df))) {
-    stop(paste("Column", survival_column, "not found in data frame, but is needed for extrapolation"))
+  if (extrapolate_volumes && !(event_column %in% colnames(df))) {
+    stop(paste("Column", event_column, "not found in data frame, but is needed for extrapolation"))
   }
   
   # Check for dose column if specified
@@ -91,10 +91,10 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
   # Create a composite mouse identifier based on Cage, Treatment, ID (and Dose if available)
   if (!is.null(dose_column)) {
     plot_df$Mouse_ID <- paste(plot_df[[cage_column]], plot_df[[treatment_column]], 
-                             plot_df[[dose_column]], plot_df[[ID_column]], sep = "_")
+                             plot_df[[dose_column]], plot_df[[id_column]], sep = "_")
   } else {
     plot_df$Mouse_ID <- paste(plot_df[[cage_column]], plot_df[[treatment_column]], 
-                             plot_df[[ID_column]], sep = "_")
+                             plot_df[[id_column]], sep = "_")
   }
   
   # Convert Group to a factor, preserving the user-specified treatment ordering.
@@ -124,8 +124,7 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
   # Extrapolate missing volumes for mice that have died if requested
   if (extrapolate_volumes) {
     # Get all unique time points (days)
-    all_days <- sort(unique(plot_df[[day_column]]))
-    max_day <- max(all_days)
+    all_days <- sort(unique(plot_df[[time_column]]))
     
     # For each unique mouse (using the Mouse_ID composite identifier), check if they died
     # and extrapolate values if needed
@@ -139,16 +138,12 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
     if (!using_all_points && !is.numeric(extrapolation_points)) {
       warning("extrapolation_points must be 'all' or a positive number. Defaulting to 'all'.")
       using_all_points <- TRUE
-      extrapolation_method <- "all available data points"
     } else if (!using_all_points) {
       extrapolation_points <- as.integer(extrapolation_points)
       if (extrapolation_points < 1) {
         warning("extrapolation_points must be at least 1. Defaulting to 3.")
         extrapolation_points <- 3
       }
-      extrapolation_method <- paste(extrapolation_points, "most recent data points")
-    } else {
-      extrapolation_method <- "all available data points"
     }
     
     # Loop through each mouse
@@ -157,21 +152,21 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
       mouse_data <- plot_df[plot_df$Mouse_ID == mouse_id, ]
       
       # Check if this mouse died (has Survival_Censor = 1)
-      if (any(mouse_data[[survival_column]] == 1)) {
+      if (any(mouse_data[[event_column]] == 1)) {
         # Find when the mouse died
-        death_rows <- which(mouse_data[[survival_column]] == 1)
-        death_day <- min(mouse_data[[day_column]][death_rows])
-        death_row <- mouse_data[mouse_data[[day_column]] == death_day, ]
+        death_rows <- which(mouse_data[[event_column]] == 1)
+        death_day <- min(mouse_data[[time_column]][death_rows])
+        death_row <- mouse_data[mouse_data[[time_column]] == death_day, ]
         last_volume <- death_row[[volume_column]][1]
         
         # Calculate growth rate using log-linear regression
         growth_rate <- 0.1  # Default fallback growth rate
         
         # Sort mouse data by day
-        mouse_data <- mouse_data[order(mouse_data[[day_column]]), ]
+        mouse_data <- mouse_data[order(mouse_data[[time_column]]), ]
         
         # Extract time and volume data
-        days <- mouse_data[[day_column]]
+        days <- mouse_data[[time_column]]
         volumes <- mouse_data[[volume_column]]
         
         # Use all available time points with positive volumes for growth rate calculation
@@ -269,7 +264,7 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
             extrapolated_volume <- last_volume * exp(growth_rate * days_after_death)
             
             # Update the new row with extrapolated data
-            new_row[[day_column]] <- future_day
+            new_row[[time_column]] <- future_day
             new_row[[volume_column]] <- extrapolated_volume
             new_row$Extrapolated <- TRUE
             
@@ -288,7 +283,7 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
   # Base plot with individual growth curves — non-extrapolated points only
   # fill = Group is included so that dual-fill shapes (e.g. pch 25, down-triangle)
   # render correctly when scale_fill_manual is added externally.
-  plot <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data[[day_column]], y = .data[[volume_column]], group = Mouse_ID)) +
+  plot <- ggplot2::ggplot(plot_df, ggplot2::aes(x = .data[[time_column]], y = .data[[volume_column]], group = Mouse_ID)) +
     ggplot2::geom_line(
       data = ~ subset(., !Extrapolated),
       ggplot2::aes(color = Group), alpha = 0.5, linewidth = 0.5
@@ -307,21 +302,21 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
       last_real_points <- do.call(rbind, lapply(mice_with_extrap, function(mid) {
         real_pts <- plot_df[plot_df$Mouse_ID == mid & !plot_df$Extrapolated, ]
         if (nrow(real_pts) == 0) return(NULL)
-        real_pts[which.max(real_pts[[day_column]]), ]
+        real_pts[which.max(real_pts[[time_column]]), ]
       }))
       extrap_line_data <- rbind(last_real_points, extrapolated_points)
 
       plot <- plot + 
         ggplot2::geom_point(
           data = extrapolated_points,
-          ggplot2::aes(x = .data[[day_column]], y = .data[[volume_column]], color = Group),
+          ggplot2::aes(x = .data[[time_column]], y = .data[[volume_column]], color = Group),
           shape = 1,  # hollow circle
           alpha = 0.7,
           size = point_size
         ) +
         ggplot2::geom_line(
           data = extrap_line_data,
-          ggplot2::aes(x = .data[[day_column]], y = .data[[volume_column]], color = Group, group = Mouse_ID),
+          ggplot2::aes(x = .data[[time_column]], y = .data[[volume_column]], color = Group, group = Mouse_ID),
           linetype = "dashed",
           alpha = 0.5,
           linewidth = 0.5
@@ -341,7 +336,7 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
       plot <- plot +
         ggplot2::geom_point(
           data = necrotic_pts,
-          ggplot2::aes(x = .data[[day_column]], y = .data[[volume_column]]),
+          ggplot2::aes(x = .data[[time_column]], y = .data[[volume_column]]),
           shape  = 4,              # \u00d7 symbol
           color  = "black",
           size   = point_size * 1.8,
@@ -361,8 +356,8 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
   if (group_summary_line) {
     meas <- plot_df[!plot_df$Extrapolated & is.finite(plot_df[[volume_column]]), , drop = FALSE]
     enrolled <- tapply(meas$Mouse_ID, meas$Group, function(x) length(unique(x)))
-    mean_df <- do.call(rbind, lapply(split(meas, list(meas$Group, meas[[day_column]]), drop = TRUE),
-      function(g) data.frame(Group = g$Group[1], Day = g[[day_column]][1],
+    mean_df <- do.call(rbind, lapply(split(meas, list(meas$Group, meas[[time_column]]), drop = TRUE),
+      function(g) data.frame(Group = g$Group[1], Day = g[[time_column]][1],
                              Mean = mean(g[[volume_column]]),
                              N = length(unique(g$Mouse_ID)), stringsAsFactors = FALSE)))
     if (!is.null(mean_df) && nrow(mean_df)) {
@@ -381,10 +376,10 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
       }
       mean_df <- mean_df[ok, , drop = FALSE]
       if (is.factor(plot_df$Group)) mean_df$Group <- factor(mean_df$Group, levels = levels(plot_df$Group))
-      names(mean_df)[names(mean_df) == "Day"] <- day_column
+      names(mean_df)[names(mean_df) == "Day"] <- time_column
       plot <- plot + ggplot2::geom_line(
         data = mean_df,
-        ggplot2::aes(x = .data[[day_column]], y = .data[["Mean"]], group = Group, color = Group),
+        ggplot2::aes(x = .data[[time_column]], y = .data[["Mean"]], group = Group, color = Group),
         linewidth = 1.4, inherit.aes = FALSE)
     }
   }
@@ -407,7 +402,7 @@ plot_tumor_growth <- function(df, volume_column = "Volume", day_column = "Day",
     ggplot2::xlab("Day") +
     ggplot2::ggtitle(title) +
     ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0, 0.05)),
-                                limits = c(min(0, plot_df[[day_column]], na.rm = TRUE), NA)) +
+                                limits = c(min(0, plot_df[[time_column]], na.rm = TRUE), NA)) +
     ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0.10)), limits = c(0, NA)) + # Start at 0, 10% top buffer
     ggplot2::theme_classic() +
     # Move legend to top-left with proper spacing from title

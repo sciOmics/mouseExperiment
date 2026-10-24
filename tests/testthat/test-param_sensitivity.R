@@ -62,21 +62,21 @@ test_that("tumor_growth_statistics: transform argument actually changes pairwise
                info = "log vs none should produce materially different pairwise estimates")
 })
 
-test_that("tumor_growth_statistics: auc_bootstrap_n is ignored, with a warning (R20.4)", {
+test_that("tumor_growth_statistics: the AUC intervals hold their estimates and the seed fixes them", {
   # Since v0.26.0 the AUC is model-based and its intervals come from draws of
-  # the model; the per-animal bootstrap it configured no longer exists. A
-  # documented argument that silently changes nothing is the T4b pattern, so
-  # it must say so.
+  # the model; `seed` sets those draws (R20.4). The per-animal bootstrap's
+  # n_boot and auc_permutations, ignored since then, were removed in 0.40.0.
   df <- make_tg_simple()
-  expect_warning(
-    res <- suppressMessages(tumor_growth_statistics(
-      df, model_type = "auc", reference_group = "Control",
-      auc_bootstrap_n = 199L, auc_bootstrap_seed = 1L, plots = FALSE)),
-    "ignored")
+  fit <- function(seed) suppressWarnings(suppressMessages(tumor_growth_statistics(
+    df, model_type = "auc", reference_group = "Control", seed = seed, plots = FALSE)))
+  res <- fit(1L)
   te <- res$treatment_effects
   expect_true(all(te$Lower_CL <= te$AUC & te$AUC <= te$Upper_CL))
   pw <- res$posthoc$pairwise
   expect_true(all(pw$ratio_lower <= pw$ratio & pw$ratio <= pw$ratio_upper))
+  expect_equal(fit(1L)$treatment_effects, te)
+  expect_false(isTRUE(all.equal(fit(2L)$treatment_effects$Lower_CL, te$Lower_CL)))
+  expect_false("n_boot" %in% names(formals(tumor_growth_statistics)))
 })
 
 test_that("survival_statistics: ph_test is returned on the standard-Cox path", {

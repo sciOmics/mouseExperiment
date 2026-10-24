@@ -16,9 +16,9 @@ test_that("returns a list with expected fields", {
       dose_column          = "Dose",
       treatment_column     = "Treatment",
       volume_column        = "Volume",
-      day_column           = "Day",
+      time_column           = "Day",
       id_column            = "ID",
-      control_group_name   = "Control"
+      reference_group   = "Control"
     )
   ))
 
@@ -39,9 +39,9 @@ test_that("summary_table has one row per dose level", {
       dose_column        = "Dose",
       treatment_column   = "Treatment",
       volume_column      = "Volume",
-      day_column         = "Day",
+      time_column         = "Day",
       id_column          = "ID",
-      control_group_name = "Control"
+      reference_group = "Control"
     )
   ))
 
@@ -57,9 +57,9 @@ test_that("trend test detects significant dose-response (p < 0.01)", {
       dose_column        = "Dose",
       treatment_column   = "Treatment",
       volume_column      = "Volume",
-      day_column         = "Day",
+      time_column         = "Day",
       id_column          = "ID",
-      control_group_name = "Control"
+      reference_group = "Control"
     )
   ))
 
@@ -94,9 +94,9 @@ test_that("mean volume decreases with dose in summary_table", {
       dose_column        = "Dose",
       treatment_column   = "Treatment",
       volume_column      = "Volume",
-      day_column         = "Day",
+      time_column         = "Day",
       id_column          = "ID",
-      control_group_name = "Control"
+      reference_group = "Control"
     )
   ))
 

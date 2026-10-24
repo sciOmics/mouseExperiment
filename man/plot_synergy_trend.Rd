@@ -4,14 +4,14 @@
 \alias{plot_synergy_trend}
 \title{Plot Drug Synergy Trend Over Time}
 \usage{
-plot_synergy_trend(synergy_results, custom_title = NULL, custom_colors = NULL)
+plot_synergy_trend(synergy_results, title = NULL, colors = NULL)
 }
 \arguments{
 \item{synergy_results}{Results object from analyze_drug_synergy_over_time function}
 
-\item{custom_title}{Optional custom title for the plot}
+\item{title}{Optional custom title for the plot}
 
-\item{custom_colors}{Optional named vector of custom colors for treatment groups}
+\item{colors}{Optional named vector of custom colors for treatment groups}
 }
 \value{
 A ggplot2 object visualizing TGI trends over time
@@ -23,8 +23,8 @@ for different treatment groups, highlighting synergy and antagonism regions.
 \examples{
 trend <- analyze_drug_synergy_over_time(master_synthetic_data,
   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
-  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-  min_time_point = 2,  # day 0 has no growth to inhibit
-  n_boot = 200, boot_seed = 1, verbose = FALSE)
+  combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+  min_day = 2,  # day 0 has no growth to inhibit
+  n_boot = 200, seed = 1, verbose = FALSE)
 plot_synergy_trend(trend)
 }

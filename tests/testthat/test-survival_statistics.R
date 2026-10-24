@@ -19,7 +19,7 @@ test_that("returns a list with required fields", {
     survival_statistics(
       df,
       time_column      = "Day",
-      censor_column    = "Survival_Censor",
+      event_column    = "Survival_Censor",
       treatment_column = "Treatment",
       cage_column      = "Cage",
       id_column        = "ID",
@@ -39,7 +39,7 @@ test_that("reference group is set to Control", {
     survival_statistics(
       df,
       time_column      = "Day",
-      censor_column    = "Survival_Censor",
+      event_column    = "Survival_Censor",
       treatment_column = "Treatment",
       cage_column      = "Cage",
       id_column        = "ID",
@@ -56,7 +56,7 @@ test_that("results data frame has one row per non-reference group", {
     survival_statistics(
       df,
       time_column      = "Day",
-      censor_column    = "Survival_Censor",
+      event_column    = "Survival_Censor",
       treatment_column = "Treatment",
       cage_column      = "Cage",
       id_column        = "ID",
@@ -90,7 +90,7 @@ test_that("KM median survival for AggressiveTx matches survfit reference (25 day
     survival_statistics(
       df,
       time_column      = "Day",
-      censor_column    = "Survival_Censor",
+      event_column    = "Survival_Censor",
       treatment_column = "Treatment",
       cage_column      = "Cage",
       id_column        = "ID",
@@ -117,7 +117,7 @@ test_that("KM median survival for Control is NA (never reaches 50% events)", {
     survival_statistics(
       df,
       time_column      = "Day",
-      censor_column    = "Survival_Censor",
+      event_column    = "Survival_Censor",
       treatment_column = "Treatment",
       cage_column      = "Cage",
       id_column        = "ID",
@@ -143,7 +143,7 @@ test_that("hazard ratio for AggressiveTx vs Control is > 1 (higher hazard)", {
     survival_statistics(
       df,
       time_column      = "Day",
-      censor_column    = "Survival_Censor",
+      event_column    = "Survival_Censor",
       treatment_column = "Treatment",
       cage_column      = "Cage",
       id_column        = "ID",
@@ -170,7 +170,7 @@ test_that("results p-value is significant (< 0.05)", {
     survival_statistics(
       df,
       time_column      = "Day",
-      censor_column    = "Survival_Censor",
+      event_column    = "Survival_Censor",
       treatment_column = "Treatment",
       cage_column      = "Cage",
       id_column        = "ID",
@@ -195,7 +195,7 @@ test_that("Events and Total counts are consistent with input data", {
     survival_statistics(
       df,
       time_column      = "Day",
-      censor_column    = "Survival_Censor",
+      event_column    = "Survival_Censor",
       treatment_column = "Treatment",
       cage_column      = "Cage",
       id_column        = "ID",

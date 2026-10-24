@@ -341,7 +341,7 @@ survivalUI <- function(id) {
                   selectInput(ns("surv_plot_selector"), "Select Plot",
                     choices = c(
                       "Kaplan-Meier Curve"       = "km",
-                      "Hazard Ratio Forest Plot" = "forest"
+                      "Forest Plot (hazard or time ratios)" = "forest"
                     )
                   ),
                   ctrl_section("surv-groups", "sort", "Groups",
@@ -421,7 +421,7 @@ survivalUI <- function(id) {
                   )
                 ),
                 conditionalPanel(ns = ns,"input.surv_plot_selector == 'forest'",
-                  h4("Hazard Ratio Forest Plot"),
+                  h4("Forest Plot"),
                   shinycssloaders::withSpinner(
                     plotOutput(ns("surv_forest_plot"), width = "auto", height = "auto")
                   )
@@ -668,20 +668,18 @@ survival_server <- function(id, rv) {
     dose_col_surv <- if (!is.null(rv$settings$col_dose) && nzchar(rv$settings$col_dose) &&
                          rv$settings$col_dose != "None") rv$settings$col_dose else NULL
 
-    # When a dose column is mapped, build a combined "Treatment Dose" group label
-    # so each dose level is treated as its own group.
+    # When a dose column is mapped, each treatment-dose combination is its own
+    # arm, labelled "Treatment Dose" (label_arms(), exported in R20-AB).
     has_dose_surv <- has_col(data, dose_col_surv) && has_col(data, rv$settings$col_treatment)
+    prep_steps <- pp$steps   # R20-AC: the preparation, for the R script
     if (has_dose_surv) {
-      data[["TreatmentGroup"]] <- paste(data[[rv$settings$col_treatment]],
-                                        data[[dose_col_surv]], sep = " ")
+      la_args <- list(df = data, treatment_column = rv$settings$col_treatment,
+                      dose_column = dose_col_surv, name = "TreatmentGroup")
+      data <- do.call(label_arms, la_args)
+      prep_steps <- c(prep_steps, list(record_call("label_arms", la_args, keep_data = FALSE)))
     }
 
-    # Handle time column — reuse from preprocessed data
     time_col  <- pp$time_col
-    full_data <- data  # preserve full longitudinal data for volume-threshold event derivation
-
-    # One row per animal (R20.D2): keyed by arm + ID (+ cage), at the first
-    # flagged event day. See survival_animal_rows().
     id_col_surv   <- rv$settings$col_id
     cage_col_surv <- if (!is.null(rv$settings$col_cage) && nzchar(rv$settings$col_cage) &&
                          rv$settings$col_cage != "None") rv$settings$col_cage else NULL
@@ -696,51 +694,42 @@ survival_server <- function(id, rv) {
       rv$surv_running <- FALSE
       return()
     }
-    data <- survival_animal_rows(
-      full_data, time_col, tx_col_surv, id_col_surv, cage_col_surv,
-      event_col = if (event_src == "column") rv$settings$col_survival_event)
-
-    # Resolve event/time columns: either from user-supplied censor column or derived
-    # by finding the first day each animal's tumour exceeded the volume threshold
-    if (event_src == "volume") {
-      if (is.null(pp$vol_col) || !pp$vol_col %in% names(full_data)) {
-        showNotification(
-          "Volume column not mapped. Cannot derive survival events from volume threshold.",
-          type = "error"
-        )
-        rv$surv_running <- FALSE
-        return(NULL)
-      }
-      vol_threshold <- as.numeric(input$surv_vol_threshold %||% 2000)
-      ev <- volume_threshold_events(full_data, time_col, tx_col_surv, id_col_surv,
-                                    cage_col_surv, vol_col = pp$vol_col,
-                                    threshold = vol_threshold)
-      m <- match(data$.animal_key, ev$.animal_key)
-      data[[".__DerivedTime"]]  <- ev$Time[m]
-      data[[".__DerivedEvent"]] <- ev$Event[m]
-
-      censor_col_use <- ".__DerivedEvent"
-      time_col_use   <- ".__DerivedTime"
-    } else {
-      censor_col_use <- rv$settings$col_survival_event
-      time_col_use   <- time_col
+    if (event_src == "volume" && (is.null(pp$vol_col) || !pp$vol_col %in% names(data))) {
+      showNotification(
+        "Volume column not mapped. Cannot derive survival events from volume threshold.",
+        type = "error"
+      )
+      rv$surv_running <- FALSE
+      return(NULL)
     }
 
-    # R20.D13 / R20-D.H: with a removal-reason column, deaths from other
-    # causes can count as events, at the animal's last measurement.
+    # One row per animal with its Time and Event (survival_events(), exported
+    # in R20-AB): keyed by arm + ID (+ cage), at the first flagged day
+    # (R20.D2), or at the first day the tumour reached the volume limit. With
+    # a removal-reason column, deaths from other causes can count as events,
+    # at the animal's last measurement (R20.D13 / R20-D.H).
     death_spec <- removal_reason_spec(rv)
-    n_death_events <- NA_integer_
-    if (!is.null(death_spec) && isTRUE(input$surv_death_as_event) &&
-        has_col(full_data, death_spec$column) && has_col(data, censor_col_use)) {
-      reasons <- animal_removal_reasons(full_data, tx_col_surv, id_col_surv,
-                                        cage_col_surv, death_spec$column, time_col)
-      died <- names(reasons)[!is.na(reasons) &
-                               reasons %in% reasons_in(death_spec, "death")]
-      ev_now <- suppressWarnings(as.numeric(data[[censor_col_use]]))
-      hit <- data$.animal_key %in% died & (is.na(ev_now) | ev_now == 0)
-      data[[censor_col_use]] <- ifelse(hit, 1, ev_now)
-      n_death_events <- sum(hit)
+    use_deaths <- !is.null(death_spec) && isTRUE(input$surv_death_as_event)
+    ev_args <- list(
+      df = data, time_column = time_col, treatment_column = tx_col_surv,
+      id_column = id_col_surv, cage_column = cage_col_surv,
+      event_column = if (event_src == "column") rv$settings$col_survival_event,
+      volume_column = if (event_src == "volume") pp$vol_col,
+      volume_limit = if (event_src == "volume") as.numeric(input$surv_vol_threshold %||% 2000),
+      removal_reason_column = if (use_deaths) death_spec$column,
+      death_reasons = if (use_deaths) reasons_in(death_spec, "death"))
+    data <- tryCatch(do.call(survival_events, ev_args), error = function(e) {
+      output$surv_status_msg <- renderUI(status_alert(conditionMessage(e), "danger"))
+      NULL
+    })
+    if (is.null(data)) {
+      rv$surv_running <- FALSE
+      return()
     }
+    prep_steps <- c(prep_steps, list(record_call("survival_events", ev_args, keep_data = FALSE)))
+    n_death_events <- attr(data, "death_events_added")
+    censor_col_use <- "Event"
+    time_col_use   <- "Time"
 
     # Validate all required columns exist before analysis
     required <- c(Treatment = tx_col_surv,
@@ -778,7 +767,9 @@ survival_server <- function(id, rv) {
         vol_threshold  = if (event_src == "volume") as.numeric(input$surv_vol_threshold %||% 2000) else NA_real_,
         time_method    = rv$settings$time_method,
         time_col_orig  = time_col,
-        ref_date       = rv$settings$reference_date
+        ref_date       = rv$settings$reference_date,
+        prep_steps     = prep_steps,       # R20-AC: for the R script
+        source_file    = rv$source_file
       )
 
       # F.7 — route through the job registry so the fit survives tab
@@ -792,24 +783,27 @@ survival_server <- function(id, rv) {
     show_analysis_modal("Fitting survival model\u2026", "Results will appear automatically when complete.")
     on.exit(shiny::removeModal(), add = TRUE)
 
-    result <- safe_analysis(module = "survival", {
-      # R20.D14: the ID column is passed (it used to have to be named "ID").
-      # R20.6: the declared unit of randomisation decides the test.
-      mouseExperiment::survival_statistics(
-        df = data,
-        time_column = time_col_use,
-        censor_column = censor_col_use,
-        treatment_column = tx_col_surv,
-        cage_column = cage_col_surv,
-        id_column = id_col_surv,
-        randomisation_unit = if (!is.null(cage_col_surv))
-                               rv$settings$randomisation_unit %||% "mouse" else "mouse",
-        dose_column = dose_col_surv,
-        reference_group = ref_group,
-        firth_correction = TRUE,
-        verbose = FALSE
-      )
-    })
+    # R20.D14: the ID column is passed (it used to have to be named "ID").
+    # R20.6: the declared unit of randomisation decides the test.
+    surv_args <- list(
+      df = data,
+      time_column = time_col_use,
+      event_column = censor_col_use,
+      treatment_column = tx_col_surv,
+      cage_column = cage_col_surv,
+      id_column = id_col_surv,
+      randomisation_unit = if (!is.null(cage_col_surv))
+                             rv$settings$randomisation_unit %||% "mouse" else "mouse",
+      dose_column = dose_col_surv,
+      reference_group = ref_group,
+      firth_correction = TRUE,
+      verbose = FALSE
+    )
+    result <- safe_analysis(module = "survival",
+                            do.call(mouseExperiment::survival_statistics, surv_args))
+    # R20-AA: the call exactly as made, for the R script in Download Results.
+    result <- with_provenance(result, record_call("survival_statistics", surv_args),
+                              prep_steps, rv$source_file)
 
     # Store event source for downstream use (KM plot titles, summary text)
     result$event_src_used     <- event_src
@@ -1203,7 +1197,6 @@ survival_server <- function(id, rv) {
     if (isTRUE(rv$surv_results$error)) return(NULL)
     if (isTRUE(rv$surv_results$model_type_used == "bayes")) return(NULL)
 
-    method <- rv$surv_results$method_used %||% NA_character_
     c_idx  <- rv$surv_results$c_index
     ph     <- rv$surv_results$ph_test
 
@@ -1383,38 +1376,13 @@ survival_server <- function(id, rv) {
   # build_surv_forest_plot() lives in helpers_plot.R (R20.D19): the download
   # handler in mod_survival_downloads.R could not see it as a local here.
   # Forest plot
+  # R22.2: the same plot as the download (surv_forest_plot_styled()), so a
+  # Bayesian run's time ratios are drawn too; it read the Cox table only.
   output$surv_forest_plot <- renderPlot({
     req(rv$surv_results)
-    if (isTRUE(rv$surv_results$error) || is.null(rv$surv_results$results)) return(NULL)
-    
-    res <- rv$surv_results$results
-    req(all(c("Group", "HR", "CI_Lower", "CI_Upper", "P_Value") %in% colnames(res)))
-    
-    ref_grp <- rv$surv_results$reference_group
-    
-    # Verify at least one non-reference group with valid HR
-    plot_df <- res[!is.na(res$HR), ]
-    if (!is.null(ref_grp)) plot_df <- plot_df[plot_df$Group != ref_grp, ]
-    req(nrow(plot_df) > 0)
-
-    pt_color <- input$surv_forest_pt_color %||% "steelblue"
-    show_hr  <- isTRUE(input$surv_forest_show_hr)
-    show_ci  <- isTRUE(input$surv_forest_show_ci)
-    show_p   <- isTRUE(input$surv_forest_show_p)
-
-    p <- build_surv_forest_plot(res, ref_grp, pt_color, show_hr, show_ci, show_p)
+    p <- surv_forest_plot_styled(rv$surv_results, input)
     req(!is.null(p))
-    text_size   <- input$surv_opt_text_size %||% 16
-    legend_pos  <- input$surv_opt_legend_pos %||% "right"
-    p <- apply_plot_labels(p,
-                           input$surv_plot_title        %||% "",
-                           input$surv_plot_subtitle     %||% "",
-                           input$surv_plot_title_align  %||% "center",
-                           text_size,
-                           xlab       = input$surv_plot_xaxis_label  %||% "",
-                           ylab       = input$surv_plot_yaxis_label  %||% "",
-                           legend_lab = input$surv_plot_legend_label %||% "")
-    apply_legend_pos(p, legend_pos)
+    p
   }, width = function() input$surv_plot_width %||% 800,
      height = function() input$surv_plot_height %||% 600)
 

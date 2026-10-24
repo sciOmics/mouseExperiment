@@ -15,7 +15,7 @@ An R package for statistical analysis of mouse tumor growth experiments. Covers 
 - **Bayesian diagnostics** — Rhat, ESS, NUTS divergences / max_treedepth / E-BFMI, Bayes R², PPC coverage, PSIS-LOO with Pareto-k, posterior P(effect ≠ 0)
 - **Comprehensive plots** — KM curves, growth trajectories, synergy bar charts, dose-response curves, forest plots, MCMC diagnostics
 - **Config helpers** — `tg_priors()` and `tg_mcmc()` bundle prior + MCMC arguments so Bayesian entry-point signatures stay readable
-- **Dashboard** — `run_dashboard()` opens an interactive Shiny app: upload a CSV, map its columns and run each analysis from the browser, with downloadable tables, plots and an HTML report. The hosted version is at [mouseexperiment.com](https://mouseexperiment.com)
+- **Dashboard** — `run_dashboard()` opens an interactive Shiny app: upload a CSV, map its columns and run each analysis from the browser, with downloadable tables and plots, an HTML report for each analysis and for the whole study, and an R script that reproduces each run. The hosted version is at [mouseexperiment.com](https://mouseexperiment.com)
 - **Code-coverage** — `covr::package_coverage()` baseline; one-line `Rscript coverage.R` for HTML / stdout reports
 
 ## Current status
@@ -23,13 +23,13 @@ An R package for statistical analysis of mouse tumor growth experiments. Covers 
 | Item | State |
 |---|---|
 | Version | see `DESCRIPTION` |
-| Review | `CODE_REVIEW.md`, cumulative rounds; Round 20 is the latest |
+| Review | `CODE_REVIEW.md`, cumulative rounds, the latest last |
 | Checks | `R CMD check` and the test suite run on every push and nightly (GitHub Actions) |
 | README | every non-Bayesian code block below is run by `tests/testthat/test-readme.R` |
 
 ### A note on dependencies
 
-The statistical packages (`brms`, `bayesplot`, `coin`, `clinfun`, `ggpubr`,
+The statistical packages (`brms`, `bayesplot`, `coin`, `clinfun`,
 `posterior`) are **required**, not suggested, so installing needs a working C++
 toolchain: `brms` pulls in the Stan stack.
 
@@ -73,13 +73,16 @@ Every example uses `master_synthetic_data`, which ships with the package and has
 every column the functions use. The vignette, `vignette("mouseExperiment")`, walks
 through the same analysis with explanations.
 
+Each analysis returns a list. Printing it shows what was found, its headline tables'
+first rows; `summary()` returns those tables whole, and `names()` lists every field.
+
 ### Preparing data
 
 ```r
 library(mouseExperiment)
 
 # Raw laboratory data: calendar dates and caliper measurements
-d <- calculate_dates(combo_treatment_synthetic_data, start_date = "03/24/2025")
+d <- calculate_dates(combo_treatment_synthetic_data, reference_date = "03/24/2025")
 d <- calculate_volume(d)     # ellipsoid, pi * L * W^2 / 6
 head(d)
 
@@ -124,11 +127,14 @@ Every analysis function takes `plots = FALSE` to skip its figures. The model dia
 library(mouseExperiment)
 m <- master_synthetic_data
 
-# One row per animal: its last record carries the event indicator
-mm <- m[order(m$ID, m$Day), ]
-per_animal <- mm[!duplicated(mm$ID, fromLast = TRUE), ]
+# One row per animal, with its Time and Event. Animals are keyed by arm, ID
+# and cage, so ear tags reused in each arm stay apart; an event is at the
+# animal's first flagged day.
+per_animal <- survival_events(m, event_column = "Survival_Censor",
+                              cage_column = "Cage")
 
-surv <- survival_statistics(per_animal, reference_group = "Vehicle",
+surv <- survival_statistics(per_animal, time_column = "Time",
+                            event_column = "Event", reference_group = "Vehicle",
                             verbose = FALSE)
 surv$results               # hazard ratios, intervals, p-values, medians
 surv$method_used           # "coxphf" (Firth) by default
@@ -138,9 +144,10 @@ surv$method_used           # "coxphf" (Firth) by default
 # Bayesian AFT model (Weibull or log-normal)
 library(mouseExperiment)
 m <- master_synthetic_data
-mm <- m[order(m$ID, m$Day), ]
-per_animal <- mm[!duplicated(mm$ID, fromLast = TRUE), ]
-bayes_surv <- bayesian_survival(per_animal, reference_group = "Vehicle",
+per_animal <- survival_events(m, event_column = "Survival_Censor",
+                              cage_column = "Cage")
+bayes_surv <- bayesian_survival(per_animal, time_column = "Time",
+                                event_column = "Event", reference_group = "Vehicle",
                                 family = "weibull",
                                 mcmc = tg_mcmc(chains = 4, iter = 500))
 bayes_surv$treatment_effects   # time ratio and hazard ratio, with 95 % CrI
@@ -168,8 +175,8 @@ m <- master_synthetic_data
 
 syn <- analyze_drug_synergy(m,
   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
-  combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-  cage_column = "Cage", n_boot = 500, boot_seed = 1, verbose = FALSE)
+  combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+  cage_column = "Cage", n_boot = 500, seed = 1, verbose = FALSE)
 syn$summary
 plot_drug_synergy(syn)
 ```
@@ -182,7 +189,7 @@ m <- master_synthetic_data
 
 dr <- dose_response_statistics(m,
   treatments = c("Drug_A Low", "Drug_A Mid", "Drug_A High"),
-  control_group_name = "Vehicle", cage_column = "Cage", verbose = FALSE)
+  reference_group = "Vehicle", cage_column = "Cage", verbose = FALSE)
 dr$summary_table
 dr$trend_test        # Jonckheere-Terpstra
 ```
@@ -197,7 +204,7 @@ tw <- therapeutic_window_metric(m,
   reference_group = "Vehicle", cage_column = "Cage",
   volume_units = "mm3",               # needed to subtract tumour mass
   tolerability_threshold = 20,        # percent of baseline weight
-  n_boot = 500, boot_seed = 1)
+  n_boot = 500, seed = 1)
 tw$window_table   # TGI and worst weight loss per arm, with intervals and a flag
 ```
 
@@ -221,6 +228,9 @@ apriori_power_simulation(n_per_group = c(6L, 10L), n_simulations = 50L, seed = 1
 | `tumor_growth_statistics()` | LME4 / AUC tumor growth analysis |
 | `bayesian_tumor_growth()` | Bayesian LMM via brms |
 | `tumor_doubling_time()` | Doubling time estimation |
+| `response_categories()` | Each animal's mRECIST response (mCR, mPR, mSD, mPD) and each arm's response rate |
+| `plot_response_waterfall()` | Best-response waterfall plot |
+| `growth_delay()` | Tumour growth delay: T − C in the median time to a volume, with an interval |
 | `plot_tumor_growth()` | Growth trajectory plot |
 | `plot_growth_rate()` | Growth-rate forest plot |
 
@@ -235,7 +245,7 @@ apriori_power_simulation(n_per_group = c(6L, 10L), n_simulations = 50L, seed = 1
 |----------|-------------|
 | `analyze_body_weight()` | LME4 mixed model for body weight |
 | `weight_loss_threshold()` | Time to a weight-loss threshold (KM / competing risks) |
-| `therapeutic_window_metric()` | Therapeutic window: efficacy vs weight loss |
+| `therapeutic_window_metric()` | Therapeutic window: efficacy (TGI and %T/C) vs weight loss |
 
 ### Drug Synergy
 | Function | Description |
@@ -252,7 +262,8 @@ apriori_power_simulation(n_per_group = c(6L, 10L), n_simulations = 50L, seed = 1
 ### Power Analysis
 | Function | Description |
 |----------|-------------|
-| `apriori_power_analysis()` | Analytic (t-test / ANOVA) |
+| `apriori_power_analysis()` | Analytic, for a volume endpoint (t-test per comparison; Dunnett or Bonferroni) |
+| `apriori_survival_power()` | Analytic, for a survival endpoint (log-rank, Schoenfeld) |
 | `apriori_power_simulation()` | LMM simulation-based |
 
 ### Bayesian configuration helpers (v0.4.7+, CODE_REVIEW.md D.2)
@@ -262,12 +273,26 @@ apriori_power_simulation(n_per_group = c(6L, 10L), n_simulations = 50L, seed = 1
 | `tg_mcmc(chains, warmup, iter, seed, backend)` | MCMC-config object — bundles the four MCMC arguments |
 | `clear_compiled_model_cache()` | Empties the session's cache of compiled Stan models; a fit whose model has the same structure as an earlier one reuses its compiled model and skips the ~20 s compile (v0.28.0) |
 
+### Preparing data
+The dashboard prepares an upload with these, in this order; its R script can replay them.
+
+| Function | Description |
+|----------|-------------|
+| `read_study_csv()` | Read a CSV with any of comma, semicolon or tab, a decimal comma, and UTF-8, Latin-1 or UTF-16 |
+| `apply_exclusions()` | Remove excluded animals (by arm, ID and cage), arms and cages (a whole cage, or one arm's) |
+| `label_cages()` | Cage labels made unique when cages are numbered within each arm: "C1" becomes "Vehicle C1" |
+| `study_days()` | Study Day from a date column; the whole column decides day/month order |
+| `calculate_volume()` | Volume from length × width (multiple geometric formulas) |
+| `label_arms()` | Arms labelled by treatment and dose, e.g. "Drug_A 10" |
+| `survival_events()` | One row per animal with its time and event, from an event column or a volume limit, with deaths from removal reasons |
+| `check_study_data()` | Likely errors (duplicates, negative volumes, rows that cannot be placed), things to check (jumps, missed days, weight drops) and design notes, with each row's line |
+
 ### Utilities
 | Function | Description |
 |----------|-------------|
-| `calculate_volume()` | Volume from length × width (multiple geometric formulas) |
-| `calculate_dates()` | Date-to-day conversion |
+| `calculate_dates()` | Date-to-day conversion from one given date format |
 | `calculate_auc()` | Trapezoidal AUC |
+| `style_plot()` | A plot styled as the dashboard does: theme, colours, shapes, labels, legend, log scale, x range |
 
 ## Datasets
 
@@ -304,6 +329,13 @@ Rscript coverage.R              # coverage baseline (excludes Bayesian fits by
                                 # default -- a large exclusion now that the whole
                                 # Bayesian surface is required and tested)
 ```
+
+## Support
+
+Report bugs, request features and ask questions on
+[GitHub Issues](https://github.com/sciOmics/mouseExperiment/issues). Issues are public, so
+please don't attach unpublished study data: a few made-up rows, or a demo dataset, are enough.
+Report security problems privately, as [SECURITY.md](docs/dashboard/SECURITY.md) describes.
 
 ## License
 

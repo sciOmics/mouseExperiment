@@ -28,8 +28,8 @@ call_synergy <- function(df) {
       drug_a_name      = "DrugA",
       drug_b_name      = "DrugB",
       combo_name       = "DrugA+DrugB",
-      control_name     = "Control",
-      eval_time_point  = 21
+      reference_group     = "Control",
+      endpoint_day  = 21
     )
   ))
 }
@@ -151,7 +151,7 @@ test_that("errors when specified combo group is absent from the data", {
       drug_a_name      = "DrugA",
       drug_b_name      = "DrugB",
       combo_name       = "NONEXISTENT_COMBO",
-      control_name     = "Control"
+      reference_group     = "Control"
     ))
   )
 })

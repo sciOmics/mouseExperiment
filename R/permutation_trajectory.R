@@ -91,7 +91,7 @@ print.perm_spec <- function(x, ...) {
 #' refits drop from the assignments to the distinct statistics (90 to 15 for
 #' six cages in three arms of two).
 #'
-#' @param assignments List of label vectors from [enumerate_label_perms()].
+#' @param assignments List of label vectors from `enumerate_label_perms()`.
 #' @return The subset that represents each partition once.
 #' @noRd
 #' @keywords internal
@@ -275,6 +275,8 @@ trajectory_permutation_test <- function(df,
            "\nA cage holding more than one treatment has no single label to ",
            "permute. If animals were randomised individually and then re-housed, ",
            "the randomisation unit is the mouse \u2014 use perm_spec(unit = 'mouse').",
+           if (!is.null(m <- reused_cage_message(df, cage_column, treatment_column)))
+             paste0("\n", m),
            call. = FALSE)
     }
     unit_of <- d$.cage
@@ -365,7 +367,7 @@ trajectory_permutation_test <- function(df,
     on.exit({
       if (!is.null(old_seed)) assign(".Random.seed", old_seed, envir = .GlobalEnv)
     }, add = TRUE)
-    set.seed(spec$seed)
+    me_set_seed(spec$seed)   # R22.1
   }
 
   unit_names <- names(unit_labels)
@@ -424,7 +426,7 @@ trajectory_permutation_test <- function(df,
     (1 + sum(perm_stats[ok] >= observed - 1e-9)) / (1 + n_ok)
   }
 
-  list(
+  me_result(list(
     p_value                = p_value,
     observed_statistic     = observed,
     perm_statistics        = perm_stats[ok],
@@ -448,5 +450,5 @@ trajectory_permutation_test <- function(df,
                              "arms of equal size gives the same statistic)")
       else paste0(n_draw, " sampled permutations"),
       " of treatment labels at the ", spec$unit, " level")
-  )
+  ), "me_permutation")
 }

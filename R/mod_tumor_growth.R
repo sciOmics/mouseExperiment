@@ -69,39 +69,7 @@ tumor_growth_server <- function(id, rv) {
       status_alert("Running analysis...", "info")
     })
     
-    # Prepare data
-    # CODE_REVIEW.md Round 2 F.5: apply the global Subset Filter (set on the
-    # Data Upload tab) before any column derivation, so excluded mice /
-    # treatments / cages are gone from every downstream computation.
-    data <- apply_subset_filter(rv$uploaded_data, rv)
-    
-    # Handle time column - either use direct day or calculate from date
-    if (rv$settings$time_method == "from_date") {
-      # R20.D4: a date error used to escape this observer and leave
-      # "Running analysis..." on screen. Report it and stop instead.
-      data <- tryCatch({
-        # R20.D1: the whole column decides the day/month order.
-        sd <- study_days(data, rv$settings$col_date_for_day,
-                         rv$settings$reference_date,
-                         rv$settings$date_order %||% "auto")
-        if (length(sd$notes)) {
-          showNotification(paste(sd$notes, collapse = " "), type = "warning",
-                           duration = 10)
-        }
-        sd$data
-      }, error = function(e) {
-        log_caught_error("tumor_growth", "date preprocessing", e)
-        output$tg_status_msg <- renderUI(status_alert(conditionMessage(e), "danger"))
-        rv$tg_running <- FALSE
-        NULL
-      })
-      if (is.null(data)) return()
-      time_col <- "Day"  # calculate_dates produces a "Day" column
-    } else {
-      time_col <- rv$settings$col_day
-    }
-    
-    # Apply volume calculation if needed
+    # Caliper columns, checked first so the message names the problem.
     if (rv$settings$volume_method == "calculate") {
       len_col <- rv$settings$col_length %||% ""
       wid_col <- rv$settings$col_width  %||% ""
@@ -113,8 +81,8 @@ tumor_growth_server <- function(id, rv) {
         rv$tg_running <- FALSE
         return()
       }
-      if (!len_col %in% colnames(data) || !wid_col %in% colnames(data)) {
-        missing_col <- if (!len_col %in% colnames(data)) len_col else wid_col
+      if (!len_col %in% colnames(rv$uploaded_data) || !wid_col %in% colnames(rv$uploaded_data)) {
+        missing_col <- if (!len_col %in% colnames(rv$uploaded_data)) len_col else wid_col
         output$tg_status_msg <- renderUI({
           status_alert(paste0("Column not found in data: '", missing_col, "'"), "danger")
         })
@@ -123,21 +91,30 @@ tumor_growth_server <- function(id, rv) {
         rv$tg_running <- FALSE
         return()
       }
-      ht_col_tg <- if (!is.null(rv$settings$col_height) && nzchar(rv$settings$col_height)) rv$settings$col_height else NULL
-      data <- mouseExperiment::calculate_volume(
-        data,
-        length_column = len_col,
-        width_column  = wid_col,
-        height_column = ht_col_tg,
-        formula       = rv$settings$volume_formula
-      )
-      vol_col <- "Volume"
-    } else {
-      vol_col <- rv$settings$col_volume
     }
+
+    # Prepare data: the subset filter (CODE_REVIEW.md Round 2 F.5) before any
+    # column derivation, then study days, then volume, each step recorded for
+    # the R script (prepare_upload(), R20-AC).
+    # R20.D4: a date error used to escape this observer and leave
+    # "Running analysis..." on screen. Report it and stop instead.
+    pu <- tryCatch(prepare_upload(rv), error = function(e) {
+      log_caught_error("tumor_growth", "date preprocessing", e)
+      output$tg_status_msg <- renderUI(status_alert(conditionMessage(e), "danger"))
+      rv$tg_running <- FALSE
+      NULL
+    })
+    if (is.null(pu)) return()
+    if (length(pu$notes)) {
+      showNotification(paste(pu$notes, collapse = " "), type = "warning", duration = 10)
+    }
+    data     <- pu$data
+    time_col <- pu$time_col
+    vol_col  <- pu$vol_col
     
     # Store preprocessed data and resolved column names for reuse by other modules
-    rv$processed_data <- data
+    rv$processed_data  <- data
+    rv$processed_steps <- pu$steps
     rv$time_col       <- time_col
     rv$vol_col        <- vol_col
     rv$tx_col         <- rv$settings$col_treatment
@@ -146,13 +123,18 @@ tumor_growth_server <- function(id, rv) {
     rv$dose_col       <- if (!is.null(rv$settings$col_dose)     && rv$settings$col_dose != "")     rv$settings$col_dose     else NULL
     rv$necrotic_col   <- if (!is.null(rv$settings$col_necrotic) && rv$settings$col_necrotic != "") rv$settings$col_necrotic else NULL
 
-    # When a dose column is mapped, combine treatment + dose into a single
-    # group label so each dose level is treated as its own group by all analyses.
+    # When a dose column is mapped, each treatment-dose combination is its own
+    # arm (label_arms()). R20-AB: on this run's copy only. It used to replace
+    # the shared rv$processed_data and rv$tx_col, so Toxicity and Dose
+    # Response saw "TreatmentGroup" arms only after Tumor Growth had run.
+    tg_tx_col <- rv$settings$col_treatment
+    prep_steps <- pu$steps
     if (!is.null(rv$dose_col)) {
-      data[["TreatmentGroup"]] <- paste(data[[rv$settings$col_treatment]],
-                                        data[[rv$dose_col]], sep = " ")
-      rv$processed_data <- data
-      rv$tx_col         <- "TreatmentGroup"
+      la_args <- list(df = data, treatment_column = rv$settings$col_treatment,
+                      dose_column = rv$dose_col, name = "TreatmentGroup")
+      data <- do.call(label_arms, la_args)
+      prep_steps <- c(prep_steps, list(record_call("label_arms", la_args, keep_data = FALSE)))
+      tg_tx_col <- "TreatmentGroup"
     }
 
     # Prepare column names
@@ -160,7 +142,7 @@ tumor_growth_server <- function(id, rv) {
       time_column = time_col,
       volume_column = vol_col,
       id_column = rv$settings$col_id,
-      treatment_column = rv$tx_col,
+      treatment_column = tg_tx_col,
       cage_column = if (rv$settings$col_cage != "") rv$settings$col_cage else NULL
     )
 
@@ -251,7 +233,9 @@ tumor_growth_server <- function(id, rv) {
         necrotic_col      = rv$necrotic_col,
         necrotic_handling = tg_necrotic_handling(),
         volume_units      = backend_volume_units(rv),
-        plot_groups       = rv$tg_plot_groups
+        plot_groups       = rv$tg_plot_groups,
+        prep_steps        = prep_steps,       # R20-AC: for the R script
+        source_file       = rv$source_file
       )
 
       # F.7 — route through the job registry so the fit survives tab
@@ -271,12 +255,14 @@ tumor_growth_server <- function(id, rv) {
     # it runs on the background worker (22 s at 999 permutations, 145 s at
     # 9,999, during which every session on the server used to freeze), and
     # its result joins this run's when it arrives.
-    perm <- if (isTRUE(input$tg_run_perm)) {
-      mouseExperiment::perm_spec(
-        unit   = rv$settings$randomisation_unit %||% "mouse",
-        n_perm = as.integer(input$tg_perm_n %||% 999L),
-        seed   = 20260730L)
+    # Built as a call and evaluated, so the R script writes the same call
+    # (R20-Z) instead of a deparsed perm_spec object.
+    perm_call <- if (isTRUE(input$tg_run_perm)) {
+      bquote(perm_spec(unit   = .(rv$settings$randomisation_unit %||% "mouse"),
+                       n_perm = .(as.integer(input$tg_perm_n %||% 999L)),
+                       seed   = 20260730L))
     } else NULL
+    perm <- if (!is.null(perm_call)) eval(perm_call, asNamespace("mouseExperiment")) else NULL
     tg_args <- list(
         df = data,
         time_column = col_names$time_column,
@@ -312,9 +298,6 @@ tumor_growth_server <- function(id, rv) {
           else if (req_adj == "tukey" && fam != "all_pairs") "dunnett"
           else req_adj
         }),
-        # extrapolation_points is deprecated in backend v0.8.0 — the model-based
-        # endpoint means extrapolate inside the model and carry the uncertainty.
-        # Plot-side extrapolation is unaffected.
         # Backend H.3 -- a perm_spec only when the user opted in and declared
         # the unit; it is added for the background run (R20.D6).
         necrotic_column   = rv$necrotic_col,
@@ -326,6 +309,10 @@ tumor_growth_server <- function(id, rv) {
       )
     result <- safe_analysis(module = "tumor_growth",
                             do.call(mouseExperiment::tumor_growth_statistics, tg_args))
+    # R20-Z: the call exactly as made, for the R script in Download Results;
+    # R20-AC: with the preparation before it and the uploaded file.
+    result <- with_provenance(result, record_call("tumor_growth_statistics", tg_args),
+                              prep_steps, rv$source_file)
     
     # Generate plots from the results
     if (!isTRUE(result$error)) {
@@ -370,12 +357,12 @@ tumor_growth_server <- function(id, rv) {
           result$tumor_growth_plot <- mouseExperiment::plot_tumor_growth(
             df = plot_data,
             volume_column = col_names$volume_column,
-            day_column = col_names$time_column,
+            time_column = col_names$time_column,
             treatment_column = if (!is.null(rv$dose_col)) rv$settings$col_treatment else col_names$treatment_column,
             dose_column = rv$dose_col,
-            ID_column = col_names$id_column,
+            id_column = col_names$id_column,
             cage_column = col_names$cage_column,
-            survival_column = surv_col,
+            event_column = surv_col,
             extrapolate_volumes = do_extrapolate,
             extrapolation_points = if (extra_pts > 0L) extra_pts else "all",
             group_summary_line = TRUE,
@@ -592,8 +579,6 @@ tumor_growth_server <- function(id, rv) {
     if (!isTRUE(result$error) && !is.null(result$model)) {
       tryCatch({
         # Extract fixed effects terms and treatment comparisons from emmeans
-        treatment_col_name <- col_names$treatment_column
-
         if (!is.null(result$posthoc) && !is.null(result$posthoc$pairwise) &&
             "comparison" %in% colnames(result$posthoc$pairwise)) {
           # --- AUC mode: the backend's model-based AUC comparisons (R20.4) ---
@@ -740,6 +725,15 @@ tumor_growth_server <- function(id, rv) {
 
     run_token <- paste0(format(Sys.time(), "%H%M%OS6"), sample.int(1e6, 1))
     result$run_token <- run_token
+    # R20.D6: the randomisation test's call (run below), recorded for the
+    # R script; the script includes it once the test's result has arrived.
+    if (!is.null(perm) && !isTRUE(result$error)) {
+      perm_args <- tg_args
+      perm_args[c("permutation_test", "return_model", "include_diagnostics")] <-
+        list(perm, FALSE, FALSE)
+      result$perm_call_record <- record_call("tumor_growth_statistics", perm_args,
+                                             exprs = list(permutation_test = perm_call))
+    }
     rv$tg_results <- result
     updateTabsetPanel(session, "tg_results_tabs", selected = "Summary")
     rv$tg_running <- FALSE
@@ -747,9 +741,6 @@ tumor_growth_server <- function(id, rv) {
     # R20.D6: the randomisation test, on the background worker.
     rv$tg_perm_status <- NULL
     if (!is.null(perm) && !isTRUE(result$error)) {
-      perm_args <- tg_args
-      perm_args[c("permutation_test", "return_model", "include_diagnostics")] <-
-        list(perm, FALSE, FALSE)
       launched <- launch_background_job(
         kind = "tg_perm",
         task = background_task(.tg_perm_only, perm_args),
@@ -1606,13 +1597,12 @@ tumor_growth_server <- function(id, rv) {
     },
     content = function(file) {
       req(rv$tg_results)
-      # R20.D46: the run's settings, not the sidebar's current values.
-      build_html_report(
-        result   = rv$tg_results,
-        title    = "Tumor Growth Analysis Report",
-        settings = tg_report_settings(rv$tg_results),
-        file     = file
-      )
+      # F4: the same report as in Download Results, from what it offers. R20.D46:
+      # the run's settings, not the sidebar's current values.
+      r <- session$userData$dl_registry$tumor_growth
+      req(r)
+      it <- Filter(function(x) x$group %in% c("tables", "plots", "diagnostics"), r$items())
+      report_document(file, "Tumor Growth report", report_section(r$title(), it, r$header(), r$size()))
       shinyjs::runjs("window.trackDownload('tumor_growth', 'report', 'html');")
     }
   )
@@ -1666,6 +1656,10 @@ tumor_growth_server <- function(id, rv) {
   tg_auc_plot    <- tg_plots$auc
   tg_wf_plot     <- tg_plots$waterfall
   tg_forest_plot <- tg_plots$forest
+
+  # F1/F2: response categories and growth delay, from the run's data.
+  tg_endpoints <- add_tg_endpoints(input, output, session, rv, colors = reactive(
+    remap_colors_to_treatment(build_color_vector(input, "tg_color", ordered_tg_grps()))))
 
   # --- Bayesian-specific output renderers ---
 
@@ -1795,7 +1789,8 @@ tumor_growth_server <- function(id, rv) {
   add_tg_download_handlers(
     input, output, session, rv,
     tg_growth_plot, tg_rates_plot,
-    tg_auc_plot, tg_forest_plot, tg_wf_plot
+    tg_auc_plot, tg_forest_plot, tg_wf_plot,
+    endpoints = tg_endpoints, growth_record = tg_plots$growth_record
   )
 
   # F.7 — register the resume handler. The banner module dispatches to

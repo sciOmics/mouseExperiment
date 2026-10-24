@@ -25,7 +25,7 @@
 #' @source Synthetic; `data-raw/combo_treatment_synthetic_data.csv`.
 #' @seealso [master_synthetic_data], which has every column the package uses.
 #' @examples
-#' d <- calculate_dates(combo_treatment_synthetic_data, start_date = "03/24/2025")
+#' d <- calculate_dates(combo_treatment_synthetic_data, reference_date = "03/24/2025")
 #' d <- calculate_volume(d)
 #' head(d)
 "combo_treatment_synthetic_data"
@@ -51,7 +51,7 @@
 #' }
 #' @source Synthetic; `data-raw/dose_levels_synthetic_data.csv`.
 #' @examples
-#' d <- calculate_dates(dose_levels_synthetic_data, start_date = "24-Mar", year = 2025)
+#' d <- calculate_dates(dose_levels_synthetic_data, reference_date = "24-Mar", year = 2025)
 #' d <- calculate_volume(d)
 #' table(d$Treatment, d$Dose)
 "dose_levels_synthetic_data"
@@ -97,7 +97,7 @@
 #'     Vehicle); Drug_B causes ~3 % loss (non-significant)}
 #'   \item{Drug synergy}{The combination "Drug_A Mid + Drug_B" exceeds Bliss
 #'     Independence (excess ~+8 %), i.e. synergistic;
-#'     evaluate at \code{eval_time_point = 10} where all mice are present}
+#'     evaluate at \code{endpoint_day = 10} where all mice are present}
 #'   \item{Dose-response}{Drug_A at doses 0/5/15/30 mg/kg exhibits a
 #'     Hill-shaped dose-response; EC50 approximately 10–15 mg/kg}
 #'   \item{Necrosis}{Approximately 20–35 % of mice in high-dose groups
@@ -111,11 +111,11 @@
 #'     passing to \code{\link{survival_statistics}}}
 #'   \item{Body weight / toxicity}{Use Weight column with
 #'     \code{\link{analyze_body_weight}}}
-#'   \item{Drug synergy}{\code{control_name = "Vehicle"},
+#'   \item{Drug synergy}{\code{reference_group = "Vehicle"},
 #'     \code{drug_a_name = "Drug_A Mid"},
 #'     \code{drug_b_name = "Drug_B"},
 #'     \code{combo_name = "Drug_A Mid + Drug_B"},
-#'     \code{eval_time_point = 10}}
+#'     \code{endpoint_day = 10}}
 #'   \item{Dose-response}{Filter to
 #'     \code{Treatment \%in\% c("Vehicle","Drug_A Low","Drug_A Mid","Drug_A High")}}
 #'   \item{Volume from dimensions}{Re-derive via
@@ -161,6 +161,6 @@
 #' }
 #' @source Synthetic; `data-raw/weight_synthetic_data.csv`.
 #' @examples
-#' d <- calculate_dates(weight_synthetic_data, start_date = "March 1", year = 2025)
+#' d <- calculate_dates(weight_synthetic_data, reference_date = "March 1", year = 2025)
 #' head(d)
 "weight_synthetic_data"

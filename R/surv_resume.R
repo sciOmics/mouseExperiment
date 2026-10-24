@@ -29,8 +29,11 @@ launch_surv_bayes_job <- function(sid, bayes_params,
     cancel_id = session$ns("surv_cancel_bayes"))
   # R20.D12: no study strings (the reference arm's name) go to analytics.
   shinyjs::runjs("window.trackAnalysisStart('survival', 'bayes', 'study_control');")
-  job_id  <- launch_job(sid, "bayes_surv", task = .surv_bayes_task(bayes_params),
-                        context = list(bayes_params = bayes_params))
+  task <- .surv_bayes_task(bayes_params)
+  # R20-AA: the call exactly as the worker makes it, for the R script.
+  job_id  <- launch_job(sid, "bayes_surv", task = task,
+                        context = list(bayes_params = bayes_params,
+                                       call_record = record_call("bayesian_survival", task$args)))
   rv$surv_job_id <- job_id
   attach_bayes_poller(input, output, session, rv,
                       job_id_field          = "surv_job_id",
@@ -101,6 +104,8 @@ register_surv_resume <- function(input, output, session, rv) {
     }, error = function(e) NULL)
   }
   result$model <- NULL   # not requested (R20.D18); a no-op kept for safety
+  result <- with_provenance(result, context$call_record, bayes_params$prep_steps,
+                            bayes_params$source_file)
   rv$surv_results <- result
   shiny::updateTabsetPanel(session, "surv_results_tabs", selected = "Summary")
   rv$surv_running <- FALSE

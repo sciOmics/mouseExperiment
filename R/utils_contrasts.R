@@ -166,23 +166,7 @@ build_requested_contrasts <- function(emm, spec, reference_group = NULL,
 #' @keywords internal
 me_contrast_summary <- function(x, ...) me_with_seed(20260930L, summary(x, ...))
 
-#' Evaluate `expr` under `seed`, leaving the caller's RNG state as it was
-#' @noRd
-#' @keywords internal
-me_with_seed <- function(seed, expr) {
-  genv <- globalenv()
-  had  <- exists(".Random.seed", envir = genv, inherits = FALSE)
-  old  <- if (had) get(".Random.seed", envir = genv, inherits = FALSE)
-  on.exit({
-    if (had) {
-      assign(".Random.seed", old, envir = genv)
-    } else if (exists(".Random.seed", envir = genv, inherits = FALSE)) {
-      rm(".Random.seed", envir = genv)
-    }
-  }, add = TRUE)
-  set.seed(seed)
-  expr
-}
+# me_with_seed() is in utils_endpoint.R (R22.10: it was defined in both files).
 
 #' Pairwise contrast table for the body-weight models
 #'
@@ -236,7 +220,7 @@ bw_pairwise_table <- function(emm_obj, spec, reference_group = NULL,
 #' which it is holding. Same approach as B7.1: declare, do not rename.
 #'
 #' @param x An `emmGrid` or data frame of contrasts.
-#' @param comparison_spec Result of [resolve_comparison_spec()], for provenance.
+#' @param comparison_spec Result of `resolve_comparison_spec()`, for provenance.
 #' @param adjusted_col Name of the column holding multiplicity-adjusted p-values.
 #' @param raw_col Name of the column holding unadjusted p-values, if the path
 #'   reports one separately.

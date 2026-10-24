@@ -20,18 +20,16 @@
 #' One key per animal: treatment + ID (+ cage)
 #'
 #' Ear tags are commonly reused in each arm or cage, so an ID alone does not
-#' identify an animal (CODE_REVIEW.md R20.D2, R20.D57). This is the dashboard's
-#' copy of the package's internal `make_mouse_key()` convention (package T1):
-#' the parts joined by "|||", treatment first.
+#' identify an animal (CODE_REVIEW.md R20.D2, R20.D57). The key is the
+#' package's `make_mouse_key()` (T1), treatment first; until 0.42.0 this was a
+#' copy of it without its check for a missing column (R22.10).
 #'
 #' @param treatment,id Vectors of equal length.
 #' @param cage Optional cage vector; NULL when no cage column is mapped.
 #' @return Character vector of keys.
 #' @keywords internal
 animal_key <- function(treatment, id, cage = NULL) {
-  parts <- list(as.character(treatment), as.character(id))
-  if (!is.null(cage)) parts <- c(parts, list(as.character(cage)))
-  do.call(paste, c(parts, sep = "|||"))
+  if (is.null(cage)) make_mouse_key(treatment, id) else make_mouse_key(treatment, id, cage)
 }
 
 #' Human-readable animal label, e.g. "3 (Vehicle, cage C1)"
@@ -64,27 +62,129 @@ animal_label <- function(treatment, id, cage = NULL) {
 #' @keywords internal
 apply_subset_filter <- function(df, rv) {
   if (is.null(df) || nrow(df) == 0L) return(df)
+  args <- subset_filter_args(df, rv)
+  if (is.null(args)) return(df)
+  do.call(apply_exclusions, c(list(df = df), args))
+}
 
+#' The subset filter as [apply_exclusions()] arguments, or NULL when none is set
+#'
+#' Excluded animals are stored as [animal_key()]s; they are given to
+#' apply_exclusions() as a data frame of arm, id and (with cages) cage.
+#' Columns that are not mapped, or not in `df`, are left out, as before.
+#' @param df The data the filter applies to.
+#' @param rv Shared reactiveValues.
+#' @keywords internal
+subset_filter_args <- function(df, rv) {
   ex_ids <- shiny::isolate(rv$exclude_ids)        %||% character(0)
   ex_tx  <- shiny::isolate(rv$exclude_treatments) %||% character(0)
   ex_cg  <- shiny::isolate(rv$exclude_cages)      %||% character(0)
+  if (!length(ex_ids) && !length(ex_tx) && !length(ex_cg)) return(NULL)
+  s <- shiny::isolate(rv$settings)
+  col <- function(x) if (has_col(df, x)) x
+  cage <- col(s$col_cage)
+  animals <- if (length(ex_ids)) {
+    parts <- strsplit(ex_ids, "|||", fixed = TRUE)
+    a <- data.frame(arm = vapply(parts, `[`, "", 1L), id = vapply(parts, `[`, "", 2L),
+                    stringsAsFactors = FALSE)
+    if (!is.null(cage)) a$cage <- vapply(parts, function(p) if (length(p) >= 3L) p[3L] else NA_character_, "")
+    a
+  }
+  # R22.16: one dose arm is stored as animal_key(treatment, dose).
+  one_arm <- grepl("|||", ex_tx, fixed = TRUE)
+  arms <- if (any(one_arm)) vapply(strsplit(ex_tx[one_arm], "|||", fixed = TRUE),
+                                   paste, "", collapse = " ")
+  ex_tx <- ex_tx[!one_arm]
+  out <- list(animals = animals,
+              treatments = if (length(ex_tx)) ex_tx,
+              cages = if (length(ex_cg) && !is.null(cage)) cage_exclusions(df, s, ex_cg),
+              treatment_column = s$col_treatment %||% "",
+              id_column = s$col_id %||% "",
+              cage_column = cage,
+              dose_column = col(s$col_dose))
+  if (!is.null(arms)) out$arms <- arms
+  out
+}
 
-  id_col <- shiny::isolate(rv$settings$col_id)
-  tx_col <- shiny::isolate(rv$settings$col_treatment)
-  cg_col <- shiny::isolate(rv$settings$col_cage)
+#' Excluded cages as [apply_exclusions()]'s `cages`
+#'
+#' The Subset Filter stores a cage as its label, or, when cages are numbered
+#' within each arm (R22.3), one arm's cage as `animal_key(arm, cage)`. Labels
+#' alone are passed as they are; with any arm's cage, every exclusion becomes a
+#' row of arm and cage, a whole cage one row per arm that has it.
+#' @param df The data the filter applies to.
+#' @param s `rv$settings`.
+#' @param stored `rv$exclude_cages`.
+#' @keywords internal
+cage_exclusions <- function(df, s, stored) {
+  one_arm <- grepl("|||", stored, fixed = TRUE)
+  if (!any(one_arm)) return(stored)
+  p <- strsplit(stored[one_arm], "|||", fixed = TRUE)
+  out <- data.frame(arm = vapply(p, `[`, "", 1L), cage = vapply(p, `[`, "", 2L),
+                    stringsAsFactors = FALSE)
+  if (any(!one_arm) && has_col(df, s$col_treatment)) {
+    cage <- as.character(df[[s$col_cage]])
+    whole <- data.frame(arm = arm_labels(df, s$col_treatment, s$col_dose), cage = cage,
+                        stringsAsFactors = FALSE)[cage %in% stored[!one_arm], , drop = FALSE]
+    out <- rbind(out, unique(whole))
+  }
+  out
+}
 
-  if (length(ex_ids) > 0L && has_col(df, id_col) && has_col(df, tx_col)) {
-    key <- animal_key(arm_labels(df, tx_col, shiny::isolate(rv$settings$col_dose)),
-                      df[[id_col]], if (has_col(df, cg_col)) df[[cg_col]])
-    df <- df[!(key %in% ex_ids), , drop = FALSE]
+#' The Subset Filter's cage choices, and which of them are excluded
+#'
+#' A cage label is one cage, unless cages are numbered within each arm
+#' (R22.3): then each arm's cage is its own choice ("Vehicle C1"). An
+#' exclusion made under the other reading stays visible: a whole cage shows
+#' as each arm's, and one arm's cage stays a choice of its own.
+#' @inheritParams cage_exclusions
+#' @return list(choices, selected).
+#' @keywords internal
+cage_filter_choices <- function(df, s, stored = character(0)) {
+  if (!has_col(df, s$col_cage)) return(list(choices = character(0), selected = character(0)))
+  cage <- as.character(df[[s$col_cage]])
+  ok <- !is.na(cage)
+  pairs <- if (has_col(df, s$col_treatment)) {
+    arm <- arm_labels(df, s$col_treatment, s$col_dose)[ok]
+    u <- unique(data.frame(key = animal_key(arm, cage[ok]), label = paste(arm, cage[ok]),
+                           cage = cage[ok], stringsAsFactors = FALSE))
+    u[order(u$label), , drop = FALSE]
   }
-  if (length(ex_tx) > 0L && has_col(df, tx_col)) {
-    df <- df[!(as.character(df[[tx_col]]) %in% ex_tx), , drop = FALSE]
+  if (identical(s$cage_labels, "arm") && !is.null(pairs)) {
+    choices  <- stats::setNames(pairs$key, pairs$label)
+    selected <- pairs$key[pairs$key %in% stored | pairs$cage %in% stored]
+  } else {
+    labels  <- sort(unique(cage[ok]))
+    held    <- if (!is.null(pairs)) pairs[pairs$key %in% stored, , drop = FALSE]
+    choices <- c(stats::setNames(labels, labels), stats::setNames(held$key, held$label))
+    selected <- unname(choices)[unname(choices) %in% stored]
   }
-  if (length(ex_cg) > 0L && has_col(df, cg_col)) {
-    df <- df[!(as.character(df[[cg_col]]) %in% ex_cg), , drop = FALSE]
+  list(choices = choices, selected = selected)
+}
+
+#' The Subset Filter's treatment choices: each treatment, and each dose arm
+#'
+#' With a dose column, a treatment given at several doses also offers each
+#' dose ("Drug A, dose 10"), stored as `animal_key(treatment, dose)` (R22.16).
+#' @param df The uploaded data.
+#' @param s `rv$settings`.
+#' @return Named character vector, values to labels.
+#' @keywords internal
+treatment_filter_choices <- function(df, s) {
+  tx <- s$col_treatment
+  if (!has_col(df, tx)) return(character(0))
+  txs <- treatment_values(df, tx)
+  out <- stats::setNames(txs, txs)
+  if (has_col(df, s$col_dose)) {
+    d <- unique(data.frame(t = as.character(df[[tx]]), d = as.character(df[[s$col_dose]]),
+                           stringsAsFactors = FALSE))
+    d <- d[!is.na(d$t) & !is.na(d$d), , drop = FALSE]
+    d <- d[d$t %in% d$t[duplicated(d$t)], , drop = FALSE]   # treatments at several doses
+    d <- d[order(d$t, suppressWarnings(as.numeric(d$d)), d$d), , drop = FALSE]
+    # paste0() of zero-length parts gives one string, not none.
+    if (nrow(d)) out <- c(out, stats::setNames(animal_key(d$t, d$d), paste0(d$t, ", dose ", d$d)))
   }
-  df
+  out
 }
 
 #' Sorted distinct values of the treatment column
@@ -553,19 +653,21 @@ detect_date_format <- function(data, date_column, reference_date,
 #' Reads the dates with [detect_date_format()] and passes them to
 #' `mouseExperiment::calculate_dates()` as unambiguous YYYY-MM-DD values, so
 #' the backend defines Day and the dashboard only decides what the dates are.
-#' Days before the reference date are reported (R20.D1).
+#' Days before the reference date are reported (R20.D1). The exported
+#' [study_days()] returns the data and raises the notes as a warning; the
+#' dashboard shows them as a notification instead.
 #'
 #' @inheritParams detect_date_format
 #' @return A list: `data` (with a `Day` column), `layout`, `reason` and
 #'   `notes`.
 #' @keywords internal
-study_days <- function(data, date_column, reference_date, date_order = "auto") {
+study_days_info <- function(data, date_column, reference_date, date_order = "auto") {
   info <- detect_date_format(data, date_column, reference_date, date_order)
   tmp <- data
   tmp[[".me_date_iso"]] <- format(info$dates, "%Y-%m-%d")
   out <- withCallingHandlers(
     mouseExperiment::calculate_dates(
-      tmp, start_date = format(info$reference, "%Y-%m-%d"),
+      tmp, reference_date = format(info$reference, "%Y-%m-%d"),
       date_column = ".me_date_iso", date_format = "%Y-%m-%d"),
     # Unreadable values are already described in info$notes.
     warning = function(w) {
@@ -594,64 +696,30 @@ study_days <- function(data, date_column, reference_date, date_order = "auto") {
 #' \code{rv$settings} and stores the result in \code{rv} for future callers.
 #'
 #' @param rv The shared reactiveValues list.
-#' @return A list with \code{data}, \code{time_col}, \code{vol_col}, \code{tx_col}.
+#' @return A list with \code{data}, \code{time_col}, \code{vol_col}, \code{tx_col}
+#'   and \code{steps}, the recorded preparation (see [prepare_upload()]).
 #' @keywords internal
 ensure_preprocessed <- function(rv) {
   # Reuse canonical result if available. CODE_REVIEW.md Round 2 F.5:
   # always re-apply the Subset Filter to the cached frame so changes to
   # the filter take effect on the next analysis run without needing a
-  # full re-upload + re-preprocess.
+  # full re-upload + re-preprocess. (Applying or clearing the filter also
+  # clears the cache, so the recorded steps hold the current filter.)
   if (!is.null(rv$processed_data)) {
     return(list(
       data     = apply_subset_filter(rv$processed_data, rv),
       time_col = rv$time_col,
       vol_col  = rv$vol_col,
-      tx_col   = rv$tx_col
+      tx_col   = rv$tx_col,
+      steps    = rv$processed_steps
     ))
   }
 
-  # Otherwise preprocess from scratch. Apply the Subset Filter to the
-  # raw upload before any column derivation.
-  data <- apply_subset_filter(rv$uploaded_data, rv)
+  pu <- prepare_upload(rv)
   settings <- rv$settings
-
-  # Date → Day. R20.D1: study_days() reads the whole column and stops on an
-  # ambiguous or contradictory layout instead of guessing.
-  date_fmt_warning <- NULL
-  if (!is.null(settings$time_method) && settings$time_method == "from_date") {
-    sd <- study_days(data, settings$col_date_for_day, settings$reference_date,
-                     settings$date_order %||% "auto")
-    if (length(sd$notes)) date_fmt_warning <- paste(sd$notes, collapse = " ")
-    data <- sd$data
-    time_col <- "Day"
-  } else {
-    time_col <- settings$col_day
-  }
-
-  # Volume calculation
-  if (!is.null(settings$volume_method) && settings$volume_method == "calculate") {
-    len_col <- settings$col_length %||% "Length"
-    wid_col <- settings$col_width  %||% "Width"
-    vol_formula <- settings$volume_formula %||% "modified_ellipsoid"
-    ht_col <- if (!is.null(settings$col_height) && nzchar(settings$col_height)) settings$col_height else NULL
-    if (has_col(data, len_col) && has_col(data, wid_col)) {
-      data <- mouseExperiment::calculate_volume(
-        data,
-        length_column = len_col,
-        width_column  = wid_col,
-        height_column = ht_col,
-        formula       = vol_formula
-      )
-    }
-    vol_col <- "Volume"
-  } else {
-    vol_col <- settings$col_volume %||% "Volume"
-  }
-
   tx_col <- settings$col_treatment
 
   # Resolve optional columns (id, cage, dose) so other modules don't
-
   # depend on TG analysis having been run first.
   rv$id_col   <- if (!is.null(settings$col_id)   && nzchar(settings$col_id))   settings$col_id   else NULL
   rv$cage_col <- if (!is.null(settings$col_cage)  && nzchar(settings$col_cage)) settings$col_cage  else NULL
@@ -660,13 +728,82 @@ ensure_preprocessed <- function(rv) {
   rv$sex_col    <- if (!is.null(settings$col_sex)    && nzchar(settings$col_sex))    settings$col_sex    else NULL
 
   # Cache for future callers
-  rv$processed_data <- data
-  rv$time_col       <- time_col
-  rv$vol_col        <- vol_col
-  rv$tx_col         <- tx_col
+  rv$processed_data  <- pu$data
+  rv$processed_steps <- pu$steps
+  rv$time_col        <- pu$time_col
+  rv$vol_col         <- pu$vol_col
+  rv$tx_col          <- tx_col
 
-  list(data = data, time_col = time_col, vol_col = vol_col, tx_col = tx_col,
-       date_fmt_warning = date_fmt_warning)
+  list(data = pu$data, time_col = pu$time_col, vol_col = pu$vol_col, tx_col = tx_col,
+       steps = pu$steps,
+       date_fmt_warning = if (length(pu$notes)) paste(pu$notes, collapse = " "))
+}
+
+#' Prepare the upload, recording each step: exclusions, cage labels, study days, volume
+#'
+#' Tumor Growth and [ensure_preprocessed()] both prepare an upload this way.
+#' Each step is an exported function (R20-AB) and is recorded with
+#' [record_call()] (R20-AC), so the R script can replay it from the uploaded
+#' file. The exclusions come first, so excluded rows play no part in deciding
+#' how dates are read.
+#' @param rv Shared reactiveValues.
+#' @return list(data, time_col, vol_col, steps, notes): `notes` are what
+#'   reading the dates found (see [study_days_info()]).
+#' @keywords internal
+prepare_upload <- function(rv) {
+  s <- rv$settings
+  data <- rv$uploaded_data
+  steps <- list()
+  notes <- character(0)
+
+  ex <- subset_filter_args(data, rv)
+  if (!is.null(ex) && !is.null(data) && nrow(data) > 0L) {
+    args <- c(list(df = data), ex)
+    data <- do.call(apply_exclusions, args)
+    steps <- c(steps, list(record_call("apply_exclusions", args, keep_data = FALSE)))
+  }
+
+  # R22.3: cages numbered within each arm get their arm in the label, after
+  # the exclusions (which name cages as uploaded) and before any analysis.
+  if (identical(s$cage_labels, "arm") && has_col(data, s$col_cage) &&
+      has_col(data, s$col_treatment)) {
+    args <- list(df = data, cage_column = s$col_cage, treatment_column = s$col_treatment,
+                 dose_column = if (has_col(data, s$col_dose)) s$col_dose)
+    data <- do.call(label_cages, args)
+    steps <- c(steps, list(record_call("label_cages", args, keep_data = FALSE)))
+  }
+
+  # Date -> Day. R20.D1: the whole column decides the day/month order, and
+  # an ambiguous or contradictory layout stops instead of being guessed.
+  if (identical(s$time_method, "from_date")) {
+    args <- list(df = data, date_column = s$col_date_for_day,
+                 reference_date = s$reference_date, date_order = s$date_order %||% "auto")
+    info <- study_days_info(data, args$date_column, args$reference_date, args$date_order)
+    data <- info$data
+    notes <- info$notes
+    steps <- c(steps, list(record_call("study_days", args, keep_data = FALSE)))
+    time_col <- "Day"
+  } else {
+    time_col <- s$col_day
+  }
+
+  # Volume from calipers. Without both caliper columns nothing is calculated
+  # (Tumor Growth reports that before it gets here).
+  if (identical(s$volume_method, "calculate")) {
+    len <- s$col_length %||% "Length"
+    wid <- s$col_width  %||% "Width"
+    if (has_col(data, len) && has_col(data, wid)) {
+      args <- list(df = data, length_column = len, width_column = wid,
+                   height_column = if (has_col(data, s$col_height)) s$col_height,
+                   formula = s$volume_formula %||% "ellipsoid")   # calculate_volume()'s default
+      data <- do.call(mouseExperiment::calculate_volume, args)
+      steps <- c(steps, list(record_call("calculate_volume", args, keep_data = FALSE)))
+    }
+    vol_col <- "Volume"
+  } else {
+    vol_col <- s$col_volume %||% "Volume"
+  }
+  list(data = data, time_col = time_col, vol_col = vol_col, steps = steps, notes = notes)
 }
 
 #' Pick the best default reference group
@@ -742,61 +879,7 @@ validate_uploaded_file <- function(file_path, file_ext) {
   })
 }
 
-#' Read an uploaded study CSV, whatever its delimiter and encoding -- R20.D23
-#'
-#' `read.csv()` alone rejected semicolon-separated files with decimal commas
-#' (what Excel writes in much of Europe) with a raw error, rejected Latin-1
-#' and UTF-16 files, loaded a tab-separated `.csv` silently as one column, and
-#' shifted every later column when a value held an unquoted comma. This sniffs
-#' the encoding (byte-order marks, else UTF-8 or Latin-1), the delimiter
-#' (comma, semicolon or tab) and the decimal mark, and stops with a message
-#' naming the line when rows and header disagree.
-#'
-#' @param path File path.
-#' @return A data frame (headers sanitised as by `read.csv()`).
-#' @keywords internal
-read_study_csv <- function(path) {
-  raw <- readBin(path, "raw", n = min(file.size(path), 262144L))
-  enc <- if (length(raw) >= 2L && raw[1] == as.raw(0xFF) && raw[2] == as.raw(0xFE)) {
-    "UTF-16LE"
-  } else if (length(raw) >= 2L && raw[1] == as.raw(0xFE) && raw[2] == as.raw(0xFF)) {
-    "UTF-16BE"
-  } else if (length(raw) >= 3L && all(raw[1:3] == as.raw(c(0xEF, 0xBB, 0xBF)))) {
-    "UTF-8-BOM"
-  } else if (validUTF8(rawToChar(raw[raw != as.raw(0)]))) {
-    "UTF-8"
-  } else {
-    "latin1"
-  }
-  con <- file(path, encoding = enc)
-  head_lines <- tryCatch(readLines(con, n = 50L, warn = FALSE), finally = close(con))
-  head_lines <- head_lines[nzchar(trimws(head_lines))]
-  if (!length(head_lines)) stop("The file is empty.", call. = FALSE)
-  # Fields outside quotes, per line, for each candidate delimiter.
-  unquoted <- gsub('"[^"]*"', "", head_lines)
-  counts <- vapply(c(",", ";", "\t"), function(d) {
-    n <- lengths(regmatches(unquoted, gregexpr(d, unquoted, fixed = TRUE)))
-    if (all(n == n[1]) && n[1] > 0) n[1] else 0L
-  }, integer(1))
-  sep <- if (any(counts > 0)) names(counts)[which.max(counts)] else ","
-  dec <- if (sep != "," && any(grepl("[0-9],[0-9]", unquoted))) "," else "."
-  # Every row must have the header's number of fields.
-  con <- file(path, encoding = enc)
-  nf <- tryCatch(utils::count.fields(con, sep = sep, quote = "\"", blank.lines.skip = TRUE,
-                                     comment.char = ""), finally = close(con))
-  if (length(nf) > 1L && any(nf != nf[1], na.rm = TRUE)) {
-    bad <- which(nf != nf[1])[1]
-    stop(sprintf(paste0(
-      "Line %d has %d fields but the header has %d. A value probably contains ",
-      "an unquoted '%s'; put that value in quotes, or remove the '%s'."),
-      bad, nf[bad], nf[1], if (sep == "\t") "tab" else sep, if (sep == "\t") "tab" else sep),
-      call. = FALSE)
-  }
-  utils::read.table(path, sep = sep, dec = dec, header = TRUE, quote = "\"",
-                    comment.char = "", fill = FALSE, stringsAsFactors = FALSE,
-                    check.names = TRUE, strip.white = TRUE, fileEncoding = enc,
-                    na.strings = c("NA", ""))
-}
+# read_study_csv() moved to R/prepare_study.R and is exported (R20-AB).
 
 #' Detect column names matching common patterns
 #'

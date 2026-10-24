@@ -5,6 +5,392 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.49.0] - 2026-10-23
+
+Maintainability (`CODE_REVIEW.md` Round 22 proposal F11, R22-K). Nothing changes for users.
+
+### Changed
+- **`ui_modules.R` (1,907 lines) is split:**
+  - the Data tab's UI into `ui_data.R`;
+  - Tumor Growth's into `ui_tumor_growth.R`;
+  - Help and About into `ui_help.R`;
+  - `ui_modules.R` keeps the shared helpers.
+- **One helper, `with_provenance()`,** attaches a run's call, preparation and uploaded file for
+  its R script. The same three lines had been repeated in eight places.
+
+## [0.48.0] - 2026-10-23
+
+The R script redraws plots with the dashboard's styling (`CODE_REVIEW.md` Round 22 proposal
+F9, R22-J).
+
+### Added
+- **`style_plot()`** applies the dashboard's plot options to any ggplot: theme, colours and
+  shapes for the groups, title and subtitle (and their alignment), axis and legend labels,
+  text size, the legend's place (including inside the plot), a log scale and the x-axis
+  range. The dashboard's own plots now go through it.
+- **The R script draws the plots that come from the package's plotting functions,** with
+  the options you chose on the dashboard:
+  - Tumor Growth's growth curves (`plot_tumor_growth()` then `style_plot()`), from the plot's
+    own data, which the ZIP holds;
+  - the best-response waterfall;
+  - Drug Synergy's Bliss plot.
+
+  The script's header says which plots it draws; the other plots in the ZIP are the ones
+  the dashboard drew.
+
+### Changed
+- **`ggplot2 (>= 3.5.0)`.** A legend placed inside a plot uses the newer `legend.position =
+  "inside"`.
+
+## [0.47.0] - 2026-10-23
+
+Results that print what they found (`CODE_REVIEW.md` Round 22 proposal F8, R22-I).
+
+### Added
+- **Every analysis result has a class, with `print()` and `summary()` methods.**
+  - **`print()`** shows a title, a line or two about the run, and the first rows of the
+    result's headline tables. Before, it printed every field: models, plots and all, several
+    screens long.
+  - **`summary()`** returns those tables whole.
+  - **Still lists.** Results remain lists, so `result$anova`, `names(result)` and existing
+    code work as before.
+  - **Which functions:** the 17 analysis functions, from `tumor_growth_statistics()` to
+    `check_study_data()`.
+
+## [0.46.0] - 2026-10-23
+
+A report for every tab and for the study, and every package version in the ZIP
+(`CODE_REVIEW.md` Round 22 proposals F4 and F10, R22-H).
+
+### Added
+- **Every tab's Download Results offers an HTML report.** It has the run's settings, its
+  tables, its plots (embedded, as drawn on screen) and its diagnostics, in one page to print
+  or keep. Only Tumor Growth had a report before, and it held five tables. Tumor Growth's
+  Summary button now gives the same full report.
+- **A study report** on the Data tab: the data check and every analysis run in the session,
+  in one HTML file.
+- **`packages.lock` beside the R script:** every package version the dashboard ran with
+  (mouseExperiment, everything it needs, and the other packages loaded), in renv's lockfile
+  format. `renv::restore(lockfile = "packages.lock")` installs the same versions, and the
+  script says so.
+
+## [0.45.0] - 2026-10-23
+
+A check of the data on upload (`CODE_REVIEW.md` Round 22 proposal F5, R22-G).
+
+### Added
+- **`check_study_data()`** looks through a study's data and reports in three tiers:
+  - **probable errors:** rows that cannot be placed, an animal measured twice on one day,
+    negative volumes, non-positive weights;
+  - **things worth a look:** rows without a volume, more-than-4-fold jumps between
+    measurements, caliper width above length, days an animal missed while its arm was
+    measured, body-weight drops of more than 15 %, rows after an animal's event, animals
+    measured once;
+  - **design notes:** staggered starts, small arms, ear tags and cage labels reused across
+    arms.
+
+  It lists each flag with the row's line in the file. Nothing is changed.
+- **The Data tab shows the check** once the columns are mapped, on the whole file as
+  uploaded, with a headline, a table of what was found and what it means, the flagged rows,
+  and a CSV of them.
+
+## [0.44.0] - 2026-10-23
+
+Power for survival endpoints, and Dunnett's correction (`CODE_REVIEW.md` Round 22 proposal F6,
+R22-F).
+
+### Added
+- **`apriori_survival_power()`**, for a survival endpoint. It gives the events and animals per
+  arm needed to detect a hazard ratio with the log-rank test, or the power at given numbers,
+  by Schoenfeld's approximation. The inputs are the hazard ratio and the share of controls
+  expected to have the event by the end; the treated arm's share follows under proportional
+  hazards. It handles Bonferroni, Dunnett or no correction over the comparisons with control,
+  and attrition.
+- **The Power tab plans a survival endpoint:** choose "Hazard ratio (survival, log-rank)" as
+  the effect in the analytic mode. Its R script calls `apriori_survival_power()`.
+- **Dunnett's correction in `apriori_power_analysis()`** (`p_adjust_method = "dunnett"`).
+  - **How.** Each comparison is powered at Dunnett's per-comparison alpha for k − 1
+    comparisons with a shared control, on the pooled error degrees of freedom.
+  - **The result.** The N lies between the unadjusted and the Bonferroni ones.
+  - **The dashboard's default is now Dunnett,** as in Tumor Growth's analysis. It was
+    Bonferroni, which overstated the N slightly.
+
+### Changed
+- **`mvtnorm` joins Imports.** `emmeans` already brought it, so installs are unchanged.
+
+## [0.43.0] - 2026-10-23
+
+Three endpoints that reports ask for (`CODE_REVIEW.md` Round 22 proposals F1–F3, R22-E).
+
+### Added
+- **%T/C beside TGI** (F3). The therapeutic window's and dose-response's TGI tables gain
+  `TC`, `TC_Lower` and `TC_Upper`: each arm's mean volume as a percentage of the control's,
+  at the same day and from the same model, so 100 − TGI with the interval mirrored. The
+  Toxicity tab's window table shows it.
+- **mRECIST response categories** (F1), `response_categories()`. Each animal's best response
+  and best average response, from its % change in volume from baseline, and its category
+  (mCR, mPR, mSD, mPD) by Gao et al. (2015); per arm, the counts and the response rate.
+  `plot_response_waterfall()` draws each animal's best response, sorted, with the
+  thresholds marked.
+- **Tumour growth delay** (F2), `growth_delay()`. T − C: the Kaplan-Meier median time for an
+  arm's tumours to reach a volume minus the reference arm's, with a bootstrap interval over
+  animals and the delay as a percentage of C. Times are interpolated on the log scale between
+  measurements; an animal that never reached the volume is censored, and an arm with fewer
+  than half reaching it is "not reached".
+- **Tumor Growth's new "Response & Delay" tab** shows both from the data the run analysed,
+  with their own settings (the day responses count from, the delay volume, the resamples),
+  so changing them needs no refit. Download Results offers the tables and the waterfall, and
+  the R script reproduces them.
+
+## [0.42.0] - 2026-10-23
+
+The Round 22 audit's Minor items (`CODE_REVIEW.md` R22.8–R22.18, R22-D).
+
+### Fixed
+- **`weight_loss_threshold()` reports no Cox model the data cannot support.** With fewer
+  than 3 weight-loss events, or none while a reference animal was still on study, it fitted
+  one anyway. On one study a single late event gave an event-free arm a coefficient of
+  −2.08 from Firth's penalty alone. Now `cox_model` is `NULL`, and the new `cox_skipped`
+  says why. The Kaplan-Meier curves and counts are unchanged.
+- **The Bayesian posterior summaries name each arm as you labelled it.** A new `Term`
+  column reads "Treatment: Drug A + Drug B 10 × Day" where brms wrote
+  `TreatmentDrugAPDrugB10:Day`.
+- **`tumor_doubling_time()`'s rows are numbered 1, 2, …**, not "times", "times1", ….
+- **The Subset Filter can exclude one dose of a treatment** given at several, e.g. "Drug A,
+  dose 10". `apply_exclusions()` gains `arms`.
+- **The analytics helper script no longer polls for Umami or logs each event to the browser
+  console** when analytics are off.
+- **Documentation:**
+  - README, CONTRIBUTING, the dashboard's README, ARCHITECTURE, DATA_FORMAT and SECURITY
+    (which now says how long the uploaded file is kept), and DIAGNOSTICS were out of date;
+  - the vignette and METHODS now cover the preparation functions, the dashboard and its
+    R script;
+  - roxygen builds without warnings.
+
+### Removed
+- **Deprecated arguments, since the package has no users yet:**
+  - `tumor_growth_statistics(extrapolation_points)`, ignored since 0.8.0;
+  - `analyze_drug_synergy(ci_thresholds)`, ignored since the Combination Index went;
+  - `calculate_dates(in_place)` and `calculate_volume(in_place)`, deprecated no-ops.
+- **`ggpubr` from Imports.** Nothing called it. A package install needs 6 fewer packages;
+  the dashboard still installs it with `survminer`.
+- **Dead code:**
+  - six unused internal functions, and their tests;
+  - three unused analytics helpers;
+  - eleven unused local variables.
+
+### Changed
+- **`calculate_dates()`'s help points to `study_days()`** for dates whose day/month order is
+  not known. Its errors name `reference_date`.
+- **The dashboard's animal key is the package's `make_mouse_key()`,** which stops on a
+  missing column instead of giving every animal of an arm one key.
+- **Synergy's Help no longer cites package versions.**
+- **DESCRIPTION gains `URL` and `BugReports`, and `htmltools` in Suggests.** The Bayesian
+  tests that fit Stan models skip on CRAN.
+- **`.Rbuildignore`** loses seven entries for files that no longer exist.
+
+## [0.41.0] - 2026-10-23
+
+Cages numbered within each arm (`CODE_REVIEW.md` R22.3, R22-C).
+
+### Fixed
+- **Cage labels reused across arms were read as cages that hold several arms.** With C1 and
+  C2 in every arm, tumour growth entered cage as a fixed effect estimated across arms,
+  instead of a random intercept for each cage. Survival, the body-weight model and the Bayesian
+  models pooled those cages too, and the cage-level randomisation test stopped. The p-values
+  were too small. On `master_synthetic_data` with its cages numbered within each arm,
+  Drug_B vs Vehicle had p = 2.3e-5 instead of 5.2e-4.
+
+### Added
+- **Study Design asks whether cage labels are unique across the study or numbered within
+  each arm.**
+  - When every arm's labels come from one set, "within each arm" is chosen for you, and a note
+    says so.
+  - Choosing "unique" for such labels shows a warning.
+  - With "within each arm", cages become "Vehicle C1", "Drug A C1" and so on before any
+    analysis, and the Subset Filter lists each arm's cages.
+  - Presets save the answer.
+- **`label_cages()`** does the same in R. The R script from the original file includes it
+  when the dashboard did.
+- **`apply_exclusions(cages = )`** also takes a data frame of arm and cage, to remove one
+  arm's C1 but not another's.
+- **A warning when every arm's cage labels come from one set,** from
+  `tumor_growth_statistics()`, `survival_statistics()`, `analyze_body_weight()`,
+  `bayesian_tumor_growth()` and `bayesian_survival()`. The cage-level randomisation test
+  names the cause when it stops.
+
+## [0.40.0] - 2026-10-23
+
+One name for each argument role across the exported functions (`CODE_REVIEW.md` R22.7,
+R22-B). The package has no users yet, so the old names are gone rather than kept as aliases:
+a call with an old name stops with "unused argument".
+
+### Changed
+- **Renamed arguments:**
+
+  | Function | Old | New |
+  |---|---|---|
+  | `analyze_drug_synergy()` | `control_name`, `boot_seed`, `eval_time_point` | `reference_group`, `seed`, `endpoint_day` |
+  | `analyze_drug_synergy_over_time()` | `control_name`, `boot_seed`, `min_time_point`, `max_time_point` | `reference_group`, `seed`, `min_day`, `max_day` |
+  | `dose_response_statistics()` | `day_column`, `control_group_name`, `time_point` | `time_column`, `reference_group`, `endpoint_day` |
+  | `survival_statistics()` | `censor_column` | `event_column` |
+  | `plot_tumor_growth()` | `ID_column`, `day_column`, `survival_column` | `id_column`, `time_column`, `event_column` |
+  | `therapeutic_window_metric()` | `boot_seed` | `seed` |
+  | `tumor_growth_statistics()` | `auc_bootstrap_seed` | `seed` |
+  | `calculate_dates()` | `start_date` | `reference_date` |
+  | `plot_drug_synergy()`, `plot_synergy_trend()` | `custom_title`, `custom_colors` | `title`, `colors` |
+
+  The same roles elsewhere already used the new names: `reference_group` (ten functions),
+  `time_column` (15), `event_column`, `endpoint_day`, `seed`, and `title` and `colors` (six
+  plots).
+
+- **Bug reports and feature requests go to GitHub Issues,** not email. The dashboard's About
+  tab and the README link to them, and new issues open with a bug-report or feature-request
+  form, which asks for the version and reminds people not to attach unpublished data. Security
+  problems are still reported privately (`SECURITY.md`).
+
+### Removed
+- **`tumor_growth_statistics()`'s `n_boot` and `auc_permutations`.** They have done nothing
+  since 0.26.0, when the model-based AUC replaced the per-animal t-tests they configured,
+  and only warned.
+
+### Fixed
+- **`tumor_growth_statistics()`'s `seed` help** described that removed bootstrap. It sets the
+  draws behind the AUC intervals and p-values; without it a fixed seed is used.
+
+## [0.39.0] - 2026-10-23
+
+The Round 22 audit's fixes that needed no decision (`CODE_REVIEW.md` R22-A).
+
+### Fixed
+- **A seeded result is the same wherever it runs.**
+  - The dashboard's background worker draws random numbers with a different generator than an R
+    session. The randomisation test and the LMM power simulation therefore gave different numbers
+    there for the same seed: power 0.833 on the server and 0.933 in R, for example.
+  - The R script could not reproduce them.
+  - Every seeded analysis now fixes the generator, and leaves the caller's as it was. Server
+    results for those two analyses change accordingly.
+- **Bayesian survival:**
+  - the time-ratio table is offered in Download Results;
+  - the CSV button beside it writes a file (it wrote none);
+  - the forest plot shows time ratios with credible intervals (it was empty);
+  - the R script prints the treatment effects (it printed `NULL`).
+- **`weight_loss_threshold()`'s Firth model converges** for arms with no events, as
+  `survival_statistics()`'s has since 0.33.1. A p-value could come back `NA`.
+- **The README and vignette build per-animal survival data with `survival_events()`.** They
+  reduced by ID alone, which merges animals when ear tags are reused across arms.
+
+### Tests
+- **CI runs every test that reads the sources.** Help text, README and man pages were checked
+  only locally before: about 45 tests skipped in CI.
+- **The R-script round trips** run the script under R's default generator, and compare
+  randomisation draws and mid-range simulated power, so a different random stream shows.
+
+## [0.38.0] - 2026-10-23
+
+R scripts that start from the uploaded file (`CODE_REVIEW.md` R20-AC).
+
+### Added
+- **"Include my original file" in Download Results,** on every tab with data. Ticked:
+  - the ZIP holds the file you uploaded, as it was;
+  - the R script rebuilds the analysed data from it with the package's preparation
+    functions: `read_study_csv()`, `apply_exclusions()`, `study_days()`,
+    `calculate_volume()`, `label_arms()` and `survival_events()`;
+  - each step is written with the arguments the dashboard used, including which animals
+    you excluded;
+  - the script stops unless the rebuilt data equal the data the dashboard analysed, then
+    runs the analysis on them.
+
+  Unticked, the script starts from the analysed data, as before. The file includes any
+  animals you excluded and columns no analysis uses.
+- **The dashboard keeps the uploaded file** (or the demo file) for this.
+
+## [0.37.0] - 2026-10-23
+
+The dashboard's data preparation as package functions (`CODE_REVIEW.md` R20-AB), the
+first step of R scripts that start from the uploaded file.
+
+### Added
+- **Five exported functions** do what the dashboard does to an upload before any
+  analysis. The dashboard now calls them itself.
+  - `read_study_csv()`: reads comma, semicolon or tab separated files, a decimal comma,
+    and UTF-8, Latin-1 or UTF-16.
+  - `apply_exclusions()`: the subset filter. Animals are identified by arm, ID and cage;
+    arms and cages can be excluded too.
+  - `study_days()`: dates to study days, with the whole column deciding day/month order.
+  - `label_arms()`: "Treatment Dose" arm labels.
+  - `survival_events()`: one row per animal with its time and event. Events come from an
+    event column or a volume limit, plus deaths from removal reasons.
+  - Before, a package user analysing the same file had to rebuild these steps.
+
+### Changed
+- **Toxicity labels arms by treatment and dose when a dose column is mapped,** as Tumor
+  Growth, Survival and Drug Synergy do.
+  - A treatment given at several doses is now several arms, e.g. "Drug_A 5" and "Drug_A 10".
+    It was one arm, its doses pooled.
+  - The control is the arm "Vehicle 0".
+
+### Fixed
+- **Toxicity and Dose Response no longer change arm labels depending on whether Tumor
+  Growth ran first.**
+  - With a dose column mapped, Tumor Growth used to replace the shared prepared data with
+    its "Treatment Dose" labels.
+  - The two tabs then analysed those labels, and their own treatment names otherwise.
+  - Tumor Growth now labels its own copy. Dose Response always uses the treatment column, and
+    Toxicity always labels by dose (above).
+
+## [0.36.0] - 2026-10-23
+
+The R script on every analysis tab (`CODE_REVIEW.md` R20-AA).
+
+### Added
+- **Download Results on Survival, Toxicity, Drug Synergy, Dose Response and Power offers the R
+  script too.** Each script repeats the run's own package calls:
+  - **Survival:** `survival_statistics()`, or `bayesian_survival()`. Events derived from the
+    volume limit or the removal reasons are in its data, and the script says so.
+  - **Toxicity:** the body-weight model and the weight-loss threshold (one data file), or the
+    therapeutic window.
+  - **Drug Synergy:** one day, or every evaluable day.
+  - **Dose Response:** the chosen dose series.
+  - **Power:** one call per effect size, stacked as the dashboard shows them, or the LMM
+    simulation. These scripts need no data.
+
+### Changed
+- **The R script is one item, "R script, with the data it reads".** It writes `analysis.R` and
+  its data (`.rds`, with a `.csv` beside it), so it can no longer be downloaded without its
+  data. The separate "Analysed data (R, exact)" item from 0.35.0 is gone.
+- **The LMM power simulation is seeded** (20260730), like the dashboard's other resampling. A
+  rerun now gives the same power, and so does its script. Before, every run drew a new stream.
+
+## [0.35.0] - 2026-10-23
+
+The R script download, piloted on Tumor Growth (`CODE_REVIEW.md` R20-Z).
+
+### Added
+- **Download Results on Tumor Growth offers an R script** (`analysis.R`) that repeats the run
+  with the package.
+  - **What it runs:** the exact call the dashboard made, recorded when it was made, with every
+    argument it passed.
+  - **Its data:** it reads the analysed data that comes with it in the ZIP, ticked or not.
+    `data/analysed_data.rds` holds it exactly; the CSV is the same table as text.
+  - **What it prints:** the main tables, then `sessionInfo()`.
+  - **The randomisation test** is included as the call that ran, with its seed.
+  - **Bayesian runs** name the fit the worker made, whose seed is the package default (42).
+  - **Not repeated:** plot styling. The plots in the ZIP are the ones the dashboard drew.
+- **The analysed data in the ZIP is the frame this run analysed.** Before, it was whatever
+  another tab had last prepared.
+
+### Fixed
+- **The endpoint model behind the AUC, synergy, dose-response and the therapeutic window no
+  longer changes structure on a borderline convergence check.**
+  - **The cause:** a failed lme4 gradient check sent the correlated random-slope model
+    straight to uncorrelated slopes.
+  - **The trigger:** the check flipped on data that differed by about 1e-13, such as
+    calculated volumes read back from 17-digit text.
+  - **The effect:** the AUC's intervals moved by up to 5%.
+  - **The fix:** the endpoint model now restarts from the estimates first, as the main model
+    has since 0.30.0 (R20-T). The results then agree to about 1e-6.
+
 ## [0.34.0] - 2026-10-22
 
 The dashboard joins the package (`CODE_REVIEW.md` R20-Y).

@@ -35,7 +35,8 @@ powerAnalysisUI <- function(id) {
             radioButtons(ns("pw_ap_es_mode"),
                          label    = NULL,
                          choices  = c("Cohen\u2019s d directly"          = "cohens_d",
-                                      "Mean difference + Pooled SD"       = "delta_sd"),
+                                      "Mean difference + Pooled SD"       = "delta_sd",
+                                      "Hazard ratio (survival, log-rank)" = "hazard_ratio"),
                          selected = "cohens_d"),
 
             conditionalPanel(ns = ns, condition = "input.pw_ap_es_mode == 'cohens_d'",
@@ -44,6 +45,21 @@ powerAnalysisUI <- function(id) {
                           "Benchmarks: small \u2248 0.2, medium \u2248 0.5, large \u2248 0.8.")),
                         value       = "0.5, 0.8, 1.0, 1.5",
                         placeholder = "e.g. 0.5, 0.8, 1.0")
+            ),
+
+            # F6: a survival endpoint, by Schoenfeld's approximation.
+            conditionalPanel(ns = ns, condition = "input.pw_ap_es_mode == 'hazard_ratio'",
+              textInput(ns("pw_ap_hr"),
+                        tagList("Hazard ratios (comma-separated)", help_tip(paste(
+                          "Treated vs control, for the time to the event (usually the tumour",
+                          "volume limit). 0.5 halves the hazard; below 1 means treatment delays",
+                          "the event."))),
+                        value = "0.3, 0.4, 0.5", placeholder = "e.g. 0.3, 0.5"),
+              numericInput(ns("pw_ap_ctrl_events"),
+                           tagList("Controls with the event by the end (%)", help_tip(paste(
+                             "The share of control animals expected to reach the event before",
+                             "the study ends. The treated arm's follows from the hazard ratio."))),
+                           value = 90, min = 1, max = 100, step = 5)
             ),
 
             conditionalPanel(ns = ns, condition = "input.pw_ap_es_mode == 'delta_sd'",
@@ -74,12 +90,13 @@ powerAnalysisUI <- function(id) {
             radioButtons(ns("pw_ap_p_adjust"),
                          tagList("Multiplicity correction", help_tip(paste(
                            "Power is for each treated-vs-control comparison. A study with k",
-                           "groups makes k \u2212 1 of them, and Bonferroni divides alpha among",
-                           "them. Dunnett, the Tumour Growth default, is slightly less",
-                           "conservative, so the N here is a small overestimate for it."))),
-                         choices = c("Bonferroni over the comparisons (recommended)" = "bonferroni",
+                           "groups makes k \u2212 1 of them. Dunnett, the Tumour Growth default,",
+                           "allows for their sharing a control and is slightly less",
+                           "conservative than Bonferroni, which divides alpha among them."))),
+                         choices = c("Dunnett (vs control; the Tumour Growth default)" = "dunnett",
+                                     "Bonferroni over the comparisons" = "bonferroni",
                                      "None (unadjusted)" = "none"),
-                         selected = "bonferroni"),
+                         selected = "dunnett"),
             numericInput(ns("pw_ap_n_comparisons"), "Treated-vs-control comparisons",
                          value = 1, min = 1, max = 20, step = 1),
             numericInput(ns("pw_ap_dropout"),
@@ -372,7 +389,9 @@ powerAnalysisUI <- function(id) {
                 tags$li(strong("N_Groups"), " \u2014 number of treatment groups in the design."),
                 tags$li(strong("Alpha"), " \u2014 significance threshold."),
                 tags$li(strong("Required_N"), " \u2014 N per group needed to reach the target power (Find N mode)."),
-                tags$li(strong("Achieved_Power / Power"), " \u2014 power reached at the specified N (Find Power / LMM mode).")
+                tags$li(strong("Achieved_Power / Power"), " \u2014 power reached at the specified N (Find Power / LMM mode)."),
+                tags$li(strong("Alpha_Per_Comparison"), " \u2014 the alpha each treated-vs-control comparison is tested at after the correction; under Dunnett it depends on N."),
+                tags$li(strong("Hazard_Ratio, Control_Event_Prob, Treated_Event_Prob, Required_Events"), " \u2014 survival endpoint only: the hazard ratio, the share of each arm expected to have the event, and the events one comparison needs (Schoenfeld).")
               )
             ),
             shinycssloaders::withSpinner(
@@ -408,7 +427,7 @@ powerAnalysisUI <- function(id) {
           tabPanel(
             title = tags$span(icon("file-zipper"), " Download Results"),
             value = "__download_results__",
-            wellPanel(download_results_ui(ns, "pw"))
+            wellPanel(download_results_ui(ns, "pw", upload = FALSE))
           )
         )
       )
@@ -499,7 +518,8 @@ lmm_power_note <- function(st) {
     mode              = "apriori_lmm",
     ap_submode        = "find_power",
     lmm_params        = result$params,
-    lmm_attrition     = result$attrition
+    lmm_attrition     = result$attrition,
+    call_records      = if (!is.null(context$call_record)) list(context$call_record)
   )
   shinyjs::runjs("window.trackAnalysisComplete('power', true);")
   output$pw_status_msg <- shiny::renderUI(
@@ -662,25 +682,45 @@ power_server <- function(id, rv) {
       show_analysis_modal("Computing a priori power\u2026", "Results will appear automatically when complete.")
       on.exit(shiny::removeModal(), add = TRUE)
 
-      # Call apriori_power_analysis() once per effect size; combine results
-      if (input$pw_ap_es_mode == "cohens_d") {
-        ap_runs <- lapply(es_vals, function(d) {
-          tryCatch(
-            mouseExperiment::apriori_power_analysis(
-              effect_size          = d,
-              n_groups             = n_groups,
-              alpha                = alpha_vals,
-              target_power         = power_vals,
-              n_per_group          = n_vals,
-              mode                 = input$pw_ap_submode,
-              p_adjust_method      = p_adj,
-              n_comparisons        = n_comp,
-              dropout_rate         = dropout,
-              sd_sensitivity_range = 0   # no SD to vary
-            ),
-            error = function(e) list(error = TRUE, message = conditionMessage(e))
-          )
-        })
+      # Call apriori_power_analysis() once per effect size; combine results.
+      # R20-AA: each call's arguments are kept for the R script.
+      pw_fun <- "apriori_power_analysis"
+      if (input$pw_ap_es_mode == "hazard_ratio") {
+        # F6: a survival endpoint, one call per hazard ratio.
+        hr_vals <- suppressWarnings(as.numeric(strsplit(trimws(input$pw_ap_hr %||% ""), "[,\\s]+")[[1]]))
+        hr_vals <- hr_vals[is.finite(hr_vals) & hr_vals > 0 & hr_vals != 1]
+        p_ctrl  <- as.numeric(input$pw_ap_ctrl_events %||% NA) / 100
+        if (!length(hr_vals) || !is.finite(p_ctrl) || p_ctrl <= 0 || p_ctrl > 1) {
+          output$pw_status_msg <- renderUI(status_alert(paste(
+            "Enter at least one hazard ratio (positive, not 1) and the controls'",
+            "event percentage (1-100)."), "danger"))
+          return()
+        }
+        pw_fun  <- "apriori_survival_power"
+        ap_args <- lapply(hr_vals, function(h) list(
+          hazard_ratio       = h,
+          control_event_prob = p_ctrl,
+          n_groups           = n_groups,
+          alpha              = alpha_vals,
+          target_power       = power_vals,
+          n_per_group        = n_vals,
+          mode               = input$pw_ap_submode,
+          n_comparisons      = n_comp,
+          p_adjust_method    = p_adj,
+          dropout_rate       = dropout))
+      } else if (input$pw_ap_es_mode == "cohens_d") {
+        ap_args <- lapply(es_vals, function(d) list(
+          effect_size          = d,
+          n_groups             = n_groups,
+          alpha                = alpha_vals,
+          target_power         = power_vals,
+          n_per_group          = n_vals,
+          mode                 = input$pw_ap_submode,
+          p_adjust_method      = p_adj,
+          n_comparisons        = n_comp,
+          dropout_rate         = dropout,
+          sd_sensitivity_range = 0   # no SD to vary
+        ))
       } else {
         # delta + SD path: single call, sensitivity table available
         delta_val <- input$pw_ap_delta %||% 0
@@ -691,25 +731,23 @@ power_server <- function(id, rv) {
           })
           return()
         }
-        ap_runs <- list(
-          tryCatch(
-            mouseExperiment::apriori_power_analysis(
-              delta                = delta_val,
-              pooled_sd            = sd_val,
-              n_groups             = n_groups,
-              alpha                = alpha_vals,
-              target_power         = power_vals,
-              n_per_group          = n_vals,
-              mode                 = input$pw_ap_submode,
-              p_adjust_method      = p_adj,
-              n_comparisons        = n_comp,
-              dropout_rate         = dropout,
-              sd_sensitivity_range = 0.4
-            ),
-            error = function(e) list(error = TRUE, message = conditionMessage(e))
-          )
-        )
+        ap_args <- list(list(
+          delta                = delta_val,
+          pooled_sd            = sd_val,
+          n_groups             = n_groups,
+          alpha                = alpha_vals,
+          target_power         = power_vals,
+          n_per_group          = n_vals,
+          mode                 = input$pw_ap_submode,
+          p_adjust_method      = p_adj,
+          n_comparisons        = n_comp,
+          dropout_rate         = dropout,
+          sd_sensitivity_range = 0.4
+        ))
       }
+      ap_runs <- lapply(ap_args, function(a) tryCatch(
+        do.call(getExportedValue("mouseExperiment", pw_fun), a),
+        error = function(e) list(error = TRUE, message = conditionMessage(e))))
 
       # Check for errors
       errors <- Filter(function(x) isTRUE(x$error), ap_runs)
@@ -731,12 +769,15 @@ power_server <- function(id, rv) {
         power_curve_data  = curve_df,
         sensitivity_table = sens_df,
         mode              = "apriori_analytic",
+        endpoint          = if (pw_fun == "apriori_survival_power") "survival" else "volume",
         ap_submode        = input$pw_ap_submode,
         target_power      = power_vals,   # R20.D60: the summary read a missing input
         method_note       = ap_runs[[1]]$method_note,
         p_adjust_method   = p_adj,
         n_comparisons     = n_comp,
-        dropout_rate      = dropout
+        dropout_rate      = dropout,
+        call_records      = lapply(ap_args, function(a)
+          record_call(pw_fun, a, data_arg = NULL))
       )
 
       shinyjs::runjs("window.trackAnalysisComplete('power', true);")
@@ -792,11 +833,16 @@ power_server <- function(id, rv) {
           if (length(dl) != 1L || is.na(dl) || dl <= 0) Inf else dl
         },
         alpha               = alpha_vals,
-        n_simulations       = as.integer(input$pw_lmm_n_sims %||% 500)
+        n_simulations       = as.integer(input$pw_lmm_n_sims %||% 500),
+        # R20-AA: seeded like the other resampling analyses, so a rerun, and
+        # the R script, give the same power. It drew a new stream each run.
+        seed                = 20260730L
       )
       launch_background_job(
         kind = "power_sim",
         task = background_task(mouseExperiment::apriori_power_simulation, sim_args),
+        context = list(call_record = record_call("apriori_power_simulation", sim_args,
+                                                 data_arg = NULL)),
         input = input, output = output, session = session, rv = rv,
         job_id_field = "pw_job_id",
         modal_title  = "Running LMM power simulation\u2026",
@@ -879,7 +925,9 @@ power_server <- function(id, rv) {
     method_str <- switch(mode_ap,
       "apriori_lmm"      = "A priori \u2014 LMM simulation (longitudinal mixed model)",
       "apriori_analytic" = sprintf(
-        "A priori \u2014 analytic (%s)",
+        if (identical(res$endpoint, "survival"))
+          "A priori \u2014 analytic, survival endpoint: log-rank, Schoenfeld (%s)"
+        else "A priori \u2014 analytic (%s)",
         switch(submode %||% "",
           "find_n"     = "find N for target power",
           "find_power" = "find power for fixed N",
@@ -927,12 +975,12 @@ power_server <- function(id, rv) {
           # R20.D17: say what the analytic power refers to and what it assumes.
           if (identical(mode_ap, "apriori_analytic")) tags$p(
             tags$strong("Comparisons:"), " ",
-            if (identical(res$p_adjust_method, "none")) {
-              "no multiplicity correction"
-            } else {
+            switch(res$p_adjust_method %||% "bonferroni",
+              none    = "no multiplicity correction",
+              dunnett = sprintf("Dunnett over %d treated-vs-control comparison(s)",
+                                res$n_comparisons %||% 1L),
               sprintf("Bonferroni over %d treated-vs-control comparison(s)",
-                      res$n_comparisons %||% 1L)
-            },
+                      res$n_comparisons %||% 1L)),
             ". ", tags$strong("Attrition:"), " ",
             sprintf("%.0f %%", 100 * (res$dropout_rate %||% 0)),
             if ((res$dropout_rate %||% 0) > 0) " (Enroll_N in the Scenario Table is the number to start with)." else
@@ -998,7 +1046,9 @@ power_server <- function(id, rv) {
             ggplot2::theme(legend.position = "right")
     } else {
       # Analytic: x = N_Per_Group, y = Power, colour by Effect_Size, facet by Alpha
-      curve_df$Comparison <- paste0("d = ", round(curve_df$Effect_Size, 2),
+      survival <- identical(rv$ap_results$endpoint, "survival")
+      if (survival) curve_df$Effect_Size <- curve_df$Hazard_Ratio   # F6
+      curve_df$Comparison <- paste0(if (survival) "HR = " else "d = ", round(curve_df$Effect_Size, 2),
                                     ",  \u03b1 = ", curve_df$Alpha)
       p <- ggplot2::ggplot(curve_df,
               ggplot2::aes(x = N_Per_Group, y = Power,
@@ -1016,7 +1066,7 @@ power_server <- function(id, rv) {
               subtitle = "Dotted lines: 0.80 and 0.90 power thresholds",
               x        = "N per Group",
               y        = "Power (1 \u2212 \u03b2)",
-              colour   = "Cohen\u2019s d",
+              colour   = if (survival) "Hazard ratio" else "Cohen\u2019s d",
               linetype = "Alpha (\u03b1)"
             ) +
             ggplot2::theme_classic() +

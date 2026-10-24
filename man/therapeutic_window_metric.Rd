@@ -20,7 +20,7 @@ therapeutic_window_metric(
   endpoint_day = NULL,
   endpoint_method = c("model", "last_obs", "survivors"),
   n_boot = 2000L,
-  boot_seed = NULL,
+  seed = NULL,
   zero_floor = NULL
 )
 }
@@ -83,7 +83,7 @@ effects; under the per-animal estimands, from a bootstrap of animals
 animals within arm (CODE_REVIEW.md R3.6 / R3.7, R20.2). Default 2000; 0
 skips the intervals, and with them the tolerability flag.}
 
-\item{boot_seed}{Optional integer seed for reproducible resampling.}
+\item{seed}{Optional integer seed for reproducible resampling.}
 
 \item{zero_floor}{The volume a regression to zero takes on the endpoint
 model's log scale: 2 mm3 or 0.002 cm3 (from \code{volume_units}, mm3 when
@@ -146,6 +146,6 @@ toxicity after that day still counts.
 \examples{
 tw <- therapeutic_window_metric(master_synthetic_data, volume_units = "mm3",
                                 cage_column = "Cage", reference_group = "Vehicle",
-                                n_boot = 200, boot_seed = 1)
+                                n_boot = 200, seed = 1)
 tw$window_table
 }

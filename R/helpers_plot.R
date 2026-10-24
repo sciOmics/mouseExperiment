@@ -28,17 +28,10 @@
 #' @keywords internal
 apply_plot_labels <- function(p, title = "", subtitle = "", align = "center",
                               text_size = 12, xlab = "", ylab = "", legend_lab = "") {
-  hjust <- switch(align, left = 0, center = 0.5, right = 1, 0.5)
-  if (nzchar(trimws(title)))    p <- p + ggplot2::labs(title = title)
-  if (nzchar(trimws(subtitle))) p <- p + ggplot2::labs(subtitle = subtitle)
-  if (nzchar(trimws(xlab)))     p <- p + ggplot2::labs(x = xlab)
-  if (nzchar(trimws(ylab)))     p <- p + ggplot2::labs(y = ylab)
-  if (nzchar(trimws(legend_lab))) p <- p + ggplot2::labs(fill = legend_lab, color = legend_lab, shape = legend_lab)
-  p + ggplot2::theme(
-    text          = ggplot2::element_text(size = text_size),
-    plot.title    = ggplot2::element_text(hjust = hjust),
-    plot.subtitle = ggplot2::element_text(hjust = hjust)
-  )
+  # F9: the exported style_plot(), which the R script calls too.
+  style_plot(p, title = title, subtitle = subtitle,
+             title_align = if (align %in% c("left", "center", "right")) align else "center",
+             text_size = text_size, x_label = xlab, y_label = ylab, legend_title = legend_lab)
 }
 
 #' Build a named colour vector from colourInput values
@@ -195,25 +188,6 @@ observe_palette_preset <- function(input, session, prefix, groups_rv) {
 }
 
 
-#' Render a drag-and-drop rank list for reordering treatment groups
-#'
-#' Returns a \code{sortable::rank_list} widget.  The current order is
-#' read back from \code{input[[paste0(prefix, "_order")]]}.
-#'
-#' @param prefix    Input-ID prefix shared with colour pickers (e.g. \code{"tg"}).
-#' @param groups    Character vector of group names in their default order.
-#' @return A \code{sortable::rank_list} tag, or \code{NULL} when fewer than 2 groups.
-#' @keywords internal
-group_order_ui <- function(prefix, groups) {
-  if (is.null(groups) || length(groups) < 2L) return(NULL)
-  sortable::rank_list(
-    text     = "Group order",
-    labels   = as.list(groups),
-    input_id = paste0(prefix, "_order"),
-    class    = "default-sortable"
-  )
-}
-
 #' Return groups in the user-specified drag-and-drop order
 #'
 #' Reads \code{input[[paste0(prefix, "_order")]]} and validates it.
@@ -251,37 +225,7 @@ get_ordered_groups <- function(input, prefix, groups) {
 #' @keywords internal
 apply_legend_pos <- function(p, pos) {
   if (is.null(pos)) return(p)
-  if (pos == "inplot_tl") {
-    p + ggplot2::theme(
-      legend.position    = c(0.02, 0.98),
-      legend.justification = c("left", "top"),
-      legend.background  = ggplot2::element_rect(
-        fill = scales::alpha("white", 0.8), colour = NA)
-    )
-  } else if (pos == "inplot_tr") {
-    p + ggplot2::theme(
-      legend.position    = c(0.98, 0.98),
-      legend.justification = c("right", "top"),
-      legend.background  = ggplot2::element_rect(
-        fill = scales::alpha("white", 0.8), colour = NA)
-    )
-  } else if (pos == "inplot_bl") {
-    p + ggplot2::theme(
-      legend.position    = c(0.02, 0.02),
-      legend.justification = c("left", "bottom"),
-      legend.background  = ggplot2::element_rect(
-        fill = scales::alpha("white", 0.8), colour = NA)
-    )
-  } else if (pos == "inplot_br") {
-    p + ggplot2::theme(
-      legend.position    = c(0.98, 0.02),
-      legend.justification = c("right", "bottom"),
-      legend.background  = ggplot2::element_rect(
-        fill = scales::alpha("white", 0.8), colour = NA)
-    )
-  } else {
-    p + ggplot2::theme(legend.position = pos)
-  }
+  style_plot(p, legend_position = pos)   # F9
 }
 
 #' Render a drag-and-drop rank list with embedded color pickers
@@ -455,7 +399,8 @@ group_order_and_color_ui <- function(prefix, groups, ns = NS(NULL)) {
 #' @param show_hr,show_ci,show_p Which annotations to print beside each row.
 #' @return A ggplot, or NULL when there is nothing to plot.
 #' @keywords internal
-build_surv_forest_plot <- function(res, ref_grp, pt_color, show_hr, show_ci, show_p) {
+build_surv_forest_plot <- function(res, ref_grp, pt_color, show_hr, show_ci, show_p,
+                                   measure = "Hazard Ratio", abbrev = "HR") {
   plot_df <- res[!is.na(res$HR), ]
   if (!is.null(ref_grp)) plot_df <- plot_df[plot_df$Group != ref_grp, ]
   if (nrow(plot_df) == 0) return(NULL)
@@ -495,7 +440,7 @@ build_surv_forest_plot <- function(res, ref_grp, pt_color, show_hr, show_ci, sho
   plot_df$label_text <- vapply(seq_len(nrow(plot_df)), function(i) {
     if (isTRUE(plot_df$is_ref[i])) return("")
     parts <- character(0)
-    if (show_hr && !is.na(hr_vals[i]))  parts <- c(parts, paste0("HR: ", round(hr_vals[i], 2)))
+    if (show_hr && !is.na(hr_vals[i]))  parts <- c(parts, paste0(abbrev, ": ", round(hr_vals[i], 2)))
     if (show_ci && !is.na(ci_lo[i]))    parts <- c(parts, paste0("[", round(ci_lo[i], 2), "\u2013", round(ci_hi[i], 2), "]"))
     if (show_p  && !is.na(p_vals[i]))   parts <- c(parts, paste0("p = ", format_pval(p_vals[i])))
     paste(parts, collapse = "  ")
@@ -528,10 +473,10 @@ build_surv_forest_plot <- function(res, ref_grp, pt_color, show_hr, show_ci, sho
       labels = x_labels
     ) +
     ggplot2::labs(
-      title = paste("Forest Plot: Hazard Ratios vs", ref_grp),
+      title = paste0("Forest Plot: ", measure, "s vs ", ref_grp),
       # Plain "log10": the PNG device font has no subscript digits, so the
       # label rendered as "log" plus two boxes, on screen and in the download.
-      x     = "Hazard Ratio (log10 scale)",
+      x     = paste(measure, "(log10 scale)"),
       y     = NULL
     ) +
     ggplot2::theme_classic(base_size = 14) +

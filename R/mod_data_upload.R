@@ -111,6 +111,7 @@ data_upload_server <- function(id, rv) {
     reset_analyses(rv)
     study_defaults(list(volume_units = "mm3"))  # every demo is in mm3
     rv$uploaded_data  <- result$data
+    rv$source_file    <- source_file_record(data_path)   # R20-AC: for the R script
     rv$data_valid     <- TRUE
     rv$detected_cols  <- detect_columns(colnames(result$data))
 
@@ -151,6 +152,7 @@ data_upload_server <- function(id, rv) {
     if (result$valid) {
       reset_analyses(rv)
       rv$uploaded_data <- result$data
+      rv$source_file   <- source_file_record(file_path, file_info$name)   # R20-AC: for the R script
       rv$data_valid <- TRUE
       rv$detected_cols <- detect_columns(colnames(result$data))
       study_defaults(if (is.null(rv$detected_cols$volume)) list(volume_units = "mm3") else list())
@@ -169,6 +171,7 @@ data_upload_server <- function(id, rv) {
     } else {
       rv$data_valid <- FALSE
       rv$uploaded_data <- NULL
+      rv$source_file   <- NULL
       output$file_validation_msg <- renderUI({
         status_alert(result$message, "danger")
       })
@@ -244,6 +247,28 @@ data_upload_server <- function(id, rv) {
     as.list(stats::setNames(cats, vals))
   })
 
+  # R22.3: are the cage labels unique, or numbered within each arm? From the
+  # labels alone the two cannot be told apart. When every arm's labels come
+  # from one set, "within each arm" is chosen (the error on that side is the
+  # conservative one), unless a preset says otherwise.
+  reused_cages <- reactive({
+    cg <- input$col_cage %||% ""
+    tx <- input$col_treatment %||% ""
+    d  <- rv$uploaded_data
+    if (!isTRUE(rv$data_valid) || !has_col(d, cg) || !has_col(d, tx)) return(NULL)
+    reused_cage_labels(d[[cg]], arm_labels(d, tx, input$col_dose))
+  })
+  output$cage_labels_ui <- renderUI({
+    lab <- reused_cages()
+    if (is.null(lab)) return(NULL)
+    cage_labels_ui(lab, isolate(study_defaults()$cage_labels), ns = session$ns)
+  })
+  output$cage_labels_status <- renderUI({
+    lab <- reused_cages()
+    if (!length(lab)) return(NULL)
+    cage_labels_note(lab, input$cage_labels %||% "arm")
+  })
+
   output$volume_units_status <- renderUI({
     if (!is.null(input$volume_units)) return(NULL)
     tags$small(class = "text-danger", icon("exclamation-circle"),
@@ -289,7 +314,7 @@ data_upload_server <- function(id, rv) {
     if (!is.null(input$time_method) && input$time_method == "from_date" &&
         !is.null(input$col_date_for_day) && input$col_date_for_day != "") {
       tryCatch({
-        sd <- study_days(data, input$col_date_for_day,
+        sd <- study_days_info(data, input$col_date_for_day,
                          input$reference_date %||% "",
                          input$date_order %||% "auto")
         data <- sd$data
@@ -361,10 +386,6 @@ data_upload_server <- function(id, rv) {
     time_col <- if (!is.null(input$time_method) && input$time_method == "from_date") "Day"
                 else if (!is.null(input$col_day) && input$col_day != "") input$col_day
                 else NULL
-    
-    vol_col <- if (!is.null(input$volume_method) && input$volume_method == "calculate") "Volume"
-               else if (!is.null(input$col_volume) && input$col_volume != "") input$col_volume
-               else NULL
     
     # --- Treatment groups ---
     tx_box <- if (has_col(data, tx_col)) {
@@ -686,7 +707,10 @@ data_upload_server <- function(id, rv) {
       col_removal_reason = input$col_removal_reason %||% "",
       removal_reason_map = removal_reason_map(),
       randomisation_unit = if (nzchar(input$col_cage %||% ""))
-                             input$randomisation_unit %||% "mouse" else "mouse"
+                             input$randomisation_unit %||% "mouse" else "mouse",
+      # R22.3: "arm" when cages are numbered within each arm.
+      cage_labels       = if (nzchar(input$col_cage %||% ""))
+                            input$cage_labels %||% "study" else "study"
     )
     
     # Track column mapping when all required columns are set
@@ -725,12 +749,79 @@ data_upload_server <- function(id, rv) {
          input$col_date_for_day, input$col_volume, input$col_length,
          input$col_width, input$volume_method, input$time_method,
          input$reference_date, input$date_order, input$volume_formula,
-         input$col_height, input$col_cage, input$col_dose),
+         input$col_height, input$col_cage, input$col_dose, input$cage_labels),
     {
       rv$processed_data <- NULL
     },
     ignoreInit = TRUE
   )
+
+  # ---------------------------------------------------------------------------
+  # F5: the data check. The whole file as uploaded (before the Subset Filter),
+  # prepared with the mapped columns, so each flag names its line in the file.
+  # ---------------------------------------------------------------------------
+  data_check <- reactive({
+    req(isTRUE(rv$data_valid), rv$uploaded_data)
+    s <- rv$settings
+    d <- rv$uploaded_data
+    req(has_col(d, s$col_treatment), has_col(d, s$col_id))
+    d$.File_Line <- seq_len(nrow(d)) + 1L
+    # As measured: calculate_volume() swaps a width above the length.
+    cal <- identical(s$volume_method, "calculate") && has_col(d, s$col_length) &&
+      has_col(d, s$col_width)
+    if (cal) {
+      d$.Length_As_Measured <- d[[s$col_length]]
+      d$.Width_As_Measured  <- d[[s$col_width]]
+    }
+    pu <- tryCatch(suppressWarnings(prepare_upload(list(settings = s, uploaded_data = d))),
+                   error = function(e) NULL)
+    req(pu, has_col(pu$data, pu$time_col), has_col(pu$data, pu$vol_col))
+    opt <- function(col) if (has_col(pu$data, col)) col
+    tryCatch(check_study_data(pu$data, time_column = pu$time_col, volume_column = pu$vol_col,
+      treatment_column = s$col_treatment, id_column = s$col_id,
+      cage_column = opt(s$col_cage), dose_column = opt(s$col_dose),
+      weight_column = opt(s$col_weight), event_column = opt(s$col_survival_event),
+      length_column = if (cal) ".Length_As_Measured", width_column = if (cal) ".Width_As_Measured",
+      row_column = ".File_Line"), error = function(e) NULL)
+  })
+
+  output$data_check_ui <- renderUI({
+    qc <- data_check()
+    req(qc)
+    data_check_panel(qc, ns = session$ns)
+  })
+
+  output$data_check_flagged <- DT::renderDT({
+    qc <- data_check()
+    req(qc, nrow(qc$flagged))
+    f <- qc$flagged
+    names(f)[names(f) == "Row"] <- "Line"
+    DT::datatable(f, rownames = FALSE, filter = "top",
+                  options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+  output$download_data_check <- downloadHandler(
+    filename = "data_check.csv",
+    content = function(file) {
+      f <- data_check()$flagged
+      names(f)[names(f) == "Row"] <- "Line"
+      utils::write.csv(f, file, row.names = FALSE)
+    })
+
+  # F4: the study report: the data check, then each tab with a result.
+  output$download_study_report <- downloadHandler(
+    filename = function() paste0("study_report_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".html"),
+    content = function(file) {
+      qc <- tryCatch(data_check(), error = function(e) NULL)
+      data_part <- if (!is.null(qc)) paste0(
+        "<section><h1>Data</h1>",
+        if (nrow(qc$summary)) report_table(qc$summary[, c("Severity", "Check", "Animals", "Rows", "What")],
+                                           "The data check: what was found in the file")
+        else "<p>The data check found nothing.</p>", "</section>")
+      tabs <- study_report_sections(session$userData$dl_registry %||% list())
+      if (!length(tabs)) tabs <- "<section><h1>Analyses</h1><p>No analysis has been run in this session yet.</p></section>"
+      report_document(file, "Study report", c(data_part, tabs))
+    })
 
   # Settings preset handlers
   setup_settings_preset(input, output, session, rv, study_defaults)

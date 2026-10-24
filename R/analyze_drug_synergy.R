@@ -13,8 +13,8 @@
 #' @param drug_a_name A character string specifying the name of the first single agent treatment group.
 #' @param drug_b_name A character string specifying the name of the second single agent treatment group.
 #' @param combo_name A character string specifying the name of the combination treatment group.
-#' @param control_name A character string specifying the name of the control/vehicle group. Default is "Control".
-#' @param eval_time_point Day at which to evaluate synergy. \code{NULL}
+#' @param reference_group A character string specifying the name of the control/vehicle group. Default is "Control".
+#' @param endpoint_day Day at which to evaluate synergy. \code{NULL}
 #'   (default): the last day on which all four arms are evaluable, i.e. at
 #'   least 50 % of each arm's enrolled animals, and at least 3, are still on
 #'   study (see \code{\link{evaluable_days}}). A requested day must be
@@ -107,8 +107,8 @@
 #' m <- master_synthetic_data
 #' syn <- analyze_drug_synergy(m,
 #'   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
-#'   combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-#'   cage_column = "Cage", n_boot = 200, boot_seed = 1, verbose = FALSE)
+#'   combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+#'   cage_column = "Cage", n_boot = 200, seed = 1, verbose = FALSE)
 #' syn$summary
 #' plot_drug_synergy(syn)
 #' @import dplyr
@@ -119,7 +119,7 @@
 #'   (treatment + ID + cage), so an ID reused in different cages of one arm
 #'   is counted as different animals (CODE_REVIEW.md T1). NULL or absent means
 #'   no cage information.
-#' @param endpoint_method How each arm's volume at \code{eval_time_point} is
+#' @param endpoint_method How each arm's volume at \code{endpoint_day} is
 #'   obtained: "model" (default: each arm's geometric mean from a mixed model
 #'   of log volume fitted to every observation, with a natural spline in time
 #'   per arm and per-animal random slopes), "last_obs", or "survivors"
@@ -130,8 +130,6 @@
 #'   labelled additive. Default 0.1, a convention rather than a derived
 #'   quantity. It replaces \code{strong_synergy_delta} (v0.27.0), which set the
 #'   "Strong Synergy" label; that label was removed with the asymmetric bands.
-#' @param ci_thresholds Deprecated and ignored; retained so existing calls do
-#'   not error. It configured the removed Combination Index band.
 #' @param n_boot Integer >= 0. Number of draws behind the 95 % intervals in
 #'   \code{synergy_ci}. Under \code{endpoint_method = "model"} they are draws
 #'   of the endpoint model's fixed effects, so the intervals describe the
@@ -139,7 +137,7 @@
 #'   bootstrap resamples of animals within arm, control included
 #'   (CODE_REVIEW.md R3.6 / R3.7 / G.6, R20.2). Either way the point estimate
 #'   is reported, not the median of the draws. Default 2000. Set 0 to skip.
-#' @param boot_seed Optional integer seed for reproducible resampling.
+#' @param seed Optional integer seed for reproducible resampling.
 #' @export
 analyze_drug_synergy <- function(df, 
                                treatment_column = "Treatment",
@@ -148,15 +146,14 @@ analyze_drug_synergy <- function(df,
                                drug_a_name,
                                drug_b_name,
                                combo_name,
-                               control_name = "Control",
-                               eval_time_point = NULL,
+                               reference_group = "Control",
+                               endpoint_day = NULL,
                                id_column = "ID",
                                cage_column = NULL,
                                endpoint_method = c("model", "last_obs", "survivors"),
-                               ci_thresholds = c(0.85, 1.15),
                                additivity_margin = 0.1,
                                n_boot = 2000L,
-                               boot_seed = NULL,
+                               seed = NULL,
                                verbose = TRUE,
                                volume_units = c("mm3", "cm3"),
                                zero_floor = NULL) {
@@ -174,7 +171,7 @@ analyze_drug_synergy <- function(df,
   if (!is.null(cage_column) && !cage_column %in% colnames(df)) cage_column <- NULL
 
   # Check that the specified groups exist in the data
-  all_groups <- c(drug_a_name, drug_b_name, combo_name, control_name)
+  all_groups <- c(drug_a_name, drug_b_name, combo_name, reference_group)
   missing_groups <- all_groups[!all_groups %in% unique(df[[treatment_column]])]
   if (length(missing_groups) > 0) {
     stop("The following specified groups do not exist in the treatment column: ",
@@ -191,20 +188,20 @@ analyze_drug_synergy <- function(df,
     df, id_column = id_column, treatment_column = treatment_column,
     time_column = time_column, volume_column = volume_column,
     cage_column = cage_column,
-    endpoint_day = eval_time_point, endpoint_method = endpoint_method,
-    arms = c(control_name, drug_a_name, drug_b_name, combo_name),
+    endpoint_day = endpoint_day, endpoint_method = endpoint_method,
+    arms = c(reference_group, drug_a_name, drug_b_name, combo_name),
     zero_floor = me_zero_floor(volume_units, zero_floor), volume_units = volume_units
   )
-  if (is.null(eval_time_point) && isTRUE(verbose)) {
+  if (is.null(endpoint_day) && isTRUE(verbose)) {
     message("Evaluating at day ", ep$endpoint_day,
             ", the last day on which all four arms are evaluable.")
   }
 
-  me_synergy_from_endpoint(
-    ep, control_name = control_name, drug_a_name = drug_a_name,
+  me_result(me_synergy_from_endpoint(
+    ep, control_name = reference_group, drug_a_name = drug_a_name,
     drug_b_name = drug_b_name, combo_name = combo_name,
     additivity_margin = additivity_margin,
-    n_boot = n_boot, boot_seed = boot_seed, verbose = verbose)
+    n_boot = n_boot, boot_seed = seed, verbose = verbose), "me_synergy")
 }
 
 #' Synergy quantities from one endpoint evaluation
@@ -590,8 +587,8 @@ synergy_permouse_diagnostics <- function(pm, t) {
 #' and synergy metrics from a drug combination analysis.
 #'
 #' @param synergy_results Results object from analyze_drug_synergy function
-#' @param custom_title Optional custom title for the plot
-#' @param custom_colors Optional named vector of custom colors for plot elements
+#' @param title Optional custom title for the plot
+#' @param colors Optional named vector of custom colors for plot elements
 #'
 #' @return A ggplot2 object visualizing the synergy analysis results
 #' @export
@@ -599,10 +596,10 @@ synergy_permouse_diagnostics <- function(pm, t) {
 #' @examples
 #' syn <- analyze_drug_synergy(master_synthetic_data,
 #'   drug_a_name = "Drug_A Mid", drug_b_name = "Drug_B",
-#'   combo_name = "Drug_A Mid + Drug_B", control_name = "Vehicle",
-#'   n_boot = 200, boot_seed = 1, verbose = FALSE)
-#' plot_drug_synergy(syn, custom_title = "Drug_A Mid + Drug_B vs Bliss")
-plot_drug_synergy <- function(synergy_results, custom_title = NULL, custom_colors = NULL) {
+#'   combo_name = "Drug_A Mid + Drug_B", reference_group = "Vehicle",
+#'   n_boot = 200, seed = 1, verbose = FALSE)
+#' plot_drug_synergy(syn, title = "Drug_A Mid + Drug_B vs Bliss")
+plot_drug_synergy <- function(synergy_results, title = NULL, colors = NULL) {
   # Validate input
   if (!is.list(synergy_results) || is.null(synergy_results$plot_data)) {
     stop("Input must be a valid result object from analyze_drug_synergy()")
@@ -612,17 +609,17 @@ plot_drug_synergy <- function(synergy_results, custom_title = NULL, custom_color
   plot_data <- synergy_results$plot_data
   
   # Set title
-  if (is.null(custom_title)) {
+  if (is.null(title)) {
     title <- paste("Drug Combination Analysis at Day", synergy_results$evaluation_time_point)
   } else {
-    title <- custom_title
+    title <- title
   }
   
   # Set colors
-  if (is.null(custom_colors)) {
+  if (is.null(colors)) {
     fill_colors <- c("Expected" = "lightblue", "Observed" = "darkblue")
   } else {
-    fill_colors <- custom_colors
+    fill_colors <- colors
   }
   
   # Create the plot

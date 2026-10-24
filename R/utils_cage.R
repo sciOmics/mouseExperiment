@@ -280,3 +280,48 @@ cage_icc <- function(model, cage_column, time_column = NULL, at = 0) {
     stringsAsFactors = FALSE
   )
 }
+
+# CODE_REVIEW.md R22.3 -- cages numbered within each arm (C1 and C2 in every
+# arm) read as cages that each hold several arms: the "crossed" design, with
+# cage a fixed effect estimated across arms. From the labels alone that cannot
+# be told apart from cages that really are shared, so the study says which
+# (label_cages(), or Study Design on the dashboard). These flag the pattern.
+
+#' The cage labels the arms reuse, when every arm's labels come from one set
+#'
+#' At least two arms share a label, and one arm's labels include every other
+#' arm's (Vehicle C1-C3 with C1-C2 elsewhere counts). Unique labels, and
+#' cages that each hold a different pair of arms, do not.
+#' @param cage,arm Each row's cage and arm.
+#' @return The labels, in order; empty when the pattern is absent.
+#' @noRd
+reused_cage_labels <- function(cage, arm) {
+  ok <- !is.na(cage) & !is.na(arm)
+  sets <- lapply(split(as.character(cage[ok]), as.character(arm[ok])), unique)
+  if (length(sets) < 2L) return(character(0))
+  labels  <- unlist(sets, use.names = FALSE)
+  biggest <- sets[[which.max(lengths(sets))]]
+  if (!anyDuplicated(labels) || !all(labels %in% biggest)) return(character(0))
+  biggest[order(nchar(biggest), biggest)]
+}
+
+#' The warning for reused cage labels, or NULL
+#' @noRd
+reused_cage_message <- function(df, cage_column, treatment_column) {
+  if (!has_col(df, cage_column) || !has_col(df, treatment_column)) return(NULL)
+  lab <- reused_cage_labels(df[[cage_column]], df[[treatment_column]])
+  if (!length(lab)) return(NULL)
+  paste0("Every arm's cage labels come from one set (",
+         paste(utils::head(lab, 5L), collapse = ", "), if (length(lab) > 5L) ", ...",
+         "), so each label is read as one cage holding several arms. If cages are ",
+         "numbered within each arm, make the labels unique first: label_cages(), or ",
+         "'Numbered within each arm' under Study Design on the dashboard.")
+}
+
+#' Warn when the arms reuse cage labels
+#' @noRd
+warn_reused_cage_labels <- function(df, cage_column, treatment_column) {
+  msg <- reused_cage_message(df, cage_column, treatment_column)
+  if (!is.null(msg)) warning(msg, call. = FALSE)
+  invisible(msg)
+}

@@ -24,7 +24,7 @@ devtools::check()
 As of v0.10.0 `brms` ≥ 2.19 is a **required** dependency, not a suggestion, so
 `devtools::load_all()` needs it (and therefore a C++ toolchain) for *any*
 development, not only Bayesian work. The same applies to `bayesplot`,
-`pwr`, `coin`, `clinfun`, `ggpubr` and `posterior`.
+`coin`, `clinfun` and `posterior`.
 
 This is deliberate and worth understanding before you are tempted to reverse it.
 While `brms` was in `Suggests`, every Bayesian test file began with
@@ -296,7 +296,7 @@ system("git tag -a v0.4.8 -m 'Release v0.4.8'")
 system("git push --tags")
 ```
 
-The dashboard's `DESCRIPTION` pins backend version via `mouseExperiment (>= X.Y.Z)`. After a release, update that constraint in the dashboard repo if any new exports are required.
+The dashboard is part of this package (since 0.34.0), so there is no separate version to pin. The server image installs the package from the commit being deployed.
 
 ---
 

@@ -7,12 +7,12 @@
 plot_tumor_growth(
   df,
   volume_column = "Volume",
-  day_column = "Day",
+  time_column = "Day",
   treatment_column = "Treatment",
   cage_column = "Cage",
-  ID_column = "ID",
+  id_column = "ID",
   dose_column = NULL,
-  survival_column = "Survival_Censor",
+  event_column = "Survival_Censor",
   extrapolate_volumes = FALSE,
   extrapolation_points = "all",
   group_summary_line = TRUE,
@@ -26,17 +26,17 @@ plot_tumor_growth(
 
 \item{volume_column}{The name of the column storing tumor volume measurements}
 
-\item{day_column}{The name of the column with number of days since the beginning of the experiment for each observation}
+\item{time_column}{The name of the column with number of days since the beginning of the experiment for each observation}
 
 \item{treatment_column}{The name of the column with the treatment indicator}
 
 \item{cage_column}{The name of the column with the cage identifier}
 
-\item{ID_column}{The name of the column with the individual mouse identifier}
+\item{id_column}{The name of the column with the individual mouse identifier}
 
 \item{dose_column}{Optional. The name of the column with dose information (if present in the data)}
 
-\item{survival_column}{The name of the column indicating survival status (1 for death, 0 for alive)}
+\item{event_column}{The name of the column indicating survival status (1 for death, 0 for alive)}
 
 \item{extrapolate_volumes}{Boolean. Should missing volumes for mice that have died be extrapolated? Extrapolated values are shown with dashed lines. Default is FALSE.}
 

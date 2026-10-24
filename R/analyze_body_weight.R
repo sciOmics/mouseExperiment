@@ -128,6 +128,7 @@ analyze_body_weight <- function(df,
   has_cage <- !is.null(cage_column) && cage_column %in% names(df)
   if (has_cage) {
     wd$Cage <- as.factor(df[[cage_column]])
+    warn_reused_cage_labels(df, cage_column, treatment_column)   # R22.3
   }
 
   # Initial mass per mouse (baseline weight at earliest timepoint).
@@ -333,7 +334,7 @@ analyze_body_weight <- function(df,
   # CODE_REVIEW.md DIAGNOSTICS gap (13) — LMM influence diagnostics.
   lmm_infl <- build_lmm_influence(model, groups = "Animal")
 
-  list(
+  me_result(list(
     reference_group = reference_group,   # R20.46
     model          = model,
     fixed_effects  = fe,
@@ -367,5 +368,5 @@ analyze_body_weight <- function(df,
     diag_dfbetas             = if (!is.null(lmm_infl)) lmm_infl$dfbetas,
     weight_data    = wd,
     summary_text   = summary_text
-  )
+  ), "me_body_weight")
 }

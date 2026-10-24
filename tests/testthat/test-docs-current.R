@@ -24,6 +24,12 @@ read_src <- function(f) {
   skip_if_not(file.exists(p), paste(f, "not locatable"))
   paste(readLines(p, warn = FALSE), collapse = "\n")
 }
+# Every UI file: ui_modules.R was split into ui_data.R, ui_tumor_growth.R and
+# ui_help.R in 0.49.0 (R22-K).
+read_ui <- function() {
+  paste(vapply(c("ui_modules.R", "ui_data.R", "ui_tumor_growth.R", "ui_help.R"), read_src, ""),
+        collapse = "\n")
+}
 
 # Pull the values out of a selectInput's `choices = c(...)` block.
 choice_values <- function(src, input_id) {
@@ -38,7 +44,7 @@ choice_values <- function(src, input_id) {
 # ---- Tumor Growth ----------------------------------------------------------
 
 test_that("D.13: the Info tab's model count matches the model selector", {
-  src <- read_src("ui_modules.R")
+  src <- read_ui()
   n_models <- length(choice_values(src, "tg_model_type"))
   expect_gt(n_models, 0L)
 
@@ -51,7 +57,7 @@ test_that("D.13: the Info tab's model count matches the model selector", {
 })
 
 test_that("D.13: every model type in the selector is named in the Info tab", {
-  src <- read_src("ui_modules.R")
+  src <- read_ui()
   # A mode users can pick but that the documentation never mentions is the gap
   # this whole round was about.
   labels <- c(lme4 = "LME4", auc = "Area Under Curve", bayes = "Bayesian LMM")
@@ -67,7 +73,7 @@ test_that("D.13 / backend R20.31: the ANOVA tab is described as the backend repo
   # D.13: the LME4 path once reported Wald chi-squares while the docs said F.
   # Backend 0.30.0 reports Satterthwaite F-tests (NumDF / DenDF / Pr(>F)),
   # growth rate first; the docs must say that and not the chi-square.
-  src <- read_src("ui_modules.R")
+  src <- read_ui()
   expect_false(grepl("Type III ANOVA F-test", src, fixed = TRUE))
   expect_false(grepl("Wald chi-square tests for Treatment", src, fixed = TRUE))
   expect_match(src, "F-tests with Satterthwaite degrees of freedom", fixed = TRUE)
@@ -78,14 +84,14 @@ test_that("D.13: extrapolation is documented as affecting plots only", {
   # It was removed from the statistical path deliberately: appending an imputed
   # observation and treating it as measured made standard errors ignore the
   # imputation. The docs described the old behaviour for several releases.
-  src <- read_src("ui_modules.R")
+  src <- read_ui()
   expect_false(grepl("LOCF (last observation carried forward) can extrapolate AUC",
                      src, fixed = TRUE))
   expect_match(src, "growth-trajectory plots only", fixed = TRUE)
 })
 
 test_that("D.13: the randomisation test and correction options are documented", {
-  src <- read_src("ui_modules.R")
+  src <- read_ui()
   # Both were added to the sidebar without ever reaching the Info tab.
   expect_match(src, "Randomisation Test", fixed = TRUE)
   expect_match(src, "unit that was randomised", fixed = TRUE)
@@ -95,7 +101,7 @@ test_that("D.13: the randomisation test and correction options are documented", 
 })
 
 test_that("D.13: structure-aware cage handling is documented, not the legacy rule", {
-  src <- read_src("ui_modules.R")
+  src <- read_ui()
   for (term in c("Crossed", "Nested, replicated", "Nested, confounded")) {
     expect_match(src, term, fixed = TRUE, info = term)
   }
@@ -107,7 +113,7 @@ test_that("D.13: Help does not describe a Power mode the app does not offer", {
   # The Help tab listed "Bayesian simulation" among the Power modes. The selector
   # offers exactly two. Documenting a third sends users looking for a control
   # that is not there.
-  ui  <- read_src("ui_modules.R")
+  ui  <- read_ui()
   pw  <- read_src("mod_power.R")
   modes <- choice_values(pw, "pw_mode")
   expect_setequal(modes, c("apriori_analytic", "apriori_lmm"))
@@ -119,7 +125,7 @@ test_that("D.13 / R20.4: Help states the AUC comparison method the backend actua
   # It said Kruskal-Wallis / pairwise Wilcoxon, then Welch's ANOVA on per-animal
   # AUCs. Since backend v0.26.0 the AUC is the area under each arm's fitted
   # curve, compared by AUC ratios.
-  ui <- read_src("ui_modules.R")
+  ui <- read_ui()
   expect_false(grepl("Kruskal-Wallis", ui, fixed = TRUE))
   expect_false(grepl("Welch one-way ANOVA", ui, fixed = TRUE))
   expect_match(ui, "ratio of their AUCs", fixed = TRUE)
@@ -144,7 +150,7 @@ test_that("R20-K: the Synergy, Toxicity and Dose Response Info tabs state the ev
 test_that("D.13: Help no longer claims Tukey is the default correction", {
   # The default is an exact Dunnett; the old text said "emmeans with Tukey
   # adjustment", which is the wrong family as well as the wrong correction.
-  ui <- read_src("ui_modules.R")
+  ui <- read_ui()
   expect_false(grepl("emmeans with Tukey adjustment", ui, fixed = TRUE))
   expect_match(ui, "exact Dunnett correction", fixed = TRUE)
 })
@@ -153,7 +159,7 @@ test_that("D.13: every auto-detected column role appears in the Help table", {
   # detect_columns() is the authority. A role it detects but Help omits leaves
   # users unaware the app can use a column they already have — which is how the
   # necrosis, sex and height columns went unmentioned.
-  ui <- read_src("ui_modules.R")
+  ui <- read_ui()
   # Survival_Time was detected but never used, and went in 26.10.009.
   roles <- c("Necrotic", "Sex", "Date", "Height", "Removal_Reason")
   for (r in roles) {
@@ -163,13 +169,13 @@ test_that("D.13: every auto-detected column role appears in the Help table", {
 
 test_that("D.13: Help documents the volume formula choice, not just one formula", {
   # Six formulas are selectable in Data Upload; Help hard-coded the ellipsoid.
-  ui <- read_src("ui_modules.R")
+  ui <- read_ui()
   expect_match(ui, "modified ellipsoid", fixed = TRUE)
   expect_match(ui, "six formulas", fixed = TRUE)
 })
 
 test_that("D.13: Help lists the demo datasets the Data tab offers", {
-  ui  <- read_src("ui_modules.R")
+  ui  <- read_ui()
   upl <- read_src("mod_data_upload.R")
   blk <- regmatches(upl, regexpr("demo_files <- list\\([\\s\\S]*?\\n    \\)",
                                  upl, perl = TRUE))
@@ -218,7 +224,7 @@ test_that("R20-K: the therapeutic window is documented as two axes, not the TWM 
   # The Info and Help tabs described TWM = TGI / weight loss and its ranking
   # for as long as the ratio existed; v26.09.005 withdrew it.
   tox <- read_src("mod_toxicity.R")
-  ui  <- read_src("ui_modules.R")
+  ui  <- read_ui()
   for (src in list(tox, ui)) {
     expect_false(grepl("TWM = TGI", src, fixed = TRUE))
     expect_false(grepl("Therapeutic Window Metric (TWM)", src, fixed = TRUE))
@@ -249,7 +255,7 @@ test_that("R14.3: the Tumor Growth tab does not claim to report TGI", {
   # tumor_growth_statistics() returns no TGI field and the tab renders none, but
   # the Info panel stated "All modes compute Tumor Growth Inhibition (TGI) ...".
   # Promising a number the tab does not produce sends users looking for it.
-  ui <- read_src("ui_modules.R")
+  ui <- read_ui()
   expect_false(grepl("All modes compute Tumor Growth Inhibition", ui, fixed = TRUE))
   expect_false(grepl("Both modes compute Tumor Growth Inhibition", ui, fixed = TRUE))
   expect_match(ui, "does ", fixed = TRUE)
@@ -259,7 +265,7 @@ test_that("R14.7: the Bayesian summary is not described as medians or blanket HP
   # brms summary() reports the posterior MEAN with an EQUAL-TAILED interval;
   # emmeans-derived tables report a genuine highest-density interval. Both appear
   # under Lower_95_CrI / Upper_95_CrI, so the tab has to say which is which.
-  ui <- read_src("ui_modules.R")
+  ui <- read_ui()
   expect_false(grepl("posterior medians with", ui, fixed = TRUE))
   expect_match(ui, "posterior means", fixed = TRUE)
   expect_match(ui, "equal-tailed", fixed = TRUE)

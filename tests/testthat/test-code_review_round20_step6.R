@@ -54,6 +54,7 @@ holds_brmsfit <- function(x) {
 }
 
 test_that("R20.78: a fit of the same structure reuses the compiled model and draws the same", {
+  skip_on_cran()   # fits a Stan model (R22.17)
   d1 <- make_tg_simple()
   d2 <- d1
   d2$Treatment <- ifelse(d2$Treatment == "Control", "Vehicle", "Drug X+Y")  # brms renames these
@@ -72,6 +73,7 @@ test_that("R20.78: a fit of the same structure reuses the compiled model and dra
 })
 
 test_that("R20.80 / R20.40 / R20.74: plots do not hold the model; the prior layer is drawn; residuals survive a missing volume", {
+  skip_on_cran()   # fits a Stan model (R22.17)
   d <- make_tg_simple()
   d$Volume[3] <- NA
   r <- tg6(d, plots = TRUE)
@@ -92,6 +94,7 @@ test_that("R20.80 / R20.40 / R20.74: plots do not hold the model; the prior laye
 })
 
 test_that("R20.35: LOO survives an influential observation and counts it", {
+  skip_on_cran()   # fits a Stan model (R22.17)
   d <- make_tg_simple()
   d$Volume[5] <- d$Volume[5] * 50                 # a planted outlier
   loo <- tg6(d)$loo_diagnostics
@@ -116,6 +119,7 @@ weib6 <- function(seed = 5, n = 8, shape = 6, scale_c = 20, hr = 0.088, end = 30
 }
 
 test_that("R20.38 / R20.74: the shape prior does not pull the hazard ratio toward 1", {
+  skip_on_cran()   # fits a Stan model (R22.17)
   d <- weib6()
   r <- quiet6(bayesian_survival(d, time_column = "Day", event_column = "Event",
                                 reference_group = "Control", include_cage_effect = FALSE,

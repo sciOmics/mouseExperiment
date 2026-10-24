@@ -669,11 +669,11 @@ toxicity_server <- function(id, rv) {
     invisible(NULL)
   })
 
-  # The study's control group, in the labels of the data this tab analyses
-  # ("Treatment Dose" after a Tumour Growth run with a dose column).
+  # The study's control group, in the labels of the data this tab analyses:
+  # "Treatment Dose" when a dose column is mapped (R20-AB).
   tox_ref <- reactive({
     req(rv$processed_data, rv$tx_col)
-    study_reference(rv, rv$processed_data[[rv$tx_col]])
+    study_reference(rv, arm_labels(rv$processed_data, rv$tx_col, rv$settings$col_dose))
   })
 
   output$tox_reference_note <- renderUI({
@@ -755,6 +755,17 @@ toxicity_server <- function(id, rv) {
     id_col    <- rv$id_col
     sex_col   <- rv$sex_col
     cage_col  <- rv$cage_col
+    # R20-AB (maintainer's decision): with a dose column, each treatment-dose
+    # combination is its own arm, as on Tumor Growth, Survival and Synergy. A
+    # treatment given at several doses used to be one arm here.
+    prep_steps <- pp$steps   # R20-AC: the preparation, for the R script
+    if (has_col(data, rv$settings$col_dose) && has_col(data, tx_col)) {
+      la_args <- list(df = data, treatment_column = tx_col,
+                      dose_column = rv$settings$col_dose, name = "TreatmentGroup")
+      data   <- do.call(label_arms, la_args)
+      prep_steps <- c(prep_steps, list(record_call("label_arms", la_args, keep_data = FALSE)))
+      tx_col <- "TreatmentGroup"
+    }
     ref_group <- study_reference(rv, data[[tx_col]])
     has_vol   <- !is.null(vol_col) && vol_col %in% names(data)
     adjust    <- isTRUE(input$tox_adjust_tumor) && has_vol
@@ -817,6 +828,13 @@ toxicity_server <- function(id, rv) {
         adjust_tumor_weight = adjust, tumor_density = density,
         volume_units = units,
         covariates = covs, estimation = est_method, reference_group = ref_group)
+      # R20-AA: both calls exactly as made, for the R script. They travel with
+      # the pending run, so a run resumed after a reload keeps them.
+      rv$tox_pending$call_records <- list(
+        bw = record_call("analyze_body_weight", bw_args),
+        wl = record_call("weight_loss_threshold", rv$tox_pending$wl_args))
+      rv$tox_pending$prep_steps  <- prep_steps       # R20-AC
+      rv$tox_pending$source_file <- rv$source_file
       launch_background_job(
         kind = "bw_model",
         task = background_task(mouseExperiment::analyze_body_weight, bw_args),
@@ -849,20 +867,25 @@ toxicity_server <- function(id, rv) {
         return()
       }
 
-      results$twm <- safe_analysis(module = "et_twm", {
-        mouseExperiment::therapeutic_window_metric(
-          df = data, volume_column = vol_col, weight_column = wt_col,
-          time_column = time_col, treatment_column = tx_col, id_column = id_col,
-          cage_column = cage_col,  # R20.D31: cage is part of the animal key
-          adjust_tumor_weight = adjust, tumor_density = density,
-          volume_units = units, reference_group = ref_group,
-          # Backend 0.33.0: the endpoint model's zero floor, in the declared
-          # units even when the mass correction (and so `units`) is off.
-          zero_floor = if (identical(backend_volume_units(rv), "cm3")) 0.002 else NULL,
-          tolerability_threshold = tol_thr,
-          endpoint_method = ep_method, n_boot = n_boot_tw, boot_seed = 20260730L
-        )
-      })
+      twm_args <- list(
+        df = data, volume_column = vol_col, weight_column = wt_col,
+        time_column = time_col, treatment_column = tx_col, id_column = id_col,
+        cage_column = cage_col,  # R20.D31: cage is part of the animal key
+        adjust_tumor_weight = adjust, tumor_density = density,
+        volume_units = units, reference_group = ref_group,
+        # Backend 0.33.0: the endpoint model's zero floor, in the declared
+        # units even when the mass correction (and so `units`) is off.
+        zero_floor = if (identical(backend_volume_units(rv), "cm3")) 0.002 else NULL,
+        tolerability_threshold = tol_thr,
+        endpoint_method = ep_method, n_boot = n_boot_tw, seed = 20260730L
+      )
+      results$twm <- safe_analysis(module = "et_twm",
+                                   do.call(mouseExperiment::therapeutic_window_metric, twm_args))
+      # R20-AA: the call exactly as made, for the R script.
+      if (!isTRUE(results$twm$error)) {
+        results <- with_provenance(results, list(twm = record_call("therapeutic_window_metric", twm_args)),
+                                   prep_steps, rv$source_file, field = "call_records")
+      }
 
       results$twm_reference <- ref_group
       n_err   <- as.integer(isTRUE(results$twm$error))
