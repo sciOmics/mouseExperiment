@@ -883,9 +883,8 @@ toxicity_server <- function(id, rv) {
                                    do.call(mouseExperiment::therapeutic_window_metric, twm_args))
       # R20-AA: the call exactly as made, for the R script.
       if (!isTRUE(results$twm$error)) {
-        results$call_records <- list(twm = record_call("therapeutic_window_metric", twm_args))
-        results$prep_steps   <- prep_steps       # R20-AC
-        results$source_file  <- rv$source_file
+        results <- with_provenance(results, list(twm = record_call("therapeutic_window_metric", twm_args)),
+                                   prep_steps, rv$source_file, field = "call_records")
       }
 
       results$twm_reference <- ref_group

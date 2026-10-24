@@ -196,7 +196,8 @@ The dashboard is structured as a Shiny `navbarPage` with one tab per analysis mo
 | `R/helpers_bayes.R` | Bayesian diagnostics panel + LOO influential observations |
 | `R/helpers_report.R` | HTML reports: each tab's, built from its Download Results items, and the study report |
 | `R/logging.R` | Structured JSON logging to stdout |
-| `R/ui_modules.R` | Shared UI components / layout helpers |
+| `R/ui_modules.R` | Shared UI helpers (info boxes, help icons, plot notes) |
+| `R/ui_data.R`, `R/ui_tumor_growth.R`, `R/ui_help.R` | The Data tab, the Tumor Growth tab, and the Help and About pages; the other tabs' UIs are with their modules |
 | `inst/www/css/` | Custom styles (light + dark modes) |
 | `inst/www/js/` | `session-id.js` (F.7 cookie), `navbar.js`, `sidebar.js`, `darkmode.js`, `help-tips.js`, `overlay.js`, `umami-events.js` |
 | `inst/sample_data/` | Example datasets |

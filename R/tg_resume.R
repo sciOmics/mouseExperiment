@@ -119,9 +119,8 @@ register_tg_resume <- function(input, output, session, rv) {
     necrotic_handling = bayes_params$necrotic_handling %||% "",
     n_rows          = if (!is.null(bayes_params$data)) nrow(bayes_params$data) else NA)
   result$model <- NULL   # not requested (R20.D18); a no-op kept for safety
-  result$call_record <- context$call_record   # R20-Z: for the R script
-  result$prep_steps  <- bayes_params$prep_steps    # R20-AC
-  result$source_file <- bayes_params$source_file
+  result <- with_provenance(result, context$call_record, bayes_params$prep_steps,
+                            bayes_params$source_file)
   # R20.D59: the posterior contrasts vs the reference feed the forest plot,
   # which Bayesian runs never had.
   if (is.data.frame(result$pairwise_comparisons) && nrow(result$pairwise_comparisons)) {

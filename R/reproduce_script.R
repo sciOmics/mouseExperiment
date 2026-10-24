@@ -38,6 +38,27 @@ record_call <- function(fun, args, data_arg = "df", exprs = list(), keep_data = 
        exprs = exprs, when = Sys.time())
 }
 
+#' Attach a run's provenance for its R script
+#'
+#' The call as made (R20-Z/AA), the preparation before it and the uploaded
+#' file (R20-AC), which every run handler stored in the same three lines
+#' (R22-K). A result with an error is returned as it is.
+#' @param result The run's result.
+#' @param call_record Its [record_call()], or a named list of them.
+#' @param prep_steps The recorded preparation.
+#' @param source_file The uploaded file (see [source_file_record()]).
+#' @param field Where the record goes: `"call_record"`, or `"call_records"`
+#'   for a list.
+#' @keywords internal
+with_provenance <- function(result, call_record, prep_steps = NULL, source_file = NULL,
+                            field = "call_record") {
+  if (!is.list(result) || isTRUE(result$error)) return(result)
+  result[[field]] <- call_record
+  result$prep_steps <- prep_steps
+  result$source_file <- source_file
+  result
+}
+
 #' A preparation step that is a line of R rather than a package call
 #'
 #' For the few things a tab does to its data besides the exported preparation

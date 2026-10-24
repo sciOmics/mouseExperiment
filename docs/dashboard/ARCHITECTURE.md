@@ -46,7 +46,10 @@ The dashboard is a Shiny `navbarPage` with one tab per analysis module. Every mo
 ```
 R/
 ├── app.R                          # entry point: run_dashboard(), the navbarPage, server()
-├── ui_modules.R                   # shared UI: column mapping, Study Design, Help, About
+├── ui_modules.R                   # shared UI helpers: info boxes, help icons, plot notes
+├── ui_data.R                      # the Data tab: upload, column mapping, Study Design, data check
+├── ui_tumor_growth.R              # the Tumor Growth tab
+├── ui_help.R                      # the Help and About pages
 ├── helpers_ui.R                   # safe_analysis(), status_alert(), show_analysis_modal()
 ├── helpers_data.R                 # animal keys, Subset Filter, prepare_upload(), ensure_preprocessed()
 ├── helpers_format.R               # number, p-value and table formatting for display

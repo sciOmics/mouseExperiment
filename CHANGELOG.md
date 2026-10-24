@@ -5,6 +5,19 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.49.0] - 2026-10-23
+
+Maintainability (`CODE_REVIEW.md` Round 22 proposal F11, R22-K). Nothing changes for users.
+
+### Changed
+- **`ui_modules.R` (1,907 lines) is split:**
+  - the Data tab's UI into `ui_data.R`;
+  - Tumor Growth's into `ui_tumor_growth.R`;
+  - Help and About into `ui_help.R`;
+  - `ui_modules.R` keeps the shared helpers.
+- **One helper, `with_provenance()`,** attaches a run's call, preparation and uploaded file for
+  its R script. The same three lines had been repeated in eight places.
+
 ## [0.48.0] - 2026-10-23
 
 The R script redraws plots with the dashboard's styling (`CODE_REVIEW.md` Round 22 proposal
