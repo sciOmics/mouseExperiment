@@ -1793,7 +1793,7 @@ tumor_growth_server <- function(id, rv) {
     input, output, session, rv,
     tg_growth_plot, tg_rates_plot,
     tg_auc_plot, tg_forest_plot, tg_wf_plot,
-    endpoints = tg_endpoints
+    endpoints = tg_endpoints, growth_record = tg_plots$growth_record
   )
 
   # F.7 — register the resume handler. The banner module dispatches to

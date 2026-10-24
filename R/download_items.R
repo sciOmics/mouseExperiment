@@ -150,14 +150,16 @@ tox_dl_items <- function(res, traj_plot, km_plot, window_plot) {
 #' @param over_time Whether the run covered every evaluable day.
 #' @param main_plot,trend_plot,tgi_plot Functions returning the plots last drawn.
 #' @param diag The diagnostics' source (the displayed result, or the last day's).
+#' @param plot_record A function returning the Bliss plot's record (F9), or NULL.
 #' @keywords internal
-syn_dl_items <- function(res, over_time, main_plot, trend_plot, tgi_plot, diag) {
+syn_dl_items <- function(res, over_time, main_plot, trend_plot, tgi_plot, diag, plot_record = NULL) {
   if (is.null(res) || isTRUE(res$error)) return(NULL)
   metrics <- if (isTRUE(over_time) && dl_has(res$synergy_summary)) res$synergy_summary
              else res$synergy_metrics
   shown <- "Drawn as last shown on the Plots tabs; open a plot there first if it is missing."
   Filter(Negate(is.null), list(
-    if (!is.null(res$call_record)) script_dl_item(function(up) syn_script_bundle(res, up)),
+    if (!is.null(res$call_record))
+      script_dl_item(function(up) syn_script_bundle(res, up, plot = if (is.function(plot_record)) plot_record())),
     if (!is.null(metrics))
       dl_item("metrics", "tables", "Synergy metrics", "synergy_metrics", "table",
               function() as.data.frame(metrics),

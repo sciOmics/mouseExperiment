@@ -292,6 +292,7 @@ The dashboard prepares an upload with these, in this order; its R script can rep
 |----------|-------------|
 | `calculate_dates()` | Date-to-day conversion from one given date format |
 | `calculate_auc()` | Trapezoidal AUC |
+| `style_plot()` | A plot styled as the dashboard does: theme, colours, shapes, labels, legend, log scale, x range |
 
 ## Datasets
 

@@ -70,8 +70,8 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     })
     do_extrapolate <- isTRUE(surv_col_mapped) && extra_pts > 0L && isTRUE(input$tg_opt_show_extrap)
 
-    p <- tryCatch({
-      mouseExperiment::plot_tumor_growth(
+    # F9: the arguments are kept, so the R script can draw the same plot.
+    pt_args <- list(
         df                  = data,
         volume_column       = col_names$volume_column,
         time_column          = col_names$time_column,
@@ -90,24 +90,20 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
         # R20.D55: the displayed plot dropped the necrotic x markers, which
         # only the observer's (fallback) plot had.
         necrotic_column     = rv$necrotic_col,
-        volume_units        = backend_volume_units(rv)
-      ) + ggplot2::theme_classic()
+        volume_units        = backend_volume_units(rv))
+    p <- tryCatch({
+      do.call(mouseExperiment::plot_tumor_growth, pt_args) + ggplot2::theme_classic()
     }, error = function(e) {
       if (!is.null(rv$tg_results$tumor_growth_plot)) return(rv$tg_results$tumor_growth_plot)
       NULL
     })
     req(!is.null(p))
     shapes <- build_shape_vector(input, "tg_shape", ordered_grps)
-    if (!is.null(colors)) {
-      p <- p + ggplot2::scale_color_manual(values = colors)
-      # scale_fill_manual keeps dual-fill shapes (e.g. pch 25, down-triangle)
-      # rendered with the correct group colour interior
-      p <- p + ggplot2::scale_fill_manual(values = colors)
-    }
-    if (!is.null(shapes)) {
-      p <- p + ggplot2::scale_shape_manual(values = shapes)
-    }
+    # The fill scale keeps dual-fill shapes (e.g. pch 25, down-triangle)
+    # rendered with the correct group colour interior.
+    p <- style_plot(p, colors = colors, shapes = shapes)
     attr(p, "do_extrapolate") <- do_extrapolate
+    attr(p, "me_plot") <- list(args = pt_args, colors = colors, shapes = shapes)
     p
     }, error = function(e) {
       msg <- conditionMessage(e)
@@ -129,39 +125,35 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     legend   = input$tg_plot_legend_label %||% ""
   )), 600)
 
-  tg_growth_plot <- reactive({
-    p <- tg_growth_base()
-    req(p)
-    if (isTRUE(attr(p, "plot_error"))) return(p)
-    do_extrapolate <- isTRUE(attr(p, "do_extrapolate"))
-    tryCatch({
-    # Apply text size, title/subtitle, and legend position
-    text_size  <- input$tg_opt_text_size %||% 16
-    legend_pos <- input$tg_opt_legend_pos %||% "right"
+  # The cosmetic layer's settings, for the plot and for the R script (F9).
+  tg_growth_style <- reactive({
     lbl <- tg_label_text()
-    p <- apply_plot_labels(p, lbl$title, lbl$subtitle,
-                           input$tg_plot_title_align %||% "center", text_size,
-                           lbl$xlab, lbl$ylab, lbl$legend)
-    p <- apply_legend_pos(p, legend_pos)
-    # Apply y-axis scale
-    yscale <- input$tg_opt_yscale %||% "linear"
-    if (yscale == "log10") p <- p + ggplot2::scale_y_log10(expand = ggplot2::expansion(mult = c(0, 0.05)))
-    # Apply x-axis start and ensure 5% right padding.
-    # coord_cartesian is always applied so the explicit x_upper value
-    # (data max + 5%) is honoured regardless of scale expand settings.
-    # Pre-treatment (negative) days are kept unless a later start is chosen.
+    # Pre-treatment (negative) days are kept unless a later start is chosen;
+    # the right edge is the last day plus 5 %.
     x_start <- local({
       v <- input$tg_opt_xstart
       first <- suppressWarnings(min(0, rv$tg_plot_data[[rv$tg_col_names$time_column]], na.rm = TRUE))
       if (is.numeric(v) && length(v) == 1L && !is.na(v) && v > 0) v else first
     })
     x_upper <- tryCatch({
-      time_col <- rv$tg_col_names$time_column
-      x_max <- max(rv$tg_plot_data[[time_col]], na.rm = TRUE)
+      x_max <- max(rv$tg_plot_data[[rv$tg_col_names$time_column]], na.rm = TRUE)
       x_max + 0.05 * (x_max - x_start)
     }, error = function(e) NA)
-    if (!is.na(x_upper))
-      p <- suppressMessages(p + ggplot2::coord_cartesian(xlim = c(x_start, x_upper)))
+    list(title = lbl$title, subtitle = lbl$subtitle,
+         title_align = input$tg_plot_title_align %||% "center",
+         text_size = input$tg_opt_text_size %||% 16, x_label = lbl$xlab, y_label = lbl$ylab,
+         legend_title = lbl$legend, legend_position = input$tg_opt_legend_pos %||% "right",
+         y_scale = input$tg_opt_yscale %||% "linear",
+         x_limits = if (is.finite(x_upper)) c(x_start, x_upper))
+  })
+
+  tg_growth_plot <- reactive({
+    p <- tg_growth_base()
+    req(p)
+    if (isTRUE(attr(p, "plot_error"))) return(p)
+    do_extrapolate <- isTRUE(attr(p, "do_extrapolate"))
+    tryCatch({
+    p <- do.call(style_plot, c(list(p), tg_growth_style()))
     # Annotate hollow circles = extrapolated when extrapolation is active
     # Added to the package's captions (necrotic markers, mean lines), not
     # in place of them.
@@ -869,11 +861,26 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
               rownames = FALSE)
   })
 
+  # F9: the growth curves as calls, for the R script: plot_tumor_growth() with
+  # the dashboard's arguments, then style_plot() with its options. Options left
+  # at their defaults are not written.
+  tg_growth_record <- reactive({
+    p <- tg_growth_base()
+    pl <- attr(p, "me_plot")
+    req(pl, !isTRUE(attr(p, "plot_error")))
+    st <- c(list(theme = "classic", colors = pl$colors, shapes = pl$shapes), tg_growth_style())
+    if (identical(st$title_align, "center")) st$title_align <- NULL
+    if (identical(st$y_scale, "linear")) st$y_scale <- NULL
+    st <- Filter(function(v) length(v) && !(is.character(v) && length(v) == 1L && !nzchar(v)), st)
+    list(plot = record_call("plot_tumor_growth", pl$args), style = st)
+  })
+
   list(
     growth    = tg_growth_plot,
     rates     = tg_rates_plot,
     auc       = tg_auc_plot,
     waterfall = tg_wf_plot,
-    forest    = tg_forest_plot
+    forest    = tg_forest_plot,
+    growth_record = tg_growth_record
   )
 }

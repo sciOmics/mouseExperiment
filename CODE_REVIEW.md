@@ -6403,7 +6403,8 @@ After the first CRAN release, renaming any of these breaks users' code. Fix: the
 | F5 | Proposal | ✅ Added v0.45.0 |
 | F4, F10 | Proposals | ✅ Added v0.46.0 |
 | F8 | Proposal | ✅ Added v0.47.0 |
-| F9, F11 | Proposals | Approved; to do |
+| F9 | Proposal | ✅ Added v0.48.0 (the plots from exported plotting functions) |
+| F11 | Proposal | Approved; to do |
 
 ### Open questions for the maintainer
 
@@ -6833,3 +6834,28 @@ R20.D15's test now checks `report_table()`.
 - **The details:** the ANOVA prints its terms; subsets and `unclass()` give plain lists; an unknown class is refused.
 
 **Verification (executed):** the full suite, Bayesian fits skipped: 758 tests, 0 failed. Nothing in the dashboard relied on results being unclassed lists. `R CMD check --no-manual --no-tests`: Status OK.
+
+## R22-J Implementation log — v0.48.0: plot code in the R script (F9, 2026-10-23)
+
+**`style_plot()`** (exported, `style_plot.R`) is the dashboard's plot options as one function. Each argument left NULL leaves that part alone, so calls compose: the dashboard applies colours and shapes in the data layer, then labels and legend in the debounced cosmetic layer.
+- **The title's alignment** is applied only when given. An earlier draft always set it, and the dashboard's legend call would have re-centred a left-aligned title.
+- **The internal helpers delegate to it.** `apply_plot_labels()` and `apply_legend_pos()` now call it.
+- **Legends inside the plot** use `legend.position = "inside"`; the numeric form is deprecated since ggplot2 3.5.0, now the minimum.
+
+**The plots the script redraws.** Each is the plotting call with the dashboard's arguments, then `style_plot()` with the options it used: options at their defaults are not written, and empty labels are dropped. `plot_script_step()` writes the pair.
+- **Tumor Growth's growth curves.**
+  - **Their data.** `plot_tumor_growth()` gets the plot's own data, `rv$tg_plot_data` with the group order the user set, as `data/plot_data`.
+  - **Their options.** A new `tg_growth_style()` reactive holds the cosmetic options, so the dashboard draws from the same values the script records.
+- **The best-response waterfall,** on the script's `responses` from the Response & Delay steps.
+- **Drug Synergy's Bliss plot,** recorded when it is drawn. A first version cleared the record when a new run arrived; that observer could run after the drawing and wipe it, so the record is now simply the last drawn.
+
+**Not redrawn.** Plots built by internal code (forest plots, Kaplan-Meier curves through survminer, dose-response, toxicity) stay as PNGs in the ZIP, as the header says. Saving them as ggplot objects for the script would also save their environments, which can hold the session's data.
+
+**Tests** (`test-plot-code.R`, 3):
+- **`style_plot()`:** each option; a later call keeps an earlier alignment; an unknown theme is refused.
+- **Tumor Growth:** colours, shapes, title, text size, legend and log scale set on the dashboard reappear on the script's growth curves, and the waterfall keeps its cap.
+- **Drug Synergy:** the title, text size and the Observed/Expected colours reappear on the script's Bliss plot.
+
+The ZIP listing in `test-reproduce-script.R` now includes `data/plot_data`.
+
+**Verification (executed):** the full suite, Bayesian fits skipped: 761 tests, 0 failed. `R CMD check --no-manual --no-tests`: Status OK, including `style_plot()`'s example.

@@ -28,17 +28,10 @@
 #' @keywords internal
 apply_plot_labels <- function(p, title = "", subtitle = "", align = "center",
                               text_size = 12, xlab = "", ylab = "", legend_lab = "") {
-  hjust <- switch(align, left = 0, center = 0.5, right = 1, 0.5)
-  if (nzchar(trimws(title)))    p <- p + ggplot2::labs(title = title)
-  if (nzchar(trimws(subtitle))) p <- p + ggplot2::labs(subtitle = subtitle)
-  if (nzchar(trimws(xlab)))     p <- p + ggplot2::labs(x = xlab)
-  if (nzchar(trimws(ylab)))     p <- p + ggplot2::labs(y = ylab)
-  if (nzchar(trimws(legend_lab))) p <- p + ggplot2::labs(fill = legend_lab, color = legend_lab, shape = legend_lab)
-  p + ggplot2::theme(
-    text          = ggplot2::element_text(size = text_size),
-    plot.title    = ggplot2::element_text(hjust = hjust),
-    plot.subtitle = ggplot2::element_text(hjust = hjust)
-  )
+  # F9: the exported style_plot(), which the R script calls too.
+  style_plot(p, title = title, subtitle = subtitle,
+             title_align = if (align %in% c("left", "center", "right")) align else "center",
+             text_size = text_size, x_label = xlab, y_label = ylab, legend_title = legend_lab)
 }
 
 #' Build a named colour vector from colourInput values
@@ -232,37 +225,7 @@ get_ordered_groups <- function(input, prefix, groups) {
 #' @keywords internal
 apply_legend_pos <- function(p, pos) {
   if (is.null(pos)) return(p)
-  if (pos == "inplot_tl") {
-    p + ggplot2::theme(
-      legend.position    = c(0.02, 0.98),
-      legend.justification = c("left", "top"),
-      legend.background  = ggplot2::element_rect(
-        fill = scales::alpha("white", 0.8), colour = NA)
-    )
-  } else if (pos == "inplot_tr") {
-    p + ggplot2::theme(
-      legend.position    = c(0.98, 0.98),
-      legend.justification = c("right", "top"),
-      legend.background  = ggplot2::element_rect(
-        fill = scales::alpha("white", 0.8), colour = NA)
-    )
-  } else if (pos == "inplot_bl") {
-    p + ggplot2::theme(
-      legend.position    = c(0.02, 0.02),
-      legend.justification = c("left", "bottom"),
-      legend.background  = ggplot2::element_rect(
-        fill = scales::alpha("white", 0.8), colour = NA)
-    )
-  } else if (pos == "inplot_br") {
-    p + ggplot2::theme(
-      legend.position    = c(0.98, 0.02),
-      legend.justification = c("right", "bottom"),
-      legend.background  = ggplot2::element_rect(
-        fill = scales::alpha("white", 0.8), colour = NA)
-    )
-  } else {
-    p + ggplot2::theme(legend.position = pos)
-  }
+  style_plot(p, legend_position = pos)   # F9
 }
 
 #' Render a drag-and-drop rank list with embedded color pickers

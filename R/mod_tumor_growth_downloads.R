@@ -19,7 +19,7 @@
 add_tg_download_handlers <- function(input, output, session, rv,
                                      tg_growth_plot, tg_rates_plot,
                                      tg_auc_plot, tg_forest_plot,
-                                     tg_wf_plot, endpoints = NULL) {
+                                     tg_wf_plot, endpoints = NULL, growth_record = NULL) {
 
   output$download_tg_pp_check <- downloadHandler(
     filename = "posterior_predictive_check.png",
@@ -211,6 +211,9 @@ add_tg_download_handlers <- function(input, output, session, rv,
     ok    <- function(x) !is.null(x) && !inherits(x$result, "error")
     resp  <- ep(endpoints$responses)
     delay <- ep(endpoints$delay)
+    # F9: the plots the script redraws, with the dashboard's styling.
+    growth <- ep(growth_record)
+    wf     <- if (ok(resp)) ep(endpoints$waterfall_record)
     items <- list(
       # Tables
       if (has(res$anova))
@@ -323,7 +326,8 @@ add_tg_download_handlers <- function(input, output, session, rv,
                 "The data as analysed: one row per measurement, with the derived Day and Volume"),
       # R script, with the data it reads (R20-Z)
       if (!is.null(res$call_record))
-        script_dl_item(function(up) tg_script_bundle(res, up, extra = tg_endpoint_steps(resp, delay)))
+        script_dl_item(function(up) tg_script_bundle(res, up, extra = c(
+          tg_endpoint_steps(resp, delay), tg_plot_steps(growth, wf))))
     )
     Filter(Negate(is.null), items)
   })
