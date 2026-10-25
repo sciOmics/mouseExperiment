@@ -6882,3 +6882,50 @@ It leaves a result with an error as it is, as the guarded handlers did; the two 
 **Docs.** ARCHITECTURE's tree and the dashboard README's file table list the new files.
 
 **Verification (executed):** the full suite, Bayesian fits skipped: 761 tests, 0 failed. `R CMD check --no-manual --no-tests`: Status OK.
+
+## R22-L Post-release fix — v0.49.1: animal keys shown as row names (user report, 2026-10-25)
+
+**The report.** On production (0.49.0), the Growth Rates table's first, unlabelled column showed the internal animal key, e.g. "aPD1|||L|||3".
+
+**The cause.** `tgs_compute_growth_rates()` fits each animal from `split()` by the composite key, then `do.call(rbind, ...)`. The rows take the list's names, the keys. The dashboard's `DT::datatable()` calls showed row names by default. This is the pattern R22.15 fixed in `tumor_doubling_time()`; it was not looked for elsewhere then.
+
+**The scan.** Every data frame in every analysis result (136 tables, from 15 analyses on `master_synthetic_data`) was checked for row names. Keys appeared in three places:
+- `growth_rates`, on the LME4 and AUC paths;
+- `diagnostics$random_effects$intercepts`, whose rows were identified by the key alone;
+- `cage_analysis$effects`, with names like "C07.Drug_A High".
+
+`treatment_effects` had reordered row numbers (6, 1, 2, ...). The others hold the ANOVA's terms, which are meant to show, or the row numbers of a data subset.
+
+**The fix:**
+- **Growth rates** and **cage effects** reset their row names; the growth rate and its interval are unnamed.
+- **Random effects** go through `me_key_columns()` (`utils_auc.R`), which turns key row names into Treatment, ID and Cage columns. The slopes are now unnamed and in the same row order.
+- **Treatment effects** reset their row names after the reference is moved first.
+- **The display rule.** `me_named_rows()`, the rule `print()` already uses, now counts row names as informative only when they are neither plain numbers nor keys.
+- **`dt_table()`** (`helpers_format.R`) applies that rule. The 46 dashboard table calls that did not set row names use it, so they show none, except the ANOVA's terms.
+
+**Tests** (`test-animal-keys-display.R`, 3):
+- no LME4 or AUC result names a row by its key; growth rates have plain rows; the random effects have the animal as columns;
+- the display rule: terms yes; numbers in any order, keys, and an empty table no;
+- the Growth Rates table's first column is Treatment, with no key, while the ANOVA keeps its row-name column.
+
+The header test fails on 0.49.0.
+
+**Checked in a browser** on the Combo demo, as in the report: the table starts with Treatment, ID and Cage. The drill-down selects by position, so it is unaffected.
+
+**Also in 0.49.1:**
+- **The therapeutic window's `weight_loss_data`** drops its `MouseKey` column; Treatment, ID and Cage are its first columns.
+- **A Bayesian fit killed while compiling** (second user report, 2026-10-25) now reads as running out of memory. The dashboard had shown the compiler's output, ending "g++: fatal error: Killed signal terminated program cc1plus".
+  - **The change.** `translate_error()` recognises that output first. Tumor Growth's Bayesian failure path now translates its message, as Survival's did.
+  - **The cause, on the server.** The kernel OOM-killed `cc1plus` twice in shiny-prod (14:58 and 14:59 UTC, at 2.9 GB of anonymous memory each), within its 3,840 MB limit. The main app process held 630 MB and the idle worker 500 MB. Throwaway containers from the staging image (0.49.0), compiling `bayesian_tumor_growth()`:
+
+    | Flags | Limit | Result | Peak | Time |
+    |---|---|---|---|---|
+    | R's defaults (`-g -O2`) | 3,800 MB | killed | 3,800 MB | 271 s |
+    | no `-g`, `-O2` | 3,800 MB | fitted | 3,312 MB | 169 s |
+    | no `-g`, `-O2` | 3,200 MB | killed | 3,200 MB | 228 s |
+    | no `-g`, `-O1` | 3,200 MB | fitted | 3,008 MB | 145 s |
+
+    3,200 MB is production's budget for the worker and the compiler. The fix is in the server image and limits (sciOmicsVPS), not in this package.
+
+
+**Verification (executed):** the full suite, Bayesian fits skipped: 765 tests, 0 failed. `R CMD check --no-manual --no-tests`: Status OK.

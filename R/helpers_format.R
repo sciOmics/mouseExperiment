@@ -9,6 +9,20 @@
 # the latter exists because the previous column-name sniffing silently returned
 # NA and blanked the panel (R4.D5).
 
+#' A DT table that shows row names only when they say something
+#'
+#' DT shows a data frame's row names by default: row numbers (in the order a
+#' table was sorted in, so 6, 1, 2, ...) or, on the Growth Rates table, the
+#' internal animal keys ("aPD1|||L|||3"). They now show only when they carry
+#' information, such as an ANOVA's terms (see `me_named_rows()`).
+#' @param data The data frame.
+#' @param ... Passed to [DT::datatable()].
+#' @param rownames Show the row names; by default, when they carry information.
+#' @keywords internal
+dt_table <- function(data, ..., rownames = me_named_rows(data)) {
+  DT::datatable(data, ..., rownames = rownames)
+}
+
 #' Format a p-value for display
 #'
 #' Very small p-values are shown in scientific notation rather than being

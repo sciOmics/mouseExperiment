@@ -750,7 +750,7 @@ synergy_server <- function(id, rv) {
   
   output$syn_metrics_table <- DT::renderDT({
     req(rv$syn_results)
-    if (isTRUE(rv$syn_results$error)) return(DT::datatable(data.frame(Message = "Results not available")))
+    if (isTRUE(rv$syn_results$error)) return(dt_table(data.frame(Message = "Results not available")))
     
     df <- if (isTRUE(rv$syn_over_time) && !is.null(rv$syn_results$synergy_summary)) {
       rv$syn_results$synergy_summary
