@@ -47,8 +47,8 @@ tgs_compute_growth_rates <- function(auc_df, treatment_column, id_column,
         
         # Fit linear model
         model <- stats::lm(log_volume ~ subject_data[[time_column]])
-        growth_rate <- stats::coef(model)[2]
-        ci <- tryCatch(stats::confint(model, level = 0.95)[2, ], error = function(e) c(NA_real_, NA_real_))
+        growth_rate <- unname(stats::coef(model)[2])
+        ci <- tryCatch(unname(stats::confint(model, level = 0.95)[2, ]), error = function(e) c(NA_real_, NA_real_))
 
         # Return data frame with results including cage information
         data.frame(
@@ -65,8 +65,12 @@ tgs_compute_growth_rates <- function(auc_df, treatment_column, id_column,
       }
     })
     
-    # Combine results
-    do.call(rbind, growth_rates_list)
+    # Combine results. The rows are named by split()'s animal keys
+    # ("Vehicle|||3|||C1"), which the dashboard showed; the animal is in the
+    # Treatment, ID and Cage columns.
+    out <- do.call(rbind, growth_rates_list)
+    if (!is.null(out)) rownames(out) <- NULL
+    out
   }, error = function(e) {
     warning("Error calculating growth rates: ", e$message)
     NULL
@@ -119,7 +123,9 @@ tgs_compute_cage_effects <- function(analysis_df, cage_column, treatment_column,
     # Filter out NULL results and combine
     cage_effects_list <- cage_effects_list[!sapply(cage_effects_list, is.null)]
     if (length(cage_effects_list) > 0) {
-      do.call(rbind, cage_effects_list)
+      out <- do.call(rbind, cage_effects_list)
+      rownames(out) <- NULL   # "C07.Drug_A High": the Cage and Treatment columns say it
+      out
     } else {
       NULL
     }
@@ -954,11 +960,12 @@ tumor_growth_statistics <- function(df,
     
     # Random effects plots (only available for lmer models)
     if (inherits(model, "lmerMod")) {
+      # Each animal's random effects, with its arm, ID and cage as columns:
+      # the rows were named only by the internal animal key.
+      re <- me_key_columns(lme4::ranef(model)[[id_column]])
       diagnostics$random_effects <- list(
-        intercepts = lme4::ranef(model)[[id_column]],
-        slopes = if (best_model %in% c("slope", "slope_uncorrelated")) {
-          lme4::ranef(model)[[id_column]][, 2]
-        } else NULL
+        intercepts = re,
+        slopes = if (best_model %in% c("slope", "slope_uncorrelated")) re[[ncol(re)]] else NULL
       )
       diagnostics$variance_components <- lme4::VarCorr(model)
     } else {
@@ -1104,6 +1111,7 @@ tumor_growth_statistics <- function(df,
           treatment_effects[ref_idx, ],
           treatment_effects[-ref_idx, ]
         )
+        rownames(treatment_effects) <- NULL   # not 6, 1, 2, ...
       }
 
       # Format numeric columns

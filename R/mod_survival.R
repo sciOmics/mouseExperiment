@@ -963,7 +963,7 @@ survival_server <- function(id, rv) {
     req(!isTRUE(rv$surv_results$error))
     diag <- rv$surv_results$mcmc_diagnostics
     req(!is.null(diag))
-    DT::datatable(
+    dt_table(
       format_df_for_display(as.data.frame(diag)),
       options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)
     )
@@ -1311,7 +1311,7 @@ survival_server <- function(id, rv) {
   output$surv_ph_test_table <- DT::renderDT({
     req(rv$surv_results)
     if (isTRUE(rv$surv_results$error)) {
-      return(DT::datatable(data.frame(Message = "Results not available")))
+      return(dt_table(data.frame(Message = "Results not available")))
     }
     ph <- rv$surv_results$ph_test
     if (is.null(ph) || is.null(ph$table)) {
@@ -1333,26 +1333,26 @@ survival_server <- function(id, rv) {
   output$surv_cox_table <- DT::renderDT({
     req(rv$surv_results)
     if (isTRUE(rv$surv_results$error)) {
-      return(DT::datatable(data.frame(Message = "Results not available")))
+      return(dt_table(data.frame(Message = "Results not available")))
     }
     if (isTRUE(rv$surv_results$model_type_used == "bayes")) {
       te <- rv$surv_results$treatment_effects
-      if (is.null(te)) return(DT::datatable(data.frame(Message = "Treatment effects not available")))
-      return(DT::datatable(format_df_for_display(as.data.frame(te)),
+      if (is.null(te)) return(dt_table(data.frame(Message = "Treatment effects not available")))
+      return(dt_table(format_df_for_display(as.data.frame(te)),
                        options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)))
     }
     if (is.null(rv$surv_results$results)) {
-      return(DT::datatable(data.frame(Message = "Results not available")))
+      return(dt_table(data.frame(Message = "Results not available")))
     }
     results_df <- format_df_for_display(rv$surv_results$results)
-    DT::datatable(results_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+    dt_table(results_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
   # Risk table output - numbers at risk per time point per group
   output$surv_risk_table <- DT::renderDT({
     req(rv$surv_results)
     if (isTRUE(rv$surv_results$error) || is.null(rv$surv_results$km_fit)) {
-      return(DT::datatable(data.frame(Message = "Risk table not available")))
+      return(dt_table(data.frame(Message = "Risk table not available")))
     }
     
     km_sum <- summary(rv$surv_results$km_fit)

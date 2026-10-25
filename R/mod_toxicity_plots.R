@@ -78,7 +78,7 @@ add_tox_plots <- function(input, output, session, rv,
     req(rv$tox_results, rv$tox_results$mixed_model)
     cd <- rv$tox_results$mixed_model$diag_cooks_distance
     if (is.null(cd) || nrow(cd) == 0L)
-      return(DT::datatable(data.frame(Message = "Cook's distance not available")))
+      return(dt_table(data.frame(Message = "Cook's distance not available")))
     DT::datatable(format_df_for_display(as.data.frame(cd)),
               options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
   })
@@ -87,7 +87,7 @@ add_tox_plots <- function(input, output, session, rv,
     req(rv$tox_results, rv$tox_results$mixed_model)
     db <- rv$tox_results$mixed_model$diag_dfbetas
     if (is.null(db) || nrow(db) == 0L)
-      return(DT::datatable(data.frame(Message = "DFBETAS not available")))
+      return(dt_table(data.frame(Message = "DFBETAS not available")))
     DT::datatable(format_df_for_display(as.data.frame(db)),
               options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
   })

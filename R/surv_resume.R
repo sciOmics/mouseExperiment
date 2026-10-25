@@ -120,7 +120,7 @@ register_surv_resume <- function(input, output, session, rv) {
       "window.trackAnalysisComplete('survival', false, %s);",
       js_string(err_msg)))
     output$surv_status_msg <- shiny::renderUI(
-      status_alert(paste("Bayesian analysis failed:", err_msg), "danger"))
+      status_alert(paste("Bayesian analysis failed:", translate_error(err_msg)), "danger"))
   } else {
     shinyjs::runjs("window.trackAnalysisComplete('survival', true);")
     output$surv_status_msg <- shiny::renderUI(

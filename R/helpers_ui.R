@@ -122,6 +122,14 @@ tg_p_adjust_choices <- function(model_type = "lme4") {
 #'   when no translation applies.
 #' @keywords internal
 translate_error <- function(msg) {
+  # A Stan model's compile killed for lack of memory: users saw a page of
+  # compiler output ending "Killed signal terminated program cc1plus"
+  # (user report 2026-10-25). First, since that output matches other rules.
+  if (grepl("Killed signal|cc1plus|virtual memory exhausted|Cannot allocate memory", msg))
+    return(paste0(
+      "The server ran out of memory while building the Bayesian model, so the fit could not ",
+      "start. Try again in a few minutes. If it keeps happening, use the frequentist model, ",
+      "or run the dashboard on your own computer with mouseExperiment::run_dashboard()."))
   if (grepl("not found in|not found$|object .* not found", msg, perl = TRUE))
     return("A required column was not found. Check your column mappings in Data Upload.")
   if (grepl("singular|singular fit", msg, ignore.case = TRUE))

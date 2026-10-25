@@ -37,7 +37,7 @@ add_tg_download_handlers <- function(input, output, session, rv,
     req(!isTRUE(rv$tg_results$error))
     ns_df <- rv$tg_results$necrosis_summary
     req(!is.null(ns_df))
-    DT::datatable(
+    dt_table(
       format_df_for_display(as.data.frame(ns_df)),
       options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)
     )

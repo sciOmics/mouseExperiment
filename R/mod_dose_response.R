@@ -758,7 +758,7 @@ dose_response_server <- function(id, rv) {
   # ---- Dose-Response Table ----
   output$dr_summary_table <- DT::renderDT({
     req(rv$dr_results)
-    if (isTRUE(rv$dr_results$error)) return(DT::datatable(data.frame(Message = "Results not available")))
+    if (isTRUE(rv$dr_results$error)) return(dt_table(data.frame(Message = "Results not available")))
     tbl <- as.data.frame(rv$dr_results$summary_table)
     tbl <- format_df_for_display(tbl)
     DT::datatable(tbl, options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE)
@@ -948,9 +948,9 @@ dose_response_server <- function(id, rv) {
 
   output$dr_tukey_table <- DT::renderDT({
     req(rv$dr_results)
-    if (isTRUE(rv$dr_results$error)) return(DT::datatable(data.frame(Message = "No results")))
+    if (isTRUE(rv$dr_results$error)) return(dt_table(data.frame(Message = "No results")))
     tukey <- rv$dr_results$statistics$tukey_results
-    if (is.null(tukey)) return(DT::datatable(data.frame(
+    if (is.null(tukey)) return(dt_table(data.frame(
       Message = "Tukey HSD not computed (ANOVA p \u2265 0.05 or not available)")))
     tbl <- as.data.frame(tukey[[1]])
 
@@ -980,12 +980,12 @@ dose_response_server <- function(id, rv) {
   # CODE_REVIEW.md DIAGNOSTICS gap (5) — frequentist DR Diagnostics tab.
   output$dr_lack_of_fit_table <- DT::renderDT({
     req(rv$dr_results)
-    if (isTRUE(rv$dr_results$error)) return(DT::datatable(data.frame(Message = "No results")))
+    if (isTRUE(rv$dr_results$error)) return(dt_table(data.frame(Message = "No results")))
     lof <- rv$dr_results$statistics$dr_lack_of_fit
     if (is.null(lof) || nrow(lof) == 0L)
-      return(DT::datatable(data.frame(
+      return(dt_table(data.frame(
         Message = "Lack-of-fit not available (Hill / Emax fit did not converge)")))
-    DT::datatable(format_df_for_display(as.data.frame(lof)),
+    dt_table(format_df_for_display(as.data.frame(lof)),
               options = list(dom = "t", paging = FALSE, searching = FALSE))
   })
 

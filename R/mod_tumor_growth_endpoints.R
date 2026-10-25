@@ -108,7 +108,7 @@ add_tg_endpoints <- function(input, output, session, rv, colors = NULL) {
 
   output$tg_response_summary <- DT::renderDT({
     r <- responses()$result
-    if (failed(r)) return(DT::datatable(data.frame(Message = conditionMessage(r))))
+    if (failed(r)) return(dt_table(data.frame(Message = conditionMessage(r))))
     s <- r$summary
     names(s)[names(s) == "Response_Rate"] <- "Response rate (%)"
     DT::datatable(format_df_for_display(s), rownames = FALSE,
