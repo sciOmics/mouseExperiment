@@ -955,7 +955,7 @@ toxicity_server <- function(id, rv) {
   output$tox_fixed_effects <- DT::renderDT({
     req(rv$tox_results, rv$tox_results$mixed_model)
     mm <- rv$tox_results$mixed_model
-    if (isTRUE(mm$error)) return(DT::datatable(data.frame(Message = mm$message)))
+    if (isTRUE(mm$error)) return(dt_table(data.frame(Message = mm$message)))
     DT::datatable(format_df_for_display(mm$fixed_effects),
               options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
   })
@@ -964,7 +964,7 @@ toxicity_server <- function(id, rv) {
     req(rv$tox_results, rv$tox_results$mixed_model)
     mm <- rv$tox_results$mixed_model
     if (isTRUE(mm$error) || is.null(mm$emmeans_table))
-      return(DT::datatable(data.frame(Message = "Not available")))
+      return(dt_table(data.frame(Message = "Not available")))
     DT::datatable(format_df_for_display(mm$emmeans_table),
               options = list(scrollX = TRUE), rownames = FALSE)
   })
@@ -973,7 +973,7 @@ toxicity_server <- function(id, rv) {
     req(rv$tox_results, rv$tox_results$mixed_model)
     mm <- rv$tox_results$mixed_model
     if (isTRUE(mm$error) || is.null(mm$pairwise_comparisons))
-      return(DT::datatable(data.frame(Message = "Not available")))
+      return(dt_table(data.frame(Message = "Not available")))
     DT::datatable(format_df_for_display(as.data.frame(mm$pairwise_comparisons)),
               options = list(scrollX = TRUE), rownames = FALSE)
   })
@@ -981,7 +981,7 @@ toxicity_server <- function(id, rv) {
   output$tox_event_table <- DT::renderDT({
     req(rv$tox_results, rv$tox_results$weight_loss)
     wl <- rv$tox_results$weight_loss
-    if (isTRUE(wl$error)) return(DT::datatable(data.frame(Message = wl$message)))
+    if (isTRUE(wl$error)) return(dt_table(data.frame(Message = wl$message)))
     DT::datatable(format_df_for_display(wl$event_data),
               options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
   })
@@ -992,7 +992,7 @@ toxicity_server <- function(id, rv) {
   output$tox_et_twm_table <- DT::renderDT({
     req(rv$tox_results, rv$tox_results$twm)
     twm <- rv$tox_results$twm
-    if (isTRUE(twm$error)) return(DT::datatable(data.frame(Message = twm$message)))
+    if (isTRUE(twm$error)) return(dt_table(data.frame(Message = twm$message)))
     tw_tbl <- window_display_table(twm$window_table, rv$tox_results$twm_reference)
     DT::formatStyle(
       DT::datatable(tw_tbl, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),

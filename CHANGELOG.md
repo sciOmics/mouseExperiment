@@ -5,6 +5,26 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.49.1] - 2026-10-25
+
+### Fixed
+- **The Growth Rates table no longer starts with an unlabelled column of internal animal keys**
+  such as "aPD1|||L|||3". The table's Treatment, ID and Cage columns already identify each
+  animal (user report).
+  - **The cause.** Per-animal results were built by splitting on that key and binding the
+    pieces, so they took the keys as row names, and the dashboard's tables show row names.
+  - **The fix in the package.** No result now carries a key as a row name: growth rates and cage
+    effects have plain rows. The per-animal random effects, which were identified by the key
+    alone, gain Treatment, ID and Cage columns.
+  - **The fix in the dashboard.** Its tables show row names only when they carry information,
+    such as an ANOVA's terms. Elsewhere they used to show a column of row numbers, in the
+    order of the table's last sort (6, 1, 2, ...).
+  - **The therapeutic window's per-animal weight-loss table** drops its key column too.
+- **A Bayesian fit that the server could not compile for lack of memory now says so.** It
+  showed a page of compiler output ending "Killed signal terminated program cc1plus" (user
+  report). Tumor Growth's Bayesian failures now go through the same error translation as
+  Survival's.
+
 ## [0.49.0] - 2026-10-23
 
 Maintainability (`CODE_REVIEW.md` Round 22 proposal F11, R22-K). Nothing changes for users.

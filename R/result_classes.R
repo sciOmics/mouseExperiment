@@ -97,10 +97,12 @@ me_result <- function(x, class) {
   structure(x, class = c(class, "me_result"))
 }
 
-# Row names worth printing: an ANOVA's terms, not 1, 2, 3.
+# Row names worth showing: an ANOVA's terms. Not row numbers, in any order
+# (a sorted table keeps its old ones), and not internal animal keys.
 me_named_rows <- function(df) {
   rn <- rownames(df)
-  !is.null(rn) && !identical(rn, as.character(seq_len(nrow(df))))
+  !is.null(rn) && length(rn) > 0L && !all(grepl("^[0-9]+$", rn)) &&
+    !any(grepl("|||", rn, fixed = TRUE))
 }
 
 # The spec for a result's class.

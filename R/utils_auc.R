@@ -41,6 +41,29 @@ make_mouse_key <- function(...) {
 #' @keywords internal
 split_mouse_key <- function(key) strsplit(key, "|||", fixed = TRUE)[[1]]
 
+#' Row names that are animal keys, as Treatment, ID and Cage columns
+#'
+#' A table indexed by the composite key (e.g. lme4's random effects, whose
+#' rows are named "Vehicle|||3|||C1") gets the key's parts as its first
+#' columns and plain row numbers, so no table shows the internal key.
+#' Row names that are not keys become an `ID` column.
+#' @param df A data frame whose row names identify the animals.
+#' @noRd
+me_key_columns <- function(df) {
+  df <- as.data.frame(df)
+  rn <- rownames(df)
+  parts <- strsplit(rn, "|||", fixed = TRUE)
+  ids <- if (length(rn) && all(lengths(parts) >= 2L)) {
+    out <- data.frame(Treatment = vapply(parts, `[`, "", 1L), ID = vapply(parts, `[`, "", 2L),
+                      stringsAsFactors = FALSE)
+    if (all(lengths(parts) >= 3L)) out$Cage <- vapply(parts, `[`, "", 3L)
+    out
+  } else data.frame(ID = rn, stringsAsFactors = FALSE)
+  out <- cbind(ids, df)
+  rownames(out) <- NULL
+  out
+}
+
 #' Calculate Area Under the Curve (Trapezoidal Rule)
 #'
 #' Computes the area under the curve for paired time-value vectors using the

@@ -99,8 +99,8 @@ A list:
 weight loss), \code{Worst_Loss_Lower}, \code{Worst_Loss_Upper},
 \code{N_Over_Threshold} (animals whose worst loss reached the
 threshold) and \code{Tolerability}.}
-\item{weight_loss_data}{One row per animal: \code{MouseKey},
-\code{Treatment}, \code{ID}, \code{Cage}, \code{Baseline_Weight},
+\item{weight_loss_data}{One row per animal: \code{Treatment},
+\code{ID}, \code{Cage}, \code{Baseline_Weight},
 \code{Nadir_Weight}, \code{Nadir_Day}, \code{Pct_Loss} and
 \code{Over_Threshold}.}
 \item{tgi_data}{The endpoint means behind the TGI.}

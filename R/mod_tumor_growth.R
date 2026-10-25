@@ -1335,7 +1335,7 @@ tumor_growth_server <- function(id, rv) {
   output$tg_anova_table <- DT::renderDT({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$model_type_used == "bayes")) {
-      return(DT::datatable(data.frame(
+      return(dt_table(data.frame(
         Message = paste(
           "ANOVA is not applicable for Bayesian models.",
           "See the Posterior Check tab for model fit validation",
@@ -1344,13 +1344,13 @@ tumor_growth_server <- function(id, rv) {
       ), options = list(paging = FALSE, searching = FALSE)))
     }
     if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$anova)) {
-      return(DT::datatable(data.frame(Message = "ANOVA table not available")))
+      return(dt_table(data.frame(Message = "ANOVA table not available")))
     }
 
     anova_df <- as.data.frame(rv$tg_results$anova)
     anova_df <- format_df_for_display(anova_df)
 
-    DT::datatable(anova_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+    dt_table(anova_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
   # Comparisons title (reactive based on selection)
@@ -1358,7 +1358,7 @@ tumor_growth_server <- function(id, rv) {
   output$tg_comparisons_table <- DT::renderDT({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error)) {
-      return(DT::datatable(data.frame(Message = "Comparisons not available")))
+      return(dt_table(data.frame(Message = "Comparisons not available")))
     }
     
     # R20.D44: the family is the run's, not the dropdown's current value. A
@@ -1372,7 +1372,7 @@ tumor_growth_server <- function(id, rv) {
       rv$tg_results$reference_comparisons_dunnett %||% rv$tg_results$pairwise_comparisons
     }
     if (is.null(comp_df)) {
-      return(DT::datatable(data.frame(Message = "Comparisons not available for this run")))
+      return(dt_table(data.frame(Message = "Comparisons not available for this run")))
     }
     comp_df <- as.data.frame(comp_df)
     table_title <- comparisons_title(rv$tg_results,
@@ -1420,7 +1420,7 @@ tumor_growth_server <- function(id, rv) {
 
     comp_df <- format_df_for_display(comp_df)
     # R20.D44: comparisons_title() was computed and never shown.
-    DT::datatable(comp_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+    dt_table(comp_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
               caption = tags$caption(
                 style = "caption-side: top; text-align: left; font-weight: bold;",
                 table_title))
@@ -1430,7 +1430,7 @@ tumor_growth_server <- function(id, rv) {
   output$tg_effects_table <- DT::renderDT({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$treatment_effects)) {
-      return(DT::datatable(data.frame(Message = "Treatment effects not available")))
+      return(dt_table(data.frame(Message = "Treatment effects not available")))
     }
 
     effects_df <- as.data.frame(rv$tg_results$treatment_effects)
@@ -1456,14 +1456,14 @@ tumor_growth_server <- function(id, rv) {
       effects_df <- format_df_for_display(effects_df)
     }
 
-    DT::datatable(effects_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+    dt_table(effects_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
   # Growth rates table
   output$tg_growth_rates_table <- DT::renderDT({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$growth_rates)) {
-      return(DT::datatable(data.frame(Message = "Growth rates not available")))
+      return(dt_table(data.frame(Message = "Growth rates not available")))
     }
     
     rates_df <- as.data.frame(rv$tg_results$growth_rates)
@@ -1511,7 +1511,7 @@ tumor_growth_server <- function(id, rv) {
     for (old in names(rename_map)) new_names[new_names == old] <- rename_map[[old]]
     # CODE_REVIEW.md Round 2 F.4 — single-row selection enables the
     # per-mouse drill-down plot rendered just below the table.
-    DT::datatable(rates_df,
+    dt_table(rates_df,
       colnames = new_names,
       selection = list(mode = "single", target = "row"),
       options  = list(scrollX = TRUE, paging = FALSE, searching = FALSE, scrollY = "500px", scrollCollapse = TRUE)
@@ -1611,31 +1611,31 @@ tumor_growth_server <- function(id, rv) {
   output$tg_auc_individual_table <- DT::renderDT({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$auc_analysis$individual)) {
-      return(DT::datatable(data.frame(Message = "AUC individual data not available")))
+      return(dt_table(data.frame(Message = "AUC individual data not available")))
     }
     
     auc_ind_df <- as.data.frame(rv$tg_results$auc_analysis$individual)
     auc_ind_df <- format_df_for_display(auc_ind_df)
-    DT::datatable(auc_ind_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+    dt_table(auc_ind_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
   # AUC summary table
   output$tg_auc_summary_table <- DT::renderDT({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$auc_analysis$summary)) {
-      return(DT::datatable(data.frame(Message = "AUC summary not available")))
+      return(dt_table(data.frame(Message = "AUC summary not available")))
     }
     
     auc_sum_df <- as.data.frame(rv$tg_results$auc_analysis$summary)
     auc_sum_df <- format_df_for_display(auc_sum_df)
-    DT::datatable(auc_sum_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
+    dt_table(auc_sum_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE))
   })
   
   # Data summary table
   output$tg_data_summary_table <- DT::renderDT({
     req(rv$tg_results)
     if (isTRUE(rv$tg_results$error) || is.null(rv$tg_results$data_summary)) {
-      return(DT::datatable(data.frame(Message = "Data summary not available")))
+      return(dt_table(data.frame(Message = "Data summary not available")))
     }
     
     # R20.D45: the backend's summary is on the volume scale since 0.31.0
@@ -1669,7 +1669,7 @@ tumor_growth_server <- function(id, rv) {
     req(!isTRUE(rv$tg_results$error))
     ps <- rv$tg_results$posterior_summary
     req(!is.null(ps))
-    DT::datatable(
+    dt_table(
       format_df_for_display(as.data.frame(ps)),
       options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)
     )
@@ -1690,7 +1690,7 @@ tumor_growth_server <- function(id, rv) {
     req(!isTRUE(rv$tg_results$error))
     diag <- rv$tg_results$mcmc_diagnostics
     req(!is.null(diag))
-    DT::datatable(
+    dt_table(
       format_df_for_display(as.data.frame(diag)),
       options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)
     )

@@ -613,7 +613,7 @@ data_upload_server <- function(id, rv) {
            }
          }", js_idx))
     }
-    DT::datatable(preview_data(), options = opts)
+    dt_table(preview_data(), options = opts)
   })
   
   output$download_preview_data <- downloadHandler(

@@ -143,7 +143,7 @@ register_tg_resume <- function(input, output, session, rv) {
   rv$tg_running <- FALSE
   shiny::removeModal()
   output$tg_status_msg <- shiny::renderUI(
-    status_alert(paste("Bayesian analysis failed:", err_msg), "danger"))
+    status_alert(paste("Bayesian analysis failed:", translate_error(err_msg)), "danger"))
   shinyjs::runjs(sprintf(
     "window.trackAnalysisComplete('tumor_growth', false, %s);",
     js_string(err_msg)))

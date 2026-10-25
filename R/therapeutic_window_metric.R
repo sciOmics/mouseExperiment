@@ -70,8 +70,8 @@
 #'       weight loss), \code{Worst_Loss_Lower}, \code{Worst_Loss_Upper},
 #'       \code{N_Over_Threshold} (animals whose worst loss reached the
 #'       threshold) and \code{Tolerability}.}
-#'     \item{weight_loss_data}{One row per animal: \code{MouseKey},
-#'       \code{Treatment}, \code{ID}, \code{Cage}, \code{Baseline_Weight},
+#'     \item{weight_loss_data}{One row per animal: \code{Treatment},
+#'       \code{ID}, \code{Cage}, \code{Baseline_Weight},
 #'       \code{Nadir_Weight}, \code{Nadir_Day}, \code{Pct_Loss} and
 #'       \code{Over_Threshold}.}
 #'     \item{tgi_data}{The endpoint means behind the TGI.}
@@ -272,7 +272,8 @@ therapeutic_window_metric <- function(df,
   me_result(list(
     reference_group  = reference_group,   # R20.46
     window_table     = win,
-    weight_loss_data = mouse_wl,
+    # The internal key off: Treatment, ID and Cage identify the animal.
+    weight_loss_data = mouse_wl[setdiff(names(mouse_wl), "MouseKey")],
     tgi_data         = tgi_data,
     tolerability_threshold = tolerability_threshold,
     tolerability_rule = paste0(

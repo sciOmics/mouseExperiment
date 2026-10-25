@@ -1001,7 +1001,7 @@ power_server <- function(id, rv) {
     req(rv$ap_results)
     df <- rv$ap_results$scenario_table
     if (is.null(df) || nrow(df) == 0)
-      return(DT::datatable(data.frame(Message = "No scenario results available")))
+      return(dt_table(data.frame(Message = "No scenario results available")))
     df <- format_df_for_display(as.data.frame(df))
     DT::datatable(df, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
   })
@@ -1081,7 +1081,7 @@ power_server <- function(id, rv) {
     req(rv$ap_results)
     df <- rv$ap_results$sensitivity_table
     if (is.null(df) || nrow(df) == 0)
-      return(DT::datatable(data.frame(
+      return(dt_table(data.frame(
         Message = "SD sensitivity analysis is only available in the Mean difference + Pooled SD input mode."
       )))
     df <- format_df_for_display(as.data.frame(df))
