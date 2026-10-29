@@ -563,7 +563,9 @@ dr_script_bundle <- function(res, include_upload = FALSE) {
   script_bundle("Dose Response", list(script_step(
     rec, "result", prints = prints,
     after = c("# Trend tests, the EC50 with its interval, and the curve's parameters",
-              "str(result$statistics, max.level = 1)"))),
+              "str(result$statistics, max.level = 1)",
+              "# Which dose-response curve: the candidates compared by AIC (R23.26)",
+              "print(result$statistics$model_selection)"))),
     prep = script_prep(res, include_upload))
 }
 
