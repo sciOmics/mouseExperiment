@@ -54,8 +54,8 @@
 #'   for the Bayesian Weibull or log-normal AFT model.
 #' @export
 #' @examples
-#' ev <- survival_events(master_synthetic_data, volume_threshold = 1000,
-#'                       cage_column = "Cage")
+#' ev <- survival_events(master_synthetic_data, volume_column = "Volume",
+#'                       volume_limit = 1000, cage_column = "Cage")
 #' aft <- aft_survival(ev, reference_group = "Vehicle", cage_column = "Cage")
 #' aft$time_ratios
 aft_survival <- function(df, time_column = "Time", event_column = "Event",
