@@ -312,7 +312,8 @@ survivalUI <- function(id) {
                   selectInput(ns("surv_plot_selector"), "Select Plot",
                     choices = c(
                       "Kaplan-Meier Curve"       = "km",
-                      "Forest Plot (hazard or time ratios)" = "forest"
+                      "Forest Plot (hazard or time ratios)" = "forest",
+                      "Posterior Distributions (Bayesian)" = "posterior"
                     )
                   ),
                   ctrl_section("surv-groups", "sort", "Groups",
@@ -337,6 +338,16 @@ survivalUI <- function(id) {
                       numericInput(ns("surv_km_xstart"),
                                    "X-axis start (Day)",
                                    value = 0, min = 0, step = 1)
+                    ),
+                    # R23.12: the posterior's options.
+                    conditionalPanel(ns = ns, "input.surv_plot_selector == 'posterior'",
+                      checkboxInput(ns("surv_opt_post_prior"),
+                                    tagList("Show the prior", help_tip(paste(
+                                      "Overlays each coefficient's prior, over the posterior's range.",
+                                      "A weak prior shows as a nearly flat line."))),
+                                    value = FALSE),
+                      numericInput(ns("surv_opt_post_hdi"), "Highest-density interval (%)",
+                                   value = 95, min = 50, max = 99.9, step = 1)
                     ),
                     conditionalPanel(ns = ns,"input.surv_plot_selector == 'forest'",
                       colourpicker::colourInput(ns("surv_forest_pt_color"),
@@ -396,23 +407,14 @@ survivalUI <- function(id) {
                   shinycssloaders::withSpinner(
                     plotOutput(ns("surv_forest_plot"), width = "auto", height = "auto")
                   )
+                ),
+                conditionalPanel(ns = ns,"input.surv_plot_selector == 'posterior'",
+                  h4("Posterior Distributions"),
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("surv_plot_posterior"), width = "auto", height = "auto")
+                  )
                 )
               )
-            )
-          ),
-
-          # R23.5/R23.13: a fixed tab, shown for the Bayesian model only; it used
-          # to be appended after Download Results.
-          tabPanel("Prior vs Posterior",
-            tab_info(
-              strong("Prior vs Posterior density overlay"), " \u2014 shows how much the data have updated each parameter's prior distribution.",
-              em("Parameters whose posterior is similar to the prior are not well identified by the data; consider collecting more data or using an informative prior.")
-            ),
-            div(class = "text-right", style = "margin-bottom: 6px;",
-              downloadButton(ns("download_surv_prior_posterior"), "Download Plot")
-            ),
-            shinycssloaders::withSpinner(
-              plotOutput(ns("surv_prior_posterior_plot"), height = "400px")
             )
           ),
 
@@ -996,18 +998,9 @@ survival_server <- function(id, rv) {
     }
   })
   
-  # ── Bayesian tab management (R23.5) ────────────────────────────────────────
-  # Prior vs Posterior is a fixed tab, shown for the Bayesian model; the
-  # posterior predictive check is in Diagnostics. Both used to be appended
-  # after Download Results.
-  observe({
-    if (isTRUE(input$surv_model_type == "bayes") ||
-        isTRUE(rv$surv_results$model_type_used == "bayes")) {
-      showTab(inputId = "surv_results_tabs", target = "Prior vs Posterior")
-    } else {
-      hideTab(inputId = "surv_results_tabs", target = "Prior vs Posterior")
-    }
-  })
+  # R23.5/R23.12: the posterior predictive check is in Diagnostics, and the
+  # prior and posterior distributions are a plot type in Plots; neither is a
+  # tab of its own any more.
 
   # ── Bayesian render outputs ────────────────────────────────────────────────
   output$surv_pp_check_plot <- renderPlot({
@@ -1063,14 +1056,6 @@ survival_server <- function(id, rv) {
     bayesplot::mcmc_trace(rv$surv_results$posterior_draws)
   })
 
-  output$surv_prior_posterior_plot <- renderPlot({
-    req(rv$surv_results)
-    req(isTRUE(rv$surv_results$model_type_used == "bayes"))
-    req(!isTRUE(rv$surv_results$error))
-    p <- rv$surv_results$prior_posterior_plot
-    req(!is.null(p))
-    print(p)
-  })
 
   # Summary output
   output$surv_summary <- renderText({
@@ -1155,8 +1140,9 @@ survival_server <- function(id, rv) {
 
   output$surv_download_plot_btn <- renderUI({
     btn_id <- switch(input$surv_plot_selector %||% "km",
-      km     = "download_surv_plot_km",
-      forest = "download_surv_forest_plot",
+      km        = "download_surv_plot_km",
+      forest    = "download_surv_forest_plot",
+      posterior = "download_surv_plot_posterior",   # R23.12
       "download_surv_plot_km"
     )
     downloadButton(session$ns(btn_id), "Download Plot")
@@ -1491,6 +1477,19 @@ survival_server <- function(id, rv) {
   # Forest plot
   # R22.2: the same plot as the download (surv_forest_plot_styled()), so a
   # Bayesian run's time ratios are drawn too; it read the Cox table only.
+  # R23.12: the posterior distributions, Bayesian runs only.
+  output$surv_plot_posterior <- renderPlot({
+    if (!identical(rv$surv_results$model_type_used, "bayes")) {
+      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = "Posterior distributions come from a Bayesian fit.\nRun the Bayesian model first.")
+      return(invisible(NULL))
+    }
+    p <- surv_posterior_plot_styled(rv$surv_results, input)
+    req(!is.null(p))
+    p
+  }, width = function() input$surv_plot_width %||% 800,
+     height = function() input$surv_plot_height %||% 600)
+
   output$surv_forest_plot <- renderPlot({
     req(rv$surv_results)
     p <- surv_forest_plot_styled(rv$surv_results, input)

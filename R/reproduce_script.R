@@ -414,12 +414,17 @@ tg_endpoint_steps <- function(delay = NULL) {
 
 #' Tumor Growth's redrawn plots as script steps (F9)
 #' @param growth The growth curves' record: list(plot, style).
+#' @param posterior The posterior distributions' call, on the script's
+#'   `result` (R23.12).
 #' @keywords internal
-tg_plot_steps <- function(growth = NULL) {
+tg_plot_steps <- function(growth = NULL, posterior = NULL) {
   Filter(Negate(is.null), list(
     if (!is.null(growth$plot))
       plot_script_step(growth$plot, "p_growth", growth$style,
-                       comment = "Growth curves, drawn and styled as on the dashboard")))
+                       comment = "Growth curves, drawn and styled as on the dashboard"),
+    if (!is.null(posterior))
+      plot_script_step(posterior, "p_posterior",
+                       comment = "The posterior distributions, with the HDI, as on the Plots tab")))
 }
 
 #' A plot as script steps: the plotting call, then style_plot() (F9)

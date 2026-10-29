@@ -196,6 +196,10 @@ parameters (bayesplot), or \code{NULL} when \code{plots = FALSE}.}
 posterior (blue) for each treatment-effect coefficient. A vertical
 dashed line marks zero (no effect). Useful for assessing how much the
 data updated the prior. \code{NULL} when \code{plots = FALSE}.}
+\item{\code{prior_posterior_data}}{The treatment coefficients' prior and
+posterior draws (\code{Parameter}, \code{Value}, \code{Source}), for
+\code{\link[=plot_posterior]{plot_posterior()}} and \code{\link[=posterior_hdi]{posterior_hdi()}} (R23.12); kept with
+\code{plots = FALSE} too.}
 \item{\code{credible_intervals_plot}}{Forest plot of group EMMs with
 95 \% CrI, or \code{NULL} when \code{plots = FALSE}.}
 \item{\code{mcmc_trace_plot}}{MCMC trace plot for treatment parameters,

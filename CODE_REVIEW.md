@@ -7184,3 +7184,31 @@ The header test fails on 0.49.0.
 - **Edge cases:** an arm without events; a reference without events; two doses; cage randomisation; a repeated animal; a zero time.
 - **The tab,** end to end: the table, the summary, the AIC table, the downloads, and an R script that reproduces the ratios and adjusted p.
 - **The banner,** for p = 0.028 and p = 0.4.
+
+## R23-G Implementation log — v0.55.0: posterior distributions with an HDI (R23.12, 2026-10-29)
+
+**The note.** Bayesian Tumor Growth had no prior-vs-posterior plot. Its result built one, but the dashboard never showed it. Survival showed its own, fixed, in a separate tab. The maintainer asked for posterior plots among the plot types, with the prior optional and an HDI of the user's width.
+
+**The package:**
+- **`bayesian_tumor_growth()` and `bayesian_survival()`** keep `prior_posterior_data`, the treatment coefficients' prior and posterior draws (`bayes_prior_posterior_data()`), also with `plots = FALSE`. A drawn plot cannot change its interval or drop the prior; the draws can.
+- **Readable labels.** The coefficients are labelled by arm through `bayes_term_labels()` (R22.13): "Drug_A Mid + Drug_B × Day" instead of brms's "Drug_AMidPDrug_B:Day". The existing `prior_posterior_plot` gains the same labels.
+- **`posterior_hdi()`** (exported) gives each coefficient's HDI, the narrowest interval holding the probability (`me_hdi()`: sorted draws, the shortest window of ⌈p·n⌉ draws).
+- **`plot_posterior()`** (exported), one panel per coefficient:
+  - the posterior's density, with the HDI shaded and its limits in the panel title;
+  - a dashed line at 0;
+  - optionally, the prior's density over the posterior's range, ±25 % of it. A weakly informative prior spans many times that range, and drawn over its own range it flattened the posterior to a spike. Over this window it shows as the near-flat line it is.
+
+**The dashboard:**
+- **Tumor Growth's Plots** gains "Posterior Distributions (Bayesian)", with "Show the prior" (off) and "Highest-density interval (%)" (95). The plot carries the usual title and label overrides. Before a Bayesian fit, it says one is needed.
+  - It has a plot download, a Download Results item, and a step in the R script: `p_posterior <- plot_posterior(result, show_prior = ..., hdi = ...)`.
+- **Survival's Plots** gains the same plot type. Its "Prior vs Posterior" tab, its fixed plot's download, and the tab's show/hide observer from R23-B are removed. The Download Results item moves from diagnostics to plots, drawn as displayed.
+- **Tab order:** after Plots come only Diagnostics and Download Results, in every module. `test-r23-ui.R` now requires exactly that.
+
+**Docs:** `docs/BAYESIAN.md` and `docs/DIAGNOSTICS.md` say where each plot is now.
+
+**Tests** (`test-r23-posterior.R`, 5 tests):
+- **The HDI:** a normal gives ±1.96 at 95 %. An exponential's 90 % HDI starts at 0, is narrower than the equal-tailed interval, and holds 90 % of the draws. Out-of-range levels, unknown parameters and results from before 0.55.0 are errors.
+- **The plot:** shading only inside the HDI, its limits in the titles, the prior layer on request and only over the posterior's range, and parameter selection.
+- **A real fit:** its draws, readable labels, and the plot.
+- **The UIs:** both plot selectors, no Prior vs Posterior tab, and the R-script step.
+- **The Tumor Growth server:** the plot and its recorded call follow the HDI and prior inputs.

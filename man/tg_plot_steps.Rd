@@ -4,10 +4,13 @@
 \alias{tg_plot_steps}
 \title{Tumor Growth's redrawn plots as script steps (F9)}
 \usage{
-tg_plot_steps(growth = NULL)
+tg_plot_steps(growth = NULL, posterior = NULL)
 }
 \arguments{
 \item{growth}{The growth curves' record: list(plot, style).}
+
+\item{posterior}{The posterior distributions' call, on the script's
+\code{result} (R23.12).}
 }
 \description{
 Tumor Growth's redrawn plots as script steps (F9)

@@ -137,6 +137,10 @@
 #'     posterior (blue) for each treatment-effect coefficient. A vertical
 #'     dashed line marks zero (no effect). Useful for assessing how much the
 #'     data updated the prior. \code{NULL} when \code{plots = FALSE}.}
+#'   \item{\code{prior_posterior_data}}{The treatment coefficients' prior and
+#'     posterior draws (\code{Parameter}, \code{Value}, \code{Source}), for
+#'     [plot_posterior()] and [posterior_hdi()] (R23.12); kept with
+#'     \code{plots = FALSE} too.}
 #'   \item{\code{credible_intervals_plot}}{Forest plot of group EMMs with
 #'     95 % CrI, or \code{NULL} when \code{plots = FALSE}.}
 #'   \item{\code{mcmc_trace_plot}}{MCMC trace plot for treatment parameters,
@@ -609,6 +613,10 @@ bayesian_tumor_growth <- function(
   # The headline draws (fixed effects, SDs, sigma) travel with the result, so
   # a caller can draw trace and rank plots without keeping the model (R20.80).
   posterior_draws <- me_headline_draws(model)
+  # R23.12: the treatment coefficients' prior and posterior draws, for
+  # plot_posterior() and its HDI, whether or not the plots are built.
+  prior_posterior_data <- tryCatch(bayes_prior_posterior_data(model, treatment_column),
+                                   error = function(e) NULL)
 
   if (isTRUE(plots)) {
     # CODE_REVIEW.md R20.80 -- every plot is built by a helper that sees only
@@ -715,6 +723,7 @@ bayesian_tumor_growth <- function(
     pp_check_plot           = pp_check_plot,
     posterior_dist_plot     = posterior_dist_plot,
     prior_posterior_plot    = prior_posterior_plot,
+    prior_posterior_data    = prior_posterior_data,
     credible_intervals_plot = credible_intervals_plot,
     mcmc_trace_plot         = mcmc_trace_plot,
     residuals_plot          = residuals_plot,

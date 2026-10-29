@@ -117,6 +117,10 @@
 #'     posterior (blue) for each treatment-effect coefficient. A vertical
 #'     dashed line marks zero (no effect). \code{NULL} when
 #'     \code{plots = FALSE}.}
+#'   \item{\code{prior_posterior_data}}{The treatment coefficients' prior and
+#'     posterior draws (\code{Parameter}, \code{Value}, \code{Source}), for
+#'     [plot_posterior()] and [posterior_hdi()] (R23.12); kept with
+#'     \code{plots = FALSE} too.}
 #'   \item{\code{mcmc_trace_plot}}{MCMC trace plot, or \code{NULL} when
 #'     \code{plots = FALSE}.}
 #'   \item{\code{survival_curve_plot}}{Parametric survival curves with 95 %
@@ -455,6 +459,9 @@ bayesian_survival <- function(
 
   # The headline draws travel with the result (R20.80).
   posterior_draws <- me_headline_draws(model)
+  # R23.12: the treatment coefficients' prior and posterior draws.
+  prior_posterior_data <- tryCatch(bayes_prior_posterior_data(model, treatment_column),
+                                   error = function(e) NULL)
 
   if (isTRUE(plots)) {
     # R20.80: built from data, so no plot holds the model. The predictive
@@ -557,6 +564,7 @@ bayesian_survival <- function(
     pp_check_plot        = pp_check_plot,
     posterior_dist_plot  = posterior_dist_plot,
     prior_posterior_plot = prior_posterior_plot,
+    prior_posterior_data = prior_posterior_data,
     mcmc_trace_plot      = mcmc_trace_plot,
     survival_curve_plot  = survival_curve_plot,
     posterior_draws      = posterior_draws,

@@ -15,11 +15,14 @@
 #' @param rv Shared reactiveValues.
 #' @param tg_growth_plot,tg_rates_plot,tg_auc_plot,tg_forest_plot,tg_wf_plot
 #'   Reactive plot expressions defined in `tumor_growth_server()`.
+#' @param tg_post_plot,post_record The posterior distributions' plot and
+#'   their call for the R script (R23.12).
 #' @keywords internal
 add_tg_download_handlers <- function(input, output, session, rv,
                                      tg_growth_plot, tg_rates_plot,
                                      tg_auc_plot, tg_forest_plot,
-                                     tg_wf_plot, endpoints = NULL, growth_record = NULL) {
+                                     tg_wf_plot, endpoints = NULL, growth_record = NULL,
+                                     tg_post_plot = NULL, post_record = NULL) {
 
   output$download_tg_pp_check <- downloadHandler(
     filename = "posterior_predictive_check.png",
@@ -178,6 +181,20 @@ add_tg_download_handlers <- function(input, output, session, rv,
     }
   )
 
+  output$download_tg_plot_posterior <- downloadHandler(   # R23.12
+    filename = "posterior_distributions.png",
+    content = function(file) {
+      shinyjs::runjs("window.trackDownload('tumor_growth', 'plot', 'png');")
+      p <- if (is.function(tg_post_plot)) tg_post_plot()
+      if (!is.null(p)) {
+        png(file, width  = input$tg_plot_width  %||% 800,
+                  height = input$tg_plot_height %||% 550,
+                  units  = "px", res = input$tg_plot_dpi %||% 100)
+        tryCatch(print(p), finally = dev.off())
+      }
+    }
+  )
+
   output$download_tg_plot_waterfall <- downloadHandler(
     filename = "waterfall_plot.png",
     content = function(file) {
@@ -212,6 +229,7 @@ add_tg_download_handlers <- function(input, output, session, rv,
     delay <- ep(endpoints$delay)
     # F9: the plots the script redraws, with the dashboard's styling.
     growth <- ep(growth_record)
+    post   <- ep(post_record)   # R23.12
     items <- list(
       # Tables
       if (has(res$anova))
@@ -270,6 +288,10 @@ add_tg_download_handlers <- function(input, output, session, rv,
       if (has(res$growth_rates))
         dl_item("plot_waterfall", "plots", "Waterfall", "waterfall", "plot",
                 drawn(tg_wf_plot), "Each animal's growth rate, sorted"),
+      if (bayes && has(res$prior_posterior_data) && is.function(tg_post_plot))
+        dl_item("plot_posterior", "plots", "Posterior distributions", "posterior_distributions",
+                "plot", drawn(tg_post_plot),
+                "Each treatment effect's posterior, with its highest-density interval, as displayed"),
       # Diagnostics
       if (!bayes && has(res$diag_qq_plot))
         dl_item("diag_qq", "diagnostics", "Residual Q-Q", "residual_qq", "plot",
@@ -317,7 +339,7 @@ add_tg_download_handlers <- function(input, output, session, rv,
       # R script, with the data it reads (R20-Z)
       if (!is.null(res$call_record))
         script_dl_item(function(up) tg_script_bundle(res, up, extra = c(
-          tg_endpoint_steps(delay), tg_plot_steps(growth))))
+          tg_endpoint_steps(delay), tg_plot_steps(growth, post))))
     )
     Filter(Negate(is.null), items)
   })

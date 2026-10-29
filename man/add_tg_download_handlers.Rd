@@ -21,7 +21,9 @@ add_tg_download_handlers(
   tg_forest_plot,
   tg_wf_plot,
   endpoints = NULL,
-  growth_record = NULL
+  growth_record = NULL,
+  tg_post_plot = NULL,
+  post_record = NULL
 )
 }
 \arguments{
@@ -30,6 +32,9 @@ add_tg_download_handlers(
 \item{rv}{Shared reactiveValues.}
 
 \item{tg_growth_plot, tg_rates_plot, tg_auc_plot, tg_forest_plot, tg_wf_plot}{Reactive plot expressions defined in \code{tumor_growth_server()}.}
+
+\item{tg_post_plot, post_record}{The posterior distributions' plot and
+their call for the R script (R23.12).}
 }
 \description{
 Reactive plot functions (\code{tg_growth_plot}, \code{tg_rates_plot}, etc.) are

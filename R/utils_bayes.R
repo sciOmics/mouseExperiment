@@ -458,7 +458,13 @@ bayes_prior_posterior_data <- function(model, treatment_column) {
   tx_cols <- grep(paste0("^b_", safe_tx), names(post), value = TRUE)
   if (length(tx_cols) == 0) return(NULL)
 
-  clean <- function(x) sub(paste0("^b_", treatment_column), "", x)
+  # R23.12: the arms as labelled ("Drug_A Mid + Drug_B x Day"), not brms's
+  # names ("Drug_AMidPDrug_B:Day").
+  arms <- tryCatch(levels(factor(model$data[[treatment_column]])), error = function(e) character(0))
+  clean <- function(x) {
+    lab <- bayes_term_labels(sub("^b_", "", x), arms, treatment_column)
+    sub(paste0("^", treatment_column, ": "), "", sub(paste0("^b_", treatment_column), "", lab))
+  }
   do.call(rbind, lapply(tx_cols, function(col) {
     coef  <- sub("^b_", "", col)
     prior <- if (paste0("prior_b_", coef) %in% names(post)) post[[paste0("prior_b_", coef)]]

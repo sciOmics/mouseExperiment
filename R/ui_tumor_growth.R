@@ -678,7 +678,8 @@ tumorGrowthUI <- function(id) {
                       "Growth Rates Plot"        = "growth_rate",
                       "Area Under the Curve Plot" = "auc",
                       "Waterfall Plot"           = "waterfall",
-                      "Effect Size Forest Plot"  = "effect_forest"
+                      "Effect Size Forest Plot"  = "effect_forest",
+                      "Posterior Distributions (Bayesian)" = "posterior"
                     )
                   ),
                   ctrl_section("group-order", "sort", "Groups",
@@ -724,6 +725,21 @@ tumorGrowthUI <- function(id) {
                                     "Show effect size", value = FALSE),
                       checkboxInput(ns("tg_opt_forest_show_ci"),
                                     "Show 95% CI",      value = FALSE)
+                    ),
+                    # R23.12: the posterior's options.
+                    conditionalPanel(ns = ns,
+                      "input.tg_plot_selector == 'posterior'",
+                      checkboxInput(ns("tg_opt_post_prior"),
+                                    tagList("Show the prior", help_tip(paste(
+                                      "Overlays each coefficient's prior, over the posterior's range.",
+                                      "A weak prior shows as a nearly flat line: the data, not the",
+                                      "prior, set the posterior."))),
+                                    value = FALSE),
+                      numericInput(ns("tg_opt_post_hdi"),
+                                   tagList("Highest-density interval (%)", help_tip(paste(
+                                     "The narrowest interval holding this share of the posterior;",
+                                     "it is shaded, and its limits are in each panel's title."))),
+                                   value = 95, min = 50, max = 99.9, step = 1)
                     ),
                     conditionalPanel(ns = ns,
                       "['growth_rate','auc','effect_forest'].indexOf(input.tg_plot_selector) >= 0",
@@ -833,6 +849,12 @@ tumorGrowthUI <- function(id) {
                   h4("Effect Size Forest Plot"),
                   shinycssloaders::withSpinner(
                     plotOutput(ns("tg_plot_effect_forest"), width = "auto", height = "auto")
+                  )
+                ),
+                conditionalPanel(ns = ns,"input.tg_plot_selector == 'posterior'",
+                  h4("Posterior Distributions"),
+                  shinycssloaders::withSpinner(
+                    plotOutput(ns("tg_plot_posterior"), width = "auto", height = "auto")
                   )
                 ),
 
