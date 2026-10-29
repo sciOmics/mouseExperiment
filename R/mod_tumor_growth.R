@@ -1602,9 +1602,8 @@ tumor_growth_server <- function(id, rv) {
   tg_wf_plot     <- tg_plots$waterfall
   tg_forest_plot <- tg_plots$forest
 
-  # F1/F2: response categories and growth delay, from the run's data.
-  tg_endpoints <- add_tg_endpoints(input, output, session, rv, colors = reactive(
-    remap_colors_to_treatment(build_color_vector(input, "tg_color", ordered_tg_grps()))))
+  # F2: growth delay, from the run's data (the mRECIST responses went with R23.1).
+  tg_endpoints <- add_tg_endpoints(input, output, session, rv)
 
   # --- Bayesian-specific output renderers ---
 

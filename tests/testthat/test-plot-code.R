@@ -28,7 +28,7 @@ test_that("F9: style_plot() applies each option, and leaves the rest as they wer
   expect_error(style_plot(p, theme = "dark"), "should be one of")
 })
 
-test_that("F9: Tumor Growth's script redraws the growth curves and the waterfall as on the dashboard", {
+test_that("F9: Tumor Growth's script redraws the growth curves as on the dashboard", {
   rv <- shiny::reactiveValues(
     uploaded_data = master_synthetic_data, data_valid = TRUE, session_id = NULL,
     settings = list(col_id = "ID", col_day = "Day", time_method = "day", col_volume = "Volume",
@@ -38,8 +38,7 @@ test_that("F9: Tumor Growth's script redraws the growth curves and the waterfall
   suppressWarnings(shiny::testServer(g("tumor_growth_server"), args = list(rv = rv), {
     session$setInputs(tg_model_type = "lme4", tg_transform = "log", tg_random_effects = "slope",
                       tg_cage_effect = "auto", tg_comparison_type = "reference", tg_p_adjust = "holm",
-                      tg_resp_min_day = 10, tg_delay_volume = 1000, tg_delay_n_boot = 0,
-                      tg_waterfall_fill = "treatment", tg_waterfall_cap = 150)
+                      tg_delay_volume = 1000, tg_delay_n_boot = 0)
     session$setInputs(run_tg_analysis = 1)
     groups <- rv$tg_plot_groups
     cols <- stats::setNames(grDevices::hcl.colors(length(groups)), groups)
@@ -57,7 +56,7 @@ test_that("F9: Tumor Growth's script redraws the growth curves and the waterfall
     script <- readLines(file.path(dir, "analysis.R"))
     expect_true(any(grepl("p_growth <- plot_tumor_growth(", script, fixed = TRUE)))
     expect_true(any(grepl("p_growth <- style_plot(", script, fixed = TRUE)))
-    expect_true(any(grepl("p_waterfall <- plot_response_waterfall(", script, fixed = TRUE)))
+    expect_false(any(grepl("plot_response_waterfall(", script, fixed = TRUE)))   # R23.1
     expect_true(file.exists(file.path(dir, "data", "plot_data.rds")))
     expect_true(any(grepl("use the dashboard's options", script, fixed = TRUE)))
     env <- new.env(parent = globalenv())
@@ -73,8 +72,6 @@ test_that("F9: Tumor Growth's script redraws the growth curves and the waterfall
     expect_identical(p$theme$legend.position, "bottom")
     colour <- Filter(function(sc) "colour" %in% sc$aesthetics, p$scales$scales)[[1]]
     expect_identical(colour$palette(length(cols)), cols)
-    expect_s3_class(env$p_waterfall, "ggplot")
-    expect_match(env$p_waterfall$labels$caption, "above 150%", fixed = TRUE)
   }))
 })
 

@@ -183,13 +183,12 @@ helpUI <- function() {
       tags$dd("The LME4 model fitted via MCMC (Stan). Returns posterior distributions for treatment effects with credible intervals, plus convergence diagnostics (Rhat, ESS, trace and rank plots) and PSIS-LOO influence measures. Requires the brms package."),
       tags$dt("Randomisation test (optional, any frequentist mode)"),
       tags$dd("Permutes treatment labels and refits, giving an exact p-value for the Treatment \u00d7 Day interaction that assumes neither a denominator-df approximation nor normal random effects. The unit permuted, individual animals or whole cages, is the unit of randomisation declared under Study Design on the Data tab \u2014 the test is only valid if that matches how the experiment was actually run."),
-      tags$dt("Response & Delay"),
-      tags$dd("Two per-animal endpoints from the data the run analysed, without the model. ",
-              strong("mRECIST response"), " (Gao et al. 2015) classifies each animal as mCR, mPR, ",
-              "mSD or mPD from its best response and best average response (% change in volume ",
-              "from its first measurement), with a waterfall of the best responses. ",
-              strong("Growth delay"), " is T \u2212 C: the median time for an arm's tumours to ",
-              "reach a volume you set, minus the reference arm's, with a bootstrap interval.")
+      tags$dt("Growth Delay"),
+      tags$dd("A per-animal endpoint from the data the run analysed, without the model: T \u2212 C, ",
+              "the median time for an arm's tumours to reach a volume you set, minus the reference ",
+              "arm's, with a bootstrap interval, a log-rank test against the reference, and the ",
+              "specific growth delay (T \u2212 C in the reference arm's doubling times). A table ",
+              "gives each animal's time.")
     ),
 
     h4("Survival Analysis"),

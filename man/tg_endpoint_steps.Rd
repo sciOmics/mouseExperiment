@@ -2,17 +2,18 @@
 % Please edit documentation in R/reproduce_script.R
 \name{tg_endpoint_steps}
 \alias{tg_endpoint_steps}
-\title{The Response & Delay tab's calls as script steps (F1/F2)}
+\title{The Growth Delay tab's call as a script step (F2)}
 \usage{
-tg_endpoint_steps(responses = NULL, delay = NULL)
+tg_endpoint_steps(delay = NULL)
 }
 \arguments{
-\item{responses, delay}{The tab's reactives' values: list(result, record).}
+\item{delay}{The tab's reactive's value: list(result, record).}
 }
 \value{
 A list of \code{\link[=script_step]{script_step()}}s, possibly empty.
 }
 \description{
-They share the run's analysed data, so they follow its call in the script.
+It shares the run's analysed data, so it follows the run's call in the
+script. The mRECIST step went with R23.1.
 }
 \keyword{internal}

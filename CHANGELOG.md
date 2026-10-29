@@ -5,6 +5,28 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.52.0] - 2026-10-29
+
+Growth delay, with its statistics; mRECIST removed (`CODE_REVIEW.md` Round 23, R23-D).
+
+### Removed
+- **The mRECIST response categories** (`response_categories()`) and **the best-response waterfall**
+  (`plot_response_waterfall()`), with Tumor Growth's mRECIST tables and plot, their downloads and
+  their steps in the R script. The maintainer's decision (R23.1).
+
+### Added
+- **`growth_delay()` tests and normalises the delay.**
+  - **A log-rank test** of each arm's times to the volume against the reference arm's, with
+    `P_Value` and `P_Adjusted`, corrected over the arms (`p_adjust_method`, Holm by default). It
+    treats animals as independent.
+  - **The specific growth delay,** `SGD`: T − C in the reference arm's volume doubling times (the
+    median of its animals' doubling times), with its interval. It compares delays across tumour
+    models that grow at different rates.
+- **Tumor Growth's "Growth Delay" tab** (formerly "Response & Delay") shows both, has its own
+  multiple-comparison setting, and lists each animal's time to the volume, reached or censored.
+  The per-animal table is in Download Results and the R script too. When whole cages were
+  randomised, the tab says the log-rank p-values are too small.
+
 ## [0.51.0] - 2026-10-29
 
 Explanations (`CODE_REVIEW.md` Round 23, R23-C).

@@ -359,7 +359,7 @@ script_prep <- function(res, include_upload) {
 #' @param res The stored Tumor Growth result, with its `call_record` (and
 #'   `perm_call_record` when the randomisation test ran).
 #' @param include_upload Start from the uploaded file (see [script_prep()]).
-#' @param extra More steps on the same data: the Response & Delay tab's
+#' @param extra More steps on the same data: the Growth Delay tab's
 #'   ([tg_endpoint_steps()]).
 #' @return A [script_bundle()], or NULL when the run left no record.
 #' @keywords internal
@@ -394,38 +394,32 @@ tg_script_bundle <- function(res, include_upload = FALSE, extra = list()) {
   script_bundle(title, steps, notes, prep = script_prep(res, include_upload))
 }
 
-#' The Response & Delay tab's calls as script steps (F1/F2)
+#' The Growth Delay tab's call as a script step (F2)
 #'
-#' They share the run's analysed data, so they follow its call in the script.
-#' @param responses,delay The tab's reactives' values: list(result, record).
+#' It shares the run's analysed data, so it follows the run's call in the
+#' script. The mRECIST step went with R23.1.
+#' @param delay The tab's reactive's value: list(result, record).
 #' @return A list of [script_step()]s, possibly empty.
 #' @keywords internal
-tg_endpoint_steps <- function(responses = NULL, delay = NULL) {
+tg_endpoint_steps <- function(delay = NULL) {
   ok <- function(x) !is.null(x$record) && !inherits(x$result, "error")
   Filter(Negate(is.null), list(
-    if (ok(responses))
-      script_step(responses$record, "responses",
-                  comment = "mRECIST response categories (Gao et al. 2015), as on the Response & Delay tab",
-                  prints = c(summary = "Each arm's animals in each mRECIST category, and its response rate")),
     if (ok(delay))
       script_step(delay$record, "delay",
-                  comment = "Tumour growth delay (T - C), as on the Response & Delay tab",
-                  prints = c(delay_table = "Each arm's median time to the volume, and T - C with its interval"))))
+                  comment = "Tumour growth delay (T - C), as on the Growth Delay tab",
+                  prints = c(delay_table = paste("Each arm's median time to the volume, T - C with its",
+                                                 "interval, the specific growth delay and the log-rank test"),
+                             per_animal = "Each animal's time to the volume (Reached = 0: censored)"))))
 }
 
 #' Tumor Growth's redrawn plots as script steps (F9)
 #' @param growth The growth curves' record: list(plot, style).
-#' @param waterfall The best-response waterfall's record, on the script's
-#'   `responses` (so after [tg_endpoint_steps()]).
 #' @keywords internal
-tg_plot_steps <- function(growth = NULL, waterfall = NULL) {
+tg_plot_steps <- function(growth = NULL) {
   Filter(Negate(is.null), list(
     if (!is.null(growth$plot))
       plot_script_step(growth$plot, "p_growth", growth$style,
-                       comment = "Growth curves, drawn and styled as on the dashboard"),
-    if (!is.null(waterfall))
-      plot_script_step(waterfall, "p_waterfall",
-                       comment = "The best-response waterfall, as on the Response & Delay tab")))
+                       comment = "Growth curves, drawn and styled as on the dashboard")))
 }
 
 #' A plot as script steps: the plotting call, then style_plot() (F9)

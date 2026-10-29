@@ -7081,3 +7081,34 @@ The header test fails on 0.49.0.
 - the influential table with observations, without them, and with mismatched rows;
 - **a real Bayesian fit** (2 chains): `observations` has one row per Pareto-k, and every row's volume equals the data's at that animal and day;
 - the Info tabs' effects help and formulas.
+
+## R23-D Implementation log — v0.52.0: growth delay's statistics; mRECIST removed (R23.1, R23.2, 2026-10-29)
+
+**R23.1, mRECIST removed (the maintainer's decision).**
+- **Deleted:** `R/response_categories.R` and `R/plot_response_waterfall.R`, their exports and help pages, the `me_responses` result class, Tumor Growth's response tables, waterfall and controls, their three Download Results items, their R-script steps (`tg_endpoint_steps()` and `tg_plot_steps()` lose their arguments), and the README, Help and `docs/METHODS.md` text.
+- **Renamed:** the tab "Response & Delay" is now "Growth Delay".
+- **Kept:** the growth-rate waterfall on the Plots tab, which does not use the mRECIST categories.
+
+**R23.2, growth delay's statistics.**
+- **`growth_delay()`** adds to `delay_table`:
+  - `P_Value`, from `survival::survdiff()` of each arm's times against the reference's (one degree of freedom), and `P_Adjusted`, corrected over the arms by `p_adjust_method` (holm, bonferroni, fdr or none; Holm by default);
+  - `SGD`, T − C divided by the reference arm's doubling time, with `SGD_Lower` and `SGD_Upper`. The doubling time is the median of the reference animals' doubling times from `tumor_doubling_time()`, keyed by cage when there is one.
+  - **It also returns** `doubling_time_reference` and `p_adjust_method`. `print()` reports both.
+- **Its documentation** says the test treats animals as independent. The dashboard says so too, when the study design records cage randomisation.
+- **A check on the master demo** (volume 1,000 mm³): four arms have the same log-rank p-value, 3.85 × 10⁻⁵. Every Vehicle tumour reached the volume (days 9.8–14.3) before any tumour in those arms, and the test uses ranks only. Drug_B overlaps (from day 12.8) and has its own.
+- **The Growth Delay tab:**
+  - **Settings:** the volume, the number of resamples, and the correction.
+  - **The arms' table** adds the specific growth delay, its interval, and the raw and adjusted p.
+  - **"Each animal"** lists each animal's day reached or last measured, and whether it reached the volume or was censored.
+  - **The note** gives the reference's doubling time, and warns when whole cages were randomised.
+- **Download Results** adds "Growth delay by animal". The R script prints `delay$per_animal` and passes the correction.
+
+**Tests** (`test-endpoints.R`):
+- the export and the tab are gone;
+- **the log-rank p-values** equal `survdiff()`'s, with a separated arm significant and an overlapping one not;
+- the Holm and "none" corrections;
+- `doubling_time_reference` equals the median of `log(2) / rate`, and the SGD and its interval follow;
+- **the tab:** headers, both downloads, and the R script reproducing the medians, intervals, adjusted p-values, SGD and per-animal times;
+- **the display tables:** "not reached", dashes, p formatting, and the per-animal outcome.
+
+`test-plot-code.R` and `test-result-classes.R` drop the waterfall and the mRECIST class.

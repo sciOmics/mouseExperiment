@@ -2,7 +2,7 @@
 % Please edit documentation in R/mod_tumor_growth_endpoints.R
 \name{tg_endpoints_tab}
 \alias{tg_endpoints_tab}
-\title{The Response & Delay tab}
+\title{The Growth Delay tab}
 \usage{
 tg_endpoints_tab(ns)
 }
@@ -10,6 +10,6 @@ tg_endpoints_tab(ns)
 \item{ns}{Namespace function.}
 }
 \description{
-The Response & Delay tab
+The Growth Delay tab
 }
 \keyword{internal}

@@ -14,7 +14,8 @@ growth_delay(
   cage_column = NULL,
   reference_group = NULL,
   n_boot = 2000L,
-  seed = NULL
+  seed = NULL,
+  p_adjust_method = c("holm", "bonferroni", "fdr", "none")
 )
 }
 \arguments{
@@ -33,14 +34,21 @@ as the other analyses do.}
 
 \item{seed}{Seed for the resamples. The caller's random state is left as
 it was.}
+
+\item{p_adjust_method}{Correction of the log-rank p-values over the arms
+compared with the reference: \code{"holm"}, \code{"bonferroni"}, \code{"fdr"} or
+\code{"none"}.}
 }
 \value{
 A list:
 \itemize{
 \item \code{delay_table}: per arm, \code{N}, \code{N_Reached}, \code{Median_Days}, \code{Delay_Days}
-(T - C), \code{Delay_Lower}, \code{Delay_Upper} and \code{Delay_Pct};
+(T - C), \code{Delay_Lower}, \code{Delay_Upper}, \code{Delay_Pct}, the specific growth
+delay \code{SGD} with \code{SGD_Lower} and \code{SGD_Upper}, and the log-rank
+\code{P_Value} and \code{P_Adjusted} against the reference;
 \item \code{per_animal}: each animal's \code{Time} and \code{Reached} (1 or 0);
-\item \code{volume}, \code{reference_group}.
+\item \code{volume}, \code{reference_group}, \code{doubling_time_reference} (days),
+\code{p_adjust_method}.
 }
 }
 \description{
@@ -60,6 +68,15 @@ the arm's animals reached the volume.
 \item \strong{The interval} for T - C is a percentile bootstrap over animals within
 each arm; an upper limit of \code{Inf} means the treated median was not reached
 in enough resamples.
+\item \strong{The test} compares each arm's times with the reference arm's by a
+log-rank test, with the p-values corrected over the arms
+(\code{p_adjust_method}). It treats animals as independent: when whole cages
+were randomised, it overstates the evidence.
+\item \strong{The specific growth delay} is T - C divided by the reference arm's
+tumour volume doubling time (the median of its animals' doubling times,
+from \code{\link[=tumor_doubling_time]{tumor_doubling_time()}}): the delay in doublings, which can be
+compared across models that grow at different rates. Its interval is the
+delay's, divided by the same doubling time.
 }
 
 Animals are keyed by arm, ID and cage, so reused ear tags stay apart.
