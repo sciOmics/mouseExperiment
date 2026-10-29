@@ -17,15 +17,25 @@ dl_drawn <- function(f) function() tryCatch(f(), error = function(e) NULL)
 surv_dl_items <- function(res, km_plot, forest_plot) {
   if (is.null(res) || isTRUE(res$error)) return(NULL)
   bayes <- identical(res$model_type_used, "bayes")
+  aft   <- identical(res$model_type_used, "aft")
   ph    <- res$ph_test
   draws <- res$posterior_draws
   Filter(Negate(is.null), list(
     if (!is.null(res$call_record)) script_dl_item(function(up) surv_script_bundle(res, up)),
     if (!is.null(surv_effects(res)))   # R22.2: a Bayesian run's are treatment_effects
-      dl_item("results", "tables", if (bayes) "Treatment effects" else "Hazard ratios",
+      dl_item("results", "tables",
+              if (bayes) "Treatment effects" else if (aft) "Time ratios" else "Hazard ratios",
               "survival_results", "table", function() surv_effects(res)$table,
               if (bayes) "Posterior time ratios by arm, with credible intervals"
+              else if (aft) "Each arm's time ratio against the reference, with the correction selected"
               else "Each arm against the reference, with the correction selected"),
+    # R23.11: the AFT model's checks.
+    if (aft && dl_has(res$distribution_comparison))
+      dl_item("aft_dists", "diagnostics", "AFT distributions (CSV)", "aft_distributions", "table",
+              dl_get(res$distribution_comparison), "Each distribution's AIC, and the one used"),
+    if (aft && dl_has(res$fitted_curves))
+      dl_item("aft_fit", "diagnostics", "AFT fit against Kaplan-Meier", "aft_fit", "plot",
+              function() aft_fit_plot(res), "Kaplan-Meier curves with the fitted AFT curves"),
     if (!is.null(res$km_fit))
       dl_item("risk", "tables", "Risk table", "risk_table", "table",
               function() surv_risk_table(res$km_fit),
@@ -35,7 +45,8 @@ surv_dl_items <- function(res, km_plot, forest_plot) {
     if (!is.null(surv_effects(res)))
       dl_item("plot_forest", "plots", "Forest plot", "forest_plot", "plot",
               dl_drawn(forest_plot),
-              if (bayes) "Time ratios with their credible intervals" else "Hazard ratios with their intervals"),
+              if (bayes) "Time ratios with their credible intervals"
+              else if (aft) "Time ratios with their intervals" else "Hazard ratios with their intervals"),
     if (!is.null(ph) && !is.null(ph$table))
       dl_item("ph_table", "diagnostics", "Proportional-hazards test (CSV)", "ph_test",
               "table", function() {

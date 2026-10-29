@@ -71,6 +71,12 @@
                                   as.integer(x$n_perm %||% NA), as.integer(x$n_units %||% NA),
                                   x$unit %||% ""),
                           sprintf("Smallest attainable p: %s", format(signif(x$min_attainable_p, 3))))),
+  me_aft = list(
+    title = function(x) paste0("Accelerated failure time model (", x$distribution, ")"),
+    tables = c(time_ratios = "Time ratios against the reference",
+               distribution_comparison = "The distributions compared by AIC"),
+    about = function(x) c(paste("Reference:", x$reference_group),
+                          paste("p-values corrected by", x$p_adjust_method))),
   me_growth_delay = list(
     title = function(x) paste("Tumour growth delay to", format(x$volume)),
     tables = c(delay_table = "Median time to the volume, T - C, the specific growth delay and the log-rank test"),

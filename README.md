@@ -236,6 +236,7 @@ apriori_power_simulation(n_per_group = c(6L, 10L), n_simulations = 50L, seed = 1
 | Function | Description |
 |----------|-------------|
 | `survival_statistics()` | KM, Cox PH, log-rank, `cox.zph()`, C-index |
+| `aft_survival()` | Accelerated failure time model: time ratios, with the distribution chosen by AIC |
 | `bayesian_survival()` | Bayesian AFT model (Weibull / log-normal) |
 
 ### Body Weight / Toxicity

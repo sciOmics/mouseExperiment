@@ -5,6 +5,30 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.54.0] - 2026-10-29
+
+Accelerated failure time models (`CODE_REVIEW.md` Round 23, R23-F).
+
+### Added
+- **`aft_survival()`: accelerated failure time models** (`survival::survreg()`). Each arm's time to
+  the endpoint is compared with the reference's as a **time ratio**: 1.8 means its animals take
+  1.8 times as long. It does not assume proportional hazards.
+  - **The distribution:** Weibull, log-normal or log-logistic; `"auto"` (the default) fits all
+    three and uses the lowest AIC, and reports each one's AIC.
+  - **Intervals and p-values:** Wald, on the log scale, with the p-values corrected over the arms
+    (Holm by default).
+  - **An arm with no events** has no finite time ratio and is reported with a note; a reference
+    without events is an error.
+  - **Each arm's fitted median and survival curve**, to compare with Kaplan-Meier.
+  - **`dose_column`** splits a treatment given at several doses into arms. With
+    `randomisation_unit = "cage"` it warns that its p-values treat animals as independent.
+- **The Survival tab offers "Accelerated Failure Time (AFT)"** with its distribution and
+  correction. Model Results shows the time ratios; Diagnostics compares the distributions and
+  draws the fit (dashed) over the Kaplan-Meier curves; the forest plot, Download Results and the
+  R script follow.
+- **When the Cox model's proportional-hazards check fails** (global p < 0.05), Diagnostics
+  suggests the AFT model.
+
 ## [0.53.0] - 2026-10-29
 
 The Weight demo shows toxicity (`CODE_REVIEW.md` Round 23, R23-E).
