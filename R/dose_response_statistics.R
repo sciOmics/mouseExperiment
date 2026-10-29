@@ -560,6 +560,71 @@ perform_statistical_analyses <- function(analysis_data, dose_column = "Dose", vo
     statistics = statistics
   ))
 }
+#' Which dose-response curve: a fixed set of models compared by AIC
+#'
+#' CODE_REVIEW.md R23.26. The candidates, all fitted to the same data:
+#' * **Linear:** volume linear in dose ([stats::lm()]).
+#' * **Emax:** the hyperbolic Emax curve, a log-logistic with its slope fixed
+#'   at 1 (3 parameters: the baseline, the maximum effect, the ED50).
+#' * **3PL:** a log-logistic falling to 0 (slope, upper limit, ED50).
+#' * **4PL:** a log-logistic with its own lower limit (>= 0), only with at
+#'   least 5 dose levels: with fewer it has nearly as many parameters as
+#'   there are doses and is barely identifiable.
+#' * **5PL:** the asymmetric log-logistic, when [try_nonlinear_models()]
+#'   fitted it (at least 6 dose levels).
+#'
+#' AIC is comparable across them: every log-likelihood is the full Gaussian
+#' one of the same observations. The selected model is the simplest within 2
+#' AIC of the lowest: a difference smaller than that is not evidence for the
+#' extra parameters.
+#' @param drc_data The data the curves are fitted to (dose 0 replaced as for
+#'   the log-logistic fits).
+#' @param n_dose_levels Distinct doses, including 0.
+#' @param fit_5p The 5-parameter fit, or NULL.
+#' @return list(table, selected, curve): the comparison (Model, Parameters,
+#'   LogLik, AIC, Delta_AIC, ED50, Selected), the selected model's name, and
+#'   its fitted curve over the dose range (Dose, Fitted).
+#' @keywords internal
+dr_model_selection <- function(drc_data, dose_column, volume_column, n_dose_levels, fit_5p = NULL) {
+  fml <- stats::as.formula(paste(me_bt(volume_column), "~", me_bt(dose_column)))
+  ll <- function(fct, lowerl = NULL) tryCatch(
+    me_muffle_lbfgsb_tol(if (is.null(lowerl)) drc::drm(fml, data = drc_data, fct = fct)
+                         else drc::drm(fml, data = drc_data, fct = fct, lowerl = lowerl)),
+    error = function(e) NULL)
+  fits <- list(
+    Linear = tryCatch(stats::lm(fml, data = drc_data), error = function(e) NULL),
+    Emax = ll(drc::LL.4(fixed = c(1, NA, NA, NA)), lowerl = c(0, -Inf, -Inf)),
+    `3PL` = ll(drc::LL.3()),
+    `4PL` = if (n_dose_levels >= 5L) ll(drc::LL.4(), lowerl = c(-Inf, 0, -Inf, -Inf)),
+    `5PL` = fit_5p)
+  fits <- Filter(Negate(is.null), fits)
+  if (!length(fits)) return(NULL)
+  lik <- lapply(fits, stats::logLik)
+  ed50 <- vapply(names(fits), function(m) {
+    if (m == "Linear") return(NA_real_)
+    tryCatch(unname(suppressWarnings(drc::ED(fits[[m]], 50, display = FALSE))[1, 1]),
+             error = function(e) NA_real_)
+  }, numeric(1))
+  tab <- data.frame(Model = names(fits),
+                    Parameters = vapply(lik, function(l) as.integer(attr(l, "df")) - 1L, 0L),
+                    LogLik = vapply(lik, as.numeric, 0),
+                    AIC = vapply(fits, stats::AIC, 0),
+                    ED50 = unname(ed50), stringsAsFactors = FALSE)
+  tab$Delta_AIC <- tab$AIC - min(tab$AIC)
+  near <- tab[tab$Delta_AIC < 2, , drop = FALSE]
+  selected <- near$Model[order(near$Parameters, near$AIC)][1]
+  tab$Selected <- tab$Model == selected
+  tab <- tab[, c("Model", "Parameters", "LogLik", "AIC", "Delta_AIC", "ED50", "Selected")]
+  rownames(tab) <- NULL
+  dose <- drc_data[[dose_column]]
+  grid <- data.frame(seq(min(dose), max(dose), length.out = 200))
+  names(grid) <- dose_column
+  fitted <- tryCatch(as.numeric(stats::predict(fits[[selected]], newdata = grid)),
+                     error = function(e) rep(NA_real_, nrow(grid)))
+  list(table = tab, selected = selected,
+       curve = data.frame(Dose = grid[[1]], Fitted = fitted))
+}
+
 
 #' Try to fit non-linear dose-response models
 #' 
@@ -721,18 +786,27 @@ try_nonlinear_models <- function(analysis_data, dose_column = "Dose",
       statistics$dr_model_type      <- model_type        # shape
       statistics$dr_model_direction <- model_direction   # direction
       
-      # Store per-model information criteria.
-      # WARNING: linear_aic and nonlinear_aic are NOT directly comparable.
-      # stats::lm and drc::drm use different likelihood parameterisations
-      # (drc omits the log(2π) constant and estimates a separate variance
-      # parameter), so their AIC values are on different scales. Use them
-      # within each model family only; do not use delta-AIC for model selection.
+      # Per-model information criteria. R23.26: these ARE comparable. Both
+      # logLik()s are the full Gaussian log-likelihood (with the log(2 pi)
+      # constant) and both count the residual variance as a parameter;
+      # checked numerically on the same data. The note that they were on
+      # different scales was wrong. dr_model_selection() compares the
+      # candidate curves on that basis.
       statistics$linear_aic <- AIC(linear_model)
       statistics$nonlinear_aic <- AIC(dr_model)
       statistics$linear_bic <- BIC(linear_model)
       statistics$nonlinear_bic <- BIC(dr_model)
-      statistics$aic_comparison_note <-
-        "AIC/BIC values from lm and drc are not on the same scale and cannot be directly compared for model selection."
+      statistics$aic_comparison_note <- paste(
+        "The linear and log-logistic models' AIC are both Gaussian log-likelihoods of the same data,",
+        "so they can be compared: see model_selection.")
+      sel <- tryCatch(dr_model_selection(drc_data, dose_column, volume_column, n_dose_levels,
+                                         fit_5p = dr_model_5p),
+                      error = function(e) NULL)
+      if (!is.null(sel)) {
+        statistics$model_selection <- sel$table
+        statistics$selected_model  <- sel$selected
+        statistics$selected_curve  <- sel$curve
+      }
 
       # CODE_REVIEW.md DIAGNOSTICS gap (5) — frequentist dose-response had no
       # goodness-of-fit diagnostics. Add lack-of-fit test, residuals plot, and

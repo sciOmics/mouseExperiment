@@ -7274,3 +7274,81 @@ Help told users to "open a plot once before downloading it". The README listed a
 - Two Tumor Growth runs (log, sqrt) and a Cox run are listed as "LME4 mixed model, log", "LME4 mixed model, sqrt" and "Cox (Firth)", with reference "Vehicle 0" and the data rows.
 - Downloading the two Tumor Growth runs gave two complete folders, with tables, plots, diagnostics, data and `analysis.R`.
 - Opening run 1 switched to Tumor Growth, showing "Transformation: log".
+
+## R23-J Implementation log — v0.58.0: which dose-response curve (R23.26, 2026-10-29)
+
+**The note.** The analysis fitted a linear trend and a 4-parameter log-logistic (a 5-parameter one with 6 or more doses), but the plot offered only linear and LOESS lines, and nothing said which curve described the data best. The recommendation the maintainer accepted: draw the fitted curve, compare a small fixed set of curves by AIC, prefer the simplest close to the best, and leave out the 4-parameter curve with fewer than 5 doses.
+
+**A finding: the AIC comparison was valid all along.** `try_nonlinear_models()` and the Info tab said that AIC from `stats::lm` and `drc::drm` "are not on the same scale" ("drc omits the log(2π) constant and estimates a separate variance parameter"). Checked on simulated data:
+- both `logLik()` values equal the full Gaussian log-likelihood, −n/2 · (log(2π·RSS/n) + 1), computed from each model's residuals;
+- both count the variance in `df` (5 for LL.4, 3 for a straight line).
+
+Their AIC are comparable on the same data, which is what `drc::mselect(linreg = TRUE)` assumes. The comment, the note in the result (`aic_comparison_note`) and the Info text are corrected.
+
+**`dr_model_selection()`** (`dose_response_statistics.R`), called from `try_nonlinear_models()` on the data the log-logistic curves are fitted to (dose 0 replaced as before):
+- **The candidates:**
+  - **Linear:** `lm`.
+  - **Emax:** `LL.4(fixed = c(1, NA, NA, NA))`, with the lower limit ≥ 0.
+  - **3PL:** `LL.3()`, which falls to 0.
+  - **4PL:** `LL.4()` with the lower limit ≥ 0, only with at least 5 dose levels.
+  - **5PL:** when it was fitted (at least 6 levels, as before).
+- **The table** gives Model, Parameters (the curve's, without the variance), LogLik, AIC, Delta_AIC, ED50 (`drc::ED`; NA for the line) and Selected.
+- **The rule:** the fewest parameters among the curves within 2 AIC of the lowest, then the lower AIC.
+- **The selected curve's fitted values** at 200 doses form `selected_curve`.
+- **The existing outputs** (the 4PL's EC50 with its interval, Hill slope, limits, `dr_model`) are unchanged.
+
+**On the master demo** (Drug_A at three doses plus Vehicle: 4 dose levels), the 4PL is left out. Emax and 3PL tie on parameters, and the 3PL has the lower AIC (by 0.03), so it is selected. The line is 47.8 AIC worse.
+
+**The Dose Response tab:**
+- **Model Results** has a "Which dose-response curve" table with its explanation. Summary lists the candidates and marks the selected one.
+- **The scatter's trend line** defaults to "Selected dose-response curve", drawn from `selected_curve`. Linear and LOESS remain; without a selected curve it falls back to the line.
+- **Download Results** adds the comparison as `tables/dose_response_models.csv`, and the R script prints it.
+- **The Info tab's "AIC / BIC note"** is now "Which curve".
+
+**Docs:** `docs/METHODS.md` describes the selection.
+
+**Tests** (`test-r23-dose-models.R`, 4 tests, 29 expectations):
+- **The log-likelihoods** equal the Gaussian formula, with their df.
+- **The candidates on six doses:** all four are fitted, and the 4PL's ED50 is within a factor of 2 of the true 10. The rule picks the simplest within 2. A sigmoid truth puts the line more than 10 AIC behind. Four doses give no 4PL, and a straight-line truth selects the line.
+- **The result** on the demo.
+- **The tab:** its table, its summary, the selected curve as the default trend line (and a smooth when Linear is chosen), the CSV and the script's print.
+
+## Round 23 status (2026-10-29)
+
+| Item | Status | Where |
+|---|---|---|
+| R23.1 mRECIST removed | ✅ 0.52.0 | R23-D, PR #39 |
+| R23.2 Growth delay statistics, per-animal table | ✅ 0.52.0 | R23-D, PR #39 |
+| R23.3 No Stan backend menu; no CmdStan in the image | ✅ 0.50.0 | R23-B, PR #37 |
+| R23.4 No ANOVA tab after a Bayesian fit | ✅ 0.50.0 | R23-B, PR #37 |
+| R23.5 Posterior check in Diagnostics | ✅ 0.50.0 | R23-B, PR #37 |
+| R23.6 The Bayesian diagnostics explained; influential observations named | ✅ 0.51.0 | R23-C, PR #38 |
+| R23.7 The posterior summary's columns explained | ✅ 0.50.0 | R23-B, PR #37 |
+| R23.8 Several mice in the drill-down | ✅ 0.50.0 | R23-B, PR #37 |
+| R23.9 Extrapolation points in the plot controls | ✅ 0.50.0 | R23-B, PR #37 |
+| R23.10 No compile note in the sidebars | ✅ 0.50.0 | R23-B, PR #37 |
+| R23.11 AFT models | ✅ 0.54.0 | R23-F, PR #41 |
+| R23.12 Posterior plots with the prior and an HDI | ✅ 0.55.0 | R23-G, PR #42 |
+| R23.13 One tab order | ✅ 0.50.0 (0.55.0 for Survival's Prior vs Posterior) | R23-B, R23-G |
+| R23.14 Downloaded plots keep their settings | ✅ 0.56.0 (Synergy, Dose Response, Power) | R23-H, PR #43 |
+| R23.15 Every run kept; several downloaded; no refit | ✅ 0.57.0 | R23-I, PR #44 |
+| R23.16 No simulation figures in the Synergy tooltip | ✅ 0.50.0 | R23-B, PR #37 |
+| R23.17 The Synergy shading in the legend | ✅ 0.50.0 | R23-B, PR #37 |
+| R23.18 No Tumor Volume covariate while tumour mass is subtracted | ✅ 0.50.0 | R23-B, PR #37 |
+| R23.19 No ML in Toxicity | ✅ 0.50.0 | R23-B, PR #37 |
+| R23.20 No "fit once" wording in the progress window | ✅ 0.50.0 | R23-B, PR #37 |
+| R23.21 Fixed and random effects explained | ✅ 0.51.0 | R23-C, PR #38 |
+| R23.22 p-values for the rate of weight change | ✅ 0.53.0 (the comparison existed since 0.30.0; the table now points to it) | R23-E, PR #40 |
+| R23.23 Intervals labelled with their level | ✅ 0.50.0 | R23-B, PR #37 |
+| R23.24 The Weight demo shows toxicity | ✅ 0.53.0 | R23-E, PR #40 |
+| R23.25 Synergy of toxicity | Deferred (the maintainer's decision) | — |
+| R23.26 Which dose-response curve | ✅ 0.58.0 | R23-J |
+| R23.27 Staging retired; the image tested in CI | ✅ 0.49.2 (this repository); the server's side is sciOmicsVPS #24, rolled out after `release/0.49.2` | R23-A, PR #36 |
+| R23.28 5 CPUs for production | In sciOmicsVPS #24 | — |
+| R23.29 Compiled models kept across restarts | Open: proposed, to be tested first | — |
+| R23.30 `-O2` once production has 5.5 GB | Open: after #24, if the CI fit gate passes | — |
+
+**Open for the maintainer:**
+- Merge the stack in order, starting with #36. After #36, rename `staging` to `development`, and require the `image` check on pull requests into `production`.
+- Release `release/0.49.2` to production; then sciOmicsVPS #24 can be rolled out (each server command with approval).
+- Whether to prototype R23.29.

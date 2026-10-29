@@ -231,6 +231,9 @@ dr_dl_items <- function(res, scatter_plot, tgi_plot) {
     if (!is.null(st$tukey_results))
       dl_item("tukey", "tables", "Pairwise comparisons", "pairwise_comparisons", "table",
               function() as.data.frame(st$tukey_results), "Comparisons between doses"),
+    if (dl_has(st$model_selection))   # R23.26
+      dl_item("model_selection", "tables", "Which curve", "dose_response_models", "table",
+              dl_get(st$model_selection), "The candidate curves compared by AIC, and the one selected"),
     dl_item("plot_scatter", "plots", "Dose-response curve", "dose_response", "plot",
             dl_drawn(scatter_plot), paste("Volume against dose, with the fitted curve.", shown)),
     dl_item("plot_tgi", "plots", "TGI by dose", "tgi_by_dose", "plot",

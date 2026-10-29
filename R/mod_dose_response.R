@@ -161,11 +161,12 @@ doseResponseUI <- function(id) {
                       "fits the dose means exactly and so says nothing about its own shape; read either as descriptive."),
                     div(class = "alert alert-info", style = "margin-top:10px;",
                       icon("circle-info"), " ",
-                      strong("AIC / BIC note: "),
-                      "AIC and BIC from the linear model (", tags$code("stats::lm"), ") and the non-linear model (",
-                      tags$code("drc::drm"), ") are ", strong("not directly comparable"), " for model selection \u2014 ",
-                      "the two packages use different likelihood parameterisations. ",
-                      "Prefer visual inspection of the fitted curve and residuals when choosing between linear and non-linear models."
+                      strong("Which curve: "),
+                      "the linear model and the log-logistic curves (Emax, 3PL, and 4PL with at least 5 doses) are fitted ",
+                      "to the same data and compared by AIC, which is valid across them: each is the full Gaussian ",
+                      "log-likelihood of the same observations. The selected curve is the simplest within 2 AIC of the ",
+                      "best (Model Results, and the default trend line in Plots). Until 0.58.0 this note said they could not ",
+                      "be compared; they can."
                     )
                   )
                 ),
@@ -259,7 +260,23 @@ doseResponseUI <- function(id) {
             ),
             shinycssloaders::withSpinner(
               DT::DTOutput(ns("dr_tukey_table"))
-            )
+            ),
+            # R23.26: which curve.
+            hr(),
+            h4("Which dose-response curve"),
+            tab_info(
+              "Each candidate curve fitted to the same data, compared by AIC (lower is better).",
+              tags$ul(
+                tags$li(strong("Linear"), " \u2014 volume linear in dose."),
+                tags$li(strong("Emax"), " \u2014 a hyperbolic curve: baseline, maximum effect and ED50."),
+                tags$li(strong("3PL"), " \u2014 a log-logistic curve falling to 0: slope, upper limit and ED50."),
+                tags$li(strong("4PL"), " \u2014 the same with its own lower limit; fitted with at least 5 doses, since with ",
+                        "fewer it has nearly as many parameters as doses."),
+                tags$li(strong("Selected"), " \u2014 the simplest curve within 2 AIC of the best: a smaller difference is not ",
+                        "evidence for the extra parameters. It is the default trend line in Plots.")
+              )
+            ),
+            DT::DTOutput(ns("dr_model_selection"))
           ),
 
           # CODE_REVIEW.md DIAGNOSTICS gap (5) \u2014 frequentist DR had no
@@ -290,7 +307,9 @@ doseResponseUI <- function(id) {
                                 "Show trend line confidence interval",
                                 value = TRUE),
                   radioButtons(ns("dr_trend_method"), "Trend line fit",
-                    choices = c("Linear" = "linear", "Non-linear (LOESS)" = "loess"),
+                    # R23.26: the selected dose-response curve, by default.
+                    choices = c("Selected dose-response curve" = "model", "Linear" = "linear",
+                                "Non-linear (LOESS)" = "loess"),
                     selected = "linear", inline = TRUE
                   ),
                   selectInput(ns("dr_opt_center_bar"), "Centre overlay (per dose)",
@@ -722,6 +741,14 @@ dose_response_server <- function(id, rv) {
       ""
     )
 
+    if (is.data.frame(stats$model_selection)) {   # R23.26
+      ms <- stats$model_selection
+      lines <- c(lines,
+        "-- Which dose-response curve (AIC; the simplest within 2 of the best) --",
+        sprintf("  %-7s %d parameters  AIC %8.2f  (+%.2f)%s", ms$Model, ms$Parameters, ms$AIC,
+                ms$Delta_AIC, ifelse(ms$Selected, "  <- selected", "")),
+        "")
+    }
     if (!is.null(stats$ec50)) {
       ci <- stats$ec50_ci
       lines <- c(lines,
@@ -813,7 +840,7 @@ dose_response_server <- function(id, rv) {
     pt_sz    <- input$dr_scatter_pt_size     %||% 2
     jit_w    <- input$dr_opt_jitter_width    %||% 0
     show_ci  <- isTRUE(input$dr_scatter_show_ci)
-    trend    <- input$dr_trend_method %||% "linear"
+    trend    <- input$dr_trend_method %||% "model"
     text_sz  <- input$dr_opt_text_size %||% 16
     center   <- input$dr_opt_center_bar %||% "none"
     err_bar  <- input$dr_opt_error_bar  %||% "none"
@@ -822,10 +849,18 @@ dose_response_server <- function(id, rv) {
     } else {
       list(method = "lm", formula = y ~ x, color = ln_col, se = show_ci)
     }
+    # R23.26: the selected curve, from the model comparison; a linear fit
+    # when there is none.
+    curve <- rv$dr_results$statistics$selected_curve
+    use_curve <- identical(trend, "model") && is.data.frame(curve) && any(is.finite(curve$Fitted))
+    trend_layer <- if (use_curve) {
+      ggplot2::geom_line(data = curve, ggplot2::aes(x = Dose, y = Fitted), inherit.aes = FALSE,
+                         colour = ln_col, linewidth = 1)
+    } else do.call(ggplot2::geom_smooth, smooth_args)
     p <- ggplot2::ggplot(ad, ggplot2::aes(x = .data[[dose_col]], y = .data[[vol_col]])) +
       ggplot2::geom_jitter(alpha = 0.7, color = pt_col, size = pt_sz,
                            width = jit_w, height = 0) +
-      do.call(ggplot2::geom_smooth, smooth_args) +
+      trend_layer +
       ggplot2::labs(title = "Tumor Volume vs Dose",
                    x = "Dose", y = "Tumor Volume") +
       ggplot2::theme_classic()
@@ -955,6 +990,14 @@ dose_response_server <- function(id, rv) {
       }
     })
     paste(lines, collapse = "\n")
+  })
+
+  # R23.26: the curves compared.
+  output$dr_model_selection <- DT::renderDT({
+    ms <- rv$dr_results$statistics$model_selection
+    req(is.data.frame(ms))
+    dt_table(format_df_for_display(ms), rownames = FALSE,
+             options = list(dom = "t", paging = FALSE, searching = FALSE))
   })
 
   output$dr_tukey_table <- DT::renderDT({

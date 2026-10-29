@@ -5,6 +5,26 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.58.0] - 2026-10-29
+
+Which dose-response curve (`CODE_REVIEW.md` Round 23, R23-J).
+
+### Added
+- **`dose_response_statistics()` compares a fixed set of curves by AIC:** linear in dose, Emax
+  (hyperbolic: baseline, maximum effect, ED50), a 3-parameter log-logistic falling to 0, and the
+  4-parameter log-logistic, only with at least 5 dose levels (with fewer it has nearly as many
+  parameters as doses), plus the 5-parameter curve when it was fitted. The selected curve is the
+  simplest within 2 AIC of the best. `statistics$model_selection` holds the comparison (with each
+  curve's ED50), `selected_model` the choice and `selected_curve` its fitted values.
+- **The Dose Response tab** shows the comparison in Model Results and Summary, draws the selected
+  curve as the default trend line ("Selected dose-response curve"; Linear and LOESS remain), and
+  adds the comparison to Download Results and the R script.
+
+### Fixed
+- **The note that the linear and log-logistic models' AIC "are not on the same scale" was wrong.**
+  Both `logLik()`s are the full Gaussian log-likelihood of the same data, and both count the
+  residual variance as a parameter, so their AIC can be compared; the Info tab and the result say so.
+
 ## [0.57.0] - 2026-10-29
 
 Every run of the session, kept (`CODE_REVIEW.md` Round 23, R23-I).
