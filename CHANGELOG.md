@@ -5,6 +5,22 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.53.0] - 2026-10-29
+
+The Weight demo shows toxicity (`CODE_REVIEW.md` Round 23, R23-E).
+
+### Changed
+- **The Weight demo (`weight_synthetic_data`) has a severely toxic combination and mild single
+  agents.** No animal used to cross 20 % weight loss (the combination's worst was −19.7 %), and
+  Drug B lost a moderate 12.6 %. Now three of the five "Drug A + B" animals pass −20 %; two leave
+  the study on 11 March, after crossing, as a humane endpoint requires. Drug B loses about 8 % and
+  Drug A about 3 %; DMSO and every tumour volume are unchanged. The data have 98 rows (were 100).
+  `data-raw/weight_demo_toxicity.R` sets the weights.
+- **Toxicity's rates table** says that the comparison below it is the test. The question of
+  p-values for the rate of weight change (R23.22) is answered there: each arm's rate against the
+  reference's, with corrected p-values, has been the comparison since 0.30.0. A p-value for a
+  rate against zero would only ask whether an arm's weight changed at all.
+
 ## [0.52.0] - 2026-10-29
 
 Growth delay, with its statistics; mRECIST removed (`CODE_REVIEW.md` Round 23, R23-D).

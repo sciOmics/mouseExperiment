@@ -330,7 +330,10 @@ test_that("R20.D34: the Weight demo's tumour-mass correction uses the declared m
     expect_false(isTRUE(res$mixed_model$error))
     expect_false(isTRUE(res$weight_loss$error))
     # 20 of 20 animals crossed 20 % loss and net weights reached -1,070 g before.
-    expect_equal(sum(res$weight_loss$event_data$Event), 0L)
+    # Since 0.53.0 three combination animals cross it, and only they (R23.24).
+    ev <- res$weight_loss$event_data
+    expect_equal(sum(ev$Event), 3L)
+    expect_identical(unique(as.character(ev$Treatment[ev$Event == 1])), "Drug A + B")
     td <- res$trajectory_data
     expect_true(all(td$Weight > 10))
     # The plot shows the model's net weight, not a re-derivation.
