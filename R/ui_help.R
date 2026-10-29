@@ -254,6 +254,15 @@ helpUI <- function() {
       tags$dd("Simulates repeated-measures data under a linear mixed model and estimates power empirically across a grid of sample sizes. An optional euthanasia volume limit models attrition; leaving it blank assumes every animal is measured at every timepoint, which overstates power by roughly 6 points at 30 % attrition. Note that baseline SD and random-intercept SD do not affect the answer \u2014 the test is on growth rates, which are orthogonal to per-animal baselines. Random-slope SD is the parameter that matters.")
     ),
 
+    # R23.15
+    h4("Results"),
+    tags$dl(
+      tags$dt("Every run, kept"),
+      tags$dd("Each analysis you run is listed on the Results tab, newest first, until the session ends. Open one to show it again in its tab, with its tables, plots and Download Results (the sidebar keeps its current settings). Select several to download them together: one folder each, with what the tab's Download Results offers, the plots drawn with the tab's current settings."),
+      tags$dt("No refit for the same fit"),
+      tags$dd("A Bayesian fit with the same data and settings as one already run in the session is shown again rather than refitted; the seed is fixed, so a refit would give the same results.")
+    ),
+
     hr(),
 
     # \u2500\u2500 Troubleshooting \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500

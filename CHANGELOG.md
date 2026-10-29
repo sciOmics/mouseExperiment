@@ -5,6 +5,23 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.57.0] - 2026-10-29
+
+Every run of the session, kept (`CODE_REVIEW.md` Round 23, R23-I).
+
+### Added
+- **A Results tab lists every analysis run in the session,** newest first: the analysis, its
+  model ("LME4 mixed model, log", "AFT (lognormal)"), the time, the reference and the number of
+  data rows. Each tab used to keep only its latest run.
+  - **Open in its tab** shows a run again, with its tables, plots and Download Results.
+  - **Download selected** writes one ZIP with a folder per run, each holding what that tab's
+    Download Results offers (tables, plots drawn with the tab's current settings, diagnostics,
+    data and the R script).
+  - **Remove selected** deletes runs. Runs are kept, on the server, until the session ends.
+- **A Bayesian fit with the same data and settings as one already run is not refitted:** its
+  results are shown again, with a note. The seed is fixed, so a refit would give the same draws.
+  The same analysis repeated replaces the latest entry rather than adding a duplicate.
+
 ## [0.56.0] - 2026-10-29
 
 Every plot in Download Results, with the current settings (`CODE_REVIEW.md` Round 23, R23-H).
