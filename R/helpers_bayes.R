@@ -30,6 +30,50 @@ format_elapsed <- function(seconds) {
 
 # ---- Bayesian diagnostics panel (CODE_REVIEW.md Round 2 D-series) -----------
 
+# R23.6: what each Bayesian fit-and-sampler diagnostic means and what to do
+# about it, in a collapsible block under the diagnostics panel. The panel
+# reports the numbers; this says how to read them.
+bayes_diagnostics_help <- function() {
+  plot_help(
+    tags$dl(
+      tags$dt("Divergent transitions"),
+      tags$dd("The sampler met a region of the posterior it could not follow accurately. Even a few ",
+              "can bias the estimates. Run more warmup iterations, choose a stronger prior preset, or ",
+              "simplify the random effects, and refit."),
+      tags$dt("Max-treedepth hits"),
+      tags$dd("The sampler reached its step limit before finishing a trajectory. This is about ",
+              "efficiency, not validity: the draws are still correct, but the fit was slow and the ",
+              "effective sample sizes may be low. Many hits often point to a weakly identified ",
+              "parameter, such as a random-effect SD the data say little about."),
+      tags$dt("E-BFMI"),
+      tags$dd("How well the sampler moved between the posterior's typical values and its tails. ",
+              "Below 0.3 it explored the tails poorly, and variance parameters and the ends of ",
+              "credible intervals may be unreliable. The remedies are those for divergences."),
+      tags$dt("Bayes R\u00b2"),
+      tags$dd("The share of the variation in the modelled values that the model explains, with its ",
+              "credible interval. It includes the random effects, so differences between animals ",
+              "count as explained. It describes fit; it is not a test of the treatment."),
+      tags$dt("PPC coverage"),
+      tags$dd("How often the observed values fall inside the model's 50 %, 80 % and 95 % predictive ",
+              "intervals. A well-calibrated model gives about 50 %, 80 % and 95 %. Much lower means ",
+              "its intervals are too narrow (overconfident); much higher, too wide."),
+      tags$dt("PSIS-LOO (elpd_loo)"),
+      tags$dd("Leave-one-out cross-validation, estimated without refitting: how well the model ",
+              "predicts each observation when that observation is left out. elpd_loo means little on ",
+              "its own; it compares models fitted to the same data, where higher is better and a ",
+              "difference smaller than about twice its SE is not meaningful."),
+      tags$dt("Pareto-k"),
+      tags$dd("For each observation, how much leaving it out would change the posterior. Above the ",
+              "threshold (about 0.7) the leave-one-out estimate for that observation is unreliable, ",
+              "and the observation is influential: usually a measurement the model fits badly, such ",
+              "as a data-entry error or an animal whose growth departs from its arm's. Check those ",
+              "rows in the table below against the raw data. The estimates are not invalidated, but ",
+              "they lean on those observations.")
+    ),
+    summary = "What these diagnostics mean"
+  )
+}
+
 # R23.4/R23.7: what each column of a brms posterior summary means and how to
 # read it, beside the table. `scale` names the scale of the coefficients.
 posterior_summary_help <- function(scale = NULL) {
@@ -195,7 +239,9 @@ bayes_diagnostics_panel <- function(result) {
 #'   \code{k_threshold}, which depends on the number of draws (0.667 at
 #'   1,000; backend R20.35), or 0.7 for an older result.
 #' @return A data frame with columns \code{Obs_Index} and \code{Pareto_k},
-#'   sorted descending. Returns an empty data frame when no influential
+#'   sorted descending, preceded by the observation's animal and measurement
+#'   (Treatment, ID, Cage, and Day and Volume or Time and Event) when the fit
+#'   recorded them (R23.6). Returns an empty data frame when no influential
 #'   observations exist or the LOO field is missing.
 #' @keywords internal
 bayes_influential_obs <- function(result, threshold = pareto_k_threshold(result)) {
@@ -216,6 +262,12 @@ bayes_influential_obs <- function(result, threshold = pareto_k_threshold(result)
     Pareto_k  = round(as.numeric(pk[high]), 4),
     stringsAsFactors = FALSE
   )
+  # R23.6: the animal and measurement first, when the fit recorded them.
+  obs <- if ("observations" %in% names(loo)) loo$observations[[1]]
+  if (is.data.frame(obs) && nrow(obs) == length(pk)) {
+    df <- cbind(obs[high, , drop = FALSE], df)
+    rownames(df) <- NULL
+  }
   df[order(-df$Pareto_k), , drop = FALSE]
 }
 

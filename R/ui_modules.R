@@ -38,6 +38,32 @@ plot_help <- function(..., summary = "How to read this plot") {
   )
 }
 
+# R23.21: fixed and random effects, for the Info tabs of the mixed models.
+# `unit` names what the repeated measurements belong to.
+effects_help <- function(unit = "animal") {
+  tagList(
+    h5(strong("Fixed and random effects")),
+    tags$dl(class = "dl-horizontal",
+      tags$dt("Fixed effects"),
+      tags$dd("What the study is about, estimated once for the whole study and reported as ",
+              "results: the treatment, time, their interaction (whether the arms change at different ",
+              "rates), and any covariate. The comparisons and their p-values or credible intervals ",
+              "come from these."),
+      tags$dt("Random effects"),
+      tags$dd(paste0("How each ", unit, " departs from its arm's average: a random intercept for its ",
+                     "own starting level, a random slope for its own rate. The model estimates how much ",
+                     unit, "s vary (an SD) rather than reporting each one. A cage random effect does the ",
+                     "same for cages, whose animals resemble each other.")),
+      tags$dt("Why both"),
+      tags$dd(paste0("Repeated measurements of one ", unit, " are not independent. Treating them as ",
+                     "independent overstates the evidence and gives p-values that are too small; random ",
+                     "effects account for it, so the treatment comparison uses the right amount of ",
+                     "information. When ", unit, "s differ in their rates, leaving out the random slope ",
+                     "finds treatment differences that are not there."))
+    )
+  )
+}
+
 # Helper: collapsible section for the plot control panel.
 # Starts collapsed; click the header to expand.
 ctrl_section <- function(id, icon_nm, title, ...) {
