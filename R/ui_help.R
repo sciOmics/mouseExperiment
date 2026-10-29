@@ -270,7 +270,7 @@ helpUI <- function() {
       tags$dt("Bayesian model is slow to start"),
       tags$dd("The first fit of a model compiles it, which takes about two minutes on mouseexperiment.com and less on a fast computer; later fits with the same structure reuse it and usually take under a minute. Fits run one at a time on a background worker, so other users and tabs stay responsive, and yours may wait for one ahead of it."),
       tags$dt("Plot download produces a blank file"),
-      tags$dd("Run the analysis first so the plot is rendered, then click the download button. In Download Results, the Drug Synergy, Dose Response and Power plots are exported as last shown, so open a plot once before downloading it; one that was never drawn is listed in the README as not available.")
+      tags$dd("Run the analysis first, then click the download button. Download Results draws every plot of the run with the current settings (colours, titles, sizes), including plot types you have not opened.")
     )
   )
 }

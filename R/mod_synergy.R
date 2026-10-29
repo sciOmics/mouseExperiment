@@ -919,7 +919,8 @@ synergy_server <- function(id, rv) {
     downloadButton(session$ns(btn_id), "Download Plot")
   })
 
-  output$syn_plot_main <- renderPlot({
+  # R23.14: built from the current settings, so Download Results draws it even if it was never shown.
+  syn_main_plot_r <- reactive({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error)) return(NULL)
 
@@ -968,11 +969,17 @@ synergy_server <- function(id, rv) {
                            data_arg = NULL, exprs = list(synergy_results = quote(result))),
         style = Filter(function(v) length(v) && !(is.character(v) && !nzchar(v)), style)))
     }
-    print(final_p)
+    final_p
+  })
+  output$syn_plot_main <- renderPlot({
+    p <- syn_main_plot_r()
+    req(!is.null(p))
+    print(p)
   }, width = function() input$syn_plot_width %||% 800,
      height = function() input$syn_plot_height %||% 600)
 
-  output$syn_plot_trend <- renderPlot({
+  # R23.14: built from the current settings, so Download Results draws it even if it was never shown.
+  syn_trend_plot_r <- reactive({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error) || !isTRUE(rv$syn_over_time)) return(NULL)
     req(rv$syn_results$synergy_summary)
@@ -1056,6 +1063,11 @@ synergy_server <- function(id, rv) {
                            input$syn_plot_title_align %||% "center",
                            text_sz)
     current_syn_trend_plot(p)
+    p
+  })
+  output$syn_plot_trend <- renderPlot({
+    p <- syn_trend_plot_r()
+    req(!is.null(p))
     print(p)
   }, width = function() input$syn_plot_width %||% 800,
      height = function() input$syn_plot_height %||% 600)
@@ -1064,7 +1076,8 @@ synergy_server <- function(id, rv) {
   # ------------------------------------------------------------------
   # TGI over time plot: per-mouse TGI with group lines + error bars
   # ------------------------------------------------------------------
-  output$syn_plot_tgi <- renderPlot({
+  # R23.14: built from the current settings, so Download Results draws it even if it was never shown.
+  syn_tgi_plot_r <- reactive({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error) || !isTRUE(rv$syn_over_time)) return(NULL)
     req(rv$syn_results$synergy_summary)
@@ -1122,6 +1135,11 @@ synergy_server <- function(id, rv) {
                            input$syn_plot_title_align %||% "center",
                            text_sz)
     current_syn_tgi_plot(p)
+    p
+  })
+  output$syn_plot_tgi <- renderPlot({
+    p <- syn_tgi_plot_r()
+    req(!is.null(p))
     print(p)
   }, width = function() input$syn_plot_width %||% 800,
      height = function() input$syn_plot_height %||% 600)
@@ -1131,18 +1149,20 @@ synergy_server <- function(id, rv) {
   # `current_syn_*_plot` reactiveVal that the renderPlot bindings update;
   # those reactiveVals are passed in explicitly.
   add_syn_download_handlers(input, output, session, rv,
-                            current_syn_main_plot, current_syn_trend_plot,
-                            current_syn_tgi_plot)
+                            syn_main_plot_r, syn_trend_plot_r,
+                            syn_tgi_plot_r)   # R23.14: built on demand
 
   # "Download Results" (CODE_REVIEW.md R20-D.Y).
   add_download_results(
     input, output, session, prefix = "syn", module = "synergy",
     items = reactive(syn_dl_items(
       rv$syn_results, over_time = isTRUE(rv$syn_over_time),
-      main_plot  = function() current_syn_main_plot(),
-      plot_record = function() current_syn_plot_record(),
-      trend_plot = function() current_syn_trend_plot(),
-      tgi_plot   = function() current_syn_tgi_plot(),
+      main_plot  = function() shown_plot(syn_main_plot_r()),
+      # The record is set as the main plot is built, so build it first.
+      plot_record = function() { tryCatch(syn_main_plot_r(), error = function(e) NULL)
+                                 current_syn_plot_record() },
+      trend_plot = function() shown_plot(syn_trend_plot_r()),
+      tgi_plot   = function() shown_plot(syn_tgi_plot_r()),
       diag = tryCatch({
         r <- rv$syn_results
         if (!is.null(r$timepoint_results) && length(r$timepoint_results))

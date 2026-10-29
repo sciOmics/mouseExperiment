@@ -38,6 +38,19 @@ plot_help <- function(..., summary = "How to read this plot") {
   )
 }
 
+# R23.14: a plot that says why there is nothing to draw. It is flagged, so
+# Download Results leaves it out instead of exporting the message.
+message_plot <- function(text) {
+  p <- ggplot2::ggplot() +
+    ggplot2::annotate("text", x = 0.5, y = 0.5, label = text, size = 5, colour = "grey30") +
+    ggplot2::theme_void()
+  attr(p, "plot_error") <- TRUE
+  p
+}
+
+# A plot for Download Results: NULL for a message plot (see message_plot()).
+shown_plot <- function(p) if (is.null(p) || isTRUE(attr(p, "plot_error"))) NULL else p
+
 # R23.21: fixed and random effects, for the Info tabs of the mixed models.
 # `unit` names what the repeated measurements belong to.
 effects_help <- function(unit = "animal") {

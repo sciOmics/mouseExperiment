@@ -7212,3 +7212,27 @@ The header test fails on 0.49.0.
 - **A real fit:** its draws, readable labels, and the plot.
 - **The UIs:** both plot selectors, no Prior vs Posterior tab, and the R-script step.
 - **The Tumor Growth server:** the plot and its recorded call follow the HDI and prior inputs.
+
+## R23-H Implementation log — v0.56.0: every plot in Download Results, styled (R23.14, 2026-10-29)
+
+**The check (R23.14).** How each tab's Download Results draws its plots:
+
+| Tab | Before | Settings kept | A plot never opened |
+|---|---|---|---|
+| Tumor Growth | reactives built from the inputs | yes | included |
+| Survival | `km_plot_r()`, `surv_forest_plot_styled()`, and the posterior since R23-G | yes | included |
+| Toxicity | `plots$traj()`, `plots$km()`, `tox_window_plot()` | yes | included |
+| Drug Synergy | `current_syn_*_plot`, reactiveVals set when a plot renders | as last drawn | **missing** |
+| Dose Response | `current_dr_scatter`, `current_dr_tgi`, the same | as last drawn | **missing** |
+| Power | `current_ap_plot`, the same | as last drawn | **missing** |
+
+Help told users to "open a plot once before downloading it". The README listed a plot never drawn as not available.
+
+**The fix:**
+- **The six renderers** (Synergy main, trend and TGI; Dose Response scatter and TGI; Power curves) are now reactives (`syn_main_plot_r()`, ...). A thin `renderPlot()` draws each one. Download Results and the per-plot download buttons call the same reactive, so every plot is built from the current settings when it is needed, whether or not it was shown.
+- **The R script's Bliss-plot record** is still set as the main plot is built. Its script item now builds the plot first.
+- **Two base-graphics fallbacks** (Dose Response's "TGI needs a control", Power's "curves not available") would have drawn into whatever device was open, including a download's PNG. They are now `message_plot()`, a ggplot flagged `plot_error`, which `shown_plot()` drops from the ZIP.
+- **Drug Synergy's "TGI by arm" plot** exists only for the analysis over every evaluable day. It was offered for a single day too, and came out "not available". It is now offered only over time.
+- **The items' descriptions and Help** describe the new behaviour.
+
+**Tests** (`test-r23-plot-downloads.R`): Synergy (one day, then every day), Dose Response and Power each put their plots in the ZIP without any plot output being read first. The plots carry the set title; a single day offers no TGI plot; a message plot is not exported; Help has no "last shown" advice.

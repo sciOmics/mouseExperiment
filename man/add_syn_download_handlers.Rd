@@ -19,8 +19,7 @@ add_syn_download_handlers(
 
 \item{rv}{Shared reactiveValues.}
 
-\item{current_syn_main_plot, current_syn_trend_plot, current_syn_tgi_plot}{\code{reactiveVal}s defined in \code{synergy_server()} that hold the most
-recently rendered plot for each panel.}
+\item{current_syn_main_plot, current_syn_trend_plot, current_syn_tgi_plot}{Reactives defined in \code{synergy_server()} that build each panel's plot.}
 }
 \description{
 The downloadHandler bindings split out of \code{mod_synergy.R}: one CSV
@@ -28,9 +27,9 @@ The downloadHandler bindings split out of \code{mod_synergy.R}: one CSV
 \verb{_trend}, \verb{_ci}, \verb{_tgi}).
 }
 \details{
-The four plot PNGs each pull from a \code{reactiveVal} (\verb{current_syn_*_plot})
-that the main server updates whenever the corresponding render fires;
-those reactiveVals are passed in explicitly so the cross-file
-dependency is visible at the call site.
+The plot PNGs each call the reactive that builds that plot from the
+current settings (R23.14; they held the last rendered plot until 0.56.0),
+passed in explicitly so the cross-file dependency is visible at the call
+site.
 }
 \keyword{internal}

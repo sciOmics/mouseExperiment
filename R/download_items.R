@@ -170,7 +170,7 @@ syn_dl_items <- function(res, over_time, main_plot, trend_plot, tgi_plot, diag, 
   if (is.null(res) || isTRUE(res$error)) return(NULL)
   metrics <- if (isTRUE(over_time) && dl_has(res$synergy_summary)) res$synergy_summary
              else res$synergy_metrics
-  shown <- "Drawn as last shown on the Plots tabs; open a plot there first if it is missing."
+  shown <- "Drawn with the Plots tab's current settings (R23.14)."
   Filter(Negate(is.null), list(
     if (!is.null(res$call_record))
       script_dl_item(function(up) syn_script_bundle(res, up, plot = if (is.function(plot_record)) plot_record())),
@@ -193,8 +193,10 @@ syn_dl_items <- function(res, over_time, main_plot, trend_plot, tgi_plot, diag, 
     if (isTRUE(over_time))
       dl_item("plot_trend", "plots", "Synergy over time", "synergy_trend", "plot",
               dl_drawn(trend_plot), paste("The Bliss difference by day.", shown)),
-    dl_item("plot_tgi", "plots", "TGI by arm", "tgi_by_arm", "plot",
-            dl_drawn(tgi_plot), paste("Each arm's TGI.", shown)),
+    # The TGI plot is drawn for the analysis over every evaluable day only.
+    if (isTRUE(over_time))
+      dl_item("plot_tgi", "plots", "TGI by arm", "tgi_by_arm", "plot",
+              dl_drawn(tgi_plot), paste("Each arm's TGI over time.", shown)),
     if (dl_has(diag$diag_group_qq_plot))
       dl_item("diag_qq", "diagnostics", "Residuals by arm (Q-Q)", "residuals_by_arm_qq",
               "plot", dl_get(diag$diag_group_qq_plot), "Q-Q plots of the residuals, by arm"),
@@ -213,7 +215,7 @@ syn_dl_items <- function(res, over_time, main_plot, trend_plot, tgi_plot, diag, 
 dr_dl_items <- function(res, scatter_plot, tgi_plot) {
   if (is.null(res) || isTRUE(res$error)) return(NULL)
   st <- res$statistics
-  shown <- "Drawn as last shown on the Plots tab."
+  shown <- "Drawn with the Plots tab's current settings (R23.14)."
   Filter(Negate(is.null), list(
     if (!is.null(res$call_record)) script_dl_item(function(up) dr_script_bundle(res, up)),
     if (dl_has(res$summary_table))
@@ -270,6 +272,6 @@ pw_dl_items <- function(res, curve_plot) {
       dl_item("curve_data", "tables", "Power-curve data", "power_curve_data", "table",
               function() as.data.frame(res$power_curve_data), "The points behind the power curves"),
     dl_item("plot_curves", "plots", "Power curves", "power_curves", "plot",
-            dl_drawn(curve_plot), "Power against N per group. Drawn as last shown.")
+            dl_drawn(curve_plot), "Power against N per group, drawn with the current settings.")
   ))
 }

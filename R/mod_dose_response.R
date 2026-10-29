@@ -799,7 +799,8 @@ dose_response_server <- function(id, rv) {
   }
 
   # ---- Plots (rebuilt reactively so colour options take effect immediately) ----
-  output$dr_plot_scatter <- renderPlot({
+  # R23.14: built from the current settings, so Download Results draws it even if it was never shown.
+  dr_scatter_plot_r <- reactive({
 
     req(rv$dr_results)
     if (isTRUE(rv$dr_results$error)) return(NULL)
@@ -851,10 +852,16 @@ dose_response_server <- function(id, rv) {
     p <- apply_legend_pos(p, input$dr_opt_legend_pos %||% "right")
     current_dr_scatter(p)
     p
+  })
+  output$dr_plot_scatter <- renderPlot({
+    p <- dr_scatter_plot_r()
+    req(!is.null(p))
+    print(p)
   }, width = function() input$dr_plot_width %||% 800,
      height = function() input$dr_plot_height %||% 600)
 
-  output$dr_plot_tgi <- renderPlot({
+  # R23.14: built from the current settings, so Download Results draws it even if it was never shown.
+  dr_tgi_plot_r <- reactive({
     req(rv$dr_results)
     if (isTRUE(rv$dr_results$error)) return(NULL)
     # R20.D48: plot the TGI the backend reported -- from the endpoint model at
@@ -863,9 +870,7 @@ dose_response_server <- function(id, rv) {
     # contradicted the Toxicity tab.
     tt <- rv$dr_results$tgi_table
     if (is.null(tt) || !nrow(tt)) {
-      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
-           main = "TGI needs a control (dose 0, or the study's control group)")
-      return(invisible(NULL))
+      return(message_plot("TGI needs a control (dose 0, or the study's control group)"))
     }
     ln_col  <- input$dr_scatter_line_color %||% "#2166AC"
     pt_sz   <- input$dr_scatter_pt_size     %||% 2
@@ -889,6 +894,11 @@ dose_response_server <- function(id, rv) {
     p <- apply_legend_pos(p, input$dr_opt_legend_pos %||% "right")
     current_dr_tgi(p)
     p
+  })
+  output$dr_plot_tgi <- renderPlot({
+    p <- dr_tgi_plot_r()
+    req(!is.null(p))
+    print(p)
   }, width = function() input$dr_plot_width %||% 800,
      height = function() input$dr_plot_height %||% 600)
 
@@ -1014,7 +1024,7 @@ dose_response_server <- function(id, rv) {
   output$download_dr_scatter <- downloadHandler(
     filename = function() paste0("dose_scatter_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content  = function(file) {
-      p <- current_dr_scatter()
+      p <- dr_scatter_plot_r()
       req(!is.null(p))
       png(file, width = input$dr_plot_width %||% 800,
                 height = input$dr_plot_height %||% 600,
@@ -1026,7 +1036,7 @@ dose_response_server <- function(id, rv) {
   output$download_dr_tgi <- downloadHandler(
     filename = function() paste0("dose_tgi_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content  = function(file) {
-      p <- current_dr_tgi()
+      p <- dr_tgi_plot_r()
       req(!is.null(p))
       png(file, width = input$dr_plot_width %||% 800,
                 height = input$dr_plot_height %||% 600,
@@ -1049,8 +1059,8 @@ dose_response_server <- function(id, rv) {
   add_download_results(
     input, output, session, prefix = "dr", module = "dose_response",
     items = reactive(dr_dl_items(rv$dr_results,
-                                 scatter_plot = function() current_dr_scatter(),
-                                 tgi_plot     = function() current_dr_tgi())),
+                                 scatter_plot = function() shown_plot(dr_scatter_plot_r()),
+                                 tgi_plot     = function() shown_plot(dr_tgi_plot_r()))),
     readme_header = function() dl_readme_header("Dose Response", rv$dr_results, function(res) list(
       dose_series = paste(input$dr_treatments, collapse = ", "),
       evaluation_day = res$endpoint_day, comparisons = input$dr_comparison_type)),
