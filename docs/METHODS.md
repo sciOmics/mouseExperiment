@@ -96,28 +96,19 @@ Since v0.26.0 (`CODE_REVIEW.md` R20.4) the AUC is **model-based**. It is the are
 
 ---
 
-### Per-animal response and growth delay (v0.43.0)
+### Growth delay (v0.43.0; statistics in v0.52.0)
 
-Two model-free endpoints, from the measured volumes. The dashboard shows both on Tumor Growth's "Response & Delay" tab, from the data the run analysed.
-
-**`response_categories()`: mRECIST** (Gao et al. 2015, *Nature Medicine* 21:1318), the standard per-animal summary in PDX studies.
-- **The measures.** From each animal's % change in volume from its first measurement, the *best response* is the smallest change, and the *best average response* the smallest running mean of the changes, both over days at least `min_day` (default 10) after baseline.
-- **The categories:**
-  - **mCR:** best < −95 % and average < −40 %;
-  - **mPR:** best < −50 % and average < −20 %;
-  - **mSD:** best < 35 % and average < 30 %;
-  - **mPD:** otherwise.
-- **Not evaluable:** an animal never measured `min_day` after baseline, or with no positive baseline.
-- **The response rate** is mCR + mPR among evaluable animals.
-- **The waterfall.** `plot_response_waterfall()` draws each animal's best response, sorted, with the thresholds.
+A model-free endpoint, from the measured volumes. The dashboard shows it on Tumor Growth's "Growth Delay" tab, from the data the run analysed. The mRECIST response categories (`response_categories()`, `plot_response_waterfall()`) were removed in v0.52.0 (CODE_REVIEW.md R23.1).
 
 **`growth_delay()`: T − C.** The median time for an arm's tumours to reach a volume, minus the reference arm's, in days, and as a percentage of the reference's median.
 - **Each animal's time** is interpolated on the log scale between the last measurement below the volume and the first at or above it.
 - **An animal that never reached the volume** is censored at its last measurement.
 - **The medians** are Kaplan-Meier medians, so censored animals count. An arm in which fewer than half reached the volume is "not reached" (`Inf`).
 - **The interval** is a percentile bootstrap over animals within each arm.
+- **The test** is a log-rank test of each arm's times against the reference arm's, corrected over the arms (Holm by default). It treats animals as independent, so it overstates the evidence when whole cages were randomised.
+- **The specific growth delay** (SGD) is T − C divided by the reference arm's volume doubling time (the median of its animals' doubling times from `tumor_doubling_time()`): the delay in doublings, comparable across models that grow at different rates. Its interval is the delay's, divided by the same doubling time.
 
-Neither endpoint borrows strength across arms the way the endpoint model does, and neither corrects for animals removed early for reasons unrelated to growth. Read them as descriptions beside the model-based comparisons, not instead of them.
+It does not borrow strength across arms the way the endpoint model does, and does not correct for animals removed early for reasons unrelated to growth. Read it as a description beside the model-based comparisons, not instead of them.
 
 ## Survival
 

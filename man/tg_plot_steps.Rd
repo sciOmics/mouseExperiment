@@ -4,13 +4,10 @@
 \alias{tg_plot_steps}
 \title{Tumor Growth's redrawn plots as script steps (F9)}
 \usage{
-tg_plot_steps(growth = NULL, waterfall = NULL)
+tg_plot_steps(growth = NULL)
 }
 \arguments{
 \item{growth}{The growth curves' record: list(plot, style).}
-
-\item{waterfall}{The best-response waterfall's record, on the script's
-\code{responses} (so after \code{\link[=tg_endpoint_steps]{tg_endpoint_steps()}}).}
 }
 \description{
 Tumor Growth's redrawn plots as script steps (F9)

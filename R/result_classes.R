@@ -71,14 +71,13 @@
                                   as.integer(x$n_perm %||% NA), as.integer(x$n_units %||% NA),
                                   x$unit %||% ""),
                           sprintf("Smallest attainable p: %s", format(signif(x$min_attainable_p, 3))))),
-  me_responses = list(
-    title = function(x) "mRECIST responses",
-    tables = c(summary = "Animals in each category, and the response rate, by arm"),
-    about = function(x) paste("Responses count from day", x$min_day, "after baseline")),
   me_growth_delay = list(
     title = function(x) paste("Tumour growth delay to", format(x$volume)),
-    tables = c(delay_table = "Median time to the volume, and T - C"),
-    about = function(x) paste("Reference:", x$reference_group)),
+    tables = c(delay_table = "Median time to the volume, T - C, the specific growth delay and the log-rank test"),
+    about = function(x) c(paste("Reference:", x$reference_group),
+                          if (!is.null(x$doubling_time_reference))
+                            sprintf("Reference doubling time: %.2f days; p-values corrected by %s",
+                                    x$doubling_time_reference, x$p_adjust_method %||% "holm"))),
   me_data_check = list(
     title = function(x) "Data check",
     tables = c(summary = "What was found"),
