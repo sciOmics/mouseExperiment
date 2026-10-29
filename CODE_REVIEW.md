@@ -6992,3 +6992,62 @@ The header test fails on 0.49.0.
 **Executed:** `docker/shiny-gate-fit.R` on the working tree (a Mac, `load_all()`): fitted in 41 s, peak resident memory 2.66 GB.
 
 **Still to do (the maintainer):** rename `staging` to `development` on GitHub, and require the `image` check on pull requests into `production`. **(sciOmicsVPS):** build from this Dockerfile, and remove staging.
+
+## R23-B Implementation log — v0.50.0: the small items (R23.3–R23.10, R23.13, R23.16–R23.20, R23.23, 2026-10-29)
+
+**R23.13, tab order.** Info, Summary, results, Plots, Diagnostics, Download Results, in every analysis tab:
+- **Survival:** Risk Table moved before Plots, and Diagnostics after them.
+- **Dose Response:** Model Results moved before Plots.
+- **Power:** Info moved before Summary.
+- **Tests:** the tabs of all six UIs are read from their HTML.
+
+**R23.4, R23.5, R23.7, the Bayesian tabs:**
+- **Tumor Growth.** A fixed "Posterior Summary" tab follows ANOVA. The server hides ANOVA and shows it when the selected or the fitted model is Bayesian (`hideTab()`/`showTab()`), and the reverse otherwise.
+  - The tab explains every column with `posterior_summary_help()` (`helpers_bayes.R`): Estimate (the posterior mean; the old text said median), Est.Error, the 95 % credible interval, Rhat, Bulk_ESS and Tail_ESS, with their thresholds.
+  - The ANOVA message pointed at the old tab; it now names Posterior Summary and Diagnostics.
+- **The posterior predictive check** is part of the Bayesian Diagnostics panel in Tumor Growth and Survival. It used to be an appended tab, placed after Download Results.
+- **Survival's Prior vs Posterior** is a fixed tab after Plots, shown only for the Bayesian model. It too was appended after Download Results.
+- **No `appendTab()` remains** in either module.
+
+**R23.3, R23.10, R23.20, the backend and the compile notes:**
+- **The backend menus** (`tg_bayes_backend`, `surv_bayes_backend`) are removed, and the servers pass `backend = "rstan"`.
+- **The image:** `docker/Dockerfile` drops cmdstanr and CmdStan, which took most of a cold build. `shiny-gate.R` compiles with rstan only.
+- **The compile notes** under the MCMC settings, and the compile sentence in both progress windows, are removed.
+- **Help and the Tumor Growth Info tab keep the explanation.** Their "about 20 s" is now "about two minutes on mouseexperiment.com, less on a fast computer": the server compiled in 118–142 s (sciOmicsVPS V3-T).
+
+**R23.9, the extrapolation control.** `tg_extrapolation_points` and its note moved into the Plots tab, under "Show extrapolated curves/points", inside a `conditionalPanel` on that box. The input keeps its id, so the plots and the Bayesian parameters read it as before.
+
+**R23.8, the drill-down.** The Growth Rates table allows multiple selection, and `drilldown_plot()` (`helpers_data.R`) draws the selected animals:
+- **The drawing.** Each animal has its own colour, labelled with its growth rate, over its arm's mean (grey, dashed). There is one facet per arm when several arms are selected.
+- **A cap.** At most 12 animals are drawn; the subtitle says how many more were left out.
+- **One animal.** The old subtitle (rate and daily fold change) remains, and there is no legend.
+- **Cage-mates that share an ear tag** stay apart, through `drilldown_rows()` (R20.D57).
+- **The plot's height** grows with the selection.
+
+**R23.16, R23.17, Synergy:**
+- **The estimand tooltip** no longer quotes the simulation's 23- and 5-point errors.
+- **The over-time plot's two ribbons** map `fill` to "Synergy (combination above Bliss)" and "Antagonism (combination below Bliss)", with a manual scale ordered after the lines. They had constant fills, so the legend listed only the lines.
+
+**R23.18, R23.19, Toxicity:**
+- **No covariate is ticked by default.** While "Subtract estimated tumor weight" is on, the server removes Tumor Volume from the choices and the note says why.
+  - **Before,** Tumor Volume was ticked by default, and the backend silently dropped it (R20.D58).
+  - **The observer** now reads the current selection with `isolate()`. Before, a cleared selection fell back to "volume".
+- **The estimation-method radio buttons are removed.** The server passes REML, and the Info tab says so. `toxicity_analysis(estimation_method =)` is unchanged.
+
+**R23.23, interval labels:**
+- **`dt_table()`** relabels interval columns through `interval_col_labels()`, e.g. `lower.CL` → "Lower 95% CI", `CI_Adjusted_Lower` → "Lower 95% CI (adjusted)", `Lower_CrI` → "Lower 95% CrI". It uses DT's `c(new = "old")` form, so a row-name column does not shift the labels.
+  - **The level** comes from the table's `conf_level` attribute, and is 95 % otherwise.
+  - **Unchanged:** columns that already state a level, and tables given their own `colnames`.
+- **The 31 direct `DT::datatable()` calls** in the modules now go through `dt_table()`. Those that did not set `rownames` now follow its row-name rule (R22-L).
+- **The help text** names the columns as shown.
+
+**Tests** (`test-r23-ui.R`, 8 tests, 85 expectations):
+- tab order in six UIs;
+- the Bayesian tabs, and the posterior summary's help;
+- no backend menu or compile notes;
+- the extrapolation control's place, and that it still drives its note;
+- the drill-down with one, three, two-arm and 30 selected animals;
+- the synergy plot's fill legend, from a test session;
+- Toxicity's default covariates, note and estimation;
+- interval labels with and without row names, at another level, and with explicit `colnames`;
+- that every table goes through `dt_table()`.

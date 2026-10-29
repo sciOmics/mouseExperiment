@@ -30,6 +30,24 @@ format_elapsed <- function(seconds) {
 
 # ---- Bayesian diagnostics panel (CODE_REVIEW.md Round 2 D-series) -----------
 
+# R23.4/R23.7: what each column of a brms posterior summary means and how to
+# read it, beside the table. `scale` names the scale of the coefficients.
+posterior_summary_help <- function(scale = NULL) {
+  tab_info(
+    strong("Posterior summary: "), "each model parameter's posterior distribution, summarised",
+    if (!is.null(scale)) paste0(" (coefficients on the ", scale, " scale)"), ".",
+    tags$ul(
+      tags$li(strong("Parameter / Term"), " \u2014 the model coefficient, and what it measures in the study's own terms."),
+      tags$li(strong("Estimate"), " \u2014 the posterior mean: the parameter's most representative value given the data and the priors."),
+      tags$li(strong("Est.Error"), " \u2014 the posterior standard deviation: how uncertain that estimate is."),
+      tags$li(strong("Lower_95_CrI / Upper_95_CrI"), " \u2014 the 95 % credible interval: given the model and the priors, the parameter lies in it with 95 % probability. An interval that excludes 0 is a clear direction for that effect."),
+      tags$li(strong("Rhat"), " \u2014 whether the chains agree. Near 1.00 means they have converged on the same distribution; above 1.01 they have not, and the row should not be reported until a longer run brings it down."),
+      tags$li(strong("Bulk_ESS"), " \u2014 the effective number of independent draws behind the estimate. Above about 400 the estimate is stable; below, increase the draws."),
+      tags$li(strong("Tail_ESS"), " \u2014 the same for the ends of the interval, which need more draws than the middle. Above about 400 the interval's limits are stable.")
+    )
+  )
+}
+
 #' Standard Bayesian diagnostics panel (model-fit + sampler banner)
 #'
 #' Renders a single block summarising every Bayesian-fit diagnostic added

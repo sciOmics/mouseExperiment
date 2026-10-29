@@ -39,7 +39,7 @@ imports_of <- function(pkg) {
 }
 # The dashboard's packages are Suggests; dashboard_packages() lists them.
 pkgs <- unique(c("mouseExperiment", imports_of("mouseExperiment"),
-                 get("dashboard_packages", envir = ns)(), "cmdstanr"))
+                 get("dashboard_packages", envir = ns)()))
 failed <- character(0)
 for (p in pkgs) {
   ok <- tryCatch({ loadNamespace(p); TRUE }, error = function(e) {
@@ -51,19 +51,13 @@ for (p in pkgs) {
 if (length(failed)) stop("namespaces that do not load: ", paste(failed, collapse = ", "))
 step("loaded ", length(pkgs), " namespaces")
 
-# 3. Both Stan backends compile and sample ------------------------------------
+# 3. rstan compiles and samples (R23.3: the dashboard's only backend; the
+#    image has no CmdStan since 0.50.0) ----------------------------------------
 code <- "parameters { real y; } model { y ~ normal(0, 1); }"
 m <- rstan::stan_model(model_code = code, verbose = FALSE)
 fit <- rstan::sampling(m, chains = 1, iter = 200, refresh = 0, seed = 1)
 stopifnot(length(rstan::extract(fit)$y) == 100)
 step("rstan compiled and sampled")
-
-step("CmdStan ", as.character(cmdstanr::cmdstan_version()), " at ", cmdstanr::cmdstan_path())
-cm <- cmdstanr::cmdstan_model(cmdstanr::write_stan_file(code))
-cf <- cm$sample(chains = 1, iter_warmup = 100, iter_sampling = 100,
-                refresh = 0, seed = 1, show_messages = FALSE)
-stopifnot(nrow(cf$draws("y", format = "draws_df")) == 100)
-step("cmdstanr compiled and sampled")
 
 # 4. The dashboard's UI builds (its www/ check and UI construction used to run
 #    only when the container booted) -----------------------------------------

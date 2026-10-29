@@ -1,7 +1,7 @@
 # =============================================================================
 # Tests that read the dashboard's own sources (R/, DESCRIPTION, .Rbuildignore)
-# can only run from the source tree. The VPS staging gate runs the installed
-# tests (--install-tests), and R CMD check runs a copy; neither has R/ beside
+# can only run from the source tree. The image gate (CI, docker/) runs the
+# installed tests (--install-tests), and R CMD check runs a copy; neither has R/ beside
 # tests/. There such reads skip instead of erroring (CODE_REVIEW.md R20-D.T).
 # Within a test, read sources after the behavioural checks, so those still run.
 # =============================================================================

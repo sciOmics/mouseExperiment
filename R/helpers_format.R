@@ -15,12 +15,54 @@
 #' table was sorted in, so 6, 1, 2, ...) or, on the Growth Rates table, the
 #' internal animal keys ("aPD1|||L|||3"). They now show only when they carry
 #' information, such as an ANOVA's terms (see `me_named_rows()`).
+#'
+#' R23.23: interval columns are shown with their level ("Lower 95% CI"), not
+#' as their code names (`lower.CL`, `CI_Lower`), unless `colnames` is given.
 #' @param data The data frame.
 #' @param ... Passed to [DT::datatable()].
 #' @param rownames Show the row names; by default, when they carry information.
+#' @param level The intervals' level, for their labels: the table's
+#'   `conf_level` attribute, or 0.95.
 #' @keywords internal
-dt_table <- function(data, ..., rownames = me_named_rows(data)) {
+dt_table <- function(data, ..., rownames = me_named_rows(data),
+                     level = attr(data, "conf_level")) {
+  if (!"colnames" %in% names(list(...)) && is.data.frame(data) && ncol(data)) {
+    labels <- interval_col_labels(names(data), if (is.null(level)) 0.95 else level)
+    changed <- labels != names(data)
+    # DT's c(new = "old") form renames those columns only, with or without a
+    # row-name column.
+    if (any(changed))
+      return(DT::datatable(data, ..., rownames = rownames,
+                           colnames = stats::setNames(names(data)[changed], labels[changed])))
+  }
   DT::datatable(data, ..., rownames = rownames)
+}
+
+#' Interval columns, labelled with their level
+#'
+#' CODE_REVIEW.md R23.23: tables showed `lower.CL` and `upper.CL` (emmeans),
+#' `CI_Lower`, `ci_lower` and the like, without the level. The names of other
+#' columns, and of interval columns that already state a level, are unchanged.
+#' @param nms Column names.
+#' @param level The intervals' level, e.g. 0.95.
+#' @return `nms`, with interval columns relabelled.
+#' @keywords internal
+interval_col_labels <- function(nms, level = 0.95) {
+  pct <- paste0(format(100 * level, trim = TRUE), "%")
+  kind <- c(lower.CL = "Lower CI", upper.CL = "Upper CI",
+            lower_CL = "Lower CI", upper_CL = "Upper CI",
+            Lower_CL = "Lower CI", Upper_CL = "Upper CI",
+            CI_Lower = "Lower CI", CI_Upper = "Upper CI",
+            CI_lower = "Lower CI", CI_upper = "Upper CI",
+            ci_lower = "Lower CI", ci_upper = "Upper CI",
+            asymp.LCL = "Lower CI", asymp.UCL = "Upper CI",
+            CI_Adjusted_Lower = "Lower CI (adjusted)", CI_Adjusted_Upper = "Upper CI (adjusted)",
+            lower.HPD = "Lower HPD", upper.HPD = "Upper HPD",
+            Lower_CrI = "Lower CrI", Upper_CrI = "Upper CrI")
+  hit <- nms %in% names(kind)
+  out <- nms
+  out[hit] <- sub(" ", paste0(" ", pct, " "), kind[nms[hit]], fixed = TRUE)
+  out
 }
 
 #' Format a p-value for display

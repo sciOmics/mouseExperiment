@@ -4,8 +4,8 @@
 # request into production must pass this job instead.
 #
 # The gates, in order:
-#   1. docker/shiny-gate.R: every Import and dashboard package loads, both Stan
-#      backends compile and sample, the dashboard's UI builds.
+#   1. docker/shiny-gate.R: every Import and dashboard package loads, rstan
+#      compiles and samples, the dashboard's UI builds.
 #   2. docker/shiny-gate-fit.R: a Bayesian fit at the dashboard's defaults,
 #      within production's memory budget for a fit and with no swap. The
 #      server's compiler was OOM-killed on 2026-10-25; this would have failed.
@@ -72,7 +72,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Gate 1 - dependencies load, Stan compiles and samples, the UI builds
+      - name: Gate 1 - dependencies load, rstan compiles and samples, the UI builds
         run: |
           docker run --rm -i --network none --memory 3g -e "EXPECT_PKG_SHA=${{ github.sha }}" "$IMAGE" \
             R --no-save --no-echo < docker/shiny-gate.R | tee gate.out

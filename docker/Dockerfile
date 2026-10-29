@@ -59,8 +59,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# The non-root runtime user exists before CmdStan is installed, so the
-# toolchain can be handed to it (V3.10).
+# The non-root runtime user.
 RUN useradd -m -u 1000 shiny
 
 # Every CRAN dependency, in one cached layer. The list is the package's
@@ -84,40 +83,12 @@ RUN R -q -e " \
   if (length(missing)) stop('not installed: ', paste(missing, collapse = ', ')) \
 "
 
-# CmdStan for the dashboard's 'cmdstanr' backend (V3.10). It used to be
-# installed as root into /root/.cmdstan, which the shiny user can neither find
-# nor read, so choosing cmdstanr failed with 'no CmdStan toolchain was found'.
-# Now: a pinned cmdstanr release and CmdStan version, installed in /opt/cmdstan,
-# found through $CMDSTAN, and owned by shiny (CmdStan writes its precompiled
-# header and model binaries next to itself). The smoke compile below runs as
-# shiny, so the image cannot build unless the shiny user can compile a model.
-# CMDSTANR_NO_VER_CHECK: cmdstanr otherwise asks GitHub for the latest CmdStan
-# whenever it is attached. CMDSTAN is unset while installing, because cmdstanr
-# warns at load (an error under warn = 2) when it names a missing directory.
-ARG CMDSTANR_REF=v0.9.0
-ARG CMDSTAN_VERSION=2.36.0
-ENV CMDSTAN=/opt/cmdstan/cmdstan-${CMDSTAN_VERSION} \
-    CMDSTANR_NO_VER_CHECK=true
-# install_cmdstan(dir =) requires the directory to exist already.
-RUN mkdir -p /opt/cmdstan && CMDSTAN= R -q -e " \
-  options(warn = 2); \
-  remotes::install_github('stan-dev/cmdstanr@${CMDSTANR_REF}', upgrade = 'never'); \
-  options(warn = 1); \
-  cmdstanr::check_cmdstan_toolchain(fix = TRUE); \
-  cmdstanr::install_cmdstan(dir = '/opt/cmdstan', version = '${CMDSTAN_VERSION}', \
-                            cores = 2, quiet = TRUE) \
-" && test -x "${CMDSTAN}/bin/stanc" && chown -R shiny:shiny /opt/cmdstan
-USER shiny
-RUN R -q -e " \
-  options(warn = 1); \
-  stopifnot(normalizePath(cmdstanr::cmdstan_path()) == normalizePath(Sys.getenv('CMDSTAN'))); \
-  f <- cmdstanr::write_stan_file('parameters { real y; } model { y ~ normal(0, 1); }'); \
-  invisible(cmdstanr::cmdstan_model(f)) \
-"
-USER root
+# No CmdStan (R23.3): the dashboard fits with rstan only. cmdstanr stays
+# available to R users of the package, as a Suggest. Until 0.50.0 the image
+# carried CmdStan 2.36.0 in /opt/cmdstan (sciOmicsVPS V3.10), which took most
+# of a cold build's time.
 
-# testthat for the gate's test suites (docker/shiny-gate-tests.R). Its own
-# layer after CmdStan, so adding it left the slow layers above cached.
+# testthat for the gate's test suites (docker/shiny-gate-tests.R).
 # Production images carry it too (a few MB) but never run the tests.
 RUN R -q -e " \
   options(warn = 2); \
@@ -179,7 +150,6 @@ RUN mkdir -p /usr/local/share/mouseexperiment && \
       sink('/usr/local/share/mouseexperiment/build-info.txt'); \
       cat('mouseExperiment', as.character(packageVersion('mouseExperiment')), \
           packageDescription('mouseExperiment')[['RemoteSha']], '\n'); \
-      cat('CmdStan', as.character(cmdstanr::cmdstan_version()), '\n'); \
       print(sessionInfo()); \
       sink() \
     "

@@ -4,7 +4,12 @@
 \alias{dt_table}
 \title{A DT table that shows row names only when they say something}
 \usage{
-dt_table(data, ..., rownames = me_named_rows(data))
+dt_table(
+  data,
+  ...,
+  rownames = me_named_rows(data),
+  level = attr(data, "conf_level")
+)
 }
 \arguments{
 \item{data}{The data frame.}
@@ -12,11 +17,18 @@ dt_table(data, ..., rownames = me_named_rows(data))
 \item{...}{Passed to \code{\link[DT:datatable]{DT::datatable()}}.}
 
 \item{rownames}{Show the row names; by default, when they carry information.}
+
+\item{level}{The intervals' level, for their labels: the table's
+\code{conf_level} attribute, or 0.95.}
 }
 \description{
 DT shows a data frame's row names by default: row numbers (in the order a
 table was sorted in, so 6, 1, 2, ...) or, on the Growth Rates table, the
 internal animal keys ("aPD1|||L|||3"). They now show only when they carry
 information, such as an ANOVA's terms (see \code{me_named_rows()}).
+}
+\details{
+R23.23: interval columns are shown with their level ("Lower 95\% CI"), not
+as their code names (\code{lower.CL}, \code{CI_Lower}), unless \code{colnames} is given.
 }
 \keyword{internal}

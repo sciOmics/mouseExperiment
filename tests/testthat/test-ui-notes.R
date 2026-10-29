@@ -21,9 +21,10 @@ test_that("the Survival model menu says Cox Proportional Hazards", {
   expect_false(grepl("Frequentist (Cox PH)", ui, fixed = TRUE))
 })
 
-test_that("Toxicity's estimation method explains REML and ML", {
+test_that("Toxicity says it fits by REML; it offers no ML (R23.19)", {
   ui <- html(g("toxicityUI")("tox"))
-  expect_match(ui, "Estimation method[^<]*<span class=\"help-tip[^>]*title=\"REML \\(restricted")
+  expect_false(grepl("Estimation method", ui, fixed = TRUE))
+  expect_match(ui, "fitted by restricted maximum likelihood (REML)", fixed = TRUE)
 })
 
 test_that("each group's colour and shape fit the sidebar: two lines, a symbol menu", {

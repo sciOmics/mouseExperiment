@@ -773,7 +773,7 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     if (isTRUE(rv$tg_results$error)) return(NULL)
     if (isTRUE(rv$tg_results$model_type_used == "bayes")) {
       plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
-           main = "Frequentist diagnostics not applicable in Bayesian mode.\nSee the Posterior Check tab for model validation.")
+           main = "Frequentist diagnostics do not apply to a Bayesian fit.\nSelect the Bayesian model to see its diagnostics.")
       return(invisible(NULL))
     }
     if (!is.null(rv$tg_results$diag_qq_plot)) {
@@ -788,7 +788,7 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     if (isTRUE(rv$tg_results$error)) return(NULL)
     if (isTRUE(rv$tg_results$model_type_used == "bayes")) {
       plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
-           main = "Frequentist diagnostics not applicable in Bayesian mode.\nSee the Posterior Check tab for model validation.")
+           main = "Frequentist diagnostics do not apply to a Bayesian fit.\nSelect the Bayesian model to see its diagnostics.")
       return(invisible(NULL))
     }
     if (!is.null(rv$tg_results$diag_resid_fitted_plot)) {
@@ -846,7 +846,7 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     cd <- rv$tg_results$diag_cooks_distance
     if (is.null(cd) || nrow(cd) == 0L)
       return(dt_table(data.frame(Message = "Cook's distance not available")))
-    DT::datatable(format_df_for_display(as.data.frame(cd)),
+    dt_table(format_df_for_display(as.data.frame(cd)),
               options = list(scrollX = TRUE, pageLength = 10),
               rownames = FALSE)
   })
@@ -856,7 +856,7 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     db <- rv$tg_results$diag_dfbetas
     if (is.null(db) || nrow(db) == 0L)
       return(dt_table(data.frame(Message = "DFBETAS not available")))
-    DT::datatable(format_df_for_display(as.data.frame(db)),
+    dt_table(format_df_for_display(as.data.frame(db)),
               options = list(scrollX = TRUE, pageLength = 10),
               rownames = FALSE)
   })

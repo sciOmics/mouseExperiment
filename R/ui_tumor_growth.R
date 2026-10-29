@@ -85,15 +85,8 @@ tumorGrowthUI <- function(id) {
                        selected = "log")
           ),
 
-          # 5. Extrapolation Points — PLOTTING ONLY as of backend v0.8.0
-          numericInput(ns("tg_extrapolation_points"),
-                      tagList("Extrapolation Points (plots only)", help_tip(paste(
-                        "Affects the growth-trajectory plots only: the number of recent",
-                        "timepoints used to project the curve of an animal that left the",
-                        "study early, drawn dashed. 0 turns it off. The statistics never use",
-                        "projected values; the endpoint metrics extrapolate inside the model."))),
-                      value = 3, min = 0, max = 10, step = 1),
-          uiOutput(ns("tg_extrap_note")),
+          # 5. Extrapolation Points moved to the Plots tab, beside "Show
+          # extrapolated curves/points": it changes only the plots (R23.9).
 
           # 6. Cage Effect Handling (LME4 only)
           conditionalPanel(ns = ns,
@@ -207,14 +200,8 @@ tumorGrowthUI <- function(id) {
                          value = 1000, min = 200, max = 5000, step = 100),
             numericInput(ns("tg_bayes_iter"), "Post-warmup draws per chain",
                          value = 500, min = 200, max = 5000, step = 100),
-            selectInput(ns("tg_bayes_backend"), "Stan backend",
-                        choices  = c("rstan", "cmdstanr"),
-                        selected = "rstan"),
-            div(class = "alert alert-warning", style = "font-size:0.85em; padding:8px; margin-top:6px;",
-              icon("clock"), " The first fit of a model compiles it (about 20 s); later fits ",
-              "with the same structure reuse it. Fits run one at a time in the background: ",
-              "you can close the browser and resume or cancel from the banner when you return."
-            )
+            # R23.3: no Stan backend menu; the dashboard fits with rstan.
+            # R23.10: the note on compiling and queueing is in Help.
           ),
 
           # Necrotic handling: rendered server-side, shown once a necrotic column
@@ -497,7 +484,8 @@ tumorGrowthUI <- function(id) {
                       tags$li(strong("Summary"), " \u2014 posterior median and 95 % CrI for every model parameter."),
                       tags$li(strong("Treatment Effects"), " \u2014 group-level estimated marginal means (posterior) at the mean study day."),
                       tags$li(strong("Comparisons"), " \u2014 posterior contrasts of each group vs the reference."),
-                      tags$li(strong("Posterior Check"), " \u2014 overlay of observed data density vs draws from the posterior predictive distribution. Systematic mismatch indicates model mis-specification. A coverage plot reports whether the stated credible intervals actually contain the observed values at the claimed rate."),
+                      tags$li(strong("Posterior Summary"), " \u2014 every model parameter's posterior estimate, 95 % credible interval, R-hat and effective sample sizes. It replaces the ANOVA tab for a Bayesian fit."),
+                      tags$li(strong("Diagnostics: posterior predictive check"), " \u2014 overlay of observed data density vs draws from the posterior predictive distribution. Systematic mismatch indicates model mis-specification. A coverage plot reports whether the stated credible intervals actually contain the observed values at the claimed rate."),
                       tags$li(strong("Diagnostics"), " (Bayesian view) \u2014 Rhat and effective sample size (ESS) per parameter, with trace and rank plots. Rhat > 1.01 indicates the chains have not mixed; low ESS means the posterior summaries are themselves noisy. Rank plots detect the mixing failures that trace plots hide once chains overlap."),
                       tags$li(strong("Influence"), " \u2014 Pareto-k values from PSIS leave-one-out. Values above the threshold (0.7 at most; lower with fewer posterior draws, e.g. 0.667 at 1,000) mean the importance sampling is unreliable for that observation, which usually flags an animal the model fits badly rather than a coding error."),
                       tags$li(strong("Growth Rates"), " \u2014 per-animal log-linear regression rates (same as LME4, not MCMC-based).")
@@ -505,7 +493,7 @@ tumorGrowthUI <- function(id) {
 
                     div(class = "alert alert-info", style = "margin-top:10px;",
                       icon("clock"), " ",
-                      strong("Computation time:"), " the first fit of a model compiles its Stan code (about 20 s); ",
+                      strong("Computation time:"), " the first fit of a model compiles its Stan code (about two minutes on mouseexperiment.com, less on a fast computer); ",
                       "a later fit whose model has the same structure (same number of arms, random effects and prior preset) ",
                       "reuses the compiled model and starts sampling at once. ",
                       "Fits run one at a time on a background worker, so the app stays responsive while a model runs; ",
@@ -557,7 +545,7 @@ tumorGrowthUI <- function(id) {
                       tags$dt("Correction"),
                       tags$dd("How the chosen family is corrected: Dunnett (exact multivariate-t, default), Tukey HSD, Bonferroni, Holm, Benjamini-Hochberg FDR, or None."),
                       tags$dt("Extrapolation Points"),
-                      tags$dd(strong("Affects the growth-trajectory plots only."), " Number of recent timepoints used to estimate a slope when projecting the curve for animals that left the study early; projected segments are drawn dashed. Set to 0 to disable. This no longer feeds any statistical model \u2014 treating an imputed point as measured data made standard errors ignore the imputation."),
+                      tags$dd(strong("Affects the growth-trajectory plots only"), " (Plots tab, under Show extrapolated curves/points). Number of recent timepoints used to estimate a slope when projecting the curve for animals that left the study early; projected segments are drawn dashed. Set to 0 to disable. This no longer feeds any statistical model \u2014 treating an imputed point as measured data made standard errors ignore the imputation."),
                       tags$dt("Time Column"),
                       tags$dd("Numeric study day, or calculated from a date column mapped in Data Upload (days elapsed from first observation).")
                     )
@@ -597,6 +585,16 @@ tumorGrowthUI <- function(id) {
             # because it answers the same question as the ANOVA row above but
             # without the denominator-df or normality approximations.
             uiOutput(ns("tg_perm_test_ui"))
+          ),
+
+          # R23.4/R23.5: a Bayesian fit has no ANOVA; the server hides that tab
+          # and shows this one in its place. The posterior summary sat in a
+          # "Posterior Check" tab appended after Download Results.
+          tabPanel("Posterior Summary",
+            posterior_summary_help("log tumour volume"),
+            shinycssloaders::withSpinner(
+              DT::DTOutput(ns("tg_posterior_summary"))
+            )
           ),
           
           tabPanel("Comparisons",
@@ -641,9 +639,9 @@ tumorGrowthUI <- function(id) {
             # Per-mouse drill-down (CODE_REVIEW.md Round 2 F.4)
             h5(strong(icon("magnifying-glass"), " Per-mouse drill-down"),
                tags$small(style = "color:#6c757d; margin-left:8px;",
-                          "Select a row in the table above to see that mouse's trajectory.")),
+                          "Click rows in the table above to see those mice's trajectories; click again to remove one.")),
             shinycssloaders::withSpinner(
-              plotOutput(ns("tg_drilldown_plot"), height = "350px")
+              plotOutput(ns("tg_drilldown_plot"), height = "auto")
             )
           ),
           
@@ -705,7 +703,17 @@ tumorGrowthUI <- function(id) {
                       checkboxInput(ns("tg_opt_group_line"),
                                     "Show group average line", value = TRUE),
                       checkboxInput(ns("tg_opt_show_extrap"),
-                                    "Show extrapolated curves/points", value = TRUE)
+                                    "Show extrapolated curves/points", value = TRUE),
+                      # R23.9: from the sidebar, where it read as a model setting.
+                      conditionalPanel(ns = ns, "input.tg_opt_show_extrap == true",
+                        numericInput(ns("tg_extrapolation_points"),
+                                    tagList("Extrapolation points", help_tip(paste(
+                                      "The number of recent timepoints used to project the curve of an",
+                                      "animal that left the study early, drawn dashed. 0 turns it off.",
+                                      "The statistics never use projected values."))),
+                                    value = 3, min = 0, max = 10, step = 1),
+                        uiOutput(ns("tg_extrap_note"))
+                      )
                     ),
                     conditionalPanel(ns = ns,
                       "input.tg_plot_selector == 'effect_forest'",
@@ -971,6 +979,16 @@ tumorGrowthUI <- function(id) {
                  "Observations the LOO approximation can't reliably estimate. Investigate these mice individually."),
               shinycssloaders::withSpinner(DT::DTOutput(ns("tg_bayes_influential"))),
               br(),
+              # R23.5: was its own "Posterior Check" tab.
+              h5(strong("Posterior predictive check")),
+              plot_help(
+                "The model simulates new datasets from the posterior and overlays their densities ",
+                "(y_rep, 50 draws) on the observed, transformed volumes (y). ",
+                strong("The observed density inside the simulated envelope: "), "the model reproduces the data. ",
+                strong("Outside it: "), "consider a different transformation or random-effects specification."),
+              shinycssloaders::withSpinner(plotOutput(ns("tg_pp_check_plot"), height = "450px")),
+              downloadButton(ns("download_tg_pp_check"), "Download Plot"),
+              br(), br(),
               fluidRow(
                 column(6,
                   h5(strong("Pareto-k distribution (all observations)")),

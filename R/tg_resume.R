@@ -34,8 +34,8 @@ launch_tg_bayes_job <- function(sid, bayes_params,
   }
   show_analysis_modal(
     "Bayesian tumor growth fit running\u2026",
-    paste("Fitting the Bayesian LMM with brms. The first fit of a model",
-          "compiles it (about 20 s); later fits of the same structure reuse it."),
+    # R23.20: how compiling works is in Help, not in the progress window.
+    "Fitting the Bayesian LMM with brms.",
     cancel_id = session$ns("tg_cancel_bayes"))
 
   task <- .tg_bayes_task(bayes_params)
