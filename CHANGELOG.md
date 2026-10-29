@@ -5,6 +5,19 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.56.0] - 2026-10-29
+
+Every plot in Download Results, with the current settings (`CODE_REVIEW.md` Round 23, R23-H).
+
+### Fixed
+- **Drug Synergy, Dose Response and Power exported the plot last drawn on screen,** so a plot type
+  that had not been opened was missing from the ZIP ("not available"). Their plots are now built
+  from the Plots tab's current settings whenever they are needed, so Download Results includes
+  every plot of the run, styled as set, as Tumor Growth, Survival and Toxicity already did. The
+  per-plot download buttons use the same plots.
+- **Drug Synergy offered a "TGI by arm" plot for a single evaluation day,** where there is none; it
+  is offered for the analysis over every evaluable day only.
+
 ## [0.55.0] - 2026-10-29
 
 Posterior distributions with a highest-density interval (`CODE_REVIEW.md` Round 23, R23-G).
