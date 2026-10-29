@@ -1,6 +1,6 @@
 Package: mouseExperiment
 Title: Analysis of Mouse Tumor Growth Experiments
-Version: 0.52.0
+Version: 0.53.0
 Authors@R: 
     person("David", "Woods", , "david@sciomics.bio", role = c("aut", "cre", "cph"))
 Author: David Woods [aut, cre, cph]

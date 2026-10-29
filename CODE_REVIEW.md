@@ -7112,3 +7112,31 @@ The header test fails on 0.49.0.
 - **the display tables:** "not reached", dashes, p formatting, and the per-animal outcome.
 
 `test-plot-code.R` and `test-result-classes.R` drop the waterfall and the mRECIST class.
+
+## R23-E Implementation log — v0.53.0: the Weight demo's toxicity; the rates table (R23.22, R23.24, 2026-10-29)
+
+**R23.24, the Weight demo.** `data-raw/weight_demo_toxicity.R` sets the drug arms' weights from each animal's first weight and a planned percentage change per date. It rounds to 0.1 g and writes the other values exactly as they were.
+- **Drug A + B.**
+  - **Past −20 %:** N and R cross on 11 March (−21 %, −22 %) and their 15 March rows are dropped, as for animals removed at a humane endpoint. L crosses on 15 March (−22 %).
+  - **Short of it:** LR reaches −13 % and LL −16 %.
+- **Drug B** loses 7.0–8.1 %, and **Drug A** 2.7–3.4 %.
+- **DMSO** and the tumour volumes are unchanged.
+- **The data:** 98 rows. `data/weight_synthetic_data.rda` is rebuilt by `data-raw/create_datasets.R`; the other two demo files are byte-identical. `inst/sample_data/` has the same CSV.
+- **Measured** (gross weight, each animal's lowest change from its first weighing):
+
+  | Arm | Worst | Median | Past −20 % |
+  |---|---|---|---|
+  | DMSO | −2.1 % | −1.9 % | 0 |
+  | Drug A | −3.4 % | −3.1 % | 0 |
+  | Drug B | −8.1 % | −7.7 % | 0 |
+  | Drug A + B | −21.9 % | −21.0 % | 3 |
+
+- **The docs:** `?weight_synthetic_data` describes the change. Its "Ear Tag" read "animal number 1 to 5"; the tags are the ear-punch codes N, L, R, LR and LL.
+
+**R23.22, p-values for the rate of weight change.**
+- **Already in place:** Model Results has compared each arm's rate with the reference's, with corrected p-values, since 0.30.0 (R20.44). This was the comparison recommended in the discussion.
+- **The rates table** keeps no p-values. A rate against zero asks only whether an arm's weight changed, which growing mice do. It now says that the next table is the test (`rate_table_note()`).
+
+**Tests:**
+- **`test-r23-weight-demo.R`** checks the arms' worst losses, the two early exits and the 98 rows, and that the package data match the demo CSV. `weight_loss_threshold()` finds three events, all in the combination. It also checks the note.
+- **`test-round21-study-design.R`** expected no animal past 20 %. It now expects the three, all in the combination.

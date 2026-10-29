@@ -5,12 +5,13 @@
 \alias{weight_synthetic_data}
 \title{Body-weight synthetic data}
 \format{
-A data frame with 100 rows and 5 variables:
+A data frame with 98 rows and 5 variables:
 \describe{
 \item{Date}{Measurement date, "Month D" without a year (1 to 15 March).
 Convert with \code{\link[=calculate_dates]{calculate_dates()}}, start date "March 1", year 2025.}
-\item{Ear Tag}{Animal number 1 to 5, repeated in every arm, so an animal
-is identified by treatment and ear tag together.}
+\item{Ear Tag}{The animal's ear-punch code (N, L, R, LR or LL),
+repeated in every arm, so an animal is identified by treatment and ear
+tag together.}
 \item{Treatment}{"DMSO", "Drug A", "Drug B" or "Drug A + B".}
 \item{Tumor Volume}{Tumour volume (mm³), already calculated.}
 \item{Mouse Weight}{Body weight (g).}
@@ -24,9 +25,16 @@ weight_synthetic_data
 }
 \description{
 Tumour volumes with body weights, for the toxicity functions
-(\code{\link[=analyze_body_weight]{analyze_body_weight()}}, \code{\link[=therapeutic_window_metric]{therapeutic_window_metric()}}). The column names
-contain spaces, as exported spreadsheets often do. It is the dashboard's
-"Weight" demo.
+(\code{\link[=analyze_body_weight]{analyze_body_weight()}}, \code{\link[=weight_loss_threshold]{weight_loss_threshold()}},
+\code{\link[=therapeutic_window_metric]{therapeutic_window_metric()}}). The column names contain spaces, as
+exported spreadsheets often do. It is the dashboard's "Weight" demo.
+}
+\details{
+Since 0.53.0 the combination is severely toxic and the single agents mild
+(CODE_REVIEW.md R23.24): three of the five "Drug A + B" animals pass 20 \%
+weight loss, two of them by 11 March, after which they have no rows, as a
+humane endpoint requires; Drug B loses about 8 \% and Drug A about 3 \%.
+\code{data-raw/weight_demo_toxicity.R} sets the drug arms' weights.
 }
 \examples{
 d <- calculate_dates(weight_synthetic_data, reference_date = "March 1", year = 2025)

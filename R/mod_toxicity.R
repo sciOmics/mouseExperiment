@@ -1,3 +1,13 @@
+# R23.22: the rates table has no p-values, and should not: a p-value for one
+# arm's rate against zero asks only whether its weight changed at all, which
+# healthy, growing mice also do. The comparison below it, each arm's rate
+# against the reference's, with corrected p-values, is the test (R20.44).
+rate_table_note <- function() {
+  helpText(icon("circle-info"), " Each arm's estimated rate, with its interval. Whether an arm ",
+           "differs from the reference is tested in the next table, with p-values corrected ",
+           "for the number of comparisons.")
+}
+
 #' Toxicity Analysis UI
 #' @keywords internal
 toxicityUI <- function(id) {
@@ -293,6 +303,7 @@ toxicityUI <- function(id) {
             downloadButton(ns("download_tox_model"), "Download Fixed Effects CSV"),
             hr(),
             h4("Rate of Weight Change by Treatment (g/day)"),
+            rate_table_note(),
             shinycssloaders::withSpinner(DT::DTOutput(ns("tox_emmeans"))),
             downloadButton(ns("download_tox_emmeans_csv"), "Download Rates CSV"),
             hr(),
@@ -619,6 +630,7 @@ toxicity_server <- function(id, rv) {
           downloadButton(ns("download_tox_model"), "Download Fixed Effects CSV"),
           hr(),
           h4("Rate of Weight Change by Treatment (g/day)"),
+          rate_table_note(),
           shinycssloaders::withSpinner(DT::DTOutput(ns("tox_emmeans"))),
           downloadButton(ns("download_tox_emmeans_csv"), "Download Rates CSV"),
           hr(),
