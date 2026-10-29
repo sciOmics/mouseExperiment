@@ -164,6 +164,7 @@ toxicityUI <- function(id) {
                       "Fixed effects test whether trajectories differ by treatment group over time."),
                     p("The model is fitted by restricted maximum likelihood (REML), the usual choice for ",
                       "reporting a model's estimates and variance components."),
+                    effects_help("mouse"),   # R23.21
                     tags$p(tags$b("Covariates (optional):")),
                     tags$ul(
                       tags$li(strong("Tumor Volume"), " \u2014 controls for tumor-driven weight changes independent of drug toxicity. Offered only when 'Subtract estimated tumor weight' is off: with tumour mass subtracted, adjusting for volume as well would count tumour burden twice."),

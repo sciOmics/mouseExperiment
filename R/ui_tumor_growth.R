@@ -276,7 +276,7 @@ tumorGrowthUI <- function(id) {
 
                     h5(strong("Model")),
                     p("A linear mixed-effects model is fitted to transformed tumor volumes:"),
-                    tags$blockquote(tags$code("log(Volume) ~ Treatment \u00d7 Day + (1 | ID)")),
+                    tags$blockquote(tags$code("log(Volume) ~ Treatment \u00d7 Day + (Day | Animal)")),
                     p("The Treatment \u00d7 Day interaction captures whether treatment groups differ in their growth ", em("trajectories"), " over time, not just at a single endpoint."),
                     tags$dl(class = "dl-horizontal",
                       tags$dt("Transformation"), tags$dd("Log (default) stabilises variance and linearises exponential growth. Square root suits moderate heteroscedasticity. Use 'None' only for already-linear data."),
@@ -292,6 +292,7 @@ tumorGrowthUI <- function(id) {
                               "The remaining options force a specific handling. ", em("Include if not collinear (legacy)"),
                               " is the pre-v0.12 behaviour, kept so earlier analyses can be reproduced.")
                     ),
+                    effects_help("animal"),   # R23.21
 
                     hr(),
                     h5(strong("ANOVA Tab")),
@@ -428,7 +429,7 @@ tumorGrowthUI <- function(id) {
                       strong("posterior distribution"), ": a probability distribution over plausible values ",
                       "given the data and priors."),
                     tags$blockquote(tags$code(
-                      "log(Volume) ~ Treatment \u00d7 Day + (1 | ID)"
+                      "log(Volume) ~ Treatment \u00d7 Day + (Day | Animal)"
                     )),
                     p("Results are summarised as ", strong("posterior means"),
                       " with 95 % credible intervals. A 95 % CrI has a direct probability ",
@@ -972,11 +973,14 @@ tumorGrowthUI <- function(id) {
                 em("If Rhat > 1.01, try increasing iterations or chains before reporting results.")
               ),
               uiOutput(ns("tg_bayes_diagnostics")),
+              bayes_diagnostics_help(),   # R23.6
               shinycssloaders::withSpinner(DT::DTOutput(ns("tg_mcmc_diag_table"))),
               br(),
               h5(strong("Influential observations (Pareto-k > 0.7)")),
+              # R23.6: the rows now name the animal and the measurement.
               em(class = "text-muted",
-                 "Observations the LOO approximation can't reliably estimate. Investigate these mice individually."),
+                 "Measurements that move the fit too much for the leave-one-out estimate, with their animal. ",
+                 "Check them against the raw data; 'What these diagnostics mean' above explains Pareto-k."),
               shinycssloaders::withSpinner(DT::DTOutput(ns("tg_bayes_influential"))),
               br(),
               # R23.5: was its own "Posterior Check" tab.

@@ -7051,3 +7051,33 @@ The header test fails on 0.49.0.
 - Toxicity's default covariates, note and estimation;
 - interval labels with and without row names, at another level, and with explicit `colnames`;
 - that every table goes through `dt_table()`.
+
+## R23-C Implementation log — v0.51.0: explanations (R23.6, R23.21, 2026-10-29)
+
+**R23.6, the Bayesian diagnostics.**
+- **`bayes_diagnostics_help()`** (`helpers_bayes.R`) is a collapsible "What these diagnostics mean" block under the diagnostics panel, in Tumor Growth and Survival. For each term it says what it measures, its threshold, and what to do:
+  - divergent transitions;
+  - max-treedepth hits, an efficiency warning, not a validity one;
+  - E-BFMI;
+  - Bayes R², which counts the random effects as explained variation and is not a test;
+  - PPC coverage;
+  - PSIS-LOO, whose elpd_loo is meaningful only in comparison;
+  - Pareto-k.
+- **R-hat and ESS** were already explained above the MCMC table, and the posterior summary's columns in R23-B.
+
+**R23.6, the influential observations.** The table told users to "investigate these mice individually" but listed only `Obs_Index`, a row number in the model's data.
+- **`bayes_loo()`** takes `observations` and keeps them as a list-column, when their rows match the Pareto-k vector.
+- **`bayesian_tumor_growth()`** builds them from the fitted model's data: the animal key split into Treatment, ID and Cage (Cage is left out without a cage column), the day, and the volume back-transformed.
+- **`bayesian_survival()`** uses the complete rows of its analysis data (one per animal): Treatment, ID, Cage, Time and Event.
+- **`bayes_influential_obs()`** puts these columns before `Obs_Index` and `Pareto_k`. A result from before 0.51.0, or one whose rows do not match, gives the index only, as before.
+- **The caption** now says what the rows are and points to the explanation.
+
+**R23.21, fixed and random effects.** `effects_help()` (`ui_modules.R`) is in the Info tabs of Tumor Growth (per animal) and Toxicity (per mouse). It covers fixed effects as the reported results, and random effects as each animal's (or cage's) departure from its arm, estimated as an SD. It also says why repeated measurements need random effects: without them p-values are too small, and without slopes, differences appear that are not there (R20.5).
+
+**Also:** the Info tab showed both the LME4 and the Bayesian model as `... + (1 | ID)`. The default is random slopes per animal, `(Day | Animal)`.
+
+**Tests** (`test-r23-explain.R`, 5 tests, 29 expectations):
+- the help terms, and their place in both Diagnostics tabs;
+- the influential table with observations, without them, and with mismatched rows;
+- **a real Bayesian fit** (2 chains): `observations` has one row per Pareto-k, and every row's volume equals the data's at that animal and day;
+- the Info tabs' effects help and formulas.

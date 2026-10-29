@@ -419,7 +419,20 @@ bayesian_survival <- function(
   mcmc_diagnostics <- make_mcmc_diagnostics(posterior_summary,
                                             total_draws = n_chains * n_iter)
   nuts_diagnostics <- make_nuts_diagnostics(model)
-  loo_diagnostics  <- bayes_loo(model)
+  # R23.6: each observation (one per animal) named, for the influential-
+  # observation table; brms fits the complete rows, in order.
+  loo_obs <- tryCatch({
+    used <- stats::complete.cases(analysis_df[, intersect(c(time_column, ".brms_cens",
+                                                           treatment_column, cage_column),
+                                                         names(analysis_df)), drop = FALSE])
+    obs <- data.frame(Treatment = as.character(analysis_df[[treatment_column]][used]),
+                      ID = analysis_df[[id_column]][used],
+                      Cage = if (!no_cage_mode) analysis_df[[cage_column]][used],
+                      Time = analysis_df[[time_column]][used],
+                      Event = analysis_df[[event_column]][used], stringsAsFactors = FALSE)
+    if (nrow(obs) == nrow(model$data)) obs
+  }, error = function(e) NULL)
+  loo_diagnostics  <- bayes_loo(model, observations = loo_obs)
   bayes_r2         <- bayes_r2_summary(model)
   # R20.74: a censored time is a lower bound, not an observation to cover.
   # model$data holds the rows brms used, in its order.

@@ -477,7 +477,20 @@ bayesian_tumor_growth <- function(
   mcmc_diagnostics <- make_mcmc_diagnostics(posterior_summary,
                                             total_draws = n_chains * n_iter)
   nuts_diagnostics <- make_nuts_diagnostics(model)
-  loo_diagnostics  <- bayes_loo(model)
+  # R23.6: each observation's animal, day and volume, for the influential-
+  # observation table. The model's data holds the rows it fitted, in order.
+  loo_obs <- tryCatch({
+    md  <- model$data
+    key <- strsplit(as.character(md$Animal), "|||", fixed = TRUE)
+    y   <- md[[volume_column]]
+    obs <- data.frame(Treatment = vapply(key, `[`, "", 1L), ID = vapply(key, `[`, "", 2L),
+                      Cage = vapply(key, `[`, "", 3L), Day = md[[time_column]],
+                      Volume = switch(transform, log = exp(y), sqrt = y^2, y),
+                      stringsAsFactors = FALSE)
+    if (isTRUE(no_cage_mode)) obs$Cage <- NULL
+    obs
+  }, error = function(e) NULL)
+  loo_diagnostics  <- bayes_loo(model, observations = loo_obs)
   bayes_r2         <- bayes_r2_summary(model)
   ppc_coverage     <- bayes_ppc_coverage(model, seed = seed)
 

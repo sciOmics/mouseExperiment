@@ -354,10 +354,15 @@ bayes_r2_summary <- function(model) {
 #'   \item \code{pareto_k} — list-column with the full per-observation
 #'         Pareto-k vector.
 #'   \item \code{warnings} — the warnings raised, or "".
+#'   \item \code{observations} — when given, a list-column with one row per
+#'         observation, in the order of \code{pareto_k}, naming the animal and
+#'         the measurement (R23.6).
 #' }
 #'
+#' @param observations Optional data frame, one row per observation in the
+#'   model's data, e.g. Treatment, ID, Cage, Day and Volume.
 #' @noRd
-bayes_loo <- function(model) {
+bayes_loo <- function(model, observations = NULL) {
   if (is.null(model)) return(NULL)
   res     <- me_keep_warnings(brms::loo(model, save_psis = TRUE))
   loo_obj <- res$value
@@ -378,6 +383,10 @@ bayes_loo <- function(model) {
     n_high_k    = as.integer(sum(pk > k_thr, na.rm = TRUE)),
     pareto_k    = I(list(pk)),
     warnings    = paste(res$warnings, collapse = " | "),
+    # R23.6: which animal and measurement each Pareto-k belongs to, so a
+    # flagged observation can be found in the data (it was an index only).
+    observations = I(list(if (is.data.frame(observations) && nrow(observations) == length(pk))
+                            observations)),
     stringsAsFactors = FALSE
   )
 }

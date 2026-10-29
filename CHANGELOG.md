@@ -5,6 +5,28 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.51.0] - 2026-10-29
+
+Explanations (`CODE_REVIEW.md` Round 23, R23-C).
+
+### Added
+- **The Bayesian diagnostics say what they mean.** Under the diagnostics panel in Tumor Growth and
+  Survival, "What these diagnostics mean" explains divergent transitions, max-treedepth hits
+  (efficiency, not validity), E-BFMI, Bayes R², PPC coverage, PSIS-LOO and Pareto-k, and what to do
+  when each is off.
+- **Fixed and random effects are explained** in the Info tabs of Tumor Growth and Toxicity: what
+  each is, and why repeated measurements need both.
+
+### Changed
+- **The influential-observations table names each observation's animal and measurement**
+  (treatment, ID, cage, and day and volume, or time and event), instead of a row index of the
+  model's data. `bayesian_tumor_growth()` and `bayesian_survival()` record them in
+  `loo_diagnostics$observations`.
+
+### Fixed
+- **Tumor Growth's Info tab** showed the models as `log(Volume) ~ Treatment × Day + (1 | ID)`; the
+  default has random slopes for each animal, `(Day | Animal)`.
+
 ## [0.50.0] - 2026-10-29
 
 The maintainer's manual review of the dashboard, the smaller items (`CODE_REVIEW.md` Round 23,

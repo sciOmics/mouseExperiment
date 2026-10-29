@@ -15,7 +15,9 @@ bayes_influential_obs(result, threshold = pareto_k_threshold(result))
 }
 \value{
 A data frame with columns \code{Obs_Index} and \code{Pareto_k},
-sorted descending. Returns an empty data frame when no influential
+sorted descending, preceded by the observation's animal and measurement
+(Treatment, ID, Cage, and Day and Volume or Time and Event) when the fit
+recorded them (R23.6). Returns an empty data frame when no influential
 observations exist or the LOO field is missing.
 }
 \description{
