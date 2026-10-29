@@ -5,6 +5,26 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.55.0] - 2026-10-29
+
+Posterior distributions with a highest-density interval (`CODE_REVIEW.md` Round 23, R23-G).
+
+### Added
+- **`plot_posterior()`** draws each treatment coefficient's posterior, shading its
+  highest-density interval (HDI) at the level you choose, with the limits in each panel's title,
+  and overlays the prior on request (over the posterior's range, so a weak prior does not flatten
+  the posterior). **`posterior_hdi()`** gives the limits as a table.
+- **`bayesian_tumor_growth()` and `bayesian_survival()` keep the coefficients' prior and posterior
+  draws** in `prior_posterior_data`, also with `plots = FALSE`; the coefficients are named by arm
+  ("Drug_A Mid + Drug_B × Day"), not by brms's names.
+- **The Plots tab offers "Posterior Distributions (Bayesian)"** in Tumor Growth and Survival, with
+  "Show the prior" and the HDI's width. It is in the plot download, Download Results and Tumor
+  Growth's R script.
+
+### Changed
+- **Survival's "Prior vs Posterior" tab is gone:** the same plot, with the HDI, is a plot type in
+  Plots, as in Tumor Growth.
+
 ## [0.54.0] - 2026-10-29
 
 Accelerated failure time models (`CODE_REVIEW.md` Round 23, R23-F).

@@ -13,8 +13,10 @@ dl_drawn <- function(f) function() tryCatch(f(), error = function(e) NULL)
 #' @param res `rv$surv_results`.
 #' @param km_plot,forest_plot Functions returning the Kaplan-Meier and forest
 #'   plots as displayed.
+#' @param posterior_plot A function returning the posterior distributions as
+#'   displayed (R23.12), or NULL.
 #' @keywords internal
-surv_dl_items <- function(res, km_plot, forest_plot) {
+surv_dl_items <- function(res, km_plot, forest_plot, posterior_plot = NULL) {
   if (is.null(res) || isTRUE(res$error)) return(NULL)
   bayes <- identical(res$model_type_used, "bayes")
   aft   <- identical(res$model_type_used, "aft")
@@ -71,9 +73,10 @@ surv_dl_items <- function(res, km_plot, forest_plot) {
     if (dl_has(res$pp_check_plot))
       dl_item("diag_pp_check", "diagnostics", "Posterior predictive check", "pp_check",
               "plot", dl_get(res$pp_check_plot), "Observed data against posterior predictions"),
-    if (dl_has(res$prior_posterior_plot))
-      dl_item("diag_prior_post", "diagnostics", "Prior vs posterior", "prior_posterior",
-              "plot", dl_get(res$prior_posterior_plot), "Each prior against its posterior"),
+    if (bayes && dl_has(res$prior_posterior_data) && is.function(posterior_plot))
+      dl_item("plot_posterior", "plots", "Posterior distributions", "posterior_distributions",
+              "plot", dl_drawn(posterior_plot),
+              "Each treatment effect's posterior, with its highest-density interval, as displayed"),
     if (dl_has(res$survival_data))
       dl_item("data", "data", "Survival data", "survival_data", "table",
               dl_get(res$survival_data), "The data as analysed: one row per animal")

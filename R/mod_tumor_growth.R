@@ -1109,6 +1109,7 @@ tumor_growth_server <- function(id, rv) {
       auc            = "download_tg_plot_auc",
       waterfall      = "download_tg_plot_waterfall",
       effect_forest  = "download_tg_plot_effect_forest",
+      posterior      = "download_tg_plot_posterior",
       "download_tg_plot_growth"
     )
     downloadButton(session$ns(btn_id), "Download")
@@ -1734,7 +1735,8 @@ tumor_growth_server <- function(id, rv) {
     input, output, session, rv,
     tg_growth_plot, tg_rates_plot,
     tg_auc_plot, tg_forest_plot, tg_wf_plot,
-    endpoints = tg_endpoints, growth_record = tg_plots$growth_record
+    endpoints = tg_endpoints, growth_record = tg_plots$growth_record,
+    tg_post_plot = tg_plots$posterior, post_record = tg_plots$posterior_record
   )
 
   # F.7 — register the resume handler. The banner module dispatches to

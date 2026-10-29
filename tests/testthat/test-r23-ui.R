@@ -37,11 +37,12 @@ test_that("R23.13: every analysis tab runs Info, Summary, results, Plots, Diagno
     expect_identical(tabs[1:2], c("Info", "Summary"), info = f)
     expect_identical(utils::tail(tabs, 1), "__download_results__", info = f)
     expect_identical(utils::tail(tabs, 2)[1], "Diagnostics", info = f)
-    # Plots comes after every results tab: Diagnostics, and Survival's
-    # Prior vs Posterior (a plot shown for the Bayesian model), may follow.
+    # Plots comes after every results tab, and only Diagnostics and
+    # Download Results after it (R23.12 moved Survival's Prior vs Posterior
+    # into Plots).
     after <- tabs[seq(match("Plots", tabs) + 1L, length(tabs))]
-    expect_true(all(after %in% c("Prior vs Posterior", "Diagnostics", "__download_results__")),
-                info = paste(f, paste(tabs, collapse = ", ")))
+    expect_identical(after, c("Diagnostics", "__download_results__"),
+                     info = paste(f, paste(tabs, collapse = ", ")))
   }
   pw <- tab_values(ui_html("powerAnalysisUI"))
   expect_identical(pw[1], "Info")
