@@ -97,8 +97,8 @@ Rendered:
 
 | Field | What it shows | Where rendered |
 |---|---|---|
-| `pp_check_plot` | `brms::pp_check(type = "dens_overlay")` — posterior predictive density vs observed | "Posterior Check" tab per Bayesian module |
-| `prior_posterior_plot` | Prior (grey) vs posterior (blue) density for each treatment-effect coefficient | "Prior vs Posterior" tab |
+| `pp_check_plot` | `brms::pp_check(type = "dens_overlay")` — posterior predictive density vs observed | Diagnostics tab (Bayesian view), since v0.50.0 |
+| `prior_posterior_plot` | Prior (grey) vs posterior (blue) density for each treatment-effect coefficient | Not shown since v0.55.0: the Plots tab draws `plot_posterior()` from `prior_posterior_data`, with an HDI |
 | `mcmc_trace_plot` | `bayesplot::mcmc_trace()` for fixed-effect coefficients | "MCMC Diagnostics" tab |
 
 **Assessment:** the three most-useful plots are present. Implementation is straight `bayesplot` / `brms` calls, which is the correct approach.
@@ -455,7 +455,7 @@ After fixing (1)-(8), the diagnostic surface across modules should look like thi
 - Random-effects Q-Q (when `random_effects_specification` is non-trivial)
 - For GAM: k.check table + concurvity table
 
-### Tumor Growth — Posterior Check tab (Bayesian)
+### Tumor Growth — posterior predictive check (Bayesian; in Diagnostics since v0.50.0)
 - PPC density overlay (`pp_check_plot`)
 - PPC coverage bar chart (new)
 
@@ -469,7 +469,8 @@ After fixing (1)-(8), the diagnostic surface across modules should look like thi
 - Posterior density areas (new — render `posterior_dist_plot`)
 - Bayesian residuals vs day (new — render `residuals_plot`)
 
-### Tumor Growth — Prior vs Posterior tab (Bayesian) — unchanged
+### Tumor Growth and Survival — posterior distributions (Bayesian; the Plots tab since v0.55.0)
+- `plot_posterior()`: each treatment coefficient's posterior with its HDI, and the prior on request
 
 ### Survival — PH Assumption tab
 - cox.zph table (existing)

@@ -96,32 +96,32 @@ Since v0.26.0 (`CODE_REVIEW.md` R20.4) the AUC is **model-based**. It is the are
 
 ---
 
-### Per-animal response and growth delay (v0.43.0)
+### Growth delay (v0.43.0; statistics in v0.52.0)
 
-Two model-free endpoints, from the measured volumes. The dashboard shows both on Tumor Growth's "Response & Delay" tab, from the data the run analysed.
-
-**`response_categories()`: mRECIST** (Gao et al. 2015, *Nature Medicine* 21:1318), the standard per-animal summary in PDX studies.
-- **The measures.** From each animal's % change in volume from its first measurement, the *best response* is the smallest change, and the *best average response* the smallest running mean of the changes, both over days at least `min_day` (default 10) after baseline.
-- **The categories:**
-  - **mCR:** best < −95 % and average < −40 %;
-  - **mPR:** best < −50 % and average < −20 %;
-  - **mSD:** best < 35 % and average < 30 %;
-  - **mPD:** otherwise.
-- **Not evaluable:** an animal never measured `min_day` after baseline, or with no positive baseline.
-- **The response rate** is mCR + mPR among evaluable animals.
-- **The waterfall.** `plot_response_waterfall()` draws each animal's best response, sorted, with the thresholds.
+A model-free endpoint, from the measured volumes. The dashboard shows it on Tumor Growth's "Growth Delay" tab, from the data the run analysed. The mRECIST response categories (`response_categories()`, `plot_response_waterfall()`) were removed in v0.52.0 (CODE_REVIEW.md R23.1).
 
 **`growth_delay()`: T − C.** The median time for an arm's tumours to reach a volume, minus the reference arm's, in days, and as a percentage of the reference's median.
 - **Each animal's time** is interpolated on the log scale between the last measurement below the volume and the first at or above it.
 - **An animal that never reached the volume** is censored at its last measurement.
 - **The medians** are Kaplan-Meier medians, so censored animals count. An arm in which fewer than half reached the volume is "not reached" (`Inf`).
 - **The interval** is a percentile bootstrap over animals within each arm.
+- **The test** is a log-rank test of each arm's times against the reference arm's, corrected over the arms (Holm by default). It treats animals as independent, so it overstates the evidence when whole cages were randomised.
+- **The specific growth delay** (SGD) is T − C divided by the reference arm's volume doubling time (the median of its animals' doubling times from `tumor_doubling_time()`): the delay in doublings, comparable across models that grow at different rates. Its interval is the delay's, divided by the same doubling time.
 
-Neither endpoint borrows strength across arms the way the endpoint model does, and neither corrects for animals removed early for reasons unrelated to growth. Read them as descriptions beside the model-based comparisons, not instead of them.
+It does not borrow strength across arms the way the endpoint model does, and does not correct for animals removed early for reasons unrelated to growth. Read it as a description beside the model-based comparisons, not instead of them.
 
 ## Survival
 
-Function family: `survival_statistics()`, `bayesian_survival()`.
+Function family: `survival_statistics()`, `aft_survival()`, `bayesian_survival()`.
+
+### `aft_survival()` — accelerated failure time (v0.54.0)
+
+A parametric model of the time to the endpoint, `survival::survreg()`, reported as **time ratios**: an arm's time to the endpoint relative to the reference's (1.8 = 80 % longer). It does not assume proportional hazards, so it is the alternative when `cox.zph()` rejects them; it assumes a distribution of times instead.
+- **The distribution:** Weibull, log-normal or log-logistic. `distribution = "auto"` fits all three and uses the lowest AIC; `distribution_comparison` reports each.
+- **The time ratio** is `exp(coefficient)`, with a Wald interval and p-value on the log scale, corrected over the arms (`p_adjust_method`, Holm by default).
+- **An arm with no events** has no finite time ratio and is reported with a note; it is left out of the fit.
+- **The fit** can be checked against Kaplan-Meier: `fitted_curves` holds each arm's model curve (the dashboard draws both).
+- **Animals are treated as independent;** with whole cages randomised the function warns that its p-values overstate the evidence.
 
 ### `survival_statistics()` — frequentist
 
@@ -313,6 +313,8 @@ The analysis uses one day: by default the last day on which every dose group is 
 
 **The EC50** (v0.27.0) is `ED(model, 50)`, the dose giving half the fitted response range. Its 95 % interval is computed on log dose, so it stays positive. The lower asymptote is constrained to be at least 0. The 5-parameter (asymmetric) curve is considered only with at least 6 dose levels, and only if its lower asymptote is not negative. `ec50_in_range` is FALSE when the EC50 lies outside the tested doses, and `ec50_note` also flags a curve with as many parameters as dose levels, which nothing checks. The EC50 used to be the curve's `e` parameter, which is not the ED50 under the 5-parameter curve, and its interval was symmetric on the dose scale: [−394.7, 592.5] on the dashboard demo (`CODE_REVIEW.md` R20.18).
 
+**Which curve** (v0.58.0, `CODE_REVIEW.md` R23.26). `statistics$model_selection` compares a fixed set of curves, all fitted to the same data: linear in dose; Emax (the hyperbolic curve, a log-logistic with slope 1: baseline, maximum effect, ED50); 3PL (a log-logistic falling to 0); 4PL (with its own lower limit ≥ 0), only with at least 5 dose levels, since with fewer it has nearly as many parameters as doses; and the 5PL when it was fitted. AIC is comparable across them, because each `logLik()` is the full Gaussian log-likelihood of the same observations and each counts the residual variance as a parameter (checked numerically; an earlier note that `lm` and `drc` AICs were on different scales was wrong). `selected_model` is the simplest curve within 2 AIC of the lowest, and `selected_curve` its fitted values over the dose range; the dashboard draws it as the default trend line. The EC50 and Hill slope above remain the 4PL's (or 5PL's).
+
 **Trend test.** The Jonckheere–Terpstra test is two-sided, and `direction` reports whether the dose-group means rise or fall. Choosing the one-sided alternative from the data had doubled its false-positive rate, to 0.096 (`CODE_REVIEW.md` R20.20).
 
 **Growth rates.** Each animal's growth rate is the slope of log volume on day, from days with a positive measured volume; an animal needs three such days. Missing and zero volumes used to be set to half the animal's smallest volume, which turned the missing rows after a death into apparent shrinkage, and an animal with no positive volume stopped the whole analysis (`CODE_REVIEW.md` R20.14). `growth_rate_animals_left_out` counts the animals without enough days.
@@ -321,7 +323,7 @@ The analysis uses one day: by default the last day on which every dose group is 
 
 - Smooth, monotonic dose-response (no biphasic / hormetic effects)
 - Independence of measurements across animals
-- The Hill equation is the right functional form (it usually is for cytotoxic response; check the diagnostic fit plot)
+- The Hill equation is the right functional form (it usually is for cytotoxic response; check the diagnostic fit plot, and the model selection, which also tries a linear and an Emax curve)
 
 ---
 

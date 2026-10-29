@@ -188,12 +188,12 @@ test_that("R20.D57: the growth-rate 'geometric mean' bar is the mean of the slop
   expect_match(p, "geometric_mean = mean(x), mean(x))", fixed = TRUE)
 })
 
-test_that("R20.D58: the dropped Tumor Volume covariate is explained", {
+test_that("R20.D58/R23.18: why Tumor Volume is not offered is explained", {
   rv <- all_features_rv()
   shiny::isolate(g("ensure_preprocessed")(rv))
   shiny::testServer(g("toxicity_server"), args = list(rv = rv), {
-    session$setInputs(tox_model_type = "bw", tox_adjust_tumor = TRUE, tox_covariates = "volume")
-    expect_match(html_of(output$tox_covariate_note), "Tumor Volume covariate is not used")
+    session$setInputs(tox_model_type = "bw", tox_adjust_tumor = TRUE)
+    expect_match(html_of(output$tox_covariate_note), "Tumor Volume is not offered as a covariate")
     session$setInputs(tox_adjust_tumor = FALSE)
     expect_identical(html_of(output$tox_covariate_note), "")
   })

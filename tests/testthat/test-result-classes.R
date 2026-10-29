@@ -25,7 +25,6 @@ results <- function() {
     me_power = apriori_power_analysis(effect_size = 1),
     me_survival_power = apriori_survival_power(0.5, 0.9),
     me_permutation = q(trajectory_permutation_test(m, spec = perm_spec(unit = "mouse", n_perm = 19, seed = 1))),
-    me_responses = response_categories(m),
     me_growth_delay = growth_delay(m, volume = 1000, reference_group = "Vehicle", n_boot = 20, seed = 1),
     me_data_check = check_study_data(m))
 }

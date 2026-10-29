@@ -12,7 +12,7 @@ tg_script_bundle(res, include_upload = FALSE, extra = list())
 
 \item{include_upload}{Start from the uploaded file (see \code{\link[=script_prep]{script_prep()}}).}
 
-\item{extra}{More steps on the same data: the Response & Delay tab's
+\item{extra}{More steps on the same data: the Growth Delay tab's
 (\code{\link[=tg_endpoint_steps]{tg_endpoint_steps()}}).}
 }
 \value{

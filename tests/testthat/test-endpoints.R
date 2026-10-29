@@ -1,5 +1,7 @@
-# Round 22 proposals F1-F3 (CODE_REVIEW.md R22-E, 0.43.0): %T/C beside TGI,
-# mRECIST response categories with a waterfall, and tumour growth delay.
+# Round 22 proposals F2-F3 (CODE_REVIEW.md R22-E, 0.43.0): %T/C beside TGI and
+# tumour growth delay, with its test and specific growth delay (R23.2,
+# 0.52.0). The mRECIST response categories (F1) were removed in 0.52.0
+# (R23.1).
 
 skip_if_not_installed("shiny", minimum_version = "1.5.0")
 
@@ -40,42 +42,15 @@ resp_data <- function(paths) {
                Volume = paths[[i]])))
 }
 
-test_that("F1: the mRECIST categories follow Gao et al.'s thresholds", {
-  d <- resp_data(list(
-    CR = c(100, 60, 20, 4, 2, 1, 1),            # best -99 %, average below -40 %
-    PR = c(100, 80, 60, 45, 40, 40, 40),        # best -60 %
-    SD = c(100, 110, 120, 125, 120, 115, 110),  # best +10 %
-    PD = c(100, 150, 200, 300, 400, 500, 600),
-    late_drop = c(100, 400, 600, 800, 40, 30, 20),  # best -80 %, but average stays high
-    short = c(100, 120)))                      # not measured 10 days after baseline
-  rc <- response_categories(d)
-  cat <- stats::setNames(rc$per_animal$Category, rc$per_animal$Treatment)
-  expect_identical(unname(cat[c("CR", "PR", "SD", "PD", "late_drop", "short")]),
-                   c("mCR", "mPR", "mSD", "mPD", "mPD", "Not evaluable"))
-  pr <- rc$per_animal[rc$per_animal$Treatment == "PR", ]
-  expect_equal(pr$Best_Response, -60)
-  expect_identical(pr$Best_Response_Day, 16)
-  # Running mean from baseline over days 0..t, its minimum over t >= 10.
-  dv <- 100 * (c(100, 80, 60, 45, 40, 40, 40) - 100) / 100
-  expect_equal(pr$Best_Avg_Response, min((cumsum(dv) / seq_along(dv))[-(1:3)]))
-  s <- rc$summary
-  expect_identical(s$Response_Rate[s$Treatment == "CR"], 100)
-  expect_true(is.na(s$Response_Rate[s$Treatment == "short"]))
+test_that("R23.1: the mRECIST response categories and their waterfall are gone", {
+  ns <- getNamespaceExports("mouseExperiment")
+  expect_false(any(c("response_categories", "plot_response_waterfall") %in% ns))
+  expect_false(exists("response_categories", envir = .pkg, inherits = FALSE))
+  ui <- paste(as.character(g("tumorGrowthUI")("tg")), collapse = "")
+  expect_false(grepl("mRECIST", ui, fixed = TRUE))
+  expect_false(grepl("tg_resp_min_day", ui, fixed = TRUE))
+  expect_match(ui, 'data-value="Growth Delay"', fixed = TRUE)
 })
-
-test_that("F1: animals with reused ear tags stay apart, and the waterfall draws", {
-  d <- rbind(resp_data(list(A = c(100, 80, 60, 45, 40, 40, 40))),
-             resp_data(list(B = c(100, 150, 200, 300, 400, 500, 600))))
-  d$ID <- 1   # the same tag in both arms
-  rc <- response_categories(d)
-  expect_identical(nrow(rc$per_animal), 2L)
-  p <- plot_response_waterfall(rc, cap = 150)
-  expect_s3_class(p, "ggplot")
-  expect_match(p$labels$caption, "1 animal above 150% drawn at 150% (largest 200%)", fixed = TRUE)
-  expect_s3_class(plot_response_waterfall(rc, fill = "category"), "ggplot")
-})
-
-# ---- F2: growth delay ------------------------------------------------------------
 
 test_that("F2: growth delay is T - C of Kaplan-Meier medians, times interpolated on the log scale", {
   days <- seq(0, 40, 5)
@@ -101,6 +76,37 @@ test_that("F2: growth delay is T - C of Kaplan-Meier medians, times interpolated
                                 seed = 1)$delay_table, t)
 })
 
+test_that("R23.2: the log-rank test against the reference, and the specific growth delay", {
+  days <- seq(0, 40, 5)
+  mk <- function(arm, rates) do.call(rbind, lapply(seq_along(rates), function(i)
+    data.frame(ID = i, Treatment = arm, Day = days, Volume = 100 * exp(rates[i] * days))))
+  ctl <- c(0.13, 0.14, 0.15, 0.16)
+  d <- rbind(mk("Vehicle", ctl), mk("Slow", c(0.065, 0.07, 0.075, 0.08)),
+             mk("Same", c(0.125, 0.135, 0.155, 0.165)))
+  gd <- growth_delay(d, volume = 1000, reference_group = "Vehicle", n_boot = 100, seed = 1)
+  t <- gd$delay_table
+  expect_identical(t$Treatment, c("Vehicle", "Same", "Slow"))
+  pa <- gd$per_animal
+  lr <- function(arm) {
+    s <- pa[pa$Treatment %in% c("Vehicle", arm), ]
+    stats::pchisq(survival::survdiff(survival::Surv(Time, Reached) ~ Treatment, data = s)$chisq,
+                  1, lower.tail = FALSE)
+  }
+  expect_true(is.na(t$P_Value[1]))
+  expect_equal(t$P_Value[2:3], c(lr("Same"), lr("Slow")))
+  expect_equal(t$P_Adjusted[2:3], stats::p.adjust(t$P_Value[2:3], "holm"))
+  expect_lt(t$P_Value[3], 0.05)
+  expect_gt(t$P_Value[2], 0.05)
+  expect_equal(growth_delay(d, volume = 1000, reference_group = "Vehicle", n_boot = 0,
+                            p_adjust_method = "none")$delay_table$P_Adjusted[2:3], t$P_Value[2:3])
+  # The reference's doubling time: the median of its animals', log(2) / rate.
+  expect_equal(gd$doubling_time_reference, stats::median(log(2) / ctl))
+  expect_equal(t$SGD, t$Delay_Days / gd$doubling_time_reference)
+  expect_equal(t$SGD_Lower[3], t$Delay_Lower[3] / gd$doubling_time_reference)
+  expect_identical(gd$p_adjust_method, "holm")
+  expect_error(growth_delay(d, volume = 1000, p_adjust_method = "dunnett"), "should be one of")
+})
+
 test_that("F2: an arm that never reaches the volume has a median of Inf (not reached)", {
   d <- data.frame(ID = rep(1:6, each = 4), Treatment = rep(c("Vehicle", "Cured"), each = 12),
                   Day = rep(c(0, 7, 14, 21), 6),
@@ -115,7 +121,7 @@ test_that("F2: an arm that never reaches the volume has a median of Inf (not rea
 
 # ---- the dashboard ------------------------------------------------------------------
 
-test_that("F1/F2: Tumor Growth's Response & Delay tab downloads both, and its R script reproduces them", {
+test_that("F2/R23.2: the Growth Delay tab shows and downloads both tables; its R script reproduces them", {
   rv <- shiny::reactiveValues(
     uploaded_data = master_synthetic_data, data_valid = TRUE, session_id = NULL,
     settings = list(col_id = "ID", col_day = "Day", time_method = "day", col_volume = "Volume",
@@ -125,35 +131,39 @@ test_that("F1/F2: Tumor Growth's Response & Delay tab downloads both, and its R 
   suppressWarnings(shiny::testServer(g("tumor_growth_server"), args = list(rv = rv), {
     session$setInputs(tg_model_type = "lme4", tg_transform = "log", tg_random_effects = "slope",
                       tg_cage_effect = "auto", tg_comparison_type = "reference", tg_p_adjust = "holm",
-                      tg_resp_min_day = 10, tg_delay_volume = 1000, tg_delay_n_boot = 100,
-                      tg_waterfall_fill = "treatment", tg_waterfall_cap = 200)
+                      tg_delay_volume = 1000, tg_delay_n_boot = 100, tg_delay_p_adjust = "bonferroni")
     session$setInputs(run_tg_analysis = 1)
     expect_false(isTRUE(rv$tg_results$error))
-    expect_false(is.null(output$tg_response_summary))
-    expect_false(is.null(output$tg_delay_table))
+    head <- paste(as.character(output$tg_delay_table), collapse = "")
+    expect_match(head, "p (log-rank)", fixed = TRUE)
+    expect_match(head, "Specific growth delay", fixed = TRUE)
+    expect_match(paste(as.character(output$tg_delay_animals), collapse = ""), "Outcome", fixed = TRUE)
     groups <- c("tables", "plots", "diagnostics", "data", "report")
     ins <- stats::setNames(rep(list(character(0)), length(groups)), paste0("tg_dl_group_", groups))
-    ins$tg_dl_group_tables <- c("responses", "responses_animals", "growth_delay")
-    ins$tg_dl_group_plots <- "plot_response_waterfall"
+    ins$tg_dl_group_tables <- c("growth_delay", "growth_delay_animals")
     ins$tg_dl_group_code <- "script"
     do.call(session$setInputs, ins)
     dir <- tempfile("endpoints_")
     utils::unzip(output$tg_dl_zip, exdir = dir)
     files <- list.files(dir, recursive = TRUE)
-    expect_true(all(c("tables/response_summary.csv", "tables/response_by_animal.csv",
-                      "tables/growth_delay.csv", "plots/response_waterfall.png", "analysis.R") %in% files))
+    expect_true(all(c("tables/growth_delay.csv", "tables/growth_delay_by_animal.csv",
+                      "analysis.R") %in% files))
+    expect_false(any(grepl("response", files)))
     script <- readLines(file.path(dir, "analysis.R"))
-    expect_true(any(grepl("responses <- response_categories(", script, fixed = TRUE)))
+    expect_false(any(grepl("response_categories", script, fixed = TRUE)))
     expect_true(any(grepl("volume = 1000", script, fixed = TRUE)))
+    expect_true(any(grepl('p_adjust_method = "bonferroni"', script, fixed = TRUE)))
     env <- new.env(parent = globalenv())
     old <- setwd(dir); on.exit(setwd(old))
     suppressMessages(suppressWarnings(utils::capture.output(
       sys.source("analysis.R", envir = env, keep.source = FALSE))))
-    shown <- utils::read.csv(file.path(dir, "tables", "response_summary.csv"), check.names = FALSE)
-    expect_equal(env$responses$summary, shown, ignore_attr = TRUE)
     delay <- utils::read.csv(file.path(dir, "tables", "growth_delay.csv"))
     expect_equal(env$delay$delay_table$Delay_Lower, delay$Delay_Lower)
     expect_equal(env$delay$delay_table$Median_Days, delay$Median_Days)
+    expect_equal(env$delay$delay_table$P_Adjusted, delay$P_Adjusted)
+    expect_equal(env$delay$delay_table$SGD, delay$SGD)
+    animals <- utils::read.csv(file.path(dir, "tables", "growth_delay_by_animal.csv"))
+    expect_equal(env$delay$per_animal$Time, animals$Time)
   }))
 })
 
@@ -165,5 +175,16 @@ test_that("F2: the delay table says 'not reached', and gives no interval when ne
   d <- g("delay_display_table")(t, "Vehicle")
   expect_identical(d$`Median days`, c("11.7", "not reached", "24.6"))
   expect_identical(d[["Delay 95% interval"]], c("\u2014", "\u2014", "[10.5, not reached]"))
-  expect_identical(d[["Delay T \u2212 C (days)"]][1], "reference")
+  expect_identical(d[["Delay T \u2212 C (days)"]][1], "reference")  # R23.2: the test and the specific growth delay, when the result has them.
+  t$SGD <- c(0, Inf, 4.12); t$SGD_Lower <- c(NA, Inf, 3.36); t$SGD_Upper <- c(NA, Inf, Inf)
+  t$P_Value <- c(NA, 1e-5, 0.0004); t$P_Adjusted <- c(NA, 2e-5, 0.0004)
+  d <- g("delay_display_table")(t, "Vehicle")
+  expect_identical(d[["Specific growth delay"]], c("\u2014", "not reached", "4.12"))
+  expect_identical(d[["SGD 95% interval"]], c("\u2014", "\u2014", "[3.36, not reached]"))
+  expect_identical(d[["p (log-rank)"]][1], "\u2014")
+  expect_identical(d[["p (adjusted)"]][3], g("format_pval")(0.0004))
+  a <- g("delay_animal_table")(data.frame(Treatment = c("B", "A"), ID = c("1", "2"), Time = c(20.04, 9.96),
+                                          Reached = c(0L, 1L)))
+  expect_identical(a$Outcome, c("reached", "censored (never reached)"))
+  expect_identical(a[["Day (reached or last measured)"]], c(10, 20))
 })

@@ -21,9 +21,10 @@ test_that("the Survival model menu says Cox Proportional Hazards", {
   expect_false(grepl("Frequentist (Cox PH)", ui, fixed = TRUE))
 })
 
-test_that("Toxicity's estimation method explains REML and ML", {
+test_that("Toxicity says it fits by REML; it offers no ML (R23.19)", {
   ui <- html(g("toxicityUI")("tox"))
-  expect_match(ui, "Estimation method[^<]*<span class=\"help-tip[^>]*title=\"REML \\(restricted")
+  expect_false(grepl("Estimation method", ui, fixed = TRUE))
+  expect_match(ui, "fitted by restricted maximum likelihood (REML)", fixed = TRUE)
 })
 
 test_that("each group's colour and shape fit the sidebar: two lines, a symbol menu", {
@@ -74,8 +75,9 @@ test_that("Power Analysis comes after Drug Synergy in the navbar", {
   nav <- regmatches(h, regexpr('<ul class="nav navbar-nav[^"]*"[^>]*>[\\s\\S]*?</ul>', h, perl = TRUE))
   tabs <- gsub('^data-value="|"$', "", regmatches(nav, gregexpr('data-value="[^"]+"', nav))[[1]])
   # 26.10.006 put Power Analysis second, between Data and Tumor Growth.
+  # R23.15: Results, every run of the session, after the analyses.
   expect_identical(tabs, c("Data", "Tumor Growth", "Survival", "Toxicity", "Dose Response",
-                           "Drug Synergy", "Power Analysis", "Help", "About"))
+                           "Drug Synergy", "Power Analysis", "Results", "Help", "About"))
 })
 
 test_that("26.10.009: the Help tab matches the app", {

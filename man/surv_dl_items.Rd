@@ -4,13 +4,16 @@
 \alias{surv_dl_items}
 \title{Survival}
 \usage{
-surv_dl_items(res, km_plot, forest_plot)
+surv_dl_items(res, km_plot, forest_plot, posterior_plot = NULL)
 }
 \arguments{
 \item{res}{\code{rv$surv_results}.}
 
 \item{km_plot, forest_plot}{Functions returning the Kaplan-Meier and forest
 plots as displayed.}
+
+\item{posterior_plot}{A function returning the posterior distributions as
+displayed (R23.12), or NULL.}
 }
 \description{
 Survival

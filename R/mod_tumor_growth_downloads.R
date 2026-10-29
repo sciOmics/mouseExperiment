@@ -15,11 +15,14 @@
 #' @param rv Shared reactiveValues.
 #' @param tg_growth_plot,tg_rates_plot,tg_auc_plot,tg_forest_plot,tg_wf_plot
 #'   Reactive plot expressions defined in `tumor_growth_server()`.
+#' @param tg_post_plot,post_record The posterior distributions' plot and
+#'   their call for the R script (R23.12).
 #' @keywords internal
 add_tg_download_handlers <- function(input, output, session, rv,
                                      tg_growth_plot, tg_rates_plot,
                                      tg_auc_plot, tg_forest_plot,
-                                     tg_wf_plot, endpoints = NULL, growth_record = NULL) {
+                                     tg_wf_plot, endpoints = NULL, growth_record = NULL,
+                                     tg_post_plot = NULL, post_record = NULL) {
 
   output$download_tg_pp_check <- downloadHandler(
     filename = "posterior_predictive_check.png",
@@ -178,6 +181,20 @@ add_tg_download_handlers <- function(input, output, session, rv,
     }
   )
 
+  output$download_tg_plot_posterior <- downloadHandler(   # R23.12
+    filename = "posterior_distributions.png",
+    content = function(file) {
+      shinyjs::runjs("window.trackDownload('tumor_growth', 'plot', 'png');")
+      p <- if (is.function(tg_post_plot)) tg_post_plot()
+      if (!is.null(p)) {
+        png(file, width  = input$tg_plot_width  %||% 800,
+                  height = input$tg_plot_height %||% 550,
+                  units  = "px", res = input$tg_plot_dpi %||% 100)
+        tryCatch(print(p), finally = dev.off())
+      }
+    }
+  )
+
   output$download_tg_plot_waterfall <- downloadHandler(
     filename = "waterfall_plot.png",
     content = function(file) {
@@ -206,14 +223,13 @@ add_tg_download_handlers <- function(input, output, session, rv,
     bayes <- identical(mt, "bayes")
     auc   <- identical(mt, "auc")
     draws <- res$posterior_draws
-    # F1/F2: the Response & Delay tab's results, as shown, with their calls.
+    # F2: the Growth Delay tab's results, as shown, with their call.
     ep    <- function(r) if (is.function(r)) tryCatch(r(), error = function(e) NULL)
     ok    <- function(x) !is.null(x) && !inherits(x$result, "error")
-    resp  <- ep(endpoints$responses)
     delay <- ep(endpoints$delay)
     # F9: the plots the script redraws, with the dashboard's styling.
     growth <- ep(growth_record)
-    wf     <- if (ok(resp)) ep(endpoints$waterfall_record)
+    post   <- ep(post_record)   # R23.12
     items <- list(
       # Tables
       if (has(res$anova))
@@ -246,18 +262,14 @@ add_tg_download_handlers <- function(input, output, session, rv,
       if (has(res$necrosis_summary))
         dl_item("necrosis", "tables", "Necrosis summary", "necrosis_summary", "table",
                 get(res$necrosis_summary), "Necrotic observations by arm"),
-      if (ok(resp))
-        dl_item("responses", "tables", "mRECIST responses by arm", "response_summary", "table",
-                get(resp$result$summary),
-                "Each arm's animals in each mRECIST category, and its response rate"),
-      if (ok(resp))
-        dl_item("responses_animals", "tables", "mRECIST response by animal",
-                "response_by_animal", "table", get(resp$result$per_animal),
-                "Each animal's best and best average response, and its category"),
       if (ok(delay))
         dl_item("growth_delay", "tables", "Growth delay", "growth_delay", "table",
                 get(delay$result$delay_table),
-                "Each arm's median time to the volume, and T - C with its interval"),
+                "Each arm's median time to the volume, T - C with its interval, the specific growth delay and the log-rank test"),
+      if (ok(delay))
+        dl_item("growth_delay_animals", "tables", "Growth delay by animal", "growth_delay_by_animal",
+                "table", get(delay$result$per_animal),
+                "Each animal's time to the volume (Reached = 0: censored at its last measurement)"),
       if (bayes && has(res$posterior_summary))
         dl_item("posterior_summary", "tables", "Posterior summary", "posterior_summary",
                 "table", get(res$posterior_summary), "Posterior summaries of the parameters"),
@@ -276,10 +288,10 @@ add_tg_download_handlers <- function(input, output, session, rv,
       if (has(res$growth_rates))
         dl_item("plot_waterfall", "plots", "Waterfall", "waterfall", "plot",
                 drawn(tg_wf_plot), "Each animal's growth rate, sorted"),
-      if (ok(resp) && is.function(endpoints$waterfall))
-        dl_item("plot_response_waterfall", "plots", "Best-response waterfall",
-                "response_waterfall", "plot", drawn(endpoints$waterfall),
-                "Each animal's best response, sorted, with the mRECIST thresholds"),
+      if (bayes && has(res$prior_posterior_data) && is.function(tg_post_plot))
+        dl_item("plot_posterior", "plots", "Posterior distributions", "posterior_distributions",
+                "plot", drawn(tg_post_plot),
+                "Each treatment effect's posterior, with its highest-density interval, as displayed"),
       # Diagnostics
       if (!bayes && has(res$diag_qq_plot))
         dl_item("diag_qq", "diagnostics", "Residual Q-Q", "residual_qq", "plot",
@@ -327,7 +339,7 @@ add_tg_download_handlers <- function(input, output, session, rv,
       # R script, with the data it reads (R20-Z)
       if (!is.null(res$call_record))
         script_dl_item(function(up) tg_script_bundle(res, up, extra = c(
-          tg_endpoint_steps(resp, delay), tg_plot_steps(growth, wf))))
+          tg_endpoint_steps(delay), tg_plot_steps(growth, post))))
     )
     Filter(Negate(is.null), items)
   })

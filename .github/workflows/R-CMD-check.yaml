@@ -7,7 +7,7 @@ name: R-CMD-check
 
 on:
   push:
-    branches: [staging, production]
+    branches: [development, production]
   pull_request:
   schedule:
     - cron: "17 4 * * *"

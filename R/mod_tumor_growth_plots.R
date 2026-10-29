@@ -757,6 +757,48 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
       input$tg_plot_legend_label %||% "")
   })
 
+  # R23.12: the posterior distributions, with the HDI and, optionally, the
+  # prior; Bayesian runs only.
+  tg_post_hdi <- reactive({
+    h <- input$tg_opt_post_hdi
+    if (is.numeric(h) && length(h) == 1L && is.finite(h) && h > 0 && h < 100) h / 100 else 0.95
+  })
+  tg_post_plot <- reactive({
+    res <- rv$tg_results
+    req(res, !isTRUE(res$error), identical(res$model_type_used, "bayes"),
+        is.data.frame(res$prior_posterior_data))
+    p <- plot_posterior(res, show_prior = isTRUE(input$tg_opt_post_prior), hdi = tg_post_hdi())
+    apply_plot_labels(p,
+      input$tg_plot_title    %||% "",
+      input$tg_plot_subtitle %||% "",
+      input$tg_plot_title_align %||% "center",
+      input$tg_opt_text_size %||% 16,
+      input$tg_plot_xaxis_label  %||% "",
+      input$tg_plot_yaxis_label  %||% "",
+      input$tg_plot_legend_label %||% "")
+  })
+  # For the R script (F9): the call on the script's `result`.
+  tg_post_record <- reactive({
+    res <- rv$tg_results
+    if (is.null(res) || !identical(res$model_type_used, "bayes") ||
+        !is.data.frame(res$prior_posterior_data)) return(NULL)
+    record_call("plot_posterior",
+                list(x = NULL, show_prior = isTRUE(input$tg_opt_post_prior), hdi = tg_post_hdi()),
+                data_arg = NULL, exprs = list(x = quote(result)))
+  })
+  output$tg_plot_posterior <- renderPlot({
+    res <- rv$tg_results
+    if (is.null(res) || !identical(res$model_type_used, "bayes")) {
+      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
+           main = "Posterior distributions come from a Bayesian fit.\nRun the Bayesian LMM first.")
+      return(invisible(NULL))
+    }
+    p <- tg_post_plot()
+    req(!is.null(p))
+    p
+  }, width = function() input$tg_plot_width %||% 800,
+     height = function() input$tg_plot_height %||% 550)
+
   output$tg_plot_effect_forest <- renderPlot({
     p <- tg_forest_plot()
     if (!is.null(p)) {
@@ -773,7 +815,7 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     if (isTRUE(rv$tg_results$error)) return(NULL)
     if (isTRUE(rv$tg_results$model_type_used == "bayes")) {
       plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
-           main = "Frequentist diagnostics not applicable in Bayesian mode.\nSee the Posterior Check tab for model validation.")
+           main = "Frequentist diagnostics do not apply to a Bayesian fit.\nSelect the Bayesian model to see its diagnostics.")
       return(invisible(NULL))
     }
     if (!is.null(rv$tg_results$diag_qq_plot)) {
@@ -788,7 +830,7 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     if (isTRUE(rv$tg_results$error)) return(NULL)
     if (isTRUE(rv$tg_results$model_type_used == "bayes")) {
       plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
-           main = "Frequentist diagnostics not applicable in Bayesian mode.\nSee the Posterior Check tab for model validation.")
+           main = "Frequentist diagnostics do not apply to a Bayesian fit.\nSelect the Bayesian model to see its diagnostics.")
       return(invisible(NULL))
     }
     if (!is.null(rv$tg_results$diag_resid_fitted_plot)) {
@@ -846,7 +888,7 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     cd <- rv$tg_results$diag_cooks_distance
     if (is.null(cd) || nrow(cd) == 0L)
       return(dt_table(data.frame(Message = "Cook's distance not available")))
-    DT::datatable(format_df_for_display(as.data.frame(cd)),
+    dt_table(format_df_for_display(as.data.frame(cd)),
               options = list(scrollX = TRUE, pageLength = 10),
               rownames = FALSE)
   })
@@ -856,7 +898,7 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     db <- rv$tg_results$diag_dfbetas
     if (is.null(db) || nrow(db) == 0L)
       return(dt_table(data.frame(Message = "DFBETAS not available")))
-    DT::datatable(format_df_for_display(as.data.frame(db)),
+    dt_table(format_df_for_display(as.data.frame(db)),
               options = list(scrollX = TRUE, pageLength = 10),
               rownames = FALSE)
   })
@@ -881,6 +923,8 @@ add_tg_plots <- function(input, output, session, rv, ordered_tg_grps) {
     auc       = tg_auc_plot,
     waterfall = tg_wf_plot,
     forest    = tg_forest_plot,
+    posterior = tg_post_plot,
+    posterior_record = tg_post_record,
     growth_record = tg_growth_record
   )
 }

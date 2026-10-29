@@ -227,7 +227,7 @@ tumor_growth_server <- function(id, rv) {
         n_chains          = as.integer(input$tg_bayes_chains  %||% 4L),
         n_warmup          = as.integer(input$tg_bayes_warmup  %||% 1000L),
         n_iter            = as.integer(input$tg_bayes_iter    %||% 500L),
-        backend           = input$tg_bayes_backend %||% "rstan",
+        backend           = "rstan",   # R23.3: no backend menu
         extrap_pts        = as.integer(input$tg_extrapolation_points %||% 0L),
         dose_col          = rv$dose_col,
         necrotic_col      = rv$necrotic_col,
@@ -1039,40 +1039,22 @@ tumor_growth_server <- function(id, rv) {
     }
   }, ignoreNULL = FALSE)
 
-  # Dynamically insert / remove Bayesian tabs based on model type
-  bayes_tabs_inserted <- reactiveVal(FALSE)
-
-  observeEvent(input$tg_model_type, {
-    tabs_id <- "tg_results_tabs"
-    if (isTRUE(input$tg_model_type == "bayes") && !isTRUE(bayes_tabs_inserted())) {
-      appendTab(inputId = tabs_id,
-        tabPanel("Posterior Check",
-          tab_info(
-            strong("Posterior predictive check (PPC)"), " \u2014 the model generates new datasets from the posterior and overlays their densities on the observed data. Good model fit means the simulated densities closely envelope the observed density.",
-            tags$ul(
-              tags$li(strong("y"), " \u2014 observed (transformed) tumor volume values."),
-              tags$li(strong("y_rep"), " \u2014 50 simulated datasets drawn from the posterior predictive distribution.")
-            ),
-            em("If the observed density falls well outside the simulated envelope, consider a different transformation or random-effects specification.")
-          ),
-          shinycssloaders::withSpinner(
-            plotOutput(session$ns("tg_pp_check_plot"), height = "450px")
-          ),
-          downloadButton(session$ns("download_tg_pp_check"), "Download Plot"),
-          # R20.D59: rendered, but never placed anywhere.
-          tags$hr(),
-          h4("Posterior summary"),
-          p(class = "text-muted", "Posterior medians and 95% credible intervals of the model's parameters."),
-          DT::DTOutput(session$ns("tg_posterior_summary"))
-        ),
-        select = FALSE
-      )
-      bayes_tabs_inserted(TRUE)
-    } else if (!isTRUE(input$tg_model_type == "bayes") && isTRUE(bayes_tabs_inserted())) {
-      removeTab(inputId = tabs_id, target = "Posterior Check")
-      bayes_tabs_inserted(FALSE)
+  # R23.4/R23.5: a Bayesian fit has no ANOVA, so its tab gives way to the
+  # posterior summary; the posterior predictive check is in Diagnostics. Either
+  # the selected model or the fitted one being Bayesian counts, so a Bayesian
+  # result is never shown beside an empty ANOVA tab. A "Posterior Check" tab
+  # used to be appended after Download Results.
+  observe({
+    bayes <- isTRUE(input$tg_model_type == "bayes") ||
+      isTRUE(rv$tg_results$model_type_used == "bayes")
+    if (bayes) {
+      hideTab(inputId = "tg_results_tabs", target = "ANOVA")
+      showTab(inputId = "tg_results_tabs", target = "Posterior Summary")
+    } else {
+      showTab(inputId = "tg_results_tabs", target = "ANOVA")
+      hideTab(inputId = "tg_results_tabs", target = "Posterior Summary")
     }
-  }, ignoreNULL = FALSE)
+  })
 
   # Dynamically insert / remove Necrosis results tab when necrosis_summary is available
   necrosis_tab_inserted <- reactiveVal(FALSE)
@@ -1127,6 +1109,7 @@ tumor_growth_server <- function(id, rv) {
       auc            = "download_tg_plot_auc",
       waterfall      = "download_tg_plot_waterfall",
       effect_forest  = "download_tg_plot_effect_forest",
+      posterior      = "download_tg_plot_posterior",
       "download_tg_plot_growth"
     )
     downloadButton(session$ns(btn_id), "Download")
@@ -1155,7 +1138,7 @@ tumor_growth_server <- function(id, rv) {
         tags$ul(
           tags$li(strong("contrast"), " \u2014 the two groups being compared (\u2018Group A \u2212 Group B\u2019)."),
           tags$li(strong("ratio"), " \u2014 AUC of the first group divided by the second's. Below 1 means less total tumour burden; ratio.lower / ratio.upper are its interval."),
-          tags$li(strong("estimate"), " \u2014 the difference in AUC (volume \u00d7 days); lower.CL / upper.CL are its interval."),
+          tags$li(strong("estimate"), " \u2014 the difference in AUC (volume \u00d7 days); Lower / Upper 95% CI are its interval."),
           tags$li(strong("z.ratio"), " \u2014 Wald statistic for the log ratio."),
           tags$li(strong("p.value"), " \u2014 ", p_value_help(res), " It tests the ratio."),
           tags$li("The intervals are adjusted like the p-values where the correction has an interval (", em("CI_Adjustment"), " says which); the table's caption names the correction.")
@@ -1175,12 +1158,12 @@ tumor_growth_server <- function(id, rv) {
           tags$li(strong("contrast"), " \u2014 the two groups being compared (\u2018Treatment \u2212 Reference\u2019 for Dunnett, \u2018A \u2212 B\u2019 for Tukey)."),
           tags$li(strong("df"), " \u2014 Satterthwaite or Kenward\u2013Roger approximate degrees of freedom used for the t-test."),
           tags$li(strong("estimate"), " \u2014 mean difference in tumor volume between the two groups on the analysis scale (log or sqrt if a transformation was applied). Negative values mean the first group has lower volume."),
-          tags$li(strong("lower.CL / upper.CL"), " \u2014 confidence interval for the mean difference on the analysis scale, adjusted like the p-values (", em("CI_Adjustment"), " says how; Holm and FDR have no interval of their own, so theirs are Bonferroni-level)."),
+          tags$li(strong("Lower / Upper 95% CI"), " \u2014 confidence interval for the mean difference on the analysis scale, adjusted like the p-values (", em("CI_Adjustment"), " says how; Holm and FDR have no interval of their own, so theirs are Bonferroni-level)."),
           tags$li(strong("SE"), " \u2014 standard error of the estimated difference."),
           tags$li(strong("Fold_Change"), " (if shown; log-transform models only) \u2014 exp(estimate): the multiplicative ratio of group geometric means on the original volume scale. Values below 1.0 indicate the treatment group has lower volume than reference. Fold_Change_Lower / Fold_Change_Upper give the back-transformed CI bounds."),
           tags$li(strong("t.ratio"), " \u2014 t-statistic (estimate \u00f7 SE). Large absolute values indicate a larger difference relative to its uncertainty."),
           tags$li(strong("p.value"), " \u2014 ", p_value_help(res)),
-          tags$li(strong("Lower_CrI / Upper_CrI"), " (Bayesian path only) \u2014 2.5\u202f% and 97.5\u202f% bounds of the posterior distribution of the contrast on the model scale."),
+          tags$li(strong("Lower / Upper 95% CrI"), " (Bayesian path only) \u2014 2.5\u202f% and 97.5\u202f% bounds of the posterior distribution of the contrast on the model scale."),
           tags$li(strong("P_direction"), " (Bayesian path only) \u2014 posterior probability that the contrast is in its dominant direction, > 0.5 by construction. P_direction = 0.97 means 97\u202f% of posterior mass agrees on the sign of the effect; equivalent to a one-sided posterior probability and replaces the frequentist \u2018does the CrI exclude zero?\u2019 dichotomy.")
         )
       )
@@ -1195,7 +1178,7 @@ tumor_growth_server <- function(id, rv) {
         tags$ul(
           tags$li(strong("Treatment"), " \u2014 treatment group name."),
           tags$li(strong("AUC"), " \u2014 area under the arm's fitted geometric-mean curve (volume \u00d7 days). Higher values mean more total tumour burden over the window."),
-          tags$li(strong("Lower_CL / Upper_CL"), " \u2014 95% interval, from draws of the model."),
+          tags$li(strong("Lower / Upper 95% CI"), " \u2014 95% interval, from draws of the model."),
           tags$li(strong("N"), " \u2014 animals enrolled in the arm."),
           tags$li(strong("Reference"), " \u2014 TRUE for the reference group.")
         ),
@@ -1338,8 +1321,8 @@ tumor_growth_server <- function(id, rv) {
       return(dt_table(data.frame(
         Message = paste(
           "ANOVA is not applicable for Bayesian models.",
-          "See the Posterior Check tab for model fit validation",
-          "and the Diagnostics tab for convergence assessment."
+          "See the Posterior Summary tab for the model's estimates",
+          "and the Diagnostics tab for convergence and model fit."
         )
       ), options = list(paging = FALSE, searching = FALSE)))
     }
@@ -1509,18 +1492,17 @@ tumor_growth_server <- function(id, rv) {
     )
     new_names <- colnames(rates_df)
     for (old in names(rename_map)) new_names[new_names == old] <- rename_map[[old]]
-    # CODE_REVIEW.md Round 2 F.4 — single-row selection enables the
-    # per-mouse drill-down plot rendered just below the table.
+    # CODE_REVIEW.md Round 2 F.4 — the selected rows drive the per-mouse
+    # drill-down plot just below the table; R23.8: several at once.
     dt_table(rates_df,
       colnames = new_names,
-      selection = list(mode = "single", target = "row"),
+      selection = list(mode = "multiple", target = "row"),
       options  = list(scrollX = TRUE, paging = FALSE, searching = FALSE, scrollY = "500px", scrollCollapse = TRUE)
     )
   })
 
-  # Per-mouse drill-down plot (CODE_REVIEW.md Round 2 F.4)
-  # Shows the selected mouse's volume trajectory overlaid against its
-  # treatment-group mean trajectory and the fitted log-linear slope.
+  # Per-mouse drill-down plot (CODE_REVIEW.md Round 2 F.4). R23.8: one or
+  # several selected animals, each over its arm's mean (drilldown_plot()).
   output$tg_drilldown_plot <- renderPlot({
     req(rv$tg_results)
     req(rv$tg_plot_data, rv$tg_col_names)
@@ -1531,62 +1513,26 @@ tumor_growth_server <- function(id, rv) {
     sel <- input$tg_growth_rates_table_rows_selected
     if (length(sel) == 0L) {
       plot.new()
-      title(main = "Select a row in the table above to drill down",
-            sub  = "Each row = one mouse. Click to see that mouse's trajectory.",
+      title(main = "Select rows in the table above to drill down",
+            sub  = "Each row = one mouse. Click rows to add or remove mice.",
             cex.main = 1.0, cex.sub = 0.8)
       return()
     }
-    sel <- as.integer(sel[1])
-    if (sel < 1L || sel > nrow(rates_df)) return()
-
-    id_col   <- rv$tg_col_names$id_column        %||% "ID"
-    tx_col   <- rv$tg_col_names$treatment_column %||% "Treatment"
-    time_col <- rv$tg_col_names$time_column      %||% "Day"
-    vol_col  <- rv$tg_col_names$volume_column    %||% "Volume"
-
-    cage_col <- rv$tg_col_names$cage_column
-
-    target_id <- as.character(rates_df$ID[sel])
-    target_tx <- as.character(rates_df$Treatment[sel])
-    raw_data  <- rv$tg_plot_data
-
-    target_cage <- if ("Cage" %in% names(rates_df) && has_col(raw_data, cage_col))
-                     as.character(rates_df$Cage[sel])
-    mouse_rows <- drilldown_rows(raw_data, rates_df[sel, , drop = FALSE],
-                                 id_col, tx_col, cage_col)
-    group_rows <- raw_data[as.character(raw_data[[tx_col]]) == target_tx, , drop = FALSE]
-
-    if (nrow(mouse_rows) == 0L) {
-      plot.new(); title(main = paste("No raw data found for", target_id)); return()
+    cn <- rv$tg_col_names
+    p <- drilldown_plot(rv$tg_plot_data, rates_df, sel,
+                        id_col   = cn$id_column        %||% "ID",
+                        tx_col   = cn$treatment_column %||% "Treatment",
+                        time_col = cn$time_column      %||% "Day",
+                        vol_col  = cn$volume_column    %||% "Volume",
+                        cage_col = cn$cage_column)
+    if (is.null(p)) {
+      plot.new(); title(main = "No raw data found for the selected animals"); return()
     }
-
-    group_mean <- stats::aggregate(
-      stats::as.formula(paste(vol_col, "~", time_col)),
-      data = group_rows, FUN = mean, na.rm = TRUE
-    )
-    names(group_mean)[2] <- "Mean_Volume"
-
-    gr_rate <- rates_df$growth_rate[sel]
-
-    p <- ggplot2::ggplot() +
-      ggplot2::geom_line(data = group_mean,
-        ggplot2::aes(x = .data[[time_col]], y = Mean_Volume),
-        colour = "grey60", linewidth = 0.7, linetype = "dashed") +
-      ggplot2::geom_point(data = mouse_rows,
-        ggplot2::aes(x = .data[[time_col]], y = .data[[vol_col]]),
-        size = 3, colour = "steelblue") +
-      ggplot2::geom_line(data = mouse_rows,
-        ggplot2::aes(x = .data[[time_col]], y = .data[[vol_col]]),
-        colour = "steelblue", linewidth = 1) +
-      ggplot2::labs(
-        title = sprintf("Drill-down: %s", animal_label(target_tx, target_id, target_cage)),
-        subtitle = sprintf(
-          "Per-animal growth rate = %.4f log-vol/day (= %.2fx daily fold change). Grey dashed = group mean.",
-          gr_rate, exp(gr_rate)),
-        x = time_col, y = vol_col
-      ) +
-      ggplot2::theme_classic(base_size = 14)
     print(p)
+  }, height = function() {
+    # Taller for several arms side by side, with the legend below.
+    n <- length(input$tg_growth_rates_table_rows_selected)
+    if (n <= 1L) 350 else min(350 + 22 * min(n, 12L), 650)
   })
 
   # CODE_REVIEW.md Round 2 F.1 — standalone HTML report download
@@ -1643,7 +1589,7 @@ tumor_growth_server <- function(id, rv) {
     # mean of 75.9). The headers carry the declared unit.
     data_sum_df <- data_summary_display(rv$tg_results$data_summary, volume_unit_label(rv))
     data_sum_df <- format_df_for_display(data_sum_df)
-    DT::datatable(data_sum_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+    dt_table(data_sum_df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
               rownames = FALSE)
   })
   
@@ -1657,9 +1603,8 @@ tumor_growth_server <- function(id, rv) {
   tg_wf_plot     <- tg_plots$waterfall
   tg_forest_plot <- tg_plots$forest
 
-  # F1/F2: response categories and growth delay, from the run's data.
-  tg_endpoints <- add_tg_endpoints(input, output, session, rv, colors = reactive(
-    remap_colors_to_treatment(build_color_vector(input, "tg_color", ordered_tg_grps()))))
+  # F2: growth delay, from the run's data (the mRECIST responses went with R23.1).
+  tg_endpoints <- add_tg_endpoints(input, output, session, rv)
 
   # --- Bayesian-specific output renderers ---
 
@@ -1711,13 +1656,13 @@ tumor_growth_server <- function(id, rv) {
     req(!isTRUE(rv$tg_results$error))
     inf_df <- bayes_influential_obs(rv$tg_results)
     if (nrow(inf_df) == 0L) {
-      return(DT::datatable(
+      return(dt_table(
         data.frame(Note = sprintf("No observations exceed the Pareto-k threshold (%s).",
                                   format(rv$tg_results$loo_diagnostics$k_threshold %||% 0.7))),
         options = list(dom = "t", paging = FALSE, searching = FALSE), rownames = FALSE
       ))
     }
-    DT::datatable(
+    dt_table(
       inf_df,
       options = list(scrollX = TRUE, paging = FALSE, searching = FALSE), rownames = FALSE
     )
@@ -1790,7 +1735,8 @@ tumor_growth_server <- function(id, rv) {
     input, output, session, rv,
     tg_growth_plot, tg_rates_plot,
     tg_auc_plot, tg_forest_plot, tg_wf_plot,
-    endpoints = tg_endpoints, growth_record = tg_plots$growth_record
+    endpoints = tg_endpoints, growth_record = tg_plots$growth_record,
+    tg_post_plot = tg_plots$posterior, post_record = tg_plots$posterior_record
   )
 
   # F.7 — register the resume handler. The banner module dispatches to

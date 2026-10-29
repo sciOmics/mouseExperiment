@@ -173,9 +173,25 @@ write_results_zip <- function(zipfile, items, fmt = c("png", "pdf", "svg"),
                               header = character(0), opts = list()) {
   fmt <- match.arg(fmt)
   outdir <- tempfile("results_")
-  dir.create(outdir)
   on.exit(unlink(outdir, recursive = TRUE), add = TRUE)
+  written <- write_results_dir(outdir, items, fmt, size, header, opts)
+  old <- setwd(outdir)
+  on.exit(setwd(old), add = TRUE, after = FALSE)
+  utils::zip(zipfile, c("README.txt", written), flags = "-q9X")
+  invisible(zipfile)
+}
 
+#' Write the chosen items and a README into a folder
+#'
+#' The body of [write_results_zip()]; the Results tab writes one folder per
+#' run (R23.15).
+#' @return The files written, relative to `outdir`, without the README.
+#' @keywords internal
+write_results_dir <- function(outdir, items, fmt = c("png", "pdf", "svg"),
+                              size = list(width = 800, height = 600, dpi = 100),
+                              header = character(0), opts = list()) {
+  fmt <- match.arg(fmt)
+  dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
   written <- character(0)
   listing <- character(0)
   missing <- character(0)
@@ -201,11 +217,7 @@ write_results_zip <- function(zipfile, items, fmt = c("png", "pdf", "svg"),
     readme <- c(readme, "", "Chosen but not available for this run",
                 paste0("  ", missing))
   writeLines(readme, file.path(outdir, "README.txt"))
-
-  old <- setwd(outdir)
-  on.exit(setwd(old), add = TRUE, after = FALSE)
-  utils::zip(zipfile, c("README.txt", written), flags = "-q9X")
-  invisible(zipfile)
+  written
 }
 
 # Write one item into `dir`; returns its file name (several for "files"), or

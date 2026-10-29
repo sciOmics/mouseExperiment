@@ -14,6 +14,15 @@
 #' * **The interval** for T - C is a percentile bootstrap over animals within
 #'   each arm; an upper limit of `Inf` means the treated median was not reached
 #'   in enough resamples.
+#' * **The test** compares each arm's times with the reference arm's by a
+#'   log-rank test, with the p-values corrected over the arms
+#'   (`p_adjust_method`). It treats animals as independent: when whole cages
+#'   were randomised, it overstates the evidence.
+#' * **The specific growth delay** is T - C divided by the reference arm's
+#'   tumour volume doubling time (the median of its animals' doubling times,
+#'   from [tumor_doubling_time()]): the delay in doublings, which can be
+#'   compared across models that grow at different rates. Its interval is the
+#'   delay's, divided by the same doubling time.
 #'
 #' Animals are keyed by arm, ID and cage, so reused ear tags stay apart.
 #'
@@ -26,11 +35,17 @@
 #' @param n_boot Bootstrap resamples for the interval; 0 for none.
 #' @param seed Seed for the resamples. The caller's random state is left as
 #'   it was.
+#' @param p_adjust_method Correction of the log-rank p-values over the arms
+#'   compared with the reference: `"holm"`, `"bonferroni"`, `"fdr"` or
+#'   `"none"`.
 #' @return A list:
 #'   * `delay_table`: per arm, `N`, `N_Reached`, `Median_Days`, `Delay_Days`
-#'     (T - C), `Delay_Lower`, `Delay_Upper` and `Delay_Pct`;
+#'     (T - C), `Delay_Lower`, `Delay_Upper`, `Delay_Pct`, the specific growth
+#'     delay `SGD` with `SGD_Lower` and `SGD_Upper`, and the log-rank
+#'     `P_Value` and `P_Adjusted` against the reference;
 #'   * `per_animal`: each animal's `Time` and `Reached` (1 or 0);
-#'   * `volume`, `reference_group`.
+#'   * `volume`, `reference_group`, `doubling_time_reference` (days),
+#'     `p_adjust_method`.
 #' @seealso [survival_events()], which times tumours to a volume limit for
 #'   survival analysis.
 #' @export
@@ -41,7 +56,9 @@
 growth_delay <- function(df, volume, time_column = "Day", volume_column = "Volume",
                          treatment_column = "Treatment", id_column = "ID",
                          cage_column = NULL, reference_group = NULL,
-                         n_boot = 2000L, seed = NULL) {
+                         n_boot = 2000L, seed = NULL,
+                         p_adjust_method = c("holm", "bonferroni", "fdr", "none")) {
+  p_adjust_method <- match.arg(p_adjust_method)
   for (col in c(time_column, volume_column, treatment_column, id_column)) {
     if (!has_col(df, col)) stop("Column '", col, "' is not in the data.", call. = FALSE)
   }
@@ -101,8 +118,50 @@ growth_delay <- function(df, volume, time_column = "Day", volume_column = "Volum
                stringsAsFactors = FALSE)
   }))
   rownames(delay_table) <- NULL
+
+  # R23.2: a log-rank test of each arm's times against the reference's,
+  # corrected over the arms.
+  others <- setdiff(arms, reference_group)
+  p_raw <- vapply(others, function(a) gd_logrank_p(per_animal, reference_group, a), numeric(1))
+  p_adj <- rep(NA_real_, length(p_raw))
+  ok <- !is.na(p_raw)
+  if (any(ok)) p_adj[ok] <- stats::p.adjust(p_raw[ok], method = p_adjust_method)
+  delay_table$P_Value <- c(NA_real_, unname(p_raw))[match(delay_table$Treatment, arms)]
+  delay_table$P_Adjusted <- c(NA_real_, p_adj)[match(delay_table$Treatment, arms)]
+
+  # R23.2: the specific growth delay, T - C in the reference arm's doubling
+  # times. The per-animal fits' own warnings (an exact fit, too few points)
+  # concern those fits, not the delay.
+  dt <- tryCatch(suppressWarnings(tumor_doubling_time(
+                   df, time_column = time_column, volume_column = volume_column,
+                   treatment_column = treatment_column, id_column = id_column,
+                   cage_column = if (has_cage) cage_column)),
+                 error = function(e) NULL)
+  dt_ref <- if (is.data.frame(dt)) stats::median(dt$doubling_time[as.character(dt$Treatment) == reference_group],
+                                                 na.rm = TRUE) else NA_real_
+  if (!is.finite(dt_ref) || dt_ref <= 0) dt_ref <- NA_real_
+  delay_table$SGD <- delay_table$Delay_Days / dt_ref
+  delay_table$SGD_Lower <- delay_table$Delay_Lower / dt_ref
+  delay_table$SGD_Upper <- delay_table$Delay_Upper / dt_ref
+  delay_table <- delay_table[, c("Treatment", "N", "N_Reached", "Median_Days", "Delay_Days",
+                                 "Delay_Lower", "Delay_Upper", "Delay_Pct", "SGD", "SGD_Lower",
+                                 "SGD_Upper", "P_Value", "P_Adjusted")]
+
   me_result(list(delay_table = delay_table, per_animal = per_animal, volume = volume,
-                 reference_group = reference_group, n_boot = as.integer(n_boot)), "me_growth_delay")
+                 reference_group = reference_group, n_boot = as.integer(n_boot),
+                 doubling_time_reference = dt_ref, p_adjust_method = p_adjust_method),
+            "me_growth_delay")
+}
+
+#' The log-rank p-value of one arm's times against the reference's
+#' @noRd
+gd_logrank_p <- function(per_animal, reference, arm) {
+  s <- per_animal[per_animal$Treatment %in% c(reference, arm), , drop = FALSE]
+  if (length(unique(s$Treatment)) < 2L || !any(s$Reached == 1L)) return(NA_real_)
+  t <- tryCatch(survival::survdiff(survival::Surv(Time, Reached) ~ Treatment, data = s),
+                error = function(e) NULL)
+  if (is.null(t) || !is.finite(t$chisq)) return(NA_real_)
+  stats::pchisq(t$chisq, df = 1, lower.tail = FALSE)
 }
 
 #' The day a tumour reached `v`, on the log scale between two measurements

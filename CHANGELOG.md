@@ -5,6 +5,208 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.58.0] - 2026-10-29
+
+Which dose-response curve (`CODE_REVIEW.md` Round 23, R23-J).
+
+### Added
+- **`dose_response_statistics()` compares a fixed set of curves by AIC:** linear in dose, Emax
+  (hyperbolic: baseline, maximum effect, ED50), a 3-parameter log-logistic falling to 0, and the
+  4-parameter log-logistic, only with at least 5 dose levels (with fewer it has nearly as many
+  parameters as doses), plus the 5-parameter curve when it was fitted. The selected curve is the
+  simplest within 2 AIC of the best. `statistics$model_selection` holds the comparison (with each
+  curve's ED50), `selected_model` the choice and `selected_curve` its fitted values.
+- **The Dose Response tab** shows the comparison in Model Results and Summary, draws the selected
+  curve as the default trend line ("Selected dose-response curve"; Linear and LOESS remain), and
+  adds the comparison to Download Results and the R script.
+
+### Fixed
+- **The note that the linear and log-logistic models' AIC "are not on the same scale" was wrong.**
+  Both `logLik()`s are the full Gaussian log-likelihood of the same data, and both count the
+  residual variance as a parameter, so their AIC can be compared; the Info tab and the result say so.
+
+## [0.57.0] - 2026-10-29
+
+Every run of the session, kept (`CODE_REVIEW.md` Round 23, R23-I).
+
+### Added
+- **A Results tab lists every analysis run in the session,** newest first: the analysis, its
+  model ("LME4 mixed model, log", "AFT (lognormal)"), the time, the reference and the number of
+  data rows. Each tab used to keep only its latest run.
+  - **Open in its tab** shows a run again, with its tables, plots and Download Results.
+  - **Download selected** writes one ZIP with a folder per run, each holding what that tab's
+    Download Results offers (tables, plots drawn with the tab's current settings, diagnostics,
+    data and the R script).
+  - **Remove selected** deletes runs. Runs are kept, on the server, until the session ends.
+- **A Bayesian fit with the same data and settings as one already run is not refitted:** its
+  results are shown again, with a note. The seed is fixed, so a refit would give the same draws.
+  The same analysis repeated replaces the latest entry rather than adding a duplicate.
+
+## [0.56.0] - 2026-10-29
+
+Every plot in Download Results, with the current settings (`CODE_REVIEW.md` Round 23, R23-H).
+
+### Fixed
+- **Drug Synergy, Dose Response and Power exported the plot last drawn on screen,** so a plot type
+  that had not been opened was missing from the ZIP ("not available"). Their plots are now built
+  from the Plots tab's current settings whenever they are needed, so Download Results includes
+  every plot of the run, styled as set, as Tumor Growth, Survival and Toxicity already did. The
+  per-plot download buttons use the same plots.
+- **Drug Synergy offered a "TGI by arm" plot for a single evaluation day,** where there is none; it
+  is offered for the analysis over every evaluable day only.
+
+## [0.55.0] - 2026-10-29
+
+Posterior distributions with a highest-density interval (`CODE_REVIEW.md` Round 23, R23-G).
+
+### Added
+- **`plot_posterior()`** draws each treatment coefficient's posterior, shading its
+  highest-density interval (HDI) at the level you choose, with the limits in each panel's title,
+  and overlays the prior on request (over the posterior's range, so a weak prior does not flatten
+  the posterior). **`posterior_hdi()`** gives the limits as a table.
+- **`bayesian_tumor_growth()` and `bayesian_survival()` keep the coefficients' prior and posterior
+  draws** in `prior_posterior_data`, also with `plots = FALSE`; the coefficients are named by arm
+  ("Drug_A Mid + Drug_B × Day"), not by brms's names.
+- **The Plots tab offers "Posterior Distributions (Bayesian)"** in Tumor Growth and Survival, with
+  "Show the prior" and the HDI's width. It is in the plot download, Download Results and Tumor
+  Growth's R script.
+
+### Changed
+- **Survival's "Prior vs Posterior" tab is gone:** the same plot, with the HDI, is a plot type in
+  Plots, as in Tumor Growth.
+
+## [0.54.0] - 2026-10-29
+
+Accelerated failure time models (`CODE_REVIEW.md` Round 23, R23-F).
+
+### Added
+- **`aft_survival()`: accelerated failure time models** (`survival::survreg()`). Each arm's time to
+  the endpoint is compared with the reference's as a **time ratio**: 1.8 means its animals take
+  1.8 times as long. It does not assume proportional hazards.
+  - **The distribution:** Weibull, log-normal or log-logistic; `"auto"` (the default) fits all
+    three and uses the lowest AIC, and reports each one's AIC.
+  - **Intervals and p-values:** Wald, on the log scale, with the p-values corrected over the arms
+    (Holm by default).
+  - **An arm with no events** has no finite time ratio and is reported with a note; a reference
+    without events is an error.
+  - **Each arm's fitted median and survival curve**, to compare with Kaplan-Meier.
+  - **`dose_column`** splits a treatment given at several doses into arms. With
+    `randomisation_unit = "cage"` it warns that its p-values treat animals as independent.
+- **The Survival tab offers "Accelerated Failure Time (AFT)"** with its distribution and
+  correction. Model Results shows the time ratios; Diagnostics compares the distributions and
+  draws the fit (dashed) over the Kaplan-Meier curves; the forest plot, Download Results and the
+  R script follow.
+- **When the Cox model's proportional-hazards check fails** (global p < 0.05), Diagnostics
+  suggests the AFT model.
+
+## [0.53.0] - 2026-10-29
+
+The Weight demo shows toxicity (`CODE_REVIEW.md` Round 23, R23-E).
+
+### Changed
+- **The Weight demo (`weight_synthetic_data`) has a severely toxic combination and mild single
+  agents.** No animal used to cross 20 % weight loss (the combination's worst was −19.7 %), and
+  Drug B lost a moderate 12.6 %. Now three of the five "Drug A + B" animals pass −20 %; two leave
+  the study on 11 March, after crossing, as a humane endpoint requires. Drug B loses about 8 % and
+  Drug A about 3 %; DMSO and every tumour volume are unchanged. The data have 98 rows (were 100).
+  `data-raw/weight_demo_toxicity.R` sets the weights.
+- **Toxicity's rates table** says that the comparison below it is the test. The question of
+  p-values for the rate of weight change (R23.22) is answered there: each arm's rate against the
+  reference's, with corrected p-values, has been the comparison since 0.30.0. A p-value for a
+  rate against zero would only ask whether an arm's weight changed at all.
+
+## [0.52.0] - 2026-10-29
+
+Growth delay, with its statistics; mRECIST removed (`CODE_REVIEW.md` Round 23, R23-D).
+
+### Removed
+- **The mRECIST response categories** (`response_categories()`) and **the best-response waterfall**
+  (`plot_response_waterfall()`), with Tumor Growth's mRECIST tables and plot, their downloads and
+  their steps in the R script. The maintainer's decision (R23.1).
+
+### Added
+- **`growth_delay()` tests and normalises the delay.**
+  - **A log-rank test** of each arm's times to the volume against the reference arm's, with
+    `P_Value` and `P_Adjusted`, corrected over the arms (`p_adjust_method`, Holm by default). It
+    treats animals as independent.
+  - **The specific growth delay,** `SGD`: T − C in the reference arm's volume doubling times (the
+    median of its animals' doubling times), with its interval. It compares delays across tumour
+    models that grow at different rates.
+- **Tumor Growth's "Growth Delay" tab** (formerly "Response & Delay") shows both, has its own
+  multiple-comparison setting, and lists each animal's time to the volume, reached or censored.
+  The per-animal table is in Download Results and the R script too. When whole cages were
+  randomised, the tab says the log-rank p-values are too small.
+
+## [0.51.0] - 2026-10-29
+
+Explanations (`CODE_REVIEW.md` Round 23, R23-C).
+
+### Added
+- **The Bayesian diagnostics say what they mean.** Under the diagnostics panel in Tumor Growth and
+  Survival, "What these diagnostics mean" explains divergent transitions, max-treedepth hits
+  (efficiency, not validity), E-BFMI, Bayes R², PPC coverage, PSIS-LOO and Pareto-k, and what to do
+  when each is off.
+- **Fixed and random effects are explained** in the Info tabs of Tumor Growth and Toxicity: what
+  each is, and why repeated measurements need both.
+
+### Changed
+- **The influential-observations table names each observation's animal and measurement**
+  (treatment, ID, cage, and day and volume, or time and event), instead of a row index of the
+  model's data. `bayesian_tumor_growth()` and `bayesian_survival()` record them in
+  `loo_diagnostics$observations`.
+
+### Fixed
+- **Tumor Growth's Info tab** showed the models as `log(Volume) ~ Treatment × Day + (1 | ID)`; the
+  default has random slopes for each animal, `(Day | Animal)`.
+
+## [0.50.0] - 2026-10-29
+
+The maintainer's manual review of the dashboard, the smaller items (`CODE_REVIEW.md` Round 23,
+R23-B).
+
+### Changed
+- **Every analysis tab has the same order:** Info, Summary, the results, Plots, Diagnostics,
+  Download Results. Survival's Diagnostics came before Plots and its Risk Table after them;
+  Dose Response's Model Results came after Plots; Power started with Summary.
+- **Bayesian fits.**
+  - **Tumor Growth** hides the ANOVA tab after a Bayesian fit and shows a Posterior Summary tab in
+    its place, with each column explained.
+  - **The posterior predictive check is in Diagnostics,** in Tumor Growth and Survival. The
+    "Posterior Check" tabs were added after Download Results. Survival's Prior vs Posterior is now
+    a fixed tab after Plots, shown for the Bayesian model.
+  - **No Stan backend menu.** The dashboard fits with rstan; `backend = "cmdstanr"` remains in the
+    package. The server image no longer carries CmdStan.
+  - **No notes on compiling in the sidebars or the progress window.** Help keeps them, with the
+    server's real compile time (about two minutes, not 20 s).
+- **"Extrapolation points"** moved from the analysis sidebar to the growth-curve plot controls,
+  under "Show extrapolated curves/points": it changes only the plot.
+- **The per-mouse drill-down** takes several mice: each is drawn in its own colour over its arm's
+  mean, one panel per arm, with its growth rate in the legend.
+- **Toxicity.** No covariate is ticked by default, and Tumor Volume is not offered while tumour
+  mass is subtracted from body weight (counting tumour burden twice); a note says why. The
+  estimation-method choice is gone: the model is fitted by REML, since the dashboard does not
+  compare models.
+- **Intervals say their level:** "Lower 95% CI" instead of `lower.CL`, `CI_Lower` and the like, in
+  every table. All tables now go through the same helper.
+- **Drug Synergy.** The over-time plot's legend explains its shading (synergy above Bliss,
+  antagonism below), and the estimand's tooltip no longer quotes figures from a simulation.
+
+## [0.49.2] - 2026-10-29
+
+The server's image is built and tested in CI (`CODE_REVIEW.md` R23-A). Nothing changes in the
+package or the dashboard.
+
+### Changed
+- **The image's Dockerfile and gate scripts are in this repository** (`docker/`), moved from
+  sciOmicsVPS, so the image is versioned with the code it runs. It installs the package from
+  the checkout and records the commit as `install_github()` did, for the R scripts' install line.
+- **A new workflow, `image.yaml`,** builds that image for every pull request and every push to
+  `development`. It then checks, without a network, that every dependency loads, that a Bayesian
+  fit at the dashboard's defaults compiles and samples within production's memory budget, that
+  the test suite passes inside the image, and that the page is served.
+- **The `staging` branch becomes `development`.** The staging environment it deployed is retired;
+  run the dashboard locally from `development` instead.
+
 ## [0.49.1] - 2026-10-25
 
 ### Fixed

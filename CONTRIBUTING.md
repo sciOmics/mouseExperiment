@@ -48,10 +48,12 @@ Two long-lived branches:
 
 | Branch | Purpose |
 |---|---|
-| `staging` | Active development. Dashboard's staging environment installs from this branch |
-| `production` | Production deploys. Dashboard's production environment installs from this branch |
+| `development` | Active development. Run it locally: `devtools::load_all(); run_dashboard()` |
+| `production` | What mouseexperiment.com runs. Each push rebuilds and deploys the server |
 
-Feature branches: `feature/<short-description>`, merged into `staging` first, promoted to `production` once verified.
+Feature branches: `feature/<short-description>`, merged into `development` first, promoted to `production` through a `release/<version>` pull request.
+
+Until 0.49.2 `development` was `staging`, and each push to it deployed staging.mouseexperiment.com. That environment is retired; the image it tested is built and tested in CI instead (`.github/workflows/image.yaml`, `CODE_REVIEW.md` R23-A).
 
 ### Commit message style
 
@@ -259,22 +261,23 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Every version 
 
 ## Pull request process
 
-1. Branch off `staging`
+1. Branch off `development`
 2. Make changes; full test suite passes locally
 3. Run `devtools::document()` and commit any updated `man/*.Rd` files
 4. Open a PR with:
    - Title: conventional-commits format
    - Body: explains the *why*; references CODE_REVIEW.md item ID if applicable
    - For multi-commit PRs, the body summarizes the sequence
-5. CI runs (`.github/workflows/R-CMD-check.yaml`): `R CMD check` with the vignette and the full test suite, plus the README examples. Merge only when it is green
+5. CI runs two workflows. Merge only when both are green:
+   - `R-CMD-check.yaml`: `R CMD check` with the vignette and the full test suite, plus the README examples;
+   - `image.yaml`: the server's image, built from `docker/Dockerfile` and gated: dependencies load, a Bayesian fit at the dashboard's defaults within production's memory budget, the test suite inside the image, and the page is served
 6. Self-review:
    - Tests cover the new behavior
    - Roxygen `@param`, `@return`, `@examples` updated
    - For Bayesian: diagnostics surface intact, `plots = FALSE` honored
    - Vignettes still build if you changed an example used in them
-7. Merge to `staging`
-8. Verify the dashboard installs and runs against the staging branch (it builds on every push)
-9. Open a follow-up PR `staging` → `production` for the release
+7. Merge to `development`
+8. For a release, open `release/<version>` from `development` with `production` merged in, and a PR into `production`. Merge it with a merge commit once both workflows pass on it; the push deploys the server
 
 ---
 

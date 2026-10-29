@@ -225,7 +225,7 @@ tg_mcmc(
 - **Posterior similar to prior, wide posterior:** data was uninformative; the prior is doing all the work. Consider getting more data or pre-registering the prior choice
 - **Posterior far from prior, but wide:** the data has pulled away from the prior but is itself uncertain. Honest uncertainty
 
-The dashboard shows this plot in every Bayesian module's "Prior vs Posterior" tab.
+The dashboard draws it as the Plots tab's "Posterior Distributions" plot type in Tumor Growth and Survival (v0.55.0, R23.12): `plot_posterior()`, which shades a highest-density interval of the chosen width and overlays the prior on request. `posterior_hdi()` gives the HDI limits as a table. Each result keeps the draws in `prior_posterior_data`.
 
 ---
 

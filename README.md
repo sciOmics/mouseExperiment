@@ -228,9 +228,7 @@ apriori_power_simulation(n_per_group = c(6L, 10L), n_simulations = 50L, seed = 1
 | `tumor_growth_statistics()` | LME4 / AUC tumor growth analysis |
 | `bayesian_tumor_growth()` | Bayesian LMM via brms |
 | `tumor_doubling_time()` | Doubling time estimation |
-| `response_categories()` | Each animal's mRECIST response (mCR, mPR, mSD, mPD) and each arm's response rate |
-| `plot_response_waterfall()` | Best-response waterfall plot |
-| `growth_delay()` | Tumour growth delay: T − C in the median time to a volume, with an interval |
+| `growth_delay()` | Tumour growth delay: T − C in the median time to a volume, with an interval, a log-rank test and the specific growth delay |
 | `plot_tumor_growth()` | Growth trajectory plot |
 | `plot_growth_rate()` | Growth-rate forest plot |
 
@@ -238,6 +236,7 @@ apriori_power_simulation(n_per_group = c(6L, 10L), n_simulations = 50L, seed = 1
 | Function | Description |
 |----------|-------------|
 | `survival_statistics()` | KM, Cox PH, log-rank, `cox.zph()`, C-index |
+| `aft_survival()` | Accelerated failure time model: time ratios, with the distribution chosen by AIC |
 | `bayesian_survival()` | Bayesian AFT model (Weibull / log-normal) |
 
 ### Body Weight / Toxicity

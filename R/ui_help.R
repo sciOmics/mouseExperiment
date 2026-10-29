@@ -183,13 +183,12 @@ helpUI <- function() {
       tags$dd("The LME4 model fitted via MCMC (Stan). Returns posterior distributions for treatment effects with credible intervals, plus convergence diagnostics (Rhat, ESS, trace and rank plots) and PSIS-LOO influence measures. Requires the brms package."),
       tags$dt("Randomisation test (optional, any frequentist mode)"),
       tags$dd("Permutes treatment labels and refits, giving an exact p-value for the Treatment \u00d7 Day interaction that assumes neither a denominator-df approximation nor normal random effects. The unit permuted, individual animals or whole cages, is the unit of randomisation declared under Study Design on the Data tab \u2014 the test is only valid if that matches how the experiment was actually run."),
-      tags$dt("Response & Delay"),
-      tags$dd("Two per-animal endpoints from the data the run analysed, without the model. ",
-              strong("mRECIST response"), " (Gao et al. 2015) classifies each animal as mCR, mPR, ",
-              "mSD or mPD from its best response and best average response (% change in volume ",
-              "from its first measurement), with a waterfall of the best responses. ",
-              strong("Growth delay"), " is T \u2212 C: the median time for an arm's tumours to ",
-              "reach a volume you set, minus the reference arm's, with a bootstrap interval.")
+      tags$dt("Growth Delay"),
+      tags$dd("A per-animal endpoint from the data the run analysed, without the model: T \u2212 C, ",
+              "the median time for an arm's tumours to reach a volume you set, minus the reference ",
+              "arm's, with a bootstrap interval, a log-rank test against the reference, and the ",
+              "specific growth delay (T \u2212 C in the reference arm's doubling times). A table ",
+              "gives each animal's time.")
     ),
 
     h4("Survival Analysis"),
@@ -198,6 +197,8 @@ helpUI <- function() {
       tags$dd("Non-parametric survival estimates with 95% confidence bands. Log-rank test for group differences."),
       tags$dt("Cox proportional hazards"),
       tags$dd("Semi-parametric Cox PH model. Hazard ratios with 95% CI for each treatment vs. reference. When whole cages were randomised (Study Design), each arm is instead compared with the reference by a cage-level permutation log-rank, and the hazard ratios have no interval. Firth's bias-reduced estimation is applied automatically when any arm has zero events, where the standard partial likelihood would return infinite coefficients. The proportional-hazards assumption is tested and reported \u2014 if it fails, the hazard ratio is an average over a period in which the true ratio changed, and should not be quoted as a single number."),
+      tags$dt("Accelerated failure time (AFT)"),
+      tags$dd("A parametric model of the time to the endpoint (Weibull, log-normal or log-logistic, the best by AIC unless you choose). Each arm is compared with the reference as a time ratio: 1.8 means its animals take 1.8 times as long to reach the endpoint. It does not assume proportional hazards, so use it when the Cox model's check rejects them. Diagnostics compares the distributions and draws the fit against Kaplan-Meier."),
       tags$dt("Bayesian AFT (brms)"),
       tags$dd("Accelerated failure time model with a Weibull or log-normal distribution. Returns time ratios and derived hazard ratios with credible intervals.")
     ),
@@ -253,6 +254,15 @@ helpUI <- function() {
       tags$dd("Simulates repeated-measures data under a linear mixed model and estimates power empirically across a grid of sample sizes. An optional euthanasia volume limit models attrition; leaving it blank assumes every animal is measured at every timepoint, which overstates power by roughly 6 points at 30 % attrition. Note that baseline SD and random-intercept SD do not affect the answer \u2014 the test is on growth rates, which are orthogonal to per-animal baselines. Random-slope SD is the parameter that matters.")
     ),
 
+    # R23.15
+    h4("Results"),
+    tags$dl(
+      tags$dt("Every run, kept"),
+      tags$dd("Each analysis you run is listed on the Results tab, newest first, until the session ends. Open one to show it again in its tab, with its tables, plots and Download Results (the sidebar keeps its current settings). Select several to download them together: one folder each, with what the tab's Download Results offers, the plots drawn with the tab's current settings."),
+      tags$dt("No refit for the same fit"),
+      tags$dd("A Bayesian fit with the same data and settings as one already run in the session is shown again rather than refitted; the seed is fixed, so a refit would give the same results.")
+    ),
+
     hr(),
 
     # \u2500\u2500 Troubleshooting \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -267,9 +277,9 @@ helpUI <- function() {
       tags$dt("Analysis fails or produces no output"),
       tags$dd("Verify that the selected columns contain valid, non-missing data. Tumor volumes must be positive. Time points must be numeric. At least two groups must be present for any comparison."),
       tags$dt("Bayesian model is slow to start"),
-      tags$dd("The first fit of a model compiles it (about 20 s); later fits with the same structure reuse it and usually take under a minute. Fits run one at a time on a background worker, so other users and tabs stay responsive, and yours may wait for one ahead of it."),
+      tags$dd("The first fit of a model compiles it, which takes about two minutes on mouseexperiment.com and less on a fast computer; later fits with the same structure reuse it and usually take under a minute. Fits run one at a time on a background worker, so other users and tabs stay responsive, and yours may wait for one ahead of it."),
       tags$dt("Plot download produces a blank file"),
-      tags$dd("Run the analysis first so the plot is rendered, then click the download button. In Download Results, the Drug Synergy, Dose Response and Power plots are exported as last shown, so open a plot once before downloading it; one that was never drawn is listed in the README as not available.")
+      tags$dd("Run the analysis first, then click the download button. Download Results draws every plot of the run with the current settings (colours, titles, sizes), including plot types you have not opened.")
     )
   )
 }

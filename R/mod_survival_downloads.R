@@ -1,7 +1,7 @@
 #' Survival — all download handlers (CODE_REVIEW.md C.1/C.3).
 #'
 #' Six downloadHandler bindings: two Bayesian (`download_surv_pp_check`,
-#' `download_surv_prior_posterior`) previously at `mod_survival.R:1039-1054`
+#' `download_surv_plot_posterior`, since R23.12) previously at `mod_survival.R:1039-1054`
 #' and four frequentist (`download_surv_plot_km`, `download_surv_cox`,
 #' `download_surv_risk_table`, `download_surv_forest_plot`) previously at
 #' `mod_survival.R:1481-1551`.
@@ -26,11 +26,17 @@ add_surv_download_handlers <- function(input, output, session, rv, km_plot_r) {
     }
   )
 
-  output$download_surv_prior_posterior <- downloadHandler(
-    filename = function() paste0("surv_prior_posterior_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
+  # R23.12: the posterior distributions as displayed on the Plots tab (the
+  # "Prior vs Posterior" tab and its fixed plot are gone).
+  output$download_surv_plot_posterior <- downloadHandler(
+    filename = function() paste0("posterior_distributions_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content = function(file) {
-      req(!is.null(rv$surv_results$prior_posterior_plot))
-      ggplot2::ggsave(file, plot = rv$surv_results$prior_posterior_plot, width = 8, height = 5, dpi = 150)
+      p <- surv_posterior_plot_styled(rv$surv_results, input)
+      req(!is.null(p))
+      png(file, width  = input$surv_plot_width  %||% 800,
+                height = input$surv_plot_height %||% 600,
+                units  = "px", res = input$surv_plot_dpi %||% 100)
+      tryCatch(print(p), finally = dev.off())
     }
   )
 
@@ -86,7 +92,8 @@ add_surv_download_handlers <- function(input, output, session, rv, km_plot_r) {
     items = reactive(surv_dl_items(
       rv$surv_results,
       km_plot     = function() km_plot_r(),
-      forest_plot = function() surv_forest_plot_styled(rv$surv_results, input))),
+      forest_plot = function() surv_forest_plot_styled(rv$surv_results, input),
+      posterior_plot = function() surv_posterior_plot_styled(rv$surv_results, input))),
     readme_header = function() dl_readme_header("Survival", rv$surv_results, surv_run_settings),
     plot_size = function() list(width  = input$surv_plot_width  %||% 800,
                                 height = input$surv_plot_height %||% 600,
@@ -133,6 +140,26 @@ surv_forest_plot_styled <- function(res, input) {
   apply_legend_pos(p, input$surv_opt_legend_pos %||% "right")
 }
 
+#' The posterior distributions as shown on Survival's Plots tab (R23.12)
+#' @param res `rv$surv_results`.
+#' @param input The module's input.
+#' @return A ggplot, or NULL for a run that is not Bayesian.
+#' @keywords internal
+surv_posterior_plot_styled <- function(res, input) {
+  if (is.null(res) || isTRUE(res$error) || !identical(res$model_type_used, "bayes") ||
+      !is.data.frame(res$prior_posterior_data)) return(NULL)
+  h <- input$surv_opt_post_hdi
+  h <- if (is.numeric(h) && length(h) == 1L && is.finite(h) && h > 0 && h < 100) h / 100 else 0.95
+  p <- plot_posterior(res, show_prior = isTRUE(input$surv_opt_post_prior), hdi = h)
+  apply_plot_labels(p,
+                    input$surv_plot_title        %||% "",
+                    input$surv_plot_subtitle     %||% "",
+                    input$surv_plot_title_align  %||% "center",
+                    input$surv_opt_text_size     %||% 16,
+                    xlab = input$surv_plot_xaxis_label %||% "",
+                    ylab = input$surv_plot_yaxis_label %||% "")
+}
+
 #' A survival run's effects by arm, and what they measure
 #'
 #' CODE_REVIEW.md R22.2: a Cox run reports hazard ratios in `results`; a
@@ -147,6 +174,17 @@ surv_forest_plot_styled <- function(res, input) {
 #' @keywords internal
 surv_effects <- function(res) {
   if (is.null(res) || isTRUE(res$error)) return(NULL)
+  # R23.11: an AFT run's time ratios, with confidence intervals and
+  # corrected p-values.
+  if (identical(res$model_type_used, "aft")) {
+    tr <- res$time_ratios
+    if (!is.data.frame(tr) || !nrow(tr)) return(NULL)
+    return(list(table = tr,
+                forest = data.frame(Group = tr$Treatment, HR = tr$Time_Ratio, CI_Lower = tr$Lower_CL,
+                                    CI_Upper = tr$Upper_CL, P_Value = tr$P_Adjusted,
+                                    stringsAsFactors = FALSE),
+                measure = "Time Ratio", abbrev = "TR"))
+  }
   if (identical(res$model_type_used, "bayes")) {
     te <- res$treatment_effects
     if (!is.data.frame(te) || !nrow(te)) return(NULL)
@@ -170,6 +208,8 @@ surv_run_settings <- function(res) {
        events_from     = res$event_src_used,
        volume_limit    = res$vol_threshold_used,
        deaths_as_events = res$death_events_added,
-       p_adjust        = if (is.data.frame(res$results)) unique(res$results$P_Adjust_Method))
+       p_adjust        = if (is.data.frame(res$results)) unique(res$results$P_Adjust_Method)
+                         else res$p_adjust_method,
+       distribution    = res$distribution)
 }
 

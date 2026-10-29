@@ -2,22 +2,20 @@
 % Please edit documentation in R/mod_tumor_growth_endpoints.R
 \name{add_tg_endpoints}
 \alias{add_tg_endpoints}
-\title{Server side of the Response & Delay tab}
+\title{Server side of the Growth Delay tab}
 \usage{
-add_tg_endpoints(input, output, session, rv, colors = NULL)
+add_tg_endpoints(input, output, session, rv)
 }
 \arguments{
 \item{input, output, session}{Module arguments.}
 
 \item{rv}{Shared reactiveValues.}
-
-\item{colors}{A reactive of the run's arm colours, or NULL.}
 }
 \value{
-list(responses, delay, waterfall): reactives. \code{responses()} and
-\code{delay()} return list(result, record), the record for the R script.
+list(delay): a reactive returning list(result, record), the record
+for the R script.
 }
 \description{
-Server side of the Response & Delay tab
+Server side of the Growth Delay tab
 }
 \keyword{internal}

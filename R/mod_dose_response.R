@@ -161,11 +161,12 @@ doseResponseUI <- function(id) {
                       "fits the dose means exactly and so says nothing about its own shape; read either as descriptive."),
                     div(class = "alert alert-info", style = "margin-top:10px;",
                       icon("circle-info"), " ",
-                      strong("AIC / BIC note: "),
-                      "AIC and BIC from the linear model (", tags$code("stats::lm"), ") and the non-linear model (",
-                      tags$code("drc::drm"), ") are ", strong("not directly comparable"), " for model selection \u2014 ",
-                      "the two packages use different likelihood parameterisations. ",
-                      "Prefer visual inspection of the fitted curve and residuals when choosing between linear and non-linear models."
+                      strong("Which curve: "),
+                      "the linear model and the log-logistic curves (Emax, 3PL, and 4PL with at least 5 doses) are fitted ",
+                      "to the same data and compared by AIC, which is valid across them: each is the full Gaussian ",
+                      "log-likelihood of the same observations. The selected curve is the simplest within 2 AIC of the ",
+                      "best (Model Results, and the default trend line in Plots). Until 0.58.0 this note said they could not ",
+                      "be compared; they can."
                     )
                   )
                 ),
@@ -238,6 +239,48 @@ doseResponseUI <- function(id) {
             DT::DTOutput(ns("dr_tgi_table"))
           ),
 
+          # R23.13: results before Plots, as in every analysis tab.
+          tabPanel("Model Results",
+            tab_info(
+              strong("Full statistical test results. "),
+              "The text output includes linear regression (slope, intercept, p-value, R\u00b2), one-way ANOVA table, and polynomial trend p-values. Non-linear model AIC/BIC are shown when the drc package fit converges. ",
+              "When ANOVA p\u202f<\u202f0.05 the Tukey HSD post-hoc table is shown below:",
+              tags$ul(
+                tags$li(strong("Comparison"), " \u2014 the two dose levels being compared (\u2018DoseA\u202f-\u202fDoseB\u2019)."),
+                tags$li(strong("diff"), " \u2014 estimated mean difference in tumor volume (Dose A minus Dose B)."),
+                tags$li(strong("lwr / upr"), " \u2014 lower and upper bounds of the Tukey-adjusted 95\u202f% confidence interval for the difference."),
+                tags$li(strong("p adj"), " \u2014 Tukey family-wise error rate adjusted p-value. Values below 0.05 indicate a significant difference between that dose pair.")
+              )
+            ),
+            div(class = "text-right", style = "margin-bottom: 6px;",
+              downloadButton(ns("download_dr_stats"), "Download Results CSV")
+            ),
+            shinycssloaders::withSpinner(
+              verbatimTextOutput(ns("dr_stat_tests"))
+            ),
+            shinycssloaders::withSpinner(
+              DT::DTOutput(ns("dr_tukey_table"))
+            ),
+            # R23.26: which curve.
+            hr(),
+            h4("Which dose-response curve"),
+            tab_info(
+              "Each candidate curve fitted to the same data, compared by AIC (lower is better).",
+              tags$ul(
+                tags$li(strong("Linear"), " \u2014 volume linear in dose."),
+                tags$li(strong("Emax"), " \u2014 a hyperbolic curve: baseline, maximum effect and ED50."),
+                tags$li(strong("3PL"), " \u2014 a log-logistic curve falling to 0: slope, upper limit and ED50."),
+                tags$li(strong("4PL"), " \u2014 the same with its own lower limit; fitted with at least 5 doses, since with ",
+                        "fewer it has nearly as many parameters as doses."),
+                tags$li(strong("Selected"), " \u2014 the simplest curve within 2 AIC of the best: a smaller difference is not ",
+                        "evidence for the extra parameters. It is the default trend line in Plots.")
+              )
+            ),
+            DT::DTOutput(ns("dr_model_selection"))
+          ),
+
+          # CODE_REVIEW.md DIAGNOSTICS gap (5) \u2014 frequentist DR had no
+          # goodness-of-fit. v0.4.8 surfaces drc::modelFit + residuals plot.
           tabPanel("Plots",
             fluidRow(
               column(3,
@@ -264,7 +307,9 @@ doseResponseUI <- function(id) {
                                 "Show trend line confidence interval",
                                 value = TRUE),
                   radioButtons(ns("dr_trend_method"), "Trend line fit",
-                    choices = c("Linear" = "linear", "Non-linear (LOESS)" = "loess"),
+                    # R23.26: the selected dose-response curve, by default.
+                    choices = c("Selected dose-response curve" = "model", "Linear" = "linear",
+                                "Non-linear (LOESS)" = "loess"),
                     selected = "linear", inline = TRUE
                   ),
                   selectInput(ns("dr_opt_center_bar"), "Centre overlay (per dose)",
@@ -339,31 +384,6 @@ doseResponseUI <- function(id) {
             )
           ),
 
-          tabPanel("Model Results",
-            tab_info(
-              strong("Full statistical test results. "),
-              "The text output includes linear regression (slope, intercept, p-value, R\u00b2), one-way ANOVA table, and polynomial trend p-values. Non-linear model AIC/BIC are shown when the drc package fit converges. ",
-              "When ANOVA p\u202f<\u202f0.05 the Tukey HSD post-hoc table is shown below:",
-              tags$ul(
-                tags$li(strong("Comparison"), " \u2014 the two dose levels being compared (\u2018DoseA\u202f-\u202fDoseB\u2019)."),
-                tags$li(strong("diff"), " \u2014 estimated mean difference in tumor volume (Dose A minus Dose B)."),
-                tags$li(strong("lwr / upr"), " \u2014 lower and upper bounds of the Tukey-adjusted 95\u202f% confidence interval for the difference."),
-                tags$li(strong("p adj"), " \u2014 Tukey family-wise error rate adjusted p-value. Values below 0.05 indicate a significant difference between that dose pair.")
-              )
-            ),
-            div(class = "text-right", style = "margin-bottom: 6px;",
-              downloadButton(ns("download_dr_stats"), "Download Results CSV")
-            ),
-            shinycssloaders::withSpinner(
-              verbatimTextOutput(ns("dr_stat_tests"))
-            ),
-            shinycssloaders::withSpinner(
-              DT::DTOutput(ns("dr_tukey_table"))
-            )
-          ),
-
-          # CODE_REVIEW.md DIAGNOSTICS gap (5) \u2014 frequentist DR had no
-          # goodness-of-fit. v0.4.8 surfaces drc::modelFit + residuals plot.
           tabPanel("Diagnostics",
             tab_info(
               strong("Model-fit diagnostics. "),
@@ -721,6 +741,14 @@ dose_response_server <- function(id, rv) {
       ""
     )
 
+    if (is.data.frame(stats$model_selection)) {   # R23.26
+      ms <- stats$model_selection
+      lines <- c(lines,
+        "-- Which dose-response curve (AIC; the simplest within 2 of the best) --",
+        sprintf("  %-7s %d parameters  AIC %8.2f  (+%.2f)%s", ms$Model, ms$Parameters, ms$AIC,
+                ms$Delta_AIC, ifelse(ms$Selected, "  <- selected", "")),
+        "")
+    }
     if (!is.null(stats$ec50)) {
       ci <- stats$ec50_ci
       lines <- c(lines,
@@ -761,7 +789,7 @@ dose_response_server <- function(id, rv) {
     if (isTRUE(rv$dr_results$error)) return(dt_table(data.frame(Message = "Results not available")))
     tbl <- as.data.frame(rv$dr_results$summary_table)
     tbl <- format_df_for_display(tbl)
-    DT::datatable(tbl, options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE)
+    dt_table(tbl, options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE)
   })
 
   output$dr_download_plot_btn <- renderUI({
@@ -798,7 +826,8 @@ dose_response_server <- function(id, rv) {
   }
 
   # ---- Plots (rebuilt reactively so colour options take effect immediately) ----
-  output$dr_plot_scatter <- renderPlot({
+  # R23.14: built from the current settings, so Download Results draws it even if it was never shown.
+  dr_scatter_plot_r <- reactive({
 
     req(rv$dr_results)
     if (isTRUE(rv$dr_results$error)) return(NULL)
@@ -811,7 +840,7 @@ dose_response_server <- function(id, rv) {
     pt_sz    <- input$dr_scatter_pt_size     %||% 2
     jit_w    <- input$dr_opt_jitter_width    %||% 0
     show_ci  <- isTRUE(input$dr_scatter_show_ci)
-    trend    <- input$dr_trend_method %||% "linear"
+    trend    <- input$dr_trend_method %||% "model"
     text_sz  <- input$dr_opt_text_size %||% 16
     center   <- input$dr_opt_center_bar %||% "none"
     err_bar  <- input$dr_opt_error_bar  %||% "none"
@@ -820,10 +849,18 @@ dose_response_server <- function(id, rv) {
     } else {
       list(method = "lm", formula = y ~ x, color = ln_col, se = show_ci)
     }
+    # R23.26: the selected curve, from the model comparison; a linear fit
+    # when there is none.
+    curve <- rv$dr_results$statistics$selected_curve
+    use_curve <- identical(trend, "model") && is.data.frame(curve) && any(is.finite(curve$Fitted))
+    trend_layer <- if (use_curve) {
+      ggplot2::geom_line(data = curve, ggplot2::aes(x = Dose, y = Fitted), inherit.aes = FALSE,
+                         colour = ln_col, linewidth = 1)
+    } else do.call(ggplot2::geom_smooth, smooth_args)
     p <- ggplot2::ggplot(ad, ggplot2::aes(x = .data[[dose_col]], y = .data[[vol_col]])) +
       ggplot2::geom_jitter(alpha = 0.7, color = pt_col, size = pt_sz,
                            width = jit_w, height = 0) +
-      do.call(ggplot2::geom_smooth, smooth_args) +
+      trend_layer +
       ggplot2::labs(title = "Tumor Volume vs Dose",
                    x = "Dose", y = "Tumor Volume") +
       ggplot2::theme_classic()
@@ -850,10 +887,16 @@ dose_response_server <- function(id, rv) {
     p <- apply_legend_pos(p, input$dr_opt_legend_pos %||% "right")
     current_dr_scatter(p)
     p
+  })
+  output$dr_plot_scatter <- renderPlot({
+    p <- dr_scatter_plot_r()
+    req(!is.null(p))
+    print(p)
   }, width = function() input$dr_plot_width %||% 800,
      height = function() input$dr_plot_height %||% 600)
 
-  output$dr_plot_tgi <- renderPlot({
+  # R23.14: built from the current settings, so Download Results draws it even if it was never shown.
+  dr_tgi_plot_r <- reactive({
     req(rv$dr_results)
     if (isTRUE(rv$dr_results$error)) return(NULL)
     # R20.D48: plot the TGI the backend reported -- from the endpoint model at
@@ -862,9 +905,7 @@ dose_response_server <- function(id, rv) {
     # contradicted the Toxicity tab.
     tt <- rv$dr_results$tgi_table
     if (is.null(tt) || !nrow(tt)) {
-      plot(1, 1, type = "n", axes = FALSE, xlab = "", ylab = "",
-           main = "TGI needs a control (dose 0, or the study's control group)")
-      return(invisible(NULL))
+      return(message_plot("TGI needs a control (dose 0, or the study's control group)"))
     }
     ln_col  <- input$dr_scatter_line_color %||% "#2166AC"
     pt_sz   <- input$dr_scatter_pt_size     %||% 2
@@ -888,6 +929,11 @@ dose_response_server <- function(id, rv) {
     p <- apply_legend_pos(p, input$dr_opt_legend_pos %||% "right")
     current_dr_tgi(p)
     p
+  })
+  output$dr_plot_tgi <- renderPlot({
+    p <- dr_tgi_plot_r()
+    req(!is.null(p))
+    print(p)
   }, width = function() input$dr_plot_width %||% 800,
      height = function() input$dr_plot_height %||% 600)
 
@@ -895,7 +941,7 @@ dose_response_server <- function(id, rv) {
     req(rv$dr_results)
     tt <- rv$dr_results$tgi_table
     if (isTRUE(rv$dr_results$error) || is.null(tt)) return(NULL)
-    DT::datatable(format_df_for_display(tt), rownames = FALSE,
+    dt_table(format_df_for_display(tt), rownames = FALSE,
               options = list(paging = FALSE, searching = FALSE, scrollX = TRUE))
   })
 
@@ -946,6 +992,14 @@ dose_response_server <- function(id, rv) {
     paste(lines, collapse = "\n")
   })
 
+  # R23.26: the curves compared.
+  output$dr_model_selection <- DT::renderDT({
+    ms <- rv$dr_results$statistics$model_selection
+    req(is.data.frame(ms))
+    dt_table(format_df_for_display(ms), rownames = FALSE,
+             options = list(dom = "t", paging = FALSE, searching = FALSE))
+  })
+
   output$dr_tukey_table <- DT::renderDT({
     req(rv$dr_results)
     if (isTRUE(rv$dr_results$error)) return(dt_table(data.frame(Message = "No results")))
@@ -974,7 +1028,7 @@ dose_response_server <- function(id, rv) {
     tbl$Comparison <- rownames(tbl)
     tbl <- tbl[, c("Comparison", setdiff(names(tbl), "Comparison"))]
     tbl <- format_df_for_display(tbl)
-    DT::datatable(tbl, options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
+    dt_table(tbl, options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
   })
 
   # CODE_REVIEW.md DIAGNOSTICS gap (5) — frequentist DR Diagnostics tab.
@@ -1013,7 +1067,7 @@ dose_response_server <- function(id, rv) {
   output$download_dr_scatter <- downloadHandler(
     filename = function() paste0("dose_scatter_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content  = function(file) {
-      p <- current_dr_scatter()
+      p <- dr_scatter_plot_r()
       req(!is.null(p))
       png(file, width = input$dr_plot_width %||% 800,
                 height = input$dr_plot_height %||% 600,
@@ -1025,7 +1079,7 @@ dose_response_server <- function(id, rv) {
   output$download_dr_tgi <- downloadHandler(
     filename = function() paste0("dose_tgi_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".png"),
     content  = function(file) {
-      p <- current_dr_tgi()
+      p <- dr_tgi_plot_r()
       req(!is.null(p))
       png(file, width = input$dr_plot_width %||% 800,
                 height = input$dr_plot_height %||% 600,
@@ -1048,8 +1102,8 @@ dose_response_server <- function(id, rv) {
   add_download_results(
     input, output, session, prefix = "dr", module = "dose_response",
     items = reactive(dr_dl_items(rv$dr_results,
-                                 scatter_plot = function() current_dr_scatter(),
-                                 tgi_plot     = function() current_dr_tgi())),
+                                 scatter_plot = function() shown_plot(dr_scatter_plot_r()),
+                                 tgi_plot     = function() shown_plot(dr_tgi_plot_r()))),
     readme_header = function() dl_readme_header("Dose Response", rv$dr_results, function(res) list(
       dose_series = paste(input$dr_treatments, collapse = ", "),
       evaluation_day = res$endpoint_day, comparisons = input$dr_comparison_type)),

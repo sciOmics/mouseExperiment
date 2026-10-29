@@ -16,7 +16,7 @@ add_surv_download_handlers(input, output, session, rv, km_plot_r)
 }
 \description{
 Six downloadHandler bindings: two Bayesian (\code{download_surv_pp_check},
-\code{download_surv_prior_posterior}) previously at \code{mod_survival.R:1039-1054}
+\code{download_surv_plot_posterior}, since R23.12) previously at \code{mod_survival.R:1039-1054}
 and four frequentist (\code{download_surv_plot_km}, \code{download_surv_cox},
 \code{download_surv_risk_table}, \code{download_surv_forest_plot}) previously at
 \code{mod_survival.R:1481-1551}.

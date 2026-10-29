@@ -1,3 +1,13 @@
+# R23.22: the rates table has no p-values, and should not: a p-value for one
+# arm's rate against zero asks only whether its weight changed at all, which
+# healthy, growing mice also do. The comparison below it, each arm's rate
+# against the reference's, with corrected p-values, is the test (R20.44).
+rate_table_note <- function() {
+  helpText(icon("circle-info"), " Each arm's estimated rate, with its interval. Whether an arm ",
+           "differs from the reference is tested in the next table, with p-values corrected ",
+           "for the number of comparisons.")
+}
+
 #' Toxicity Analysis UI
 #' @keywords internal
 toxicityUI <- function(id) {
@@ -49,23 +59,21 @@ toxicityUI <- function(id) {
             # Body Weight-specific options
             conditionalPanel(ns = ns, "input.tox_model_type == 'bw'",
               h5(strong("Mixed Model Options")),
+              # R23.18: none ticked by default. Tumor Volume is offered only
+              # when tumour mass is not already subtracted (the server
+              # updates the choices); ticked by default, the backend dropped
+              # it and said so only in a note.
               checkboxGroupInput(ns("tox_covariates"), "Covariates",
                 choices = c("Tumor Volume" = "volume",
                             "Sex" = "sex",
                             "Initial Mass" = "initial_mass"),
-                selected = "volume"
+                selected = character(0)
               ),
               uiOutput(ns("tox_covariate_note")),
-              radioButtons(ns("tox_estimation"),
-                tagList("Estimation method", help_tip(paste(
-                  "REML (restricted maximum likelihood) estimates the variance components",
-                  "without the downward bias of ML, and is the usual choice for reporting",
-                  "a model. ML (maximum likelihood) is needed only to compare models that",
-                  "differ in their fixed effects, for example with and without a covariate,",
-                  "by a likelihood-ratio test or AIC."))),
-                choices = c("REML" = "REML", "ML" = "ML"),
-                selected = "REML", inline = TRUE
-              ),
+              # R23.19: no estimation-method choice. ML serves only to compare
+              # models that differ in their fixed effects, which the dashboard
+              # does not do; the model is fitted by REML. toxicity_analysis()
+              # keeps the option.
               hr(),
               h5(strong("Weight Loss Threshold")),
               sliderInput(ns("tox_threshold"), "Threshold (%)",
@@ -164,13 +172,12 @@ toxicityUI <- function(id) {
                     ),
                     p("Random slopes allow each mouse's weight trend to deviate from the group average. ",
                       "Fixed effects test whether trajectories differ by treatment group over time."),
-                    tags$dl(class = "dl-horizontal",
-                      tags$dt("REML"), tags$dd("Restricted Maximum Likelihood \u2014 preferred for final parameter estimates (default)."),
-                      tags$dt("ML"), tags$dd("Maximum Likelihood \u2014 use when comparing models with different fixed-effect structures.")
-                    ),
+                    p("The model is fitted by restricted maximum likelihood (REML), the usual choice for ",
+                      "reporting a model's estimates and variance components."),
+                    effects_help("mouse"),   # R23.21
                     tags$p(tags$b("Covariates (optional):")),
                     tags$ul(
-                      tags$li(strong("Tumor Volume"), " \u2014 controls for tumor-driven weight changes independent of drug toxicity."),
+                      tags$li(strong("Tumor Volume"), " \u2014 controls for tumor-driven weight changes independent of drug toxicity. Offered only when 'Subtract estimated tumor weight' is off: with tumour mass subtracted, adjusting for volume as well would count tumour burden twice."),
                       tags$li(strong("Sex"), " \u2014 adjusts for sex-specific baseline weight differences."),
                       tags$li(strong("Initial Mass"), " \u2014 adjusts for pre-treatment weight variation across animals.")
                     ),
@@ -296,6 +303,7 @@ toxicityUI <- function(id) {
             downloadButton(ns("download_tox_model"), "Download Fixed Effects CSV"),
             hr(),
             h4("Rate of Weight Change by Treatment (g/day)"),
+            rate_table_note(),
             shinycssloaders::withSpinner(DT::DTOutput(ns("tox_emmeans"))),
             downloadButton(ns("download_tox_emmeans_csv"), "Download Rates CSV"),
             hr(),
@@ -622,6 +630,7 @@ toxicity_server <- function(id, rv) {
           downloadButton(ns("download_tox_model"), "Download Fixed Effects CSV"),
           hr(),
           h4("Rate of Weight Change by Treatment (g/day)"),
+          rate_table_note(),
           shinycssloaders::withSpinner(DT::DTOutput(ns("tox_emmeans"))),
           downloadButton(ns("download_tox_emmeans_csv"), "Download Rates CSV"),
           hr(),
@@ -706,20 +715,22 @@ toxicity_server <- function(id, rv) {
     available <- "initial_mass"
     if (has_vol) available <- c("volume", available)
     if (has_sex) available <- c(available, "sex")
+    # R23.18: with tumour mass subtracted, Tumor Volume is not offered.
+    if (isTRUE(input$tox_adjust_tumor)) available <- setdiff(available, "volume")
     choices  <- c("Tumor Volume" = "volume", "Sex" = "sex", "Initial Mass" = "initial_mass")
     choices  <- choices[choices %in% available]
-    selected <- intersect(input$tox_covariates %||% "volume", available)
+    selected <- intersect(isolate(input$tox_covariates) %||% character(0), available)
     updateCheckboxGroupInput(session, "tox_covariates", choices = choices, selected = selected)
   })
 
-  # R20.D58: with "Subtract estimated tumor weight" on (the default) the
-  # backend drops the Tumor Volume covariate (also ticked by default) and says
-  # so only in a message the dashboard did not show.
+  # R20.D58, R23.18: with "Subtract estimated tumor weight" on (the default),
+  # Tumor Volume is not offered as a covariate; say why, when there is a
+  # volume column to offer.
   output$tox_covariate_note <- renderUI({
-    if (!isTRUE(input$tox_adjust_tumor) || !"volume" %in% (input$tox_covariates %||% character(0)))
-      return(NULL)
-    helpText(icon("circle-info"), " Tumour mass is already subtracted from body weight, so the ",
-             "Tumor Volume covariate is not used: adjusting for it as well would count ",
+    has_vol <- !is.null(rv$vol_col) && rv$vol_col != ""
+    if (!isTRUE(input$tox_adjust_tumor) || !has_vol) return(NULL)
+    helpText(icon("circle-info"), " Tumor Volume is not offered as a covariate while tumour ",
+             "mass is subtracted from body weight: adjusting for it as well would count ",
              "tumour burden twice. To adjust for volume instead, untick 'Subtract ",
              "estimated tumor weight'.")
   })
@@ -790,7 +801,7 @@ toxicity_server <- function(id, rv) {
 
     if (model_type == "bw") {
       covs         <- input$tox_covariates   %||% character(0)
-      est_method   <- input$tox_estimation   %||% "REML"
+      est_method   <- "REML"   # R23.19: no ML choice in the dashboard
       threshold    <- (input$tox_threshold   %||% 20) / 100
       baseline_raw <- input$tox_baseline_day %||% "first"
       baseline_day <- if (baseline_raw == "first") NULL else as.numeric(baseline_raw)
@@ -956,7 +967,7 @@ toxicity_server <- function(id, rv) {
     req(rv$tox_results, rv$tox_results$mixed_model)
     mm <- rv$tox_results$mixed_model
     if (isTRUE(mm$error)) return(dt_table(data.frame(Message = mm$message)))
-    DT::datatable(format_df_for_display(mm$fixed_effects),
+    dt_table(format_df_for_display(mm$fixed_effects),
               options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
   })
 
@@ -965,7 +976,7 @@ toxicity_server <- function(id, rv) {
     mm <- rv$tox_results$mixed_model
     if (isTRUE(mm$error) || is.null(mm$emmeans_table))
       return(dt_table(data.frame(Message = "Not available")))
-    DT::datatable(format_df_for_display(mm$emmeans_table),
+    dt_table(format_df_for_display(mm$emmeans_table),
               options = list(scrollX = TRUE), rownames = FALSE)
   })
 
@@ -974,7 +985,7 @@ toxicity_server <- function(id, rv) {
     mm <- rv$tox_results$mixed_model
     if (isTRUE(mm$error) || is.null(mm$pairwise_comparisons))
       return(dt_table(data.frame(Message = "Not available")))
-    DT::datatable(format_df_for_display(as.data.frame(mm$pairwise_comparisons)),
+    dt_table(format_df_for_display(as.data.frame(mm$pairwise_comparisons)),
               options = list(scrollX = TRUE), rownames = FALSE)
   })
 
@@ -982,7 +993,7 @@ toxicity_server <- function(id, rv) {
     req(rv$tox_results, rv$tox_results$weight_loss)
     wl <- rv$tox_results$weight_loss
     if (isTRUE(wl$error)) return(dt_table(data.frame(Message = wl$message)))
-    DT::datatable(format_df_for_display(wl$event_data),
+    dt_table(format_df_for_display(wl$event_data),
               options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
   })
 
@@ -995,7 +1006,7 @@ toxicity_server <- function(id, rv) {
     if (isTRUE(twm$error)) return(dt_table(data.frame(Message = twm$message)))
     tw_tbl <- window_display_table(twm$window_table, rv$tox_results$twm_reference)
     DT::formatStyle(
-      DT::datatable(tw_tbl, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+      dt_table(tw_tbl, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
                 rownames = FALSE),
       "Tolerability", fontWeight = "bold",
       color = DT::styleEqual(c("Tolerated", "Not tolerated", "Unclear"),
@@ -1060,7 +1071,7 @@ toxicity_server <- function(id, rv) {
     req(rv$tox_results, rv$tox_results$twm)
     twm <- rv$tox_results$twm
     if (isTRUE(twm$error) || is.null(twm$attrition)) return(NULL)
-    DT::datatable(format_df_for_display(as.data.frame(twm$attrition)),
+    dt_table(format_df_for_display(as.data.frame(twm$attrition)),
               options = list(paging = FALSE, searching = FALSE), rownames = FALSE)
   })
 
@@ -1099,7 +1110,7 @@ toxicity_server <- function(id, rv) {
     if (isTRUE(wl$error) || is.null(wl$censoring_summary)) return(NULL)
     cs <- as.data.frame(wl$censoring_summary)
     if (!nrow(cs)) return(NULL)
-    DT::datatable(format_df_for_display(cs),
+    dt_table(format_df_for_display(cs),
               options = list(paging = FALSE, searching = FALSE), rownames = FALSE)
   })
 

@@ -404,9 +404,7 @@ synergy_server <- function(id, rv) {
                    "Model-based reads each arm's geometric mean at the evaluation day from",
                    "a log-scale mixed model of every observation, so animals removed",
                    "earlier still count. Survivors uses only animals present that day,",
-                   "which biases TGI down because animals leave when their tumours grow:",
-                   "in a simulated study it understated TGI by about 23 points, where the",
-                   "model-based estimate was off by about 5."))),
+                   "which biases TGI down because animals leave when their tumours grow."))),
                  choices = c(
                    "Model-based (recommended)" = "model",
                    "Each animal's last observation" = "last_obs",
@@ -760,7 +758,7 @@ synergy_server <- function(id, rv) {
       data.frame(Message = "No metrics available")
     }
     df <- format_df_for_display(df)
-    DT::datatable(df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE), rownames = FALSE)
+    dt_table(df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE), rownames = FALSE)
   })
   
   # ── Bootstrap intervals + attrition (CODE_REVIEW.md R3.D9) ─────────────────
@@ -805,7 +803,7 @@ synergy_server <- function(id, rv) {
     ci <- rv$syn_results$synergy_ci
     if (is.null(ci)) return(NULL)
     df <- format_df_for_display(as.data.frame(ci))
-    DT::datatable(df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+    dt_table(df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
               rownames = FALSE)
   })
 
@@ -905,7 +903,7 @@ synergy_server <- function(id, rv) {
     if (isTRUE(rv$syn_results$error)) return(NULL)
     a <- rv$syn_results$attrition
     if (is.null(a)) return(NULL)
-    DT::datatable(format_df_for_display(as.data.frame(a)),
+    dt_table(format_df_for_display(as.data.frame(a)),
               options = list(paging = FALSE, searching = FALSE), rownames = FALSE)
   })
 
@@ -921,7 +919,8 @@ synergy_server <- function(id, rv) {
     downloadButton(session$ns(btn_id), "Download Plot")
   })
 
-  output$syn_plot_main <- renderPlot({
+  # R23.14: built from the current settings, so Download Results draws it even if it was never shown.
+  syn_main_plot_r <- reactive({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error)) return(NULL)
 
@@ -970,11 +969,17 @@ synergy_server <- function(id, rv) {
                            data_arg = NULL, exprs = list(synergy_results = quote(result))),
         style = Filter(function(v) length(v) && !(is.character(v) && !nzchar(v)), style)))
     }
-    print(final_p)
+    final_p
+  })
+  output$syn_plot_main <- renderPlot({
+    p <- syn_main_plot_r()
+    req(!is.null(p))
+    print(p)
   }, width = function() input$syn_plot_width %||% 800,
      height = function() input$syn_plot_height %||% 600)
 
-  output$syn_plot_trend <- renderPlot({
+  # R23.14: built from the current settings, so Download Results draws it even if it was never shown.
+  syn_trend_plot_r <- reactive({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error) || !isTRUE(rv$syn_over_time)) return(NULL)
     req(rv$syn_results$synergy_summary)
@@ -1004,7 +1009,11 @@ synergy_server <- function(id, rv) {
 
     p <- ggplot2::ggplot(syn_df, ggplot2::aes(x = Time_Point))
 
-    # Synergy / antagonism shading between Combo TGI and Bliss expected TGI
+    # Synergy / antagonism shading between Combo TGI and Bliss expected TGI.
+    # R23.17: the fills are mapped, so the legend says which is which; they
+    # were constants, and the legend listed only the lines.
+    shade_labels <- c(synergy    = "Synergy (combination above Bliss)",
+                      antagonism = "Antagonism (combination below Bliss)")
     if (show_shade &&
         all(c("TGI_Combo", "Bliss_Expected_TGI") %in% colnames(syn_df))) {
       p <- p +
@@ -1013,19 +1022,25 @@ synergy_server <- function(id, rv) {
           ggplot2::aes(
             ymin = Bliss_Expected_TGI,
             ymax = ifelse(TGI_Combo >= Bliss_Expected_TGI,
-                          TGI_Combo, Bliss_Expected_TGI)
+                          TGI_Combo, Bliss_Expected_TGI),
+            fill = shade_labels[["synergy"]]
           ),
-          fill = "steelblue", alpha = 0.18
+          alpha = 0.18
         ) +
         # antagonism region: combo < bliss (red)
         ggplot2::geom_ribbon(
           ggplot2::aes(
             ymin = ifelse(TGI_Combo < Bliss_Expected_TGI,
                           TGI_Combo, Bliss_Expected_TGI),
-            ymax = Bliss_Expected_TGI
+            ymax = Bliss_Expected_TGI,
+            fill = shade_labels[["antagonism"]]
           ),
-          fill = "tomato", alpha = 0.18
-        )
+          alpha = 0.18
+        ) +
+        ggplot2::scale_fill_manual(
+          values = stats::setNames(c("steelblue", "tomato"), shade_labels),
+          breaks = unname(shade_labels), name = NULL,
+          guide = ggplot2::guide_legend(override.aes = list(alpha = 0.35), order = 2))
     }
 
     p <- p +
@@ -1034,7 +1049,8 @@ synergy_server <- function(id, rv) {
       ggplot2::geom_line(ggplot2::aes(y = TGI_Combo,          color = "Combination")) +
       ggplot2::geom_line(ggplot2::aes(y = Bliss_Expected_TGI, color = "Bliss Value"),
                          alpha = 0.5, linewidth = 3) +
-      ggplot2::scale_color_manual(values = color_vals, labels = color_labels) +
+      ggplot2::scale_color_manual(values = color_vals, labels = color_labels,
+                                  guide = ggplot2::guide_legend(order = 1)) +
       ggplot2::labs(x = "Days", y = "Percent Tumor Growth Inhibition", color = NULL) +
       ggplot2::ylim(0, 100) +
       ggplot2::theme_classic() +
@@ -1047,6 +1063,11 @@ synergy_server <- function(id, rv) {
                            input$syn_plot_title_align %||% "center",
                            text_sz)
     current_syn_trend_plot(p)
+    p
+  })
+  output$syn_plot_trend <- renderPlot({
+    p <- syn_trend_plot_r()
+    req(!is.null(p))
     print(p)
   }, width = function() input$syn_plot_width %||% 800,
      height = function() input$syn_plot_height %||% 600)
@@ -1055,7 +1076,8 @@ synergy_server <- function(id, rv) {
   # ------------------------------------------------------------------
   # TGI over time plot: per-mouse TGI with group lines + error bars
   # ------------------------------------------------------------------
-  output$syn_plot_tgi <- renderPlot({
+  # R23.14: built from the current settings, so Download Results draws it even if it was never shown.
+  syn_tgi_plot_r <- reactive({
     req(rv$syn_results)
     if (isTRUE(rv$syn_results$error) || !isTRUE(rv$syn_over_time)) return(NULL)
     req(rv$syn_results$synergy_summary)
@@ -1113,6 +1135,11 @@ synergy_server <- function(id, rv) {
                            input$syn_plot_title_align %||% "center",
                            text_sz)
     current_syn_tgi_plot(p)
+    p
+  })
+  output$syn_plot_tgi <- renderPlot({
+    p <- syn_tgi_plot_r()
+    req(!is.null(p))
     print(p)
   }, width = function() input$syn_plot_width %||% 800,
      height = function() input$syn_plot_height %||% 600)
@@ -1122,18 +1149,20 @@ synergy_server <- function(id, rv) {
   # `current_syn_*_plot` reactiveVal that the renderPlot bindings update;
   # those reactiveVals are passed in explicitly.
   add_syn_download_handlers(input, output, session, rv,
-                            current_syn_main_plot, current_syn_trend_plot,
-                            current_syn_tgi_plot)
+                            syn_main_plot_r, syn_trend_plot_r,
+                            syn_tgi_plot_r)   # R23.14: built on demand
 
   # "Download Results" (CODE_REVIEW.md R20-D.Y).
   add_download_results(
     input, output, session, prefix = "syn", module = "synergy",
     items = reactive(syn_dl_items(
       rv$syn_results, over_time = isTRUE(rv$syn_over_time),
-      main_plot  = function() current_syn_main_plot(),
-      plot_record = function() current_syn_plot_record(),
-      trend_plot = function() current_syn_trend_plot(),
-      tgi_plot   = function() current_syn_tgi_plot(),
+      main_plot  = function() shown_plot(syn_main_plot_r()),
+      # The record is set as the main plot is built, so build it first.
+      plot_record = function() { tryCatch(syn_main_plot_r(), error = function(e) NULL)
+                                 current_syn_plot_record() },
+      trend_plot = function() shown_plot(syn_trend_plot_r()),
+      tgi_plot   = function() shown_plot(syn_tgi_plot_r()),
       diag = tryCatch({
         r <- rv$syn_results
         if (!is.null(r$timepoint_results) && length(r$timepoint_results))

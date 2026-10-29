@@ -32,17 +32,30 @@ launch_tg_bayes_job <- function(sid, bayes_params,
       type = "warning", duration = 8)
     return(invisible(NULL))
   }
+  # R23.15: the same data and settings as a fit saved this session: show it
+  # again instead of refitting. The seed is fixed, so a refit would give the
+  # same draws.
+  task <- .tg_bayes_task(bayes_params)
+  call_record <- record_call("bayesian_tumor_growth", task$args)
+  hit <- history_find(session, "tumor_growth", history_fingerprint(call_record))
+  if (!is.null(hit)) {
+    history_restore(session, rv, hit)
+    rv$tg_running <- FALSE
+    shiny::showNotification(sprintf(paste0(
+      "This fit has the same data and settings as run %d (at %s), so its results are shown ",
+      "again without refitting. Results lists every run."), hit$id, format(hit$when, "%H:%M")),
+      type = "message", duration = 10)
+    return(invisible(NULL))
+  }
   show_analysis_modal(
     "Bayesian tumor growth fit running\u2026",
-    paste("Fitting the Bayesian LMM with brms. The first fit of a model",
-          "compiles it (about 20 s); later fits of the same structure reuse it."),
+    # R23.20: how compiling works is in Help, not in the progress window.
+    "Fitting the Bayesian LMM with brms.",
     cancel_id = session$ns("tg_cancel_bayes"))
 
-  task <- .tg_bayes_task(bayes_params)
   # R20-Z: the call exactly as the worker makes it, for the R script.
   job_id <- launch_job(sid, "bayes_tg", task = task,
-                       context = list(bayes_params = bayes_params,
-                                      call_record = record_call("bayesian_tumor_growth", task$args)))
+                       context = list(bayes_params = bayes_params, call_record = call_record))
   rv$tg_job_id <- job_id
   attach_bayes_poller(input, output, session, rv,
                       job_id_field          = "tg_job_id",

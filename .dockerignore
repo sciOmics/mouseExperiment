@@ -1,0 +1,19 @@
+# The build context of docker/Dockerfile is the repository. Only the package
+# itself goes into the image: what is listed here would otherwise change the
+# COPY layer, and rebuild the package, whenever docs or review logs change.
+.git
+.github
+.claude
+.Rproj.user
+.Rhistory
+.DS_Store
+*.Rproj
+**/Rplots.pdf
+CODE_REVIEW.md
+CHANGELOG.md
+CONTRIBUTING.md
+coverage.R
+data-raw
+dev
+docker
+docs

@@ -239,17 +239,7 @@ powerAnalysisUI <- function(id) {
         tabsetPanel(
           id = ns("pw_ap_results_tabs"),
 
-          tabPanel("Summary",
-            fluidRow(
-              column(10, offset = 1,
-                br(),
-                shinycssloaders::withSpinner(
-                  uiOutput(ns("pw_ap_summary_ui"))
-                )
-              )
-            )
-          ),
-
+          # R23.13: Info first, as in every analysis tab.
           tabPanel("Info",
             fluidRow(
               column(10, offset = 1,
@@ -376,6 +366,17 @@ powerAnalysisUI <- function(id) {
                 ),
 
                 br()
+              )
+            )
+          ),
+
+          tabPanel("Summary",
+            fluidRow(
+              column(10, offset = 1,
+                br(),
+                shinycssloaders::withSpinner(
+                  uiOutput(ns("pw_ap_summary_ui"))
+                )
               )
             )
           ),
@@ -1003,15 +1004,15 @@ power_server <- function(id, rv) {
     if (is.null(df) || nrow(df) == 0)
       return(dt_table(data.frame(Message = "No scenario results available")))
     df <- format_df_for_display(as.data.frame(df))
-    DT::datatable(df, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
+    dt_table(df, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
   })
 
-  output$pw_ap_plot_curves <- renderPlot({
+  # R23.14: built from the current settings, so Download Results draws it even if it was never shown.
+  pw_curve_plot_r <- reactive({
     req(rv$ap_results)
     curve_df <- rv$ap_results$power_curve_data
     if (is.null(curve_df) || nrow(curve_df) == 0) {
-      plot(1, 1, type = "n", main = "A priori power curves not available", xlab = "", ylab = "")
-      return(invisible(NULL))
+      return(message_plot("A priori power curves not available"))
     }
 
     mode_ap <- rv$ap_results$mode %||% "apriori_analytic"
@@ -1076,6 +1077,11 @@ power_server <- function(id, rv) {
     current_ap_plot(p)
     p
   })
+  output$pw_ap_plot_curves <- renderPlot({
+    p <- pw_curve_plot_r()
+    req(!is.null(p))
+    print(p)
+  })
 
   output$pw_ap_sensitivity_table <- DT::renderDT({
     req(rv$ap_results)
@@ -1085,7 +1091,7 @@ power_server <- function(id, rv) {
         Message = "SD sensitivity analysis is only available in the Mean difference + Pooled SD input mode."
       )))
     df <- format_df_for_display(as.data.frame(df))
-    DT::datatable(df, options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
+    dt_table(df, options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
   })
 
   output$download_pw_ap_scenario <- downloadHandler(
@@ -1102,7 +1108,7 @@ power_server <- function(id, rv) {
   output$download_pw_ap_plot <- downloadHandler(
     filename = "apriori_power_curves.png",
     content = function(file) {
-      p <- current_ap_plot()
+      p <- pw_curve_plot_r()
       req(!is.null(p))
       png(file, width = 900, height = 600)
       print(p); dev.off()
@@ -1121,7 +1127,7 @@ power_server <- function(id, rv) {
   # "Download Results" (CODE_REVIEW.md R20-D.Y).
   add_download_results(
     input, output, session, prefix = "pw", module = "power",
-    items = reactive(pw_dl_items(rv$ap_results, curve_plot = function() current_ap_plot())),
+    items = reactive(pw_dl_items(rv$ap_results, curve_plot = function() shown_plot(pw_curve_plot_r()))),
     readme_header = function() dl_readme_header("Power Analysis", rv$ap_results,
                                                 function(res) list(mode = res$mode)),
     plot_size = function() list(width = 900, height = 600, dpi = 100))
