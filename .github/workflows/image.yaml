@@ -1,0 +1,126 @@
+# The server image (docker/Dockerfile), built and gated as the server would run
+# it (CODE_REVIEW.md R23-A). Until 0.49.2 the image was tested only on the
+# server, in the staging environment's build; staging is retired, and a pull
+# request into production must pass this job instead.
+#
+# The gates, in order:
+#   1. docker/shiny-gate.R: every Import and dashboard package loads, both Stan
+#      backends compile and sample, the dashboard's UI builds.
+#   2. docker/shiny-gate-fit.R: a Bayesian fit at the dashboard's defaults,
+#      within production's memory budget for a fit and with no swap. The
+#      server's compiler was OOM-killed on 2026-10-25; this would have failed.
+#   3. docker/shiny-gate-tests.R: the package's test suite inside the image, in
+#      shards side by side, Bayesian fits skipped (R CMD check runs those).
+#   4. The image serves the dashboard over HTTP.
+# Each runs without a network, as the image's own user.
+name: image
+
+on:
+  push:
+    branches: [development]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+
+# An explicit bash adds -o pipefail, so `docker run ... | tee` fails when the
+# container does.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      IMAGE: mouseexperiment:ci
+      # Production's container limit (sciOmicsVPS docker-compose.yml, 5,632 MB)
+      # less its main app process with a few sessions (about 1 GB). Keep the
+      # two in step.
+      FIT_MEMORY: 4608m
+      TEST_SHARDS: 3
+    steps:
+      - uses: actions/checkout@v7
+
+      # The image is about 3.2 GB, and the builder's cache and the loaded copy
+      # hold it twice more.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - uses: docker/setup-buildx-action@v3
+
+      # The layers up to the package's are cached between runs; a new commit
+      # rebuilds only the package. PKG_REF is the commit checked out (for a
+      # pull request, its merge commit).
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          build-args: PKG_REF=${{ github.sha }}
+          tags: ${{ env.IMAGE }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Gate 1 - dependencies load, Stan compiles and samples, the UI builds
+        run: |
+          docker run --rm -i --network none --memory 3g -e "EXPECT_PKG_SHA=${{ github.sha }}" "$IMAGE" \
+            R --no-save --no-echo < docker/shiny-gate.R | tee gate.out
+          grep -qx 'GATE_OK' gate.out
+
+      - name: Gate 2 - a Bayesian fit at the dashboard's defaults within ${{ env.FIT_MEMORY }}
+        run: |
+          docker run --rm -i --network none --memory "$FIT_MEMORY" --memory-swap "$FIT_MEMORY" "$IMAGE" \
+            R --no-save --no-echo < docker/shiny-gate-fit.R | tee fit.out
+          grep -qx 'FIT_OK' fit.out
+
+      - name: Gate 3 - the test suite in the image
+        run: |
+          pids=()
+          for k in $(seq 1 "$TEST_SHARDS"); do
+            docker run --rm -i --network none --memory 3g -e "GATE_TESTS_SHARD=$k/$TEST_SHARDS" "$IMAGE" \
+              timeout 1800 R --no-save --no-echo < docker/shiny-gate-tests.R > "tests.$k.out" 2>&1 &
+            pids+=("$!")
+          done
+          failed=""
+          for k in $(seq 1 "$TEST_SHARDS"); do
+            wait "${pids[$((k - 1))]}" || true
+            echo "::group::test shard $k/$TEST_SHARDS"
+            cat "tests.$k.out"
+            echo "::endgroup::"
+            grep -qx 'TESTS_OK' "tests.$k.out" || failed="$failed $k"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::test shard(s) failed or did not finish:$failed"
+            exit 1
+          fi
+
+      # The whole page is fetched, then searched: `curl | grep -q` fails a
+      # served page under pipefail (sciOmicsVPS CODE_REVIEW.md V3.6).
+      - name: Gate 4 - the image serves the dashboard
+        run: |
+          docker run -d --name probe --network none --memory 2g "$IMAGE" > /dev/null
+          for i in $(seq 1 60); do
+            if page=$(docker exec probe curl -fsS -m 10 http://127.0.0.1:3838/ 2>/dev/null) \
+                && grep -q 'mouseExperiment' <<< "$page"; then
+              echo "served after about $((i * 3)) s"
+              exit 0
+            fi
+            sleep 3
+          done
+          docker logs --tail 60 probe
+          exit 1
+
+      - name: What the image holds
+        if: always()
+        run: docker run --rm "$IMAGE" head -3 /usr/local/share/mouseexperiment/build-info.txt || true

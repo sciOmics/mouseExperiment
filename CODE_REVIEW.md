@@ -6929,3 +6929,66 @@ The header test fails on 0.49.0.
 
 
 **Verification (executed):** the full suite, Bayesian fits skipped: 765 tests, 0 failed. `R CMD check --no-manual --no-tests`: Status OK.
+
+---
+
+## Round 23 — the maintainer's manual review of the dashboard (2026-10-26)
+
+**Source.** `docs/MANUAL_REVIEW_NOTES.md` (2026-10-26): 27 notes from using the dashboard, bugs and proposals, discussed with the maintainer on 2026-10-29. Each note is an item here, in the notes' order, with the decision taken. Three performance items came out of the discussion (R23.28–R23.30).
+
+| Item | Note | Decision |
+|---|---|---|
+| R23.1 | mRECIST response analysis | Remove it entirely, the best-response waterfall included |
+| R23.2 | Growth delay: statistics and a per-animal table | Add both: a log-rank test of time to the volume against the reference (Holm-adjusted), the specific growth delay, and each animal's time |
+| R23.3 | A menu for the Stan backend | Remove it from the dashboard, which fits with rstan; the package keeps `backend =`. The image then needs no CmdStan |
+| R23.4 | ANOVA tab after a Bayesian fit | Hide it |
+| R23.5 | Posterior check tab | Move it into Diagnostics, in Tumor Growth and Survival |
+| R23.6 | Pareto-k, treedepth, E-BFMI, Bayes R², PPC coverage, PSIS-LOO | Explain each where it is shown, and in Help |
+| R23.7 | R-hat, Estimate, ESS in the posterior summary | As R23.6 |
+| R23.8 | Per-mouse drill-down | Select several mice |
+| R23.9 | "Extrapolation Points (plots only)" | Move it to the plot controls, beside "Show extrapolated curves/points" |
+| R23.10 | "The first fit of a model compiles it ..." | Remove it from the sidebars and the progress messages; Help keeps it |
+| R23.11 | AFT analysis | Add accelerated failure time models (Weibull, log-normal, log-logistic), reported as time ratios |
+| R23.12 | No prior vs posterior plot in Bayesian Tumor Growth | A Posterior plot type, with an optional prior and an HDI band at a chosen level |
+| R23.13 | Tab order differs between modules | One order: Info, Summary, results, Plots, Diagnostics, Download Results |
+| R23.14 | Do downloaded plots keep the user's adjustments? | Check every module; fix any that do not |
+| R23.15 | Download several analyses at once | Keep every run of the session; one export of any of them; a rerun with the same inputs reuses the stored result |
+| R23.16 | Synergy estimand tooltip quotes simulation numbers | Remove the numbers |
+| R23.17 | Synergy plot legend lacks the shading | Add it |
+| R23.18 | Toxicity: Tumor Volume covariate ticked while tumour mass is subtracted | Unticked by default, and unavailable while the subtraction is on |
+| R23.19 | Toxicity: ML estimation | Remove the choice from the dashboard (REML); the package keeps it |
+| R23.20 | "Fit once" wording in progress messages | As R23.10 |
+| R23.21 | Fixed vs random effects | Explain them in the Info tabs |
+| R23.22 | p-values for the rate of weight change | Compare each arm's rate with the reference arm's (intervals, adjusted p-values), not each rate with zero |
+| R23.23 | lower.CL / upper.CL without their level | Label every interval with its level |
+| R23.24 | No arm crosses 20 % weight loss in the Weight demo | Make the combination arm severely toxic (3 of 5 animals past 20 %, removed there), the single agents mild |
+| R23.25 | Synergy of toxicity | Deferred |
+| R23.26 | Dose response: only linear and LOESS lines | Draw the fitted dose-response curve; choose among a fixed set of models (linear in log dose, Emax, 3- and 4-parameter log-logistic) by AIC, preferring the simplest within 2; no 4-parameter model with fewer than 5 doses |
+| R23.27 | Retire staging.mouseexperiment.com; develop locally | Retired. The image is built and tested in CI (R23-A); `staging` becomes `development` |
+| R23.28 | (discussion) CPUs for fits | Production's container gets 5 CPUs: the 4 chains keep 4 and the app process its own (sciOmicsVPS) |
+| R23.29 | (discussion) Compiles after every restart | Proposed: keep compiled models on disk across restarts; to be tested first |
+| R23.30 | (discussion) `-O1` slows sampling | Return to `-O2` (without `-g`) once production has 5.5 GB, if the CI fit gate passes |
+
+**Measured for R23.24** (gross weight, each animal's lowest change from its first weighing, `weight_synthetic_data`): DMSO −1.9 % median, Drug A −2.4 %, Drug B −12.6 %, Drug A + B −18.8 % (worst −19.7 %). No animal reaches −20 %.
+
+**Found for R23.14:** Tumor Growth's Download Results draws its plots from the same reactives as the Plots tab, styling included, so they carry the user's adjustments. The other modules are to be checked.
+
+## R23-A Implementation log — v0.49.2: the server image is built and tested in CI (R23.27, 2026-10-29)
+
+**Why.** The staging environment (staging.mouseexperiment.com) did three things: it ran the test suite against the exact image production would run, its "Staging deployed" status cleared a release PR for merging, and it let the maintainer click through a release on the server. Only the maintainer could sign in to it. It cost the server a 3.5 GB memory limit that, beside production's 4.5 GB, exceeded the host's 7.9 GB, and a 17-minute build and test on the server's cores for every push. It did not catch the out-of-memory failure of 2026-10-25: its gate compiled a one-line model, and its test suite skipped Bayesian fits.
+
+**The change:**
+- **`docker/Dockerfile`**, from sciOmicsVPS `docker/Dockerfile.shiny`. It installs the package from the build context instead of `install_github()`, and writes the `Remote*` fields that `install_github()` added: the R scripts' install line and `package_lock()` read them. The staging/production `BRANCH` argument is gone.
+- **`.dockerignore`** keeps docs, review logs and the docker files out of the context, so that editing them does not rebuild the package layer.
+- **The gate scripts** move too: `docker/shiny-gate.R` and `docker/shiny-gate-tests.R`.
+- **`docker/shiny-gate-fit.R`** is new: a Bayesian tumour-growth fit at the dashboard's defaults (4 chains, 1,000 warmup, 500 draws, rstan), the call the dashboard's worker makes.
+- **`.github/workflows/image.yaml`** builds the image for every pull request and every push to `development`, with the layers above the package cached, and runs four gates without a network:
+  1. dependencies load, both Stan backends compile and sample, the UI builds;
+  2. the fit, in a container limited to 4,608 MB with no swap: production's new 5,632 MB limit less the app's main process;
+  3. the test suite inside the image, in 3 shards side by side, Bayesian fits skipped (R CMD check runs those);
+  4. the page is served.
+- **Branches.** `R-CMD-check.yaml` runs on pushes to `development` and `production`. CONTRIBUTING describes `development`, local runs and the release PR. The security link points at `production`.
+
+**Executed:** `docker/shiny-gate-fit.R` on the working tree (a Mac, `load_all()`): fitted in 41 s, peak resident memory 2.66 GB.
+
+**Still to do (the maintainer):** rename `staging` to `development` on GitHub, and require the `image` check on pull requests into `production`. **(sciOmicsVPS):** build from this Dockerfile, and remove staging.

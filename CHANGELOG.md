@@ -5,6 +5,22 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.49.2] - 2026-10-29
+
+The server's image is built and tested in CI (`CODE_REVIEW.md` R23-A). Nothing changes in the
+package or the dashboard.
+
+### Changed
+- **The image's Dockerfile and gate scripts are in this repository** (`docker/`), moved from
+  sciOmicsVPS, so the image is versioned with the code it runs. It installs the package from
+  the checkout and records the commit as `install_github()` did, for the R scripts' install line.
+- **A new workflow, `image.yaml`,** builds that image for every pull request and every push to
+  `development`. It then checks, without a network, that every dependency loads, that a Bayesian
+  fit at the dashboard's defaults compiles and samples within production's memory budget, that
+  the test suite passes inside the image, and that the page is served.
+- **The `staging` branch becomes `development`.** The staging environment it deployed is retired;
+  run the dashboard locally from `development` instead.
+
 ## [0.49.1] - 2026-10-25
 
 ### Fixed
