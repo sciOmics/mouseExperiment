@@ -75,8 +75,9 @@ test_that("Power Analysis comes after Drug Synergy in the navbar", {
   nav <- regmatches(h, regexpr('<ul class="nav navbar-nav[^"]*"[^>]*>[\\s\\S]*?</ul>', h, perl = TRUE))
   tabs <- gsub('^data-value="|"$', "", regmatches(nav, gregexpr('data-value="[^"]+"', nav))[[1]])
   # 26.10.006 put Power Analysis second, between Data and Tumor Growth.
+  # R23.15: Results, every run of the session, after the analyses.
   expect_identical(tabs, c("Data", "Tumor Growth", "Survival", "Toxicity", "Dose Response",
-                           "Drug Synergy", "Power Analysis", "Help", "About"))
+                           "Drug Synergy", "Power Analysis", "Results", "Help", "About"))
 })
 
 test_that("26.10.009: the Help tab matches the app", {

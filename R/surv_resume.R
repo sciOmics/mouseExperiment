@@ -22,6 +22,20 @@ launch_surv_bayes_job <- function(sid, bayes_params,
       type = "warning", duration = 8)
     return(invisible(NULL))
   }
+  # R23.15: the same data and settings as a fit saved this session: show it
+  # again instead of refitting (the seed is fixed).
+  task <- .surv_bayes_task(bayes_params)
+  call_record <- record_call("bayesian_survival", task$args)
+  hit <- history_find(session, "survival", history_fingerprint(call_record))
+  if (!is.null(hit)) {
+    history_restore(session, rv, hit)
+    rv$surv_running <- FALSE
+    shiny::showNotification(sprintf(paste0(
+      "This fit has the same data and settings as run %d (at %s), so its results are shown ",
+      "again without refitting. Results lists every run."), hit$id, format(hit$when, "%H:%M")),
+      type = "message", duration = 10)
+    return(invisible(NULL))
+  }
   show_analysis_modal(
     "Bayesian survival fit running\u2026",
     # R23.20: how compiling works is in Help, not in the progress window.
@@ -29,11 +43,9 @@ launch_surv_bayes_job <- function(sid, bayes_params,
     cancel_id = session$ns("surv_cancel_bayes"))
   # R20.D12: no study strings (the reference arm's name) go to analytics.
   shinyjs::runjs("window.trackAnalysisStart('survival', 'bayes', 'study_control');")
-  task <- .surv_bayes_task(bayes_params)
   # R20-AA: the call exactly as the worker makes it, for the R script.
   job_id  <- launch_job(sid, "bayes_surv", task = task,
-                        context = list(bayes_params = bayes_params,
-                                       call_record = record_call("bayesian_survival", task$args)))
+                        context = list(bayes_params = bayes_params, call_record = call_record))
   rv$surv_job_id <- job_id
   attach_bayes_poller(input, output, session, rv,
                       job_id_field          = "surv_job_id",

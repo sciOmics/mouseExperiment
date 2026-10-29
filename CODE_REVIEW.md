@@ -7236,3 +7236,41 @@ Help told users to "open a plot once before downloading it". The README listed a
 - **The items' descriptions and Help** describe the new behaviour.
 
 **Tests** (`test-r23-plot-downloads.R`): Synergy (one day, then every day), Dose Response and Power each put their plots in the ZIP without any plot output being read first. The plots carry the set title; a single day offers no TGI plot; a message plot is not exported; Help has no "last shown" advice.
+
+## R23-I Implementation log — v0.57.0: every run kept; several downloaded together; no refit (R23.15, 2026-10-29)
+
+**The note.** Download Results offered only the tab's latest run, because a new run replaced the last. The maintainer asked to keep every run (decided 2026-10-29), and whether a rerun could use the stored result instead of computing again: yes.
+
+**`R/run_history.R`:**
+- **`history_modules()`.** For each of the six analysis tabs: its title, its navbar tab, the shared field with its result, and the other shared fields its run handler sets and its tabs read. These are Tumor Growth's plot data, columns, groups and reference; the groups of Survival and Toxicity; and Synergy's mode and plot inputs. Run-state fields (running flags, job ids) are not kept.
+- **`history_save()`** runs from an observer on each tab's result.
+  - **What it writes:** an RDS of the result and those fields, in a folder of the session's own (`tempfile()`, deleted when the session ends).
+  - **Not saved:** failed runs, and runs that were themselves opened from the history (marked `me_history_id`).
+  - **Two kinds of repeat:**
+    - A run with the tab's latest fingerprint and a new call time is an identical rerun: it replaces the latest entry.
+    - The same call time is the same run seen again. That happens when a download of several runs puts it back, or when the randomisation test completes it. Only its file is updated. Before this distinction, the browser check found that putting a run back redrew the table, and that cleared the user's selection.
+- **`history_fingerprint()`** is `rlang::hash()` of the call record without its time: the function, the arguments and the data. Toxicity's two records are hashed together.
+- **`history_restore()`** writes a run's fields back, then its result.
+- **`history_export_zip()`** collects each selected run with the tab's own Download Results registration (`session$userData$dl_registry`, F4). It shows the run in its tab for the moment that takes, writes the items into a folder through `write_results_dir()`, and then gives the tab back what it showed. `write_results_dir()` is `write_results_zip()`'s body, split out. A top-level README lists the runs.
+- **The Results tab** (`runHistoryUI()`, `run_history_server()`) is a table (run, analysis, model, time, reference, data rows) with Open in its tab, Download selected and Remove selected. It is always enabled, like Power Analysis.
+- **The model labels** tell runs apart: the transform for LME4, the distribution for AFT, and Cox vs Cox (Firth) vs log-rank.
+
+**No refit for the same Bayesian fit.**
+- **The check.** `launch_tg_bayes_job()` and `launch_surv_bayes_job()` build the call record before the progress window, and look it up with `history_find()`. The fingerprint of the call they are about to launch equals the saved result's, because the saved `call_record` is that same record.
+- **A hit** restores the saved run, clears the running flag, and notes that the fit was not refitted. The package's seed is fixed (42), so a refit would give the same draws.
+- **Frequentist runs** take seconds and are refitted. An identical one replaces the latest entry.
+
+**Help:** a Results section.
+
+**Tests** (`test-r23-run-history.R`, 4 tests, 37 expectations):
+- **The fingerprint** ignores the time, and changes with an argument or a data row.
+- **Saving:** runs are saved, an identical run replaces the latest, and failures are skipped. The table lists the runs.
+- **Opening** brings back the result and its plot data, and adds no entry. Lookup by fingerprint works.
+- **Downloading two runs** gives two folders, each with its own table. The tab gets its run back, and the list, its times and the change counter are untouched.
+- **Removing** deletes the run's file.
+- **The source:** both Bayesian launches look in the history before launching a job.
+
+**Checked in a browser** (shinytest2, the All Features demo):
+- Two Tumor Growth runs (log, sqrt) and a Cox run are listed as "LME4 mixed model, log", "LME4 mixed model, sqrt" and "Cox (Firth)", with reference "Vehicle 0" and the data rows.
+- Downloading the two Tumor Growth runs gave two complete folders, with tables, plots, diagnostics, data and `analysis.R`.
+- Opening run 1 switched to Tumor Growth, showing "Transformation: log".

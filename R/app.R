@@ -228,6 +228,8 @@ dashboard_app <- function() {
     # Power Analysis last among the analyses (2026-10-22): it plans the next
     # study, while the others analyse the loaded one.
     tabPanel("Power Analysis",  powerAnalysisUI("pw")),
+    # R23.15: every run of the session, to open again or download together.
+    tabPanel("Results",         runHistoryUI("history")),
     tabPanel("Help",          helpUI()),
     tabPanel("About",          citationUI())
   )
@@ -298,6 +300,7 @@ dashboard_app <- function() {
     synergy_server("syn", rv)
     power_server("pw", rv)
     dose_response_server("dr", rv)
+    run_history_server("history", rv)   # R23.15
 
     # Guard: redirect away from placeholder tabs if reached via keyboard
     observeEvent(input$main_nav, {
