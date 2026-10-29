@@ -112,7 +112,16 @@ It does not borrow strength across arms the way the endpoint model does, and doe
 
 ## Survival
 
-Function family: `survival_statistics()`, `bayesian_survival()`.
+Function family: `survival_statistics()`, `aft_survival()`, `bayesian_survival()`.
+
+### `aft_survival()` — accelerated failure time (v0.54.0)
+
+A parametric model of the time to the endpoint, `survival::survreg()`, reported as **time ratios**: an arm's time to the endpoint relative to the reference's (1.8 = 80 % longer). It does not assume proportional hazards, so it is the alternative when `cox.zph()` rejects them; it assumes a distribution of times instead.
+- **The distribution:** Weibull, log-normal or log-logistic. `distribution = "auto"` fits all three and uses the lowest AIC; `distribution_comparison` reports each.
+- **The time ratio** is `exp(coefficient)`, with a Wald interval and p-value on the log scale, corrected over the arms (`p_adjust_method`, Holm by default).
+- **An arm with no events** has no finite time ratio and is reported with a note; it is left out of the fit.
+- **The fit** can be checked against Kaplan-Meier: `fitted_curves` holds each arm's model curve (the dashboard draws both).
+- **Animals are treated as independent;** with whole cages randomised the function warns that its p-values overstate the evidence.
 
 ### `survival_statistics()` — frequentist
 

@@ -7140,3 +7140,47 @@ The header test fails on 0.49.0.
 **Tests:**
 - **`test-r23-weight-demo.R`** checks the arms' worst losses, the two early exits and the 98 rows, and that the package data match the demo CSV. `weight_loss_threshold()` finds three events, all in the combination. It also checks the note.
 - **`test-round21-study-design.R`** expected no animal past 20 %. It now expects the three, all in the combination.
+
+## R23-F Implementation log — v0.54.0: accelerated failure time models (R23.11, 2026-10-29)
+
+**Why.** Time ratios read more directly than hazard ratios ("the treatment lengthens the time to the endpoint 1.8-fold"), and the AFT model does not assume proportional hazards. When `cox.zph()` rejects them, the dashboard had no frequentist alternative. The Bayesian survival model is already an AFT model (Weibull or log-normal, brms).
+
+**`aft_survival()`** (`R/aft_survival.R`, exported), one row per animal:
+- **The model:** `survreg(Surv(Time, Event) ~ Treatment)`, with the reference first. `distribution = "auto"` fits the Weibull, log-normal and log-logistic and uses the lowest AIC. `distribution_comparison` lists each one's log-likelihood and AIC, and which was used.
+- **`time_ratios`:** `exp(coefficient)`, with Wald limits at `conf_level`, the p-value, and `P_Adjusted` (`p_adjust_method`, Holm by default). It also gives each arm's N and events, and `Median_Predicted`, from `predict(type = "quantile", p = 0.5)`.
+- **Arms with no events** are left out of the fit; their row has no ratio and a note. An infinite coefficient would otherwise be reported as a huge, meaningless number. A reference arm without events stops the fit.
+- **`fitted_curves`:** each arm's `1 - psurvreg()` over 100 points to the last time.
+- **Checks, as in the other survival functions:**
+  - one row per animal (`validate_one_row_per_subject()`), and 0/1 events;
+  - positive times, because the AFT model is fitted on log time;
+  - `dose_column` (`me_arms_with_dose()`);
+  - `randomisation_unit = "cage"` warns. The AFT model has no cage-level test; Cox has the permutation log-rank (R20.6).
+- **The result class** is `me_aft`: `print()` shows the time ratios and the distributions.
+- **`aft_fit_plot()`** (internal) draws each arm's Kaplan-Meier steps with the fitted curve, dashed.
+
+**On the master demo** (events at 1,000 mm³): the log-normal has the lowest AIC (153.6, against 155.9 for the Weibull and 155.1 for the log-logistic). Two arms have no events. The fitted medians (Drug_A Low 19.2, Drug_A Mid 25.5, Drug_B 18.0 days) are close to Kaplan-Meier's (18, 25, 20), and the dashed curves follow the steps.
+
+**The Survival tab:**
+- **The sidebar:** "Accelerated Failure Time (AFT)" between Cox and Bayesian, with Distribution ("Best by AIC" by default) and the correction.
+- **The run path:** it calls `aft_survival()` through `getExportedValue()`, with the same columns, dose and reference as Cox. The record is for the R script. `model_type_used = "aft"`.
+- **Kept:** the Kaplan-Meier plot, the risk table and the summary's settings.
+- **Model Results:** its own explanation, the model line, and the time ratios.
+- **Diagnostics:** an AFT panel with the AIC table and the fit plot. The Cox panel now shows only for Cox (it showed for every non-Bayesian model).
+- **The Cox proportional-hazards banner** suggests the AFT model when the global `cox.zph()` p is below 0.05.
+- **Elsewhere:**
+  - `surv_effects()` maps the time ratios to the forest plot (adjusted p) and the "Time ratios" download;
+  - Download Results adds the AIC table and the fit plot;
+  - `surv_script_bundle()` titles the script "Survival (AFT)" and prints both tables.
+
+**Docs:** README, `docs/METHODS.md` (a new section) and Help.
+
+**Tests** (`test-r23-aft.R`, 5 tests, 43 expectations):
+- **On simulated Weibull data with a true time ratio of 2:**
+  - the ratios, limits and p-values equal `survreg()`'s, and Holm's correction is applied;
+  - the truth falls inside the interval, and an arm with ratio 1 is not significant;
+  - the reference's predicted median is close to the true one;
+  - the fitted curves fall, and the result prints.
+- **On log-normal data,** "auto" picks the lowest AIC.
+- **Edge cases:** an arm without events; a reference without events; two doses; cage randomisation; a repeated animal; a zero time.
+- **The tab,** end to end: the table, the summary, the AIC table, the downloads, and an R script that reproduces the ratios and adjusted p.
+- **The banner,** for p = 0.028 and p = 0.4.

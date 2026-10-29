@@ -197,6 +197,8 @@ helpUI <- function() {
       tags$dd("Non-parametric survival estimates with 95% confidence bands. Log-rank test for group differences."),
       tags$dt("Cox proportional hazards"),
       tags$dd("Semi-parametric Cox PH model. Hazard ratios with 95% CI for each treatment vs. reference. When whole cages were randomised (Study Design), each arm is instead compared with the reference by a cage-level permutation log-rank, and the hazard ratios have no interval. Firth's bias-reduced estimation is applied automatically when any arm has zero events, where the standard partial likelihood would return infinite coefficients. The proportional-hazards assumption is tested and reported \u2014 if it fails, the hazard ratio is an average over a period in which the true ratio changed, and should not be quoted as a single number."),
+      tags$dt("Accelerated failure time (AFT)"),
+      tags$dd("A parametric model of the time to the endpoint (Weibull, log-normal or log-logistic, the best by AIC unless you choose). Each arm is compared with the reference as a time ratio: 1.8 means its animals take 1.8 times as long to reach the endpoint. It does not assume proportional hazards, so use it when the Cox model's check rejects them. Diagnostics compares the distributions and draws the fit against Kaplan-Meier."),
       tags$dt("Bayesian AFT (brms)"),
       tags$dd("Accelerated failure time model with a Weibull or log-normal distribution. Returns time ratios and derived hazard ratios with credible intervals.")
     ),

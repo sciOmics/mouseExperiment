@@ -452,7 +452,8 @@ surv_script_bundle <- function(res, include_upload = FALSE) {
   rec <- res$call_record
   if (is.null(rec)) return(NULL)
   bayes <- identical(rec$fun, "bayesian_survival")
-  title <- if (bayes) "Survival (Bayesian AFT)" else "Survival"
+  aft   <- identical(rec$fun, "aft_survival")   # R23.11
+  title <- if (bayes) "Survival (Bayesian AFT)" else if (aft) "Survival (AFT)" else "Survival"
   notes <- c(
     if (identical(res$event_src_used, "volume"))
       c(sprintf("The event and time columns (%s, %s) were derived by the dashboard:",
@@ -468,6 +469,8 @@ surv_script_bundle <- function(res, include_upload = FALSE) {
                  "move the draws slightly."))
   # R22.2: a Bayesian AFT run reports treatment_effects (time ratios), not results.
   shown <- if (bayes) c(treatment_effects = "Posterior time ratios by arm, with credible intervals")
+           else if (aft) c(time_ratios = "Each arm's time ratio against the reference, with the correction selected",
+                           distribution_comparison = "The distributions compared by AIC")
            else c(results = "Each arm against the reference, with the correction selected")
   script_bundle(title, list(script_step(rec, "result", prints = shown)), notes,
                 prep = script_prep(res, include_upload))

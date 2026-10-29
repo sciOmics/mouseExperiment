@@ -147,6 +147,17 @@ surv_forest_plot_styled <- function(res, input) {
 #' @keywords internal
 surv_effects <- function(res) {
   if (is.null(res) || isTRUE(res$error)) return(NULL)
+  # R23.11: an AFT run's time ratios, with confidence intervals and
+  # corrected p-values.
+  if (identical(res$model_type_used, "aft")) {
+    tr <- res$time_ratios
+    if (!is.data.frame(tr) || !nrow(tr)) return(NULL)
+    return(list(table = tr,
+                forest = data.frame(Group = tr$Treatment, HR = tr$Time_Ratio, CI_Lower = tr$Lower_CL,
+                                    CI_Upper = tr$Upper_CL, P_Value = tr$P_Adjusted,
+                                    stringsAsFactors = FALSE),
+                measure = "Time Ratio", abbrev = "TR"))
+  }
   if (identical(res$model_type_used, "bayes")) {
     te <- res$treatment_effects
     if (!is.data.frame(te) || !nrow(te)) return(NULL)
@@ -170,6 +181,8 @@ surv_run_settings <- function(res) {
        events_from     = res$event_src_used,
        volume_limit    = res$vol_threshold_used,
        deaths_as_events = res$death_events_added,
-       p_adjust        = if (is.data.frame(res$results)) unique(res$results$P_Adjust_Method))
+       p_adjust        = if (is.data.frame(res$results)) unique(res$results$P_Adjust_Method)
+                         else res$p_adjust_method,
+       distribution    = res$distribution)
 }
 

@@ -18,15 +18,33 @@ survivalUI <- function(id) {
           selectInput(ns("surv_model_type"),
             tagList("Statistical Model", help_tip(paste(
               "Cox Proportional Hazards compares each arm's hazard with the control's",
-              "(Firth's penalised version when an arm has no events). Bayesian",
-              "Weibull models the whole survival-time distribution and reports",
-              "credible intervals; it runs in the background and takes seconds to a",
-              "few minutes."))),
+              "(Firth's penalised version when an arm has no events). Accelerated",
+              "failure time (AFT) reports time ratios, how many times longer an arm",
+              "takes to reach the endpoint, and does not assume proportional hazards.",
+              "Bayesian Weibull is an AFT model with credible intervals; it runs in",
+              "the background and takes seconds to a few minutes."))),
             choices = c(
               "Cox Proportional Hazards" = "frequentist",
+              "Accelerated Failure Time (AFT)" = "aft",
               "Bayesian (Weibull/brms)" = "bayes"
             ),
             selected = "frequentist"
+          ),
+
+          # R23.11: the AFT model's settings.
+          conditionalPanel(ns = ns, "input.surv_model_type == 'aft'",
+            selectInput(ns("surv_aft_dist"),
+              tagList("Distribution", help_tip(paste(
+                "The shape assumed for the times to the endpoint. 'Best by AIC' fits",
+                "Weibull, log-normal and log-logistic and uses the one that fits best;",
+                "Diagnostics compares them and draws the fit against Kaplan-Meier."))),
+              choices = c("Best by AIC" = "auto", "Weibull" = "weibull",
+                          "Log-normal" = "lognormal", "Log-logistic" = "loglogistic"),
+              selected = "auto"),
+            selectInput(ns("surv_aft_p_adjust"), "Multiple-comparison correction",
+              choices = c("Holm" = "holm", "Bonferroni" = "bonferroni",
+                          "FDR (Benjamini-Hochberg)" = "fdr", "None" = "none"),
+              selected = "holm")
           ),
 
           # The reference is the study's control group (R20-D.H).
@@ -218,6 +236,25 @@ survivalUI <- function(id) {
           ),
           
           tabPanel("Model Results",
+            # R23.11: what the AFT table shows.
+            conditionalPanel(ns = ns, "input.surv_model_type == 'aft'",
+              tab_info(
+                strong("Accelerated failure time model. "),
+                "Each arm's time to the endpoint compared with the reference's, as a ",
+                strong("time ratio"), ": 1.8 means the arm's animals take 1.8 times as long to reach ",
+                "the endpoint, 0.5 half as long. It does not assume proportional hazards; it assumes ",
+                "a distribution for the times (Diagnostics compares them).",
+                tags$ul(
+                  tags$li(strong("Time_Ratio"), " \u2014 with its 95 % confidence interval (Lower / Upper 95% CI)."),
+                  tags$li(strong("P_Value / P_Adjusted"), " \u2014 Wald test that the time ratio is 1, ",
+                          "then corrected over the arms compared with the reference."),
+                  tags$li(strong("Median_Predicted"), " \u2014 the arm's median time to the endpoint from the model."),
+                  tags$li(strong("Note"), " \u2014 an arm in which no animal reached the endpoint has no ",
+                          "finite time ratio: every time is censored.")
+                )
+              )
+            ),
+            conditionalPanel(ns = ns, "input.surv_model_type != 'aft'",
             tab_info(
               strong("Cox proportional hazards model. "),
               "Hazard Ratios (HR) are computed relative to the reference group. Firth\u2019s bias-reduced method is applied automatically when a group has zero events.",
@@ -233,6 +270,7 @@ survivalUI <- function(id) {
                 tags$li(strong("Median_Survival"), " \u2014 day by which 50\u202f% of the group reached the endpoint. \u2018Not reached\u2019 if fewer than half had events by study end."),
                 tags$li(strong("Note"), " \u2014 flags the reference group row.")
               )
+            )
             ),
             div(class = "text-right", style = "margin-bottom: 6px;",
               downloadButton(ns("download_surv_cox"), "Download Results")
@@ -382,12 +420,13 @@ survivalUI <- function(id) {
             tab_info(
               strong("Model-fit diagnostics. "),
               "Cox PH: proportional-hazards assumption check (Schoenfeld). ",
+              "AFT: the distributions compared, and the fit against Kaplan-Meier. ",
               "Bayesian (brms): MCMC convergence + posterior diagnostics. ",
               "The view switches based on the selected Statistical Model."
             ),
             # ── Freq diagnostics (Cox PH) ──────────────────────────────────
             conditionalPanel(ns = ns,
-                            "input.surv_model_type != 'bayes'",
+                            "input.surv_model_type == 'frequentist'",
             tab_info(
               strong("Cox proportional-hazards assumption check via Schoenfeld residuals (cox.zph). "),
               "The Cox model assumes the hazard ratio is constant over time. A small global p-value indicates the assumption is violated and the reported HRs / CIs may be misleading (a treatment whose effect accelerates or attenuates over time gives inconsistent HRs depending on when you look).",
@@ -422,6 +461,22 @@ survivalUI <- function(id) {
               plotOutput(ns("surv_schoenfeld_plot"), height = "500px")
             )
             ),  # /freq conditionalPanel
+            # ── AFT (R23.11) ───────────────────────────────────────────────
+            conditionalPanel(ns = ns, "input.surv_model_type == 'aft'",
+              h4("The distributions compared"),
+              tab_info(
+                "Each distribution's fit to the data, by AIC (lower is better; a difference under ",
+                "about 2 is not a real difference). 'Used' marks the one the results come from."
+              ),
+              DT::DTOutput(ns("surv_aft_dist_table")),
+              hr(),
+              h4("Fit against Kaplan-Meier"),
+              plot_help(
+                "Each arm's Kaplan-Meier curve (steps) with the AFT model's fitted curve (dashed). ",
+                strong("The dashed curves follow the steps: "), "the distribution fits. ",
+                strong("They part systematically: "), "try another distribution, or the Cox model."),
+              shinycssloaders::withSpinner(plotOutput(ns("surv_aft_fit_plot"), height = "450px"))
+            ),
             # ── Bayes MCMC diagnostics ─────────────────────────────────────
             conditionalPanel(ns = ns,
                             "input.surv_model_type == 'bayes'",
@@ -809,25 +864,42 @@ survival_server <- function(id, rv) {
 
     # R20.D14: the ID column is passed (it used to have to be named "ID").
     # R20.6: the declared unit of randomisation decides the test.
-    surv_args <- list(
-      df = data,
-      time_column = time_col_use,
-      event_column = censor_col_use,
-      treatment_column = tx_col_surv,
-      cage_column = cage_col_surv,
-      id_column = id_col_surv,
-      randomisation_unit = if (!is.null(cage_col_surv))
-                             rv$settings$randomisation_unit %||% "mouse" else "mouse",
-      dose_column = dose_col_surv,
-      reference_group = ref_group,
-      firth_correction = TRUE,
-      verbose = FALSE
-    )
+    rand_unit <- if (!is.null(cage_col_surv)) rv$settings$randomisation_unit %||% "mouse" else "mouse"
+    if (isTRUE(input$surv_model_type == "aft")) {
+      # R23.11: the accelerated failure time model.
+      surv_fun <- "aft_survival"
+      surv_args <- list(
+        df = data, time_column = time_col_use, event_column = censor_col_use,
+        treatment_column = tx_col_surv, id_column = id_col_surv, cage_column = cage_col_surv,
+        dose_column = dose_col_surv, reference_group = ref_group,
+        distribution = input$surv_aft_dist %||% "auto",
+        p_adjust_method = input$surv_aft_p_adjust %||% "holm",
+        randomisation_unit = rand_unit)
+    } else {
+      surv_fun <- "survival_statistics"
+      surv_args <- list(
+        df = data,
+        time_column = time_col_use,
+        event_column = censor_col_use,
+        treatment_column = tx_col_surv,
+        cage_column = cage_col_surv,
+        id_column = id_col_surv,
+        randomisation_unit = rand_unit,
+        dose_column = dose_col_surv,
+        reference_group = ref_group,
+        firth_correction = TRUE,
+        verbose = FALSE
+      )
+    }
     result <- safe_analysis(module = "survival",
-                            do.call(mouseExperiment::survival_statistics, surv_args))
+                            do.call(getExportedValue("mouseExperiment", surv_fun), surv_args))
     # R20-AA: the call exactly as made, for the R script in Download Results.
-    result <- with_provenance(result, record_call("survival_statistics", surv_args),
+    result <- with_provenance(result, record_call(surv_fun, surv_args),
                               prep_steps, rv$source_file)
+    if (identical(surv_fun, "aft_survival") && !isTRUE(result$error)) {
+      result$model_type_used <- "aft"
+      result$method_used <- sprintf("Accelerated failure time (%s)", result$distribution)
+    }
 
     # Store event source for downstream use (KM plot titles, summary text)
     result$event_src_used     <- event_src
@@ -1034,9 +1106,24 @@ survival_server <- function(id, rv) {
       cat("Treatment Column:", rv$settings$col_treatment, "\n")
       cat("Statistical Method:", rv$surv_results$method_used, "\n")
       unit <- rv$surv_results$randomisation_unit %||% "mouse"
+      aft <- identical(rv$surv_results$model_type_used, "aft")
       cat("Unit of Randomisation:",
-          if (identical(unit, "cage")) "whole cages (p-values from a cage-level permutation log-rank)"
+          if (identical(unit, "cage") && aft) "whole cages (the AFT model treats animals as independent: its p-values are too small)"
+          else if (identical(unit, "cage")) "whole cages (p-values from a cage-level permutation log-rank)"
           else "individual animals", "\n")
+      # R23.11: the AFT model's time ratios.
+      if (aft && is.data.frame(rv$surv_results$time_ratios)) {
+        tr <- rv$surv_results$time_ratios
+        cat("Reference Group:", rv$surv_results$reference_group, "\n\n")
+        cat("--- Time ratios against the reference (", rv$surv_results$distribution, ") ---\n", sep = "")
+        for (i in seq_len(nrow(tr))) {
+          if (identical(tr$Note[i], "reference")) next
+          cat(sprintf("  %-20s %s\n", tr$Treatment[i],
+                      if (is.na(tr$Time_Ratio[i])) "not estimable (no events)"
+                      else sprintf("%.2f [%.2f, %.2f], adjusted p = %s", tr$Time_Ratio[i], tr$Lower_CL[i],
+                                   tr$Upper_CL[i], format_pval(tr$P_Adjusted[i]))))
+        }
+      }
       
       if (!is.null(rv$surv_results$results)) {
         res <- rv$surv_results$results
@@ -1174,6 +1261,13 @@ survival_server <- function(id, rv) {
       if (is.null(ps)) return("Posterior summary not available.")
       return(paste(capture.output(print(as.data.frame(ps))), collapse = "\n"))
     }
+    if (identical(rv$surv_results$model_type_used, "aft")) {   # R23.11
+      r <- rv$surv_results
+      return(paste(c(sprintf("Accelerated failure time model, %s distribution (%s).", r$distribution,
+                             if (nrow(r$distribution_comparison) > 1L) "lowest AIC of the three" else "as chosen"),
+                     sprintf("Scale %.3f; p-values corrected by %s.", r$scale, r$p_adjust_method)),
+                   collapse = "\n"))
+    }
     if (is.null(rv$surv_results$model)) return("Model not available")
     paste(capture.output(summary(rv$surv_results$model)), collapse = "\n")
   })
@@ -1185,6 +1279,7 @@ survival_server <- function(id, rv) {
     req(rv$surv_results)
     if (isTRUE(rv$surv_results$error)) return(NULL)
     if (isTRUE(rv$surv_results$model_type_used == "bayes")) return(NULL)
+    if (identical(rv$surv_results$model_type_used, "aft")) return(NULL)   # R23.11: see Diagnostics
 
     c_idx  <- rv$surv_results$c_index
     ph     <- rv$surv_results$ph_test
@@ -1272,7 +1367,31 @@ survival_server <- function(id, rv) {
         sprintf("This analysis used method_used = '%s'; no Schoenfeld test available.",
                 rv$surv_results$method_used %||% "unknown")))
     }
+    # R23.11: when proportional hazards look violated, point to the model
+    # that does not assume them.
+    tab <- tryCatch(as.data.frame(ph$table), error = function(e) NULL)
+    p_global <- if (!is.null(tab) && "GLOBAL" %in% rownames(tab)) tab["GLOBAL", "p"] else NA_real_
+    if (is.finite(p_global) && p_global < 0.05) {
+      return(shiny::div(class = "alert alert-warning",
+        shiny::icon("triangle-exclamation"),
+        sprintf(" The proportional-hazards assumption looks violated (global p = %s), so the hazard ratios may mislead. ",
+                format_pval(p_global)),
+        "An accelerated failure time model (Statistical Model: AFT) does not assume it and reports time ratios."))
+    }
     NULL
+  })
+
+  # R23.11: the AFT model's distributions, and its fit against Kaplan-Meier.
+  output$surv_aft_dist_table <- DT::renderDT({
+    req(rv$surv_results, identical(rv$surv_results$model_type_used, "aft"))
+    dc <- rv$surv_results$distribution_comparison
+    dt_table(format_df_for_display(dc), rownames = FALSE,
+             options = list(dom = "t", paging = FALSE, searching = FALSE))
+  })
+  output$surv_aft_fit_plot <- renderPlot({
+    req(rv$surv_results, identical(rv$surv_results$model_type_used, "aft"))
+    cols <- tryCatch(build_color_vector(input, "surv_color", ordered_surv_grps()), error = function(e) NULL)
+    aft_fit_plot(rv$surv_results, colors = cols)
   })
 
   # Schoenfeld residuals plot — the `cox.zph` object supports plot()
@@ -1329,6 +1448,11 @@ survival_server <- function(id, rv) {
       if (is.null(te)) return(dt_table(data.frame(Message = "Treatment effects not available")))
       return(dt_table(format_df_for_display(as.data.frame(te)),
                        options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)))
+    }
+    if (identical(rv$surv_results$model_type_used, "aft")) {   # R23.11
+      tr <- surv_effects(rv$surv_results)$table
+      return(dt_table(format_df_for_display(tr),
+                      options = list(scrollX = TRUE, paging = FALSE, searching = FALSE)))
     }
     if (is.null(rv$surv_results$results)) {
       return(dt_table(data.frame(Message = "Results not available")))
