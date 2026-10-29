@@ -239,17 +239,7 @@ powerAnalysisUI <- function(id) {
         tabsetPanel(
           id = ns("pw_ap_results_tabs"),
 
-          tabPanel("Summary",
-            fluidRow(
-              column(10, offset = 1,
-                br(),
-                shinycssloaders::withSpinner(
-                  uiOutput(ns("pw_ap_summary_ui"))
-                )
-              )
-            )
-          ),
-
+          # R23.13: Info first, as in every analysis tab.
           tabPanel("Info",
             fluidRow(
               column(10, offset = 1,
@@ -376,6 +366,17 @@ powerAnalysisUI <- function(id) {
                 ),
 
                 br()
+              )
+            )
+          ),
+
+          tabPanel("Summary",
+            fluidRow(
+              column(10, offset = 1,
+                br(),
+                shinycssloaders::withSpinner(
+                  uiOutput(ns("pw_ap_summary_ui"))
+                )
               )
             )
           ),
@@ -1003,7 +1004,7 @@ power_server <- function(id, rv) {
     if (is.null(df) || nrow(df) == 0)
       return(dt_table(data.frame(Message = "No scenario results available")))
     df <- format_df_for_display(as.data.frame(df))
-    DT::datatable(df, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
+    dt_table(df, options = list(scrollX = TRUE, pageLength = 25), rownames = FALSE)
   })
 
   output$pw_ap_plot_curves <- renderPlot({
@@ -1085,7 +1086,7 @@ power_server <- function(id, rv) {
         Message = "SD sensitivity analysis is only available in the Mean difference + Pooled SD input mode."
       )))
     df <- format_df_for_display(as.data.frame(df))
-    DT::datatable(df, options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
+    dt_table(df, options = list(scrollX = TRUE, pageLength = 10), rownames = FALSE)
   })
 
   output$download_pw_ap_scenario <- downloadHandler(

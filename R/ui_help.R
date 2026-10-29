@@ -267,7 +267,7 @@ helpUI <- function() {
       tags$dt("Analysis fails or produces no output"),
       tags$dd("Verify that the selected columns contain valid, non-missing data. Tumor volumes must be positive. Time points must be numeric. At least two groups must be present for any comparison."),
       tags$dt("Bayesian model is slow to start"),
-      tags$dd("The first fit of a model compiles it (about 20 s); later fits with the same structure reuse it and usually take under a minute. Fits run one at a time on a background worker, so other users and tabs stay responsive, and yours may wait for one ahead of it."),
+      tags$dd("The first fit of a model compiles it, which takes about two minutes on mouseexperiment.com and less on a fast computer; later fits with the same structure reuse it and usually take under a minute. Fits run one at a time on a background worker, so other users and tabs stay responsive, and yours may wait for one ahead of it."),
       tags$dt("Plot download produces a blank file"),
       tags$dd("Run the analysis first so the plot is rendered, then click the download button. In Download Results, the Drug Synergy, Dose Response and Power plots are exported as last shown, so open a plot once before downloading it; one that was never drawn is listed in the README as not available.")
     )

@@ -24,8 +24,8 @@ launch_surv_bayes_job <- function(sid, bayes_params,
   }
   show_analysis_modal(
     "Bayesian survival fit running\u2026",
-    paste("Fitting the Bayesian AFT model with brms. The first fit of a model",
-          "compiles it (about 20 s); later fits of the same structure reuse it."),
+    # R23.20: how compiling works is in Help, not in the progress window.
+    "Fitting the Bayesian AFT model with brms.",
     cancel_id = session$ns("surv_cancel_bayes"))
   # R20.D12: no study strings (the reference arm's name) go to analytics.
   shinyjs::runjs("window.trackAnalysisStart('survival', 'bayes', 'study_control');")

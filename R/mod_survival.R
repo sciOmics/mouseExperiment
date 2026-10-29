@@ -58,15 +58,8 @@ survivalUI <- function(id) {
                          value = 1000, min = 200, max = 5000, step = 100),
             numericInput(ns("surv_bayes_iter"), "Post-warmup draws per chain",
                          value = 500, min = 200, max = 5000, step = 100),
-            selectInput(ns("surv_bayes_backend"), "Stan backend",
-                        choices = c("rstan", "cmdstanr"),
-                        selected = "rstan"),
-            div(class = "alert alert-warning",
-                style = "font-size:0.85em; padding:8px; margin-top:6px;",
-              icon("clock"), " The first fit of a model compiles it (about 20 s); later fits ",
-              "with the same structure reuse it. Fits run one at a time in the background: ",
-              "you can close the browser and resume or cancel from the banner when you return."
-            )
+            # R23.3: no Stan backend menu; the dashboard fits with rstan.
+            # R23.10: the note on compiling and queueing is in Help.
           ),
 
           hr(),
@@ -231,7 +224,7 @@ survivalUI <- function(id) {
               tags$ul(
                 tags$li(strong("Group"), " \u2014 treatment group name."),
                 tags$li(strong("HR"), " \u2014 Hazard Ratio: the instantaneous risk of the event in this group relative to the reference. HR\u202f<\u202f1 means lower hazard (better survival); HR\u202f>\u202f1 means higher hazard."),
-                tags$li(strong("CI_Lower / CI_Upper"), " \u2014 95\u202f% confidence interval for the HR, not adjusted for multiple comparisons. It can exclude 1.0 while the adjusted P_Value is above 0.05; judge significance by P_Value."),
+                tags$li(strong("Lower / Upper 95% CI"), " \u2014 95\u202f% confidence interval for the HR, not adjusted for multiple comparisons. It can exclude 1.0 while the adjusted P_Value is above 0.05; judge significance by P_Value."),
                 tags$li(strong("P_Value"), " \u2014 p-value for the comparison with the reference, adjusted for the number of comparisons (P_Adjust_Method; unadjusted in P_Value_Unadjusted)."),
                 tags$li(strong("P_Method"), " \u2014 shown when whole cages were randomised (Study Design on Data Upload): the p-value comes from a cage-level permutation log-rank, and the hazard ratio has no interval."),
                 tags$li(strong("Events"), " \u2014 number of animals that reached the endpoint (tumour volume exceeded the IACUC threshold, or died before reaching it if natural death is treated as an event)."),
@@ -254,86 +247,26 @@ survivalUI <- function(id) {
             )
           ),
 
-          tabPanel("Diagnostics",
+          tabPanel("Risk Table",
             tab_info(
-              strong("Model-fit diagnostics. "),
-              "Cox PH: proportional-hazards assumption check (Schoenfeld). ",
-              "Bayesian (brms): MCMC convergence + posterior diagnostics. ",
-              "The view switches based on the selected Statistical Model."
-            ),
-            # ── Freq diagnostics (Cox PH) ──────────────────────────────────
-            conditionalPanel(ns = ns,
-                            "input.surv_model_type != 'bayes'",
-            tab_info(
-              strong("Cox proportional-hazards assumption check via Schoenfeld residuals (cox.zph). "),
-              "The Cox model assumes the hazard ratio is constant over time. A small global p-value indicates the assumption is violated and the reported HRs / CIs may be misleading (a treatment whose effect accelerates or attenuates over time gives inconsistent HRs depending on when you look).",
+              strong("Numbers at risk table: "), "one row per group per event time point, summarising what happened to the cohort at that moment.",
               tags$ul(
-                tags$li(strong("chisq"), " \u2014 Schoenfeld-residual test statistic per covariate, plus a GLOBAL row."),
-                tags$li(strong("df"), " \u2014 degrees of freedom for the test."),
-                tags$li(strong("p"), " \u2014 p-value. < 0.05 in the GLOBAL row means the PH assumption is rejected at the 5 % level.")
+                tags$li(strong("Group"), " \u2014 treatment group name."),
+                tags$li(strong("Time"), " \u2014 the day on which one or more events occurred."),
+                tags$li(strong("N_Risk"), " \u2014 number of animals still alive and uncensored at the start of this time interval."),
+                tags$li(strong("N_Events"), " \u2014 number of animals that experienced the endpoint at exactly this time."),
+                tags$li(strong("N_Censored"), " \u2014 number of animals whose last observation was at this time without reaching the endpoint (e.g. still within tumour volume limit at study end, or removed from study)."),
+                tags$li(strong("Survival"), " \u2014 Kaplan\u2013Meier estimated survival probability at this time point (1.0\u202f=\u202f100\u202f% surviving).")
               ),
-              em("Only available for the standard Cox path. NA for Firth (coxphf) and log-rank fallbacks.")
+              "N_Risk decreases over time as events and censoring accumulate; a rapid drop indicates many events in a short window."
             ),
-            uiOutput(ns("surv_ph_test_banner")),
-            shinycssloaders::withSpinner(
-              DT::DTOutput(ns("surv_ph_test_table"))
-            ),
-            hr(),
-            h4("Schoenfeld residuals plot"),
-            tab_info(
-              strong("How to read this plot. "),
-              "Each panel shows the smoothed Schoenfeld residuals for one ",
-              "covariate against transformed survival time. ",
-              strong("Flat horizontal smoother around 0 (within the shaded CI band)"),
-              " = PH assumption met for that term. ",
-              strong("Monotonic trend"),
-              " = the hazard ratio drifts over time (treatment effect ",
-              "strengthens or weakens). ",
-              strong("Sinusoidal / non-monotonic shape"),
-              " = a more complex time-varying effect \u2014 usually means a ",
-              "Cox model with a time-varying coefficient (or a parametric ",
-              "AFT) fits better. The dashed line at zero is the null."
+            div(class = "text-right", style = "margin-bottom: 6px;",
+              downloadButton(ns("download_surv_risk_table"), "Download Table")
             ),
             shinycssloaders::withSpinner(
-              plotOutput(ns("surv_schoenfeld_plot"), height = "500px")
-            )
-            ),  # /freq conditionalPanel
-            # ── Bayes MCMC diagnostics ─────────────────────────────────────
-            conditionalPanel(ns = ns,
-                            "input.surv_model_type == 'bayes'",
-              tab_info(
-                strong("MCMC convergence diagnostics"),
-                " for all fixed-effect parameters. All chains should have ",
-                "converged (R\u0302 \u2248 1.00) and have sufficient effective ",
-                "samples before interpreting results.",
-                tags$ul(
-                  tags$li(strong("Rhat"), " \u2014 potential scale-reduction factor; values > 1.01 indicate non-convergence."),
-                  tags$li(strong("Bulk_ESS"), " \u2014 bulk effective sample size; aim for > 400 per chain."),
-                  tags$li(strong("Tail_ESS"), " \u2014 tail ESS; important for credible interval accuracy."),
-                  tags$li(strong("Converged"), " \u2014 TRUE when R\u0302 \u2264 1.01.")
-                ),
-                em("If Rhat > 1.01, try increasing iterations or chains before reporting results.")
-              ),
-              uiOutput(ns("surv_bayes_diagnostics")),
-              shinycssloaders::withSpinner(DT::DTOutput(ns("surv_mcmc_diag_table"))),
-              br(),
-              h5(strong("Influential observations (Pareto-k > 0.7)")),
-              em(class = "text-muted",
-                 "Observations the LOO approximation can't reliably estimate. Investigate these mice individually."),
-              shinycssloaders::withSpinner(DT::DTOutput(ns("surv_bayes_influential"))),
-              br(),
-              h5(strong("MCMC trace plots")),
-              plot_help(
-                "Each line is one chain's draws of a parameter, after warmup. Converged chains ",
-                "overlap and look like stationary noise around one level (a \u2018fuzzy ",
-                "caterpillar\u2019). ", strong("A drift, a trend, or a chain at a different level: "),
-                "the chains have not converged and the estimates are unreliable; run more warmup ",
-                "iterations or simplify the model."),
-              shinycssloaders::withSpinner(
-                plotOutput(ns("surv_mcmc_trace_plot"), height = "500px"))
+              DT::DTOutput(ns("surv_risk_table"))
             )
           ),
-
           tabPanel("Plots",
             fluidRow(
               column(3,
@@ -430,26 +363,114 @@ survivalUI <- function(id) {
             )
           ),
 
-          tabPanel("Risk Table",
+          # R23.5/R23.13: a fixed tab, shown for the Bayesian model only; it used
+          # to be appended after Download Results.
+          tabPanel("Prior vs Posterior",
             tab_info(
-              strong("Numbers at risk table: "), "one row per group per event time point, summarising what happened to the cohort at that moment.",
-              tags$ul(
-                tags$li(strong("Group"), " \u2014 treatment group name."),
-                tags$li(strong("Time"), " \u2014 the day on which one or more events occurred."),
-                tags$li(strong("N_Risk"), " \u2014 number of animals still alive and uncensored at the start of this time interval."),
-                tags$li(strong("N_Events"), " \u2014 number of animals that experienced the endpoint at exactly this time."),
-                tags$li(strong("N_Censored"), " \u2014 number of animals whose last observation was at this time without reaching the endpoint (e.g. still within tumour volume limit at study end, or removed from study)."),
-                tags$li(strong("Survival"), " \u2014 Kaplan\u2013Meier estimated survival probability at this time point (1.0\u202f=\u202f100\u202f% surviving).")
-              ),
-              "N_Risk decreases over time as events and censoring accumulate; a rapid drop indicates many events in a short window."
+              strong("Prior vs Posterior density overlay"), " \u2014 shows how much the data have updated each parameter's prior distribution.",
+              em("Parameters whose posterior is similar to the prior are not well identified by the data; consider collecting more data or using an informative prior.")
             ),
             div(class = "text-right", style = "margin-bottom: 6px;",
-              downloadButton(ns("download_surv_risk_table"), "Download Table")
+              downloadButton(ns("download_surv_prior_posterior"), "Download Plot")
             ),
             shinycssloaders::withSpinner(
-              DT::DTOutput(ns("surv_risk_table"))
+              plotOutput(ns("surv_prior_posterior_plot"), height = "400px")
             )
           ),
+
+          tabPanel("Diagnostics",
+            tab_info(
+              strong("Model-fit diagnostics. "),
+              "Cox PH: proportional-hazards assumption check (Schoenfeld). ",
+              "Bayesian (brms): MCMC convergence + posterior diagnostics. ",
+              "The view switches based on the selected Statistical Model."
+            ),
+            # ── Freq diagnostics (Cox PH) ──────────────────────────────────
+            conditionalPanel(ns = ns,
+                            "input.surv_model_type != 'bayes'",
+            tab_info(
+              strong("Cox proportional-hazards assumption check via Schoenfeld residuals (cox.zph). "),
+              "The Cox model assumes the hazard ratio is constant over time. A small global p-value indicates the assumption is violated and the reported HRs / CIs may be misleading (a treatment whose effect accelerates or attenuates over time gives inconsistent HRs depending on when you look).",
+              tags$ul(
+                tags$li(strong("chisq"), " \u2014 Schoenfeld-residual test statistic per covariate, plus a GLOBAL row."),
+                tags$li(strong("df"), " \u2014 degrees of freedom for the test."),
+                tags$li(strong("p"), " \u2014 p-value. < 0.05 in the GLOBAL row means the PH assumption is rejected at the 5 % level.")
+              ),
+              em("Only available for the standard Cox path. NA for Firth (coxphf) and log-rank fallbacks.")
+            ),
+            uiOutput(ns("surv_ph_test_banner")),
+            shinycssloaders::withSpinner(
+              DT::DTOutput(ns("surv_ph_test_table"))
+            ),
+            hr(),
+            h4("Schoenfeld residuals plot"),
+            tab_info(
+              strong("How to read this plot. "),
+              "Each panel shows the smoothed Schoenfeld residuals for one ",
+              "covariate against transformed survival time. ",
+              strong("Flat horizontal smoother around 0 (within the shaded CI band)"),
+              " = PH assumption met for that term. ",
+              strong("Monotonic trend"),
+              " = the hazard ratio drifts over time (treatment effect ",
+              "strengthens or weakens). ",
+              strong("Sinusoidal / non-monotonic shape"),
+              " = a more complex time-varying effect \u2014 usually means a ",
+              "Cox model with a time-varying coefficient (or a parametric ",
+              "AFT) fits better. The dashed line at zero is the null."
+            ),
+            shinycssloaders::withSpinner(
+              plotOutput(ns("surv_schoenfeld_plot"), height = "500px")
+            )
+            ),  # /freq conditionalPanel
+            # ── Bayes MCMC diagnostics ─────────────────────────────────────
+            conditionalPanel(ns = ns,
+                            "input.surv_model_type == 'bayes'",
+              tab_info(
+                strong("MCMC convergence diagnostics"),
+                " for all fixed-effect parameters. All chains should have ",
+                "converged (R\u0302 \u2248 1.00) and have sufficient effective ",
+                "samples before interpreting results.",
+                tags$ul(
+                  tags$li(strong("Rhat"), " \u2014 potential scale-reduction factor; values > 1.01 indicate non-convergence."),
+                  tags$li(strong("Bulk_ESS"), " \u2014 bulk effective sample size; aim for > 400 per chain."),
+                  tags$li(strong("Tail_ESS"), " \u2014 tail ESS; important for credible interval accuracy."),
+                  tags$li(strong("Converged"), " \u2014 TRUE when R\u0302 \u2264 1.01.")
+                ),
+                em("If Rhat > 1.01, try increasing iterations or chains before reporting results.")
+              ),
+              uiOutput(ns("surv_bayes_diagnostics")),
+              shinycssloaders::withSpinner(DT::DTOutput(ns("surv_mcmc_diag_table"))),
+              br(),
+              h5(strong("Influential observations (Pareto-k > 0.7)")),
+              em(class = "text-muted",
+                 "Observations the LOO approximation can't reliably estimate. Investigate these mice individually."),
+              shinycssloaders::withSpinner(DT::DTOutput(ns("surv_bayes_influential"))),
+              br(),
+              # R23.5: was its own "Posterior Check" tab.
+              h5(strong("Posterior predictive check")),
+              plot_help(
+                "The model simulates new datasets from the posterior and overlays their densities ",
+                "(y_rep) on the observed survival times (y). ",
+                strong("The observed density inside the simulated envelope: "), "the model reproduces the data. ",
+                strong("Outside it: "), "consider the other likelihood family."),
+              div(class = "text-right", style = "margin-bottom: 6px;",
+                downloadButton(ns("download_surv_pp_check"), "Download Plot")
+              ),
+              shinycssloaders::withSpinner(
+                plotOutput(ns("surv_pp_check_plot"), height = "450px")),
+              br(),
+              h5(strong("MCMC trace plots")),
+              plot_help(
+                "Each line is one chain's draws of a parameter, after warmup. Converged chains ",
+                "overlap and look like stationary noise around one level (a \u2018fuzzy ",
+                "caterpillar\u2019). ", strong("A drift, a trend, or a chain at a different level: "),
+                "the chains have not converged and the estimates are unreliable; run more warmup ",
+                "iterations or simplify the model."),
+              shinycssloaders::withSpinner(
+                plotOutput(ns("surv_mcmc_trace_plot"), height = "500px"))
+            )
+          ),
+
           # R20-D.Y: choose which results go into one ZIP.
           tabPanel(
             title = tags$span(icon("file-zipper"), " Download Results"),
@@ -761,7 +782,7 @@ survival_server <- function(id, rv) {
         n_chains       = as.integer(input$surv_bayes_chains  %||% 4L),
         n_warmup       = as.integer(input$surv_bayes_warmup  %||% 1000L),
         n_iter         = as.integer(input$surv_bayes_iter    %||% 500L),
-        backend        = input$surv_bayes_backend %||% "rstan",
+        backend        = "rstan",   # R23.3: no backend menu
         event_src      = event_src,
         death_events_added = n_death_events,
         vol_threshold  = if (event_src == "volume") as.numeric(input$surv_vol_threshold %||% 2000) else NA_real_,
@@ -900,53 +921,18 @@ survival_server <- function(id, rv) {
     }
   })
   
-  # ── Bayesian tab management ────────────────────────────────────────────────
-  bayes_surv_tabs_inserted <- reactiveVal(FALSE)
-
-  observeEvent(input$surv_model_type, {
-    tabs_id <- "surv_results_tabs"
-    if (isTRUE(input$surv_model_type == "bayes") && !isTRUE(bayes_surv_tabs_inserted())) {
-      appendTab(inputId = tabs_id,
-        tabPanel("Posterior Check",
-          tab_info(
-            strong("Posterior predictive check (PPC)"), " \u2014 the model generates new datasets from the posterior and overlays their densities on the observed data.",
-            tags$ul(
-              tags$li(strong("y"), " \u2014 observed survival times."),
-              tags$li(strong("y_rep"), " \u2014 simulated datasets from the posterior predictive distribution.")
-            ),
-            em("Good model fit: simulated densities closely envelope the observed density.")
-          ),
-          div(class = "text-right", style = "margin-bottom: 6px;",
-            downloadButton(session$ns("download_surv_pp_check"), "Download Plot")
-          ),
-          shinycssloaders::withSpinner(
-            plotOutput(session$ns("surv_pp_check_plot"), height = "450px")
-          )
-        ),
-        select = FALSE
-      )
-      appendTab(inputId = tabs_id,
-        tabPanel("Prior vs Posterior",
-          tab_info(
-            strong("Prior vs Posterior density overlay"), " \u2014 shows how much the data have updated each parameter's prior distribution.",
-            em("Parameters whose posterior is similar to the prior are not well identified by the data; consider collecting more data or using an informative prior.")
-          ),
-          div(class = "text-right", style = "margin-bottom: 6px;",
-            downloadButton(session$ns("download_surv_prior_posterior"), "Download Plot")
-          ),
-          shinycssloaders::withSpinner(
-            plotOutput(session$ns("surv_prior_posterior_plot"), height = "400px")
-          )
-        ),
-        select = FALSE
-      )
-      bayes_surv_tabs_inserted(TRUE)
-    } else if (!isTRUE(input$surv_model_type == "bayes") && isTRUE(bayes_surv_tabs_inserted())) {
-      removeTab(inputId = tabs_id, target = "Posterior Check")
-      removeTab(inputId = tabs_id, target = "Prior vs Posterior")
-      bayes_surv_tabs_inserted(FALSE)
+  # ── Bayesian tab management (R23.5) ────────────────────────────────────────
+  # Prior vs Posterior is a fixed tab, shown for the Bayesian model; the
+  # posterior predictive check is in Diagnostics. Both used to be appended
+  # after Download Results.
+  observe({
+    if (isTRUE(input$surv_model_type == "bayes") ||
+        isTRUE(rv$surv_results$model_type_used == "bayes")) {
+      showTab(inputId = "surv_results_tabs", target = "Prior vs Posterior")
+    } else {
+      hideTab(inputId = "surv_results_tabs", target = "Prior vs Posterior")
     }
-  }, ignoreNULL = FALSE)
+  })
 
   # ── Bayesian render outputs ────────────────────────────────────────────────
   output$surv_pp_check_plot <- renderPlot({
@@ -983,13 +969,13 @@ survival_server <- function(id, rv) {
     req(!isTRUE(rv$surv_results$error))
     inf_df <- bayes_influential_obs(rv$surv_results)
     if (nrow(inf_df) == 0L) {
-      return(DT::datatable(
+      return(dt_table(
         data.frame(Note = sprintf("No observations exceed the Pareto-k threshold (%s).",
                                   format(rv$surv_results$loo_diagnostics$k_threshold %||% 0.7))),
         options = list(dom = "t", paging = FALSE, searching = FALSE), rownames = FALSE
       ))
     }
-    DT::datatable(
+    dt_table(
       inf_df,
       options = list(scrollX = TRUE, paging = FALSE, searching = FALSE), rownames = FALSE
     )
@@ -1315,7 +1301,7 @@ survival_server <- function(id, rv) {
     }
     ph <- rv$surv_results$ph_test
     if (is.null(ph) || is.null(ph$table)) {
-      return(DT::datatable(
+      return(dt_table(
         data.frame(Note = "cox.zph not available \u2014 non-Cox method was used."),
         options = list(dom = "t", paging = FALSE, searching = FALSE), rownames = FALSE
       ))
@@ -1324,7 +1310,7 @@ survival_server <- function(id, rv) {
     tab <- cbind(Covariate = rownames(tab), tab)
     rownames(tab) <- NULL
     tab <- format_df_for_display(tab)
-    DT::datatable(tab,
+    dt_table(tab,
               options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
               rownames = FALSE)
   })
@@ -1368,7 +1354,7 @@ survival_server <- function(id, rv) {
     risk_df <- risk_df[, c("Group", "Time", "N_Risk", "N_Events", "N_Censored", "Survival")]
     risk_df <- risk_df[order(risk_df$Group, risk_df$Time), ]
     
-    DT::datatable(risk_df,
+    dt_table(risk_df,
               options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
               rownames = FALSE)
   })

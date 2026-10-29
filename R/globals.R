@@ -11,8 +11,9 @@ utils::globalVariables(c(
 
 # The same, in the dashboard's plots.
 utils::globalVariables(c(
-  "Alpha", "Ann_Label", "CI_Lower", "CI_Upper", "Contrast", "Day", "Effect",
+  "Alpha", "Animal", "Ann_Label", "Arm", "CI_Lower", "CI_Upper", "Contrast", "Day", "Effect",
   "Effect_Size", "Estimate", "Fitted", "HR", "Lower", "Mean_Volume",
   "N_Per_Group", "Power", "Power_Lower", "Power_Upper", "Residuals", "Upper",
-  "ctr", "grp", "hi", "label_text", "lo", "mean_tgi", "plot_group", "plot_val"
+  "Volume", "ctr", "grp", "hi", "label_text", "lo", "mean_tgi", "plot_group",
+  "plot_val"
 ))

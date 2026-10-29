@@ -404,9 +404,7 @@ synergy_server <- function(id, rv) {
                    "Model-based reads each arm's geometric mean at the evaluation day from",
                    "a log-scale mixed model of every observation, so animals removed",
                    "earlier still count. Survivors uses only animals present that day,",
-                   "which biases TGI down because animals leave when their tumours grow:",
-                   "in a simulated study it understated TGI by about 23 points, where the",
-                   "model-based estimate was off by about 5."))),
+                   "which biases TGI down because animals leave when their tumours grow."))),
                  choices = c(
                    "Model-based (recommended)" = "model",
                    "Each animal's last observation" = "last_obs",
@@ -760,7 +758,7 @@ synergy_server <- function(id, rv) {
       data.frame(Message = "No metrics available")
     }
     df <- format_df_for_display(df)
-    DT::datatable(df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE), rownames = FALSE)
+    dt_table(df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE), rownames = FALSE)
   })
   
   # ── Bootstrap intervals + attrition (CODE_REVIEW.md R3.D9) ─────────────────
@@ -805,7 +803,7 @@ synergy_server <- function(id, rv) {
     ci <- rv$syn_results$synergy_ci
     if (is.null(ci)) return(NULL)
     df <- format_df_for_display(as.data.frame(ci))
-    DT::datatable(df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
+    dt_table(df, options = list(scrollX = TRUE, paging = FALSE, searching = FALSE),
               rownames = FALSE)
   })
 
@@ -905,7 +903,7 @@ synergy_server <- function(id, rv) {
     if (isTRUE(rv$syn_results$error)) return(NULL)
     a <- rv$syn_results$attrition
     if (is.null(a)) return(NULL)
-    DT::datatable(format_df_for_display(as.data.frame(a)),
+    dt_table(format_df_for_display(as.data.frame(a)),
               options = list(paging = FALSE, searching = FALSE), rownames = FALSE)
   })
 
@@ -1004,7 +1002,11 @@ synergy_server <- function(id, rv) {
 
     p <- ggplot2::ggplot(syn_df, ggplot2::aes(x = Time_Point))
 
-    # Synergy / antagonism shading between Combo TGI and Bliss expected TGI
+    # Synergy / antagonism shading between Combo TGI and Bliss expected TGI.
+    # R23.17: the fills are mapped, so the legend says which is which; they
+    # were constants, and the legend listed only the lines.
+    shade_labels <- c(synergy    = "Synergy (combination above Bliss)",
+                      antagonism = "Antagonism (combination below Bliss)")
     if (show_shade &&
         all(c("TGI_Combo", "Bliss_Expected_TGI") %in% colnames(syn_df))) {
       p <- p +
@@ -1013,19 +1015,25 @@ synergy_server <- function(id, rv) {
           ggplot2::aes(
             ymin = Bliss_Expected_TGI,
             ymax = ifelse(TGI_Combo >= Bliss_Expected_TGI,
-                          TGI_Combo, Bliss_Expected_TGI)
+                          TGI_Combo, Bliss_Expected_TGI),
+            fill = shade_labels[["synergy"]]
           ),
-          fill = "steelblue", alpha = 0.18
+          alpha = 0.18
         ) +
         # antagonism region: combo < bliss (red)
         ggplot2::geom_ribbon(
           ggplot2::aes(
             ymin = ifelse(TGI_Combo < Bliss_Expected_TGI,
                           TGI_Combo, Bliss_Expected_TGI),
-            ymax = Bliss_Expected_TGI
+            ymax = Bliss_Expected_TGI,
+            fill = shade_labels[["antagonism"]]
           ),
-          fill = "tomato", alpha = 0.18
-        )
+          alpha = 0.18
+        ) +
+        ggplot2::scale_fill_manual(
+          values = stats::setNames(c("steelblue", "tomato"), shade_labels),
+          breaks = unname(shade_labels), name = NULL,
+          guide = ggplot2::guide_legend(override.aes = list(alpha = 0.35), order = 2))
     }
 
     p <- p +
@@ -1034,7 +1042,8 @@ synergy_server <- function(id, rv) {
       ggplot2::geom_line(ggplot2::aes(y = TGI_Combo,          color = "Combination")) +
       ggplot2::geom_line(ggplot2::aes(y = Bliss_Expected_TGI, color = "Bliss Value"),
                          alpha = 0.5, linewidth = 3) +
-      ggplot2::scale_color_manual(values = color_vals, labels = color_labels) +
+      ggplot2::scale_color_manual(values = color_vals, labels = color_labels,
+                                  guide = ggplot2::guide_legend(order = 1)) +
       ggplot2::labs(x = "Days", y = "Percent Tumor Growth Inhibition", color = NULL) +
       ggplot2::ylim(0, 100) +
       ggplot2::theme_classic() +

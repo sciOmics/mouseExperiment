@@ -1048,3 +1048,65 @@ drilldown_rows <- function(data, rate_row, id_col, tx_col, cage_col = NULL) {
   }
   data[which(keep), , drop = FALSE]
 }
+
+#' The Tumour Growth drill-down plot, for one animal or several
+#'
+#' CODE_REVIEW.md R23.8: several rows of the Growth Rates table can be
+#' selected. Each selected animal's volumes are drawn in its own colour, over
+#' its arm's mean (grey, dashed), one panel per arm; the legend gives each
+#' animal's growth rate. At most `max_animals` are drawn.
+#'
+#' @param data The analysed data.
+#' @param rates The backend's growth-rate table.
+#' @param rows The selected rows of `rates`.
+#' @param id_col,tx_col,time_col,vol_col,cage_col Column names in `data`.
+#' @param max_animals The most animals drawn.
+#' @return A ggplot, or NULL when no selected animal has data.
+#' @keywords internal
+drilldown_plot <- function(data, rates, rows, id_col, tx_col, time_col, vol_col,
+                           cage_col = NULL, max_animals = 12L) {
+  rows <- unique(as.integer(rows))
+  rows <- rows[!is.na(rows) & rows >= 1L & rows <= nrow(rates)]
+  dropped <- max(0L, length(rows) - max_animals)
+  rows <- utils::head(rows, max_animals)
+  with_cage <- "Cage" %in% names(rates) && has_col(data, cage_col)
+  parts <- lapply(rows, function(r) {
+    d <- drilldown_rows(data, rates[r, , drop = FALSE], id_col, tx_col, cage_col)
+    if (!nrow(d)) return(NULL)
+    lab <- animal_label(rates$Treatment[r], rates$ID[r], if (with_cage) rates$Cage[r])
+    rate <- rates$growth_rate[r]
+    data.frame(Time = d[[time_col]], Volume = d[[vol_col]],
+               Arm = as.character(rates$Treatment[r]),
+               Animal = if (is.finite(rate)) sprintf("%s: %.3f/day", lab, rate) else lab,
+               stringsAsFactors = FALSE)
+  })
+  animals <- do.call(rbind, parts)
+  if (is.null(animals) || !nrow(animals)) return(NULL)
+  animals$Animal <- factor(animals$Animal, levels = unique(animals$Animal))
+  arms <- unique(animals$Arm)
+  in_arms <- data[as.character(data[[tx_col]]) %in% arms, , drop = FALSE]
+  means <- stats::aggregate(in_arms[[vol_col]],
+                            list(Time = in_arms[[time_col]], Arm = as.character(in_arms[[tx_col]])),
+                            FUN = mean, na.rm = TRUE)
+  names(means)[3] <- "Volume"
+  single <- nlevels(animals$Animal) == 1L
+  p <- ggplot2::ggplot(mapping = ggplot2::aes(x = Time, y = Volume)) +
+    ggplot2::geom_line(data = means, colour = "grey60", linewidth = 0.7, linetype = "dashed") +
+    ggplot2::geom_line(data = animals, ggplot2::aes(colour = Animal), linewidth = 1) +
+    ggplot2::geom_point(data = animals, ggplot2::aes(colour = Animal), size = 2.5) +
+    ggplot2::labs(
+      title = if (single) paste("Drill-down:", levels(animals$Animal)) else
+        sprintf("Drill-down: %d animals", nlevels(animals$Animal)),
+      subtitle = paste0("Growth rate in log volume per day. Grey dashed = the arm's mean.",
+                        if (dropped) sprintf(" The first %d selected are shown (%d more not drawn).",
+                                             max_animals, dropped)),
+      x = time_col, y = vol_col, colour = NULL) +
+    ggplot2::theme_classic(base_size = 14) +
+    ggplot2::theme(legend.position = "bottom", legend.direction = "vertical")
+  if (length(arms) > 1L) p <- p + ggplot2::facet_wrap(~ Arm)
+  if (single) p <- p + ggplot2::theme(legend.position = "none") +
+    ggplot2::labs(subtitle = sprintf(
+      "Growth rate %.4f log volume per day (%.2fx daily fold change). Grey dashed = the arm's mean.",
+      rates$growth_rate[rows[1]], exp(rates$growth_rate[rows[1]])))
+  p
+}

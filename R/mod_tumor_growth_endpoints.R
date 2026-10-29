@@ -111,7 +111,7 @@ add_tg_endpoints <- function(input, output, session, rv, colors = NULL) {
     if (failed(r)) return(dt_table(data.frame(Message = conditionMessage(r))))
     s <- r$summary
     names(s)[names(s) == "Response_Rate"] <- "Response rate (%)"
-    DT::datatable(format_df_for_display(s), rownames = FALSE,
+    dt_table(format_df_for_display(s), rownames = FALSE,
                   options = list(paging = FALSE, searching = FALSE, scrollX = TRUE))
   })
 
@@ -120,7 +120,7 @@ add_tg_endpoints <- function(input, output, session, rv, colors = NULL) {
     if (failed(r)) return(NULL)
     pa <- r$per_animal
     for (col in c("Baseline_Volume", "Best_Response", "Best_Avg_Response")) pa[[col]] <- round(pa[[col]], 1)
-    DT::datatable(pa, rownames = FALSE, options = list(pageLength = 10, scrollX = TRUE))
+    dt_table(pa, rownames = FALSE, options = list(pageLength = 10, scrollX = TRUE))
   })
 
   waterfall <- reactive({
@@ -167,7 +167,7 @@ add_tg_endpoints <- function(input, output, session, rv, colors = NULL) {
   output$tg_delay_table <- DT::renderDT({
     d <- delay()$result
     if (failed(d)) return(NULL)
-    DT::datatable(delay_display_table(d$delay_table, d$reference_group), rownames = FALSE,
+    dt_table(delay_display_table(d$delay_table, d$reference_group), rownames = FALSE,
                   options = list(paging = FALSE, searching = FALSE, scrollX = TRUE))
   })
 

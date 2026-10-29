@@ -796,7 +796,7 @@ data_upload_server <- function(id, rv) {
     req(qc, nrow(qc$flagged))
     f <- qc$flagged
     names(f)[names(f) == "Row"] <- "Line"
-    DT::datatable(f, rownames = FALSE, filter = "top",
+    dt_table(f, rownames = FALSE, filter = "top",
                   options = list(pageLength = 10, scrollX = TRUE))
   })
 

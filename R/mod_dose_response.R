@@ -238,6 +238,32 @@ doseResponseUI <- function(id) {
             DT::DTOutput(ns("dr_tgi_table"))
           ),
 
+          # R23.13: results before Plots, as in every analysis tab.
+          tabPanel("Model Results",
+            tab_info(
+              strong("Full statistical test results. "),
+              "The text output includes linear regression (slope, intercept, p-value, R\u00b2), one-way ANOVA table, and polynomial trend p-values. Non-linear model AIC/BIC are shown when the drc package fit converges. ",
+              "When ANOVA p\u202f<\u202f0.05 the Tukey HSD post-hoc table is shown below:",
+              tags$ul(
+                tags$li(strong("Comparison"), " \u2014 the two dose levels being compared (\u2018DoseA\u202f-\u202fDoseB\u2019)."),
+                tags$li(strong("diff"), " \u2014 estimated mean difference in tumor volume (Dose A minus Dose B)."),
+                tags$li(strong("lwr / upr"), " \u2014 lower and upper bounds of the Tukey-adjusted 95\u202f% confidence interval for the difference."),
+                tags$li(strong("p adj"), " \u2014 Tukey family-wise error rate adjusted p-value. Values below 0.05 indicate a significant difference between that dose pair.")
+              )
+            ),
+            div(class = "text-right", style = "margin-bottom: 6px;",
+              downloadButton(ns("download_dr_stats"), "Download Results CSV")
+            ),
+            shinycssloaders::withSpinner(
+              verbatimTextOutput(ns("dr_stat_tests"))
+            ),
+            shinycssloaders::withSpinner(
+              DT::DTOutput(ns("dr_tukey_table"))
+            )
+          ),
+
+          # CODE_REVIEW.md DIAGNOSTICS gap (5) \u2014 frequentist DR had no
+          # goodness-of-fit. v0.4.8 surfaces drc::modelFit + residuals plot.
           tabPanel("Plots",
             fluidRow(
               column(3,
@@ -339,31 +365,6 @@ doseResponseUI <- function(id) {
             )
           ),
 
-          tabPanel("Model Results",
-            tab_info(
-              strong("Full statistical test results. "),
-              "The text output includes linear regression (slope, intercept, p-value, R\u00b2), one-way ANOVA table, and polynomial trend p-values. Non-linear model AIC/BIC are shown when the drc package fit converges. ",
-              "When ANOVA p\u202f<\u202f0.05 the Tukey HSD post-hoc table is shown below:",
-              tags$ul(
-                tags$li(strong("Comparison"), " \u2014 the two dose levels being compared (\u2018DoseA\u202f-\u202fDoseB\u2019)."),
-                tags$li(strong("diff"), " \u2014 estimated mean difference in tumor volume (Dose A minus Dose B)."),
-                tags$li(strong("lwr / upr"), " \u2014 lower and upper bounds of the Tukey-adjusted 95\u202f% confidence interval for the difference."),
-                tags$li(strong("p adj"), " \u2014 Tukey family-wise error rate adjusted p-value. Values below 0.05 indicate a significant difference between that dose pair.")
-              )
-            ),
-            div(class = "text-right", style = "margin-bottom: 6px;",
-              downloadButton(ns("download_dr_stats"), "Download Results CSV")
-            ),
-            shinycssloaders::withSpinner(
-              verbatimTextOutput(ns("dr_stat_tests"))
-            ),
-            shinycssloaders::withSpinner(
-              DT::DTOutput(ns("dr_tukey_table"))
-            )
-          ),
-
-          # CODE_REVIEW.md DIAGNOSTICS gap (5) \u2014 frequentist DR had no
-          # goodness-of-fit. v0.4.8 surfaces drc::modelFit + residuals plot.
           tabPanel("Diagnostics",
             tab_info(
               strong("Model-fit diagnostics. "),
@@ -761,7 +762,7 @@ dose_response_server <- function(id, rv) {
     if (isTRUE(rv$dr_results$error)) return(dt_table(data.frame(Message = "Results not available")))
     tbl <- as.data.frame(rv$dr_results$summary_table)
     tbl <- format_df_for_display(tbl)
-    DT::datatable(tbl, options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE)
+    dt_table(tbl, options = list(scrollX = TRUE, pageLength = 15), rownames = FALSE)
   })
 
   output$dr_download_plot_btn <- renderUI({
@@ -895,7 +896,7 @@ dose_response_server <- function(id, rv) {
     req(rv$dr_results)
     tt <- rv$dr_results$tgi_table
     if (isTRUE(rv$dr_results$error) || is.null(tt)) return(NULL)
-    DT::datatable(format_df_for_display(tt), rownames = FALSE,
+    dt_table(format_df_for_display(tt), rownames = FALSE,
               options = list(paging = FALSE, searching = FALSE, scrollX = TRUE))
   })
 
@@ -974,7 +975,7 @@ dose_response_server <- function(id, rv) {
     tbl$Comparison <- rownames(tbl)
     tbl <- tbl[, c("Comparison", setdiff(names(tbl), "Comparison"))]
     tbl <- format_df_for_display(tbl)
-    DT::datatable(tbl, options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
+    dt_table(tbl, options = list(scrollX = TRUE, pageLength = 20), rownames = FALSE)
   })
 
   # CODE_REVIEW.md DIAGNOSTICS gap (5) — frequentist DR Diagnostics tab.

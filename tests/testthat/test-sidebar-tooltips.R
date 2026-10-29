@@ -36,10 +36,12 @@ test_that("26.10.007: the Tumour Growth sidebar explains its options in tooltips
   side <- substr(html, 1L, regexpr("run_tg_analysis", html, fixed = TRUE))  # up to Run
   for (lbl in c("Statistical Model", "Post-hoc Comparisons", "Run randomisation test",
                 "Multiple-comparison correction", "Data Transformation",
-                "Extrapolation Points", "Cage Effect Handling", "Random Effects",
-                "Prior Strength")) {
+                "Cage Effect Handling", "Random Effects", "Prior Strength")) {
     expect_match(side, paste0(lbl, "[^<]*<span class=\"help-tip"), info = lbl)
   }
+  # R23.9: Extrapolation points is a plot control now, with its tooltip.
+  expect_false(grepl("Extrapolation Points", side, fixed = TRUE))
+  expect_match(html, "Extrapolation points[^<]*<span class=\"help-tip")
   # No helpText() paragraphs are left between the controls.
   expect_false(grepl("help-block", side, fixed = TRUE))
   # Internal review references are not user-facing text.
@@ -85,7 +87,8 @@ test_that("26.10.009: the other analysis tabs explain their options in tooltips 
   sv <- side_of("survivalUI", "surv")
   for (l in c("Statistical Model", "Endpoint")) expect_tip(sv, l)
   tx <- side_of("toxicityUI", "tox")
-  for (l in c("Statistical Model", "Estimation method", "Endpoint estimand",
+  # R23.19: no Estimation method choice.
+  for (l in c("Statistical Model", "Endpoint estimand",
               "Interval draws", "Tolerability threshold")) expect_tip(tx, l)
   dr <- side_of("doseResponseUI", "dr")
   expect_tip(dr, "Pairwise Comparison Type")

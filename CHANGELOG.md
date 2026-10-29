@@ -5,6 +5,38 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.50.0] - 2026-10-29
+
+The maintainer's manual review of the dashboard, the smaller items (`CODE_REVIEW.md` Round 23,
+R23-B).
+
+### Changed
+- **Every analysis tab has the same order:** Info, Summary, the results, Plots, Diagnostics,
+  Download Results. Survival's Diagnostics came before Plots and its Risk Table after them;
+  Dose Response's Model Results came after Plots; Power started with Summary.
+- **Bayesian fits.**
+  - **Tumor Growth** hides the ANOVA tab after a Bayesian fit and shows a Posterior Summary tab in
+    its place, with each column explained.
+  - **The posterior predictive check is in Diagnostics,** in Tumor Growth and Survival. The
+    "Posterior Check" tabs were added after Download Results. Survival's Prior vs Posterior is now
+    a fixed tab after Plots, shown for the Bayesian model.
+  - **No Stan backend menu.** The dashboard fits with rstan; `backend = "cmdstanr"` remains in the
+    package. The server image no longer carries CmdStan.
+  - **No notes on compiling in the sidebars or the progress window.** Help keeps them, with the
+    server's real compile time (about two minutes, not 20 s).
+- **"Extrapolation points"** moved from the analysis sidebar to the growth-curve plot controls,
+  under "Show extrapolated curves/points": it changes only the plot.
+- **The per-mouse drill-down** takes several mice: each is drawn in its own colour over its arm's
+  mean, one panel per arm, with its growth rate in the legend.
+- **Toxicity.** No covariate is ticked by default, and Tumor Volume is not offered while tumour
+  mass is subtracted from body weight (counting tumour burden twice); a note says why. The
+  estimation-method choice is gone: the model is fitted by REML, since the dashboard does not
+  compare models.
+- **Intervals say their level:** "Lower 95% CI" instead of `lower.CL`, `CI_Lower` and the like, in
+  every table. All tables now go through the same helper.
+- **Drug Synergy.** The over-time plot's legend explains its shading (synergy above Bliss,
+  antagonism below), and the estimand's tooltip no longer quotes figures from a simulation.
+
 ## [0.49.2] - 2026-10-29
 
 The server's image is built and tested in CI (`CODE_REVIEW.md` R23-A). Nothing changes in the
