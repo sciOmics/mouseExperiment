@@ -5,6 +5,17 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.59.1] - 2026-10-30
+
+Stan models on the server compiled at `-O2` (`CODE_REVIEW.md` Round 23, R23-L).
+
+### Changed
+- **The server image compiles Stan models at `-O2`, still without debug symbols** (it was `-O1`):
+  a fit at the dashboard's defaults takes 4–9 % less time. A compile takes 7–10 s longer and peaks
+  at 3.2 GB instead of 3.0 GB, once for each model, now that compiled models are kept (0.59.0).
+  `-O3` was slower than `-O2`. Only the image changes; the package's code does not. Models in the
+  server's cache compile once more, since the cache's key includes the flags.
+
 ## [0.59.0] - 2026-10-30
 
 Compiled Stan models kept on disk (`CODE_REVIEW.md` Round 23, R23-K).
