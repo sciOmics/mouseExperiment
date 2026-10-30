@@ -101,13 +101,13 @@ RUN R -q -e " \
 # Stan models are compiled when a Bayesian fit runs, inside the container's
 # memory limit (V3-T). With R's flags (-g ... -O2 ... -g), compiling the
 # dashboard's tumour-growth model grew past 3.8 GB, and production's
-# compiler was OOM-killed on 2026-10-25. Without debug symbols and at -O1 it
-# peaks at 3.0 GB and compiles about 25 s faster; sampling is about 15 %
-# slower. R_MAKEVARS_USER applies to compiles at run time only: every package
-# is built above, with R's flags. Its own layer, so the layers above stay
-# cached.
+# compiler was OOM-killed on 2026-10-25. Without debug symbols it peaks at
+# 3.2 GB. -O1 would save 210 MB and 7-10 s of compiling, once for each model,
+# and make every fit 4-9 % slower; -O3 is slower than -O2 (R23.30).
+# R_MAKEVARS_USER applies to compiles at run time only: every package is built
+# above, with R's flags. Its own layer, so the layers above stay cached.
 RUN printf 'CXX17FLAGS = %s\n' \
-      "$(R CMD config CXX17FLAGS | sed -e 's/ -g / /g; s/^-g //; s/ -g$//; s/-O2/-O1/')" \
+      "$(R CMD config CXX17FLAGS | sed -e 's/ -g / /g; s/^-g //; s/ -g$//')" \
       > /usr/local/lib/R/etc/Makevars.runtime && \
     cat /usr/local/lib/R/etc/Makevars.runtime && \
     ! grep -qE '(^| )-g( |$)' /usr/local/lib/R/etc/Makevars.runtime

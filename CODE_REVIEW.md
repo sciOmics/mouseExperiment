@@ -7346,7 +7346,7 @@ Their AIC are comparable on the same data, which is what `drc::mselect(linreg = 
 | R23.27 Staging retired; the image tested in CI | ✅ 0.49.2 (this repository); the server's side is sciOmicsVPS #24, rolled out after `release/0.49.2` | R23-A, PR #36 |
 | R23.28 5 CPUs for production | In sciOmicsVPS #24 | — |
 | R23.29 Compiled models kept across restarts | ✅ 0.59.0 (approved 2026-10-29; the reload check passed first) | R23-K |
-| R23.30 `-O2` once production has 5.5 GB | Open: after #24, if the CI fit gate passes | — |
+| R23.30 `-O2` once production has 5.5 GB | ✅ 0.59.1 (approved 2026-10-30, on the measurements in R23-L) | R23-L |
 
 **Open for the maintainer:**
 - Merge the stack in order, starting with #36. After #36, rename `staging` to `development`, and require the `image` check on pull requests into `production`.
@@ -7387,3 +7387,27 @@ Their AIC are comparable on the same data, which is what `drc::mselect(linreg = 
 - `clear_compiled_model_cache(disk = TRUE)`;
 - **a real fit compiles and writes, the session's cache is emptied, and the next fit reuses the model from disk with an identical posterior summary;**
 - the image and CI wiring.
+
+## R23-L Implementation log — v0.59.1: Stan models compiled at `-O2` (R23.30, 2026-10-30)
+
+**Why.** `-O1` was chosen on 2026-10-25 (sciOmicsVPS V3-T), when a compile had 3,200 MB beside the app and `-O2` was killed there. Two things have changed. Production has 5,632 MB (V3-U), and the fit gate's budget is 4,608 MB. And a model now compiles once (R23.29), while the cost of slower sampling comes with every fit.
+
+**The measurement.** A throwaway workflow (branch `experiment/r23-30-flags`, commit 02fa869, Actions run 41057238052; the branch is deleted) ran the fit gate's fit in the server image, within 4,608 MB. Two runners each fitted each level in two rounds, the second in reverse order: a compile on a fresh volume, then two fits reusing the model. All 36 fits finished. The levels are compared on one runner at a time, because GitHub's runners differ: the same reusing fit has taken from 36 to 80 s.
+
+| Flags (no `-g`) | Reusing fit, runner A (Xeon 6973P) | Reusing fit, runner B (EPYC 9V45) | Compile alone (compiling fit less reusing fit) | Compile peak |
+|---|---|---|---|---|
+| `-O1` | 41.2 s (40.9–41.4) | 38.8 s (37.8–39.5) | 27 s | 3,008 MB |
+| `-O2` | 37.6 s (37.0–38.0), −8.7 % | 37.1 s (36.7–37.4), −4.4 % | 34 s, 38 s | 3,218 MB |
+| `-O3` | 39.7 s (39.2–40.3), −3.6 % | 37.8 s (37.4–38.3), −2.5 % | 37 s, 40 s | 3,314 MB |
+
+- **`-O2` against `-O1`:** the ranges do not overlap on either runner. The extra compile is paid back after 2 to 6 fits of the same model.
+- **`-O3`:** slower than `-O2` on both runners, with a longer compile and a higher peak.
+- **The server:** not measured here. V3-T's single fits there gave 62 s of sampling at `-O2` and 71 s at `-O1`. A reusing fit's time also holds what is not sampling, so a longer fit should gain more than these percentages.
+
+**A first run measured nothing** (Actions run 41053623853). `R CMD config` reads `R_MAKEVARS_USER`, which the image sets to its own file, so it reported `-O1` as R's flags and the workflow's rewrite of `-O2` matched nothing: all 36 fits compiled at `-O1`. The identical peaks gave it away, and the printed flags confirmed it. The second run read R's flags with `env -u R_MAKEVARS_USER`, and stopped a fit unless its level was in use. The Dockerfile is not affected: it reads `R CMD config` before it sets `R_MAKEVARS_USER`.
+
+**The change** (`docker/Dockerfile`): `Makevars.runtime` keeps R's flags without `-g`, so it no longer rewrites the level. The image's fit gate, within 4,608 MB, stays the check on memory.
+
+**After the deploy:** the cache's key includes the flags, so each model compiles once more; the volume was created on 2026-10-30, so little is lost. sciOmicsVPS's "3.0 GB" figures are updated separately.
+
+**Tests** (`test-r23-model-cache.R`): the image's flags are no longer rewritten to another level.
