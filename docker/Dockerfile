@@ -113,6 +113,15 @@ RUN printf 'CXX17FLAGS = %s\n' \
     ! grep -qE '(^| )-g( |$)' /usr/local/lib/R/etc/Makevars.runtime
 ENV R_MAKEVARS_USER=/usr/local/lib/R/etc/Makevars.runtime
 
+# R23.29: compiled Stan models are kept here, so a fit after the worker or the
+# container restarts reuses them instead of compiling again (about two
+# minutes and 3 GB on the server). The server mounts a volume here, so they
+# survive deploys too; a model compiled under other package versions or
+# flags is not reused (the cache's key includes them). Owned by shiny, the
+# only writer.
+ENV MOUSEEXPERIMENT_MODEL_CACHE=/var/cache/mouseexperiment/models
+RUN mkdir -p /var/cache/mouseexperiment/models && chown -R shiny:shiny /var/cache/mouseexperiment
+
 # Everything above is shared and cached; the package starts here, so a new
 # commit rebuilds only the layers below. .dockerignore keeps the repository's
 # docs, review logs and these docker files out of the context, so editing

@@ -13,6 +13,10 @@
 # The call is the one the dashboard's worker makes (tg_resume.R) at the
 # dashboard's defaults: 4 chains of 1,000 warmup and 500 draws, rstan. It
 # prints the container's peak memory (cgroup v2 memory.peak) and the time.
+#
+# R23.29: with REQUIRE_REUSE=true the fit must reuse a model compiled by an
+# earlier container from the disk cache (MOUSEEXPERIMENT_MODEL_CACHE, a volume
+# shared between the two runs), which proves the cache works in the image.
 
 options(warn = 1)
 t0 <- Sys.time()
@@ -29,6 +33,12 @@ fit <- suppressMessages(bayesian_tumor_growth(
 if (is.null(fit$posterior_summary) || !nrow(fit$posterior_summary))
   stop("the fit returned no posterior summary")
 step("fitted; the model was ", fit$summary$methods$compiled_model)
+cache <- Sys.getenv("MOUSEEXPERIMENT_MODEL_CACHE")
+if (nzchar(cache))
+  step("compiled models in ", cache, ": ", length(list.files(cache, pattern = "[.]rds$")))
+if (identical(Sys.getenv("REQUIRE_REUSE"), "true") &&
+    !identical(fit$summary$methods$compiled_model, "reused from an earlier fit"))
+  stop("the compiled model was not reused from the disk cache")
 
 peak <- tryCatch(as.numeric(readLines("/sys/fs/cgroup/memory.peak", warn = FALSE)) / 2^20,
                  error = function(e) NA_real_)
