@@ -496,7 +496,8 @@ tumorGrowthUI <- function(id) {
                       icon("clock"), " ",
                       strong("Computation time:"), " the first fit of a model compiles its Stan code (about two minutes on mouseexperiment.com, less on a fast computer); ",
                       "a later fit whose model has the same structure (same number of arms, random effects and prior preset) ",
-                      "reuses the compiled model and starts sampling at once. ",
+                      "reuses the compiled model and starts sampling at once; on mouseexperiment.com compiled models ",
+                      "are kept across restarts and updates of the server. ",
                       "Fits run one at a time on a background worker, so the app stays responsive while a model runs; ",
                       "the progress window shows how many fits are ahead of yours."
                     )

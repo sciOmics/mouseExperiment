@@ -4,16 +4,30 @@
 \alias{clear_compiled_model_cache}
 \title{Empty the compiled-model cache}
 \usage{
-clear_compiled_model_cache()
+clear_compiled_model_cache(disk = FALSE)
+}
+\arguments{
+\item{disk}{Also delete the models in the disk cache.}
 }
 \value{
 The number of cached models removed, invisibly.
 }
 \description{
 Fits of the Bayesian models reuse a compiled Stan model when one with the
-same Stan code was compiled earlier in the R session, which saves about
-20 s per fit. This empties that cache; set
+same Stan code was compiled earlier in the R session, which saves the
+compile (about 20 s on a fast computer, about two minutes on a small
+server). This empties that cache; set
 \code{options(mouseExperiment.cache_compiled_models = FALSE)} to turn it off.
+}
+\details{
+The cache can also be kept on disk, so that a compiled model outlives the R
+session: set \code{options(mouseExperiment.model_cache_dir = <a directory>)}
+or the environment variable \code{MOUSEEXPERIMENT_MODEL_CACHE}, for example
+to \code{tools::R_user_dir("mouseExperiment", "cache")}. It is off by
+default. A model compiled under other versions of brms, rstan, StanHeaders,
+Rcpp or R, on another platform or with other compiler flags is not reused.
+The rstan backend only. Use a directory only you can write to: the cached
+models are R objects and are loaded as such.
 }
 \examples{
 clear_compiled_model_cache()

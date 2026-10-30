@@ -5,6 +5,23 @@ All notable changes to the mouseExperiment package will be documented in this fi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.59.0] - 2026-10-30
+
+Compiled Stan models kept on disk (`CODE_REVIEW.md` Round 23, R23-K).
+
+### Added
+- **The compiled-model cache can be kept on disk,** so a compiled Bayesian model outlives the R
+  session: `options(mouseExperiment.model_cache_dir = <dir>)` or the environment variable
+  `MOUSEEXPERIMENT_MODEL_CACHE`. It is off by default. A model is reused only under the same
+  versions of brms, rstan, StanHeaders, Rcpp and R, the same platform and the same compiler
+  flags; the rstan backend only. `clear_compiled_model_cache(disk = TRUE)` empties it.
+- **The server image turns it on** (`/var/cache/mouseexperiment/models`, a volume on the server):
+  a fit after a restart, a cancelled fit or an update of mouseexperiment.com no longer compiles
+  again, which took about two minutes and 3 GB of memory. On a Mac, a reused model cut a fit from
+  36 s to 9 s with identical draws.
+- **The CI image check** fits twice in separate containers sharing the cache; the second must
+  reuse the first's compiled model.
+
 ## [0.58.0] - 2026-10-29
 
 Which dose-response curve (`CODE_REVIEW.md` Round 23, R23-J).
