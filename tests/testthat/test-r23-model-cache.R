@@ -87,3 +87,8 @@ test_that("R23.29: the server image turns the cache on, and CI proves it across 
   expect_match(ci, "-e REQUIRE_REUSE=true", fixed = TRUE)
   expect_match(dash_source("docker", "shiny-gate-fit.R"), "the compiled model was not reused", fixed = TRUE)
 })
+
+test_that("R23.30: the image compiles at R's own optimisation level, without debug symbols", {
+  dock <- dash_source("docker", "Dockerfile")
+  expect_match(dock, "'s/ -g / /g; s/^-g //; s/ -g$//'", fixed = TRUE)
+})
