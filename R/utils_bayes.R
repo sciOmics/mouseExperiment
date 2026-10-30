@@ -812,13 +812,90 @@ me_fill_prior_values <- function(x, stanvars) {
 # same seed (tested). The cache lives in the R process (in the dashboard, the
 # background worker), keyed by the Stan code and backend, and keeps a copy of
 # each fit without its draws.
+#
+# R23.29: it can also live on disk, so a compiled model outlives the process.
+# The dashboard's worker restarts when a fit is cancelled, and the server's
+# container on every deploy; each then compiled again, about two minutes and
+# 3 GB on the server. Off unless a directory is given, by
+# options(mouseExperiment.model_cache_dir =) or the environment variable
+# MOUSEEXPERIMENT_MODEL_CACHE (the server image sets it). The key adds what a
+# compiled model depends on beyond its Stan code: the versions of the packages
+# that compiled it, R, the platform and the compiler flags, so a model built
+# under another version is never loaded (it could crash the process rather
+# than fail). rstan only: a cmdstanr model points to an executable in a
+# temporary folder that does not outlive the process. Use a directory only the
+# app can write: a cached model is an R object and is loaded as one.
 
 .me_model_cache <- new.env(parent = emptyenv())
 
+#' The disk cache's directory, or NULL when it is off (R23.29)
+#' @noRd
+me_model_cache_dir <- function() {
+  d <- getOption("mouseExperiment.model_cache_dir", Sys.getenv("MOUSEEXPERIMENT_MODEL_CACHE", ""))
+  if (!is.character(d) || length(d) != 1L || !nzchar(d)) return(NULL)
+  if (!dir.exists(d) && !dir.create(d, recursive = TRUE, showWarnings = FALSE)) return(NULL)
+  if (file.access(d, 2L) != 0L) return(NULL)
+  d
+}
+
+#' What a compiled model depends on beyond its Stan code (R23.29)
+#' @noRd
+me_model_build_env <- function() {
+  ver <- function(p) tryCatch(as.character(utils::packageVersion(p)), error = function(e) NA_character_)
+  flags <- function(f) if (nzchar(f) && file.exists(f)) readLines(f, warn = FALSE) else character(0)
+  list(r = R.version.string, platform = R.version$platform,
+       packages = vapply(c("brms", "rstan", "StanHeaders", "Rcpp", "RcppEigen", "RcppParallel", "BH"),
+                         ver, ""),
+       makevars = c(flags(Sys.getenv("R_MAKEVARS_USER")),
+                    flags(file.path(Sys.getenv("HOME"), ".R", "Makevars"))))
+}
+
+#' A compiled model from the disk cache, into the session's cache, or NULL
+#' @noRd
+me_model_cache_read <- function(key) {
+  d <- me_model_cache_dir()
+  if (is.null(d)) return(NULL)
+  f <- file.path(d, paste0(key, ".rds"))
+  if (!file.exists(f)) return(NULL)
+  entry <- tryCatch(readRDS(f), error = function(e) NULL)
+  if (!is.list(entry) || !inherits(entry$template, "brmsfit")) {
+    unlink(f)
+    return(NULL)
+  }
+  Sys.setFileTime(f, Sys.time())   # recently used: kept when the cache is pruned
+  assign(key, list(template = entry$template, cached_at = Sys.time(), from_disk = TRUE),
+         envir = .me_model_cache)
+  .me_model_cache[[key]]
+}
+
+#' Write a compiled model to the disk cache; keep the most recently used
+#' @noRd
+me_model_cache_write <- function(key, template) {
+  d <- me_model_cache_dir()
+  if (is.null(d)) return(invisible(FALSE))
+  f <- file.path(d, paste0(key, ".rds"))
+  tmp <- tempfile("model_", tmpdir = d, fileext = ".tmp")
+  ok <- tryCatch({
+    saveRDS(list(template = template, cached_at = Sys.time()), tmp)
+    file.rename(tmp, f)   # another process reads a whole file or none
+  }, error = function(e) FALSE)
+  unlink(tmp)
+  files <- list.files(d, pattern = "[.]rds$", full.names = TRUE)
+  n_max <- getOption("mouseExperiment.model_cache_disk_size", 40L)
+  if (length(files) > n_max) {
+    old <- files[order(file.mtime(files))][seq_len(length(files) - n_max)]
+    unlink(old)
+  }
+  invisible(isTRUE(ok))
+}
+
 #' Fit a brms model, reusing a compiled model with the same Stan code
 #'
-#' Options: `mouseExperiment.cache_compiled_models` (default TRUE) and
-#' `mouseExperiment.model_cache_size` (default 6 models).
+#' Options: `mouseExperiment.cache_compiled_models` (default TRUE),
+#' `mouseExperiment.model_cache_size` (default 6 models in the session), and
+#' for the disk cache (R23.29) `mouseExperiment.model_cache_dir` (or the
+#' environment variable `MOUSEEXPERIMENT_MODEL_CACHE`; default off) and
+#' `mouseExperiment.model_cache_disk_size` (default 40 models).
 #' @return The brmsfit, with attribute `me_model_reused` (TRUE when a
 #'   compiled model was reused).
 #' @noRd
@@ -832,10 +909,13 @@ me_brm <- function(formula, data, prior, stanvars = NULL, family = NULL,
     code <- brms::make_stancode(formula, data = data, family = family,
                                 prior = prior, stanvars = stanvars,
                                 sample_prior = "yes")
-    rlang::hash(list(backend, as.character(code)))
+    rlang::hash(list(backend, as.character(code), me_model_build_env()))
   }, error = function(e) NULL)
 
   entry    <- if (!is.null(key)) .me_model_cache[[key]]
+  # R23.29: not in this session: on disk, from an earlier one?
+  if (is.null(entry) && !is.null(key) && identical(backend, "rstan"))
+    entry <- me_model_cache_read(key)
   template <- if (!is.null(entry)) entry$template
   if (!is.null(template)) {
     fit <- tryCatch(suppressMessages(stats::update(
@@ -847,6 +927,9 @@ me_brm <- function(formula, data, prior, stanvars = NULL, family = NULL,
       attr(fit, "me_model_reused") <- TRUE
       return(fit)
     }
+    # A cached model that cannot be reused is dropped, and compiled again.
+    rm(list = key, envir = .me_model_cache)
+    if (isTRUE(entry$from_disk)) unlink(file.path(me_model_cache_dir(), paste0(key, ".rds")))
   }
 
   fit <- brms::brm(formula = formula, data = data, family = family,
@@ -854,19 +937,20 @@ me_brm <- function(formula, data, prior, stanvars = NULL, family = NULL,
                    chains = chains, cores = chains, iter = iter,
                    warmup = warmup, seed = seed, backend = backend,
                    silent = silent, refresh = refresh)
-  if (!is.null(key)) me_model_cache_put(key, fit)
+  if (!is.null(key)) me_model_cache_put(key, fit, disk = identical(backend, "rstan"))
   attr(fit, "me_model_reused") <- FALSE
   fit
 }
 
 #' @noRd
 #' @keywords internal
-me_model_cache_put <- function(key, fit) {
+me_model_cache_put <- function(key, fit, disk = FALSE) {
   template <- fit
   # The compiled model is all a later update() needs; the draws are dropped.
   template$fit@sim$samples <- NULL
   assign(key, list(template = template, cached_at = Sys.time()),
          envir = .me_model_cache)
+  if (isTRUE(disk)) me_model_cache_write(key, template)   # R23.29
   n_max <- getOption("mouseExperiment.model_cache_size", 6L)
   keys  <- ls(.me_model_cache, all.names = TRUE)
   if (length(keys) > n_max) {
@@ -881,17 +965,35 @@ me_model_cache_put <- function(key, fit) {
 #' Empty the compiled-model cache
 #'
 #' Fits of the Bayesian models reuse a compiled Stan model when one with the
-#' same Stan code was compiled earlier in the R session, which saves about
-#' 20 s per fit. This empties that cache; set
+#' same Stan code was compiled earlier in the R session, which saves the
+#' compile (about 20 s on a fast computer, about two minutes on a small
+#' server). This empties that cache; set
 #' \code{options(mouseExperiment.cache_compiled_models = FALSE)} to turn it off.
+#'
+#' The cache can also be kept on disk, so that a compiled model outlives the R
+#' session: set \code{options(mouseExperiment.model_cache_dir = <a directory>)}
+#' or the environment variable \code{MOUSEEXPERIMENT_MODEL_CACHE}, for example
+#' to \code{tools::R_user_dir("mouseExperiment", "cache")}. It is off by
+#' default. A model compiled under other versions of brms, rstan, StanHeaders,
+#' Rcpp or R, on another platform or with other compiler flags is not reused.
+#' The rstan backend only. Use a directory only you can write to: the cached
+#' models are R objects and are loaded as such.
+#' @param disk Also delete the models in the disk cache.
 #' @return The number of cached models removed, invisibly.
 #' @examples
 #' clear_compiled_model_cache()
 #' @export
-clear_compiled_model_cache <- function() {
+clear_compiled_model_cache <- function(disk = FALSE) {
   keys <- ls(.me_model_cache, all.names = TRUE)
   rm(list = keys, envir = .me_model_cache)
-  invisible(length(keys))
+  n <- length(keys)
+  d <- if (isTRUE(disk)) me_model_cache_dir()
+  if (!is.null(d)) {
+    files <- list.files(d, pattern = "[.]rds$", full.names = TRUE)
+    unlink(files)
+    n <- n + length(files)
+  }
+  invisible(n)
 }
 
 #' Describe the priors actually used, for the methods metadata

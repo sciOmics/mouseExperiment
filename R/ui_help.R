@@ -277,7 +277,7 @@ helpUI <- function() {
       tags$dt("Analysis fails or produces no output"),
       tags$dd("Verify that the selected columns contain valid, non-missing data. Tumor volumes must be positive. Time points must be numeric. At least two groups must be present for any comparison."),
       tags$dt("Bayesian model is slow to start"),
-      tags$dd("The first fit of a model compiles it, which takes about two minutes on mouseexperiment.com and less on a fast computer; later fits with the same structure reuse it and usually take under a minute. Fits run one at a time on a background worker, so other users and tabs stay responsive, and yours may wait for one ahead of it."),
+      tags$dd("The first fit of a model compiles it, which takes about two minutes on mouseexperiment.com and less on a fast computer; later fits with the same structure reuse it and usually take under a minute. On mouseexperiment.com compiled models are kept across restarts and updates of the server, so each structure is compiled once; on your own computer, see ?clear_compiled_model_cache to keep them between R sessions. Fits run one at a time on a background worker, so other users and tabs stay responsive, and yours may wait for one ahead of it."),
       tags$dt("Plot download produces a blank file"),
       tags$dd("Run the analysis first, then click the download button. Download Results draws every plot of the run with the current settings (colours, titles, sizes), including plot types you have not opened.")
     )

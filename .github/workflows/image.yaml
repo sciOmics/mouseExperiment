@@ -9,6 +9,8 @@
 #   2. docker/shiny-gate-fit.R: a Bayesian fit at the dashboard's defaults,
 #      within production's memory budget for a fit and with no swap. The
 #      server's compiler was OOM-killed on 2026-10-25; this would have failed.
+#      Then (2b) a new container must reuse its compiled model from the disk
+#      cache, as the server does after a restart (R23.29).
 #   3. docker/shiny-gate-tests.R: the package's test suite inside the image, in
 #      shards side by side, Bayesian fits skipped (R CMD check runs those).
 #   4. The image serves the dashboard over HTTP.
@@ -78,11 +80,22 @@ jobs:
             R --no-save --no-echo < docker/shiny-gate.R | tee gate.out
           grep -qx 'GATE_OK' gate.out
 
+      # The compiled model goes to a volume, as on the server (R23.29).
       - name: Gate 2 - a Bayesian fit at the dashboard's defaults within ${{ env.FIT_MEMORY }}
         run: |
-          docker run --rm -i --network none --memory "$FIT_MEMORY" --memory-swap "$FIT_MEMORY" "$IMAGE" \
+          docker run --rm -i --network none --memory "$FIT_MEMORY" --memory-swap "$FIT_MEMORY" \
+            -v model-cache:/var/cache/mouseexperiment/models "$IMAGE" \
             R --no-save --no-echo < docker/shiny-gate-fit.R | tee fit.out
           grep -qx 'FIT_OK' fit.out
+
+      # R23.29: a new container, as after a restart or a deploy, must reuse the
+      # model compiled above instead of compiling it again.
+      - name: Gate 2b - a new container reuses the compiled model
+        run: |
+          docker run --rm -i --network none --memory "$FIT_MEMORY" --memory-swap "$FIT_MEMORY" \
+            -v model-cache:/var/cache/mouseexperiment/models -e REQUIRE_REUSE=true "$IMAGE" \
+            R --no-save --no-echo < docker/shiny-gate-fit.R | tee reuse.out
+          grep -qx 'FIT_OK' reuse.out
 
       - name: Gate 3 - the test suite in the image
         run: |

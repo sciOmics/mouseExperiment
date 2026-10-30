@@ -7345,10 +7345,45 @@ Their AIC are comparable on the same data, which is what `drc::mselect(linreg = 
 | R23.26 Which dose-response curve | ✅ 0.58.0 | R23-J |
 | R23.27 Staging retired; the image tested in CI | ✅ 0.49.2 (this repository); the server's side is sciOmicsVPS #24, rolled out after `release/0.49.2` | R23-A, PR #36 |
 | R23.28 5 CPUs for production | In sciOmicsVPS #24 | — |
-| R23.29 Compiled models kept across restarts | Open: proposed, to be tested first | — |
+| R23.29 Compiled models kept across restarts | ✅ 0.59.0 (approved 2026-10-29; the reload check passed first) | R23-K |
 | R23.30 `-O2` once production has 5.5 GB | Open: after #24, if the CI fit gate passes | — |
 
 **Open for the maintainer:**
 - Merge the stack in order, starting with #36. After #36, rename `staging` to `development`, and require the `image` check on pull requests into `production`.
 - Release `release/0.49.2` to production; then sciOmicsVPS #24 can be rolled out (each server command with approval).
 - Whether to prototype R23.29.
+
+## R23-K Implementation log — v0.59.0: compiled models kept on disk (R23.29, 2026-10-30)
+
+**Why.** The compiled-model cache (R20.78) lives in the R process: on the server, the dashboard's background worker. It was lost whenever a fit was cancelled (the worker restarts), the container restarted, or a release was deployed (the container is recreated). The next fit of each structure then compiled again: about two minutes, and a 3 GB memory peak (sciOmicsVPS V3-T).
+
+**The check first** (approved by the maintainer as a prototype, 2026-10-29):
+- **Process A** fitted `bayesian_tumor_growth()` (2 chains) and saved its cache entry with `saveRDS()`: the brmsfit without draws, holding the compiled rstan model. The entry was 3.5 MB.
+- **Process B** was a fresh R process. It loaded the entry into `.me_model_cache`, emptied `PATH` so that no compiler could run, and fitted again.
+- **The result:** "reused from an earlier fit" in 9 s against 36 s, with an identical posterior summary.
+
+**The change** (`utils_bayes.R`):
+- **`me_model_cache_dir()`.** It reads `options(mouseExperiment.model_cache_dir)` or the environment variable `MOUSEEXPERIMENT_MODEL_CACHE`. It is off by default: CRAN does not allow writing to a user's directories unasked, and the docs point users to `tools::R_user_dir()`. The directory must be writable.
+- **The cache key.** It adds `me_model_build_env()`: R's version and platform, the versions of brms, rstan, StanHeaders, Rcpp, RcppEigen, RcppParallel and BH, and the compiler flags (`R_MAKEVARS_USER` and `~/.R/Makevars`).
+  - A compiled model is native code. Loaded under other library versions it could crash the process rather than fail, so it must never be reused there.
+  - A change of flags (such as R23.30's `-O2`) also gives fresh compiles.
+- **`me_brm()`, on a miss in the session's cache:**
+  - it looks on disk, rstan only (a cmdstanr model points to an executable in a temporary folder that the process takes with it);
+  - an entry that cannot be read, or whose `update()` fails, is deleted, and the model is compiled again;
+  - a new compile is written with an atomic rename, so another process reads a whole file or none;
+  - the cache keeps the 40 most recently used (`mouseExperiment.model_cache_disk_size`).
+- **`clear_compiled_model_cache(disk = TRUE)`** also empties the disk cache. Its help documents the disk cache, including that the directory should be writable only by its user, since cached models are R objects.
+
+**The image** (`docker/Dockerfile`): `ENV MOUSEEXPERIMENT_MODEL_CACHE=/var/cache/mouseexperiment/models`, a directory owned by shiny. On the server a named volume is mounted there (sciOmicsVPS), so the models survive deploys. A first mount copies in the image's empty, shiny-owned directory.
+
+**CI** (`image.yaml`): Gate 2 now writes its model to a volume. Gate 2b runs the same fit in a new container on that volume, with `REQUIRE_REUSE=true`; `shiny-gate-fit.R` stops if the model was not reused. This proves on Linux, in the server image, what the check showed on the Mac.
+
+**Help and the Info tab** say that on mouseexperiment.com models are compiled once per structure, and point local users to `?clear_compiled_model_cache`.
+
+**Tests** (`test-r23-model-cache.R`):
+- the cache is off by default, and the option takes precedence over the environment variable;
+- the key changes with the compiler flags;
+- write, read, an unreadable file deleted, and pruning to size;
+- `clear_compiled_model_cache(disk = TRUE)`;
+- **a real fit compiles and writes, the session's cache is emptied, and the next fit reuses the model from disk with an identical posterior summary;**
+- the image and CI wiring.
